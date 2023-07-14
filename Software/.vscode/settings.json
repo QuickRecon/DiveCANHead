@@ -18,5 +18,8 @@
         "-fno-threadsafe-statics",
         "-pipe",
         "-B /home/aren/Archive/Dropbox/DiveCANHead/Software/atpack/gcc/dev/avr64ea28"
-    ]
+    ],
+    "files.associations": {
+        "cstdint": "cpp"
+    }
 }

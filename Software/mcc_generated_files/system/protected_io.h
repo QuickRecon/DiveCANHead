@@ -12,7 +12,7 @@
  *@{
 */
 /*
-© [2023] Microchip Technology Inc. and its subsidiaries.
+ï¿½ [2023] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -76,5 +76,7 @@ extern "C" {
 extern void protected_write_io(void *addr, uint8_t magic, uint8_t value);
 
 /** @} */
-
+#ifdef __cplusplus
+}
+#endif
 #endif /* PROTECTED_IO_H */

@@ -30,10 +30,10 @@ PRG = usbtiny
 #HFU = 0xDE
 #EFU = 0x05
 # program source files (not including external libraries)
-SRC = $(PRJ).c mcc_generated_files/system/src/system.c
+SRC = $(PRJ).c
 # where to look for external libraries (consisting of .c/.cpp files and .h files)
 # e.g. EXT = ../../EyeToSee ../../YouSART
-EXT = mcc_generated_files/*
+EXT = mcc_generated_files/system/src mcc_generated_files/spi/src mcc_generated_files/reset/src mcc_generated_files/nvm/src mcc_generated_files/i2c_host/src mcc_generated_files/adc/src mcc_generated_files/uart/src mcc_generated_files/vref/src
 
 
 #################################################################################################
@@ -56,10 +56,11 @@ CC      = avr-gcc
 
 # generate list of objects
 CFILES    = $(filter %.c, $(SRC))
+ASM    = $(foreach dir, $(EXT), $(wildcard $(dir)/*.S))
 EXTC     := $(foreach dir, $(EXT), $(wildcard $(dir)/*.c))
 CPPFILES  = $(filter %.cpp, $(SRC))
 EXTCPP   := $(foreach dir, $(EXT), $(wildcard $(dir)/*.cpp))
-OBJ       = $(CFILES:.c=.o) $(EXTC:.c=.o) $(CPPFILES:.cpp=.o) $(EXTCPP:.cpp=.o)
+OBJ       = $(CFILES:.c=.o) $(EXTC:.c=.o) $(CPPFILES:.cpp=.o) $(EXTCPP:.cpp=.o) $(ASM:.S=.o)
 
 # user targets
 # compile all files
@@ -89,6 +90,9 @@ clean:
 # other targets
 # objects from c files
 .c.o:
+	$(CC) $(CFLAGS) -c $< -o $@
+
+.S.o:
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # objects from c++ files
