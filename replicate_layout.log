@@ -1,62 +1,77 @@
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 359:Plugin executed on: 'linux'
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 360:Plugin executed with python version: '3.11.3 (main, Apr  5 2023, 15:52:25) [GCC 12.2.1 20230201]'
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 361:KiCad build version: 7.0.3
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 362:Plugin version: 2.0.13
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 363:Frame repr: <wx._core.Frame object at 0x7fd4a86b9090>
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 387:Preparing replicator with J8 as a reference
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.replicate_layout 113:getting a list of all footprints on board
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 435:source anchor footprint is 'J8'
-Located on: ['Controller A']
-With filenames: ['Controller.kicad_sch']
-With sheet_id:['Controller A']
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 442:Corresponding footprints are 
-[('J8', ['Controller A']), ('J9', ['Controller B'])]
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 454:Showing dialog
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.replicate_layout 390:constructing a list of sheets suitable for replication on level:'Controller A', file:'Controller.kicad_sch'
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.replicate_layout 427:suitable sheets are:[['Controller B']]
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1349:Level selected: ['Controller A']
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1184:Filtering list of tracks
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 460:Toolbar position: wx.Point(2339, 377)
-05-30 21:35:43 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 465:Dialog position: wx.Point(1975, 377)
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 390:constructing a list of sheets suitable for replication on level:'Controller A', file:'Controller.kicad_sch'
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 427:suitable sheets are:[['Controller B']]
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 207:Replicating layout
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 236:Starting replication of sheets: [['Controller B']]
-on level: ['Controller A']
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 359:Plugin executed on: 'linux'
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 360:Plugin executed with python version: '3.11.3 (main, Apr  5 2023, 15:52:25) [GCC 12.2.1 20230201]'
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 361:KiCad build version: 7.0.5
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 362:Plugin version: 2.0.13
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 363:Frame repr: <wx._core.Frame object at 0x7f5d255d5090>
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 387:Preparing replicator with J1 as a reference
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.replicate_layout 113:getting a list of all footprints on board
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 435:source anchor footprint is 'J1'
+Located on: ['Analog Cell 2']
+With filenames: ['AnalogCell.kicad_sch']
+With sheet_id:['Analog Cell 2']
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 442:Corresponding footprints are 
+[('J11', ['Analog Cell 1']), ('J2', ['Analog Cell 3']), ('J1', ['Analog Cell 2'])]
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 454:Showing dialog
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.replicate_layout 390:constructing a list of sheets suitable for replication on level:'Analog Cell 2', file:'AnalogCell.kicad_sch'
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.replicate_layout 427:suitable sheets are:[['Analog Cell 1'], ['Analog Cell 3']]
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1349:Level selected: ['Analog Cell 2']
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1184:Filtering list of tracks
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 460:Toolbar position: wx.Point(2339, 377)
+06-08 23:04:04 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 465:Dialog position: wx.Point(1975, 377)
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 390:constructing a list of sheets suitable for replication on level:'Analog Cell 2', file:'AnalogCell.kicad_sch'
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 427:suitable sheets are:[['Analog Cell 1'], ['Analog Cell 3']]
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 207:Replicating layout
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 236:Starting replication of sheets: [['Analog Cell 1'], ['Analog Cell 3']]
+on level: ['Analog Cell 2']
 with tracks=True, zone=True, text=True, text=True, intersecting=False, remove=True, locked footprints=False, group_only=False
-05-30 21:36:12 root 299:updating GUI message: 'Preparing for replication'
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 306:Getting the list of source footprints
-05-30 21:36:12 root 304:updating GUI with: 0
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 316:Getting the list of all the remaining footprints
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 323:Getting source tracks
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1184:Filtering list of tracks
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 327:Getting source zones
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 331:Getting source text items
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 335:Getting source drawing items
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 268:Removing tracks and zones, before footprint placement
-05-30 21:36:12 root 299:updating GUI message: 'Removing zones and tracks'
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1130:Remove bounding box top:152495000, bottom:162025000, Left:62995000, Right:98175000
-05-30 21:36:12 root 299:updating GUI message: 'Replicating footprints'
-05-30 21:36:12 root 304:updating GUI with: 0
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 741:Replicating footprints
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 747:Replicating footprints on sheet ['Controller B']
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 276:Removing tracks and zones, after footprint placement
-05-30 21:36:12 root 299:updating GUI message: 'Removing zones and tracks'
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1130:Remove bounding box top:152495000, bottom:162025000, Left:62995000, Right:98175000
-05-30 21:36:12 root 299:updating GUI message: 'Replicating tracks'
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 906:Replicating tracks
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 912:Replicating tracks on sheet ['Controller B']
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 736:Net pairs for sheet ['Controller B'] :[('/Controller A/SDA', '/Controller B/SDA'), ('/C1_A', '/C1_B'), ('Net-(J8-Pin_2)', 'Net-(J9-Pin_2)'), ('Net-(U7-PD5)', 'Net-(U10-PD5)'), ('/EN_A', '/EN_B'), ('/SSC3_A', '/SSC3_B'), ('unconnected-(U7-PA6-Pad4)', 'unconnected-(U10-PA6-Pad4)'), ('/C2_A', '/C2_B'), ('/Controller A/SSC2_OK', '/Controller B/SSC2_OK'), ('/Controller A/UPDI', '/Controller B/UPDI'), ('unconnected-(U7-PC0-Pad6)', 'unconnected-(U10-PC0-Pad6)'), ('/CAN_A_PWR', '/CAN_B_PWR'), ('unconnected-(U8-~{INT}-Pad11)', 'unconnected-(U11-~{INT}-Pad11)'), ('/Controller A/CLK', '/Controller B/CLK'), ('/Controller A/SSC2_PWR', '/Controller B/SSC2_PWR'), ('Net-(U8-TXCAN)', 'Net-(U11-TXCAN)'), ('/BUS_A', '/BUS_B'), ('unconnected-(U8-~{RX0BF}-Pad10)', 'unconnected-(U11-~{RX0BF}-Pad10)'), ('unconnected-(U8-OSC2-Pad6)', 'unconnected-(U11-OSC2-Pad6)'), ('Net-(U7-PD6)', 'Net-(U10-PD6)'), ('Net-(U7-PA5)', 'Net-(U10-PA5)'), ('/Controller A/SCL', '/Controller B/SCL'), ('unconnected-(U7-PA0_(XTALHF1)-Pad26)', 'unconnected-(U10-PA0_(XTALHF1)-Pad26)'), ('/SSC1_A', '/SSC1_B'), ('/Controller A/SOLENOID', '/Controller B/SOLENOID'), ('GNDREF', 'GNDREF'), ('/Controller A/SSC3_PWR', '/Controller B/SSC3_PWR'), ('unconnected-(U8-CLKOUT{slash}SOF-Pad1)', 'unconnected-(U11-CLKOUT{slash}SOF-Pad1)'), ('/Controller A/SSC3_OK', '/Controller B/SSC3_OK'), ('unconnected-(U8-~{RX1BF}-Pad9)', 'unconnected-(U11-~{RX1BF}-Pad9)'), ('/Controller A/SSC1_PWR', '/Controller B/SSC1_PWR'), ('Net-(U7-PD4)', 'Net-(U10-PD4)'), ('unconnected-(U7-PF0_(XTAL32K1)-Pad20)', 'unconnected-(U10-PF0_(XTAL32K1)-Pad20)'), ('/Controller A/SSC1_OK', '/Controller B/SSC1_OK'), ('/SSC2_A', '/SSC2_B'), ('Net-(U8-RXCAN)', 'Net-(U11-RXCAN)'), ('', ''), ('Net-(J8-Pin_5)', 'Net-(J9-Pin_5)'), ('/C3_A', '/C3_B'), ('Net-(U7-PD7)', 'Net-(U10-PD7)'), ('unconnected-(U9-S-Pad8)', 'unconnected-(U12-S-Pad8)')]
-05-30 21:36:12 root 304:updating GUI with: 0
-05-30 21:36:12 root 299:updating GUI message: 'Replicating zones'
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 964:Replicating zones
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 971:Replicating zones on sheet ['Controller B']
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 736:Net pairs for sheet ['Controller B'] :[('/Controller A/SDA', '/Controller B/SDA'), ('/C1_A', '/C1_B'), ('Net-(J8-Pin_2)', 'Net-(J9-Pin_2)'), ('Net-(U7-PD5)', 'Net-(U10-PD5)'), ('/EN_A', '/EN_B'), ('/SSC3_A', '/SSC3_B'), ('unconnected-(U7-PA6-Pad4)', 'unconnected-(U10-PA6-Pad4)'), ('/C2_A', '/C2_B'), ('/Controller A/SSC2_OK', '/Controller B/SSC2_OK'), ('/Controller A/UPDI', '/Controller B/UPDI'), ('unconnected-(U7-PC0-Pad6)', 'unconnected-(U10-PC0-Pad6)'), ('/CAN_A_PWR', '/CAN_B_PWR'), ('unconnected-(U8-~{INT}-Pad11)', 'unconnected-(U11-~{INT}-Pad11)'), ('/Controller A/CLK', '/Controller B/CLK'), ('/Controller A/SSC2_PWR', '/Controller B/SSC2_PWR'), ('Net-(U8-TXCAN)', 'Net-(U11-TXCAN)'), ('/BUS_A', '/BUS_B'), ('unconnected-(U8-~{RX0BF}-Pad10)', 'unconnected-(U11-~{RX0BF}-Pad10)'), ('unconnected-(U8-OSC2-Pad6)', 'unconnected-(U11-OSC2-Pad6)'), ('Net-(U7-PD6)', 'Net-(U10-PD6)'), ('Net-(U7-PA5)', 'Net-(U10-PA5)'), ('/Controller A/SCL', '/Controller B/SCL'), ('unconnected-(U7-PA0_(XTALHF1)-Pad26)', 'unconnected-(U10-PA0_(XTALHF1)-Pad26)'), ('/SSC1_A', '/SSC1_B'), ('/Controller A/SOLENOID', '/Controller B/SOLENOID'), ('GNDREF', 'GNDREF'), ('/Controller A/SSC3_PWR', '/Controller B/SSC3_PWR'), ('unconnected-(U8-CLKOUT{slash}SOF-Pad1)', 'unconnected-(U11-CLKOUT{slash}SOF-Pad1)'), ('/Controller A/SSC3_OK', '/Controller B/SSC3_OK'), ('unconnected-(U8-~{RX1BF}-Pad9)', 'unconnected-(U11-~{RX1BF}-Pad9)'), ('/Controller A/SSC1_PWR', '/Controller B/SSC1_PWR'), ('Net-(U7-PD4)', 'Net-(U10-PD4)'), ('unconnected-(U7-PF0_(XTAL32K1)-Pad20)', 'unconnected-(U10-PF0_(XTAL32K1)-Pad20)'), ('/Controller A/SSC1_OK', '/Controller B/SSC1_OK'), ('/SSC2_A', '/SSC2_B'), ('Net-(U8-RXCAN)', 'Net-(U11-RXCAN)'), ('', ''), ('Net-(J8-Pin_5)', 'Net-(J9-Pin_5)'), ('/C3_A', '/C3_B'), ('Net-(U7-PD7)', 'Net-(U10-PD7)'), ('unconnected-(U9-S-Pad8)', 'unconnected-(U12-S-Pad8)')]
-05-30 21:36:12 root 299:updating GUI message: 'Replicating text'
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1042:Replicating text
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1049:Replicating text on sheet ['Controller B']
-05-30 21:36:12 root 299:updating GUI message: 'Replicating drawings'
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1082:Replicating drawings
-05-30 21:36:12 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1088:Replicating drawings on sheet ['Controller B']
-05-30 21:36:12 root 299:updating GUI message: 'Removing duplicates'
-05-30 21:36:14 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 223:Replication complete
+06-08 23:04:08 root 299:updating GUI message: 'Preparing for replication'
+06-08 23:04:08 root 304:updating GUI with: 0
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 306:Getting the list of source footprints
+06-08 23:04:08 root 304:updating GUI with: 0
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 316:Getting the list of all the remaining footprints
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 323:Getting source tracks
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1184:Filtering list of tracks
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 327:Getting source zones
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 331:Getting source text items
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 335:Getting source drawing items
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 268:Removing tracks and zones, before footprint placement
+06-08 23:04:08 root 299:updating GUI message: 'Removing zones and tracks'
+06-08 23:04:08 root 304:updating GUI with: 0
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1130:Remove bounding box top:92125000, bottom:94475000, Left:118375000, Right:124155000
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1130:Remove bounding box top:92125000, bottom:94475000, Left:106875000, Right:112655000
+06-08 23:04:08 root 299:updating GUI message: 'Replicating footprints'
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 741:Replicating footprints
+06-08 23:04:08 root 304:updating GUI with: 0
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 747:Replicating footprints on sheet ['Analog Cell 1']
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 747:Replicating footprints on sheet ['Analog Cell 3']
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 276:Removing tracks and zones, after footprint placement
+06-08 23:04:08 root 299:updating GUI message: 'Removing zones and tracks'
+06-08 23:04:08 root 304:updating GUI with: 0
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1130:Remove bounding box top:92125000, bottom:94475000, Left:118375000, Right:124155000
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1130:Remove bounding box top:92125000, bottom:94475000, Left:106875000, Right:112655000
+06-08 23:04:08 root 299:updating GUI message: 'Replicating tracks'
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 906:Replicating tracks
+06-08 23:04:08 root 304:updating GUI with: 0
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 912:Replicating tracks on sheet ['Analog Cell 1']
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 736:Net pairs for sheet ['Analog Cell 1'] :[('GNDREF', 'GNDREF'), ('Net-(J1-Pin_1)', 'Net-(J11-Pin_1)'), ('/C2_A', '/C1_A'), ('/C2_B', '/C1_B')]
+06-08 23:04:08 root 304:updating GUI with: 5
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 912:Replicating tracks on sheet ['Analog Cell 3']
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 736:Net pairs for sheet ['Analog Cell 3'] :[('Net-(J1-Pin_1)', 'Net-(J2-Pin_1)'), ('/C2_A', '/C3_A'), ('GNDREF', 'GNDREF'), ('/C2_B', '/C3_B')]
+06-08 23:04:08 root 299:updating GUI message: 'Replicating zones'
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 964:Replicating zones
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 971:Replicating zones on sheet ['Analog Cell 1']
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 736:Net pairs for sheet ['Analog Cell 1'] :[('GNDREF', 'GNDREF'), ('Net-(J1-Pin_1)', 'Net-(J11-Pin_1)'), ('/C2_A', '/C1_A'), ('/C2_B', '/C1_B')]
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 971:Replicating zones on sheet ['Analog Cell 3']
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 736:Net pairs for sheet ['Analog Cell 3'] :[('Net-(J1-Pin_1)', 'Net-(J2-Pin_1)'), ('/C2_A', '/C3_A'), ('GNDREF', 'GNDREF'), ('/C2_B', '/C3_B')]
+06-08 23:04:08 root 299:updating GUI message: 'Replicating text'
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1042:Replicating text
+06-08 23:04:08 root 304:updating GUI with: 0
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1049:Replicating text on sheet ['Analog Cell 1']
+06-08 23:04:08 root 304:updating GUI with: 50
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1049:Replicating text on sheet ['Analog Cell 3']
+06-08 23:04:08 root 299:updating GUI message: 'Replicating drawings'
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1082:Replicating drawings
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1088:Replicating drawings on sheet ['Analog Cell 1']
+06-08 23:04:08 com_github_MitjaNemec_ReplicateLayout.replicate_layout 1088:Replicating drawings on sheet ['Analog Cell 3']
+06-08 23:04:08 root 299:updating GUI message: 'Removing duplicates'
+06-08 23:04:09 com_github_MitjaNemec_ReplicateLayout.action_replicate_layout 223:Replication complete

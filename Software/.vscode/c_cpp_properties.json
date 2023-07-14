@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "AVR",
+            "intelliSenseMode": "${default}",
+            "compilerPath": "/usr/bin/avr-gcc",
+            "cStandard": "${default}",
+            "cppStandard": "${default}",
+            "includePath": [],
+            "compilerArgs": [
+                "-g",
+                "-Os",
+                "-Wall",
+                "-Wextra",
+                "-fpermissive",
+                "-fno-exceptions",
+                "-fno-threadsafe-statics",
+                "-pipe",
+                "-B /home/aren/Archive/Dropbox/DiveCANHead/Software/atpack/gcc/dev/avr64ea28",
+                "-mmcu=avr64ea28"
+            ]
+        }
+    ],
+    "version": 4
+}

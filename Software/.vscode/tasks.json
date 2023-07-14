@@ -1,0 +1,17 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "echo",
+            "type": "shell",
+            "command": "/usr/bin/avr-gcc -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/Software/atpack/gcc/dev/avr64ea28 -L /home/aren/Archive/Dropbox/DiveCANHead/Software/mcc_generated_files /home/aren/Archive/Dropbox/DiveCANHead/Software/main.c",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
