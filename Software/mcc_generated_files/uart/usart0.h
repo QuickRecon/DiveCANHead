@@ -50,7 +50,7 @@
 #endif
 
 /* Normal Mode, Baud register value */
-#define USART0_BAUD_RATE(BAUD_RATE) (((float)10000000 * 64 / (16 * (float)BAUD_RATE)) + 0.5)
+#define USART0_BAUD_RATE(BAUD_RATE) (((float)20000000 * 64 / (16 * (float)BAUD_RATE)) + 0.5)
 
 #define UART0_interface UART0
 
@@ -74,8 +74,8 @@
 #define UART0__AutoBaudEventEnableGet   (NULL)
 #define UART0_ErrorGet             USART0_ErrorGet
 
-#define UART0_TxCompleteCallbackRegister     USART0_TxCompleteCallbackRegister
-#define UART0_RxCompleteCallbackRegister      USART0_RxCompleteCallbackRegister
+#define UART0_TxCompleteCallbackRegister     (NULL)
+#define UART0_RxCompleteCallbackRegister      (NULL)
 #define UART0_TxCollisionCallbackRegister  (NULL)
 #define UART0_FramingErrorCallbackRegister USART0_FramingErrorCallbackRegister
 #define UART0_OverrunErrorCallbackRegister USART0_OverrunErrorCallbackRegister
@@ -180,37 +180,7 @@ void USART0_ReceiveEnable(void);
  */
 void USART0_ReceiveDisable(void);
 
-/**
- * @ingroup usart0
- * @brief This API enables the USART0 transmitter interrupt.
- * @param None.
- * @return None.
- */
-void USART0_TransmitInterruptEnable(void);
 
-/**
- * @ingroup usart0
- * @brief This API disables the USART0 transmitter interrupt.
- * @param None.
- * @return None.
- */
-void USART0_TransmitInterruptDisable(void);
-
-/**
- * @ingroup usart0
- * @brief This API enables the USART0 receiver interrupt.
- * @param None.
- * @return None.
- */
-void USART0_ReceiveInterruptEnable(void);
-
-/**
- * @ingroup usart0
- * @brief This API disables the USART0 receiver interrupt.
- * @param None.
- * @return None.
- */
-void USART0_ReceiveInterruptDisable(void);
 
 /**
  * @ingroup usart0
@@ -324,37 +294,7 @@ void USART0_OverrunErrorCallbackRegister(void (* callbackHandler)(void));
  */
 void USART0_ParityErrorCallbackRegister(void (* callbackHandler)(void));
 
-/**
- * @ingroup usart0
- * @brief This function is the ISR function to be called upon Transmitter interrupt.
- * @param void.
- * @return None.
- */
-void USART0_TransmitISR(void);
 
-/**
- * @ingroup usart0
- * @brief This API registers the function to be called upon Transmitter interrupt.
- * @param callbackHandler - a function pointer which will be called upon Transmitter interrupt condition.
- * @return None.
- */
-void USART0_TxCompleteCallbackRegister(void (* callbackHandler)(void));
-
-/**
- * @ingroup usart0
- * @brief This function is the ISR function to be called upon Receiver interrupt.
- * @param void.
- * @return None.
- */
-void USART0_ReceiveISR(void);
-
-/**
- * @ingroup usart0
- * @brief This API registers the function to be called upon Receiver interrupt.
- * @param callbackHandler - a function pointer which will be called upon Receiver interrupt condition.
- * @return None.
- */
-void USART0_RxCompleteCallbackRegister(void (* callbackHandler)(void));
 #ifdef __cplusplus  // Provide C++ Compatibility
 
     }

@@ -32,72 +32,16 @@
 
 #include "../system.h"
 
-int8_t BOD_Initialize();
-int8_t WDT_Initialize();
 
 void SYSTEM_Initialize(void)
 {
     CLOCK_Initialize();
     PIN_MANAGER_Initialize();
     ADC0_Initialize();
-    BOD_Initialize();
-    I2C0_Host_Initialize();
-    NVM_Initialize();
     SPI0_Initialize();
     USART0_Initialize();
     USART1_Initialize();
     USART2_Initialize();
-    VREF_Initialize();
-    WDT_Initialize();
     CPUINT_Initialize();
 }
-
-/**
- * @brief Initializes the BOD module.
- * @param None.
- * @return None.
- */
-int8_t BOD_Initialize()
-{
-    //SLEEP Enabled in continuous mode; 
-    ccp_write_io((void*)&(BOD.CTRLA),0x15);
-    //
-    BOD.CTRLB = 0x2;
-    //VLMCFG VDD falls below VLM threshold; VLMIE enabled; 
-    BOD.INTCTRL = 0x1;
-    //VLMIF disabled; 
-    BOD.INTFLAGS = 0x0;
-    //
-    BOD.STATUS = 0x0;
-    //VLMLVL VLM threshold 15% above BOD level; 
-    BOD.VLMCTRLA = 0x2;
-
-    return 0;
-}
-
-ISR(BOD_VLM_vect)
-{
-	/* Insert your AC interrupt handling code here */
-
-	/* The interrupt flag has to be cleared manually */
-	BOD.INTFLAGS = BOD_VLMIE_bm;
-}
-
-/**
- * @brief Initializes the WDT module.
- * @param None.
- * @return None.
- */
-int8_t WDT_Initialize()
-{
-    //PERIOD 128 cycles (0.128s); WINDOW Off; 
-    ccp_write_io((void*)&(WDT.CTRLA),0x5);
-    
-    //LOCK disabled; 
-    ccp_write_io((void*)&(WDT.STATUS),0x0);
-    
-
-    return 0;
-}
-
 

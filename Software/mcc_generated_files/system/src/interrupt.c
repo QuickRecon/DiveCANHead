@@ -38,8 +38,8 @@ int8_t CPUINT_Initialize()
 {
     /* IVSEL and CVT are Configuration Change Protected */
 
-    //CVT disabled; IVSEL disabled; LVL0RR disabled; 
-    ccp_write_io((void*)&(CPUINT.CTRLA),0x0);
+    //CVT disabled; IVSEL disabled; LVL0RR enabled; 
+    ccp_write_io((void*)&(CPUINT.CTRLA),0x1);
     
     //LVL0PRI 0; 
     CPUINT.LVL0PRI = 0x0;

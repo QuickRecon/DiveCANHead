@@ -50,8 +50,6 @@ static void (*VCC_MON_InterruptHandler)(void);
 static void (*SOL_MON_InterruptHandler)(void);
 static void (*SOLBUS_MON_InterruptHandler)(void);
 static void (*CLK_InterruptHandler)(void);
-static void (*SCL_InterruptHandler)(void);
-static void (*SDA_InterruptHandler)(void);
 static void (*SPARE1_InterruptHandler)(void);
 static void (*STONITH_OUT_InterruptHandler)(void);
 static void (*SOL_OUT_InterruptHandler)(void);
@@ -61,14 +59,14 @@ void PIN_MANAGER_Initialize()
 {
   /* DIR Registers Initialization */
     PORTA.DIR = 0x81;
-    PORTC.DIR = 0xD;
-    PORTD.DIR = 0xD8;
+    PORTC.DIR = 0x1;
+    PORTD.DIR = 0xDC;
     PORTF.DIR = 0x1;
 
   /* OUT Registers Initialization */
     PORTA.OUT = 0x1;
     PORTC.OUT = 0x1;
-    PORTD.OUT = 0x0;
+    PORTD.OUT = 0x84;
     PORTF.OUT = 0x1;
 
   /* PINxCTRL registers Initialization */
@@ -133,8 +131,6 @@ void PIN_MANAGER_Initialize()
     SOL_MON_SetInterruptHandler(SOL_MON_DefaultInterruptHandler);
     SOLBUS_MON_SetInterruptHandler(SOLBUS_MON_DefaultInterruptHandler);
     CLK_SetInterruptHandler(CLK_DefaultInterruptHandler);
-    SCL_SetInterruptHandler(SCL_DefaultInterruptHandler);
-    SDA_SetInterruptHandler(SDA_DefaultInterruptHandler);
     SPARE1_SetInterruptHandler(SPARE1_DefaultInterruptHandler);
     STONITH_OUT_SetInterruptHandler(STONITH_OUT_DefaultInterruptHandler);
     SOL_OUT_SetInterruptHandler(SOL_OUT_DefaultInterruptHandler);
@@ -350,32 +346,6 @@ void CLK_DefaultInterruptHandler(void)
     // or set custom function using CLK_SetInterruptHandler()
 }
 /**
-  Allows selecting an interrupt handler for SCL at application runtime
-*/
-void SCL_SetInterruptHandler(void (* interruptHandler)(void)) 
-{
-    SCL_InterruptHandler = interruptHandler;
-}
-
-void SCL_DefaultInterruptHandler(void)
-{
-    // add your SCL interrupt custom code
-    // or set custom function using SCL_SetInterruptHandler()
-}
-/**
-  Allows selecting an interrupt handler for SDA at application runtime
-*/
-void SDA_SetInterruptHandler(void (* interruptHandler)(void)) 
-{
-    SDA_InterruptHandler = interruptHandler;
-}
-
-void SDA_DefaultInterruptHandler(void)
-{
-    // add your SDA interrupt custom code
-    // or set custom function using SDA_SetInterruptHandler()
-}
-/**
   Allows selecting an interrupt handler for SPARE1 at application runtime
 */
 void SPARE1_SetInterruptHandler(void (* interruptHandler)(void)) 
@@ -476,14 +446,6 @@ ISR(PORTC_PORT_vect)
     if(VPORTC.INTFLAGS & PORT_INT0_bm)
     {
        SSC2_RX_InterruptHandler(); 
-    }
-    if(VPORTC.INTFLAGS & PORT_INT3_bm)
-    {
-       SCL_InterruptHandler(); 
-    }
-    if(VPORTC.INTFLAGS & PORT_INT2_bm)
-    {
-       SDA_InterruptHandler(); 
     }
     /* Clear interrupt flags */
     VPORTC.INTFLAGS = 0xff;

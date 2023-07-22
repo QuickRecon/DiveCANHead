@@ -342,44 +342,6 @@
 #define CLK_EnableInterruptForLowLevelSensing() do { PORTA.PIN7CTRL = (PORTA.PIN7CTRL & ~PORT_ISC_gm) | 0x5 ; } while(0)
 #define PA7_SetInterruptHandler CLK_SetInterruptHandler
 
-//get/set SCL aliases
-#define SCL_SetHigh() do { PORTC_OUTSET = 0x8; } while(0)
-#define SCL_SetLow() do { PORTC_OUTCLR = 0x8; } while(0)
-#define SCL_Toggle() do { PORTC_OUTTGL = 0x8; } while(0)
-#define SCL_GetValue() (VPORTC.IN & (0x1 << 3))
-#define SCL_SetDigitalInput() do { PORTC_DIRCLR = 0x8; } while(0)
-#define SCL_SetDigitalOutput() do { PORTC_DIRSET = 0x8; } while(0)
-#define SCL_SetPullUp() do { PORTC_PIN3CTRL  |= PORT_PULLUPEN_bm; } while(0)
-#define SCL_ResetPullUp() do { PORTC_PIN3CTRL  &= ~PORT_PULLUPEN_bm; } while(0)
-#define SCL_SetInverted() do { PORTC_PIN3CTRL  |= PORT_INVEN_bm; } while(0)
-#define SCL_ResetInverted() do { PORTC_PIN3CTRL  &= ~PORT_INVEN_bm; } while(0)
-#define SCL_DisableInterruptOnChange() do { PORTC.PIN3CTRL = (PORTC.PIN3CTRL & ~PORT_ISC_gm) | 0x0 ; } while(0)
-#define SCL_EnableInterruptForBothEdges() do { PORTC.PIN3CTRL = (PORTC.PIN3CTRL & ~PORT_ISC_gm) | 0x1 ; } while(0)
-#define SCL_EnableInterruptForRisingEdge() do { PORTC.PIN3CTRL = (PORTC.PIN3CTRL & ~PORT_ISC_gm) | 0x2 ; } while(0)
-#define SCL_EnableInterruptForFallingEdge() do { PORTC.PIN3CTRL = (PORTC.PIN3CTRL & ~PORT_ISC_gm) | 0x3 ; } while(0)
-#define SCL_DisableDigitalInputBuffer() do { PORTC.PIN3CTRL = (PORTC.PIN3CTRL & ~PORT_ISC_gm) | 0x4 ; } while(0)
-#define SCL_EnableInterruptForLowLevelSensing() do { PORTC.PIN3CTRL = (PORTC.PIN3CTRL & ~PORT_ISC_gm) | 0x5 ; } while(0)
-#define PC3_SetInterruptHandler SCL_SetInterruptHandler
-
-//get/set SDA aliases
-#define SDA_SetHigh() do { PORTC_OUTSET = 0x4; } while(0)
-#define SDA_SetLow() do { PORTC_OUTCLR = 0x4; } while(0)
-#define SDA_Toggle() do { PORTC_OUTTGL = 0x4; } while(0)
-#define SDA_GetValue() (VPORTC.IN & (0x1 << 2))
-#define SDA_SetDigitalInput() do { PORTC_DIRCLR = 0x4; } while(0)
-#define SDA_SetDigitalOutput() do { PORTC_DIRSET = 0x4; } while(0)
-#define SDA_SetPullUp() do { PORTC_PIN2CTRL  |= PORT_PULLUPEN_bm; } while(0)
-#define SDA_ResetPullUp() do { PORTC_PIN2CTRL  &= ~PORT_PULLUPEN_bm; } while(0)
-#define SDA_SetInverted() do { PORTC_PIN2CTRL  |= PORT_INVEN_bm; } while(0)
-#define SDA_ResetInverted() do { PORTC_PIN2CTRL  &= ~PORT_INVEN_bm; } while(0)
-#define SDA_DisableInterruptOnChange() do { PORTC.PIN2CTRL = (PORTC.PIN2CTRL & ~PORT_ISC_gm) | 0x0 ; } while(0)
-#define SDA_EnableInterruptForBothEdges() do { PORTC.PIN2CTRL = (PORTC.PIN2CTRL & ~PORT_ISC_gm) | 0x1 ; } while(0)
-#define SDA_EnableInterruptForRisingEdge() do { PORTC.PIN2CTRL = (PORTC.PIN2CTRL & ~PORT_ISC_gm) | 0x2 ; } while(0)
-#define SDA_EnableInterruptForFallingEdge() do { PORTC.PIN2CTRL = (PORTC.PIN2CTRL & ~PORT_ISC_gm) | 0x3 ; } while(0)
-#define SDA_DisableDigitalInputBuffer() do { PORTC.PIN2CTRL = (PORTC.PIN2CTRL & ~PORT_ISC_gm) | 0x4 ; } while(0)
-#define SDA_EnableInterruptForLowLevelSensing() do { PORTC.PIN2CTRL = (PORTC.PIN2CTRL & ~PORT_ISC_gm) | 0x5 ; } while(0)
-#define PC2_SetInterruptHandler SDA_SetInterruptHandler
-
 //get/set SPARE1 aliases
 #define SPARE1_SetHigh() do { PORTD_OUTSET = 0x2; } while(0)
 #define SPARE1_SetLow() do { PORTD_OUTCLR = 0x2; } while(0)
@@ -799,48 +761,6 @@ void CLK_DefaultInterruptHandler(void);
  * @return none
  */
 void CLK_SetInterruptHandler(void (* interruptHandler)(void)) ; 
-
-/**
- * @ingroup  pinsdriver
- * @brief Default Interrupt Handler for SCL pin. 
- *        This is a predefined interrupt handler to be used together with the SCL_SetInterruptHandler() method.
- *        This handler is called every time the SCL ISR is executed. 
- * @pre PIN_MANAGER_Initialize() has been called at least once
- * @param none
- * @return none
- */
-void SCL_DefaultInterruptHandler(void);
-
-/**
- * @ingroup  pinsdriver
- * @brief Interrupt Handler Setter for SCL pin input-sense-config functionality.
- *        Allows selecting an interrupt handler for SCL at application runtime
- * @pre PIN_MANAGER_Initialize() has been called at least once
- * @param InterruptHandler function pointer.
- * @return none
- */
-void SCL_SetInterruptHandler(void (* interruptHandler)(void)) ; 
-
-/**
- * @ingroup  pinsdriver
- * @brief Default Interrupt Handler for SDA pin. 
- *        This is a predefined interrupt handler to be used together with the SDA_SetInterruptHandler() method.
- *        This handler is called every time the SDA ISR is executed. 
- * @pre PIN_MANAGER_Initialize() has been called at least once
- * @param none
- * @return none
- */
-void SDA_DefaultInterruptHandler(void);
-
-/**
- * @ingroup  pinsdriver
- * @brief Interrupt Handler Setter for SDA pin input-sense-config functionality.
- *        Allows selecting an interrupt handler for SDA at application runtime
- * @pre PIN_MANAGER_Initialize() has been called at least once
- * @param InterruptHandler function pointer.
- * @return none
- */
-void SDA_SetInterruptHandler(void (* interruptHandler)(void)) ; 
 
 /**
  * @ingroup  pinsdriver

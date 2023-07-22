@@ -4,9 +4,11 @@
             "name": "AVR",
             "intelliSenseMode": "${default}",
             "compilerPath": "/usr/bin/avr-gcc",
-            "cStandard": "${default}",
-            "cppStandard": "${default}",
-            "includePath": [],
+            "cStandard": "c23",
+            "cppStandard": "c++23",
+            "includePath": [
+                "/usr/avr/include/**"
+            ],
             "compilerArgs": [
                 "-g",
                 "-Os",
@@ -18,7 +20,8 @@
                 "-pipe",
                 "-B /home/aren/Archive/Dropbox/DiveCANHead/Software/atpack/gcc/dev/avr64ea28",
                 "-mmcu=avr64ea28"
-            ]
+            ],
+            "configurationProvider": "ms-vscode.makefile-tools"
         }
     ],
     "version": 4

@@ -19,10 +19,10 @@ PRJ = main
 # avr mcu
 MCU = avr64ea28
 # mcu clock frequency
-CLK = 16000000
+CLK = 20000000
 # avr programmer (and port if necessary)
 # e.g. PRG = usbtiny -or- PRG = arduino -P /dev/tty.usbmodem411
-PRG = usbtiny
+#PRG = usbtiny
 # fuse values for avr: low, high, and extended
 # these values are from an Arduino Uno (ATMega328P)
 # see http://www.engbedded.com/fusecalc/ for other MCUs and options
@@ -30,10 +30,10 @@ PRG = usbtiny
 #HFU = 0xDE
 #EFU = 0x05
 # program source files (not including external libraries)
-SRC = $(PRJ).c
+SRC = $(PRJ).cpp
 # where to look for external libraries (consisting of .c/.cpp files and .h files)
 # e.g. EXT = ../../EyeToSee ../../YouSART
-EXT = mcc_generated_files/system/src mcc_generated_files/spi/src mcc_generated_files/reset/src mcc_generated_files/nvm/src mcc_generated_files/i2c_host/src mcc_generated_files/adc/src mcc_generated_files/uart/src mcc_generated_files/vref/src
+EXT = mcc_generated_files/system/src mcc_generated_files/timer/src mcc_generated_files/spi/src mcc_generated_files/reset/src mcc_generated_files/nvm/src mcc_generated_files/i2c_host/src mcc_generated_files/adc/src mcc_generated_files/uart/src mcc_generated_files/vref/src CAN_lib/
 
 
 #################################################################################################
@@ -53,6 +53,7 @@ OBJCOPY = avr-objcopy
 OBJDUMP = avr-objdump
 SIZE    = avr-size --format=avr --mcu=$(MCU)
 CC      = avr-gcc
+CPP     = avr-g++
 
 # generate list of objects
 CFILES    = $(filter %.c, $(SRC))
@@ -65,14 +66,6 @@ OBJ       = $(CFILES:.c=.o) $(EXTC:.c=.o) $(CPPFILES:.cpp=.o) $(EXTCPP:.cpp=.o) 
 # user targets
 # compile all files
 all: $(PRJ).hex
-
-# test programmer connectivity
-test:
-	$(AVRDUDE) -v
-
-# flash program to mcu
-flash: all
-	$(AVRDUDE) -U flash:w:$(PRJ).hex:i
 
 ## write fuses to mcu
 #fuse:
@@ -87,6 +80,9 @@ clean:
 	rm -f *.hex *.elf *.o
 	$(foreach dir, $(EXT), rm -f $(dir)/*.o;)
 
+flash:
+	pymcuprog write -f $(PRJ).hex -d avr64ea28 -t uart -u /dev/ttyUSB0 --packpath /home/aren/Archive/Dropbox/DiveCANHead/atpack/Atmel.AVR-Ex_DFP.2.5.176.atpack --uart-timeout 3 --verify --erase
+
 # other targets
 # objects from c files
 .c.o:
@@ -97,7 +93,7 @@ clean:
 
 # objects from c++ files
 .cpp.o:
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(CPP) $(CFLAGS) $(CPPFLAGS) -Ttext=0x8000 -c $< -o $@
 
 # elf file
 $(PRJ).elf: $(OBJ)
@@ -105,6 +101,6 @@ $(PRJ).elf: $(OBJ)
 
 # hex file
 $(PRJ).hex: $(PRJ).elf
-	rm -f $(PRJ).hex
-	$(OBJCOPY) -j .text -j .data -O ihex $(PRJ).elf $(PRJ).hex
-	$(SIZE) $(PRJ).elf
+	rm -f $(PRJ).hex $(PRJ).hex
+	$(OBJCOPY) -O ihex $(PRJ).elf  $(PRJ).hex
+	$(SIZE) --format=avr --mcu=avr64ea28 $(PRJ).elf

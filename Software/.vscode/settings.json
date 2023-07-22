@@ -19,7 +19,32 @@
         "-pipe",
         "-B /home/aren/Archive/Dropbox/DiveCANHead/Software/atpack/gcc/dev/avr64ea28"
     ],
+    "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "files.associations": {
-        "cstdint": "cpp"
-    }
+        "cstdint": "cpp",
+        "*.ipp": "cpp",
+        "thread": "cpp",
+        "array": "cpp",
+        "hash_map": "cpp",
+        "hash_set": "cpp",
+        "deque": "cpp",
+        "forward_list": "cpp",
+        "list": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "unordered_set": "cpp",
+        "vector": "cpp",
+        "string_view": "cpp",
+        "format": "cpp",
+        "initializer_list": "cpp",
+        "span": "cpp",
+        "valarray": "cpp"
+    },
+    "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
+    "cSpell.words": [
+        "CFDSRC",
+        "CHECKLST",
+        "clkctrl",
+        "KBPS"
+    ]
 }

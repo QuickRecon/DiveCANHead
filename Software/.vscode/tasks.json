@@ -1,17 +1,19 @@
 {
-    // See https://go.microsoft.com/fwlink/?LinkId=733558
-    // for the documentation about the tasks.json format
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "echo",
+            "label": "build",
             "type": "shell",
             "command": "make all",
             "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
-        }
+            "group": "build"
+        },
+        {
+            "label": "flash",
+            "type": "shell",
+            "command": "sudo pymcuprog write -f main.hex -d avr64ea28 -t uart -u /dev/ttyUSB0 --clk 19200 --uart-timeout 10",
+            //avrdude -c serialupdi -P /dev/ttyUSB0 -p avr64ea28 -x rtsdtr=high -b 19200 -U flash:w:main.hex:i
+            "problemMatcher": []
+        },
     ]
 }

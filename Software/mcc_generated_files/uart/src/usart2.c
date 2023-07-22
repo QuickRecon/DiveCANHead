@@ -41,12 +41,6 @@
   Section: Macro Declarations
 */
 
-#define USART2_TX_BUFFER_SIZE (8) //buffer size should be 2^n
-#define USART2_TX_BUFFER_MASK (USART2_TX_BUFFER_SIZE - 1) 
-
-#define USART2_RX_BUFFER_SIZE (8) //buffer size should be 2^n
-#define USART2_RX_BUFFER_MASK (USART2_RX_BUFFER_SIZE - 1)
-
 
 
 /**
@@ -71,8 +65,8 @@ const uart_drv_interface_t UART2 = {
     .BaudRateGet = NULL,
     .AutoBaudEventEnableGet = NULL,
     .ErrorGet = &USART2_ErrorGet,
-    .TxCompleteCallbackRegister = &USART2_TxCompleteCallbackRegister,
-    .RxCompleteCallbackRegister = &USART2_RxCompleteCallbackRegister,
+    .TxCompleteCallbackRegister = NULL,
+    .RxCompleteCallbackRegister = NULL,
     .TxCollisionCallbackRegister = NULL,
     .FramingErrorCallbackRegister = &USART2_FramingErrorCallbackRegister,
     .OverrunErrorCallbackRegister = &USART2_OverrunErrorCallbackRegister,
@@ -83,15 +77,6 @@ const uart_drv_interface_t UART2 = {
 /**
   Section: USART2 variables
 */
-static volatile uint8_t usart2TxHead = 0;
-static volatile uint8_t usart2TxTail = 0;
-static volatile uint8_t usart2TxBuffer[USART2_TX_BUFFER_SIZE];
-volatile uint8_t usart2TxBufferRemaining;
-static volatile uint8_t usart2RxHead = 0;
-static volatile uint8_t usart2RxTail = 0;
-static volatile uint8_t usart2RxBuffer[USART2_RX_BUFFER_SIZE];
-static volatile usart2_status_t usart2RxStatusBuffer[USART2_RX_BUFFER_SIZE];
-volatile uint8_t usart2RxCount;
 static volatile usart2_status_t usart2RxLastError;
 
 /**
@@ -100,16 +85,10 @@ static volatile usart2_status_t usart2RxLastError;
 void (*USART2_FramingErrorHandler)(void);
 void (*USART2_OverrunErrorHandler)(void);
 void (*USART2_ParityErrorHandler)(void);
-void (*USART2_TxInterruptHandler)(void);
-static void (*USART2_TxCompleteInterruptHandler)(void);
-void (*USART2_RxInterruptHandler)(void);
-static void (*USART2_RxCompleteInterruptHandler)(void);
 
 static void USART2_DefaultFramingErrorCallback(void);
 static void USART2_DefaultOverrunErrorCallback(void);
 static void USART2_DefaultParityErrorCallback(void);
-void USART2_TransmitISR (void);
-void USART2_ReceiveISR(void);
 
 
 
@@ -119,16 +98,13 @@ void USART2_ReceiveISR(void);
 
 void USART2_Initialize(void)
 {
-    USART2_RxInterruptHandler = USART2_ReceiveISR;  
-    USART2_TxInterruptHandler = USART2_TransmitISR;
-
     // Set the USART2 module to the options selected in the user interface.
 
-    //BAUD 2083; 
+    //BAUD 4166; 
     USART2.BAUD = (uint16_t)USART2_BAUD_RATE(19200);
 	
-    // ABEIE disabled; DREIE disabled; LBME disabled; RS485 DISABLE; RXCIE enabled; RXSIE enabled; TXCIE enabled; 
-    USART2.CTRLA = 0xD0;
+    // ABEIE disabled; DREIE disabled; LBME disabled; RS485 DISABLE; RXCIE disabled; RXSIE disabled; TXCIE disabled; 
+    USART2.CTRLA = 0x0;
 	
     // MPCM disabled; ODME disabled; RXEN enabled; RXMODE NORMAL; SFDEN disabled; TXEN enabled; 
     USART2.CTRLB = 0xC0;
@@ -152,20 +128,10 @@ void USART2_Initialize(void)
     USART2_OverrunErrorCallbackRegister(USART2_DefaultOverrunErrorCallback);
     USART2_ParityErrorCallbackRegister(USART2_DefaultParityErrorCallback);
     usart2RxLastError.status = 0;  
-    usart2TxHead = 0;
-    usart2TxTail = 0;
-    usart2TxBufferRemaining = sizeof(usart2TxBuffer);
-    usart2RxHead = 0;
-    usart2RxTail = 0;
-    usart2RxCount = 0;
-    USART2.CTRLA |= USART_RXCIE_bm; 
-
 }
 
 void USART2_Deinitialize(void)
 {
-    USART2.CTRLA &= ~(USART_RXCIE_bm);    
-    USART2.CTRLA &= ~(USART_DREIE_bm);  
     USART2.BAUD = 0x00;	
     USART2.CTRLA = 0x00;	
     USART2.CTRLB = 0x00;	
@@ -243,33 +209,14 @@ void USART2_AutoBaudDetectErrorReset(void)
     USART2_AutoBaudSet(true);
 }
 
-void USART2_TransmitInterruptEnable(void)
-{
-    USART2.CTRLA |= USART_DREIE_bm ; 
-}
-
-void USART2_TransmitInterruptDisable(void)
-{ 
-    USART2.CTRLA &= ~(USART_DREIE_bm); 
-}
-
-void USART2_ReceiveInterruptEnable(void)
-{
-    USART2.CTRLA |= USART_RXCIE_bm ; 
-}
-void USART2_ReceiveInterruptDisable(void)
-{
-    USART2.CTRLA &= ~(USART_RXCIE_bm); 
-}
-
 bool USART2_IsRxReady(void)
 {
-    return (usart2RxCount ? true : false);
+    return (bool)(USART2.STATUS & USART_RXCIF_bm);
 }
 
 bool USART2_IsTxReady(void)
 {
-    return (usart2TxBufferRemaining ? true : false);
+    return (bool)(USART2.STATUS & USART_DREIF_bm);
 }
 
 bool USART2_IsTxDone(void)
@@ -279,49 +226,15 @@ bool USART2_IsTxDone(void)
 
 size_t USART2_ErrorGet(void)
 {
-    usart2RxLastError.status = usart2RxStatusBuffer[(usart2RxTail + 1) & USART2_RX_BUFFER_MASK].status;
-    return usart2RxLastError.status;
-}
-
-uint8_t USART2_Read(void)
-{
-    uint8_t readValue  = 0;
-    uint8_t tempRxTail;
+    usart2RxLastError.status = 0;
     
-    readValue = usart2RxBuffer[usart2RxTail];
-    tempRxTail = (usart2RxTail + 1) & USART2_RX_BUFFER_MASK; // Buffer size of RX should be in the 2^n  
-    usart2RxTail = tempRxTail;
-    USART2.CTRLA &= ~(USART_RXCIE_bm); 
-    if(usart2RxCount != 0)
-    {
-        usart2RxCount--;
-    }
-    USART2.CTRLA |= USART_RXCIE_bm; 
-
-
-    return readValue;
-}
-
-/* Interrupt service routine for RX complete */
-ISR(USART2_RXC_vect)
-{
-    USART2_ReceiveISR();
-}
-
-void USART2_ReceiveISR(void)
-{
-    uint8_t regValue;
-    uint8_t tempRxHead;
-    
-    usart2RxStatusBuffer[usart2RxHead].status = 0;
-
     if(USART2.RXDATAH & USART_FERR_bm)
     {
-        usart2RxStatusBuffer[usart2RxHead].ferr = 1;
+        usart2RxLastError.ferr = 1;
         if(NULL != USART2_FramingErrorHandler)
         {
             USART2_FramingErrorHandler();
-        } 
+        }  
     }
     if(USART2.RXDATAH & USART_PERR_bm)
     {
@@ -333,92 +246,25 @@ void USART2_ReceiveISR(void)
     }
     if(USART2.RXDATAH & USART_BUFOVF_bm)
     {
-        usart2RxStatusBuffer[usart2RxHead].oerr = 1;
+        usart2RxLastError.oerr = 1;
         if(NULL != USART2_OverrunErrorHandler)
         {
             USART2_OverrunErrorHandler();
         }   
-    }    
-    
-    regValue = USART2.RXDATAL;
-    
-    tempRxHead = (usart2RxHead + 1) & USART2_RX_BUFFER_MASK;// Buffer size of RX should be in the 2^n
-    if (tempRxHead == usart2RxTail) {
-		// ERROR! Receive buffer overflow 
-	} 
-    else
-    {
-        // Store received data in buffer 
-		usart2RxBuffer[usart2RxHead] = regValue;
-		usart2RxHead = tempRxHead;
-
-		usart2RxCount++;
-	}
-    if (USART2_RxCompleteInterruptHandler != NULL)
-    {
-        (*USART2_RxCompleteInterruptHandler)();
     }
-    
+    return usart2RxLastError.status;
 }
+
+uint8_t USART2_Read(void)
+{
+    return USART2.RXDATAL;
+}
+
 
 void USART2_Write(uint8_t txData)
 {
-    uint8_t tempTxHead;
-    
-    if(usart2TxBufferRemaining) // check if at least one byte place is available in TX buffer
-    {
-       usart2TxBuffer[usart2TxHead] = txData;
-       tempTxHead = (usart2TxHead + 1) & USART2_TX_BUFFER_MASK;// Buffer size of TX should be in the 2^n
-       
-       usart2TxHead = tempTxHead;
-       USART2.CTRLA &= ~(USART_DREIE_bm);  //Critical value decrement
-       usart2TxBufferRemaining--;  // one less byte remaining in TX buffer
-    }
-    else
-    {
-        //overflow condition; TX buffer is full
-    }
-
-    USART2.CTRLA |= USART_DREIE_bm;  
+    USART2.TXDATAL = txData;    // Write the data byte to the USART.
 }
-
-/* Interrupt service routine for Data Register Empty */
-ISR(USART2_DRE_vect)
-{
-    USART2_TransmitISR();
-}
-
-ISR(USART2_TXC_vect)
-{
-    USART2.STATUS |= USART_TXCIF_bm;
-}
-
-void USART2_TransmitISR(void)
-{
-    uint8_t tempTxTail;
-    // use this default transmit interrupt handler code
-    if(sizeof(usart2TxBuffer) > usart2TxBufferRemaining) // check if all data is transmitted
-    {
-       USART2.TXDATAL = usart2TxBuffer[usart2TxTail];
-
-       tempTxTail = (usart2TxTail + 1) & USART2_TX_BUFFER_MASK;// Buffer size of TX should be in the 2^n
-       
-       usart2TxTail = tempTxTail;
-
-       usart2TxBufferRemaining++; // one byte sent, so 1 more byte place is available in TX buffer
-    }
-    else
-    {
-        USART2.CTRLA &= ~(USART_DREIE_bm); 
-    }
-    if (USART2_TxCompleteInterruptHandler != NULL)
-    {
-        (*USART2_TxCompleteInterruptHandler)();
-    }
-    
-    // or set custom function using USART2_SetTxInterruptHandler()
-}
-
 static void USART2_DefaultFramingErrorCallback(void)
 {
     
@@ -458,20 +304,6 @@ void USART2_ParityErrorCallbackRegister(void (* callbackHandler)(void))
     } 
 }
 
-void USART2_RxCompleteCallbackRegister(void (* callbackHandler)(void))
-{
-    if(NULL != callbackHandler)
-    {
-       USART2_RxCompleteInterruptHandler = callbackHandler; 
-    }   
-}
 
-void USART2_TxCompleteCallbackRegister(void (* callbackHandler)(void))
-{
-    if(NULL != callbackHandler)
-    {
-       USART2_TxCompleteInterruptHandler = callbackHandler;
-    }   
-}
 
 
