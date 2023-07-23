@@ -96,11 +96,32 @@ static void USART0_DefaultParityErrorCallback(void);
   Section: USART0  APIs
 */
 
+#if defined(__GNUC__)
+
+int USART0_printCHAR(char character, FILE *stream)
+{
+    while(!(USART0_IsTxReady()));
+    USART0_Write(character);
+    return 0;
+}
+
+FILE USART0_stream = FDEV_SETUP_STREAM(USART0_printCHAR, NULL, _FDEV_SETUP_WRITE);
+
+#elif defined(__ICCAVR__)
+
+int putchar (int outChar)
+{
+    while(!(USART0_IsTxReady()));
+    USART0_Write(outChar);
+    return outChar;
+}
+#endif
+
 void USART0_Initialize(void)
 {
     // Set the USART0 module to the options selected in the user interface.
 
-    //BAUD 4166; 
+    //BAUD 2083; 
     USART0.BAUD = (uint16_t)USART0_BAUD_RATE(19200);
 	
     // ABEIE disabled; DREIE disabled; LBME disabled; RS485 DISABLE; RXCIE disabled; RXSIE disabled; TXCIE disabled; 
@@ -128,6 +149,9 @@ void USART0_Initialize(void)
     USART0_OverrunErrorCallbackRegister(USART0_DefaultOverrunErrorCallback);
     USART0_ParityErrorCallbackRegister(USART0_DefaultParityErrorCallback);
     usart0RxLastError.status = 0;  
+#if defined(__GNUC__)
+    stdout = &USART0_stream;
+#endif
 }
 
 void USART0_Deinitialize(void)

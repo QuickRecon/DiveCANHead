@@ -66,7 +66,7 @@ void PIN_MANAGER_Initialize()
   /* OUT Registers Initialization */
     PORTA.OUT = 0x1;
     PORTC.OUT = 0x1;
-    PORTD.OUT = 0x84;
+    PORTD.OUT = 0x4;
     PORTF.OUT = 0x1;
 
   /* PINxCTRL registers Initialization */

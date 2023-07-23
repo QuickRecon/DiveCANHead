@@ -77,22 +77,28 @@ void sendStatus()
   byte sndStat = CAN0.sendMsgBuf(0xdcb0004, 1, 8, data);
 }
 
-#include <avr/io.h>
 int main(void)
 {
     SYSTEM_Initialize();
-    CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_20MHZ);
-    CAN0.setMode(MCP_NORMAL); // Set operation mode to normal so the MCP2515 sends acks to received data.
 
+    USART0_Initialize();
+    USART0_Enable();
+    if(CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_20MHZ) != CAN_OK){
+        printf("CAN Begin FAILED\n");
+    };
+    if(CAN0.setMode(MCP_NORMAL)!= CAN_OK){
+        printf("CAN Mode Set FAILED\n");
+     } // Set operation mode to normal so the MCP2515 sends acks to received data.
 
     while(1)
     {
-        sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"
-        sendName();
-        endMillis();
-        sendPPO2();
-        endCellsStat();
-        sendStatus();
+        //sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"
+        //sendName();
+        //sendMillis();
+        //sendPPO2();
+        //sendCellsStat();
+        //sendStatus();
+        printf("Test");
         _delay_ms(1000);
     }    
 }

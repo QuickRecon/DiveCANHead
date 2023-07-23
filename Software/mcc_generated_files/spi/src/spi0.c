@@ -57,18 +57,18 @@ const struct SPI_INTERFACE SPI0_s =
 
 SPI0_configuration_t spi0_configurations[] =
 {
-    { 0x35, 0x80 }
+    { 0x23, 0x0 }
 };
 
 static spi0_descriptor_t spi0_desc;
 
 void SPI0_Initialize(void)
 {
-    //BUFEN enabled; BUFWR disabled; MODE 0; SSD disabled; 
-    SPI0.CTRLB = 0x80;
+    //BUFEN disabled; BUFWR disabled; MODE 0; SSD disabled; 
+    SPI0.CTRLB = 0x0;
 
-    //CLK2X enabled; DORD disabled; ENABLE enabled; MASTER enabled; PRESC DIV64; 
-    SPI0.CTRLA = 0x35;
+    //CLK2X disabled; DORD disabled; ENABLE enabled; MASTER enabled; PRESC DIV16; 
+    SPI0.CTRLA = 0x23;
 
     //DREIE disabled; IE disabled; RXCIE disabled; SSIE disabled; TXCIE disabled; 
     SPI0.INTCTRL = 0x0;

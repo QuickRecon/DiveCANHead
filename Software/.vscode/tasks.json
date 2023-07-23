@@ -4,16 +4,9 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "make all",
+            "command": "make all && make flash",
             "problemMatcher": [],
             "group": "build"
-        },
-        {
-            "label": "flash",
-            "type": "shell",
-            "command": "sudo pymcuprog write -f main.hex -d avr64ea28 -t uart -u /dev/ttyUSB0 --clk 19200 --uart-timeout 10",
-            //avrdude -c serialupdi -P /dev/ttyUSB0 -p avr64ea28 -x rtsdtr=high -b 19200 -U flash:w:main.hex:i
-            "problemMatcher": []
-        },
+        }
     ]
 }

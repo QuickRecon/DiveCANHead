@@ -10,7 +10,7 @@
  * @version Driver Version 1.0.2
 */
 /*
-© [2023] Microchip Technology Inc. and its subsidiaries.
+ï¿½ [2023] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -35,13 +35,13 @@
 /**
  * Configures the Fuse bits.
  */
-FUSES = 
-{
-  .BODCFG = ACTIVE_DISABLE_gc | LVL_BODLEVEL0_gc | SAMPFREQ_32HZ_gc | SLEEP_DISABLE_gc,
-  .BOOTSIZE = 0x0,
-  .CODESIZE = 0x0,
-  .OSCCFG = OSCHFFRQ_20M_gc,
-  .SYSCFG0 = CRCSEL_CRC16_gc | CRCSRC_NOCRC_gc | FUSE_EESAVE_bm | RSTPINCFG_RESET_gc | UPDIPINCFG_UPDI_gc,
-  .SYSCFG1 = SUT_64MS_gc,
-  .WDTCFG = PERIOD_OFF_gc | WINDOW_OFF_gc,
-};
+// FUSES = 
+// {
+//   .BODCFG = ACTIVE_DISABLE_gc | LVL_BODLEVEL0_gc | SAMPFREQ_32HZ_gc | SLEEP_DISABLE_gc,
+//   .BOOTSIZE = 0x0,
+//   .CODESIZE = 0x0,
+//   .OSCCFG = OSCHFFRQ_16M_gc,
+//   .SYSCFG0 = CRCSEL_CRC16_gc | CRCSRC_NOCRC_gc | FUSE_EESAVE_bm | RSTPINCFG_RESET_gc | UPDIPINCFG_UPDI_gc,
+//   .SYSCFG1 = SUT_64MS_gc,
+//   .WDTCFG = PERIOD_OFF_gc | WINDOW_OFF_gc,
+// };

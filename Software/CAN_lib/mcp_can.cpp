@@ -23,7 +23,7 @@
 */
 #include "mcp_can.h"
 
-#define spi_readwrite SPI0_ByteExchange
+#define spi_readwrite SPI0_ByteWrite
 #define spi_read() SPI0_ByteRead()
 
 /*********************************************************************************************************
@@ -217,12 +217,14 @@ INT8U MCP_CAN::mcp2515_requestNewMode(const INT8U newmode)
 		mcp2515_modifyRegister(MCP_CANCTRL, MODE_MASK, newmode); 
 
 		byte statReg = mcp2515_readRegister(MCP_CANSTAT);
-        _delay_ms(1);
+        _delay_ms(10);
         ittr++;
-		if((statReg & MODE_MASK) == newmode) // We're now in the new mode
+		if((statReg & MODE_MASK) == newmode){ // We're now in the new mode
 			return MCP2515_OK;
-		else if(ittr > 200) // Wait no more than 200ms for the operation to complete
-			return MCP2515_FAIL;
+        }
+		else if(ittr > 200) {// Wait no more than 200ms for the operation to complete
+            return MCP2515_FAIL;
+        }
 	}
 }
 
@@ -826,8 +828,8 @@ INT8U MCP_CAN::begin(INT8U idmodeset, INT8U speedset, INT8U clockset)
 {
     INT8U res;
 
-    SPI0_Initialize();
     SPI0_Enable();
+    SPI0_Initialize();
     res = mcp2515_init(idmodeset, speedset, clockset);
     if (res == MCP2515_OK)
         return CAN_OK;
