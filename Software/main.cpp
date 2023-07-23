@@ -31,70 +31,70 @@
     THIS SOFTWARE.
 */
 #include "mcc_generated_files/system/system.h"
-//#include "CAN_lib/mcp_can.h"
+#include "CAN_lib/mcp_can.h"
 
 #include <util/delay.h>
 /*
     Main application
 */
 
-//MCP_CAN CAN0(10);
+MCP_CAN CAN0(10);
 extern "C" {
-// void sendID()
-// {
-//   // byte data[3] = {0x01, 0x00, 0x09};
-//   byte data[3] = {0x01, 0x00, 0x00};
-//   byte sndStat = CAN0.sendMsgBuf(0xD000004, 1, 3, data);
-// }
+void sendID()
+{
+  // byte data[3] = {0x01, 0x00, 0x09};
+  byte data[3] = {0x01, 0x00, 0x00};
+  byte sndStat = CAN0.sendMsgBuf(0xD000004, 1, 3, data);
+}
 
-// void sendName()
-// {
-//   byte data[9] = "CHECKLST";
-//   byte sndStat = CAN0.sendMsgBuf(0xD010004, 1, 8, data);
-// }
+void sendName()
+{
+  byte data[9] = "CHECKLST";
+  byte sndStat = CAN0.sendMsgBuf(0xD010004, 1, 8, data);
+}
 
-// void sendMillis()
-// {
-//   // byte data[7] = {0x14, 0x18, 0x13, 0x5f, 0x14, 0x20, 0x00};
-//   byte data[7] = {0x00, 0x00, 0x13, 0x5f, 0x14, 0x20, 0x00};
-//   byte sndStat = CAN0.sendMsgBuf(0xD110004, 1, 7, data);
-// }
-// void sendPPO2()
-// {
-//   byte data[4] = {0x00, 0xee, 0xee, 0xee};
-//   byte sndStat = CAN0.sendMsgBuf(0xD040004, 1, 4, data);
-// }
+void sendMillis()
+{
+  // byte data[7] = {0x14, 0x18, 0x13, 0x5f, 0x14, 0x20, 0x00};
+  byte data[7] = {0x00, 0x00, 0x13, 0x5f, 0x14, 0x20, 0x00};
+  byte sndStat = CAN0.sendMsgBuf(0xD110004, 1, 7, data);
+}
+void sendPPO2()
+{
+  byte data[4] = {0x00, 0xee, 0xee, 0xee};
+  byte sndStat = CAN0.sendMsgBuf(0xD040004, 1, 4, data);
+}
 
-// void sendCellsStat()
-// {
-//   byte data[2] = {0x07, 0x50};
-//   byte sndStat = CAN0.sendMsgBuf(0xdca0004, 1, 2, data);
-// }
+void sendCellsStat()
+{
+  byte data[2] = {0x07, 0x50};
+  byte sndStat = CAN0.sendMsgBuf(0xdca0004, 1, 2, data);
+}
 
-// void sendStatus()
-// {
-//   byte data[8] = {0x5A, 0x00, 0x00, 0x00, 0x00, 0x15, 0xff, 0x02};
-//   byte sndStat = CAN0.sendMsgBuf(0xdcb0004, 1, 8, data);
-// }
+void sendStatus()
+{
+  byte data[8] = {0x5A, 0x00, 0x00, 0x00, 0x00, 0x15, 0xff, 0x02};
+  byte sndStat = CAN0.sendMsgBuf(0xdcb0004, 1, 8, data);
+}
 
+#include <avr/io.h>
 int main(void)
 {
     SYSTEM_Initialize();
-    //CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_20MHZ);
-    //CAN0.setMode(MCP_NORMAL); // Set operation mode to normal so the MCP2515 sends acks to received data.
+    CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_20MHZ);
+    CAN0.setMode(MCP_NORMAL); // Set operation mode to normal so the MCP2515 sends acks to received data.
+
 
     while(1)
     {
-        //sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"
-        //sendName();
-        //endMillis();
-        //sendPPO2();
-        //endCellsStat();
-        //sendStatus();
-        STONITH_OUT_SetHigh();
-        _delay_ms(100);
-        STONITH_OUT_SetLow(); 
-        _delay_ms(100);    
+        sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"
+        sendName();
+        endMillis();
+        sendPPO2();
+        endCellsStat();
+        sendStatus();
+        _delay_ms(1000);
     }    
 }
 }
+

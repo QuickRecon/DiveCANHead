@@ -19,7 +19,7 @@ PRJ = main
 # avr mcu
 MCU = avr64ea28
 # mcu clock frequency
-CLK = 20000000
+CLK = 5000000
 # avr programmer (and port if necessary)
 # e.g. PRG = usbtiny -or- PRG = arduino -P /dev/tty.usbmodem411
 #PRG = usbtiny
@@ -81,7 +81,8 @@ clean:
 	$(foreach dir, $(EXT), rm -f $(dir)/*.o;)
 
 flash:
-	pymcuprog write -f $(PRJ).hex -d avr64ea28 -t uart -u /dev/ttyUSB0 --packpath /home/aren/Archive/Dropbox/DiveCANHead/atpack/Atmel.AVR-Ex_DFP.2.5.176.atpack --uart-timeout 3 --verify --erase
+# pymcuprog write -f $(PRJ).hex -d avr64ea28 -t uart -u /dev/ttyUSB0 --packpath /home/aren/Archive/Dropbox/DiveCANHead/atpack/Atmel.AVR-Ex_DFP.2.5.176.atpack --uart-timeout 3 --verify --erase
+	avrdude -p avr64ea28 -c SerialUPDI -P /dev/ttyUSB0 -U flash:w:main.hex:i
 
 # other targets
 # objects from c files
@@ -93,11 +94,11 @@ flash:
 
 # objects from c++ files
 .cpp.o:
-	$(CPP) $(CFLAGS) $(CPPFLAGS) -Ttext=0x8000 -c $< -o $@
+	$(CPP) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 # elf file
 $(PRJ).elf: $(OBJ)
-	$(CC) $(CFLAGS) -o $(PRJ).elf $(OBJ)
+	$(CPP) $(CFLAGS) -Wl,--section-start=.text=0x8000 -o $(PRJ).elf $(OBJ)
 
 # hex file
 $(PRJ).hex: $(PRJ).elf
