@@ -32,7 +32,7 @@ void spi_readwrite(INT8U x){
 
 INT8U spi_read(){
     INT8U bytes = SPI0_ExchangeByte(0x00);
-    printf("read: %d", bytes);
+    //printf("read: %d", bytes);
     return bytes;
 }
 

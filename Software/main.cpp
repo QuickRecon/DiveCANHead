@@ -94,12 +94,12 @@ int main(void)
 
     while(1)
     {
-        //sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"
-        //sendName();
-        //sendMillis();
-        //sendPPO2();
-        //sendCellsStat();
-        //sendStatus();
+        sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"
+        sendName();
+        sendMillis();
+        sendPPO2();
+        sendCellsStat();
+        sendStatus();
         printf("Test\n");
         _delay_ms(1000);
     }    
