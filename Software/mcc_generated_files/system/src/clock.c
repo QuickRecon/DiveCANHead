@@ -40,8 +40,8 @@ void CLOCK_Initialize(void)
     //CLKOUT enabled; CLKSEL Internal high-frequency oscillator; 
     ccp_write_io((void*)&(CLKCTRL.MCLKCTRLA),0x80);
 
-    //PDIV Divide by 2; PEN enabled; 
-    ccp_write_io((void*)&(CLKCTRL.MCLKCTRLB),0x1);
+    //PDIV Divide by 8; PEN enabled; 
+    ccp_write_io((void*)&(CLKCTRL.MCLKCTRLB),0x5);
 
     //
     ccp_write_io((void*)&(CLKCTRL.MCLKSTATUS),0x0);
@@ -70,8 +70,8 @@ void CLOCK_Initialize(void)
     //CSUTHF 256CYC; ENABLE disabled; RUNSTDBY disabled; SELHF CRYSTAL; 
     ccp_write_io((void*)&(CLKCTRL.XOSCHFCTRLA),0x0);
 
-    //TIMEBASE 10; 
-    ccp_write_io((void*)&(CLKCTRL.MCLKTIMEBASE),0xA);
+    //TIMEBASE 3; 
+    ccp_write_io((void*)&(CLKCTRL.MCLKTIMEBASE),0x3);
 
 
     // System clock stability check by polling the status register.

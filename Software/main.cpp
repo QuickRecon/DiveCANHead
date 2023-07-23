@@ -83,8 +83,10 @@ int main(void)
 
     USART0_Initialize();
     USART0_Enable();
-    if(CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_20MHZ) != CAN_OK){
+    while(CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_20MHZ) != CAN_OK){
         printf("CAN Begin FAILED\n");
+
+        //_delay_ms(1000);
     };
     if(CAN0.setMode(MCP_NORMAL)!= CAN_OK){
         printf("CAN Mode Set FAILED\n");
@@ -98,7 +100,7 @@ int main(void)
         //sendPPO2();
         //sendCellsStat();
         //sendStatus();
-        printf("Test");
+        printf("Test\n");
         _delay_ms(1000);
     }    
 }

@@ -12,7 +12,7 @@
 */
 
 /*
-© [2023] Microchip Technology Inc. and its subsidiaries.
+ï¿½ [2023] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -66,7 +66,7 @@ void PIN_MANAGER_Initialize()
   /* OUT Registers Initialization */
     PORTA.OUT = 0x1;
     PORTC.OUT = 0x1;
-    PORTD.OUT = 0x4;
+    PORTD.OUT = 0x84;
     PORTF.OUT = 0x1;
 
   /* PINxCTRL registers Initialization */
@@ -107,7 +107,7 @@ void PIN_MANAGER_Initialize()
     PORTMUX.ACROUTEA = 0x0;
     PORTMUX.CCLROUTEA = 0x0;
     PORTMUX.EVSYSROUTEA = 0x0;
-    PORTMUX.SPIROUTEA = 0x0;
+    PORTMUX.SPIROUTEA = 0x04;
     PORTMUX.TCAROUTEA = 0x0;
     PORTMUX.TCBROUTEA = 0x0;
     PORTMUX.TWIROUTEA = 0x2;

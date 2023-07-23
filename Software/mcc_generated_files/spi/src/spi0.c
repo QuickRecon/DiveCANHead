@@ -10,7 +10,7 @@
   * @version SPI0 Driver Version 2.0.1
 */
 /*
-© [2023] Microchip Technology Inc. and its subsidiaries.
+ï¿½ [2023] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -57,18 +57,18 @@ const struct SPI_INTERFACE SPI0_s =
 
 SPI0_configuration_t spi0_configurations[] =
 {
-    { 0x23, 0x0 }
+    { 0x21, 0x00 }
 };
 
 static spi0_descriptor_t spi0_desc;
 
 void SPI0_Initialize(void)
 {
-    //BUFEN disabled; BUFWR disabled; MODE 0; SSD disabled; 
-    SPI0.CTRLB = 0x0;
+    //BUFEN enabled; BUFWR disabled; MODE 0; SSD disabled; 
+    SPI0.CTRLB = 0x00;
 
-    //CLK2X disabled; DORD disabled; ENABLE enabled; MASTER enabled; PRESC DIV16; 
-    SPI0.CTRLA = 0x23;
+    //CLK2X enabled; DORD disabled; ENABLE enabled; MASTER enabled; PRESC DIV4; 
+    SPI0.CTRLA = 0x2121;
 
     //DREIE disabled; IE disabled; RXCIE disabled; SSIE disabled; TXCIE disabled; 
     SPI0.INTCTRL = 0x0;
