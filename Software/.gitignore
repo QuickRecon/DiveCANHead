@@ -1,3 +1,5 @@
 *.o
 *.elf
+*.bin
 *.hex
+log.txt
