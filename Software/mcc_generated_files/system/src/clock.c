@@ -10,7 +10,7 @@
   * version CLKCTRL Driver Version 1.1.3
 */
 /*
-© [2023] Microchip Technology Inc. and its subsidiaries.
+ï¿½ [2023] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -41,7 +41,7 @@ void CLOCK_Initialize(void)
     ccp_write_io((void*)&(CLKCTRL.MCLKCTRLA),0x80);
 
     //PDIV Divide by 8; PEN enabled; 
-    ccp_write_io((void*)&(CLKCTRL.MCLKCTRLB),0x5);
+    ccp_write_io((void*)&(CLKCTRL.MCLKCTRLB),0x1);
 
     //
     ccp_write_io((void*)&(CLKCTRL.MCLKSTATUS),0x0);

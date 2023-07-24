@@ -92,7 +92,9 @@ int main(void)
     if(CAN0.setMode(MCP_NORMAL)!= CAN_OK){
         printf("CAN Mode Set FAILED\n");
      } // Set operation mode to normal so the MCP2515 sends acks to received data.
-
+    
+    //CAN0.enOneShotTX(); // TODO: REMOVE UNSAFE
+    
     while(1)
     {
         sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"

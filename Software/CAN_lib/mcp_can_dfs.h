@@ -46,7 +46,7 @@
 /*
  *   Begin mt
  */
-#define TIMEOUTVALUE    2500                                           /* In loop cycles, May need changed depending on application and baud rate */
+#define TIMEOUTVALUE    96                                           /* In loop cycles, May need changed depending on application and baud rate */
 #define MCP_SIDH        0
 #define MCP_SIDL        1
 #define MCP_EID8        2

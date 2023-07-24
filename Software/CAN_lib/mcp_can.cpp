@@ -252,9 +252,9 @@ INT8U MCP_CAN::mcp2515_configRate()
 
     // Set for 125kbps based on a 2.5MHz clock
     //cfg1 = 0b10000000 & 9; // 3xT_Q jump with 1/(2×(x+1)/(2.5 mega)) =125kbps => x = 9 clock divide
-    cfg1 = 0x00;
-    cfg2 = 0x92; // shamelessly stolen from lib
-    cfg3 = 0x02; // 5 x TQ
+    cfg1 = 0x41;
+    cfg2 = 0xac; // shamelessly stolen from lib
+    cfg3 = 0x07; // 5 x TQ
 
 
     if (set) {
@@ -871,10 +871,12 @@ INT8U MCP_CAN::sendMsg()
     do {
         res = mcp2515_getNextFreeTXBuf(&txbuf_n);                       /* info = addr.                 */
         temp++;
+        _delay_ms(10);
     } while (res == MCP_ALLTXBUSY && (temp < TIMEOUTVALUE));
 
     if(temp >= TIMEOUTVALUE) 
     {   
+        printf("Buffer timeout");
         return CAN_GETTXBFTIMEOUT;                                      /* get tx buff time out         */
     }
     mcp2515_write_canMsg( txbuf_n);
@@ -886,11 +888,16 @@ INT8U MCP_CAN::sendMsg()
         res1 = mcp2515_readRegister(txbuf_n-1);                         /* read send buff ctrl reg 	*/
         res1 = res1 & 0x08;
         temp++;
+        _delay_ms(10);
+        //printf("res1: %d", res1);
     } while (res1 && (temp < TIMEOUTVALUE));   
     
-    if(temp >= TIMEOUTVALUE)                                       /* send msg timeout             */	
+    if(temp >= TIMEOUTVALUE)    {                                   /* send msg timeout             */	
+        printf("Send timeout");
         return CAN_SENDMSGTIMEOUT;
+    }
     
+    //printf("TX OK");
     return CAN_OK;
 }
 

@@ -19,7 +19,7 @@ PRJ = main
 # avr mcu
 MCU = avr64ea28
 # mcu clock frequency
-CLK = 2500000
+CLK = 10000000
 # avr programmer (and port if necessary)
 # e.g. PRG = usbtiny -or- PRG = arduino -P /dev/tty.usbmodem411
 #PRG = usbtiny
