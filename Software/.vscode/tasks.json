@@ -4,7 +4,7 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "make all && make flash",
+            "command": "make clean && make all && make flash",
             "problemMatcher": [],
             "group": "build"
         }

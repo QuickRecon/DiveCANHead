@@ -71,13 +71,9 @@ class MCP_CAN
     INT8U mcp2515_readStatus(void);                                     // Read MCP2515 Status
     INT8U mcp2515_setCANCTRL_Mode(const INT8U newmode);                 // Set mode
     INT8U mcp2515_requestNewMode(const INT8U newmode);                  // Set mode
-    INT8U mcp2515_configRate(const INT8U canSpeed,                      // Set baudrate
-
-                             const INT8U canClock);
+    INT8U mcp2515_configRate();
                              
-    INT8U mcp2515_init(const INT8U canIDMode,                           // Initialize Controller
-                       const INT8U canSpeed,
-                       const INT8U canClock);
+    INT8U mcp2515_init(const INT8U canIDMode);
 
     void mcp2515_write_mf( const INT8U mcp_addr,                        // Write CAN Mask or Filter
                            const INT8U ext,
@@ -106,7 +102,7 @@ class MCP_CAN
 
 public:
     MCP_CAN(INT8U _CS);
-    INT8U begin(INT8U idmodeset, INT8U speedset, INT8U clockset);       // Initialize controller parameters
+    INT8U begin(INT8U idmodeset);       // Initialize controller parameters
     INT8U init_Mask(INT8U num, INT8U ext, INT32U ulData);               // Initialize Mask(s)
     INT8U init_Mask(INT8U num, INT32U ulData);                          // Initialize Mask(s)
     INT8U init_Filt(INT8U num, INT8U ext, INT32U ulData);               // Initialize Filter(s)

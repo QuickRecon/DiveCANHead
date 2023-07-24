@@ -1,10 +1,5 @@
 [
     {
-        "command": "avr-g++ -Wall -Os -DF_CPU=5000000 -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28  -Imcc_generated_files/system/src  -Imcc_generated_files/timer/src  -Imcc_generated_files/spi/src  -Imcc_generated_files/reset/src  -Imcc_generated_files/nvm/src  -Imcc_generated_files/i2c_host/src  -Imcc_generated_files/adc/src  -Imcc_generated_files/uart/src  -Imcc_generated_files/vref/src  -ICAN_lib/  -c main.cpp -o main.o",
-        "directory": "/home/aren/Archive/Dropbox/DiveCANHead/Software",
-        "file": "/home/aren/Archive/Dropbox/DiveCANHead/Software/main.cpp"
-    },
-    {
         "command": "avr-gcc -Wall -Os -DF_CPU=2500000 -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28  -Imcc_generated_files/system/src  -Imcc_generated_files/timer/src  -Imcc_generated_files/spi/src  -Imcc_generated_files/reset/src  -Imcc_generated_files/nvm/src  -Imcc_generated_files/i2c_host/src  -Imcc_generated_files/adc/src  -Imcc_generated_files/uart/src  -Imcc_generated_files/vref/src  -ICAN_lib/ -c mcc_generated_files/system/src/clock.c -o mcc_generated_files/system/src/clock.o",
         "directory": "/home/aren/Archive/Dropbox/DiveCANHead/Software",
         "file": "/home/aren/Archive/Dropbox/DiveCANHead/Software/mcc_generated_files/system/src/clock.c"
@@ -35,7 +30,7 @@
         "file": "/home/aren/Archive/Dropbox/DiveCANHead/Software/mcc_generated_files/spi/src/spi0.c"
     },
     {
-        "command": "avr-gcc -Wall -Os -DF_CPU=8000000 -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28  -Imcc_generated_files/system/src  -Imcc_generated_files/timer/src  -Imcc_generated_files/spi/src  -Imcc_generated_files/reset/src  -Imcc_generated_files/nvm/src  -Imcc_generated_files/i2c_host/src  -Imcc_generated_files/adc/src  -Imcc_generated_files/uart/src  -Imcc_generated_files/vref/src  -ICAN_lib/ -c mcc_generated_files/adc/src/adc0.c -o mcc_generated_files/adc/src/adc0.o",
+        "command": "avr-gcc -Wall -Os -DF_CPU=2500000 -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28  -Imcc_generated_files/system/src  -Imcc_generated_files/timer/src  -Imcc_generated_files/spi/src  -Imcc_generated_files/reset/src  -Imcc_generated_files/nvm/src  -Imcc_generated_files/i2c_host/src  -Imcc_generated_files/adc/src  -Imcc_generated_files/uart/src  -Imcc_generated_files/vref/src  -ICAN_lib/ -c mcc_generated_files/adc/src/adc0.c -o mcc_generated_files/adc/src/adc0.o",
         "directory": "/home/aren/Archive/Dropbox/DiveCANHead/Software",
         "file": "/home/aren/Archive/Dropbox/DiveCANHead/Software/mcc_generated_files/adc/src/adc0.c"
     },
@@ -55,9 +50,9 @@
         "file": "/home/aren/Archive/Dropbox/DiveCANHead/Software/mcc_generated_files/uart/src/usart2.c"
     },
     {
-        "command": "avr-gcc -Wall -Os -DF_CPU=2500000 -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28  -Imcc_generated_files/system/src  -Imcc_generated_files/timer/src  -Imcc_generated_files/spi/src  -Imcc_generated_files/reset/src  -Imcc_generated_files/nvm/src  -Imcc_generated_files/i2c_host/src  -Imcc_generated_files/adc/src  -Imcc_generated_files/uart/src  -Imcc_generated_files/vref/src  -ICAN_lib/ -c main.c -o main.o",
+        "command": "avr-g++ -Wall -Os -DF_CPU=2500000 -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28  -Imcc_generated_files/system/src  -Imcc_generated_files/timer/src  -Imcc_generated_files/spi/src  -Imcc_generated_files/reset/src  -Imcc_generated_files/nvm/src  -Imcc_generated_files/i2c_host/src  -Imcc_generated_files/adc/src  -Imcc_generated_files/uart/src  -Imcc_generated_files/vref/src  -ICAN_lib/  -c main.cpp -o main.o",
         "directory": "/home/aren/Archive/Dropbox/DiveCANHead/Software",
-        "file": "/home/aren/Archive/Dropbox/DiveCANHead/Software/main.c"
+        "file": "/home/aren/Archive/Dropbox/DiveCANHead/Software/main.cpp"
     },
     {
         "command": "avr-g++ -Wall -Os -DF_CPU=2500000 -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28  -Imcc_generated_files/system/src  -Imcc_generated_files/timer/src  -Imcc_generated_files/spi/src  -Imcc_generated_files/reset/src  -Imcc_generated_files/nvm/src  -Imcc_generated_files/i2c_host/src  -Imcc_generated_files/adc/src  -Imcc_generated_files/uart/src  -Imcc_generated_files/vref/src  -ICAN_lib/  -c CAN_lib//mcp_can.cpp -o CAN_lib//mcp_can.o",
