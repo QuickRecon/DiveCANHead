@@ -68,7 +68,7 @@ void SPI0_Initialize(void)
     SPI0.CTRLB = 0x00;
 
     //CLK2X enabled; DORD disabled; ENABLE enabled; MASTER enabled; PRESC DIV4; 
-    SPI0.CTRLA = 0x2121;
+    SPI0.CTRLA = 0x2123;
 
     //DREIE disabled; IE disabled; RXCIE disabled; SSIE disabled; TXCIE disabled; 
     SPI0.INTCTRL = 0x0;

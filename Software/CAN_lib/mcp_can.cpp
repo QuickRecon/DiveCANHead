@@ -26,8 +26,7 @@
 
 
 void spi_readwrite(INT8U x){
-    SPI0_ByteWrite(x);
-    SPI0_WaitDataready();
+    SPI0_ExchangeByte(x);
 }
 
 INT8U spi_read(){
@@ -147,8 +146,8 @@ INT8U MCP_CAN::mcp2515_readStatus(void)
     INT8U i;
     
     MCP2515_SELECT();
-    spi_readwrite(MCP_READ_STATUS);
-    i = spi_read();
+    //spi_readwrite(MCP_READ_STATUS);
+    i = SPI0_ExchangeByte(MCP_READ_STATUS);
     MCP2515_UNSELECT();
     
     return i;
@@ -223,10 +222,11 @@ INT8U MCP_CAN::mcp2515_requestNewMode(const INT8U newmode)
     byte ittr = 0;
 	while(1)
 	{
+        //abortTX(); // abort any current transmissions (blocks us going into conf mode)
 		// Request new mode
 		// This is inside the loop as sometimes requesting the new mode once doesn't work (usually when attempting to sleep)
 		mcp2515_modifyRegister(MCP_CANCTRL, MODE_MASK, newmode); 
-_delay_ms(10);
+    _delay_ms(10);
 		byte statReg = mcp2515_readRegister(MCP_CANSTAT);
         _delay_ms(10);
         ittr++;
@@ -594,7 +594,9 @@ INT8U MCP_CAN::begin(INT8U idmodeset)
 
     SPI0_Initialize();
     SPI0_Enable();
-    SPI0_Open(SPI0_DEFAULT);
+    if(!SPI0_Open(SPI0_DEFAULT)){
+        printf("Failed to open SPI");
+    }
     res = mcp2515_init(idmodeset);
     if (res == MCP2515_OK)
         return CAN_OK;
