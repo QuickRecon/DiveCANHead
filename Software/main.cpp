@@ -86,7 +86,10 @@ extern "C"
   }
   void sendPPO2()
   {
-    byte data[4] = {0x00, 0xee, 0xee, 0xee};
+    static uint8_t a = 1, b = 2, c=3;
+    //byte data[4] = {0x00, 0xee, 0xee, 0xee};
+    byte data[4] = {0x00, a, b, c};
+    a++;b++;c++;
     byte sndStat = CAN0.sendMsgBuf(0xD040004, 1, 4, data);
     if (sndStat == CAN_OK)
     {
@@ -95,6 +98,11 @@ extern "C"
     else
     {
       printf("Error Sending PPO2...\n");
+    }
+    if(a>200 || b > 200 || c > 200){
+      a = 1;
+      b = 2;
+      c = 3;
     }
   }
 
@@ -264,9 +272,15 @@ extern "C"
       unsigned char len = 0;  // Length of recieved CAN Packet
       unsigned char rxBuf[8]; // Recieved CAN data
       char msgString[128];    // Array to store serial string
-      CAN0.readMsgBuf(&rxId, &len, rxBuf);
       //printf("loop");
       //sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"
+      // sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"
+      //     sendName();
+      //     sendMillis();
+      //     sendPPO2();
+      //     sendCellsStat();
+      //     sendStatus();
+      //     _delay_ms(500);
       if (CAN0.checkReceive() == CAN_MSGAVAIL) // If CAN0_INT pin is low, read receive buffer
       {
         CAN0.readMsgBuf(&rxId, &len, rxBuf); // Read data: len = data length, buf = data byte(s)

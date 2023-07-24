@@ -25,6 +25,15 @@
 #include "../mcc_generated_files/system/system.h"
 
 
+void MCP2515_SELECT(){
+    CS_SetLow();
+    _delay_us(1);
+}
+
+void MCP2515_UNSELECT() {
+    _delay_us(1);
+    CS_SetHigh();
+}
 void spi_readwrite(INT8U x){
     SPI0_ExchangeByte(x);
 }
@@ -43,7 +52,7 @@ void MCP_CAN::mcp2515_reset(void)
 {
     
     MCP2515_SELECT();
-    spi_readwrite(MCP_RESET);    
+    SPI0_ExchangeByte(MCP_RESET);
     MCP2515_UNSELECT();
     
     _delay_ms(5);  // If the MCP2515 was in sleep mode when the reset command was issued then we need to wait a while for it to reset properly
@@ -146,8 +155,8 @@ INT8U MCP_CAN::mcp2515_readStatus(void)
     INT8U i;
     
     MCP2515_SELECT();
-    //spi_readwrite(MCP_READ_STATUS);
-    i = SPI0_ExchangeByte(MCP_READ_STATUS);
+    spi_readwrite(MCP_READ_STATUS);
+    i = spi_read();
     MCP2515_UNSELECT();
     
     return i;
@@ -226,9 +235,7 @@ INT8U MCP_CAN::mcp2515_requestNewMode(const INT8U newmode)
 		// Request new mode
 		// This is inside the loop as sometimes requesting the new mode once doesn't work (usually when attempting to sleep)
 		mcp2515_modifyRegister(MCP_CANCTRL, MODE_MASK, newmode); 
-    _delay_ms(10);
 		byte statReg = mcp2515_readRegister(MCP_CANSTAT);
-        _delay_ms(10);
         ittr++;
 		if((statReg & MODE_MASK) == newmode){ // We're now in the new mode
             printf("A mode set worked: %d->%d\n", newmode, (statReg & MODE_MASK));
@@ -238,6 +245,7 @@ INT8U MCP_CAN::mcp2515_requestNewMode(const INT8U newmode)
             printf("A mode set failed: %d->%d\n", newmode, (statReg & MODE_MASK));
             return MCP2515_FAIL;
         }
+        //abortTX();
 	}
 }
 
@@ -252,10 +260,14 @@ INT8U MCP_CAN::mcp2515_configRate()
 
     // Set for 125kbps based on a 2.5MHz clock
     //cfg1 = 0b10000000 & 9; // 3xT_Q jump with 1/(2×(x+1)/(2.5 mega)) =125kbps => x = 9 clock divide
-    cfg1 = 0x41;
-    cfg2 = 0xac; // shamelessly stolen from lib
-    cfg3 = 0x07; // 5 x TQ
+    //cfg1 = 0x41;
+    //cfg2 = 0xac; // shamelessly stolen from lib
+    //cfg3 = 0x07; // 5 x TQ
 
+
+    cfg1 = 0x01;
+    cfg2 = 0xb6; // shamelessly stolen from lib
+    cfg3 = 0x04; // 5 x TQ
 
     if (set) {
         mcp2515_setRegister(MCP_CNF1, cfg1);
@@ -352,7 +364,8 @@ INT8U MCP_CAN::mcp2515_init(const INT8U canIDMode)
         mcp2515_initCANBuffers();
 
                                                                         /* interrupt mode               */
-        mcp2515_setRegister(MCP_CANINTE, MCP_RX0IF | MCP_RX1IF);
+        //mcp2515_setRegister(MCP_CANINTE, MCP_RX0IF | MCP_RX1IF);
+        mcp2515_setRegister(MCP_CANINTE, 0x00); //needs to be 0, RX errors?
 
 	//Sets BF pins as GPO
 	mcp2515_setRegister(MCP_BFPCTRL,MCP_BxBFS_MASK | MCP_BxBFE_MASK);
