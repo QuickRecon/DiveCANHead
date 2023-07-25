@@ -108,7 +108,6 @@ void DiveCAN::sendID()
   // byte data[3] = {0x01, 0x00, 0x09};
   byte data[3] = {0x01, 0x00, 0x00};
   byte sndStat = CAN0.sendMsgBuf(0xD000004, 1, 3, data);
-  sndStat = CAN0.sendMsgBuf(0xD000005, 1, 3, data);
   if (sndStat == CAN_OK)
   {
     printf("ID Sent Successfully!\n");
@@ -123,8 +122,6 @@ void DiveCAN::sendName()
 {
   byte data1[9] = "CHECKLST";
   byte sndStat = CAN0.sendMsgBuf(0xD010004, 1, 8, data1);
-  byte data2[9] = "DIY_HEAD";
-  sndStat = CAN0.sendMsgBuf(0xD010005, 1, 8, data2);
   if (sndStat == CAN_OK)
   {
     printf("Name Sent Successfully!\n");
