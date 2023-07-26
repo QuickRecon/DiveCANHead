@@ -43,6 +43,7 @@ extern "C" {
 #include "../system/clock.h"
 #include "../system/pins.h"
 #include "../adc/adc0.h"
+#include "../nvm/nvm.h"
 #include "../spi/spi0.h"
 #include "../uart/usart0.h"
 #include "../uart/usart1.h"
