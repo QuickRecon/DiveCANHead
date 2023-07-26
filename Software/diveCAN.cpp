@@ -148,12 +148,8 @@ void DiveCAN::sendMillis()
 }
 void DiveCAN::sendPPO2()
 {
-  static uint8_t a = 1, b = 2, c = 3;
   // byte data[4] = {0x00, 0xee, 0xee, 0xee};
-  byte data[4] = {0x00, 0xFF, b, c};
-  a++;
-  b++;
-  c++;
+  byte data[4] = {0x00, 0xFF, 161, 77};
   byte sndStat = CAN0.sendMsgBuf(0xD040004, 1, 4, data);
   if (sndStat == CAN_OK)
   {
@@ -162,12 +158,6 @@ void DiveCAN::sendPPO2()
   else
   {
     printf("Error Sending PPO2...\n");
-  }
-  if (a > 200 || b > 200 || c > 200)
-  {
-    a = 1;
-    b = 2;
-    c = 3;
   }
 }
 
