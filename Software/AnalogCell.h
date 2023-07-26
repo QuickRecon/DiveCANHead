@@ -19,7 +19,7 @@ namespace OxygenSensing
     };
 
     // ADC port mapping
-    const ADC_MUXPOS_t portMap[] = {
+    const ADC_MUXPOS_t analogPortMap[] = {
         ADC_MUXPOS_AIN22_gc,
         ADC_MUXPOS_AIN23_gc,
         ADC_MUXPOS_AIN24_gc};

@@ -29,7 +29,7 @@ namespace OxygenSensing
     void AnalogCell::sample()
     {
         adcSample = 0;
-        ADC_MUXPOS_t adc_port = portMap[static_cast<uint8_t>(port)];
+        ADC_MUXPOS_t adc_port = analogPortMap[static_cast<uint8_t>(port)];
         for (int i = 0; i < ADC_SAMPLE_COUNT; i++)
         {
             adcSample += ADC0_GetConversion(adc_port);
