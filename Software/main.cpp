@@ -73,33 +73,31 @@ extern "C"
     {
       USART1_Read();
     }
+    const char *cmd = "#LOGO";
+    for (int i = 0; i < strlen(cmd); i++)
+    {
+      USART1_Write(cmd[i]);
+      _delay_ms(100);
+      while (!(USART0_IsTxReady()))
+      {
+      };
+    }
 
+      USART1_Write(0x0D);
     while (true)
     {
-      while (USART1_IsRxReady())
+      char lastChar = 0;
+      if (USART1_IsRxReady())
       {
-
-        // printf("UART ERR: %d ", USART1_ErrorGet());
-        uint8_t dat = USART1_Read();
-        printf("Uart1: %c\n", dat);
-
-        //_delay_ms(10);
+        USART0_Write(USART1_Read());
       }
-
-      _delay_ms(100);
-      const char *cmd = "#LOGO";
-      for (int i = 0; i < strlen(cmd); i++)
+      if (USART0_IsRxReady())
       {
-        USART1_Write(cmd[i]);
-        _delay_ms(1);
-        while (!(USART0_IsTxReady()))
-        {
-        };
-      }
-    USART1_Write(0x0D);
+        char t = USART0_Read();
 
-      // controller.HandleInboundMessages();
-      // cell1.sample();
+        USART0_Write(t);
+        USART1_Write(t);
+      }
     }
   }
 }
