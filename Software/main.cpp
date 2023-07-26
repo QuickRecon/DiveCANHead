@@ -32,7 +32,7 @@
 */
 #include "mcc_generated_files/system/system.h"
 #include "diveCAN.h"
-
+#include "AnalogCell.h"
 /*
     Main application
 */

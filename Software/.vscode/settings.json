@@ -40,6 +40,8 @@
         "span": "cpp",
         "valarray": "cpp"
     },
-    "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
+    "sonarlint.pathToCompileCommands": "/home/aren/Archive/Dropbox/DiveCANHead/Software/.vscode/compile_commands.json",
+    "sonarlint.output.showAnalyzerLogs": true,
+    "sonarlint.output.showVerboseLogs": true,
 
 }
