@@ -68,5 +68,10 @@
         "command": "avr-g++ -Wall -Os -DF_CPU=10000000 -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28  -Imcc_generated_files/system/src  -Imcc_generated_files/timer/src  -Imcc_generated_files/spi/src  -Imcc_generated_files/reset/src  -Imcc_generated_files/nvm/src  -Imcc_generated_files/i2c_host/src  -Imcc_generated_files/adc/src  -Imcc_generated_files/uart/src  -Imcc_generated_files/vref/src  -ICAN_lib/  -c AnalogCell.cpp -o AnalogCell.o",
         "directory": "/home/aren/Archive/Dropbox/DiveCANHead/Software",
         "file": "/home/aren/Archive/Dropbox/DiveCANHead/Software/AnalogCell.cpp"
+    },
+    {
+        "command": "avr-g++ -Wall -Os -DF_CPU=10000000 -mmcu=avr64ea28 -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28  -Imcc_generated_files/system/src  -Imcc_generated_files/timer/src  -Imcc_generated_files/spi/src  -Imcc_generated_files/reset/src  -Imcc_generated_files/nvm/src  -Imcc_generated_files/i2c_host/src  -Imcc_generated_files/adc/src  -Imcc_generated_files/uart/src  -Imcc_generated_files/vref/src  -ICAN_lib/  -c DigitalCell.cpp -o DigitalCell.o",
+        "directory": "/home/aren/Archive/Dropbox/DiveCANHead/Software",
+        "file": "/home/aren/Archive/Dropbox/DiveCANHead/Software/DigitalCell.cpp"
     }
 ]

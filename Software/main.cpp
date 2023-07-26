@@ -33,6 +33,7 @@
 #include "mcc_generated_files/system/system.h"
 #include "diveCAN.h"
 #include "AnalogCell.h"
+#include "DigitalCell.h"
 
 /*
     Main application
@@ -57,43 +58,16 @@ extern "C"
     SYSTEM_Initialize();
 
     auto controller = DiveCAN(4, "CHCKLST");
-    auto cell1 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
+    auto cell1 = OxygenSensing::DigitalCell(OxygenSensing::DigitalPort::C1);
     auto cell2 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
     auto cell3 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
 
     OxygenSensing::ICell *cells[] = {&cell1, &cell2, &cell3};
 
-    while (!USART1_IsTxReady())
-    {
-      printf("uart not ready\n");
-    }
-
-    // Clear the RX buffer
-    while (USART1_IsRxReady())
-    {
-      USART1_Read();
-    }
-
     while (true)
     {
-      char lastChar = 0;
-      if (USART1_IsRxReady())
-      {
-        char t = USART1_Read();
-        if(t == 0x0D){
-          printf("\n");
-        }
-        USART0_Write(t);
-      }
-      if (USART0_IsRxReady())
-      {
-        char t = USART0_Read();
-        if(t == 0x0D){
-          printf("\n");
-        }
-        USART0_Write(t);
-        USART1_Write(t);
-      }
+      cell1.sample();
+      printf("PPO2: %hu\n", cell1.getPPO2());
     }
   }
 }
