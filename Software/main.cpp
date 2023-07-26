@@ -57,12 +57,49 @@ extern "C"
     SYSTEM_Initialize();
 
     auto controller = DiveCAN(4, "CHCKLST");
-    OxygenSensing::ICell* cell1 = new OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
+    auto cell1 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
+    auto cell2 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
+    auto cell3 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
 
-    while(true)
+    OxygenSensing::ICell *cells[] = {&cell1, &cell2, &cell3};
+
+    while (!USART1_IsTxReady())
     {
-      controller.HandleInboundMessages();
-      cell1->sample();
+      printf("uart not ready\n");
+    }
+
+    // Clear the RX buffer
+    while (USART1_IsRxReady())
+    {
+      USART1_Read();
+    }
+
+    while (true)
+    {
+      while (USART1_IsRxReady())
+      {
+
+        // printf("UART ERR: %d ", USART1_ErrorGet());
+        uint8_t dat = USART1_Read();
+        printf("Uart1: %c\n", dat);
+
+        //_delay_ms(10);
+      }
+
+      _delay_ms(100);
+      const char *cmd = "#LOGO";
+      for (int i = 0; i < strlen(cmd); i++)
+      {
+        USART1_Write(cmd[i]);
+        _delay_ms(1);
+        while (!(USART0_IsTxReady()))
+        {
+        };
+      }
+    USART1_Write(0x0D);
+
+      // controller.HandleInboundMessages();
+      // cell1.sample();
     }
   }
 }

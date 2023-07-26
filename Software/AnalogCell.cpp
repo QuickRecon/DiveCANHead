@@ -34,12 +34,18 @@ namespace OxygenSensing
         {
             adcSample += ADC0_GetConversion(adc_port);
         }
-        // printf("t: %ld, millis: %ld\n", acc / 100, (acc * 11) / 2900);
+        //printf("C1: %ld, millis: %d\n", adcSample / 100, getMillivolts());
     }
 
     PPO2_t AnalogCell::getPPO2()
     {
-        return static_cast<PPO2_t>(static_cast<CalCoeff_t>(adcSample) * calibrationCoeff);
+        PPO2_t PPO2 = 0;
+        if((getStatus() == CellStatus_t::CELL_NEED_CAL) || (getStatus() == CellStatus_t::CELL_NEED_CAL)){
+            PPO2 = 0xFF; // Failed cell
+        } else {
+            PPO2 = static_cast<PPO2_t>(static_cast<CalCoeff_t>(adcSample) * calibrationCoeff);
+        }
+        return PPO2;
     }
     Millivolts_t AnalogCell::getMillivolts()
     {

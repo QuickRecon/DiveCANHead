@@ -98,7 +98,7 @@ flash:
 
 # elf file
 $(PRJ).elf: $(OBJ)
-	$(CPP) $(CFLAGS) -static-libstdc++ -Wl,--section-start=.text=0x8000 -o $(PRJ).elf $(OBJ)
+	$(CPP) $(CFLAGS) -Wl,--section-start=.text=0x8000 -o $(PRJ).elf $(OBJ)
 
 # hex file
 $(PRJ).hex: $(PRJ).elf
