@@ -55,9 +55,6 @@ extern "C"
   {
     SYSTEM_Initialize();
 
-    USART0_Initialize();
-    USART0_Enable();
-
     DiveCAN controller = DiveCAN(4, "CHCKLST");
 
     while(1)
@@ -66,7 +63,7 @@ extern "C"
       for(int i = 0; i < 100; i++){
         acc += ADC0_GetConversion(ADC_MUXPOS_AIN22_gc);
       }
-      printf("t: %ld, millis: %ld\n", acc/100, (acc*11)/2900);
+      printf("t: %ld, millis: %ld\n", acc/100, (acc*11)/2900);    
       _delay_ms(100);
       controller.HandleInboundMessages();
     }
