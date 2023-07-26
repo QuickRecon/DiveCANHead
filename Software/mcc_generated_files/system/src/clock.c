@@ -10,7 +10,7 @@
   * version CLKCTRL Driver Version 1.1.3
 */
 /*
-ï¿½ [2023] Microchip Technology Inc. and its subsidiaries.
+© [2023] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -40,7 +40,7 @@ void CLOCK_Initialize(void)
     //CLKOUT enabled; CLKSEL Internal high-frequency oscillator; 
     ccp_write_io((void*)&(CLKCTRL.MCLKCTRLA),0x80);
 
-    //PDIV Divide by 8; PEN enabled; 
+    //PDIV Divide by 2; PEN enabled; 
     ccp_write_io((void*)&(CLKCTRL.MCLKCTRLB),0x1);
 
     //
@@ -70,8 +70,8 @@ void CLOCK_Initialize(void)
     //CSUTHF 256CYC; ENABLE disabled; RUNSTDBY disabled; SELHF CRYSTAL; 
     ccp_write_io((void*)&(CLKCTRL.XOSCHFCTRLA),0x0);
 
-    //TIMEBASE 3; 
-    ccp_write_io((void*)&(CLKCTRL.MCLKTIMEBASE),0x3);
+    //TIMEBASE 10; 
+    ccp_write_io((void*)&(CLKCTRL.MCLKTIMEBASE),0xA);
 
 
     // System clock stability check by polling the status register.
