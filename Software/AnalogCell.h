@@ -24,7 +24,7 @@ namespace OxygenSensing
         ADC_MUXPOS_AIN23_gc,
         ADC_MUXPOS_AIN24_gc};
 
-    class AnalogCell : public Cell
+    class AnalogCell : public ICell
     {
     public:
         explicit AnalogCell(const AnalogPort in_port);

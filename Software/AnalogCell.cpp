@@ -43,6 +43,8 @@ namespace OxygenSensing
     }
     Millivolts_t AnalogCell::getMillivolts()
     {
+        // ADC bullshit to get a millivolts, there is some fuckery with the cell isolator so
+        // these are liable to change
         constexpr uint32_t adc_mult = 11;
         constexpr uint32_t adc_div = 2900;
 

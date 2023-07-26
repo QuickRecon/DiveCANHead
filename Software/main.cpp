@@ -33,6 +33,7 @@
 #include "mcc_generated_files/system/system.h"
 #include "diveCAN.h"
 #include "AnalogCell.h"
+
 /*
     Main application
 */
@@ -55,17 +56,13 @@ extern "C"
   {
     SYSTEM_Initialize();
 
-    DiveCAN controller = DiveCAN(4, "CHCKLST");
+    auto controller = DiveCAN(4, "CHCKLST");
+    OxygenSensing::ICell* cell1 = new OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
 
-    while(1)
+    while(true)
     {
-      uint32_t acc = 0;
-      for(int i = 0; i < 100; i++){
-        acc += ADC0_GetConversion(ADC_MUXPOS_AIN22_gc);
-      }
-      printf("t: %ld, millis: %ld\n", acc/100, (acc*11)/2900);    
-      _delay_ms(100);
       controller.HandleInboundMessages();
+      cell1->sample();
     }
   }
 }

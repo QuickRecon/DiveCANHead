@@ -17,7 +17,7 @@ namespace OxygenSensing
     // Even though this is a generic cell Shearwater still uses the
     // concept of millivolts everywhere so it carry that into all cells
     // so that it is at least handled in a non-shit way
-    class Cell
+    class ICell
     {
     public:
         virtual void sample();            // Perform the sampling operation
