@@ -73,28 +73,24 @@ extern "C"
     {
       USART1_Read();
     }
-    const char *cmd = "#LOGO";
-    for (int i = 0; i < strlen(cmd); i++)
-    {
-      USART1_Write(cmd[i]);
-      _delay_ms(100);
-      while (!(USART0_IsTxReady()))
-      {
-      };
-    }
 
-      USART1_Write(0x0D);
     while (true)
     {
       char lastChar = 0;
       if (USART1_IsRxReady())
       {
-        USART0_Write(USART1_Read());
+        char t = USART1_Read();
+        if(t == 0x0D){
+          printf("\n");
+        }
+        USART0_Write(t);
       }
       if (USART0_IsRxReady())
       {
         char t = USART0_Read();
-
+        if(t == 0x0D){
+          printf("\n");
+        }
         USART0_Write(t);
         USART1_Write(t);
       }
