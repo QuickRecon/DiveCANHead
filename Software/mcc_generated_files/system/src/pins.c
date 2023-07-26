@@ -45,7 +45,7 @@ static void (*MOSI_InterruptHandler)(void);
 static void (*SCK_InterruptHandler)(void);
 static void (*ADC_C1_InterruptHandler)(void);
 static void (*ADC_C2_InterruptHandler)(void);
-static void (*ADC_C4_InterruptHandler)(void);
+static void (*ADC_C3_InterruptHandler)(void);
 static void (*VCC_MON_InterruptHandler)(void);
 static void (*SOL_MON_InterruptHandler)(void);
 static void (*SOLBUS_MON_InterruptHandler)(void);
@@ -126,7 +126,7 @@ void PIN_MANAGER_Initialize()
     SCK_SetInterruptHandler(SCK_DefaultInterruptHandler);
     ADC_C1_SetInterruptHandler(ADC_C1_DefaultInterruptHandler);
     ADC_C2_SetInterruptHandler(ADC_C2_DefaultInterruptHandler);
-    ADC_C4_SetInterruptHandler(ADC_C4_DefaultInterruptHandler);
+    ADC_C3_SetInterruptHandler(ADC_C3_DefaultInterruptHandler);
     VCC_MON_SetInterruptHandler(VCC_MON_DefaultInterruptHandler);
     SOL_MON_SetInterruptHandler(SOL_MON_DefaultInterruptHandler);
     SOLBUS_MON_SetInterruptHandler(SOLBUS_MON_DefaultInterruptHandler);
@@ -281,17 +281,17 @@ void ADC_C2_DefaultInterruptHandler(void)
     // or set custom function using ADC_C2_SetInterruptHandler()
 }
 /**
-  Allows selecting an interrupt handler for ADC_C4 at application runtime
+  Allows selecting an interrupt handler for ADC_C3 at application runtime
 */
-void ADC_C4_SetInterruptHandler(void (* interruptHandler)(void)) 
+void ADC_C3_SetInterruptHandler(void (* interruptHandler)(void)) 
 {
-    ADC_C4_InterruptHandler = interruptHandler;
+    ADC_C3_InterruptHandler = interruptHandler;
 }
 
-void ADC_C4_DefaultInterruptHandler(void)
+void ADC_C3_DefaultInterruptHandler(void)
 {
-    // add your ADC_C4 interrupt custom code
-    // or set custom function using ADC_C4_SetInterruptHandler()
+    // add your ADC_C3 interrupt custom code
+    // or set custom function using ADC_C3_SetInterruptHandler()
 }
 /**
   Allows selecting an interrupt handler for VCC_MON at application runtime
@@ -418,7 +418,7 @@ ISR(PORTA_PORT_vect)
     }
     if(VPORTA.INTFLAGS & PORT_INT4_bm)
     {
-       ADC_C4_InterruptHandler(); 
+       ADC_C3_InterruptHandler(); 
     }
     if(VPORTA.INTFLAGS & PORT_INT5_bm)
     {

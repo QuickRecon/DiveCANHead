@@ -12,7 +12,7 @@
 */
 
 /*
-© [2023] Microchip Technology Inc. and its subsidiaries.
+ï¿½ [2023] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -247,24 +247,24 @@
 #define ADC_C2_EnableInterruptForLowLevelSensing() do { PORTA.PIN3CTRL = (PORTA.PIN3CTRL & ~PORT_ISC_gm) | 0x5 ; } while(0)
 #define PA3_SetInterruptHandler ADC_C2_SetInterruptHandler
 
-//get/set ADC_C4 aliases
-#define ADC_C4_SetHigh() do { PORTA_OUTSET = 0x10; } while(0)
-#define ADC_C4_SetLow() do { PORTA_OUTCLR = 0x10; } while(0)
-#define ADC_C4_Toggle() do { PORTA_OUTTGL = 0x10; } while(0)
-#define ADC_C4_GetValue() (VPORTA.IN & (0x1 << 4))
-#define ADC_C4_SetDigitalInput() do { PORTA_DIRCLR = 0x10; } while(0)
-#define ADC_C4_SetDigitalOutput() do { PORTA_DIRSET = 0x10; } while(0)
-#define ADC_C4_SetPullUp() do { PORTA_PIN4CTRL  |= PORT_PULLUPEN_bm; } while(0)
-#define ADC_C4_ResetPullUp() do { PORTA_PIN4CTRL  &= ~PORT_PULLUPEN_bm; } while(0)
-#define ADC_C4_SetInverted() do { PORTA_PIN4CTRL  |= PORT_INVEN_bm; } while(0)
-#define ADC_C4_ResetInverted() do { PORTA_PIN4CTRL  &= ~PORT_INVEN_bm; } while(0)
-#define ADC_C4_DisableInterruptOnChange() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x0 ; } while(0)
-#define ADC_C4_EnableInterruptForBothEdges() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x1 ; } while(0)
-#define ADC_C4_EnableInterruptForRisingEdge() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x2 ; } while(0)
-#define ADC_C4_EnableInterruptForFallingEdge() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x3 ; } while(0)
-#define ADC_C4_DisableDigitalInputBuffer() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x4 ; } while(0)
-#define ADC_C4_EnableInterruptForLowLevelSensing() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x5 ; } while(0)
-#define PA4_SetInterruptHandler ADC_C4_SetInterruptHandler
+//get/set ADC_C3 aliases
+#define ADC_C3_SetHigh() do { PORTA_OUTSET = 0x10; } while(0)
+#define ADC_C3_SetLow() do { PORTA_OUTCLR = 0x10; } while(0)
+#define ADC_C3_Toggle() do { PORTA_OUTTGL = 0x10; } while(0)
+#define ADC_C3_GetValue() (VPORTA.IN & (0x1 << 4))
+#define ADC_C3_SetDigitalInput() do { PORTA_DIRCLR = 0x10; } while(0)
+#define ADC_C3_SetDigitalOutput() do { PORTA_DIRSET = 0x10; } while(0)
+#define ADC_C3_SetPullUp() do { PORTA_PIN4CTRL  |= PORT_PULLUPEN_bm; } while(0)
+#define ADC_C3_ResetPullUp() do { PORTA_PIN4CTRL  &= ~PORT_PULLUPEN_bm; } while(0)
+#define ADC_C3_SetInverted() do { PORTA_PIN4CTRL  |= PORT_INVEN_bm; } while(0)
+#define ADC_C3_ResetInverted() do { PORTA_PIN4CTRL  &= ~PORT_INVEN_bm; } while(0)
+#define ADC_C3_DisableInterruptOnChange() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x0 ; } while(0)
+#define ADC_C3_EnableInterruptForBothEdges() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x1 ; } while(0)
+#define ADC_C3_EnableInterruptForRisingEdge() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x2 ; } while(0)
+#define ADC_C3_EnableInterruptForFallingEdge() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x3 ; } while(0)
+#define ADC_C3_DisableDigitalInputBuffer() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x4 ; } while(0)
+#define ADC_C3_EnableInterruptForLowLevelSensing() do { PORTA.PIN4CTRL = (PORTA.PIN4CTRL & ~PORT_ISC_gm) | 0x5 ; } while(0)
+#define PA4_SetInterruptHandler ADC_C3_SetInterruptHandler
 
 //get/set VCC_MON aliases
 #define VCC_MON_SetHigh() do { PORTA_OUTSET = 0x20; } while(0)
@@ -659,24 +659,24 @@ void ADC_C2_SetInterruptHandler(void (* interruptHandler)(void)) ;
 
 /**
  * @ingroup  pinsdriver
- * @brief Default Interrupt Handler for ADC_C4 pin. 
- *        This is a predefined interrupt handler to be used together with the ADC_C4_SetInterruptHandler() method.
- *        This handler is called every time the ADC_C4 ISR is executed. 
+ * @brief Default Interrupt Handler for ADC_C3 pin. 
+ *        This is a predefined interrupt handler to be used together with the ADC_C3_SetInterruptHandler() method.
+ *        This handler is called every time the ADC_C3 ISR is executed. 
  * @pre PIN_MANAGER_Initialize() has been called at least once
  * @param none
  * @return none
  */
-void ADC_C4_DefaultInterruptHandler(void);
+void ADC_C3_DefaultInterruptHandler(void);
 
 /**
  * @ingroup  pinsdriver
- * @brief Interrupt Handler Setter for ADC_C4 pin input-sense-config functionality.
- *        Allows selecting an interrupt handler for ADC_C4 at application runtime
+ * @brief Interrupt Handler Setter for ADC_C3 pin input-sense-config functionality.
+ *        Allows selecting an interrupt handler for ADC_C3 at application runtime
  * @pre PIN_MANAGER_Initialize() has been called at least once
  * @param InterruptHandler function pointer.
  * @return none
  */
-void ADC_C4_SetInterruptHandler(void (* interruptHandler)(void)) ; 
+void ADC_C3_SetInterruptHandler(void (* interruptHandler)(void)) ; 
 
 /**
  * @ingroup  pinsdriver

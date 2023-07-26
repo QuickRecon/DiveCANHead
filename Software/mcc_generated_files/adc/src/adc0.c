@@ -11,7 +11,7 @@
 */
 
 /*
-© [2023] Microchip Technology Inc. and its subsidiaries.
+ï¿½ [2023] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -40,10 +40,10 @@ adc_irq_cb_t ADC0_ErrorCallback = NULL;
 int8_t ADC0_Initialize(void)
 {     
     //PRESC System clock divided by 2; 
-    ADC0.CTRLB = 0x0;
+    ADC0.CTRLB = 0x7;
 
     //CHOPPING DISABLE; FREERUN disabled; LEFTADJ disabled; SAMPNUM 32 samples accumulated; 
-    ADC0.CTRLF = 0x5;
+    ADC0.CTRLF = 0x4a;
 
     //REFSEL Internal 1.024V Reference; 
     ADC0.CTRLC = 0x4;
@@ -52,10 +52,10 @@ int8_t ADC0_Initialize(void)
     ADC0.CTRLD = 0x0;
 
     //SAMPDUR 0; 
-    ADC0.CTRLE = 0x0;
+    ADC0.CTRLE = 0x88;
 
     //GAIN 16x gain; PGABIASSEL 100% BIAS current.; PGAEN enabled; 
-    ADC0.PGACTRL = 0x81;
+    ADC0.PGACTRL = 0x99;
 
     //DBGRUN disabled; 
     ADC0.DBGCTRL = 0x0;
@@ -67,10 +67,10 @@ int8_t ADC0_Initialize(void)
     ADC0.INTCTRL = 0x0;
 
     //MUXPOS ADC input pin 0; VIA Inputs connected via PGA; 
-    ADC0.MUXPOS = 0x40;
+    ADC0.MUXPOS = 0x56;
 
     //MUXNEG ADC input pin 0; VIA Inputs connected via PGA; 
-    ADC0.MUXNEG = 0x40;
+    ADC0.MUXNEG = 0x70;
 
     // Window comparator high threshold 
     ADC0.WINHT = 0x0;

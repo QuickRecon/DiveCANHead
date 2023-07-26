@@ -39,6 +39,18 @@
 
 extern "C"
 {
+
+  // ADC mapping:
+  // ADC_C1     | AIN22
+  // ADC_C2     | AIN23
+  // ADC_C3     | AIN23
+  // VCC_MON    | AIN25
+  // SOL_MON    | AIN 26
+  // SOLBUS_MON | AIN0
+
+  // Voltage network + adc does some weird stuff
+  // 290 => 10.9mV
+
   int main(void)
   {
     SYSTEM_Initialize();
@@ -50,6 +62,12 @@ extern "C"
 
     while(1)
     {
+      uint32_t acc = 0;
+      for(int i = 0; i < 100; i++){
+        acc += ADC0_GetConversion(ADC_MUXPOS_AIN22_gc);
+      }
+      printf("t: %ld, millis: %ld\n", acc/100, (acc*11)/2900);
+      _delay_ms(100);
       controller.HandleInboundMessages();
     }
   }
