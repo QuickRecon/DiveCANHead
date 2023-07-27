@@ -34,6 +34,7 @@
 #include "DiveCAN/DiveCANDevice.h"
 #include "OxygenSensing/AnalogCell.h"
 #include "OxygenSensing/DigitalCell.h"
+#include "DiveCAN/CellState.h"
 
 /*
     Main application
@@ -68,15 +69,20 @@ extern "C"
     // Treating the stack like a heap is perfectly normal
     OxygenSensing::ICell *cells[] = {&cell1, &cell2, &cell3};
 
+    for (auto *cell : cells)
+    {
+      cell->calibrate(100);
+    }
+
     while (true)
     {
-      for(auto* cell : cells){
+      for (auto *cell : cells)
+      {
         cell->sample();
       }
+      auto cellState = DiveCAN::CellState(&cell1, &cell2, &cell3);
 
-
-
-      printf("C1: %hu, C2: %hu, C3: %hu\n", cell1.getPPO2(), cell2.getPPO2(), cell3.getPPO2());
+      printf("C1: %hu, C2: %hu, C3: %hu\n", cellState.GetCellPPO2(0), cellState.GetCellPPO2(1), cellState.GetCellPPO2(2));
     }
   }
 }

@@ -68,6 +68,7 @@ namespace OxygenSensing
         // Our coefficient is simply the float needed to make the current sample the current PPO2
         calibrationCoeff = static_cast<CalCoeff_t>(PPO2) / static_cast<CalCoeff_t>(adcSample);
 
+        printf("Calibrated with coefficient %f", calibrationCoeff);
         // Write that shit to the eeprom
         uint8_t bytes[sizeof(CalCoeff_t)];
         memcpy(bytes, &calibrationCoeff, sizeof(CalCoeff_t));
@@ -80,6 +81,10 @@ namespace OxygenSensing
             {
                 // Wait until the eeprom is free to write the next byte
             }
+        }
+
+        if(getStatus() == CellStatus_t::CELL_NEED_CAL){
+            setStatus(CellStatus_t::CELL_OK);
         }
     }
 }
