@@ -7,21 +7,22 @@
 #include <util/delay.h>
 #include "../mcc_generated_files/system/system.h" // Printf
 #include "string.h"
+#include "CellState.h"
 namespace DiveCAN
 {
     class DiveCANDevice
     {
     public:
         DiveCANDevice(byte in_canID, char *inName);
-        void NotifyPPO2();
+        void NotifyPPO2(const CellState state);
         void HandleInboundMessages(); // Event driven/interupt is hard, so keep things sequential (we have time)
     protected:
         // Raw messages
         void sendID();
         void sendName();
-        void sendMillis();
-        void sendPPO2();
-        void sendCellsStat();
+        void sendMillis(const CellState state);
+        void sendPPO2(const CellState state);
+        void sendCellsStat(const CellState state);
         void sendStatus();
         void sendCalAck();
         void sendCalComplete();

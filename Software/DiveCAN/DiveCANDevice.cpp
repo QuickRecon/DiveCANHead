@@ -56,20 +56,14 @@ namespace DiveCAN
       {           // Bus Init
         sendID(); // We send the ID every time we send out a message, stops us getting "connection lost"
         sendName();
-        sendMillis();
-        sendPPO2();
-        sendCellsStat();
         sendStatus();
       }
 
       // The shearwater sends out 0x0D000001 every second, keepalive?
-      // We respond by telling it the PPO2, easier than a timer for testing purposes.
+      // Ping back our ID
       if ((rxId & 0x1FFFFFFF) == 0x0D000001)
-      { // Send PPO2
+      { 
         sendID();
-        sendMillis();
-        sendPPO2();
-        sendCellsStat();
         sendStatus();
       }
 
@@ -103,6 +97,13 @@ namespace DiveCAN
     }
   }
 
+  void DiveCANDevice::NotifyPPO2(const CellState state)
+  {
+        sendMillis(state);
+        sendPPO2(state);
+        sendCellsStat(state);
+  }
+
   // Raw messages
   void DiveCANDevice::sendID()
   {
@@ -133,28 +134,41 @@ namespace DiveCAN
     }
   }
 
-  void DiveCANDevice::sendMillis()
+  void DiveCANDevice::sendMillis(const CellState state)
   {
+    // Load up our 8 bit values
+    uint16_t C1_val = state.GetCellMillis(1);
+    uint16_t C2_val = state.GetCellMillis(1);
+    uint16_t C3_val = state.GetCellMillis(1);
+
+    uint8_t C1_millis[2] = {0,0};
+    uint8_t C2_millis[2] = {0,0};
+    uint8_t C3_millis[2] = {0,0};
+
+    memcpy(C1_millis, &C1_millis, sizeof(uint16_t));
+    memcpy(C2_millis, &C2_millis, sizeof(uint16_t));
+    memcpy(C3_millis, &C3_millis, sizeof(uint16_t));
+
     // byte data[7] = {0x14, 0x18, 0x13, 0x5f, 0x14, 0x20, 0x00};
-    byte data[7] = {0x00, 0x00, 0x13, 0x5f, 0x14, 0x20, 0x00};
+    byte data[7] = {C1_millis[0], C1_millis[1], C2_millis[0], C2_millis[1], C2_millis[0], C2_millis[1], 0x00};
     byte sndStat = CAN0.sendMsgBuf(0xD110004, 1, 7, data);
     if (sndStat == CAN_OK)
     {
-      printf("millis Sent Successfully!\n");
+      //printf("millis Sent Successfully!\n");
     }
     else
     {
       printf("Error Sending millis...");
     }
   }
-  void DiveCANDevice::sendPPO2()
+  void DiveCANDevice::sendPPO2(const CellState state)
   {
-    // byte data[4] = {0x00, 0xee, 0xee, 0xee};
-    byte data[4] = {0x00, 0xFF, 161, 77};
+    byte data[4] = {0x00, state.GetCellPPO2(0), state.GetCellPPO2(1), state.GetCellPPO2(2)};
     byte sndStat = CAN0.sendMsgBuf(0xD040004, 1, 4, data);
+    printf("PPO2MSG: %hu %hu %hu %hu\n", data[0], data[1], data[2], data[3]);
     if (sndStat == CAN_OK)
     {
-      printf("PPO2 Sent Successfully!\n");
+      //printf("PPO2 Sent Successfully!\n");
     }
     else
     {
@@ -162,13 +176,13 @@ namespace DiveCAN
     }
   }
 
-  void DiveCANDevice::sendCellsStat()
+  void DiveCANDevice::sendCellsStat(const CellState state)
   {
-    byte data[2] = {0x07, 0x50};
+    byte data[2] = {0x07 & state.GetStatusMask(), state.GetConsensusPPO2()};
     byte sndStat = CAN0.sendMsgBuf(0xdca0004, 1, 2, data);
     if (sndStat == CAN_OK)
     {
-      printf("Cell stat Sent Successfully!\n");
+      //printf("Cell stat Sent Successfully!\n");
     }
     else
     {
@@ -182,7 +196,7 @@ namespace DiveCAN
     byte sndStat = CAN0.sendMsgBuf(0xdcb0004, 1, 8, data);
     if (sndStat == CAN_OK)
     {
-      printf("Cell stat Sent Successfully!\n");
+      printf("Controller stat Sent Successfully!\n");
     }
     else
     {

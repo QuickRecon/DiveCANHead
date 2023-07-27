@@ -131,6 +131,7 @@ namespace OxygenSensing
             if (0 == errCode)
             {
                 // Everything is fine
+                setStatus(CellStatus_t::CELL_OK);
             }
             else if ((errCode &
                       (ERR_LOW_INTENSITY |

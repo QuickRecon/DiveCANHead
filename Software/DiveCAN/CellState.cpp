@@ -67,7 +67,7 @@ namespace DiveCAN
             }
             else
             {
-                PPO2_acc += static_cast<uint16_t>(cellVals[3].PPO2);
+                PPO2_acc += static_cast<uint16_t>(cellVals[2].PPO2);
                 ++includedCellCount;
             }
 
