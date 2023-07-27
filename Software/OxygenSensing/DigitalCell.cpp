@@ -76,7 +76,7 @@ namespace OxygenSensing
             }
             else
             {
-                printf("Got UART Response: %s\n", inputBuffer);
+                //printf("Got UART Response: %s\n", inputBuffer);
 
                 decodeResponse(inputBuffer);
             }

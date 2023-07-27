@@ -34,7 +34,7 @@ namespace DiveCAN
             // by PPO2 and check if the max and min are more than MAX_DEVIATION apart
             CellVal_s cellVals[3] = {{0, PPO2s[0], 0x1},
                                      {1, PPO2s[1], 0x2},
-                                     {2, PPO2s[2], 0x3}};
+                                     {2, PPO2s[2], 0x4}};
 
             // std::sort(cellVals, cellVals + 3, [this](CellVal_s a, CellVal_s b)
             //           { return a.PPO2 > b.PPO2; });

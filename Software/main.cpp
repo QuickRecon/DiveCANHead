@@ -83,6 +83,7 @@ extern "C"
       auto cellState = DiveCAN::CellState(&cell1, &cell2, &cell3);
 
       printf("C1: %hu, C2: %hu, C3: %hu\n", cellState.GetCellPPO2(0), cellState.GetCellPPO2(1), cellState.GetCellPPO2(2));
+      printf("Concensus: %u, Status Mask: %hu\n", cellState.GetConsensusPPO2(), cellState.GetStatusMask());
     }
   }
 }
