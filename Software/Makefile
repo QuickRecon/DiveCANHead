@@ -30,7 +30,7 @@ CLK = 10000000
 #HFU = 0xDE
 #EFU = 0x05
 # program source files (not including external libraries)
-SRC = main.cpp diveCAN.cpp AnalogCell.cpp DigitalCell.cpp
+SRC = main.cpp DiveCAN/DiveCANDevice.cpp OxygenSensing/AnalogCell.cpp OxygenSensing/DigitalCell.cpp
 # where to look for external libraries (consisting of .c/.cpp files and .h files)
 # e.g. EXT = ../../EyeToSee ../../YouSART
 EXT = mcc_generated_files/system/src mcc_generated_files/timer/src mcc_generated_files/spi/src mcc_generated_files/reset/src mcc_generated_files/nvm/src mcc_generated_files/i2c_host/src mcc_generated_files/adc/src mcc_generated_files/uart/src mcc_generated_files/vref/src CAN_lib/

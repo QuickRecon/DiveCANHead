@@ -31,9 +31,9 @@
     THIS SOFTWARE.
 */
 #include "mcc_generated_files/system/system.h"
-#include "diveCAN.h"
-#include "AnalogCell.h"
-#include "DigitalCell.h"
+#include "DiveCAN/DiveCANDevice.h"
+#include "OxygenSensing/AnalogCell.h"
+#include "OxygenSensing/DigitalCell.h"
 
 /*
     Main application
@@ -57,17 +57,26 @@ extern "C"
   {
     SYSTEM_Initialize();
 
-    auto controller = DiveCAN(4, "CHCKLST");
+    // Become a bus device
+    auto controller = DiveCAN::DiveCANDevice(4, "CHCKLST");
+
+    // Set up our type and cell mappping
     auto cell1 = OxygenSensing::DigitalCell(OxygenSensing::DigitalPort::C1);
     auto cell2 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
-    auto cell3 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
+    auto cell3 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C2);
 
+    // Treating the stack like a heap is perfectly normal
     OxygenSensing::ICell *cells[] = {&cell1, &cell2, &cell3};
 
     while (true)
     {
-      cell1.sample();
-      printf("PPO2: %hu\n", cell1.getPPO2());
+      for(auto* cell : cells){
+        cell->sample();
+      }
+
+
+
+      printf("C1: %hu, C2: %hu, C3: %hu\n", cell1.getPPO2(), cell2.getPPO2(), cell3.getPPO2());
     }
   }
 }

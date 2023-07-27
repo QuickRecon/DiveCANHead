@@ -53,7 +53,7 @@ namespace OxygenSensing
 
     private:
         void decodeResponse(char (&inputBuffer)[BUFFER_LENGTH]);
-        DigitalPort port;
+        DigitalPort port; // Not used for now, because fixed digital out
         uint32_t cellSample = 0;
     };
 }

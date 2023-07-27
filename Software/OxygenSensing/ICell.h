@@ -1,6 +1,6 @@
 #ifndef _ICELL_H
 #define _ICELL_H
-#include "mcc_generated_files/system/system.h"
+#include "../mcc_generated_files/system/system.h"
 
 namespace OxygenSensing
 {

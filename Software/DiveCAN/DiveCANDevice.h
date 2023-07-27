@@ -3,19 +3,20 @@
 
 #define CAN_NAME_LENGTH 8
 
-#include "CAN_lib/mcp_can.h"
+#include "../CAN_lib/mcp_can.h"
 #include <util/delay.h>
-#include "mcc_generated_files/system/system.h" // Printf
+#include "../mcc_generated_files/system/system.h" // Printf
 #include "string.h"
-
-class DiveCAN
+namespace DiveCAN
 {
+    class DiveCANDevice
+    {
     public:
-        DiveCAN(byte in_canID, char* inName);
+        DiveCANDevice(byte in_canID, char *inName);
+        void NotifyPPO2();
         void HandleInboundMessages(); // Event driven/interupt is hard, so keep things sequential (we have time)
     protected:
-
-    // Raw messages
+        // Raw messages
         void sendID();
         void sendName();
         void sendMillis();
@@ -27,11 +28,11 @@ class DiveCAN
         void sendMenuAck();
         void sendMenuText(byte a);
         void sendMenuFields(byte a);
-    
+
     private:
         byte canID; // The bus ID we ident as
-        char name [CAN_NAME_LENGTH+1];
+        char name[CAN_NAME_LENGTH + 1];
         MCP_CAN CAN0; // Our CAN interface
-};
-
+    };
+}
 #endif
