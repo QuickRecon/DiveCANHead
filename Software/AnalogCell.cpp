@@ -30,7 +30,7 @@ namespace OxygenSensing
     {
         adcSample = 0;
         ADC_MUXPOS_t adc_port = analogPortMap[static_cast<uint8_t>(port)];
-        for (int i = 0; i < ADC_SAMPLE_COUNT; i++)
+        for (uint8_t i = 0; i < ADC_SAMPLE_COUNT; ++i)
         {
             adcSample += ADC0_GetConversion(adc_port);
         }
@@ -40,8 +40,8 @@ namespace OxygenSensing
     PPO2_t AnalogCell::getPPO2()
     {
         PPO2_t PPO2 = 0;
-        if((getStatus() == CellStatus_t::CELL_NEED_CAL) || (getStatus() == CellStatus_t::CELL_NEED_CAL)){
-            PPO2 = 0xFF; // Failed cell
+        if((getStatus() == CellStatus_t::CELL_FAIL) || (getStatus() == CellStatus_t::CELL_NEED_CAL)){
+            PPO2 = PPO2_FAIL; // Failed cell
         } else {
             PPO2 = static_cast<PPO2_t>(static_cast<CalCoeff_t>(adcSample) * calibrationCoeff);
         }

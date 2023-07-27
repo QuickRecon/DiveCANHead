@@ -6,6 +6,7 @@ namespace OxygenSensing
         // Make sure bus is avaliable
         while (!USART1_IsTxReady())
         {
+            // Wait for the buffer to flush
         }
         while (USART1_IsRxReady())
         {
@@ -16,46 +17,104 @@ namespace OxygenSensing
 
     void DigitalCell::sample()
     {
-        char inputBuffer[86];
+        char inputBuffer[BUFFER_LENGTH];
 
         // Transmit the command to read
-        const char cmd[] = {'#', 'D', 'O', 'X', 'Y', 0x0D};
-        for (int i = 0; i < 6; i++)
+        const uint8_t cmd[] = {'#', 'D', 'O', 'X', 'Y', NEWLINE};
+        //for (size_t i = 0; i < sizeof(cmd); ++i)
+        for(const auto cmd_char: cmd)
         {
-            USART1_Write(cmd[i]);
-            _delay_ms(10);
+            while (!USART1_IsTxReady())
+            {
+                // Wait for the buffer to flush
+            }
+            USART1_Write(cmd_char);
         }
-
-        // TODO: Make sure we can time out on this read
 
         // Wait for the response
-        while(!USART1_IsRxReady()){}
-
-        // Recieve the response
-        char lastChar = 0;
-        int bufPos = 0;
-        uint32_t loops = 0;
-        while (lastChar != 0x0D && bufPos < 86)
+        uint16_t timeout = 0;
+        while ((!USART1_IsRxReady()) &&
+               (timeout < RESPONSE_TIMEOUT))
         {
-            if (USART1_IsRxReady())
-            {
-                lastChar = USART1_Read();
-                inputBuffer[bufPos] = lastChar;
-                bufPos++;
-            }
-            _delay_us(1);
-            loops++;
+            _delay_ms(1);
+            ++timeout;
         }
-        inputBuffer[bufPos] = '\0'; // Insert null terminator at end
 
-        //printf("%ld Got UART Response: %s\n", loops, inputBuffer);
+        if (timeout >= RESPONSE_TIMEOUT)
+        { // The sensor didn't get back to us, mark as failed
+            cellSample = 0;
+            setStatus(CellStatus_t::CELL_FAIL);
+            printf("NO RESPONSE TO CELL MESSAGE");
+        }
+        else
+        {
+            // Recieve the response
+            char lastChar = 0;
+            size_t bufPos = 0;
+            timeout = 0;
+            while ((lastChar != NEWLINE) &&
+                   (bufPos < (BUFFER_LENGTH-1)) && // Leave room for a null terminator so we can print nicely
+                   (timeout < DECODE_LOOPS))
+            {
+                if (USART1_IsRxReady())
+                {
+                    lastChar = static_cast<char>(USART1_Read());
+                    inputBuffer[bufPos] = lastChar;
+                    ++bufPos;
+                }
+                _delay_us(1); // Slow down our loop just a little so we don't need a bigint to store loops
+                ++timeout;
+            }
 
+            inputBuffer[bufPos] = '\0'; // Insert null terminator at end
+
+            if (timeout >= DECODE_LOOPS)
+            {
+                cellSample = 0;
+                setStatus(CellStatus_t::CELL_FAIL);
+                printf("DECODE TIMEOUT, got: %s\n", inputBuffer);
+            }
+            else
+            {
+                printf("Got UART Response: %s\n", inputBuffer);
+
+                decodeResponse(inputBuffer);
+            }
+        }
+    }
+
+    PPO2_t DigitalCell::getPPO2()
+    {
+        PPO2_t PPO2 = 0;
+        if ((getStatus() == CellStatus_t::CELL_FAIL) || (getStatus() == CellStatus_t::CELL_NEED_CAL))
+        {
+            PPO2 = PPO2_FAIL; // Failed cell
+        }
+        else
+        {
+            PPO2 = static_cast<PPO2_t>(cellSample / HPA_PER_BAR);
+        }
+        return PPO2;
+    }
+
+    Millivolts_t DigitalCell::getMillivolts()
+    {
+        return 0; // Digital cells don't have millivolts
+    }
+
+    void DigitalCell::calibrate(const PPO2_t PPO2)
+    {
+        // Digital cells don't need calibration :D
+    }
+
+    void DigitalCell::decodeResponse(char (&inputBuffer)[BUFFER_LENGTH])
+    {
         // Tokenize it
-        const char *sep = " ";
-        const char *CMD_name = strtok(inputBuffer, sep);
-        const char *PPO2_str = strtok(NULL, sep);
-        strtok(NULL, sep); // Skip temperature
-        const char *err_str = strtok(NULL, sep);
+        const char *const sep = " ";
+        const char *const CMD_name = strtok(inputBuffer, sep);
+        const char *const PPO2_str = strtok(nullptr, sep);
+        strtok(nullptr, sep); // Skip temperature
+        const char *const err_str = strtok(nullptr, sep);
 
         if (strcmp(CMD_name, "#DOXY") != 0) // If we don't get our cmd back then we failed hard
         {
@@ -64,16 +123,21 @@ namespace OxygenSensing
         }
         else
         {
-            cellSample = strtoul(PPO2_str, NULL, 10);
+            cellSample = strtoul(PPO2_str, nullptr, PPO2_BASE);
 
-            int errCode = atoi(err_str);
+            const auto errCode = static_cast<uint16_t>(strtol(err_str,nullptr, PPO2_BASE));
 
             // Check for error states
-            if (errCode == 0)
+            if (0 == errCode)
             {
                 // Everything is fine
             }
-            else if (errCode & (0x2 | 0x4 | 0x08 | 0x10 | 0x20))
+            else if ((errCode &
+                      (ERR_LOW_INTENSITY |
+                       ERR_HIGH_SIGNAL |
+                       ERR_LOW_SIGNAL |
+                       ERR_HIGH_REF |
+                       ERR_TEMP)) != 0)
             {
                 // Fatal errors
                 setStatus(CellStatus_t::CELL_FAIL);
@@ -84,19 +148,5 @@ namespace OxygenSensing
                 setStatus(CellStatus_t::CELL_DEGRADED);
             }
         }
-    }
-
-    PPO2_t DigitalCell::getPPO2() // TODO: handle failed
-    {
-        return static_cast<PPO2_t>(cellSample / 10000);
-    }
-    Millivolts_t DigitalCell::getMillivolts()
-    {
-        return 0; // Digital cells don't have millivolts
-    }
-
-    void DigitalCell::calibrate(const PPO2_t PPO2)
-    {
-        // Digital cells don't need calibration :D
     }
 }

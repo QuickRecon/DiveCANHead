@@ -7,6 +7,8 @@ namespace OxygenSensing
     using PPO2_t = uint8_t;
     using Millivolts_t = uint16_t;
 
+    constexpr PPO2_t PPO2_FAIL = 0xFF;
+
     using CellStatus_t = enum class e_CellStatus {
         CELL_OK,
         CELL_DEGRADED,
