@@ -12,12 +12,12 @@ namespace DiveCAN
     using OxygenSensing::Millivolts_t;
     using OxygenSensing::PPO2_t;
 
-    typedef struct CellVal_s
+    using CellVal_s = struct CellVal_s
     {
         uint8_t cellNum;
         PPO2_t PPO2;
         uint8_t maskVal;
-    } CellVal_s;
+    };
 
     constexpr uint8_t MAX_DEVIATION = 10;
 
@@ -29,7 +29,7 @@ namespace DiveCAN
     {
     public:
         CellState(ICell *C1, ICell *C2, ICell *C3);
-
+        
         PPO2_t GetCellPPO2(uint8_t cellNumber) const;
         PPO2_t GetConsensusPPO2() const;
         Millivolts_t GetCellMillis(uint8_t cellNumber) const;

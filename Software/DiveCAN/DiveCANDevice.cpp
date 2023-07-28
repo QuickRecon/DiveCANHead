@@ -1,9 +1,8 @@
 #include "DiveCANDevice.h"
 namespace DiveCAN
 {
-  DiveCANDevice::DiveCANDevice(byte in_canID, char *inName) : CAN0{MCP_CAN(10)}
+  DiveCANDevice::DiveCANDevice(byte in_canID, char *inName, CalFunc in_calFunc) : canID(in_canID), calFunc(in_calFunc), CAN0{MCP_CAN(10)}
   {
-    canID = in_canID;
     strncpy(name, inName, CAN_NAME_LENGTH);
 
     while (CAN0.begin(MCP_ANY) != CAN_OK)
@@ -29,27 +28,29 @@ namespace DiveCAN
     {
       CAN0.readMsgBuf(&rxId, &len, rxBuf); // Read data: len = data length, buf = data byte(s)
 
-      if ((rxId & 0x80000000) == 0x80000000) // Determine if ID is standard (11 bits) or extended (29 bits)
-        sprintf(msgString, "Extended ID: 0x%.8lX  DLC: %1d  Data:", (rxId & 0x1FFFFFFF), len);
-      else
-        sprintf(msgString, "Standard ID: 0x%.3lX       DLC: %1d  Data:", rxId, len);
+      if ((rxId & 0x80000000) == 0x80000000){ // Determine if ID is standard (11 bits) or extended (29 bits)
+        //sprintf(msgString, "Extended ID: 0x%.8lX  DLC: %1d  Data:", (rxId & 0x1FFFFFFF), len);
+      }
+      else{
+        //sprintf(msgString, "Standard ID: 0x%.3lX       DLC: %1d  Data:", rxId, len);
+      }
 
-      printf(msgString);
+      //printf(msgString);
 
       if ((rxId & 0x40000000) == 0x40000000)
       { // Determine if message is a remote request frame.
-        sprintf(msgString, " REMOTE REQUEST FRAME");
-        printf(msgString);
+        //sprintf(msgString, " REMOTE REQUEST FRAME");
+        //printf(msgString);
       }
       else
       { // If not print the data
         for (byte i = 0; i < len; i++)
         {
-          sprintf(msgString, " 0x%.2X", rxBuf[i]);
-          printf(msgString);
+          //sprintf(msgString, " 0x%.2X", rxBuf[i]);
+          //printf(msgString);
         }
       }
-      printf("\n"); // FFinished printing this packet, newline time
+      //printf("\n"); // FFinished printing this packet, newline time
 
       // While on paper we can just blast stuff out, it makes sense to respond to what the petrel is doing
       if ((rxId & 0x1FFFFFFF) == 0x0D370401 || (rxId & 0x1FFFFFFF) == 0x0D300401)
@@ -74,8 +75,9 @@ namespace DiveCAN
       if ((rxId & 0x1FFFFFFF) == 0x0D130201)
       { // Calibrate
         sendCalAck();
+        CalResult_t result = calFunc(0,0);
         _delay_ms(1000);
-        sendCalComplete();
+        sendCalComplete(result);
       }
 
       // We're asked for our menu, send the menu response
@@ -97,7 +99,7 @@ namespace DiveCAN
     }
   }
 
-  void DiveCANDevice::NotifyPPO2(const CellState state)
+  void DiveCANDevice::NotifyPPO2(const CellState &state)
   {
         sendMillis(state);
         sendPPO2(state);
@@ -134,23 +136,23 @@ namespace DiveCAN
     }
   }
 
-  void DiveCANDevice::sendMillis(const CellState state)
+  void DiveCANDevice::sendMillis(const CellState &state)
   {
     // Load up our 8 bit values
-    uint16_t C1_val = state.GetCellMillis(1);
+    uint16_t C1_val = state.GetCellMillis(0);
     uint16_t C2_val = state.GetCellMillis(1);
-    uint16_t C3_val = state.GetCellMillis(1);
+    uint16_t C3_val = state.GetCellMillis(2);
 
     uint8_t C1_millis[2] = {0,0};
     uint8_t C2_millis[2] = {0,0};
     uint8_t C3_millis[2] = {0,0};
 
-    memcpy(C1_millis, &C1_millis, sizeof(uint16_t));
-    memcpy(C2_millis, &C2_millis, sizeof(uint16_t));
-    memcpy(C3_millis, &C3_millis, sizeof(uint16_t));
+    memcpy(C1_millis, &C1_val, sizeof(uint16_t));
+    memcpy(C2_millis, &C2_val, sizeof(uint16_t));
+    memcpy(C3_millis, &C3_val, sizeof(uint16_t));
 
     // byte data[7] = {0x14, 0x18, 0x13, 0x5f, 0x14, 0x20, 0x00};
-    byte data[7] = {C1_millis[0], C1_millis[1], C2_millis[0], C2_millis[1], C2_millis[0], C2_millis[1], 0x00};
+    byte data[7] = {C1_millis[1], C1_millis[0], C2_millis[1], C2_millis[0], C3_millis[1], C3_millis[0], 0x00};
     byte sndStat = CAN0.sendMsgBuf(0xD110004, 1, 7, data);
     if (sndStat == CAN_OK)
     {
@@ -161,11 +163,11 @@ namespace DiveCAN
       printf("Error Sending millis...");
     }
   }
-  void DiveCANDevice::sendPPO2(const CellState state)
+  void DiveCANDevice::sendPPO2(const CellState &state)
   {
     byte data[4] = {0x00, state.GetCellPPO2(0), state.GetCellPPO2(1), state.GetCellPPO2(2)};
     byte sndStat = CAN0.sendMsgBuf(0xD040004, 1, 4, data);
-    printf("PPO2MSG: %hu %hu %hu %hu\n", data[0], data[1], data[2], data[3]);
+    //printf("PPO2MSG: %hu %hu %hu %hu\n", data[0], data[1], data[2], data[3]);
     if (sndStat == CAN_OK)
     {
       //printf("PPO2 Sent Successfully!\n");
@@ -176,7 +178,7 @@ namespace DiveCAN
     }
   }
 
-  void DiveCANDevice::sendCellsStat(const CellState state)
+  void DiveCANDevice::sendCellsStat(const CellState &state)
   {
     byte data[2] = {0x07 & state.GetStatusMask(), state.GetConsensusPPO2()};
     byte sndStat = CAN0.sendMsgBuf(0xdca0004, 1, 2, data);
@@ -218,9 +220,13 @@ namespace DiveCAN
     }
   }
 
-  void DiveCANDevice::sendCalComplete()
+  void DiveCANDevice::sendCalComplete(const CalResult_t result)
   {
-    byte data[8] = {0x01, 0x34, 0x32, 0x34, 0x64, 0x03, 0xf6, 0x07};
+    uint8_t pressure[2] = {0,0};
+    uint16_t pressureVal = result.pressure;
+    memcpy(pressure, &(pressureVal), sizeof(uint16_t));
+
+    byte data[8] = {0x01, result.C1_millis, result.C2_millis, result.C3_millis, result.fO2, pressure[1], pressure[0], 0x07};
     byte sndStat = CAN0.sendMsgBuf(0xd120004, 1, 8, data);
     if (sndStat == CAN_OK)
     {
@@ -246,11 +252,11 @@ namespace DiveCAN
     }
   }
 
-  char *listItems[5] = {"O2&DIL ON ", "PRSSURE OK?", "BCD/DRSUIT", "MAV? PPO2? ", "BAILOUT?  "};
+  const char *const listItems[5] = {"O2&DIL ON ", "PRSSURE OK?", "BCD/DRSUIT", "MAV? PPO2? ", "BAILOUT?  "};
 
   void DiveCANDevice::sendMenuText(byte a)
   {
-    char *item = listItems[a & 0x0F];
+    const char *item = listItems[a & 0x0F];
     byte data[8] = {0x10, 0x10, 0x00, 0x62, 0x91, a, item[0], item[1]};
     byte sndStat = CAN0.sendMsgBuf(0xd0a0104, 1, 8, data);
     if (sndStat == CAN_OK)

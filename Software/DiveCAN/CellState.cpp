@@ -10,7 +10,7 @@ namespace DiveCAN
     {
         // Zeroth step, load up the millis and PPO2
         Millis[0] = C1->getMillivolts();
-        Millis[1] = C3->getMillivolts();
+        Millis[1] = C2->getMillivolts();
         Millis[2] = C3->getMillivolts();
 
         PPO2s[0] = C1->getPPO2();
@@ -41,10 +41,10 @@ namespace DiveCAN
 
             qsort(cellVals, 3, sizeof(CellVal_s), CelValComp);
 
-                // Now that the list is sorted we check upper and lower
-                // Adding the corresponding bitmasks to the status
-                statusMask = 0;
-            uint16_t PPO2_acc = static_cast<uint16_t>(cellVals[1].PPO2); // Start an accumulator to take an average
+            // Now that the list is sorted we check upper and lower
+            // Adding the corresponding bitmasks to the status
+            statusMask = 0;
+            auto PPO2_acc = static_cast<uint16_t>(cellVals[1].PPO2); // Start an accumulator to take an average
             uint8_t includedCellCount = 1;
 
             // Lower cell
@@ -96,8 +96,8 @@ namespace DiveCAN
 
     int CellState::CelValComp(const void *num1, const void *num2) // comparing function
     {
-        CellVal_s a = *(CellVal_s *)num1;
-        CellVal_s b = *(CellVal_s *)num2;
+        const CellVal_s a = *(const CellVal_s *)num1;
+        const CellVal_s b = *(const CellVal_s *)num2;
         if (a.PPO2 > b.PPO2)
         {
             return 1;
@@ -106,6 +106,9 @@ namespace DiveCAN
         {
             return -1;
         }
-        return 0;
+        else
+        {
+            return 0;
+        }
     }
 }

@@ -36,12 +36,21 @@ namespace OxygenSensing
 
     // Time to wait on the cell to do things
     constexpr uint16_t RESPONSE_TIMEOUT = 1000; // Milliseconds, how long before the cell *defininitely* isn't coming back to us
-    constexpr uint16_t DECODE_LOOPS = 5'000; // Number of loops before we give up on the message coming in;
+    constexpr uint16_t DECODE_LOOPS = 50'000; // Number of loops before we give up on the message coming in;
 
     // Implementation consts
     constexpr uint8_t BUFFER_LENGTH = 86;
     constexpr uint16_t HPA_PER_BAR = 10'000;
     constexpr uint8_t PPO2_BASE = 10;
+
+    using Detailed_Cell_t = struct Detailed_Cell_t
+    {
+        uint32_t PPO2;
+        uint32_t pressure;
+        uint32_t humidity;
+    };
+
+
     class DigitalCell : public ICell
     {
     public:
@@ -51,8 +60,11 @@ namespace OxygenSensing
         Millivolts_t getMillivolts() final;
         void calibrate(PPO2_t PPO2) final;
 
+        Detailed_Cell_t DetailedSample(); // Don't update the state, but get more info from the cell
+
     private:
-        void decodeResponse(char (&inputBuffer)[BUFFER_LENGTH]);
+        CellStatus_t sendCellCommand(char* commandStr, char* response);
+        void decodeDOXYResponse(char (&inputBuffer)[BUFFER_LENGTH]);
         DigitalPort port; // Not used for now, because fixed digital out
         uint32_t cellSample = 0;
     };

@@ -68,7 +68,7 @@ namespace OxygenSensing
         // Our coefficient is simply the float needed to make the current sample the current PPO2
         calibrationCoeff = static_cast<CalCoeff_t>(PPO2) / static_cast<CalCoeff_t>(adcSample);
 
-        printf("Calibrated with coefficient %f", calibrationCoeff);
+        printf("Calibrated with coefficient %f\n", calibrationCoeff);
         // Write that shit to the eeprom
         uint8_t bytes[sizeof(CalCoeff_t)];
         memcpy(bytes, &calibrationCoeff, sizeof(CalCoeff_t));
