@@ -8,6 +8,7 @@ namespace OxygenSensing
         for (uint8_t i = 0; i < sizeof(CalCoeff_t); ++i)
         {
             bytes[i] = EEPROM_Read(eepromAddress(i));
+            printf("eeprom read: %hu:0x%x @ %d\n", i, bytes[i], eepromAddress(i));
         }
 
         // Memory unsafety isn't bad practice, its a way of life
@@ -15,6 +16,7 @@ namespace OxygenSensing
 
         // Assert that our calibration is reasonable, at this stage we only know if we're
         // (probably) calibrated or things are completely cooked
+        printf("Got cal %f\n", calibrationCoeff);
         if ((calibrationCoeff > ANALOG_CAL_LOWER) &&
             (calibrationCoeff < ANALOG_CAL_UPPER))
         {
@@ -22,7 +24,7 @@ namespace OxygenSensing
         }
         else
         {
-            setStatus(CellStatus_t::CELL_NEED_CAL);
+            //setStatus(CellStatus_t::CELL_NEED_CAL);
         }
     }
 
@@ -52,9 +54,9 @@ namespace OxygenSensing
         // ADC bullshit to get a millivolts, there is some fuckery with the cell isolator so
         // these are liable to change
         constexpr uint32_t adc_mult = 11;
-        constexpr uint32_t adc_div = 2900;
+        constexpr uint32_t adc_div = 29;
 
-        return static_cast<Millivolts_t>((adcSample * adc_mult) / adc_div);
+        return static_cast<Millivolts_t>((adcSample * adc_mult*10) / (adc_div*ADC_SAMPLE_COUNT));
     }
 
     // This is probably the most dirt simple calibration routine I can come up with
@@ -81,6 +83,8 @@ namespace OxygenSensing
             {
                 // Wait until the eeprom is free to write the next byte
             }
+
+            printf("eeprom write: %hu:0x%x @ %d\n", i, bytes[i], eepromAddress(i));
         }
 
         if(getStatus() == CellStatus_t::CELL_NEED_CAL){

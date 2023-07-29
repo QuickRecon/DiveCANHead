@@ -73,9 +73,9 @@ extern "C"
     cell2.calibrate(PPO2);
     cell3.calibrate(PPO2);
 
-    result.C1_millis = static_cast<uint8_t>(cell1.getMillivolts()/10);
-    result.C2_millis = static_cast<uint8_t>(cell2.getMillivolts()/10);
-    result.C3_millis = static_cast<uint8_t>(cell3.getMillivolts()/10);
+    result.C1_millis = static_cast<uint8_t>(cell1.getMillivolts()/100);
+    result.C2_millis = static_cast<uint8_t>(cell2.getMillivolts()/100);
+    result.C3_millis = static_cast<uint8_t>(cell3.getMillivolts()/100);
     result.pressure = pressure;
     result.fO2 = static_cast<uint8_t>(static_cast<float>(PPO2) * (1000.0/static_cast<float>(pressure)));
     return result;
@@ -84,6 +84,9 @@ extern "C"
   int main(void)
   {
     SYSTEM_Initialize();
+    cell1 = OxygenSensing::DigitalCell(OxygenSensing::DigitalPort::C1);
+    cell2 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
+    cell3 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C2);
 
     // Become a bus device
     auto controller = DiveCAN::DiveCANDevice(4, "CHCKLST", &calibrate);

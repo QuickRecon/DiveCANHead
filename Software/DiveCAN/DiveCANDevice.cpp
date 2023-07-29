@@ -114,7 +114,7 @@ namespace DiveCAN
     byte sndStat = CAN0.sendMsgBuf(0xD000004, 1, 3, data);
     if (sndStat == CAN_OK)
     {
-      printf("ID Sent Successfully!\n");
+      //printf("ID Sent Successfully!\n");
     }
     else
     {
@@ -139,9 +139,9 @@ namespace DiveCAN
   void DiveCANDevice::sendMillis(const CellState &state)
   {
     // Load up our 8 bit values
-    uint16_t C1_val = state.GetCellMillis(0);
-    uint16_t C2_val = state.GetCellMillis(1);
-    uint16_t C3_val = state.GetCellMillis(2);
+    const uint16_t C1_val = state.GetCellMillis(0);
+    const uint16_t C2_val = state.GetCellMillis(1);
+    const uint16_t C3_val = state.GetCellMillis(2);
 
     uint8_t C1_millis[2] = {0,0};
     uint8_t C2_millis[2] = {0,0};
@@ -198,7 +198,7 @@ namespace DiveCAN
     byte sndStat = CAN0.sendMsgBuf(0xdcb0004, 1, 8, data);
     if (sndStat == CAN_OK)
     {
-      printf("Controller stat Sent Successfully!\n");
+      //printf("Controller stat Sent Successfully!\n");
     }
     else
     {
@@ -212,7 +212,7 @@ namespace DiveCAN
     byte sndStat = CAN0.sendMsgBuf(0xd120004, 1, 8, data);
     if (sndStat == CAN_OK)
     {
-      printf("CalACK Sent Successfully!\n");
+      //printf("CalACK Sent Successfully!\n");
     }
     else
     {
@@ -230,7 +230,7 @@ namespace DiveCAN
     byte sndStat = CAN0.sendMsgBuf(0xd120004, 1, 8, data);
     if (sndStat == CAN_OK)
     {
-      printf("CalComp Sent Successfully!\n");
+      //printf("CalComp Sent Successfully!\n");
     }
     else
     {
