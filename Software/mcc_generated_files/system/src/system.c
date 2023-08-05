@@ -32,6 +32,7 @@
 
 #include "../system.h"
 
+int8_t WDT_Initialize();
 
 void SYSTEM_Initialize(void)
 {
@@ -43,6 +44,25 @@ void SYSTEM_Initialize(void)
     USART0_Initialize();
     USART1_Initialize();
     USART2_Initialize();
+    WDT_Initialize();
     CPUINT_Initialize();
 }
+
+/**
+ * @brief Initializes the WDT module.
+ * @param None.
+ * @return None.
+ */
+int8_t WDT_Initialize()
+{
+    //PERIOD 8K cycles (8.2s); WINDOW Off; 
+    ccp_write_io((void*)&(WDT.CTRLA),0xB);
+    
+    //LOCK disabled; 
+    ccp_write_io((void*)&(WDT.STATUS),0x0);
+    
+
+    return 0;
+}
+
 

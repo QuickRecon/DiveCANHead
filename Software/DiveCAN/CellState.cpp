@@ -63,10 +63,11 @@ namespace DiveCAN
             // Upper cell
             if ((cellVals[2].PPO2 - cellVals[1].PPO2) > MAX_DEVIATION)
             {
-                statusMask |= cellVals[2].maskVal;
+                // Do nothing
             }
             else
             {
+                statusMask |= cellVals[2].maskVal;
                 PPO2_acc += static_cast<uint16_t>(cellVals[2].PPO2);
                 ++includedCellCount;
             }
