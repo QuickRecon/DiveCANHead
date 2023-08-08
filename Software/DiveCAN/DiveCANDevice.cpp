@@ -1,7 +1,7 @@
 #include "DiveCANDevice.h"
 namespace DiveCAN
 {
-  DiveCANDevice::DiveCANDevice(byte in_canID, char *inName, CalFunc in_calFunc) : canID(in_canID), calFunc(in_calFunc), CAN0{MCP_CAN(10)}
+  DiveCANDevice::DiveCANDevice(byte in_canID, char *inName, CalFunc in_calFunc, uint8_t in_version) : canID(in_canID), calFunc(in_calFunc), CAN0{MCP_CAN(10)}, version(in_version), battery_voltage(0), err(DiveCAN_Err::OK)
   {
     strncpy(name, inName, CAN_NAME_LENGTH);
 
@@ -110,7 +110,7 @@ namespace DiveCAN
   void DiveCANDevice::sendID()
   {
     // byte data[3] = {0x01, 0x00, 0x09};
-    byte data[3] = {0x01, 0x00, 0x00};
+    byte data[3] = {0x01, 0x00, version};
     byte sndStat = CAN0.sendMsgBuf(0xD000004, 1, 3, data);
     if (sndStat == CAN_OK)
     {
@@ -194,7 +194,7 @@ namespace DiveCAN
 
   void DiveCANDevice::sendStatus()
   {
-    byte data[8] = {0x5A, 0x00, 0x00, 0x00, 0x00, 0x15, 0xff, 0x02};
+    byte data[8] = {battery_voltage, 0x00, 0x00, 0x00, 0x00, 0x15, 0xff, err};
     byte sndStat = CAN0.sendMsgBuf(0xdcb0004, 1, 8, data);
     if (sndStat == CAN_OK)
     {

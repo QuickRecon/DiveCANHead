@@ -5,6 +5,11 @@
 #include "DiveCAN/CellState.h"
 #include <avr/wdt.h>
 
+
+constexpr uint8_t FIRMWARE_VERSION = 1;
+constexpr uint8_t MIN_BUS_VOLTAGE = 30;
+constexpr uint8_t MIN_IN_VOLTAGE = 22;
+
 /*
     Main application
 */
@@ -26,16 +31,16 @@ extern "C"
   static auto cell2 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C1);
   static auto cell3 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C2);
 
-  DiveCAN::CalResult_t calibrate(const uint8_t in_fO2, const uint16_t in_pressure_val)
+  DiveCAN::CalResult_t calibrate([[maybe_unused]] const uint8_t in_fO2, [[maybe_unused]] const uint16_t in_pressure_val)
   {
 
     DiveCAN::CalResult_t result = {0};
 
     // We have the luxury of a digital cell so lets get an objective PPO2/pressure to play with
-    OxygenSensing::Detailed_Cell_t detailedSample = cell1.DetailedSample();
+    const OxygenSensing::Detailed_Cell_t detailedSample = cell1.DetailedSample();
 
-    auto  PPO2 =  static_cast<OxygenSensing::PPO2_t>(detailedSample.PPO2 / OxygenSensing::HPA_PER_BAR);
-    auto pressure = static_cast<uint16_t>(detailedSample.pressure / 1000);
+    const auto PPO2 =  static_cast<OxygenSensing::PPO2_t>(detailedSample.PPO2 / OxygenSensing::HPA_PER_BAR);
+    const auto pressure = static_cast<uint16_t>(detailedSample.pressure / 1000);
 
     printf("P: %lu p: %u", detailedSample.pressure, pressure);
 
@@ -50,6 +55,37 @@ extern "C"
     return result;
   }
 
+  uint8_t CheckBusVoltage(){
+        uint32_t adcSample = 0;
+        ADC_MUXPOS_t adc_port = ADC_MUXPOS_AIN25_gc;
+        for (uint8_t i = 0; i < OxygenSensing::ADC_SAMPLE_COUNT; ++i)
+        {
+            adcSample += ADC0_GetConversion(adc_port);
+        }
+
+        constexpr uint32_t adc_mult = 11;
+        constexpr uint32_t adc_div = 29;
+
+        const auto millis = static_cast<uint16_t>((adcSample * adc_mult) / (adc_div*OxygenSensing::ADC_SAMPLE_COUNT));
+        return static_cast<uint8_t>(millis * 0.1927);
+  }
+
+  uint8_t CheckSolVoltage(){
+        uint32_t adcSample = 0;
+        ADC_MUXPOS_t adc_port = ADC_MUXPOS_AIN0_gc;
+        for (uint8_t i = 0; i < OxygenSensing::ADC_SAMPLE_COUNT; ++i)
+        {
+            adcSample += ADC0_GetConversion(adc_port);
+        }
+
+
+        constexpr uint32_t adc_mult = 11;
+        constexpr uint32_t adc_div = 29;
+
+        const auto millis = static_cast<uint16_t>((adcSample * adc_mult) / (adc_div*OxygenSensing::ADC_SAMPLE_COUNT));
+        return static_cast<uint8_t>(millis * 0.0625);//
+  }
+
   int main(void)
   {
     SYSTEM_Initialize();
@@ -58,7 +94,7 @@ extern "C"
     cell3 = OxygenSensing::AnalogCell(OxygenSensing::AnalogPort::C2);
 
     // Become a bus device
-    auto controller = DiveCAN::DiveCANDevice(4, "CHCKLST", &calibrate);
+    auto controller = DiveCAN::DiveCANDevice(4, "CHCKLST", &calibrate, FIRMWARE_VERSION);
 
     // // Set up our type and cell mappping
     // auto cell1 = OxygenSensing::DigitalCell(OxygenSensing::DigitalPort::C1);
@@ -70,6 +106,18 @@ extern "C"
     while (true)
     {
       wdt_reset();
+      uint8_t solV = CheckSolVoltage();
+      uint8_t busV = CheckBusVoltage();
+
+      if((busV < MIN_BUS_VOLTAGE) || (solV < MIN_IN_VOLTAGE)){
+        controller.setErr(DiveCAN::DiveCAN_Err::LOW_BATTERY);
+      } else {
+        controller.setErr(DiveCAN::DiveCAN_Err::OK);
+      }
+
+      controller.setBatVoltage(solV);
+      
+
       controller.HandleInboundMessages();
       for (auto *cell : cells)
       {
