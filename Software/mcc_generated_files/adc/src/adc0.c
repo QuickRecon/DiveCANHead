@@ -43,10 +43,10 @@ int8_t ADC0_Initialize(void)
     ADC0.CTRLB = 0xF;
 
     //CHOPPING DISABLE; FREERUN disabled; LEFTADJ disabled; SAMPNUM 32 samples accumulated; 
-    ADC0.CTRLF = 0x0;//0x4a; 0b01000000
+    ADC0.CTRLF = 0x07;//0x7; 0b00000111
 
     //REFSEL Internal 2.048V Reference; 
-    ADC0.CTRLC = 0x5;
+    ADC0.CTRLC = 0x4;
 
     //WINCM No Window Comparison; WINSRC RESULT; 
     ADC0.CTRLD = 0x0;
@@ -55,13 +55,13 @@ int8_t ADC0_Initialize(void)
     ADC0.CTRLE = 0x0;
 
     //GAIN 16x gain; PGABIASSEL 100% BIAS current.; PGAEN enabled; 
-    ADC0.PGACTRL = 0x81; //0b10000001
+    ADC0.PGACTRL = 0x71; //0b01100001
 
     //DBGRUN disabled; 
     ADC0.DBGCTRL = 0x0;
 
     //DIFF disabled; MODE SINGLE_12BIT; START Stop an ongoing conversion; 
-    ADC0.COMMAND = 0x10;
+    ADC0.COMMAND = 0x90;//0x50;// 0x04  0b10010000
 
     //RESOVR disabled; RESRDY disabled; SAMPOVR disabled; SAMPRDY disabled; TRIGOVR disabled; WCMP disabled; 
     ADC0.INTCTRL = 0x0;

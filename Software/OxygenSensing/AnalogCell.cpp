@@ -34,9 +34,9 @@ namespace OxygenSensing
         ADC_MUXPOS_t adc_port = analogPortMap[static_cast<uint8_t>(port)];
         for (uint8_t i = 0; i < ADC_SAMPLE_COUNT; ++i)
         {
-            adcSample += ADC0_GetConversion(adc_port);
+            adcSample += ADC0_GetDiffConversion(true, adc_port, ADC_MUXNEG_GND_gc);
         }
-        //printf("C1: %ld, millis: %d\n", adcSample / 100, getMillivolts());
+        //printf("ADC %d: %ld\n",static_cast<uint8_t>(port), adcSample);
     }
 
     PPO2_t AnalogCell::getPPO2()
@@ -51,7 +51,7 @@ namespace OxygenSensing
     }
     Millivolts_t AnalogCell::getMillivolts()
     {
-        return static_cast<Millivolts_t>((static_cast<float>(adcSample) / (ADC_SAMPLE_COUNT)) * (2.048/(16.0))/4096 * 100000 + 600);
+        return static_cast<Millivolts_t>(abs(static_cast<int32_t>(static_cast<float>(((adcSample+adc_offset[static_cast<uint8_t>(port)]) / (ADC_SAMPLE_COUNT))) * (1.024/(8.0))/2048 * 100000)));
     }
 
     // This is probably the most dirt simple calibration routine I can come up with

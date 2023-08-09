@@ -19,7 +19,7 @@ namespace DiveCAN
         uint8_t maskVal;
     };
 
-    constexpr uint8_t MAX_DEVIATION = 10;
+    constexpr uint8_t MAX_DEVIATION = 15;
 
     // Handles the state of each of the cells and votes for consensus
     // Provides the different parameters the DiveCAN messaging expects.

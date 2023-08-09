@@ -52,10 +52,11 @@ namespace DiveCAN
             // but if we're within it then add it to our average
             if ((cellVals[1].PPO2 - cellVals[0].PPO2) > MAX_DEVIATION)
             {
-                statusMask |= cellVals[0].maskVal;
+                // Do nothing
             }
             else
             {
+                statusMask |= cellVals[0].maskVal;
                 PPO2_acc += static_cast<uint16_t>(cellVals[0].PPO2);
                 ++includedCellCount;
             }
