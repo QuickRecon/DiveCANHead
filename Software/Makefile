@@ -43,7 +43,7 @@ EXT = mcc_generated_files/system/src mcc_generated_files/timer/src mcc_generated
 # include path
 INCLUDE := $(foreach dir, $(EXT), -I$(dir))
 # c flags
-CFLAGS    = -Wall -Os -DF_CPU=$(CLK) -mmcu=$(MCU) -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28 $(INCLUDE)
+CFLAGS    = -Wl,-u,vfprintf -lprintf_flt  -Wall -Os -DF_CPU=$(CLK) -mmcu=$(MCU) -B /home/aren/Archive/Dropbox/DiveCANHead/atpack/gcc/dev/avr64ea28 $(INCLUDE)
 # any aditional flags for c++
 CPPFLAGS =
 

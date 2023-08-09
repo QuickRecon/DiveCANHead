@@ -4,6 +4,7 @@
 #include "OxygenSensing/DigitalCell.h"
 #include "DiveCAN/CellState.h"
 #include <avr/wdt.h>
+#include "math.h"
 
 
 constexpr uint8_t FIRMWARE_VERSION = 1;
@@ -57,33 +58,28 @@ extern "C"
 
   uint8_t CheckBusVoltage(){
         uint32_t adcSample = 0;
-        ADC_MUXPOS_t adc_port = ADC_MUXPOS_AIN22_gc;
+        ADC_MUXPOS_t adc_port = ADC_MUXPOS_AIN25_gc;
         for (uint8_t i = 0; i < OxygenSensing::ADC_SAMPLE_COUNT; ++i)
         {
-            adcSample += ADC0_GetConversion(adc_port);
+            adcSample += ADC0_GetDiffConversion(true, adc_port, ADC_MUXNEG_GND_gc);
         }
 
-        constexpr uint32_t adc_mult = 11;
-        constexpr uint32_t adc_div = 29;
-
-        const auto millis = static_cast<uint16_t>((static_cast<float>(adcSample) / (OxygenSensing::ADC_SAMPLE_COUNT)) * (2.048/(16.0))/4096 * 10000);
-        return static_cast<uint8_t>(millis * 0.1927);
+        const auto millis = static_cast<float>(((adcSample) / (OxygenSensing::ADC_SAMPLE_COUNT))) * (1.024/(8.0))/2048 * 100000;
+        //printf("Bus millis: %f\n", millis/229.168484848* 100);
+        return static_cast<uint8_t>(round(millis /229.168484848* 10));
   }
 
   uint8_t CheckSolVoltage(){
         uint32_t adcSample = 0;
-        ADC_MUXPOS_t adc_port = ADC_MUXPOS_AIN22_gc;
+        ADC_MUXPOS_t adc_port = ADC_MUXPOS_AIN0_gc;
         for (uint8_t i = 0; i < OxygenSensing::ADC_SAMPLE_COUNT; ++i)
         {
-            adcSample += ADC0_GetConversion(adc_port);
+            adcSample += ADC0_GetDiffConversion(true, adc_port, ADC_MUXNEG_GND_gc);
         }
 
-
-        constexpr uint32_t adc_mult = 11;
-        constexpr uint32_t adc_div = 29;
-
-        const auto millis = static_cast<uint16_t>((adcSample * adc_mult) / (adc_div*OxygenSensing::ADC_SAMPLE_COUNT));
-        return static_cast<uint8_t>(millis * 0.0625);//
+        const auto millis = static_cast<float>(((adcSample) / (OxygenSensing::ADC_SAMPLE_COUNT))) * (1.024/(8.0))/2048 * 100000;
+        //printf("Sol millis: %f\n", millis/570*10);
+        return static_cast<uint8_t>(round(millis/570*10));//
   }
 
   int main(void)
