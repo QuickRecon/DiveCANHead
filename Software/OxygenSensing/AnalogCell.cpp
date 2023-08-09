@@ -51,12 +51,7 @@ namespace OxygenSensing
     }
     Millivolts_t AnalogCell::getMillivolts()
     {
-        // ADC bullshit to get a millivolts, there is some fuckery with the cell isolator so
-        // these are liable to change
-        constexpr uint32_t adc_mult = 11;
-        constexpr uint32_t adc_div = 29;
-
-        return static_cast<Millivolts_t>((adcSample * adc_mult*10) / (adc_div*ADC_SAMPLE_COUNT));
+        return static_cast<Millivolts_t>((static_cast<float>(adcSample) / (ADC_SAMPLE_COUNT)) * (2.048/(16.0))/4096 * 100000 + 600);
     }
 
     // This is probably the most dirt simple calibration routine I can come up with

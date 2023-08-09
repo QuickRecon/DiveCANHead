@@ -9,7 +9,7 @@ namespace OxygenSensing
 
     constexpr CalCoeff_t ANALOG_CAL_UPPER = 1000000000.0;
     constexpr CalCoeff_t ANALOG_CAL_LOWER = 0.0;
-    constexpr uint8_t ADC_SAMPLE_COUNT  = 200; // TODO: do this ADC side, probably faster
+    constexpr uint8_t ADC_SAMPLE_COUNT  = 20; // TODO: do this ADC side, probably faster
 
     // Link our class to real hardware
     using AnalogPort = enum class e_AnalogPort {
