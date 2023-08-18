@@ -45,6 +45,7 @@ namespace DiveCAN
             // Adding the corresponding bitmasks to the status
             statusMask = 0;
             auto PPO2_acc = static_cast<uint16_t>(cellVals[1].PPO2); // Start an accumulator to take an average
+            statusMask |= cellVals[1].maskVal;
             uint8_t includedCellCount = 1;
 
             // Lower cell
