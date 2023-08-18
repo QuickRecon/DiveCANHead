@@ -36,7 +36,7 @@ namespace OxygenSensing
         {
             adcSample += ADC0_GetDiffConversion(true, adc_port, ADC_MUXNEG_GND_gc);
         }
-        //printf("ADC %d: %ld\n",static_cast<uint8_t>(port), adcSample);
+        printf("ADC %d: %ld (%ld)\n",static_cast<uint8_t>(port), adcSample, adcSample+adc_offset[static_cast<uint8_t>(port)]);
     }
 
     PPO2_t AnalogCell::getPPO2()
@@ -45,7 +45,7 @@ namespace OxygenSensing
         if((getStatus() == CellStatus_t::CELL_FAIL) || (getStatus() == CellStatus_t::CELL_NEED_CAL)){
             PPO2 = PPO2_FAIL; // Failed cell
         } else {
-            PPO2 = static_cast<PPO2_t>(static_cast<CalCoeff_t>(adcSample) * calibrationCoeff);
+            PPO2 = static_cast<PPO2_t>(abs(static_cast<int32_t>(static_cast<CalCoeff_t>(adcSample+adc_offset[static_cast<uint8_t>(port)]) * calibrationCoeff)));
         }
         return PPO2;
     }
@@ -63,7 +63,7 @@ namespace OxygenSensing
         sample();
 
         // Our coefficient is simply the float needed to make the current sample the current PPO2
-        calibrationCoeff = static_cast<CalCoeff_t>(PPO2) / static_cast<CalCoeff_t>(adcSample);
+        calibrationCoeff = static_cast<CalCoeff_t>(PPO2) / static_cast<CalCoeff_t>(adcSample+adc_offset[static_cast<uint8_t>(port)]);
 
         printf("Calibrated with coefficient %f\n", calibrationCoeff);
         // Write that shit to the eeprom

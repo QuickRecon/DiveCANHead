@@ -19,8 +19,8 @@ namespace OxygenSensing
     };
 
     const uint32_t adc_offset[] = {
-        5594,
-        8640,
+        2200,//5594,
+        2350,//8640,
         0};
 
     // ADC port mapping
