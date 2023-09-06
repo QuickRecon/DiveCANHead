@@ -9,7 +9,7 @@ namespace OxygenSensing
 
     constexpr CalCoeff_t ANALOG_CAL_UPPER = 1000000000.0;
     constexpr CalCoeff_t ANALOG_CAL_LOWER = 0.0;
-    constexpr int8_t ADC_SAMPLE_COUNT = 64; // TODO: do this ADC side, probably faster
+    constexpr int8_t ADC_SAMPLE_COUNT = 32; // TODO: do this ADC side, probably faster
 
     // Link our class to real hardware
     using AnalogPort = enum class e_AnalogPort {
@@ -19,9 +19,9 @@ namespace OxygenSensing
     };
 
     const uint32_t adc_offset[] = {
-        2200,//5594,
-        2350,//8640,
-        0};
+        5164,//5594,
+        5748,//8640,
+        6618};
 
     // ADC port mapping
     const ADC_MUXPOS_t analogPortMap[] = {

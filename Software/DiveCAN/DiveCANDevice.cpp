@@ -7,14 +7,21 @@ namespace DiveCAN
 
     while (CAN0.begin(MCP_ANY) != CAN_OK)
     {
+      _delay_ms(100);
       printf("CAN Begin FAILED\n");
     };
 
     // Set operation mode to normal so the MCP2515 sends acks to received data.
     if (CAN0.setMode(MCP_NORMAL) != CAN_OK)
     {
+      _delay_ms(100);
       printf("CAN Mode Set FAILED\n");
     }
+
+    // Bus init so the shearwater knows we said hi
+    sendID(); 
+    sendName();
+    sendStatus();
   }
 
   void DiveCANDevice::HandleInboundMessages()
@@ -29,10 +36,10 @@ namespace DiveCAN
       CAN0.readMsgBuf(&rxId, &len, rxBuf); // Read data: len = data length, buf = data byte(s)
 
       if ((rxId & 0x80000000) == 0x80000000){ // Determine if ID is standard (11 bits) or extended (29 bits)
-        //sprintf(msgString, "Extended ID: 0x%.8lX  DLC: %1d  Data:", (rxId & 0x1FFFFFFF), len);
+        printf("Extended ID: 0x%.8lX  DLC: %1d\n", (rxId & 0x1FFFFFFF), len);
       }
       else{
-        //sprintf(msgString, "Standard ID: 0x%.3lX       DLC: %1d  Data:", rxId, len);
+        printf("Standard ID: 0x%.3lX       DLC: %1d\n", rxId, len);
       }
 
       //printf(msgString);
@@ -65,6 +72,7 @@ namespace DiveCAN
       if ((rxId & 0x1FFFFFFF) == 0x0D000001)
       { 
         sendID();
+        sendName();
         sendStatus();
       }
 
@@ -75,7 +83,13 @@ namespace DiveCAN
       if ((rxId & 0x1FFFFFFF) == 0x0D130201)
       { // Calibrate
         sendCalAck();
-        CalResult_t result = calFunc(0,0);
+        printf("Cal ack");
+        uint8_t fo2 = rxBuf[0];
+        uint8_t pressure[2] = {rxBuf[2],rxBuf[1]};
+        uint16_t pressureVal = 0;
+        memcpy(&(pressureVal), pressure, sizeof(uint16_t));
+        printf("Cal %d, %ld", fo2, pressureVal);
+        CalResult_t result = calFunc(fo2, pressureVal);
         _delay_ms(1000);
         sendCalComplete(result);
       }
@@ -110,7 +124,7 @@ namespace DiveCAN
   void DiveCANDevice::sendID()
   {
     // byte data[3] = {0x01, 0x00, 0x09};
-    byte data[3] = {0x01, 0x00, version};
+    byte data[3] = {0x01, 0x00, version}; // manufacturer ID, unknown, version number
     byte sndStat = CAN0.sendMsgBuf(0xD000004, 1, 3, data);
     if (sndStat == CAN_OK)
     {
@@ -124,8 +138,7 @@ namespace DiveCAN
 
   void DiveCANDevice::sendName()
   {
-    byte data1[9] = "CHECKLST";
-    byte sndStat = CAN0.sendMsgBuf(0xD010004, 1, 8, data1);
+    byte sndStat = CAN0.sendMsgBuf(0xD010004, 1, 8, (uint8_t*)name);
     if (sndStat == CAN_OK)
     {
       printf("Name Sent Successfully!\n");
@@ -152,7 +165,7 @@ namespace DiveCAN
     memcpy(C3_millis, &C3_val, sizeof(uint16_t));
 
     // byte data[7] = {0x14, 0x18, 0x13, 0x5f, 0x14, 0x20, 0x00};
-    byte data[7] = {C1_millis[1], C1_millis[0], C2_millis[1], C2_millis[0], C3_millis[1], C3_millis[0], 0x00};
+    byte data[7] = {C1_millis[1], C1_millis[0], C2_millis[1], C2_millis[0], C3_millis[1], C3_millis[0], 0x00}; // C1 millis, C2 millis, C3 millis, unknown
     byte sndStat = CAN0.sendMsgBuf(0xD110004, 1, 7, data);
     if (sndStat == CAN_OK)
     {
@@ -165,7 +178,7 @@ namespace DiveCAN
   }
   void DiveCANDevice::sendPPO2(const CellState &state)
   {
-    byte data[4] = {0x00, state.GetCellPPO2(0), state.GetCellPPO2(1), state.GetCellPPO2(2)};
+    byte data[4] = {0x00, state.GetCellPPO2(0), state.GetCellPPO2(1), state.GetCellPPO2(2)}; // unknown, C1, C2, C3, send FF for FAIL indicator
     byte sndStat = CAN0.sendMsgBuf(0xD040004, 1, 4, data);
     //printf("PPO2MSG: %hu %hu %hu %hu\n", data[0], data[1], data[2], data[3]);
     if (sndStat == CAN_OK)
@@ -180,7 +193,7 @@ namespace DiveCAN
 
   void DiveCANDevice::sendCellsStat(const CellState &state)
   {
-    byte data[2] = {0x07 & state.GetStatusMask(), state.GetConsensusPPO2()};
+    byte data[2] = {0x07 & state.GetStatusMask(), state.GetConsensusPPO2()}; // status mask (1 = ok, 0 = not ok), consensus PPO2 (for deco calcs)
     byte sndStat = CAN0.sendMsgBuf(0xdca0004, 1, 2, data);
     if (sndStat == CAN_OK)
     {
@@ -194,7 +207,7 @@ namespace DiveCAN
 
   void DiveCANDevice::sendStatus()
   {
-    byte data[8] = {battery_voltage, 0x00, 0x00, 0x00, 0x00, 0x15, 0xff, err};
+    byte data[8] = {battery_voltage, 0x00, 0x00, 0x00, 0x00, 0x15, 0xff, err}; // battery voltage, unknown, unknown, unknown, unknown, unknown, unknown, err code
     byte sndStat = CAN0.sendMsgBuf(0xdcb0004, 1, 8, data);
     if (sndStat == CAN_OK)
     {
@@ -208,7 +221,7 @@ namespace DiveCAN
 
   void DiveCANDevice::sendCalAck()
   {
-    byte data[8] = {0x05, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x00};
+    byte data[8] = {0x05, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x00}; // totally unknown, copied from observation
     byte sndStat = CAN0.sendMsgBuf(0xd120004, 1, 8, data);
     if (sndStat == CAN_OK)
     {
@@ -226,7 +239,7 @@ namespace DiveCAN
     uint16_t pressureVal = result.pressure;
     memcpy(pressure, &(pressureVal), sizeof(uint16_t));
 
-    byte data[8] = {0x01, result.C1_millis, result.C2_millis, result.C3_millis, result.fO2, pressure[1], pressure[0], 0x07};
+    byte data[8] = {0x01, result.C1_millis, result.C2_millis, result.C3_millis, result.fO2, pressure[1], pressure[0], 0x07}; // unknown, C1 millis, C2 millis, C3 millis, cal FO2, cal pressure, unknown
     byte sndStat = CAN0.sendMsgBuf(0xd120004, 1, 8, data);
     if (sndStat == CAN_OK)
     {
@@ -240,7 +253,7 @@ namespace DiveCAN
 
   void DiveCANDevice::sendMenuAck()
   {
-    byte data[6] = {0x05, 0x00, 0x62, 0x91, 0x00, 0x05};
+    byte data[6] = {0x05, 0x00, 0x62, 0x91, 0x00, 0x05};  // totally unknown, copied from observation
     byte sndStat = CAN0.sendMsgBuf(0xd0a0104, 1, 6, data);
     if (sndStat == CAN_OK)
     {

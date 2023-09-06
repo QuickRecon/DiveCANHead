@@ -36,7 +36,7 @@ namespace OxygenSensing
         {
             adcSample += ADC0_GetDiffConversion(true, adc_port, ADC_MUXNEG_GND_gc);
         }
-        printf("ADC %d: %ld (%ld)\n",static_cast<uint8_t>(port), adcSample, adcSample+adc_offset[static_cast<uint8_t>(port)]);
+        //printf("ADC %d: %ld (%ld)\n",static_cast<uint8_t>(port), adcSample, adcSample+adc_offset[static_cast<uint8_t>(port)]);
     }
 
     PPO2_t AnalogCell::getPPO2()

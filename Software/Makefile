@@ -30,10 +30,10 @@ CLK = 10000000
 #HFU = 0xDE
 #EFU = 0x05
 # program source files (not including external libraries)
-SRC = main.cpp DiveCAN/DiveCANDevice.cpp DiveCAN/CellState.cpp OxygenSensing/AnalogCell.cpp OxygenSensing/DigitalCell.cpp
+SRC = main.cpp
 # where to look for external libraries (consisting of .c/.cpp files and .h files)
 # e.g. EXT = ../../EyeToSee ../../YouSART
-EXT = mcc_generated_files/system/src mcc_generated_files/timer/src mcc_generated_files/spi/src mcc_generated_files/reset/src mcc_generated_files/nvm/src mcc_generated_files/i2c_host/src mcc_generated_files/adc/src mcc_generated_files/uart/src mcc_generated_files/vref/src CAN_lib/
+EXT = DiveCAN OxygenSensing mcc_generated_files/system/src mcc_generated_files/timer/src mcc_generated_files/spi/src mcc_generated_files/reset/src mcc_generated_files/nvm/src mcc_generated_files/i2c_host/src mcc_generated_files/adc/src mcc_generated_files/uart/src mcc_generated_files/vref/src CAN_lib/
 
 
 #################################################################################################
@@ -82,7 +82,7 @@ clean:
 
 flash:
 # pymcuprog write -f $(PRJ).hex -d avr64ea28 -t uart -u /dev/ttyUSB0 --packpath /home/aren/Archive/Dropbox/DiveCANHead/atpack/Atmel.AVR-Ex_DFP.2.5.176.atpack --uart-timeout 3 --verify --erase
-	avrdude -p avr64ea28 -c SerialUPDI -P /dev/ttyUSB0 -U flash:w:main.hex:i
+	avrdude -p avr64ea28 -c SerialUPDI -P /dev/ttyUSB1 -U flash:w:main.hex:i
 
 # other targets
 # objects from c files
