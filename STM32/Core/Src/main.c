@@ -21,9 +21,7 @@
 #include "adc.h"
 #include "can.h"
 #include "i2c.h"
-#include "iwdg.h"
 #include "usart.h"
-#include "wwdg.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -97,8 +95,6 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
-  MX_IWDG_Init();
-  MX_WWDG_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -110,6 +106,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    HAL_GPIO_TogglePin (LED0_GPIO_Port, LED0_Pin);
+    HAL_GPIO_TogglePin (LED1_GPIO_Port, LED1_Pin);
+    HAL_GPIO_TogglePin (LED2_GPIO_Port, LED2_Pin);
+    HAL_GPIO_TogglePin (LED3_GPIO_Port, LED3_Pin);
+    HAL_GPIO_TogglePin (LED4_GPIO_Port, LED4_Pin);
+    HAL_GPIO_TogglePin (LED5_GPIO_Port, LED5_Pin);
+    HAL_GPIO_TogglePin (LED6_GPIO_Port, LED6_Pin);
+    HAL_GPIO_TogglePin (LED7_GPIO_Port, LED7_Pin);
+    HAL_Delay (100);   /* Insert delay 100 ms */
   }
   /* USER CODE END 3 */
 }
@@ -133,10 +138,8 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE
-                              |RCC_OSCILLATORTYPE_MSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = 0;
   RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_6;
