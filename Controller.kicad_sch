@@ -996,12 +996,9 @@
     (pin "4" (uuid bf33aa2e-a7e5-4bb1-86cd-36b50842542c))
     (pin "5" (uuid fd656a2b-4955-4560-acbc-798a8319fc03))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "J6") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "J7") (unit 1)
         )
       )
     )
@@ -1024,15 +1021,12 @@
     )
     (pin "1" (uuid 7555b8d3-24a2-4645-9581-a02d14948258))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR023") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "#PWR040") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "#PWR049") (unit 1)
         )
       )
     )
@@ -1059,15 +1053,12 @@
     (pin "1" (uuid 90fcb964-349a-4188-a41e-844037440c3a))
     (pin "2" (uuid f6764e3e-823f-4ca4-b099-69d4291c939c))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "C5") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "C12") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "C13") (unit 1)
         )
       )
     )
@@ -1100,12 +1091,9 @@
     (pin "7" (uuid 8a354edf-3197-4423-b32d-5640b74e7263))
     (pin "8" (uuid 208d5a02-a876-45eb-a479-6930311f2ca9))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "U9") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "U12") (unit 1)
         )
       )
     )
@@ -1128,12 +1116,9 @@
     )
     (pin "1" (uuid 44fd522f-3a55-497c-9b14-d48917912c69))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "TP3") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "TP5") (unit 1)
         )
       )
     )
@@ -1156,15 +1141,12 @@
     )
     (pin "1" (uuid 3e1f8de5-de1f-43f7-9663-239b1e07fd4d))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR023") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "#PWR043") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "#PWR052") (unit 1)
         )
       )
     )
@@ -1191,15 +1173,12 @@
     (pin "1" (uuid 97f64c6f-2ed3-437d-bbe5-8b7bff55cce9))
     (pin "2" (uuid 8ad3ae07-5ec7-48b7-b78e-a249fe4d5ff4))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "R25") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "R33") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "R38") (unit 1)
         )
       )
     )
@@ -1222,15 +1201,12 @@
     )
     (pin "1" (uuid 6b2b616e-2c8c-4f96-9930-de601a7f1d54))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR024") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "#PWR035") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "#PWR044") (unit 1)
         )
       )
     )
@@ -1257,15 +1233,12 @@
     (pin "1" (uuid 5e9f16c5-f16c-46f2-877a-b6905603d0ae))
     (pin "2" (uuid f6d0843f-9c20-4edf-8d62-b39675fe7922))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "R25") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "R32") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "R37") (unit 1)
         )
       )
     )
@@ -1288,15 +1261,12 @@
     )
     (pin "1" (uuid 62e92f8a-3b5c-4409-b68c-701bcb6bfcb2))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR023") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "#PWR038") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "#PWR047") (unit 1)
         )
       )
     )
@@ -1319,15 +1289,12 @@
     )
     (pin "1" (uuid acd4cb67-9882-4b54-9677-52e5f6cc642f))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR023") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "#PWR041") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "#PWR050") (unit 1)
         )
       )
     )
@@ -1350,15 +1317,12 @@
     )
     (pin "1" (uuid 44050752-75e3-4437-afe0-300ce07677de))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR023") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "#PWR039") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "#PWR048") (unit 1)
         )
       )
     )
@@ -1381,15 +1345,12 @@
     )
     (pin "1" (uuid 3b427044-80ae-462c-b678-783c95830af0))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR023") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "#PWR042") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "#PWR051") (unit 1)
         )
       )
     )
@@ -1412,15 +1373,12 @@
     )
     (pin "1" (uuid 888334f2-cb27-426a-843e-566219555d24))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR022") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "#PWR037") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "#PWR046") (unit 1)
         )
       )
     )
@@ -1443,12 +1401,9 @@
     )
     (pin "1" (uuid c6a060d1-e354-4a96-bb6f-d05325f9be2a))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "TP2") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "TP4") (unit 1)
         )
       )
     )
@@ -1491,15 +1446,12 @@
     (pin "8" (uuid a72b32eb-889a-4a4b-87a4-b2f8ad5bc3f6))
     (pin "9" (uuid 3cbc94c3-48d0-4d93-95e6-ec43fc844aca))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "U9") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "U8") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "U11") (unit 1)
         )
       )
     )
@@ -1526,12 +1478,9 @@
     (pin "1" (uuid 86df6b75-6fa9-4533-b37d-33fbeaef2dfd))
     (pin "2" (uuid e8d144ce-ea62-4a1b-ab88-bbd857dbb94b))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "R34") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "R39") (unit 1)
         )
       )
     )
@@ -1554,15 +1503,12 @@
     )
     (pin "1" (uuid 7e4140e8-5394-4258-b393-d01f80818cbe))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR027") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "#PWR036") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "#PWR045") (unit 1)
         )
       )
     )
@@ -1589,15 +1535,12 @@
     (pin "1" (uuid 58f258d1-5e7e-461f-a213-153a427b22a0))
     (pin "2" (uuid ff6dc3d6-42ec-4a4a-a541-a8fcb35a7a5d))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "R25") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "R30") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "R35") (unit 1)
         )
       )
     )
@@ -1624,15 +1567,12 @@
     (pin "1" (uuid c39a58e0-5938-433d-8f6d-3af4b4c9338d))
     (pin "2" (uuid 2d8de014-d95f-475a-90fb-920bfbe5e1ee))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "R26") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "R31") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "R36") (unit 1)
         )
       )
     )
@@ -1685,15 +1625,12 @@
     (pin "8" (uuid e5b3e397-e2ef-4062-8ee8-a15fe4dfe6a1))
     (pin "9" (uuid f4ba9562-06f7-43d4-8825-c06edaeaf79e))
     (instances
-      (project "DiveCAN Head"
+      (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "U7") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ebb06654-070a-4b33-9da8-16c72194d8ef"
           (reference "U7") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/8c9eb41c-2fd2-46fc-94d8-ac718ff40a45"
-          (reference "U10") (unit 1)
         )
       )
     )
