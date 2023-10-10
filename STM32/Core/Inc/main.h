@@ -93,10 +93,15 @@ void Error_Handler(void);
 #define LED6_GPIO_Port GPIOB
 #define LED7_Pin GPIO_PIN_14
 #define LED7_GPIO_Port GPIOB
+#define ADC1_ALERT_Pin GPIO_PIN_11
+#define ADC1_ALERT_GPIO_Port GPIOA
+#define ADC2_ALERT_Pin GPIO_PIN_12
+#define ADC2_ALERT_GPIO_Port GPIOA
 #define CONVERTER_EN_Pin GPIO_PIN_10
 #define CONVERTER_EN_GPIO_Port GPIOC
 #define CAN_EN_Pin GPIO_PIN_11
 #define CAN_EN_GPIO_Port GPIOC
+#define CAN_EN_EXTI_IRQn EXTI15_10_IRQn
 #define SSC1_EN_Pin GPIO_PIN_5
 #define SSC1_EN_GPIO_Port GPIOB
 
