@@ -107,14 +107,22 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     HAL_GPIO_TogglePin (LED0_GPIO_Port, LED0_Pin);
-    HAL_GPIO_TogglePin (LED1_GPIO_Port, LED1_Pin);
-    HAL_GPIO_TogglePin (LED2_GPIO_Port, LED2_Pin);
-    HAL_GPIO_TogglePin (LED3_GPIO_Port, LED3_Pin);
-    HAL_GPIO_TogglePin (LED4_GPIO_Port, LED4_Pin);
-    HAL_GPIO_TogglePin (LED5_GPIO_Port, LED5_Pin);
-    HAL_GPIO_TogglePin (LED6_GPIO_Port, LED6_Pin);
-    HAL_GPIO_TogglePin (LED7_GPIO_Port, LED7_Pin);
+    // HAL_GPIO_TogglePin (LED1_GPIO_Port, LED1_Pin);
+    // HAL_GPIO_TogglePin (LED2_GPIO_Port, LED2_Pin);
+    // HAL_GPIO_TogglePin (LED3_GPIO_Port, LED3_Pin);
+    // HAL_GPIO_TogglePin (LED4_GPIO_Port, LED4_Pin);
+    // HAL_GPIO_TogglePin (LED5_GPIO_Port, LED5_Pin);
+    // HAL_GPIO_TogglePin (LED6_GPIO_Port, LED6_Pin);
+    // HAL_GPIO_TogglePin (LED7_GPIO_Port, LED7_Pin);
     HAL_Delay (100);   /* Insert delay 100 ms */
+    CAN_TxHeaderTypeDef pTxHeader;
+    pTxHeader.DLC = 1;                                        // give message size of 1 byte
+    pTxHeader.IDE = CAN_ID_STD;                               // set identifier to standard
+    pTxHeader.RTR = CAN_RTR_DATA;                             // set RTR type to data
+    pTxHeader.StdId = 0x05;                                  // define a standard identifier, used for message identification by filters (switch this for the other microcontroller)
+    uint8_t data = 0x79;
+    uint32_t TxMailbox;
+    HAL_CAN_AddTxMessage(&hcan1, &pTxHeader, &data, &TxMailbox); // function to add message for transmition
   }
   /* USER CODE END 3 */
 }
@@ -138,11 +146,15 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 1;
+  RCC_OscInitStruct.PLL.PLLN = 15;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV7;
+  RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
+  RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -152,19 +164,64 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
   {
     Error_Handler();
   }
+
+  /** Enables the Clock Security System
+  */
+  HAL_RCC_EnableCSS();
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+  HAL_GPIO_TogglePin (LED4_GPIO_Port, LED4_Pin);
+}
 
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+  HAL_GPIO_TogglePin (LED3_GPIO_Port, LED3_Pin);
+}
+
+void HAL_CAN_WakeUpFromRxMsgCallback(CAN_HandleTypeDef *hcan){
+  HAL_GPIO_TogglePin (LED2_GPIO_Port, LED2_Pin);
+}
+
+
+void JumpToBootloader(void)
+{
+     HAL_SuspendTick();
+
+     /* Clear Interrupt Enable Register & Interrupt Pending Register */
+     for (int i=0;i<5;i++)
+     {
+         NVIC->ICER[i]=0xFFFFFFFF;
+         NVIC->ICPR[i]=0xFFFFFFFF;
+     }
+
+     HAL_FLASH_Unlock();
+
+     HAL_FLASH_OB_Unlock();
+
+     // RM0351 Rev 7 Page 93/1903
+     // AN2606 Rev 44 Page 23/372
+     CLEAR_BIT(FLASH->OPTR, FLASH_OPTR_nBOOT0);
+     SET_BIT(FLASH->OPTR, FLASH_OPTR_nBOOT1);
+     CLEAR_BIT(FLASH->OPTR, FLASH_OPTR_nSWBOOT0);
+
+     SET_BIT(FLASH->CR, FLASH_CR_OPTSTRT);
+
+     while(READ_BIT(FLASH->SR, FLASH_SR_BSY));
+
+     HAL_FLASH_OB_Launch();
+}
 /* USER CODE END 4 */
 
 /**

@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file    stm32l4xx_it.c
-  * @brief   Interrupt Service Routines.
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2023 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file    stm32l4xx_it.c
+ * @brief   Interrupt Service Routines.
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2023 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
@@ -75,6 +75,7 @@ void NMI_Handler(void)
   /* USER CODE BEGIN NonMaskableInt_IRQn 0 */
 
   /* USER CODE END NonMaskableInt_IRQn 0 */
+  HAL_RCC_NMI_IRQHandler();
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
   while (1)
   {
@@ -208,11 +209,34 @@ void SysTick_Handler(void)
 void CAN1_RX0_IRQHandler(void)
 {
   /* USER CODE BEGIN CAN1_RX0_IRQn 0 */
-
+  HAL_GPIO_TogglePin (LED7_GPIO_Port, LED7_Pin);
   /* USER CODE END CAN1_RX0_IRQn 0 */
   HAL_CAN_IRQHandler(&hcan1);
   /* USER CODE BEGIN CAN1_RX0_IRQn 1 */
+  // CAN_RxHeaderTypeDef pRxHeader;
+  // uint8_t pData[64] = {0};
+  // HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &pRxHeader, pData);
 
+  // // Use 0x05 to reset into bootloader for flashing
+  // if (pRxHeader.StdId == 0x05)
+  // {
+  //   // Transmit an ack for sanity
+  //   CAN_TxHeaderTypeDef pTxHeader;
+  //   pTxHeader.DLC = 1;                                        // give message size of 1 byte
+  //   pTxHeader.IDE = CAN_ID_STD;                               // set identifier to standard
+  //   pTxHeader.RTR = CAN_RTR_DATA;                             // set RTR type to data
+  //   pTxHeader.StdId = 0x05;                                  // define a standard identifier, used for message identification by filters (switch this for the other microcontroller)
+  //   uint8_t data = 0x79;
+  //   uint32_t TxMailbox;
+  //   HAL_CAN_AddTxMessage(&hcan1, &pTxHeader, &data, &TxMailbox); // function to add message for transmition
+
+  //   // POLLING BAD
+  //   // wait for the txmessage to send
+  //   while(HAL_CAN_IsTxMessagePending(&hcan1, TxMailbox)){}; 
+
+  //   // TO THE BOOTLOADER!
+  //   JumpToBootloader();
+  // }
   /* USER CODE END CAN1_RX0_IRQn 1 */
 }
 
@@ -226,22 +250,8 @@ void CAN1_RX1_IRQHandler(void)
   /* USER CODE END CAN1_RX1_IRQn 0 */
   HAL_CAN_IRQHandler(&hcan1);
   /* USER CODE BEGIN CAN1_RX1_IRQn 1 */
-
+  HAL_GPIO_TogglePin (LED6_GPIO_Port, LED6_Pin);
   /* USER CODE END CAN1_RX1_IRQn 1 */
-}
-
-/**
-  * @brief This function handles CAN1 SCE interrupt.
-  */
-void CAN1_SCE_IRQHandler(void)
-{
-  /* USER CODE BEGIN CAN1_SCE_IRQn 0 */
-
-  /* USER CODE END CAN1_SCE_IRQn 0 */
-  HAL_CAN_IRQHandler(&hcan1);
-  /* USER CODE BEGIN CAN1_SCE_IRQn 1 */
-
-  /* USER CODE END CAN1_SCE_IRQn 1 */
 }
 
 /**
