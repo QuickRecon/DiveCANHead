@@ -209,7 +209,6 @@ void SysTick_Handler(void)
 void CAN1_RX0_IRQHandler(void)
 {
   /* USER CODE BEGIN CAN1_RX0_IRQn 0 */
-  HAL_GPIO_TogglePin (LED7_GPIO_Port, LED7_Pin);
   /* USER CODE END CAN1_RX0_IRQn 0 */
   HAL_CAN_IRQHandler(&hcan1);
   /* USER CODE BEGIN CAN1_RX0_IRQn 1 */
@@ -250,7 +249,6 @@ void CAN1_RX1_IRQHandler(void)
   /* USER CODE END CAN1_RX1_IRQn 0 */
   HAL_CAN_IRQHandler(&hcan1);
   /* USER CODE BEGIN CAN1_RX1_IRQn 1 */
-  HAL_GPIO_TogglePin (LED6_GPIO_Port, LED6_Pin);
   /* USER CODE END CAN1_RX1_IRQn 1 */
 }
 

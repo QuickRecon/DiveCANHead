@@ -101,21 +101,22 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  
+  CAN_TxHeaderTypeDef pTxHeader;
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    HAL_GPIO_TogglePin (LED0_GPIO_Port, LED0_Pin);
+    HAL_GPIO_TogglePin (LED1_GPIO_Port, LED1_Pin);
     // HAL_GPIO_TogglePin (LED1_GPIO_Port, LED1_Pin);
-    // HAL_GPIO_TogglePin (LED2_GPIO_Port, LED2_Pin);
-    // HAL_GPIO_TogglePin (LED3_GPIO_Port, LED3_Pin);
-    // HAL_GPIO_TogglePin (LED4_GPIO_Port, LED4_Pin);
+    HAL_GPIO_TogglePin (LED2_GPIO_Port, LED2_Pin);
+    HAL_GPIO_TogglePin (LED3_GPIO_Port, LED3_Pin);
+    HAL_GPIO_TogglePin (LED4_GPIO_Port, LED4_Pin);
     // HAL_GPIO_TogglePin (LED5_GPIO_Port, LED5_Pin);
     // HAL_GPIO_TogglePin (LED6_GPIO_Port, LED6_Pin);
     // HAL_GPIO_TogglePin (LED7_GPIO_Port, LED7_Pin);
-    HAL_Delay (100);   /* Insert delay 100 ms */
-    CAN_TxHeaderTypeDef pTxHeader;
+    HAL_Delay (500);   /* Insert delay 100 ms */
     pTxHeader.DLC = 1;                                        // give message size of 1 byte
     pTxHeader.IDE = CAN_ID_STD;                               // set identifier to standard
     pTxHeader.RTR = CAN_RTR_DATA;                             // set RTR type to data
@@ -183,17 +184,16 @@ void SystemClock_Config(void)
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
   HAL_GPIO_TogglePin (LED4_GPIO_Port, LED4_Pin);
-}
+  CAN_RxHeaderTypeDef pRxHeader;
+  uint8_t pData[64] = {0};
+  HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &pRxHeader, pData);
 
-void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-  HAL_GPIO_TogglePin (LED3_GPIO_Port, LED3_Pin);
+  // Use 0x05 to reset into bootloader for flashing
+  if (pRxHeader.StdId == 0x05)
+  {
+    JumpToBootloader();
+  }
 }
-
-void HAL_CAN_WakeUpFromRxMsgCallback(CAN_HandleTypeDef *hcan){
-  HAL_GPIO_TogglePin (LED2_GPIO_Port, LED2_Pin);
-}
-
 
 void JumpToBootloader(void)
 {
