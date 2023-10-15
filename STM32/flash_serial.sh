@@ -1,0 +1,1 @@
+stm32flash -vR -w build/STM32.hex /dev/ttyUSB0
