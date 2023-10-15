@@ -23,7 +23,6 @@
 #include "i2c.h"
 #include "usart.h"
 #include "gpio.h"
-#include <stdio.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -97,13 +96,36 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
+  
+  ADC_ChannelConfTypeDef bus_adc_conf = {0};
+  bus_adc_conf.Channel = ADC_CHANNEL_1;
+  bus_adc_conf.Rank = ADC_REGULAR_RANK_1;
+  bus_adc_conf.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+  bus_adc_conf.SingleDiff = ADC_SINGLE_ENDED;
+  bus_adc_conf.OffsetNumber = ADC_OFFSET_NONE;
+  bus_adc_conf.Offset = 0;
+  
+  ADC_ChannelConfTypeDef bat_adc_conf = {0};
+  bat_adc_conf.Channel = ADC_CHANNEL_4;
+  bat_adc_conf.Rank = ADC_REGULAR_RANK_1;
+  bat_adc_conf.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+  bat_adc_conf.SingleDiff = ADC_SINGLE_ENDED;
+  bat_adc_conf.OffsetNumber = ADC_OFFSET_NONE;
+  bat_adc_conf.Offset = 0;
+
+  ADC_ChannelConfTypeDef vcc_adc_conf = {0};
+  vcc_adc_conf.Channel = ADC_CHANNEL_VBAT;
+  vcc_adc_conf.Rank = ADC_REGULAR_RANK_1;
+  vcc_adc_conf.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+  vcc_adc_conf.SingleDiff = ADC_SINGLE_ENDED;
+  vcc_adc_conf.OffsetNumber = ADC_OFFSET_NONE;
+  vcc_adc_conf.Offset = 0;
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   
-  CAN_TxHeaderTypeDef pTxHeader;
   while (1)
   {
     /* USER CODE END WHILE */
@@ -123,7 +145,7 @@ int main(void)
     // Read the config registers of the ADCs
     uint8_t adc1_rx[2] = {0,0};
     HAL_I2C_Mem_Read(&hi2c1, 0x48<<1, 0x01,1,adc1_rx, 2, 1000);
-    uint8_t adc1_tx[25];
+    char adc1_tx[25];
     snprintf(adc1_tx, 25, "adc1: %#02x %#02x\n", adc1_rx[0], adc1_rx[1]);
     HAL_UART_Transmit(&huart2, adc1_tx, strlen(adc1_tx), 1000);
 
@@ -132,16 +154,45 @@ int main(void)
     
     HAL_I2C_Mem_Write(&hi2c1, 0x49<<1, 0x01,1,adc2_tx, 2, 1000);
     HAL_I2C_Mem_Read(&hi2c1, 0x49<<1, 0x01,1,adc2_rx, 2, 1000);
-    uint8_t adc2_print[25];
+    char adc2_print[25];
     snprintf(adc2_print, 25, "adc2: %#02x %#02x\n", adc2_rx[0], adc2_rx[1]);
     HAL_UART_Transmit(&huart2, adc2_print, strlen(adc2_print), 1000);
 
     // Now poke at the CAN power bus
     uint8_t pwr_rx[1] = {0};    
     HAL_I2C_Mem_Read(&hi2c1, 0x2E<<1, 0x09,1,pwr_rx, 1, 1000);
-    uint8_t pwr_print[25];
+    char pwr_print[25];
     snprintf(pwr_print, 25, "pwr: %#02x\n", pwr_rx[0]);
     HAL_UART_Transmit(&huart2, pwr_print, strlen(pwr_print), 1000);
+
+    // Read ADC
+
+    uint32_t battery_V;
+    uint32_t solenoid_V;
+    uint32_t vcc_V;
+
+    HAL_ADC_ConfigChannel(&hadc1, &bus_adc_conf);
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 1000);
+    solenoid_V = HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Stop(&hadc1);
+
+
+    HAL_ADC_ConfigChannel(&hadc1, &bat_adc_conf);
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 1000);
+    battery_V = HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Stop(&hadc1);
+
+    HAL_ADC_ConfigChannel(&hadc1, &vcc_adc_conf);
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 1000);
+    vcc_V = HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Stop(&hadc1);
+
+    char adc_print[100];
+    snprintf(adc_print, 100, "Bat_V: %ld Bus_V: %ld vcc_V: %ld\n", battery_V, solenoid_V, vcc_V);
+    HAL_UART_Transmit(&huart2, adc_print, strlen(adc_print), 1000);
 
     HAL_Delay (500);   /* Insert delay 100 ms */
   }

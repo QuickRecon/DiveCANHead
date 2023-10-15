@@ -61,6 +61,8 @@ void JumpToBootloader(void);
 #define CAN_SILENT_GPIO_Port GPIOC
 #define CAN_SHDN_Pin GPIO_PIN_14
 #define CAN_SHDN_GPIO_Port GPIOC
+#define SOLENOID_BUS_Pin GPIO_PIN_0
+#define SOLENOID_BUS_GPIO_Port GPIOC
 #define SOLENOID_Pin GPIO_PIN_1
 #define SOLENOID_GPIO_Port GPIOC
 #define PWR_RDY_Pin GPIO_PIN_2
