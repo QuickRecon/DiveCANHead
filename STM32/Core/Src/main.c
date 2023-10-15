@@ -23,6 +23,7 @@
 #include "i2c.h"
 #include "usart.h"
 #include "gpio.h"
+#include <stdio.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -116,9 +117,32 @@ int main(void)
     // HAL_GPIO_TogglePin (LED5_GPIO_Port, LED5_Pin);
     // HAL_GPIO_TogglePin (LED6_GPIO_Port, LED6_Pin);
     // HAL_GPIO_TogglePin (LED7_GPIO_Port, LED7_Pin);
-    uint8_t tx_buff[]= "test\n";
+    uint8_t tx_buff[]= "loop start\n";
+    HAL_UART_Transmit(&huart2, tx_buff, sizeof(tx_buff), 1000);
 
-    HAL_UART_Transmit(&huart2, tx_buff, 10, 1000);
+    // Read the config registers of the ADCs
+    uint8_t adc1_rx[2] = {0,0};
+    HAL_I2C_Mem_Read(&hi2c1, 0x48<<1, 0x01,1,adc1_rx, 2, 1000);
+    uint8_t adc1_tx[25];
+    snprintf(adc1_tx, 25, "adc1: %#02x %#02x\n", adc1_rx[0], adc1_rx[1]);
+    HAL_UART_Transmit(&huart2, adc1_tx, strlen(adc1_tx), 1000);
+
+    uint8_t adc2_rx[2] = {0,0};
+    uint8_t adc2_tx[2] = {0,1};
+    
+    HAL_I2C_Mem_Write(&hi2c1, 0x49<<1, 0x01,1,adc2_tx, 2, 1000);
+    HAL_I2C_Mem_Read(&hi2c1, 0x49<<1, 0x01,1,adc2_rx, 2, 1000);
+    uint8_t adc2_print[25];
+    snprintf(adc2_print, 25, "adc2: %#02x %#02x\n", adc2_rx[0], adc2_rx[1]);
+    HAL_UART_Transmit(&huart2, adc2_print, strlen(adc2_print), 1000);
+
+    // Now poke at the CAN power bus
+    uint8_t pwr_rx[1] = {0};    
+    HAL_I2C_Mem_Read(&hi2c1, 0x2E<<1, 0x09,1,pwr_rx, 1, 1000);
+    uint8_t pwr_print[25];
+    snprintf(pwr_print, 25, "pwr: %#02x\n", pwr_rx[0]);
+    HAL_UART_Transmit(&huart2, pwr_print, strlen(pwr_print), 1000);
+
     HAL_Delay (500);   /* Insert delay 100 ms */
   }
   /* USER CODE END 3 */
