@@ -116,6 +116,9 @@ int main(void)
     // HAL_GPIO_TogglePin (LED5_GPIO_Port, LED5_Pin);
     // HAL_GPIO_TogglePin (LED6_GPIO_Port, LED6_Pin);
     // HAL_GPIO_TogglePin (LED7_GPIO_Port, LED7_Pin);
+    uint8_t tx_buff[]= "test\n";
+
+    HAL_UART_Transmit(&huart2, tx_buff, 10, 1000);
     HAL_Delay (500);   /* Insert delay 100 ms */
   }
   /* USER CODE END 3 */
