@@ -99,49 +99,6 @@ int main(void)
   MX_USART3_UART_Init();
   MX_SDMMC1_SD_Init();
   /* USER CODE BEGIN 2 */
-
-  ADC_ChannelConfTypeDef bus_adc_conf = {0};
-  bus_adc_conf.Channel = ADC_CHANNEL_1;
-  bus_adc_conf.Rank = ADC_REGULAR_RANK_1;
-  bus_adc_conf.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
-  bus_adc_conf.SingleDiff = ADC_SINGLE_ENDED;
-  bus_adc_conf.OffsetNumber = ADC_OFFSET_NONE;
-  bus_adc_conf.Offset = 0;
-
-  ADC_ChannelConfTypeDef bat_adc_conf = {0};
-  bat_adc_conf.Channel = ADC_CHANNEL_4;
-  bat_adc_conf.Rank = ADC_REGULAR_RANK_1;
-  bat_adc_conf.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
-  bat_adc_conf.SingleDiff = ADC_SINGLE_ENDED;
-  bat_adc_conf.OffsetNumber = ADC_OFFSET_NONE;
-  bat_adc_conf.Offset = 0;
-
-  ADC_ChannelConfTypeDef vcc_adc_conf = {0};
-  vcc_adc_conf.Channel = ADC_CHANNEL_VBAT;
-  vcc_adc_conf.Rank = ADC_REGULAR_RANK_1;
-  vcc_adc_conf.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
-  vcc_adc_conf.SingleDiff = ADC_SINGLE_ENDED;
-  vcc_adc_conf.OffsetNumber = ADC_OFFSET_NONE;
-  vcc_adc_conf.Offset = 0;
-
-  HAL_Delay(100);
-
-  // Set vcc
-  uint8_t addr = 0x2F<<1;
-  uint8_t pwr_vset = 0xC |(0b0001 << 4);
-  uint8_t chrg_set = 1<<4 | (0b000 << 5);
-  uint8_t pwr_auto_off = 0x0;
-  uint8_t max_cap = 1 << 4;
-  uint8_t pwr_mode = 0b00000001;
-  uint8_t pwr_active = 0b00000000;
-
-  //HAL_I2C_Mem_Write(&hi2c1, addr, 0x09, 1, &pwr_vset, 1, 1000);
-  //HAL_I2C_Mem_Write(&hi2c1, addr, 0x0B, 1, &pwr_auto_off, 1, 1000);
-  //HAL_I2C_Mem_Write(&hi2c1, addr, 0x0C, 1, &max_cap, 1, 1000);
-  //HAL_I2C_Mem_Write(&hi2c1, addr, 0x0A, I2C_MEMADD_SIZE_8BIT, &chrg_set, 1, 1000);
-  //HAL_I2C_Mem_Write(&hi2c1, addr, 0x08, 1, &pwr_mode, 1, 1000);
-
-  // HAL_GPIO_WritePin(SOLENOID_GPIO_Port, SOLENOID_Pin, 1);
   HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 1);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);
@@ -150,14 +107,6 @@ int main(void)
   HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, 1);
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, 1);
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, 1);
-  //HAL_GPIO_WritePin(CONVERTER_EN_GPIO_Port, CONVERTER_EN_Pin, GPIO_PIN_SET);
-
-  //HAL_GPIO_WritePin(SSC1_EN_GPIO_Port, SSC1_EN_Pin, 1);
-  
-  //HAL_GPIO_WritePin(SSC2_EN_GPIO_Port, SSC2_EN_Pin, 1);
-  //HAL_GPIO_WritePin(SSC3_EN_GPIO_Port, SSC3_EN_Pin, 1);
-
-  //HAL_GPIO_TogglePin(CONVERTER_EN_GPIO_Port, CONVERTER_EN_Pin);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -170,100 +119,6 @@ int main(void)
     /* USER CODE BEGIN 3 */
     HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 
-    // HAL_GPIO_TogglePin(SOLENOID_GPIO_Port, SOLENOID_Pin);
-
-    // Now poke at the CAN power bus
-    //uint8_t pwr_rx = 0;
-    //uint8_t pwr_print[100];
-    //uint8_t i2cstat = HAL_I2C_Mem_Read(&hi2c1, addr, 0x01,1,&pwr_rx, 1, 1000);
-    //snprintf(pwr_print, 100, "%d %d pwr 0x01: %#02x\n", i2cstat, hi2c1.ErrorCode, pwr_rx);
-    //HAL_UART_Transmit(&huart2, pwr_print, strlen(pwr_print), 1000);
-
-    //HAL_I2C_Mem_Read(&hi2c1, addr, 0x0B,1,&pwr_rx, 1, 1000);
-    //snprintf(pwr_print, 100, "pwr 0x0B: %#02x\n", pwr_rx);
-    //HAL_UART_Transmit(&huart2, pwr_print, strlen(pwr_print), 1000);
-
-    //HAL_I2C_Mem_Read(&hi2c1, addr, 0x0C,1,&pwr_rx, 1, 1000);
-    //snprintf(pwr_print, 100, "pwr 0x0C: %#02x\n", pwr_rx);
-    //HAL_UART_Transmit(&huart2, pwr_print, strlen(pwr_print), 1000);
-
-    //HAL_I2C_Mem_Read(&hi2c1, addr, 0x08,1,&pwr_rx, 1, 1000);
-    //snprintf(pwr_print, 100, "pwr 0x08: %#02x\n\n", pwr_rx);
-    //HAL_UART_Transmit(&huart2, pwr_print, strlen(pwr_print), 1000);
-
-    // Address oxygen cell
-
-    // // Read the config registers of the ADCs
-    // HAL_StatusTypeDef ret;
-    // uint8_t adc1_rx[2] = {0,0};
-    // ret = HAL_I2C_Mem_Read(&hi2c1, 0x48<<1, 0x01,1,adc1_rx, 2, 1000);
-    // uint8_t adc1_tx[25];
-    // snprintf(adc1_tx, 25, "%d adc1: %#02x %#02x\n", ret, adc1_rx[0], adc1_rx[1]);
-    // HAL_UART_Transmit(&huart2, adc1_tx, strlen(adc1_tx), 1000);
-
-    // uint8_t adc2_rx[2] = {0,0};
-    // uint8_t adc2_tx[2] = {0,1};
-    
-    // HAL_I2C_Mem_Write(&hi2c1, 0x49<<1, 0x01,1,adc2_tx, 2, 1000);
-    // ret = HAL_I2C_Mem_Read(&hi2c1, 0x49<<1, 0x01,1,adc2_rx, 2, 1000);
-    // uint8_t adc2_print[25];
-    // snprintf(adc2_print, 25, "%d adc2: %#02x %#02x\n", ret, adc2_rx[0], adc2_rx[1]);
-    // HAL_UART_Transmit(&huart2, adc2_print, strlen(adc2_print), 1000);
-
-    // // Now poke at the CAN power bus
-    // uint8_t pwr_rx[1] = {0};    
-    // ret = HAL_I2C_Mem_Read(&hi2c1, 0x2E<<1, 0x09,1,pwr_rx, 1, 1000);
-    // uint8_t pwr_print[25];
-    // snprintf(pwr_print, 25, "%d pwr: %#02x\n\n", ret, pwr_rx[0]);
-    // HAL_UART_Transmit(&huart2, pwr_print, strlen(pwr_print), 1000);
-
-
-    // for(uint8_t address = 1; address < 127; address++ ){
-      
-    //   uint8_t addr_print[25];
-    //   ret = HAL_I2C_IsDeviceReady(&hi2c1, address<<1, 3, 1000);
-    //   snprintf(addr_print, 25, "%#02x: %d\n", address, ret);
-    //   HAL_UART_Transmit(&huart2, addr_print, strlen(addr_print), 1000);
-    // }
-
-    // Read ADC
-    // uint32_t battery_V;
-    // uint32_t solenoid_V;
-    // uint32_t vcc_V;
-
-    // HAL_ADC_ConfigChannel(&hadc1, &bus_adc_conf);
-    // HAL_ADC_Start(&hadc1);
-    // HAL_ADC_PollForConversion(&hadc1, 1000);
-    // solenoid_V = HAL_ADC_GetValue(&hadc1);
-    // HAL_ADC_Stop(&hadc1);
-
-    // HAL_ADC_ConfigChannel(&hadc1, &bat_adc_conf);
-    // HAL_ADC_Start(&hadc1);
-    // HAL_ADC_PollForConversion(&hadc1, 1000);
-    // battery_V = HAL_ADC_GetValue(&hadc1);
-    // HAL_ADC_Stop(&hadc1);
-
-    // HAL_ADC_ConfigChannel(&hadc1, &vcc_adc_conf);
-    // HAL_ADC_Start(&hadc1);
-    // HAL_ADC_PollForConversion(&hadc1, 1000);
-    // vcc_V = HAL_ADC_GetValue(&hadc1);
-    // HAL_ADC_Stop(&hadc1);
-
-    // char adc_print[100];
-    // snprintf(adc_print, 100, "Bat_V: %ld Bus_V: %ld vcc_V: %ld\n", battery_V, solenoid_V, vcc_V);
-    // HAL_UART_Transmit(&huart2, adc_print, strlen(adc_print), 1000);
-
-
-
-    //uint8_t tx[] = {'#', 'D', 'O', 'X', 'Y', 0x0D, 0x0A};
-    //uint8_t status = HAL_UART_Transmit(&huart1, tx, 7, 1000);
-    
-    //snprintf(pwr_print, 100, "cell stat: %d\n\n", status);
-    //HAL_UART_Transmit(&huart2, pwr_print, strlen(pwr_print), 1000);
-    //HAL_Delay(500);
-    //HAL_I2C_Mem_Write(&hi2c1, addr, 0x08, 1, &pwr_active, 1, 1000);
-    //HAL_I2C_Mem_Write(&hi2c1, addr, 0x08, 1, &pwr_mode, 1, 1000);
-    HAL_Delay(1000); /* Insert delay 100 ms */
   }
   /* USER CODE END 3 */
 }
