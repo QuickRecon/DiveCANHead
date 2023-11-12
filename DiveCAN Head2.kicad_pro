@@ -34,9 +34,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 0.762,
-          "height": 1.524,
-          "width": 1.524
+          "drill": 3.2,
+          "height": 6.4,
+          "width": 6.4
         },
         "silk_line_width": 0.15,
         "silk_text_italic": false,
@@ -128,7 +128,7 @@
         "min_via_diameter": 0.15,
         "solder_mask_clearance": 0.0,
         "solder_mask_min_width": 0.0,
-        "solder_mask_to_copper_clearance": 0.0,
+        "solder_mask_to_copper_clearance": 0.005,
         "use_height_for_length_calcs": true
       },
       "teardrop_options": [
@@ -196,14 +196,7 @@
     "equivalence_files": []
   },
   "erc": {
-    "erc_exclusions": [
-      "power_pin_not_driven|1270000|1498600|2215be90-a450-4693-b790-a64cca3a2ae4|00000000-0000-0000-0000-000000000000|||",
-      "power_pin_not_driven|1358900|355600|9370cf00-f098-4fea-b118-189c9ce7c322|00000000-0000-0000-0000-000000000000|||",
-      "power_pin_not_driven|1358900|381000|c86ac54a-58c1-494e-9dba-515f1b302019|00000000-0000-0000-0000-000000000000|||",
-      "power_pin_not_driven|1638300|1511300|9a0bc4ee-4d25-447f-98a2-3605935d8543|00000000-0000-0000-0000-000000000000|||",
-      "power_pin_not_driven|1803400|1574800|9a0bc4ee-4d25-447f-98a2-3605935d8543|00000000-0000-0000-0000-000000000000|||",
-      "power_pin_not_driven|635000|1752600|4c49ca88-0519-421b-a9f8-2efed4e406b7|00000000-0000-0000-0000-000000000000|||"
-    ],
+    "erc_exclusions": [],
     "meta": {
       "version": 0
     },
@@ -557,24 +550,16 @@
       ""
     ],
     [
-      "e24c1d91-b99a-4f21-88d7-d0085b2674c6",
-      "Solid State Cell 1"
-    ],
-    [
-      "eebf4901-148a-4728-ad21-141c9a96b034",
-      "Solid State Cell 2"
-    ],
-    [
-      "d4b689b2-1c68-47fa-9468-5eead096bf3d",
-      "Solid State Cell 3"
-    ],
-    [
       "9021e904-ec93-4c28-9903-7bba14359351",
-      "Battery Converter"
+      "Solenoid Driver"
     ],
     [
-      "7183bf99-253d-413a-9d38-656cebee2cc7",
-      "CAN Power Converter"
+      "113722a3-860b-4deb-adf7-14c4825bf494",
+      "BatteryConverter"
+    ],
+    [
+      "73b7918b-ce02-4f63-8843-2340af9521c2",
+      "CANConverter"
     ]
   ],
   "text_variables": {}

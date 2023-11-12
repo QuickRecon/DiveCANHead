@@ -61,24 +61,18 @@ void JumpToBootloader(void);
 #define CAN_SILENT_GPIO_Port GPIOC
 #define CAN_SHDN_Pin GPIO_PIN_14
 #define CAN_SHDN_GPIO_Port GPIOC
-#define SOLENOID_BUS_Pin GPIO_PIN_0
-#define SOLENOID_BUS_GPIO_Port GPIOC
 #define SOLENOID_Pin GPIO_PIN_1
 #define SOLENOID_GPIO_Port GPIOC
-#define PWR_RDY_Pin GPIO_PIN_2
-#define PWR_RDY_GPIO_Port GPIOC
-#define BATTERY_Pin GPIO_PIN_3
-#define BATTERY_GPIO_Port GPIOC
-#define SSC2_EN_Pin GPIO_PIN_1
-#define SSC2_EN_GPIO_Port GPIOA
-#define CONFIG0_Pin GPIO_PIN_4
-#define CONFIG0_GPIO_Port GPIOA
-#define CONFIG1_Pin GPIO_PIN_5
-#define CONFIG1_GPIO_Port GPIOA
-#define CONFIG2_Pin GPIO_PIN_6
-#define CONFIG2_GPIO_Port GPIOA
-#define SSC3_EN_Pin GPIO_PIN_7
-#define SSC3_EN_GPIO_Port GPIOA
+#define BATTERY_EN_Pin GPIO_PIN_1
+#define BATTERY_EN_GPIO_Port GPIOA
+#define VCC_STAT_Pin GPIO_PIN_4
+#define VCC_STAT_GPIO_Port GPIOA
+#define BUS_SEL2_Pin GPIO_PIN_5
+#define BUS_SEL2_GPIO_Port GPIOA
+#define BUS_SEL1_Pin GPIO_PIN_6
+#define BUS_SEL1_GPIO_Port GPIOA
+#define BUS_STAT_Pin GPIO_PIN_7
+#define BUS_STAT_GPIO_Port GPIOA
 #define LED0_Pin GPIO_PIN_0
 #define LED0_GPIO_Port GPIOB
 #define LED1_Pin GPIO_PIN_1
@@ -99,13 +93,17 @@ void JumpToBootloader(void);
 #define ADC1_ALERT_GPIO_Port GPIOA
 #define ADC2_ALERT_Pin GPIO_PIN_12
 #define ADC2_ALERT_GPIO_Port GPIOA
-#define CONVERTER_EN_Pin GPIO_PIN_10
-#define CONVERTER_EN_GPIO_Port GPIOC
+#define BATTERY_Pin GPIO_PIN_14
+#define BATTERY_GPIO_Port GPIOA
 #define CAN_EN_Pin GPIO_PIN_11
 #define CAN_EN_GPIO_Port GPIOC
 #define CAN_EN_EXTI_IRQn EXTI15_10_IRQn
-#define SSC1_EN_Pin GPIO_PIN_5
-#define SSC1_EN_GPIO_Port GPIOB
+#define SOL_SEL2_Pin GPIO_PIN_3
+#define SOL_SEL2_GPIO_Port GPIOB
+#define SOL_SEL1_Pin GPIO_PIN_4
+#define SOL_SEL1_GPIO_Port GPIOB
+#define SOL_STAT_Pin GPIO_PIN_5
+#define SOL_STAT_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

@@ -36,8 +36,8 @@
     (stroke (width 0.05) (type solid)) (layer "F.CrtYd") (tstamp 3bb9269a-a92c-4674-b644-f762ebbd385c))
   (fp_line (start 37.8 -10.6) (end 37.8 10.6)
     (stroke (width 0.05) (type solid)) (layer "F.CrtYd") (tstamp 613614cd-9e47-4985-bbf0-7f74c1bff6bd))
-  (pad "1" thru_hole rect (at -35 0 180) (size 3.5 3.5) (drill 2) (layers "*.Cu" "*.Mask") (tstamp b5ab0dce-2d8a-4404-b3f4-af3f6744f5e0))
-  (pad "2" thru_hole circle (at 35 0 180) (size 3.5 3.5) (drill 2) (layers "*.Cu" "*.Mask") (tstamp 3cac690a-0132-423c-9497-8e3f36ed5615))
+  (pad "1" thru_hole rect (at -35 0 180) (size 3.5 7.5) (drill oval 2 6) (layers "*.Cu" "*.Mask") (tstamp b5ab0dce-2d8a-4404-b3f4-af3f6744f5e0))
+  (pad "2" thru_hole oval (at 35 0 180) (size 3.5 7.5) (drill oval 2 6) (layers "*.Cu" "*.Mask") (tstamp 3cac690a-0132-423c-9497-8e3f36ed5615))
   (model "${KICAD6_3DMODEL_DIR}/Battery.3dshapes/BatteryHolder_MPD_BH-18650-PC2.wrl"
     (offset (xyz -34.75 0 0))
     (scale (xyz 1 1 1))

@@ -286,11 +286,11 @@
     )
   )
 
-  (junction (at 138.43 82.55) (diameter 0) (color 0 0 0 0)
-    (uuid 1696447d-73ce-4e09-ad45-50bfeba4ed35)
+  (junction (at 119.38 83.82) (diameter 0) (color 0 0 0 0)
+    (uuid 078cae9b-7c50-48b0-a484-09e05a386df6)
   )
-  (junction (at 138.43 91.44) (diameter 0) (color 0 0 0 0)
-    (uuid 5e6e15e8-4425-429b-9931-5e1c9646bc08)
+  (junction (at 128.27 83.82) (diameter 0) (color 0 0 0 0)
+    (uuid 3db8e983-f073-48e9-aad9-bd79eacbc8e0)
   )
   (junction (at 162.56 96.52) (diameter 0) (color 0 0 0 0)
     (uuid 64b4b9c4-e605-4624-ade3-9713f2da3f86)
@@ -298,8 +298,14 @@
   (junction (at 162.56 88.9) (diameter 0) (color 0 0 0 0)
     (uuid 6a6483bd-a53f-4a27-943d-337e385fba36)
   )
-  (junction (at 138.43 96.52) (diameter 0) (color 0 0 0 0)
-    (uuid aae90129-d28f-4fd0-9086-aeb486015707)
+  (junction (at 128.27 91.44) (diameter 0) (color 0 0 0 0)
+    (uuid 895ecc21-4834-4bba-9692-ecaf96121df4)
+  )
+  (junction (at 132.08 83.82) (diameter 0) (color 0 0 0 0)
+    (uuid cb2ece2d-2f90-451a-bcef-ba534fc00150)
+  )
+  (junction (at 134.62 96.52) (diameter 0) (color 0 0 0 0)
+    (uuid d5009706-86c6-405b-a4ff-0e058a6d4408)
   )
   (junction (at 184.15 88.9) (diameter 0) (color 0 0 0 0)
     (uuid d6073044-6052-4679-b558-0f27428a6421)
@@ -307,7 +313,14 @@
   (junction (at 173.99 88.9) (diameter 0) (color 0 0 0 0)
     (uuid e7084f15-1bb2-46ee-9998-cab066cd8b1b)
   )
+  (junction (at 132.08 91.44) (diameter 0) (color 0 0 0 0)
+    (uuid f348dc24-6f38-4c4d-823d-b09e5bc690c0)
+  )
 
+  (wire (pts (xy 119.38 83.82) (xy 128.27 83.82))
+    (stroke (width 0) (type default))
+    (uuid 00927fdc-00b6-4593-a20e-f032aac7e118)
+  )
   (wire (pts (xy 161.29 96.52) (xy 162.56 96.52))
     (stroke (width 0) (type default))
     (uuid 017a9f30-fe56-4478-a3cd-e12eabd2a7e1)
@@ -324,21 +337,37 @@
     (stroke (width 0) (type default))
     (uuid 056d9ed7-2b6d-4af4-8db1-e324f2d43d34)
   )
-  (wire (pts (xy 113.03 93.98) (xy 140.97 93.98))
+  (wire (pts (xy 140.97 91.44) (xy 132.08 91.44))
     (stroke (width 0) (type default))
-    (uuid 22ebad53-da28-4a0a-9669-2653b8617c87)
+    (uuid 25106103-55db-4fd1-8d21-5a465ab36a26)
   )
   (wire (pts (xy 162.56 88.9) (xy 173.99 88.9))
     (stroke (width 0) (type default))
     (uuid 321c6b1a-b5ae-444f-b2a9-a38bb34cffc1)
   )
-  (wire (pts (xy 140.97 96.52) (xy 138.43 96.52))
+  (wire (pts (xy 132.08 83.82) (xy 140.97 83.82))
+    (stroke (width 0) (type default))
+    (uuid 45e4ef76-3bc0-4f8b-b222-5e4cd272d77d)
+  )
+  (wire (pts (xy 140.97 83.82) (xy 140.97 88.9))
+    (stroke (width 0) (type default))
+    (uuid 510e78b8-0154-4be6-a786-62aaec0c2b8a)
+  )
+  (wire (pts (xy 134.62 96.52) (xy 140.97 96.52))
     (stroke (width 0) (type default))
     (uuid 52f71d53-e0b2-4580-a8f1-e55f124fccc4)
   )
-  (wire (pts (xy 140.97 82.55) (xy 140.97 88.9))
+  (wire (pts (xy 128.27 83.82) (xy 132.08 83.82))
     (stroke (width 0) (type default))
-    (uuid 699703ef-716c-41ec-9c28-5d056ecc5f22)
+    (uuid 5a4b65b9-5bfd-4ce9-8d89-26b593a4f464)
+  )
+  (wire (pts (xy 128.27 91.44) (xy 132.08 91.44))
+    (stroke (width 0) (type default))
+    (uuid 5e1afa72-3a47-40c6-bf64-fbd30f34f201)
+  )
+  (wire (pts (xy 116.84 83.82) (xy 119.38 83.82))
+    (stroke (width 0) (type default))
+    (uuid 761cfa68-9232-4e46-96f6-5050e6d9f375)
   )
   (wire (pts (xy 161.29 88.9) (xy 162.56 88.9))
     (stroke (width 0) (type default))
@@ -348,44 +377,28 @@
     (stroke (width 0) (type default))
     (uuid 9dc86513-25d9-4e37-8e3a-6bd723fc5f8e)
   )
-  (wire (pts (xy 138.43 90.17) (xy 138.43 91.44))
+  (wire (pts (xy 128.27 96.52) (xy 134.62 96.52))
     (stroke (width 0) (type default))
-    (uuid 9f5b9a20-cda4-48c5-be72-be587af7eaaf)
-  )
-  (wire (pts (xy 138.43 82.55) (xy 140.97 82.55))
-    (stroke (width 0) (type default))
-    (uuid a9aac46c-b7e3-4519-8454-61d374b48e17)
-  )
-  (wire (pts (xy 138.43 91.44) (xy 140.97 91.44))
-    (stroke (width 0) (type default))
-    (uuid aecbc8ee-9ef5-4490-b887-4b365c11d089)
+    (uuid b98226e0-7734-45a3-84ca-8183ece84de2)
   )
   (wire (pts (xy 138.43 99.06) (xy 140.97 99.06))
     (stroke (width 0) (type default))
     (uuid c48ed612-dc2f-4239-83c2-db765e8d8e4c)
   )
-  (wire (pts (xy 134.62 96.52) (xy 138.43 96.52))
+  (wire (pts (xy 128.27 91.44) (xy 128.27 96.52))
     (stroke (width 0) (type default))
-    (uuid caab177a-c799-4b96-9038-28a51da6173e)
-  )
-  (wire (pts (xy 138.43 91.44) (xy 138.43 96.52))
-    (stroke (width 0) (type default))
-    (uuid cc32f6bf-f668-41ff-ba0f-31edccf54272)
-  )
-  (wire (pts (xy 135.89 82.55) (xy 138.43 82.55))
-    (stroke (width 0) (type default))
-    (uuid f6afec74-86ac-481e-9a11-80cdec025989)
+    (uuid e7d7a488-770f-49fe-8cdc-baeb34c3e80d)
   )
   (wire (pts (xy 184.15 88.9) (xy 189.23 88.9))
     (stroke (width 0) (type default))
     (uuid f6bfc38c-1c90-45d6-a55d-eac5487f13f5)
   )
 
-  (hierarchical_label "ENABLE" (shape input) (at 113.03 93.98 180) (fields_autoplaced)
+  (hierarchical_label "ENABLE" (shape input) (at 140.97 93.98 180) (fields_autoplaced)
     (effects (font (size 1.27 1.27)) (justify right))
     (uuid 1cc0695d-785d-461f-a08f-12faf405f55d)
   )
-  (hierarchical_label "IN" (shape input) (at 135.89 82.55 180) (fields_autoplaced)
+  (hierarchical_label "IN" (shape input) (at 116.84 83.82 180) (fields_autoplaced)
     (effects (font (size 1.27 1.27)) (justify right))
     (uuid c3afa560-f792-4bd8-ae1f-e4c1d57bd01e)
   )
@@ -397,7 +410,7 @@
   (symbol (lib_id "power:GNDREF") (at 151.13 114.3 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 03815d2e-8b6a-4368-9e71-e01da0205364)
-    (property "Reference" "#PWR019" (at 151.13 120.65 0)
+    (property "Reference" "#PWR?" (at 151.13 120.65 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 153.035 115.57 0)
@@ -413,10 +426,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "#PWR019") (unit 1)
+          (reference "#PWR?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "#PWR019") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "#PWR056") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "#PWR062") (unit 1)
         )
       )
     )
@@ -425,7 +444,7 @@
   (symbol (lib_id "power:GNDREF") (at 184.15 96.52 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 0642029b-ff09-46a7-950b-e0870d4f83d8)
-    (property "Reference" "#PWR029" (at 184.15 102.87 0)
+    (property "Reference" "#PWR?" (at 184.15 102.87 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 184.15 100.465 0)
@@ -441,10 +460,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "#PWR029") (unit 1)
+          (reference "#PWR?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "#PWR029") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "#PWR059") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "#PWR065") (unit 1)
         )
       )
     )
@@ -453,7 +478,7 @@
   (symbol (lib_id "Library:TPS63001") (at 151.13 99.06 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 2ef50424-ca0b-4370-b3ef-4a87bfdfc59d)
-    (property "Reference" "U4" (at 151.13 80.732 0)
+    (property "Reference" "U?" (at 151.13 80.732 0)
       (effects (font (size 1.27 1.27)))
     )
     (property "Value" "TPS63000" (at 151.13 82.78 0)
@@ -482,10 +507,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "U4") (unit 1)
+          (reference "U?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "U4") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "U9") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "U10") (unit 1)
         )
       )
     )
@@ -494,7 +525,7 @@
   (symbol (lib_id "Library:C") (at 173.99 92.71 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 3b4bda5e-3d9f-4c5a-ae75-74c988ff443c)
-    (property "Reference" "C11" (at 176.911 91.686 0)
+    (property "Reference" "C?" (at 176.911 91.686 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "10u" (at 176.911 93.734 0)
@@ -514,10 +545,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "C11") (unit 1)
+          (reference "C?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "C11") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "C17") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "C20") (unit 1)
         )
       )
     )
@@ -526,10 +563,10 @@
   (symbol (lib_id "Library:R") (at 162.56 100.33 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 54fdb85a-2ea7-433f-b054-c88101d84b62)
-    (property "Reference" "R12" (at 164.338 99.306 0)
+    (property "Reference" "R?" (at 164.338 99.1179 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
-    (property "Value" "178k" (at 164.338 101.354 0)
+    (property "Value" "178k" (at 164.338 101.5421 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 160.782 100.33 90)
@@ -546,10 +583,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "R12") (unit 1)
+          (reference "R?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "R12") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "R35") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "R39") (unit 1)
         )
       )
     )
@@ -558,7 +601,7 @@
   (symbol (lib_id "Library:R") (at 162.56 92.71 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 61eb9bb4-b9fb-4b32-a74c-8b1ae34079c2)
-    (property "Reference" "R11" (at 164.338 91.686 0)
+    (property "Reference" "R?" (at 164.338 91.686 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "1M" (at 164.338 93.734 0)
@@ -578,42 +621,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "R11") (unit 1)
+          (reference "R?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "R11") (unit 1)
         )
-      )
-    )
-  )
-
-  (symbol (lib_id "Library:R") (at 138.43 86.36 0) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
-    (uuid 702560bd-c87a-4815-ab95-fccf5a1850a5)
-    (property "Reference" "R9" (at 136.652 85.336 0)
-      (effects (font (size 1.27 1.27)) (justify right))
-    )
-    (property "Value" "10K" (at 136.652 87.384 0)
-      (effects (font (size 1.27 1.27)) (justify right))
-    )
-    (property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 136.652 86.36 90)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "Datasheet" "~" (at 138.43 86.36 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "MPN" "C25744" (at 138.43 86.36 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (pin "1" (uuid f540024e-a0c6-42e1-ae06-6e96fe61abb9))
-    (pin "2" (uuid 3afb67bc-e770-40c3-8df6-3aa30eb7609f))
-    (instances
-      (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "R9") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "R34") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
-          (reference "R9") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "R38") (unit 1)
         )
       )
     )
@@ -622,7 +639,7 @@
   (symbol (lib_id "power:GNDREF") (at 148.59 114.3 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 78f40d75-bbc9-4153-99aa-131ebee7ece8)
-    (property "Reference" "#PWR018" (at 148.59 120.65 0)
+    (property "Reference" "#PWR?" (at 148.59 120.65 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 148.59 118.245 0)
@@ -638,10 +655,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "#PWR018") (unit 1)
+          (reference "#PWR?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "#PWR018") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "#PWR055") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "#PWR061") (unit 1)
         )
       )
     )
@@ -650,7 +673,7 @@
   (symbol (lib_id "power:GNDREF") (at 134.62 104.14 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 8d6be5f9-d349-400f-b3db-1dace6ba06ae)
-    (property "Reference" "#PWR016" (at 134.62 110.49 0)
+    (property "Reference" "#PWR?" (at 134.62 110.49 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 134.62 108.085 0)
@@ -666,10 +689,92 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "#PWR016") (unit 1)
+          (reference "#PWR?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "#PWR016") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "#PWR054") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "#PWR060") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "Library:C") (at 119.38 87.63 0) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
+    (uuid 8ebdd5b1-f02b-4588-9ec3-6df48dd57ad5)
+    (property "Reference" "C?" (at 116.459 86.4179 0)
+      (effects (font (size 1.27 1.27)) (justify right))
+    )
+    (property "Value" "10u" (at 116.459 88.8421 0)
+      (effects (font (size 1.27 1.27)) (justify right))
+    )
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 120.3452 91.44 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "~" (at 119.38 87.63 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "MPN" "C19702" (at 119.38 87.63 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid 7ce9ccb8-5ee9-4817-9a6c-4303866cb6ed))
+    (pin "2" (uuid 9cbe6ef4-09f2-49a3-a656-6e12aff56286))
+    (instances
+      (project "DiveCAN Head2"
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d"
+          (reference "C?") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
+          (reference "C11") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "C22") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "C20") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "Library:R") (at 128.27 87.63 180) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
+    (uuid 90b3379e-bc58-4897-960a-7d30720e6711)
+    (property "Reference" "R?" (at 126.492 86.4179 0)
+      (effects (font (size 1.27 1.27)) (justify left))
+    )
+    (property "Value" "200" (at 126.492 88.8421 0)
+      (effects (font (size 1.27 1.27)) (justify left))
+    )
+    (property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 130.048 87.63 90)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "~" (at 128.27 87.63 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "MPN" "C25087" (at 128.27 87.63 90)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid 869a23c5-0e6c-4959-860b-9a923d1069e8))
+    (pin "2" (uuid 29a139cd-817e-450e-a6b1-f643f1ece808))
+    (instances
+      (project "DiveCAN Head2"
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d"
+          (reference "R?") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
+          (reference "R9") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "R32") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "R36") (unit 1)
         )
       )
     )
@@ -678,7 +783,7 @@
   (symbol (lib_id "power:GNDREF") (at 162.56 104.14 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid a702222b-e67d-4b1f-a8ba-f4e3ba71f023)
-    (property "Reference" "#PWR022" (at 162.56 110.49 0)
+    (property "Reference" "#PWR?" (at 162.56 110.49 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 164.465 105.41 0)
@@ -694,10 +799,54 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "#PWR022") (unit 1)
+          (reference "#PWR?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "#PWR022") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "#PWR057") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "#PWR063") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "Library:R") (at 132.08 87.63 180) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
+    (uuid b40d61ab-bd3e-4399-aa7f-3d28b4d08c2a)
+    (property "Reference" "R?" (at 133.858 86.4179 0)
+      (effects (font (size 1.27 1.27)) (justify right))
+    )
+    (property "Value" "200" (at 133.858 88.8421 0)
+      (effects (font (size 1.27 1.27)) (justify right))
+    )
+    (property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 133.858 87.63 90)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "~" (at 132.08 87.63 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "MPN" "C25087" (at 132.08 87.63 90)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid 631b88f5-113f-4e44-bc2f-64cc4f578499))
+    (pin "2" (uuid 7fe071c6-b7c9-4d07-a35a-5a24bd1b1525))
+    (instances
+      (project "DiveCAN Head2"
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d"
+          (reference "R?") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
+          (reference "R9") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "R33") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "R37") (unit 1)
         )
       )
     )
@@ -706,7 +855,7 @@
   (symbol (lib_id "Library:C") (at 134.62 100.33 180) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid b593e583-e7bc-45e5-b15f-984cf0047b0b)
-    (property "Reference" "C7" (at 131.6991 99.306 0)
+    (property "Reference" "C?" (at 131.6991 99.306 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "100n" (at 131.6991 101.354 0)
@@ -726,10 +875,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "C7") (unit 1)
+          (reference "C?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "C7") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "C16") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "C19") (unit 1)
         )
       )
     )
@@ -738,7 +893,7 @@
   (symbol (lib_id "Library:C") (at 184.15 92.71 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid d8f9eca2-f446-49e5-8d1a-4d1bff8777bd)
-    (property "Reference" "C14" (at 187.071 91.686 0)
+    (property "Reference" "C?" (at 187.071 91.686 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "10u" (at 187.071 93.734 0)
@@ -758,10 +913,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "C14") (unit 1)
+          (reference "C?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "C14") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "C18") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "C21") (unit 1)
         )
       )
     )
@@ -770,7 +931,7 @@
   (symbol (lib_id "power:GNDREF") (at 173.99 96.52 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid da07855c-2d60-4067-96de-bdca865edcc5)
-    (property "Reference" "#PWR026" (at 173.99 102.87 0)
+    (property "Reference" "#PWR?" (at 173.99 102.87 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 173.99 100.465 0)
@@ -786,10 +947,50 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "#PWR026") (unit 1)
+          (reference "#PWR?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "#PWR026") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "#PWR058") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "#PWR064") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:GNDREF") (at 119.38 91.44 0) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
+    (uuid e31393fd-7847-443f-9aab-012eb2c3041f)
+    (property "Reference" "#PWR?" (at 119.38 97.79 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Value" "GNDREF" (at 119.38 95.385 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "" (at 119.38 91.44 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "" (at 119.38 91.44 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid ad0b3584-fa39-4047-aab9-391dbdcb331b))
+    (instances
+      (project "DiveCAN Head2"
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d"
+          (reference "#PWR?") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
+          (reference "#PWR016") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "#PWR066") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "#PWR060") (unit 1)
         )
       )
     )
@@ -798,19 +999,19 @@
   (symbol (lib_id "Library:L") (at 138.43 104.14 180) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid f685a32c-7f70-4e43-a452-c21f98d76055)
-    (property "Reference" "L2" (at 139.0649 103.116 0)
+    (property "Reference" "L?" (at 139.0649 103.116 0)
       (effects (font (size 1.27 1.27)) (justify right))
     )
     (property "Value" "2.2u" (at 139.0649 105.164 0)
       (effects (font (size 1.27 1.27)) (justify right))
     )
-    (property "Footprint" "Inductor_SMD:L_0805_2012Metric" (at 138.43 104.14 0)
+    (property "Footprint" "Library:L_4x4" (at 138.43 104.14 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (at 138.43 104.14 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "MPN" "C431245" (at 138.43 104.14 0)
+    (property "MPN" "C701258" (at 138.43 104.14 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid a83503a2-922d-4b21-933d-23899509b2c6))
@@ -818,10 +1019,16 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
-          (reference "L2") (unit 1)
+          (reference "L?") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
           (reference "L2") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
+          (reference "L2") (unit 1)
+        )
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/73b7918b-ce02-4f63-8843-2340af9521c2"
+          (reference "L3") (unit 1)
         )
       )
     )

@@ -7,6 +7,7 @@
             "command": "",
             "args": [
                 "make",
+                "-j8",
                 "--directory=${workspaceFolder};"
             ],
             "group":  {
