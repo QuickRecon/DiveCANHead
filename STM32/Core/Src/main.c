@@ -20,6 +20,8 @@
 #include "main.h"
 #include "adc.h"
 #include "can.h"
+#include "crc.h"
+#include "fatfs.h"
 #include "i2c.h"
 #include "sdmmc.h"
 #include "usart.h"
@@ -29,6 +31,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
+#include "eeprom_emul.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -98,7 +101,11 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   MX_SDMMC1_SD_Init();
+  MX_FATFS_Init();
+  MX_CRC_Init();
   /* USER CODE BEGIN 2 */
+  EE_Init(EE_FORCED_ERASE);
+
   HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 1);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);
