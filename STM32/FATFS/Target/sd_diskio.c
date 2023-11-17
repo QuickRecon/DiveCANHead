@@ -624,6 +624,7 @@ DRESULT SD_ioctl(BYTE lun, BYTE cmd, void *buff)
 
 /* USER CODE BEGIN callbackSection */
 /* can be used to modify / following code or add new code */
+#pragma GCC diagnostic ignored "-Wint-conversion"
 /* USER CODE END callbackSection */
 /**
   * @brief Tx Transfer completed callbacks
@@ -665,6 +666,7 @@ void BSP_SD_ReadCpltCallback(void)
 }
 
 /* USER CODE BEGIN ErrorAbortCallbacks */
+#pragma GCC diagnostic pop
 /*
 void BSP_SD_AbortCallback(void)
 {

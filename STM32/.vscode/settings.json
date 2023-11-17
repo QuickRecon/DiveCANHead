@@ -7,7 +7,8 @@
         "cstdint": "c",
         "format": "cpp",
         "compare": "cpp",
-        "complex": "c"
+        "complex": "c",
+        "fatfs.h": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json"

@@ -65,7 +65,17 @@ void MX_FREERTOS_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif
 
+PUTCHAR_PROTOTYPE
+{
+  HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+  return ch;
+}
 /* USER CODE END 0 */
 
 /**
@@ -106,7 +116,10 @@ int main(void)
   MX_FATFS_Init();
   MX_CRC_Init();
   /* USER CODE BEGIN 2 */
+  // Set up flash erase
+  HAL_FLASH_Unlock();
   EE_Init(EE_FORCED_ERASE);
+  HAL_FLASH_Lock();
 
   HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 1);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
@@ -135,7 +148,6 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-
   }
   /* USER CODE END 3 */
 }
@@ -194,6 +206,15 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if(GPIO_Pin == ADC1_ALERT_Pin) {
+    // Trigger ADC1 read
+  } else if (GPIO_Pin == ADC2_ALERT_Pin){
+    // Trigger ADC2 read
+  }
+}
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
   HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
