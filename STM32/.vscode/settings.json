@@ -8,7 +8,10 @@
         "format": "cpp",
         "compare": "cpp",
         "complex": "c",
-        "fatfs.h": "c"
+        "fatfs.h": "c",
+        "cstdlib": "c",
+        "stdio.h": "c",
+        "gpio.h": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json"

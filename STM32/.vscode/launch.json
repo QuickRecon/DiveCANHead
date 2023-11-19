@@ -8,7 +8,7 @@
             "name": "Flash",
             "type": "node-terminal",
             "request": "launch",
-            "command": "./flash.sh",
+            "command": "./flash_serial.sh",
             "cwd": "${workspaceFolder}"
         }
 

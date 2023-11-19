@@ -10,7 +10,7 @@ typedef float CalCoeff_t;
 
 
 // PPO2 values
-const PPO2_t PPO2_FAIL = 0xFF;
+static const PPO2_t PPO2_FAIL = 0xFF;
 
 typedef enum CellStatus_e {
     CELL_OK,
