@@ -70,9 +70,9 @@ static void MX_NVIC_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+char string[200];
 void vprint(const char *fmt, va_list argp)
 {
-  char string[200];
   if (0 < vsprintf(string, fmt, argp)) // build string
   {
     while (huart2.gState != HAL_UART_STATE_READY)
@@ -91,12 +91,40 @@ void serial_printf(const char *fmt, ...) // custom printf() function
   va_end(argp);
 }
 
+AnalogOxygenState_p c1;
+AnalogOxygenState_p c2;
+AnalogOxygenState_p c3;
+
+// Cell printing task
+void printCells(void *arg)
+{
+  int i = 0;
+  while (true)
+  {
+    i++;
+    HAL_GPIO_TogglePin(LED7_GPIO_Port, LED7_Pin);
+    osDelay(500);
+    serial_printf("C1: (%d, %d); C2: (%d, %d); C3: (%d, %d)\r\n",
+                  getPPO2(c1), getMillivolts(c1),
+                  getPPO2(c2), getMillivolts(c2),
+                  getPPO2(c3), getMillivolts(c3));
+  }
+}
+
+// FreeRTOS tasks
+const osThreadAttr_t printCells_attributes = {
+    .name = "printCells",
+    .priority = (osPriority_t)osPriorityAboveNormal3,
+    .stack_size = 512};
+
+osThreadId_t printCellsHandle;
+
 /* USER CODE END 0 */
 
 /**
- * @brief  The application entry point.
- * @retval int
- */
+  * @brief  The application entry point.
+  * @retval int
+  */
 int main(void)
 {
   /* USER CODE BEGIN 1 */
@@ -134,10 +162,12 @@ int main(void)
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
+  serial_printf("Booting...\r\n");
+
   // Set up flash erase
-  // HAL_FLASH_Unlock();
-  // EE_Init(EE_FORCED_ERASE);
-  // HAL_FLASH_Lock();
+  HAL_FLASH_Unlock();
+  EE_Init(EE_FORCED_ERASE);
+  HAL_FLASH_Lock();
 
   HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 1);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
@@ -148,18 +178,17 @@ int main(void)
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, 1);
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, 1);
 
-  serial_printf("Booting...\r\n");
   // Kick off our threads
-
-  InitADCs();
-  InitCell(0);
-  InitCell(1);
-  InitCell(2);
 
   /* USER CODE END 2 */
 
   /* Init scheduler */
-  osKernelInitialize(); /* Call init function for freertos objects (in freertos.c) */
+  osKernelInitialize();  /* Call init function for freertos objects (in freertos.c) */
+    printCellsHandle = osThreadNew(printCells, NULL, &printCells_attributes);
+  InitADCs();
+  c1 = InitCell(0);
+  c2 = InitCell(1);
+  c3 = InitCell(2);
   MX_FREERTOS_Init();
 
   /* Start scheduler */
@@ -180,25 +209,25 @@ int main(void)
 }
 
 /**
- * @brief System Clock Configuration
- * @retval None
- */
+  * @brief System Clock Configuration
+  * @retval None
+  */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Configure the main internal regulator output voltage
-   */
+  */
   if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK)
   {
     Error_Handler();
   }
 
   /** Initializes the RCC Oscillators according to the specified parameters
-   * in the RCC_OscInitTypeDef structure.
-   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48 | RCC_OSCILLATORTYPE_HSE;
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
@@ -214,8 +243,9 @@ void SystemClock_Config(void)
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
@@ -227,14 +257,14 @@ void SystemClock_Config(void)
   }
 
   /** Enables the Clock Security System
-   */
+  */
   HAL_RCC_EnableCSS();
 }
 
 /**
- * @brief NVIC Configuration.
- * @retval None
- */
+  * @brief NVIC Configuration.
+  * @retval None
+  */
 static void MX_NVIC_Init(void)
 {
   /* I2C1_EV_IRQn interrupt configuration */
@@ -278,20 +308,19 @@ void JumpToBootloader(void)
 /* USER CODE END 4 */
 
 /**
- * @brief  Period elapsed callback in non blocking mode
- * @note   This function is called  when TIM6 interrupt took place, inside
- * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
- * a global variable "uwTick" used as application time base.
- * @param  htim : TIM handle
- * @retval None
- */
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM6 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
 
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM6)
-  {
+  if (htim->Instance == TIM6) {
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
@@ -300,28 +329,29 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 /**
- * @brief  This function is executed in case of error occurrence.
- * @retval None
- */
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   // __disable_irq();
   // while (1)
+  serial_printf("Critical Error");
   // {
   // }
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef USE_FULL_ASSERT
+#ifdef  USE_FULL_ASSERT
 /**
- * @brief  Reports the name of the source file and the source line number
- *         where the assert_param error has occurred.
- * @param  file: pointer to the source file name
- * @param  line: assert_param error line source number
- * @retval None
- */
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */

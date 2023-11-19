@@ -41,7 +41,7 @@
   */
 
 /* Configuration of eeprom emulation in flash, can be custom */
-#define START_PAGE_ADDRESS      0x08080000U /*!< Start address of the 1st page in flash, for EEPROM emulation */
+#define START_PAGE_ADDRESS      0x08030000U /*!< Start address of the 1st page in flash, for EEPROM emulation */
 #define CYCLES_NUMBER           1U   /*!< Number of 10Kcycles requested, minimum 1 for 10Kcycles (default),
                                         for instance 10 to reach 100Kcycles. This factor will increase
                                         pages number */
@@ -68,7 +68,7 @@
 /** @defgroup Exported_Configuration_Constants Exported Configuration Constants
   * @{
   */
-#define NB_OF_VARIABLES         1000U  /*!< Number of variables to handle in eeprom */
+#define NB_OF_VARIABLES         100U  /*!< Number of variables to handle in eeprom */
 
 /**
   * @}

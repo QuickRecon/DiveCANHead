@@ -10,7 +10,8 @@
 #include "cmsis_os.h"
 
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x1;
-static const CalCoeff_t ANALOG_CAL_UPPER = 1000000000.0;
+static const CalCoeff_t ANALOG_CAL_INVALID = 10000.0; // Known invalid cal if we need to populate flash
+static const CalCoeff_t ANALOG_CAL_UPPER = 1.0;
 static const CalCoeff_t ANALOG_CAL_LOWER = 0.0;
 
 static const uint8_t ADC1_ADDR = 0x48;
