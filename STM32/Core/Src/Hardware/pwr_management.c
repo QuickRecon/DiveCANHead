@@ -1,5 +1,7 @@
 #include "pwr_management.h"
 
+extern void serial_printf(const char *fmt, ...);
+
 PowerSource_t GetVCCSource(void)
 {
     PowerSource_t source = 0;

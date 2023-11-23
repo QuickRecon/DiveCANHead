@@ -7,6 +7,14 @@ static const uint16_t adc_Addr[2] = {ADC1_ADDR, ADC2_ADDR};
 static AnalogOxygenState_t cellStates[3] = {0};
 static ADCStatus_t adcStatus[2] = {INIT, INIT};
 
+static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x1;
+static const CalCoeff_t ANALOG_CAL_INVALID = 10000.0; // Known invalid cal if we need to populate flash
+static const CalCoeff_t ANALOG_CAL_UPPER = 1.0;
+static const CalCoeff_t ANALOG_CAL_LOWER = 0.0;
+
+// Time to wait on the cell to do things
+const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; // Milliseconds, how long before the cell *definitely* isn't coming back to us
+
 extern void serial_printf(const char *fmt, ...);
 
 // Forward decls of local funcs
@@ -33,7 +41,7 @@ void InitADCs()
     readADCHandle = osThreadNew(readADC, NULL, &readADC_attributes);
 }
 
-AnalogOxygenState_p InitCell(uint8_t cellNumber)
+AnalogOxygenState_p Analog_InitCell(uint8_t cellNumber)
 {
     AnalogOxygenState_p handle = &(cellStates[cellNumber]);
     handle->cellNumber = cellNumber;
@@ -105,9 +113,21 @@ void Calibrate(AnalogOxygenState_p handle, const PPO2_t PPO2)
     }
 }
 
-PPO2_t getPPO2(const AnalogOxygenState_p handle)
+PPO2_t Analog_getPPO2(const AnalogOxygenState_p handle)
 {
     PPO2_t PPO2 = 0;
+    // First we check our timeouts to make sure we're not giving stale info
+    // uint32_t ticks = HAL_GetTick();
+    // if (ticks < handle->ticksOfLastPPO2)
+    // { // If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out
+    //     handle->ticksOfLastPPO2 = 0;
+    // }
+
+    // if((handle->ticksOfLastPPO2 - ticks) > ANALOG_RESPONSE_TIMEOUT){ // If we've taken longer than timeout, fail the cell, no lies here
+    //     handle->status = CELL_FAIL;
+    //     serial_printf("CELL %d TIMEOUT: %d", handle->cellNumber, (handle->ticksOfLastPPO2 - ticks));
+    // }
+
     if ((handle->status == CELL_FAIL) || (handle->status == CELL_NEED_CAL))
     {
         PPO2 = PPO2_FAIL; // Failed cell
@@ -135,6 +155,7 @@ void ADC_I2C_Receive_Complete(uint8_t adcAddr, I2C_HandleTypeDef *hi2c)
     uint8_t input = !adc_selected_input[adcIdx];
     uint8_t cellNumber = 2 * (adcIdx) + input;
     cellStates[cellNumber].adcCounts = (conversionRegister[0] << 8) | conversionRegister[1];
+    cellStates[cellNumber].ticksOfLastPPO2 = HAL_GetTick();
 
     // Mark the read
     adcStatus[adcIdx] = READ_COMPLETE;

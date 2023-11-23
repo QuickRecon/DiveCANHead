@@ -1,6 +1,7 @@
 #include "gpio.h"
 #include "can.h"
 #include "Sensors/AnalogOxygen.h"
+#include "Sensors/DigitalOxygen.h"
 
 extern void serial_printf(const char *fmt, ...);
 
@@ -38,6 +39,14 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
     {
         ADC_I2C_Receive_Complete((uint8_t)(hi2c->Devaddress >> 1), hi2c);
     }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
+    Cell_RX_Complete(huart);
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef* huart){
+    Cell_TX_Complete(huart);
 }
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)

@@ -12,8 +12,8 @@ typedef enum PowerSource_e {
 typedef enum PowerSelectMode_e {
     MODE_BATTERY=0,
     MODE_BATTERY_THEN_CAN=1,
-    MODE_CAN=3,
-    MODE_OFF=4
+    MODE_CAN=2,
+    MODE_OFF=3
 } PowerSelectMode_t;
 
 void SetVBusMode(PowerSelectMode_t powerMode);

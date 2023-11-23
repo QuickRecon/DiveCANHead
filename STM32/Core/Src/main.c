@@ -106,9 +106,9 @@ void printCells(void *arg)
     HAL_GPIO_TogglePin(LED7_GPIO_Port, LED7_Pin);
     osDelay(500);
     serial_printf("C1: (%d, %d); C2: (%d, %d); C3: (%d, %d)\r\n",
-                  getPPO2(c1), getMillivolts(c1),
-                  getPPO2(c2), getMillivolts(c2),
-                  getPPO2(c3), getMillivolts(c3));
+                  Analog_getPPO2(c1), getMillivolts(c1),
+                  Analog_getPPO2(c2), getMillivolts(c2),
+                  Analog_getPPO2(c3), getMillivolts(c3));
   }
 }
 
@@ -181,14 +181,14 @@ int main(void)
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, 1);
 
   // Set our power bus
-  SetVBusMode(MODE_BATTERY_THEN_CAN); // TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE
+  SetVBusMode(MODE_CAN); // TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE
 
   // Kick off our threads
   printCellsHandle = osThreadNew(printCells, NULL, &printCells_attributes);
   InitADCs();
-  c1 = InitCell(0);
-  c2 = InitCell(1);
-  c3 = InitCell(2);
+  c1 = Analog_InitCell(0);
+  c2 = Analog_InitCell(1);
+  c3 = Analog_InitCell(2);
   /* USER CODE END 2 */
 
   /* Init scheduler */

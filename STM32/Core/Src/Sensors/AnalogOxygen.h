@@ -9,11 +9,6 @@
 #include <stdbool.h>
 #include "cmsis_os.h"
 
-static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x1;
-static const CalCoeff_t ANALOG_CAL_INVALID = 10000.0; // Known invalid cal if we need to populate flash
-static const CalCoeff_t ANALOG_CAL_UPPER = 1.0;
-static const CalCoeff_t ANALOG_CAL_LOWER = 0.0;
-
 static const uint8_t ADC1_ADDR = 0x48;
 static const uint8_t ADC2_ADDR = 0x49;
 static const uint8_t ADC_COUNT = 2; // There is a lot of implicit assumptions around having 2 ADC, there is more than just this number!
@@ -35,6 +30,7 @@ typedef struct AnalogOxygenState_s {
     CalCoeff_t calibrationCoefficient;
     CellStatus_t status;
     ADCCount_t adcCounts;
+    uint32_t ticksOfLastPPO2;
 } AnalogOxygenState_t;
 
 typedef struct ADCState_s {
@@ -43,13 +39,12 @@ typedef struct ADCState_s {
 
 typedef AnalogOxygenState_t* AnalogOxygenState_p;
 
-
 // Analog Cell 
 void InitADCs();
-AnalogOxygenState_p InitCell(uint8_t cellNumber);
+AnalogOxygenState_p Analog_InitCell(uint8_t cellNumber);
 void ReadCalibration(AnalogOxygenState_p handle);
 void Calibrate(AnalogOxygenState_p handle, const PPO2_t PPO2);
-PPO2_t getPPO2(AnalogOxygenState_p handle);
+PPO2_t Analog_getPPO2(AnalogOxygenState_p handle);
 Millivolts_t getMillivolts(AnalogOxygenState_p handle);
 
 // ADC interface
