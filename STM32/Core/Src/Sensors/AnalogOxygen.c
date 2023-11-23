@@ -74,12 +74,14 @@ void ReadCalibration(AnalogOxygenState_p handle)
     {
         serial_printf("Cal not found %d\r\n", handle->cellNumber);
         HAL_FLASH_Unlock();
-        
+
         EE_Status writeResult = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, *((const uint32_t *)&ANALOG_CAL_INVALID));
         if (writeResult == EE_OK)
         {
             ReadCalibration(handle);
-        } else {
+        }
+        else
+        {
             serial_printf("EEPROM write fail on cell %d code %d\r\n", handle->cellNumber, writeResult);
         }
         HAL_FLASH_Lock();
@@ -117,16 +119,16 @@ PPO2_t Analog_getPPO2(const AnalogOxygenState_p handle)
 {
     PPO2_t PPO2 = 0;
     // First we check our timeouts to make sure we're not giving stale info
-    // uint32_t ticks = HAL_GetTick();
-    // if (ticks < handle->ticksOfLastPPO2)
-    // { // If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out
-    //     handle->ticksOfLastPPO2 = 0;
-    // }
-
-    // if((handle->ticksOfLastPPO2 - ticks) > ANALOG_RESPONSE_TIMEOUT){ // If we've taken longer than timeout, fail the cell, no lies here
-    //     handle->status = CELL_FAIL;
-    //     serial_printf("CELL %d TIMEOUT: %d", handle->cellNumber, (handle->ticksOfLastPPO2 - ticks));
-    // }
+    uint32_t ticks = HAL_GetTick();
+    if (ticks < handle->ticksOfLastPPO2)
+    { // If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out
+        handle->ticksOfLastPPO2 = 0;
+    }
+    if ((ticks - handle->ticksOfLastPPO2) > ANALOG_RESPONSE_TIMEOUT)
+    { // If we've taken longer than timeout, fail the cell
+        handle->status = CELL_FAIL;
+        serial_printf("CELL %d TIMEOUT: %d", handle->cellNumber, (ticks - handle->ticksOfLastPPO2));
+    }
 
     if ((handle->status == CELL_FAIL) || (handle->status == CELL_NEED_CAL))
     {
@@ -141,7 +143,7 @@ PPO2_t Analog_getPPO2(const AnalogOxygenState_p handle)
 
 Millivolts_t getMillivolts(const AnalogOxygenState_p handle)
 {
-    return (Millivolts_t)(((float)abs(handle->adcCounts)) * (0.256f*10000.0f / 32767.0f));
+    return (Millivolts_t)(((float)abs(handle->adcCounts)) * (0.256f * 10000.0f / 32767.0f));
 }
 
 ////////////////////////////// ADC EVENTS
@@ -210,7 +212,7 @@ void configureADC(void *arg)
                                             (0 << 12) |    // ADC Input: 0
                                             (0b111 << 9) | // PGA: 16x
                                             (0 << 8) |     // Mode: continuous conversion
-                                            (0b00 << 5) | // Data rate: 8SPS
+                                            (0b00 << 5) |  // Data rate: 8SPS
                                             (0 << 4) |     // Comparator mode: traditional
                                             (0 << 3) |     // Comparator polarity: active low
                                             (0 << 2) |     // Comparator latch: non-latching
@@ -254,7 +256,7 @@ void configureADC(void *arg)
                                                     (((uint8_t)adc_selected_input[i]) * 0b11 << 12) | // ADC Input: Inputs are either 0b00 (input 0) or 0b11 (input 1)
                                                     (0b111 << 9) |                                    // PGA: 16x
                                                     (0 << 8) |                                        // Mode: continuous conversion
-                                                    (0b00 << 5) |                                    // Data rate: 8SPS
+                                                    (0b00 << 5) |                                     // Data rate: 8SPS
                                                     (0 << 4) |                                        // Comparator mode: traditional
                                                     (0 << 3) |                                        // Comparator polarity: active low
                                                     (0 << 2) |                                        // Comparator latch: non-latching
@@ -262,7 +264,8 @@ void configureADC(void *arg)
 
                 while (hi2c1.State != HAL_I2C_STATE_READY)
                 {
-                    osDelay(5);
+                    serial_printf("Wait for I2c cfg\r\n");
+                    osDelay(1);
                 }
 
                 HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
@@ -311,7 +314,8 @@ void readADC(void *arg)
             {
                 while (hi2c1.State != HAL_I2C_STATE_READY)
                 {
-                    osDelay(5);
+                    serial_printf("Wait for I2c read\r\n");
+                    osDelay(1);
                 }
                 HAL_I2C_Mem_Read_IT(&hi2c1, adc_Addr[i] << 1, 0x00, 1, conversionRegister, 2); // TODO, convert this to a non-blocking call
             }

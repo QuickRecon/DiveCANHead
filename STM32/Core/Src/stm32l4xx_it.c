@@ -64,7 +64,7 @@ extern UART_HandleTypeDef huart3;
 extern TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN EV */
-
+extern void serial_printf(const char *fmt, ...);
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -80,6 +80,7 @@ void NMI_Handler(void)
   /* USER CODE END NonMaskableInt_IRQn 0 */
   HAL_RCC_NMI_IRQHandler();
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
+  serial_printf("NMI TRIGGERED");
   while (1)
   {
   }
@@ -107,7 +108,7 @@ void HardFault_Handler(void)
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-
+  serial_printf("MEMORY MGMT");
   /* USER CODE END MemoryManagement_IRQn 0 */
   while (1)
   {
@@ -122,7 +123,7 @@ void MemManage_Handler(void)
 void BusFault_Handler(void)
 {
   /* USER CODE BEGIN BusFault_IRQn 0 */
-
+  serial_printf("BUS FAULT");
   /* USER CODE END BusFault_IRQn 0 */
   while (1)
   {
@@ -137,7 +138,7 @@ void BusFault_Handler(void)
 void UsageFault_Handler(void)
 {
   /* USER CODE BEGIN UsageFault_IRQn 0 */
-
+  serial_printf("USAGE FAULT");
   /* USER CODE END UsageFault_IRQn 0 */
   while (1)
   {

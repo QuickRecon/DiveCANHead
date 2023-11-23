@@ -22,13 +22,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     }
 }
 
-void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c) //cppcheck-suppress
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
     if ((hi2c->Devaddress == ((uint32_t)ADC1_ADDR << 1)) || (hi2c->Devaddress == ((uint32_t)ADC2_ADDR << 1)))
     {
         HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
-        ADC_I2C_Transmit_Complete((uint8_t)(hi2c->Devaddress >> 1) >> 1);
+        ADC_I2C_Transmit_Complete((uint8_t)(hi2c->Devaddress >> 1));
     }
 }
 
