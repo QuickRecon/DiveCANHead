@@ -225,7 +225,7 @@ void configureADC(void *arg)
         for (int i = 0; i < ADC_COUNT; i++)
         {
             // Reconfigure the ADC if they're either in INIT or READ_COMPLETE
-            if (adcStatus[i] == READ_COMPLETE || adcStatus[i] == INIT)
+            if (adcStatus[i] == INIT)
             {
                 adcStatus[i] = CONFIGURING;
                 // Prep the ADC
@@ -255,7 +255,9 @@ void configureADC(void *arg)
                 }
             }
         }
+        __enable_irq();
         osThreadFlagsWait(0x0001U, osFlagsWaitAny, osWaitForever);
+        __disable_irq();
         // We heard back that we finished our read, time to reconfigure for the next input
         for (int i = 0; i < ADC_COUNT; i++)
         {
@@ -269,6 +271,7 @@ void configureADC(void *arg)
 
                 // END DEBUG
                 adc_selected_input[i] = !adc_selected_input[i]; // Chop over to the other input as we go around again
+                adcStatus[i] = INIT;
             }
         }
     }
