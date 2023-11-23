@@ -14,5 +14,14 @@
         "gpio.h": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
-    "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json"
+    "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
+    "cSpell.words": [
+        "Cplt",
+        "Devaddress",
+        "EXTI",
+        "FATFS",
+        "NVIC",
+        "SDMMC"
+    ],
+    "sonarlint.disableTelemetry": true
 }

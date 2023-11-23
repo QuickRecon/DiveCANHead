@@ -37,6 +37,7 @@
 #include <string.h>
 #include "eeprom_emul.h"
 #include "Sensors/AnalogOxygen.h"
+#include "Hardware/pwr_management.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -178,6 +179,9 @@ int main(void)
   HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, 1);
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, 1);
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, 1);
+
+  // Set our power bus
+  SetVBusMode(MODE_BATTERY_THEN_CAN); // TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE
 
   // Kick off our threads
   printCellsHandle = osThreadNew(printCells, NULL, &printCells_attributes);

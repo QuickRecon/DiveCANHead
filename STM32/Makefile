@@ -39,6 +39,7 @@ C_SOURCES =  \
 Core/Src/main.c \
 Core/Src/HAL_callbacks.c \
 Core/Src/Sensors/AnalogOxygen.c \
+Core/Src/Hardware/pwr_management.c \
 Core/Src/gpio.c \
 Core/Src/adc.c \
 Core/Src/can.c \

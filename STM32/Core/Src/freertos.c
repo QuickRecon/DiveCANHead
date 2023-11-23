@@ -70,7 +70,7 @@ unsigned long getRunTimeCounterValue(void);
 void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
 
 /* USER CODE BEGIN 1 */
-extern volatile unsigned long ulHighFrequencyTimerTicks;
+volatile unsigned long ulHighFrequencyTimerTicks;
 /* Functions needed when configGENERATE_RUN_TIME_STATS is on */
 void configureTimerForRunTimeStats(void)
 {

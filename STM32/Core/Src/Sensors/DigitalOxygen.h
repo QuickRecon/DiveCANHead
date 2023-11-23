@@ -4,15 +4,19 @@
 #include "../common.h"
 #include "string.h"
 
-typedef struct DigitalOxygenState
+typedef struct DigitalOxygenState_s
 {
     // Configuration
     const uint8_t cellNumber;
 
-} DigitalOxygenState;
+    CellStatus_t status;
+    PPO2_t ppo2;
 
-typedef DigitalOxygenState *DigitalOxygenHandle;
+} DigitalOxygenState_t;
 
-PPO2_t getPPO2(DigitalOxygenHandle handle);
+
+typedef DigitalOxygenState_t* DigitalOxygenState_p;
+
+PPO2_t getPPO2(DigitalOxygenState_p handle);
 
 #endif
