@@ -41,9 +41,18 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
     }
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
-    Cell_RX_Complete(huart);
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef* huart,  uint16_t size){
+    serial_printf("Size: %d\n", size);
+    Cell_RX_Complete(huart, size);
 }
+
+// void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef* huart){
+//     Cell_RX_Complete(huart);
+// }
+
+// void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
+//     Cell_RX_Complete(huart);
+// }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef* huart){
     Cell_TX_Complete(huart);

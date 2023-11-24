@@ -38,6 +38,7 @@
 #include <string.h>
 #include "eeprom_emul.h"
 #include "Sensors/AnalogOxygen.h"
+#include "Sensors/DigitalOxygen.h"
 #include "Hardware/pwr_management.h"
 /* USER CODE END Includes */
 
@@ -185,13 +186,14 @@ int main(void)
 
   // Set our power bus
   SetVBusMode(MODE_CAN); // TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE
-
+  HAL_Delay(1000);
   // Kick off our threads
-  printCellsHandle = osThreadNew(printCells, NULL, &printCells_attributes);
-  InitADCs();
-  c1 = Analog_InitCell(0);
-  c2 = Analog_InitCell(1);
-  c3 = Analog_InitCell(2);
+  //InitADCs();
+  //c1 = Analog_InitCell(0);
+  //c2 = Analog_InitCell(1);
+  //c3 = Analog_InitCell(2);
+
+  Digital_InitCell(0);
   /* USER CODE END 2 */
 
   /* Init scheduler */

@@ -20,6 +20,7 @@ typedef struct DigitalOxygenState_s
     PPO2_t ppo2;
     UART_HandleTypeDef* huart;
     char lastMessage[RX_BUFFER_LENGTH];
+    uint8_t rxBuf[2];
     uint32_t ticksOfLastMessage;
     uint32_t ticksOfTX;
     uint32_t ticksOfLastPPO2;
@@ -33,6 +34,6 @@ DigitalOxygenState_p Digital_InitCell(uint8_t cellNumber);
 PPO2_t Digital_getPPO2(DigitalOxygenState_p handle);
 
 void Cell_TX_Complete(const UART_HandleTypeDef* huart);
-void Cell_RX_Complete(const UART_HandleTypeDef* huart);
+void Cell_RX_Complete(const UART_HandleTypeDef* huart, uint16_t size);
 
 #endif
