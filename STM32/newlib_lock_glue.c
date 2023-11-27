@@ -37,6 +37,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include <cmsis_compiler.h>
 
+extern void serial_printf(const char *fmt, ...);
+
 /* Private functions ---------------------------------------------------------*/
 
 /**
@@ -44,6 +46,7 @@
   */
 __WEAK void Error_Handler(void)
 {
+  serial_printf("libglue err");
   /* Not used if it exists in project */
   while (1);
 }

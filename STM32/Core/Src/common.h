@@ -19,5 +19,10 @@ typedef enum CellStatus_e {
     CELL_NEED_CAL
 } CellStatus_t;
 
+typedef enum CellType_e {
+    CELL_DIGITAL,
+    CELL_ANALOG
+} CellType_t;
+
 
 #endif

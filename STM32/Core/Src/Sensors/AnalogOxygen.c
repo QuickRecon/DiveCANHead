@@ -115,7 +115,7 @@ void Calibrate(AnalogOxygenState_p handle, const PPO2_t PPO2)
     }
 }
 
-PPO2_t Analog_getPPO2(const AnalogOxygenState_p handle)
+PPO2_t Analog_getPPO2(AnalogOxygenState_p handle)
 {
     PPO2_t PPO2 = 0;
     // First we check our timeouts to make sure we're not giving stale info
@@ -127,12 +127,13 @@ PPO2_t Analog_getPPO2(const AnalogOxygenState_p handle)
     if ((ticks - handle->ticksOfLastPPO2) > ANALOG_RESPONSE_TIMEOUT)
     { // If we've taken longer than timeout, fail the cell
         handle->status = CELL_FAIL;
-        serial_printf("CELL %d TIMEOUT: %d", handle->cellNumber, (ticks - handle->ticksOfLastPPO2));
+        serial_printf("CELL %d TIMEOUT: %d\r\n", handle->cellNumber, (ticks - handle->ticksOfLastPPO2));
     }
 
     if ((handle->status == CELL_FAIL) || (handle->status == CELL_NEED_CAL))
     {
         PPO2 = PPO2_FAIL; // Failed cell
+        serial_printf("CELL %d FAIL\r\n", handle->cellNumber);
     }
     else
     {
@@ -279,9 +280,7 @@ void configureADC(void *arg)
                 }
             }
         }
-        __enable_irq();
         osThreadFlagsWait(0x0001U, osFlagsWaitAny, osWaitForever);
-        __disable_irq();
         // We heard back that we finished our read, time to reconfigure for the next input
         for (int i = 0; i < ADC_COUNT; i++)
         {
@@ -315,6 +314,7 @@ void readADC(void *arg)
                 while (hi2c1.State != HAL_I2C_STATE_READY)
                 {
                     serial_printf("Wait for I2c read\r\n");
+
                     osDelay(1);
                 }
                 HAL_I2C_Mem_Read_IT(&hi2c1, adc_Addr[i] << 1, 0x00, 1, conversionRegister, 2); // TODO, convert this to a non-blocking call

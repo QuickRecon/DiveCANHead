@@ -17,10 +17,10 @@ typedef struct DigitalOxygenState_s
     uint8_t cellNumber;
 
     CellStatus_t status;
-    PPO2_t ppo2;
     UART_HandleTypeDef* huart;
+    uint32_t cellSample;
     char lastMessage[RX_BUFFER_LENGTH];
-    uint8_t rxBuf[2];
+    uint8_t txBuf[TX_BUFFER_LENGTH];
     uint32_t ticksOfLastMessage;
     uint32_t ticksOfTX;
     uint32_t ticksOfLastPPO2;

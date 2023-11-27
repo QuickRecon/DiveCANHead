@@ -13,7 +13,8 @@
         "stdio.h": "c",
         "gpio.h": "c",
         "tim.h": "c",
-        "main.h": "c"
+        "main.h": "c",
+        "type_traits": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
