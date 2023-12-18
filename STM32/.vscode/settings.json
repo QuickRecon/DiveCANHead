@@ -19,17 +19,21 @@
         "tuple": "c",
         "utility": "c",
         "cmsis_os.h": "c",
-        "stdbool.h": "c"
+        "stdbool.h": "c",
+        "random": "cpp",
+        "transciever.h": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
     "cSpell.words": [
         "Cplt",
         "Devaddress",
+        "DIVECAN",
         "EXTI",
         "FATFS",
         "NVIC",
-        "SDMMC"
+        "SDMMC",
+        "setpoint"
     ],
     "sonarlint.disableTelemetry": true,
     "sonarlint.focusOnNewCode": false
