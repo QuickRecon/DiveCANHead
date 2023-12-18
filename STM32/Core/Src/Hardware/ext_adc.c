@@ -76,20 +76,20 @@ void ADC_Ready_Interrupt(uint8_t adcAddr)
 
 void configureADC(uint16_t configuration, InputState_s input)
 {
-    const uint16_t lowThreshold = 0;
-    const uint16_t highThreshold = 0xFFFF;
+    uint16_t lowThreshold = 0;
+    uint16_t highThreshold = 0xFFFF;
 
     uint8_t configBytes[2] = {0};
     configBytes[1] = (uint8_t)configuration;
     configBytes[0] = (uint8_t)(configuration >> 8);
 
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (const uint8_t*)&lowThreshold, sizeof(lowThreshold)) != HAL_OK)
+    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (uint8_t*)&lowThreshold, sizeof(lowThreshold)) != HAL_OK)
     {
         serial_printf("Err i2c update lower threshold");
     }
     osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
 
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (const uint8_t*)&highThreshold, sizeof(highThreshold)) != HAL_OK)
+    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t*)&highThreshold, sizeof(highThreshold)) != HAL_OK)
     {
         serial_printf("Err i2c update upper threshold");
     }
