@@ -2,7 +2,10 @@
 #include "can.h"
 #include "Sensors/AnalogOxygen.h"
 #include "Sensors/DigitalOxygen.h"
+#include "Hardware/ext_adc.h"
 
+extern const uint8_t ADC1_ADDR;
+extern const uint8_t ADC2_ADDR;
 extern void serial_printf(const char *fmt, ...);
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)

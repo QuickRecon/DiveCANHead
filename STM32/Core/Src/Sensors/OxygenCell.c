@@ -5,7 +5,7 @@
 #include "DigitalOxygen.h"
 
 PPO2_t analogPPO2(OxygenCell_t *self){
-    return Analog_getPPO2((AnalogOxygenState_p)self->cellHandle);
+    return Analog_getPPO2((AnalogOxygenState_t*)self->cellHandle);
 }
 
 PPO2_t digitalPPO2(OxygenCell_t *self){
@@ -13,7 +13,7 @@ PPO2_t digitalPPO2(OxygenCell_t *self){
 }
 
 Millivolts_t analogMillis(OxygenCell_t *self){
-    return getMillivolts((AnalogOxygenState_p)self->cellHandle);
+    return getMillivolts((AnalogOxygenState_t*)self->cellHandle);
 }
 
 Millivolts_t digitalMillis(OxygenCell_t *self){

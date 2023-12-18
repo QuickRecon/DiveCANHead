@@ -20,6 +20,11 @@
         "file": "/home/aren/Dropbox/DiveCANHeadRev2/STM32/Core/Src/Sensors/DigitalOxygen.c"
     },
     {
+        "command": "arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -u _printf_float  -DUSE_HAL_DRIVER -DSTM32L431xx -DSTM32_THREAD_SAFE_STRATEGY=4 -ICore/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32L4xx/Include -IDrivers/CMSIS/Include -IFATFS/Target -IFATFS/App -IMiddlewares/Third_Party/FatFs/src -IMiddlewares/ST/EEPROM_Emul/Core -IMiddlewares/ST/EEPROM_Emul/Porting/STM32L4 -IMiddlewares/Third_Party/FreeRTOS/Source/include -IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F -Og -Wall -fdata-sections -ffunction-sections -Werror -g -gdwarf-2 -MMD -MP -MF\"build/OxygenCell.d\" -Wa,-a,-ad,-alms=build/OxygenCell.lst Core/Src/Sensors/OxygenCell.c -o build/OxygenCell.o",
+        "directory": "/home/aren/Dropbox/DiveCANHeadRev2/STM32",
+        "file": "/home/aren/Dropbox/DiveCANHeadRev2/STM32/Core/Src/Sensors/OxygenCell.c"
+    },
+    {
         "command": "arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -u _printf_float  -DUSE_HAL_DRIVER -DSTM32L431xx -DSTM32_THREAD_SAFE_STRATEGY=4 -ICore/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32L4xx/Include -IDrivers/CMSIS/Include -IFATFS/Target -IFATFS/App -IMiddlewares/Third_Party/FatFs/src -IMiddlewares/ST/EEPROM_Emul/Core -IMiddlewares/ST/EEPROM_Emul/Porting/STM32L4 -IMiddlewares/Third_Party/FreeRTOS/Source/include -IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F -Og -Wall -fdata-sections -ffunction-sections -Werror -g -gdwarf-2 -MMD -MP -MF\"build/pwr_management.d\" -Wa,-a,-ad,-alms=build/pwr_management.lst Core/Src/Hardware/pwr_management.c -o build/pwr_management.o",
         "directory": "/home/aren/Dropbox/DiveCANHeadRev2/STM32",
         "file": "/home/aren/Dropbox/DiveCANHeadRev2/STM32/Core/Src/Hardware/pwr_management.c"
@@ -333,5 +338,10 @@
         "command": "arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -u _printf_float  -DUSE_HAL_DRIVER -DSTM32L431xx -DSTM32_THREAD_SAFE_STRATEGY=4 -ICore/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32L4xx/Include -IDrivers/CMSIS/Include -IFATFS/Target -IFATFS/App -IMiddlewares/Third_Party/FatFs/src -IMiddlewares/ST/EEPROM_Emul/Core -IMiddlewares/ST/EEPROM_Emul/Porting/STM32L4 -IMiddlewares/Third_Party/FreeRTOS/Source/include -IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F -Og -Wall -fdata-sections -ffunction-sections -Werror -g -gdwarf-2 -MMD -MP -MF\"build/stm32l4xx_hal_iwdg.d\" -Wa,-a,-ad,-alms=build/stm32l4xx_hal_iwdg.lst Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_iwdg.c -o build/stm32l4xx_hal_iwdg.o",
         "directory": "/home/aren/Dropbox/DiveCANHeadRev2/STM32",
         "file": "/home/aren/Dropbox/DiveCANHeadRev2/STM32/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_iwdg.c"
+    },
+    {
+        "command": "arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -u _printf_float  -DUSE_HAL_DRIVER -DSTM32L431xx -DSTM32_THREAD_SAFE_STRATEGY=4 -ICore/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32L4xx/Include -IDrivers/CMSIS/Include -IFATFS/Target -IFATFS/App -IMiddlewares/Third_Party/FatFs/src -IMiddlewares/ST/EEPROM_Emul/Core -IMiddlewares/ST/EEPROM_Emul/Porting/STM32L4 -IMiddlewares/Third_Party/FreeRTOS/Source/include -IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F -Og -Wall -fdata-sections -ffunction-sections -Werror -g -gdwarf-2 -MMD -MP -MF\"build/ext_adc.d\" -Wa,-a,-ad,-alms=build/ext_adc.lst Core/Src/Hardware/ext_adc.c -o build/ext_adc.o",
+        "directory": "/home/aren/Dropbox/DiveCANHeadRev2/STM32",
+        "file": "/home/aren/Dropbox/DiveCANHeadRev2/STM32/Core/Src/Hardware/ext_adc.c"
     }
 ]

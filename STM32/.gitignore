@@ -1,4 +1,4 @@
 build/
-.zip
+*.zip
 _autosave*
 *.lck

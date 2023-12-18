@@ -14,7 +14,12 @@
         "gpio.h": "c",
         "tim.h": "c",
         "main.h": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "functional": "c",
+        "tuple": "c",
+        "utility": "c",
+        "cmsis_os.h": "c",
+        "stdbool.h": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
@@ -26,5 +31,6 @@
         "NVIC",
         "SDMMC"
     ],
-    "sonarlint.disableTelemetry": true
+    "sonarlint.disableTelemetry": true,
+    "sonarlint.focusOnNewCode": false
 }
