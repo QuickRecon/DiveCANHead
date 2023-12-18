@@ -77,3 +77,19 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
         rxInterrupt(pRxHeader.ExtId, (uint8_t)pRxHeader.DLC, pData);
     }
 }
+
+void HAL_CAN_RxFifo1MsgPendingCallbackxFifo1(CAN_HandleTypeDef *hcan)
+{
+    HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+    CAN_RxHeaderTypeDef pRxHeader = {0};
+    uint8_t pData[64] = {0};
+    HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO1, &pRxHeader, pData);
+
+    // Use 0x05 to reset into bootloader for flashing
+    if (0x05 == pRxHeader.StdId)
+    {
+        JumpToBootloader();
+    } else {
+        rxInterrupt(pRxHeader.ExtId, (uint8_t)pRxHeader.DLC, pData);
+    }
+}

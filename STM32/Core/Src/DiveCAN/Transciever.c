@@ -34,6 +34,10 @@ static const uint32_t CAL_ID = 0xD120000;
 static const uint32_t MENU_ID = 0xD0A0000;
 
 
+/// @brief !! ISR METHOD !! Called when CAN mailbox receives message
+/// @param id message extended ID
+/// @param length length of data
+/// @param data data pointer
 void rxInterrupt(uint32_t id, uint8_t length, uint8_t* data){
     
 }
