@@ -19,6 +19,8 @@ typedef enum DiveCANError_e
     DIVECAN_ERR_SOLENOID = 0x04
 } DiveCANError_t;
 
+void rxInterrupt(uint32_t id, uint8_t length, uint8_t* data);
+
 // Device Metadata
 void txBusInit(const DiveCANType_t deviceType);
 void txID(const DiveCANType_t deviceType, const uint8_t manufacturerID, uint8_t firmwareVersion);

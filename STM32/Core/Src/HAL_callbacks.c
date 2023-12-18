@@ -3,6 +3,7 @@
 #include "Sensors/AnalogOxygen.h"
 #include "Sensors/DigitalOxygen.h"
 #include "Hardware/ext_adc.h"
+#include "DiveCAN/Transciever.h"
 
 extern const uint8_t ADC1_ADDR;
 extern const uint8_t ADC2_ADDR;
@@ -72,5 +73,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
     if (0x05 == pRxHeader.StdId)
     {
         JumpToBootloader();
+    } else {
+        rxInterrupt(pRxHeader.ExtId, (uint8_t)pRxHeader.DLC, pData);
     }
 }

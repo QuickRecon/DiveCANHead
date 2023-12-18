@@ -33,6 +33,11 @@ static const uint32_t CAL_ID = 0xD120000;
 #define MENU_FIELD_END_LEN 4
 static const uint32_t MENU_ID = 0xD0A0000;
 
+
+void rxInterrupt(uint32_t id, uint8_t length, uint8_t* data){
+    
+}
+
 /// @brief Add message to the next free mailbox, waits until the next mailbox is avaliable.
 /// @param Id Message ID (extended)
 /// @param data Pointer to the data to send, must be size dataLength
