@@ -87,19 +87,19 @@ void configureADC(uint16_t configuration, InputState_s input)
     {
         serial_printf("Err i2c update lower threshold");
     }
-    osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, osWaitForever);
+    osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
 
     if (HAL_I2C_Mem_Write_IT(&hi2c1, input.adcAddress << 1, ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t*)&highThreshold, sizeof(highThreshold)) != HAL_OK)
     {
         serial_printf("Err i2c update upper threshold");
     }
-    osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, osWaitForever);
+    osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
 
     if (HAL_I2C_Mem_Write_IT(&hi2c1, input.adcAddress << 1, ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)) != HAL_OK)
     {
         serial_printf("Err i2c update config");
     }
-    osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, osWaitForever);
+    osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
 }
 
 // Tasks
@@ -151,7 +151,6 @@ void ADCTask(void *arg)
             {
                 serial_printf("Err i2c update config");
             }
-
             osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, osWaitForever);
 
 
@@ -163,7 +162,6 @@ void ADCTask(void *arg)
             // Export the value to the queue
             uint16_t adcCounts = (conversionRegister[0] << 8) | conversionRegister[1];
             uint32_t ticks = HAL_GetTick();
-            serial_printf("Got value %d for input %d", adcCounts, i);
             xQueueOverwrite(QInputValues[i], &adcCounts);
             xQueueOverwrite(QInputTicks[i], &ticks);
         }

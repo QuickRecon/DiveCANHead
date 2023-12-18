@@ -191,11 +191,13 @@ int main(void)
 
 
   // Kick off our threads
-  c1 = CreateCell(0, CELL_DIGITAL);
+  InitADCs();
+
+  c1 = CreateCell(0, CELL_ANALOG);
   c2 = CreateCell(1, CELL_ANALOG);
   c3 = CreateCell(2, CELL_ANALOG);
 
-  InitADCs();
+  
 
   printCellsHandle = osThreadNew(printCells, NULL, &printCells_attributes);
 
