@@ -5,7 +5,9 @@
 
 // Value types
 typedef uint8_t PPO2_t;
+typedef uint8_t FO2_t;
 typedef uint16_t Millivolts_t;
+typedef uint8_t ShortMillivolts_t;
 typedef float CalCoeff_t;
 
 
