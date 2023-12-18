@@ -34,7 +34,7 @@ const osThreadAttr_t ADCTask_attributes = {
 osThreadId_t ADCTaskHandle;
 
 
-void InitADCs()
+void InitADCs(void)
 {
     for(uint8_t i = 0; i < ADC_COUNT; ++i){
         QInputValues[i] = xQueueCreate(1, sizeof(uint16_t));
@@ -83,19 +83,19 @@ void configureADC(uint16_t configuration, InputState_s input)
     configBytes[1] = (uint8_t)configuration;
     configBytes[0] = (uint8_t)(configuration >> 8);
 
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, input.adcAddress << 1, ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (uint8_t*)&lowThreshold, sizeof(lowThreshold)) != HAL_OK)
+    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (const uint8_t*)&lowThreshold, sizeof(lowThreshold)) != HAL_OK)
     {
         serial_printf("Err i2c update lower threshold");
     }
     osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
 
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, input.adcAddress << 1, ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t*)&highThreshold, sizeof(highThreshold)) != HAL_OK)
+    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (const uint8_t*)&highThreshold, sizeof(highThreshold)) != HAL_OK)
     {
         serial_printf("Err i2c update upper threshold");
     }
     osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
 
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, input.adcAddress << 1, ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)) != HAL_OK)
+    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)) != HAL_OK)
     {
         serial_printf("Err i2c update config");
     }
@@ -137,17 +137,17 @@ void ADCTask(void *arg)
                                                 (0 << 4) |                       // Comparator mode: traditional
                                                 (0 << 3) |                       // Comparator polarity: active low
                                                 (0 << 2) |                       // Comparator latch: non-latching
-                                                (0 << 0));                       // Comparator queue: 1 conversion
+                                                0);                              // Comparator queue: 1 conversion
             // Configure for the next input
             configureADC(configuration, adcInput[i]); // Will yield during I2C TX
 
 
-            // Start the conversion 
+            // Start the conversion
             uint16_t triggerReadConfiguration = (uint16_t)((1 << 15) | configuration); // Set the operation bit to start a conversion
             uint8_t configBytes[2] = {0};
             configBytes[1] = (uint8_t)triggerReadConfiguration;
             configBytes[0] = (uint8_t)(triggerReadConfiguration >> 8);
-            if (HAL_I2C_Mem_Write_IT(&hi2c1, adcInput[i].adcAddress << 1, ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)) != HAL_OK)
+            if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)) != HAL_OK)
             {
                 serial_printf("Err i2c update config");
             }
@@ -155,12 +155,12 @@ void ADCTask(void *arg)
 
 
             // Read the ADC
-            uint8_t conversionRegister[2]; // Memory space to recieve inputs into
-            HAL_I2C_Mem_Read_IT(&hi2c1, adcInput[i].adcAddress << 1, 0x00, 1, conversionRegister, sizeof(conversionRegister));
+            uint8_t conversionRegister[2] = {0}; // Memory space to recieve inputs into
+            HAL_I2C_Mem_Read_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), 0x00, 1, conversionRegister, sizeof(conversionRegister));
             osThreadFlagsWait(READ_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
 
             // Export the value to the queue
-            uint16_t adcCounts = (conversionRegister[0] << 8) | conversionRegister[1];
+            uint16_t adcCounts = (uint16_t)((uint16_t)conversionRegister[0] << 8) | conversionRegister[1];
             uint32_t ticks = HAL_GetTick();
             xQueueOverwrite(QInputValues[i], &adcCounts);
             xQueueOverwrite(QInputTicks[i], &ticks);
