@@ -41,6 +41,7 @@
 #include "Sensors/AnalogOxygen.h"
 #include "Hardware/pwr_management.h"
 #include "Hardware/ext_adc.h"
+#include "DiveCAN/DiveCAN.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -109,10 +110,10 @@ void printCells(void *arg)
     HAL_GPIO_TogglePin(LED7_GPIO_Port, LED7_Pin);
     HAL_IWDG_Refresh(&hiwdg);
     osDelay(500);
-    serial_printf("%d; C1: (%d, %d); C2: (%d, %d); C3: (%d, %d)\r\n", i,
-                  c1.ppo2(&c1), c1.millivolts(&c1),
-                  c2.ppo2(&c2), c2.millivolts(&c2),
-                  c3.ppo2(&c3), c3.millivolts(&c3));
+    // serial_printf("%d; C1: (%d, %d); C2: (%d, %d); C3: (%d, %d)\r\n", i,
+    //               c1.ppo2(&c1), c1.millivolts(&c1),
+    //               c2.ppo2(&c2), c2.millivolts(&c2),
+    //               c3.ppo2(&c3), c3.millivolts(&c3));
   }
 }
 
@@ -197,7 +198,7 @@ int main(void)
   c2 = CreateCell(1, CELL_ANALOG);
   c3 = CreateCell(2, CELL_ANALOG);
 
-  
+  InitDiveCAN();
 
   printCellsHandle = osThreadNew(printCells, NULL, &printCells_attributes);
 

@@ -11,7 +11,7 @@ extern void serial_printf(const char *fmt, ...);
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
+    //HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
     if (ADC1_ALERT_Pin == GPIO_Pin)
     {
         // Trigger ADC1 read
@@ -28,7 +28,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
+    //HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
     if ((hi2c->Devaddress == ((uint32_t)ADC1_ADDR << 1)) || (hi2c->Devaddress == ((uint32_t)ADC2_ADDR << 1)))
     {
         HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
@@ -38,7 +38,7 @@ void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
 
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
+    //HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
     if ((hi2c->Devaddress == ((uint32_t)ADC1_ADDR << 1)) || (hi2c->Devaddress == ((uint32_t)ADC2_ADDR << 1)))
     {
         ADC_I2C_Receive_Complete((uint8_t)(hi2c->Devaddress >> 1), hi2c);
@@ -80,7 +80,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
 void HAL_CAN_RxFifo1MsgPendingCallbackxFifo1(CAN_HandleTypeDef *hcan)
 {
-    HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+    HAL_GPIO_TogglePin(LED5_GPIO_Port, LED5_Pin);
     CAN_RxHeaderTypeDef pRxHeader = {0};
     uint8_t pData[64] = {0};
     HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO1, &pRxHeader, pData);

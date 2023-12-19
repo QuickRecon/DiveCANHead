@@ -5,57 +5,52 @@
 #include "can.h"
 
 #define BUS_INIT_LEN 3
-static const uint32_t BUS_INIT_ID = 0xD370400;
 
 #define BUS_ID_LEN 3
-static const uint32_t BUS_ID_ID = 0xD000000;
 
 #define BUS_NAME_LEN 8
-static const uint32_t BUS_NAME_ID = 0xD010000;
 
 #define BUS_STATUS_LEN 8
-static const uint32_t BUS_STATUS_ID = 0xDCB0000;
 
 #define PPO2_PPO2_LEN 4
-static const uint32_t PPO2_PPO2_ID = 0xD040000;
 
 #define PPO2_MILLIS_LEN 7
-static const uint32_t PPO2_MILLIS_ID = 0xD110000;
 
 #define PPO2_STATUS_LEN 2
-static const uint32_t PPO2_STATUS_ID = 0xDCA0000;
 
 #define CAL_LEN 8
-static const uint32_t CAL_ID = 0xD120000;
 
 #define MENU_ACK_LEN 6
 #define MENU_LEN 8
 #define MENU_FIELD_LEN 10
 #define MENU_FIELD_END_LEN 4
-static const uint32_t MENU_ID = 0xD0A0000;
 
 static QueueHandle_t QInboundCAN;
 
-void InitTransceiver(void)
+void InitRXQueue(void)
 {
     QInboundCAN = xQueueCreate(10, sizeof(DiveCANMessage_t));
 }
 
+BaseType_t GetLatestCAN(const uint32_t blockTime, DiveCANMessage_t *message)
+{
+    return xQueueReceive(QInboundCAN, message, blockTime);
+}
 /// @brief !! ISR METHOD !! Called when CAN mailbox receives message
 /// @param id message extended ID
 /// @param length length of data
 /// @param data data pointer
-void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t* const data){
+void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const data)
+{
     // TODO: Check length
     DiveCANMessage_t message = {
         .id = id,
         .length = length,
-        .data = {0}
-    };
+        .data = {0}};
     memcpy(message.data, data, length);
-    xQueueSendToBackFromISR(QInboundCAN, &message, pdTRUE); // TODO: Error handle
+    BaseType_t wakeHigherPriority = pdTRUE;
+    xQueueSendToBackFromISR(QInboundCAN, &message, &wakeHigherPriority); // TODO: Error handle
 }
-
 
 /// @brief Add message to the next free mailbox, waits until the next mailbox is avaliable.
 /// @param Id Message ID (extended)
@@ -87,10 +82,10 @@ void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t 
 
 /// @brief Transmit the bus initialization message
 /// @param deviceType the device type of this device
-void txBusInit(const DiveCANType_t deviceType)
+void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType)
 {
     uint8_t data[BUS_INIT_LEN] = {0x8a, 0xf3, 0x00};
-    uint32_t Id = BUS_INIT_ID | deviceType;
+    uint32_t Id = BUS_INIT_ID | (deviceType << 2) | targetDeviceType;
     sendCANMessage(Id, data, BUS_INIT_LEN);
 }
 
@@ -111,7 +106,7 @@ void txID(const DiveCANType_t deviceType, const uint8_t manufacturerID, const ui
 void txName(const DiveCANType_t deviceType, const char *const name)
 {
     uint8_t data[BUS_NAME_LEN + 1] = {0};
-    strncpy((char*)data, name, BUS_NAME_LEN);
+    strncpy((char *)data, name, BUS_NAME_LEN);
     uint32_t Id = BUS_NAME_ID | deviceType;
     sendCANMessage(Id, data, BUS_NAME_LEN);
 }

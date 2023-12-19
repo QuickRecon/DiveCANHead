@@ -21,7 +21,9 @@
         "cmsis_os.h": "c",
         "stdbool.h": "c",
         "random": "cpp",
-        "transciever.h": "c"
+        "transciever.h": "c",
+        "divecan.h": "c",
+        "system_error": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
