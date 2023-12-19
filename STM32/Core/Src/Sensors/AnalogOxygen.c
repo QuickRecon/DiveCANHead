@@ -132,6 +132,6 @@ PPO2_t Analog_getPPO2(AnalogOxygenState_t *handle)
 Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
 {
     uint16_t adcCounts = GetInputValue(handle->adcInputIndex);
-    float adcMillis = ((float)abs(adcCounts)) * ((0.256f * 10000.0f) / 32767.0f);
+    float adcMillis = ((float)abs(adcCounts)) * ((0.256f * 100000.0f) / 32767.0f);
     return (Millivolts_t)(adcMillis);
 }
