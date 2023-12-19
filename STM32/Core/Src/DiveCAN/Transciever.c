@@ -5,17 +5,12 @@
 #include "can.h"
 
 #define BUS_INIT_LEN 3
-
 #define BUS_ID_LEN 3
-
 #define BUS_NAME_LEN 8
-
 #define BUS_STATUS_LEN 8
 
 #define PPO2_PPO2_LEN 4
-
 #define PPO2_MILLIS_LEN 7
-
 #define PPO2_STATUS_LEN 2
 
 #define CAL_LEN 8
@@ -25,11 +20,16 @@
 #define MENU_FIELD_LEN 10
 #define MENU_FIELD_END_LEN 4
 
-static QueueHandle_t QInboundCAN;
+#define TX_WAIT_DELAY 10
+
+static QueueHandle_t QInboundCAN = NULL;
 
 void InitRXQueue(void)
 {
-    QInboundCAN = xQueueCreate(10, sizeof(DiveCANMessage_t));
+    if (NULL == QInboundCAN)
+    {
+        QInboundCAN = xQueueCreate(10, sizeof(DiveCANMessage_t));
+    }
 }
 
 BaseType_t GetLatestCAN(const uint32_t blockTime, DiveCANMessage_t *message)
@@ -61,7 +61,7 @@ void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t 
     // This isn't super time critical so if we're still waiting on stuff to tx then we can quite happily just wait
     while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))
     {
-        osDelay(10);
+        osDelay(TX_WAIT_DELAY);
     }
 
     CAN_TxHeaderTypeDef header = {0};

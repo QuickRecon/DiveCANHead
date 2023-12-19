@@ -1,24 +1,16 @@
 #include "DiveCAN.h"
 #include "cmsis_os.h"
-#include "Transciever.h"
 
 extern void serial_printf(const char *fmt, ...);
 
 void CANTask(void *arg);
-void RespBusInit(DiveCANMessage_t *message);
-void RespPing(DiveCANMessage_t *message);
-void RespCal(DiveCANMessage_t *message);
-void RespMenu(DiveCANMessage_t *message);
-void RespSetpoint(DiveCANMessage_t *message);
-void RespAtmos(DiveCANMessage_t *message);
-void RespShutdown(DiveCANMessage_t *message);
-
-// Statically declare the bus properties
-// TODO: Make this task-bound and part of the init routine so we can handle a device masquarading as multiple
-static const char *devName = "Rev2CTL";
-static const DiveCANType_t devType = DIVECAN_SOLO;
-static const DiveCANManufacturer_t manufacturerID = DIVECAN_MANUFACTURER_SRI;
-static const uint8_t firmwareVersion = 0x01;
+void RespBusInit(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
+void RespPing(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
+void RespCal(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
+void RespMenu(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
+void RespSetpoint(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
+void RespAtmos(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
+void RespShutdown(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 
 // FreeRTOS tasks
 const osThreadAttr_t CANTask_attributes = {
@@ -27,16 +19,21 @@ const osThreadAttr_t CANTask_attributes = {
     .stack_size = 1000};
 osThreadId_t CANTaskHandle;
 
-void InitDiveCAN(void)
+DiveCANDevice_t dev = {0}; // TODO: Crime
+
+void InitDiveCAN(DiveCANDevice_t *deviceSpec)
 {
     InitRXQueue();
-    CANTaskHandle = osThreadNew(CANTask, NULL, &CANTask_attributes);
+    dev = *deviceSpec;
+    CANTaskHandle = osThreadNew(CANTask, &dev, &CANTask_attributes);
 }
 
 /// @brief This task is the context in which we handle inbound CAN messages (which sometimes requires a response), dispatch of our other outgoing traffic may occur elsewhere
 /// @param arg
 void CANTask(void *arg)
 {
+    DiveCANDevice_t *deviceSpec = (DiveCANDevice_t *)arg;
+
     while (true)
     {
         DiveCANMessage_t message = {0};
@@ -48,31 +45,31 @@ void CANTask(void *arg)
             {
             case BUS_INIT_ID:
                 // Bus Init
-                RespBusInit(&message);
+                RespBusInit(&message, deviceSpec);
                 break;
             case BUS_ID_ID:
                 // Respond to pings
-                RespPing(&message);
+                RespPing(&message, deviceSpec);
                 break;
             case CAL_REQ_ID:
                 // Respond to calibration request
-                RespCal(&message);
+                RespCal(&message, deviceSpec);
                 break;
             case MENU_ID:
                 // Send Menu stuff
-                RespMenu(&message);
+                RespMenu(&message, deviceSpec);
                 break;
             case PPO2_SETPOINT_ID:
                 // Deal with setpoint being set
-                RespSetpoint(&message);
+                RespSetpoint(&message, deviceSpec);
                 break;
             case PPO2_ATMOS_ID:
                 // Error response
-                RespAtmos(&message);
+                RespAtmos(&message, deviceSpec);
                 break;
             case BUS_OFF_ID:
                 // Turn off bus
-                RespShutdown(&message);
+                RespShutdown(&message, deviceSpec);
                 break;
             case BUS_NAME_ID:
             case BUS_MENU_OPEN_ID:
@@ -90,45 +87,44 @@ void CANTask(void *arg)
     }
 }
 
-void RespBusInit(DiveCANMessage_t *message)
+void RespBusInit(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
 {
     // Do startup stuff and then ping the bus
-    RespPing(message);
+    RespPing(message, deviceSpec);
 }
 
-void RespPing(DiveCANMessage_t *message)
+void RespPing(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
 {
-    serial_printf("Ping");
-    txID(devType, manufacturerID, firmwareVersion);
+    serial_printf("Ping %d, %s\r\n", deviceSpec->type, deviceSpec->name);
+
+    DiveCANType_t devType = deviceSpec->type;
+
+    txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
     txStatus(devType, 55, 70, DIVECAN_ERR_NONE);
-    txName(devType, devName);
-    txPPO2(devType, 100, 100, 100);
-    txMillivolts(devType, 5000,5000,5000);
-    txCellState(devType, true, true, true, 100);
-    //txAlarm(devType);
+    txName(devType, deviceSpec->name);
 }
 
-void RespCal(DiveCANMessage_t *message)
+void RespCal(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: calibration routine
 }
 
-void RespMenu(DiveCANMessage_t *message)
+void RespMenu(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: calibration routine
 }
 
-void RespSetpoint(DiveCANMessage_t *message)
+void RespSetpoint(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: setpoint setting
 }
 
-void RespAtmos(DiveCANMessage_t *message)
+void RespAtmos(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: respond to atmos
 }
 
-void RespShutdown(DiveCANMessage_t *message)
+void RespShutdown(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: Shutdown procedure
 }
