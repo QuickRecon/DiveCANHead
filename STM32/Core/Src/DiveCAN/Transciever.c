@@ -93,9 +93,9 @@ void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
 /// @param deviceType the device type of this device
 /// @param manufacturerID Manufacturer ID
 /// @param firmwareVersion Firmware version
-void txID(const DiveCANType_t deviceType, const uint8_t manufacturerID, const uint8_t firmwareVersion)
+void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, const uint8_t firmwareVersion)
 {
-    uint8_t data[BUS_ID_LEN] = {manufacturerID, 0x00, firmwareVersion};
+    uint8_t data[BUS_ID_LEN] = {(uint8_t)manufacturerID, 0x00, firmwareVersion};
     uint32_t Id = BUS_ID_ID | deviceType;
     sendCANMessage(Id, data, BUS_ID_LEN);
 }

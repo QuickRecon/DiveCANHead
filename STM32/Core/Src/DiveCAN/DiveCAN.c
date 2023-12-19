@@ -9,12 +9,15 @@ void RespBusInit(DiveCANMessage_t *message);
 void RespPing(DiveCANMessage_t *message);
 void RespCal(DiveCANMessage_t *message);
 void RespMenu(DiveCANMessage_t *message);
+void RespSetpoint(DiveCANMessage_t *message);
+void RespAtmos(DiveCANMessage_t *message);
+void RespShutdown(DiveCANMessage_t *message);
 
 // Statically declare the bus properties
 // TODO: Make this task-bound and part of the init routine so we can handle a device masquarading as multiple
 static const char *devName = "Rev2CTL";
 static const DiveCANType_t devType = DIVECAN_SOLO;
-static const uint8_t manufacturerID = 0x00;
+static const DiveCANManufacturer_t manufacturerID = DIVECAN_MANUFACTURER_SRI;
 static const uint8_t firmwareVersion = 0x01;
 
 // FreeRTOS tasks
@@ -48,7 +51,6 @@ void CANTask(void *arg)
                 RespBusInit(&message);
                 break;
             case BUS_ID_ID:
-            case BUS_UNKNOWN1_ID:
                 // Respond to pings
                 RespPing(&message);
                 break;
@@ -59,6 +61,22 @@ void CANTask(void *arg)
             case MENU_ID:
                 // Send Menu stuff
                 RespMenu(&message);
+                break;
+            case PPO2_SETPOINT_ID:
+                // Deal with setpoint being set
+                RespSetpoint(&message);
+                break;
+            case PPO2_ATMOS_ID:
+                // Error response
+                RespAtmos(&message);
+                break;
+            case BUS_OFF_ID:
+                // Turn off bus
+                RespShutdown(&message);
+                break;
+            case BUS_NAME_ID:
+            case BUS_MENU_OPEN_ID:
+                // Ignore messages
                 break;
             default:
                 serial_printf("Unknown message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message_id,
@@ -84,6 +102,10 @@ void RespPing(DiveCANMessage_t *message)
     txID(devType, manufacturerID, firmwareVersion);
     txStatus(devType, 55, 70, DIVECAN_ERR_NONE);
     txName(devType, devName);
+    txPPO2(devType, 100, 100, 100);
+    txMillivolts(devType, 5000,5000,5000);
+    txCellState(devType, true, true, true, 100);
+    //txAlarm(devType);
 }
 
 void RespCal(DiveCANMessage_t *message)
@@ -94,4 +116,19 @@ void RespCal(DiveCANMessage_t *message)
 void RespMenu(DiveCANMessage_t *message)
 {
     // TODO: calibration routine
+}
+
+void RespSetpoint(DiveCANMessage_t *message)
+{
+    // TODO: setpoint setting
+}
+
+void RespAtmos(DiveCANMessage_t *message)
+{
+    // TODO: respond to atmos
+}
+
+void RespShutdown(DiveCANMessage_t *message)
+{
+    // TODO: Shutdown procedure
 }

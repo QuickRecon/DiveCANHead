@@ -12,9 +12,9 @@ static const uint32_t BUS_UNKNOWN1_ID = 0xD300000;
 static const uint32_t BUS_ID_ID = 0xD000000;
 static const uint32_t BUS_NAME_ID = 0xD010000;
 static const uint32_t BUS_STATUS_ID = 0xDCB0000;
+static const uint32_t BUS_MENU_OPEN_ID = 0xD300000;
 
-static const uint32_t BUS_ERR_ID = 0xD080000;
-
+static const uint32_t PPO2_ATMOS_ID = 0xD080000;
 static const uint32_t PPO2_PPO2_ID = 0xD040000;
 static const uint32_t PPO2_MILLIS_ID = 0xD110000;
 static const uint32_t PPO2_STATUS_ID = 0xDCA0000;
@@ -47,13 +47,20 @@ typedef enum DiveCANError_e
     DIVECAN_ERR_SOLENOID = 0x04
 } DiveCANError_t;
 
+typedef enum DiveCANManufacturer_e
+{
+    DIVECAN_MANUFACTURER_ISC = 0x00,
+    DIVECAN_MANUFACTURER_SRI = 0x01,
+    DIVECAN_MANUFACTURER_GEN = 0x02
+} DiveCANManufacturer_t;
+
 void InitRXQueue(void);
 BaseType_t GetLatestCAN(const uint32_t blockTime, DiveCANMessage_t *message);
 void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t* const data);
 
 // Device Metadata
 void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType);
-void txID(const DiveCANType_t deviceType, const uint8_t manufacturerID, uint8_t firmwareVersion);
+void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, uint8_t firmwareVersion);
 void txName(const DiveCANType_t deviceType, const char *name);
 void txStatus(const DiveCANType_t deviceType, const uint8_t batteryVoltage, const uint8_t setpoint, const DiveCANError_t error);
 
