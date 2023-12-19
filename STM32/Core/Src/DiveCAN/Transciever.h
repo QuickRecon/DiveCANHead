@@ -4,6 +4,12 @@
 #include "../common.h"
 #include "stdbool.h"
 
+typedef struct DiveCANMessage_s {
+    uint32_t id;
+    uint8_t length;
+    uint8_t data[8];
+} DiveCANMessage_t;
+
 typedef enum DiveCANType_e
 {
     DIVECAN_CONTROLLER = 1,
@@ -19,7 +25,9 @@ typedef enum DiveCANError_e
     DIVECAN_ERR_SOLENOID = 0x04
 } DiveCANError_t;
 
-void rxInterrupt(uint32_t id, uint8_t length, uint8_t* data);
+void InitTransceiver(void);
+
+void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t* const data);
 
 // Device Metadata
 void txBusInit(const DiveCANType_t deviceType);

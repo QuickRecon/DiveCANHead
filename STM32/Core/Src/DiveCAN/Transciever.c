@@ -1,6 +1,7 @@
 #include "Transciever.h"
 #include "string.h"
 #include "cmsis_os.h"
+#include "queue.h"
 #include "can.h"
 
 #define BUS_INIT_LEN 3
@@ -33,14 +34,28 @@ static const uint32_t CAL_ID = 0xD120000;
 #define MENU_FIELD_END_LEN 4
 static const uint32_t MENU_ID = 0xD0A0000;
 
+static QueueHandle_t QInboundCAN;
+
+void InitTransceiver(void)
+{
+    QInboundCAN = xQueueCreate(10, sizeof(DiveCANMessage_t));
+}
 
 /// @brief !! ISR METHOD !! Called when CAN mailbox receives message
 /// @param id message extended ID
 /// @param length length of data
 /// @param data data pointer
-void rxInterrupt(uint32_t id, uint8_t length, uint8_t* data){
-    
+void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t* const data){
+    // TODO: Check length
+    DiveCANMessage_t message = {
+        .id = id,
+        .length = length,
+        .data = {0}
+    };
+    memcpy(message.data, data, length);
+    xQueueSendToBackFromISR(QInboundCAN, &message, pdTRUE); // TODO: Error handle
 }
+
 
 /// @brief Add message to the next free mailbox, waits until the next mailbox is avaliable.
 /// @param Id Message ID (extended)
@@ -152,7 +167,7 @@ void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, cons
 /// @param PPO2 The consensus PPO2 of the cells
 void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool cell2, const bool cell3, const PPO2_t PPO2)
 {
-    uint8_t cellMask = cell1 | cell2 << 1 | cell3 << 2;
+    uint8_t cellMask = (uint8_t)((uint8_t)cell1 | (uint8_t)((uint8_t)cell2 << 1) | (uint8_t)((uint8_t)cell3 << 2));
 
     uint8_t data[PPO2_STATUS_LEN] = {cellMask, PPO2};
     uint32_t Id = PPO2_STATUS_ID | deviceType;
@@ -179,7 +194,10 @@ void txCalAck(DiveCANType_t deviceType)
 /// @param atmosphericPressure Atmospheric pressure at the time of calibration
 void txCalResponse(DiveCANType_t deviceType, ShortMillivolts_t cell1, ShortMillivolts_t cell2, ShortMillivolts_t cell3, FO2_t FO2, uint16_t atmosphericPressure)
 {
-    uint8_t data[CAL_LEN] = {(uint8_t)DIVECAN_CAL_RESULT, cell1, cell2, cell3, FO2, 0xFF, 0xFF, 0x07};
+
+    uint8_t atmosBytes[2] = {(uint8_t)(atmosphericPressure >> 8), (uint8_t)atmosphericPressure};
+
+    uint8_t data[CAL_LEN] = {(uint8_t)DIVECAN_CAL_RESULT, cell1, cell2, cell3, FO2, atmosBytes[0], atmosBytes[1], 0x07};
     uint32_t Id = CAL_ID | deviceType;
     sendCANMessage(Id, data, CAL_LEN);
 }
