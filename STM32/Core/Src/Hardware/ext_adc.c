@@ -1,5 +1,5 @@
 #include "ext_adc.h"
-#include "i2c.h"
+#include "main.h"
 #include "cmsis_os.h"
 
 const uint8_t ADC1_ADDR = 0x48;
@@ -16,6 +16,8 @@ static const uint8_t TRANSMIT_COMPLETE_FLAG = 0b01;
 static const uint8_t READ_READY_FLAG = 0b010;
 static const uint8_t READ_COMPLETE_FLAG = 0b100;
 
+extern I2C_HandleTypeDef hi2c1;
+
 #define ADC_COUNT 4
 static QueueHandle_t QInputValues[ADC_COUNT];
 static QueueHandle_t QInputTicks[ADC_COUNT];
@@ -27,10 +29,15 @@ extern void serial_printf(const char *fmt, ...);
 void ADCTask(void *arg);
 
 // FreeRTOS tasks
+static uint32_t ADCTask_buffer[1000];
+static StaticTask_t ADCTask_ControlBlock;
 const osThreadAttr_t ADCTask_attributes = {
     .name = "ADCTask",
-    .priority = (osPriority_t)osPriorityNormal,
-    .stack_size = 1000};
+    .cb_mem = &ADCTask_ControlBlock,
+    .cb_size = sizeof(ADCTask_ControlBlock),
+    .stack_mem = &ADCTask_buffer[0],
+    .stack_size = sizeof(ADCTask_buffer),
+    .priority = (osPriority_t)osPriorityNormal};
 osThreadId_t ADCTaskHandle;
 
 

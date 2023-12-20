@@ -1,6 +1,6 @@
 #include "PPO2Transmitter.h"
 #include "cmsis_os.h"
-#include "iwdg.h"
+#include "main.h"
 
 static const uint8_t CELL_1 = 0;
 static const uint8_t CELL_2 = 1;
@@ -8,6 +8,9 @@ static const uint8_t CELL_3 = 2;
 
 static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
 
+#define PPO2TXTASK_STACK_SIZE 200
+
+extern IWDG_HandleTypeDef hiwdg;
 typedef struct cellValueContainer_s
 {
     uint8_t cellNumber;
@@ -30,10 +33,15 @@ void PPO2TXTask(void *arg);
 Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3);
 
 // FreeRTOS tasks
+static uint32_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
+static StaticTask_t PPO2TXTask_ControlBlock;
 const osThreadAttr_t PPO2TXTask_attributes = {
     .name = "PPO2TXTask",
-    .priority = (osPriority_t)osPriorityNormal,
-    .stack_size = 1000};
+    .cb_mem = &PPO2TXTask_ControlBlock,
+    .cb_size = sizeof(PPO2TXTask_ControlBlock),
+    .stack_mem = &PPO2TXTask_buffer[0],
+    .stack_size = sizeof(PPO2TXTask_buffer),
+    .priority = (osPriority_t)osPriorityNormal};
 
 osThreadId_t PPO2TXTaskHandle;
 PPO2TXTask_params_t taskParams;

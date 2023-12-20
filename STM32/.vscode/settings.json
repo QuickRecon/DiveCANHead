@@ -31,11 +31,14 @@
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
     "cSpell.words": [
+        "Callbackx",
         "Cplt",
         "Devaddress",
         "DIVECAN",
         "EXTI",
         "FATFS",
+        "hcan",
+        "huart",
         "NVIC",
         "SDMMC",
         "setpoint"

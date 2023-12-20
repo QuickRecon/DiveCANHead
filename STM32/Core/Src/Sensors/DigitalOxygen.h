@@ -3,14 +3,14 @@
 
 #include "../common.h"
 #include "string.h"
-#include "usart.h"
+#include "main.h"
 #include <stdbool.h>
 #include "cmsis_os.h"
 
 // Implementation consts
 #define RX_BUFFER_LENGTH 86
 #define TX_BUFFER_LENGTH 7
-
+#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 200 // TODO: seek the minimum on this
 typedef struct DigitalOxygenState_s
 {
     // Configuration
@@ -25,6 +25,9 @@ typedef struct DigitalOxygenState_s
     uint32_t ticksOfTX;
     uint32_t ticksOfLastPPO2;
     osThreadId_t processor;
+
+    uint32_t processor_buffer[DIGITAL_CELL_PROCESSOR_STACK_SIZE];
+    StaticTask_t processor_controlblock;
 } DigitalOxygenState_t;
 
 

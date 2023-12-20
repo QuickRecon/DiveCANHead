@@ -23,12 +23,13 @@ const char *const LOGO_COMMAND = "#LOGO";
 const uint16_t HPA_PER_BAR = 10000;
 const uint8_t PPO2_BASE = 10;
 
-const osThreadAttr_t processor_attributes = {
-    .priority = (osPriority_t)osPriorityNormal,
-    .stack_size = 500};
-
 // Time to wait on the cell to do things
 const uint16_t DIGITAL_RESPONSE_TIMEOUT = 1000; // Milliseconds, how long before the cell *definitely* isn't coming back to us
+
+
+extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart2;
+extern UART_HandleTypeDef huart3;
 
 static DigitalOxygenState_t digital_cellStates[3] = {0};
 
@@ -60,6 +61,14 @@ DigitalOxygenState_p Digital_InitCell(uint8_t cellNumber)
     }
 
     // Create a task for the decoder
+
+    osThreadAttr_t processor_attributes = {
+        .cb_mem = &(handle->processor_controlblock),
+        .cb_size = sizeof(handle->processor_controlblock),
+        .stack_mem = &(handle->processor_buffer)[0],
+        .stack_size = sizeof(handle->processor_buffer),
+        .priority = (osPriority_t)osPriorityNormal};
+
     handle->processor = osThreadNew(decodeCellMessage, handle, &processor_attributes);
     sendCellCommand(GET_OXY_COMMAND, handle);
     return handle;
@@ -81,7 +90,7 @@ PPO2_t Digital_getPPO2(DigitalOxygenState_p handle)
     if ((ticks - handle->ticksOfLastPPO2) > DIGITAL_RESPONSE_TIMEOUT)
     { // If we've taken longer than timeout, fail the cell, no lies here
         handle->status = CELL_FAIL;
-        //serial_printf("handle = 0x%x, actual = 0x%x, buff = 0x%x\r\n6", handle->huart, &huart1, digital_cellStates[0].huart);
+        // serial_printf("handle = 0x%x, actual = 0x%x, buff = 0x%x\r\n6", handle->huart, &huart1, digital_cellStates[0].huart);
         HAL_UART_Abort(&huart1); // Abort so that we don't get stuck waiting for uart
         serial_printf("CELL %d TIMEOUT: %d\r\n", handle->cellNumber, (ticks - handle->ticksOfLastPPO2));
         sendCellCommand(GET_OXY_COMMAND, handle);
@@ -189,7 +198,7 @@ DigitalOxygenState_p uartToCell(const UART_HandleTypeDef *huart)
 
 void Cell_TX_Complete(const UART_HandleTypeDef *huart)
 {
-    //serial_printf("TXB");
+    // serial_printf("TXB");
     DigitalOxygenState_p cell = uartToCell(huart);
     if (cell != NULL)
     {
@@ -222,7 +231,7 @@ void sendCellCommand(const char *const commandStr, DigitalOxygenState_p cell)
     // }
     // serial_printf("tx: %s\r\n", txBuffer);
 
-    /*HAL_StatusTypeDef txER = */HAL_UART_Transmit_IT(cell->huart, cell->txBuf, TX_BUFFER_LENGTH-1);
-    /*HAL_StatusTypeDef rxER = */HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH);
-    //serial_printf("tx: %d, rx: %d\r\n", txER, rxER);
+    /*HAL_StatusTypeDef txER = */ HAL_UART_Transmit_IT(cell->huart, cell->txBuf, TX_BUFFER_LENGTH - 1);
+    /*HAL_StatusTypeDef rxER = */ HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH);
+    // serial_printf("tx: %d, rx: %d\r\n", txER, rxER);
 }

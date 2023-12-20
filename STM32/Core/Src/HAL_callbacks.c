@@ -1,5 +1,4 @@
-#include "gpio.h"
-#include "can.h"
+#include "main.h"
 #include "Sensors/AnalogOxygen.h"
 #include "Sensors/DigitalOxygen.h"
 #include "Hardware/ext_adc.h"
@@ -46,17 +45,8 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 }
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef* huart,  uint16_t size){
-    //serial_printf("Size: %d\n", size);
     Cell_RX_Complete(huart, size);
 }
-
-// void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef* huart){
-//     Cell_RX_Complete(huart);
-// }
-
-// void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
-//     Cell_RX_Complete(huart);
-// }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef* huart){
     Cell_TX_Complete(huart);
@@ -67,7 +57,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
     HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
     CAN_RxHeaderTypeDef pRxHeader = {0};
     uint8_t pData[64] = {0};
-    HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &pRxHeader, pData);
+    HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &pRxHeader, pData);
 
     // Use 0x05 to reset into bootloader for flashing
     if (0x05 == pRxHeader.StdId)
@@ -83,7 +73,7 @@ void HAL_CAN_RxFifo1MsgPendingCallbackxFifo1(CAN_HandleTypeDef *hcan)
     HAL_GPIO_TogglePin(LED5_GPIO_Port, LED5_Pin);
     CAN_RxHeaderTypeDef pRxHeader = {0};
     uint8_t pData[64] = {0};
-    HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO1, &pRxHeader, pData);
+    HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &pRxHeader, pData);
 
     // Use 0x05 to reset into bootloader for flashing
     if (0x05 == pRxHeader.StdId)

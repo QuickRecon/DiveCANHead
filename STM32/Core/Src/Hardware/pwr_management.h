@@ -1,7 +1,7 @@
 #ifndef _PWRMANAGEMENT_H
 #define _PWRMANAGEMENT_H
 
-#include "gpio.h"
+#include "main.h"
 #include "stdbool.h"
 
 typedef enum PowerSource_e {

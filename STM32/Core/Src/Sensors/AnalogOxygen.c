@@ -3,7 +3,7 @@
 #include "../Hardware/ext_adc.h"
 #include "eeprom_emul.h"
 #include "string.h"
-#include "i2c.h"
+#include "main.h"
 #include <stdbool.h>
 #include "cmsis_os.h"
 #include "queue.h"

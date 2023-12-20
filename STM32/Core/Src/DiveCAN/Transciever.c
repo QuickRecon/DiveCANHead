@@ -2,7 +2,7 @@
 #include "string.h"
 #include "cmsis_os.h"
 #include "queue.h"
-#include "can.h"
+#include "main.h"
 
 #define BUS_INIT_LEN 3
 #define BUS_ID_LEN 3
@@ -21,6 +21,8 @@
 #define MENU_FIELD_END_LEN 4
 
 #define TX_WAIT_DELAY 10
+
+extern CAN_HandleTypeDef hcan1;
 
 static QueueHandle_t QInboundCAN = NULL;
 
@@ -61,7 +63,7 @@ void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t 
     // This isn't super time critical so if we're still waiting on stuff to tx then we can quite happily just wait
     while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))
     {
-        osDelay(TX_WAIT_DELAY);
+       osDelay(TX_WAIT_DELAY);
     }
 
     CAN_TxHeaderTypeDef header = {0};

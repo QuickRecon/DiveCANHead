@@ -12,11 +12,18 @@ void RespSetpoint(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 void RespAtmos(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 void RespShutdown(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 
+#define CANTASK_STACK_SIZE 200
+
 // FreeRTOS tasks
+static uint32_t CANTask_buffer[200];
+static StaticTask_t CANTask_ControlBlock;
 const osThreadAttr_t CANTask_attributes = {
     .name = "CANTask",
-    .priority = (osPriority_t)osPriorityNormal,
-    .stack_size = 1000};
+    .cb_mem = &CANTask_ControlBlock,
+    .cb_size = sizeof(CANTask_ControlBlock),
+    .stack_mem = &CANTask_buffer[0],
+    .stack_size = sizeof(CANTask_buffer),
+    .priority = (osPriority_t)osPriorityNormal};
 osThreadId_t CANTaskHandle;
 
 DiveCANDevice_t dev = {0}; // TODO: Crime
