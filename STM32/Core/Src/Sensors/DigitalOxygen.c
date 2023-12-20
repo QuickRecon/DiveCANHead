@@ -220,8 +220,9 @@ void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 void sendCellCommand(const char *const commandStr, DigitalOxygenState_p cell)
 {
     const uint8_t newlineStr[] = {NEWLINE, '\0'};
-    strncpy((char *)cell->txBuf, commandStr, TX_BUFFER_LENGTH - 2);
-    strncat((char *)cell->txBuf, (const char *)newlineStr, TX_BUFFER_LENGTH - 1);
+    const uint8_t reqRemainder = 2; // Less 2 chars, room for the EOL and null terminator
+    strncpy((char *)cell->txBuf, commandStr, TX_BUFFER_LENGTH - reqRemainder); 
+    strncat((char *)cell->txBuf, (const char *)newlineStr, 1);
 
     // Make sure our RX buffer is clear
     memset(cell->lastMessage, 0, RX_BUFFER_LENGTH);

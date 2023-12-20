@@ -14,7 +14,6 @@
 static AnalogOxygenState_t analog_cellStates[3] = {0};
 
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x1;
-static const CalCoeff_t ANALOG_CAL_INVALID = 10000.0; // Known invalid cal if we need to populate flash
 
 // Chosen so that 13 to 8mV in air is a valid cal coeff
 static const CalCoeff_t ANALOG_CAL_UPPER = 0.0002625;
@@ -59,8 +58,8 @@ void ReadCalibration(AnalogOxygenState_t *handle)
     {
         serial_printf("Cal not found %d\r\n", handle->cellNumber);
         HAL_FLASH_Unlock();
-
-        EE_Status writeResult = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, *((const uint32_t *)&ANALOG_CAL_INVALID));
+        uint32_t defaultVal = 0; // 0 is 0, be it float or int, either way its invalid, so we're winge about an invalid cal and make the user do one
+        EE_Status writeResult = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, defaultVal);
         if (writeResult == EE_OK)
         {
             ReadCalibration(handle);
@@ -88,8 +87,10 @@ void Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
     serial_printf("Calibrated with coefficient %f\r\n", handle->calibrationCoefficient);
 
     // Convert it to raw bytes
-    uint8_t bytes[sizeof(CalCoeff_t)];
-    memcpy(bytes, &(handle->calibrationCoefficient), sizeof(CalCoeff_t));
+    uint8_t bytes[sizeof(CalCoeff_t)] = {0,0};
+    bytes[0] = (uint8_t)handle->calibrationCoefficient;
+    bytes[1] = (uint8_t)((uint8_t)handle->calibrationCoefficient << 8);
+    //memcpy(bytes, &(handle->calibrationCoefficient), sizeof(CalCoeff_t));
     // Write that shit to the eeprom
     uint32_t byte = ((uint32_t)(bytes[3]) << 24) | ((uint32_t)(bytes[2]) << 16) | ((uint32_t)(bytes[1]) << 8) | (uint32_t)bytes[0];
     HAL_FLASH_Unlock();

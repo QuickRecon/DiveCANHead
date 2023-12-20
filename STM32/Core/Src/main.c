@@ -113,14 +113,14 @@ static void MX_NVIC_Init(void);
 char string[200];
 void vprint(const char *fmt, va_list argp)
 {
-  if (0 < vsprintf(string, fmt, argp)) // build string
-  {
-    while (huart2.gState != HAL_UART_STATE_READY)
-    {
-      osDelay(5);
-    }
-    HAL_UART_Transmit(&huart2, (uint8_t *)string, strlen(string), 0xffffff); // send message via UART
-  }
+  // if (0 < vsprintf(string, fmt, argp)) // build string
+  // {
+  //   while (huart2.gState != HAL_UART_STATE_READY)
+  //   {
+  //     osDelay(5);
+  //   }
+  //   HAL_UART_Transmit(&huart2, (uint8_t *)string, strlen(string), 0xffffff); // send message via UART
+  // }
 }
 
 void serial_printf(const char *fmt, ...) // custom printf() function

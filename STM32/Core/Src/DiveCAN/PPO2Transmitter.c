@@ -19,7 +19,7 @@ typedef struct cellValueContainer_s
 
 typedef struct PPO2TXTask_params_s
 {
-    DiveCANDevice_t* device;
+    DiveCANDevice_t *device;
     OxygenCell_t *c1;
     OxygenCell_t *c2;
     OxygenCell_t *c3;
@@ -46,7 +46,7 @@ const osThreadAttr_t PPO2TXTask_attributes = {
 osThreadId_t PPO2TXTaskHandle;
 PPO2TXTask_params_t taskParams;
 
-void InitPPO2TX(DiveCANDevice_t* device, OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3)
+void InitPPO2TX(DiveCANDevice_t *device, OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3)
 {
     PPO2TXTask_params_t params = {
         .device = device,
@@ -60,7 +60,7 @@ void InitPPO2TX(DiveCANDevice_t* device, OxygenCell_t *c1, OxygenCell_t *c2, Oxy
 void PPO2TXTask(void *arg)
 {
     PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;
-    DiveCANDevice_t* dev = params->device;
+    DiveCANDevice_t *dev = params->device;
     OxygenCell_t *c1 = params->c1;
     OxygenCell_t *c2 = params->c2;
     OxygenCell_t *c3 = params->c3;
@@ -130,8 +130,7 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
             c3->millivolts(c3),
         },
         .consensus = 0,
-        .included = {true, true, true}
-    };
+        .included = {true, true, true}};
 
     // First check if any of the cells are begging for cal,
     // because that takes precidence over the rest of this logic
@@ -153,7 +152,27 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
                                             {CELL_2, consensus.PPO2s[CELL_2]},
                                             {CELL_3, consensus.PPO2s[CELL_3]}};
 
-        qsort(sortList, 3, sizeof(cellValueContainer_t), CelValComp);
+        // Do a non-recursive bounded sort
+        uint8_t maxIdx = 0;
+        uint8_t size = 3;
+        for (uint8_t i = 0; i < (size - 1); ++i)
+        {
+            // Find the maximum element in
+            // unsorted array
+            maxIdx = i;
+            for (uint8_t j = i + 1; j < size; ++j)
+            {
+                if (sortList[j].PPO2 > sortList[maxIdx].PPO2)
+                {
+                    maxIdx = j;
+                }
+            }
+            // Swap the found minimum element
+            // with the first element
+            cellValueContainer_t temp = sortList[maxIdx];
+            sortList[maxIdx] = sortList[i];
+            sortList[i] = temp;
+        }
 
         // Now check the upper and lower cells, and start a tally of the included cells
         uint16_t PPO2_acc = sortList[CELL_2].PPO2; // Start an accumulator to take an average, include the median cell always

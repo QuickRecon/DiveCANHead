@@ -48,8 +48,10 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     DiveCANMessage_t message = {
         .id = id,
         .length = length,
-        .data = {0}};
+        .data = {0, 0, 0, 0, 0, 0, 0, 0}};
+
     memcpy(message.data, data, length);
+
     BaseType_t wakeHigherPriority = pdTRUE;
     xQueueSendToBackFromISR(QInboundCAN, &message, &wakeHigherPriority); // TODO: Error handle
 }
@@ -63,7 +65,7 @@ void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t 
     // This isn't super time critical so if we're still waiting on stuff to tx then we can quite happily just wait
     while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))
     {
-       osDelay(TX_WAIT_DELAY);
+        osDelay(TX_WAIT_DELAY);
     }
 
     CAN_TxHeaderTypeDef header = {0};

@@ -29,7 +29,7 @@ extern void serial_printf(const char *fmt, ...);
 void ADCTask(void *arg);
 
 // FreeRTOS tasks
-static uint32_t ADCTask_buffer[1000];
+static uint32_t ADCTask_buffer[250];
 static StaticTask_t ADCTask_ControlBlock;
 const osThreadAttr_t ADCTask_attributes = {
     .name = "ADCTask",

@@ -12,7 +12,7 @@ void RespSetpoint(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 void RespAtmos(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 void RespShutdown(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 
-#define CANTASK_STACK_SIZE 200
+#define CANTASK_STACK_SIZE 250
 
 // FreeRTOS tasks
 static uint32_t CANTask_buffer[200];

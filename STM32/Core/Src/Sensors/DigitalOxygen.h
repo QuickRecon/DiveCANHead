@@ -9,8 +9,8 @@
 
 // Implementation consts
 #define RX_BUFFER_LENGTH 86
-#define TX_BUFFER_LENGTH 7
-#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 200 // TODO: seek the minimum on this
+#define TX_BUFFER_LENGTH 8
+#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 200 // The analyser reckons 128, but can't handle the string functions
 typedef struct DigitalOxygenState_s
 {
     // Configuration
