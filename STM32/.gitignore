@@ -2,4 +2,5 @@ build/
 *.zip
 _autosave*
 *.lck
-stm32-cppcheck-build-dir/*
+stm32-cppcheck-build-dir
+stackAnalysis.txt
