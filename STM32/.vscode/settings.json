@@ -23,7 +23,10 @@
         "random": "cpp",
         "transciever.h": "c",
         "divecan.h": "c",
-        "system_error": "c"
+        "system_error": "c",
+        "common.h": "c",
+        "ppo2transmitter.h": "c",
+        "i2c.h": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",

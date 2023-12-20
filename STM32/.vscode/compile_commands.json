@@ -348,5 +348,10 @@
         "command": "arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -u _printf_float  -DUSE_HAL_DRIVER -DSTM32L431xx -DSTM32_THREAD_SAFE_STRATEGY=4 -ICore/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32L4xx/Include -IDrivers/CMSIS/Include -IFATFS/Target -IFATFS/App -IMiddlewares/Third_Party/FatFs/src -IMiddlewares/ST/EEPROM_Emul/Core -IMiddlewares/ST/EEPROM_Emul/Porting/STM32L4 -IMiddlewares/Third_Party/FreeRTOS/Source/include -IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F -Og -Wall -fdata-sections -ffunction-sections -Werror -std=gnu17 -g -gdwarf-2 -MMD -MP -MF\"build/Transciever.d\" -Wa,-a,-ad,-alms=build/Transciever.lst Core/Src/DiveCAN/Transciever.c -o build/Transciever.o",
         "directory": "/home/aren/Dropbox/DiveCANHeadRev2/STM32",
         "file": "/home/aren/Dropbox/DiveCANHeadRev2/STM32/Core/Src/DiveCAN/Transciever.c"
+    },
+    {
+        "command": "arm-none-eabi-gcc -c -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -u _printf_float  -DUSE_HAL_DRIVER -DSTM32L431xx -DSTM32_THREAD_SAFE_STRATEGY=4 -ICore/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc -IDrivers/STM32L4xx_HAL_Driver/Inc/Legacy -IDrivers/CMSIS/Device/ST/STM32L4xx/Include -IDrivers/CMSIS/Include -IFATFS/Target -IFATFS/App -IMiddlewares/Third_Party/FatFs/src -IMiddlewares/ST/EEPROM_Emul/Core -IMiddlewares/ST/EEPROM_Emul/Porting/STM32L4 -IMiddlewares/Third_Party/FreeRTOS/Source/include -IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F -Og -Wall -fdata-sections -ffunction-sections -Werror -std=gnu17 -g -gdwarf-2 -MMD -MP -MF\"build/PPO2Transmitter.d\" -Wa,-a,-ad,-alms=build/PPO2Transmitter.lst Core/Src/DiveCAN/PPO2Transmitter.c -o build/PPO2Transmitter.o",
+        "directory": "/home/aren/Dropbox/DiveCANHeadRev2/STM32",
+        "file": "/home/aren/Dropbox/DiveCANHeadRev2/STM32/Core/Src/DiveCAN/PPO2Transmitter.c"
     }
 ]

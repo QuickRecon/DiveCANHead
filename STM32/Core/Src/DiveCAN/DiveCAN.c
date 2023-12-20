@@ -26,6 +26,7 @@ void InitDiveCAN(DiveCANDevice_t *deviceSpec)
     InitRXQueue();
     dev = *deviceSpec;
     CANTaskHandle = osThreadNew(CANTask, &dev, &CANTask_attributes);
+    txStartDevice(DIVECAN_CONTROLLER, DIVECAN_SOLO);
 }
 
 /// @brief This task is the context in which we handle inbound CAN messages (which sometimes requires a response), dispatch of our other outgoing traffic may occur elsewhere

@@ -15,8 +15,12 @@ static AnalogOxygenState_t analog_cellStates[3] = {0};
 
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x1;
 static const CalCoeff_t ANALOG_CAL_INVALID = 10000.0; // Known invalid cal if we need to populate flash
-static const CalCoeff_t ANALOG_CAL_UPPER = 1.0;
-static const CalCoeff_t ANALOG_CAL_LOWER = 0.0;
+
+// Chosen so that 13 to 8mV in air is a valid cal coeff
+static const CalCoeff_t ANALOG_CAL_UPPER = 0.0002625;
+static const CalCoeff_t ANALOG_CAL_LOWER = 0.00016153846153846154;
+
+static const CalCoeff_t COUNTS_TO_MILLIS = ((0.256f * 100000.0f) / 32767.0f);
 
 // Time to wait on the cell to do things
 const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; // Milliseconds, how long before the cell *definitely* isn't coming back to us
@@ -79,7 +83,7 @@ void Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
 {
     uint16_t adcCounts = GetInputValue(handle->adcInputIndex);
     // Our coefficient is simply the float needed to make the current sample the current PPO2
-    handle->calibrationCoefficient = (CalCoeff_t)(PPO2) / (CalCoeff_t)(adcCounts);
+    handle->calibrationCoefficient = (CalCoeff_t)(PPO2) / ((CalCoeff_t)abs(adcCounts)*COUNTS_TO_MILLIS);
 
     serial_printf("Calibrated with coefficient %f\r\n", handle->calibrationCoefficient);
 
@@ -123,7 +127,7 @@ PPO2_t Analog_getPPO2(AnalogOxygenState_t *handle)
     else
     {
         uint16_t adcCounts = GetInputValue(handle->adcInputIndex);
-        CalCoeff_t calPPO2 = (CalCoeff_t)abs(adcCounts) * handle->calibrationCoefficient;
+        CalCoeff_t calPPO2 = (CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS* handle->calibrationCoefficient;
         PPO2 = (PPO2_t)(calPPO2);
     }
     return PPO2;
@@ -132,6 +136,6 @@ PPO2_t Analog_getPPO2(AnalogOxygenState_t *handle)
 Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
 {
     uint16_t adcCounts = GetInputValue(handle->adcInputIndex);
-    float adcMillis = ((float)abs(adcCounts)) * ((0.256f * 100000.0f) / 32767.0f);
+    float adcMillis = ((float)abs(adcCounts)) * COUNTS_TO_MILLIS;
     return (Millivolts_t)(adcMillis);
 }

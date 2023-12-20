@@ -42,6 +42,7 @@
 #include "Hardware/pwr_management.h"
 #include "Hardware/ext_adc.h"
 #include "DiveCAN/DiveCAN.h"
+#include "DiveCAN/PPO2Transmitter.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -99,37 +100,7 @@ void serial_printf(const char *fmt, ...) // custom printf() function
 OxygenCell_t c1 = {0};
 OxygenCell_t c2 = {0};
 OxygenCell_t c3 = {0};
-
-// Cell printing task
-void printCells(void *arg)
-{
-  int i = 0;
-  while (true)
-  {
-    ++i;
-    HAL_GPIO_TogglePin(LED7_GPIO_Port, LED7_Pin);
-    HAL_IWDG_Refresh(&hiwdg);
-    osDelay(500);
-
-    txPPO2(DIVECAN_SOLO, c1.ppo2(&c1), c2.ppo2(&c2), c3.ppo2(&c3));
-    txMillivolts(DIVECAN_SOLO, c1.millivolts(&c1), c2.millivolts(&c2), c3.millivolts(&c3));
-
-    txCellState(DIVECAN_SOLO, true, true, true, 100);
-
-    serial_printf("%d; C1: (%d, %d); C2: (%d, %d); C3: (%d, %d)\r\n", i,
-                  c1.ppo2(&c1), c1.millivolts(&c1),
-                  c2.ppo2(&c2), c2.millivolts(&c2),
-                  c3.ppo2(&c3), c3.millivolts(&c3));
-  }
-}
-
-// FreeRTOS tasks
-const osThreadAttr_t printCells_attributes = {
-    .name = "printCells",
-    .priority = (osPriority_t)osPriorityAboveNormal3,
-    .stack_size = 1000};
-
-osThreadId_t printCellsHandle;
+DiveCANDevice_t deviceSpec = {0};
 
 /* USER CODE END 0 */
 
@@ -202,15 +173,13 @@ int main(void)
   c2 = CreateCell(1, CELL_ANALOG);
   c3 = CreateCell(2, CELL_ANALOG);
 
-  DiveCANDevice_t deviceSpec = {
-      .name = "Rev2Ctl",
-      .type = DIVECAN_SOLO,
-      .manufacturerID = DIVECAN_MANUFACTURER_GEN,
-      .firmwareVersion = 1};
+  deviceSpec.name = "Rev2Ctl";
+  deviceSpec.type = DIVECAN_SOLO;
+  deviceSpec.manufacturerID = DIVECAN_MANUFACTURER_GEN;
+  deviceSpec.firmwareVersion = 1;
 
   InitDiveCAN(&deviceSpec);
-
-  printCellsHandle = osThreadNew(printCells, NULL, &printCells_attributes);
+  InitPPO2TX(&deviceSpec, &c1, &c2, &c3);
 
   /* USER CODE END 2 */
 

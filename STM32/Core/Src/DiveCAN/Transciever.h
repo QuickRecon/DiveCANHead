@@ -42,9 +42,15 @@ typedef enum DiveCANType_e
 
 typedef enum DiveCANError_e
 {
-    DIVECAN_ERR_NONE = 0x8,
-    DIVECAN_ERR_LOW_BATTERY = 0x01,
-    DIVECAN_ERR_SOLENOID = 0x04
+    DIVECAN_ERR_UNKNOWN1 = 0, // Nothing
+    DIVECAN_ERR_LOW_BATTERY = 1 << 0,
+    DIVECAN_ERR_UNKNOWN2 = 1 << 1, // Nothing
+    DIVECAN_ERR_SOLENOID = 1 << 2,
+    DIVECAN_ERR_NONE = 1 << 3,
+    DIVECAN_ERR_UNKNOWN3 = 1 << 4, // Nothing
+    DIVECAN_ERR_UNKNOWN4 = 1 << 5, // Nothing
+    DIVECAN_ERR_UNKNOWN5 = 1 << 6, // Nothing
+    DIVECAN_ERR_UNKNOWN6 = 1 << 7 // Nothing
 } DiveCANError_t;
 
 typedef enum DiveCANManufacturer_e

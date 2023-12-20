@@ -7,6 +7,7 @@ typedef struct OxygenCell_s OxygenCell_t;
 
 typedef PPO2_t (*PPO2_FUNC)(OxygenCell_t *self);
 typedef Millivolts_t (*MILLIVOLT_FUNC)(OxygenCell_t *self);
+typedef CellStatus_t (*STATUS_FUNC)(OxygenCell_t* self);
 
 typedef struct OxygenCell_s
 {
@@ -17,6 +18,7 @@ typedef struct OxygenCell_s
 
     PPO2_FUNC ppo2;
     MILLIVOLT_FUNC millivolts;
+    STATUS_FUNC status;
     void *cellHandle;
 } OxygenCell_t;
 

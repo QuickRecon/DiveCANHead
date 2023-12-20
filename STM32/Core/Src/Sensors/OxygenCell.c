@@ -20,6 +20,14 @@ Millivolts_t digitalMillis(OxygenCell_t *self){
     return 0;
 }
 
+CellStatus_t analogState(OxygenCell_t *self){
+    return ((AnalogOxygenState_t*)self->cellHandle)->status;
+}
+
+CellStatus_t digitalState(OxygenCell_t *self){
+    return ((DigitalOxygenState_t*)self->cellHandle)->status;
+}
+
 OxygenCell_t CreateCell(uint8_t cellNumber, CellType_t type){
     OxygenCell_t cell = {0};
     cell.cellNumber = cellNumber;
@@ -28,11 +36,13 @@ OxygenCell_t CreateCell(uint8_t cellNumber, CellType_t type){
         case CELL_ANALOG:
             cell.ppo2 = &analogPPO2;
             cell.millivolts = &analogMillis;
+            cell.status = &analogState;
             cell.cellHandle = Analog_InitCell(cellNumber);
             break;
         case CELL_DIGITAL:
             cell.ppo2 = &digitalPPO2;
             cell.millivolts = &digitalMillis;
+            cell.status = &digitalState;
             cell.cellHandle = Digital_InitCell(cellNumber);
             break;
         default:

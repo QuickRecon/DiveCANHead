@@ -3,3 +3,16 @@
 - SS disconnect reconnect causes restart with disabled analog cell
 - Remove infinite timeouts on flag waits
 - Statically allocate task stacks and queues
+
+
+
+    Avoid complex flow constructs, such as goto and recursion
+    All loops must have fixed bounds (this prevents runaway code)
+    Avoid heap memory allocation
+    Restrict functions to a single printed page
+    Use a minimum of two runtime assertions per function
+    Restrict the scope of data to the smallest possible
+    Check the return value of all nonvoid functions, or cast to void to indicate the return value is useless
+    Use the preprocessor sparingly
+    Limit pointer use to a single dereference, and do not use function pointers
+    Compile with all possible warnings active; all warnings should then be addressed before the release of the software
