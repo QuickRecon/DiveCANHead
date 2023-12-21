@@ -25,6 +25,7 @@ void InitADCs(void);
 
 uint32_t GetInputTicks(uint8_t inputIndex);
 uint16_t GetInputValue(uint8_t inputIndex);
+void BlockForADC(uint8_t inputIndex);
 
 // ADC interface
 void ADC_I2C_Receive_Complete(uint8_t adcAddr, I2C_HandleTypeDef *hi2c);

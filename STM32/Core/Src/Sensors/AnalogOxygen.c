@@ -173,6 +173,6 @@ void analogProcessor(void *arg)
     while (true)
     {
         Analog_broadcastPPO2(cell);
-        osDelay(500); // TODO: convert this to event based from the ADC
+        BlockForADC(cell->cellNumber);
     }
 }

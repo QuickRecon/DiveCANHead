@@ -67,6 +67,16 @@ uint16_t GetInputValue(uint8_t inputIndex)
     return adcCounts;
 }
 
+void BlockForADC(uint8_t inputIndex){
+    xQueueReset(QInputValues[inputIndex]);
+    xQueueReset(QInputValues[inputIndex]);
+
+    uint32_t ticks = 0;
+    uint16_t adcCounts = 0;
+    xQueuePeek(QInputTicks[inputIndex], &ticks, pdMS_TO_TICKS(1000));
+    xQueuePeek(QInputValues[inputIndex], &adcCounts, pdMS_TO_TICKS(1000));
+}
+
 ////////////////////////////// ADC EVENTS
 /// Happens in IRQ so gotta be quick
 void ADC_I2C_Receive_Complete(uint8_t adcAddr, I2C_HandleTypeDef *hi2c)

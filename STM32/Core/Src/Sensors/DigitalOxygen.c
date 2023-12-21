@@ -202,8 +202,6 @@ void decodeCellMessage(void *arg)
             serial_printf("Cell RX timeout");
             sendCellCommand(GET_OXY_COMMAND, cell);
         }
-
-        osDelay(500);
     }
 }
 
