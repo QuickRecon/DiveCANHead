@@ -150,7 +150,7 @@ void decodeCellMessage(void *arg)
 
     while (true)
     {
-        if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, pdMS_TO_TICKS(1000)))
+        if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, pdMS_TO_TICKS(2000)))
         {
             char *msgBuf = cell->lastMessage;
             if (msgBuf[0] == 0)
@@ -223,7 +223,6 @@ void Cell_TX_Complete(const UART_HandleTypeDef *huart)
     DigitalOxygenState_t *cell = uartToCell(huart);
     if (cell != NULL)
     {
-        HAL_UART_Receive_IT(cell->huart, (uint8_t *)cell->lastMessage, 1);
         cell->ticksOfTX = HAL_GetTick();
     }
 }
@@ -255,5 +254,7 @@ void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell)
     uint16_t sendLength = strlen((char *)cell->txBuf);
     HAL_StatusTypeDef txER = HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength);
     HAL_StatusTypeDef rxER = HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH);
-    serial_printf("tx: %d, rx: %d\r\n", txER, rxER);
+    if(txER != HAL_OK || rxER != HAL_OK){
+        serial_printf("tx: %d, rx: %d\r\n", txER, rxER);
+    }
 }

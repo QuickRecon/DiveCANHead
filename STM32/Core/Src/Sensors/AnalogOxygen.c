@@ -36,7 +36,7 @@ AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
 
     osThreadAttr_t processor_attributes = {
 
-    .name = "AnalogCellTask",
+        .name = "AnalogCellTask",
         .cb_mem = &(handle->processor_controlblock),
         .cb_size = sizeof(handle->processor_controlblock),
         .stack_mem = &(handle->processor_buffer)[0],
@@ -75,7 +75,7 @@ void ReadCalibration(AnalogOxygenState_t *handle)
         EE_Status writeResult = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, defaultVal);
         if (writeResult == EE_OK)
         {
-            ReadCalibration(handle);
+            handle->calibrationCoefficient = (CalCoeff_t)defaultVal;
         }
         else
         {
@@ -114,7 +114,6 @@ void Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
         serial_printf("EEPROM write fail on cell %d\r\n", handle->cellNumber);
     }
 }
-
 
 Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
 {
@@ -160,10 +159,9 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
         .ppo2 = PPO2,
         .millivolts = getMillivolts(handle),
         .status = handle->status};
-    //serial_printf("%d", cellData.millivolts);
+    // serial_printf("%d", cellData.millivolts);
     xQueueOverwrite(handle->outQueue, &cellData);
 }
-
 
 void analogProcessor(void *arg)
 {

@@ -3,6 +3,7 @@
 - SS disconnect reconnect causes restart with disabled analog cell
 - Remove infinite timeouts on flag waits
 - Include timestamp on cell queue data
+- Assign task priorites
 
 
 
