@@ -8,7 +8,7 @@ static const uint8_t CELL_3 = 2;
 
 static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
 
-#define PPO2TXTASK_STACK_SIZE 500 // 264 bytes by static analysis
+#define PPO2TXTASK_STACK_SIZE 400 // 264 bytes by static analysis
 
 extern IWDG_HandleTypeDef hiwdg;
 typedef struct cellValueContainer_s
@@ -61,7 +61,6 @@ void PPO2TXTask(void *arg)
 {
     PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;
     DiveCANDevice_t *dev = params->device;
-    serial_printf("Start PPO2 Task");
     int i = 0;
     while (true)
     {

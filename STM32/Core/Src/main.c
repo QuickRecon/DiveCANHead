@@ -131,7 +131,11 @@ void serial_printf(const char *fmt, ...) // custom printf() function
   va_end(argp);
 }
 
-DiveCANDevice_t deviceSpec = {0};
+DiveCANDevice_t deviceSpec = {
+    .name = "Rev2Ctl",
+    .type = DIVECAN_SOLO,
+    .manufacturerID = DIVECAN_MANUFACTURER_GEN,
+    .firmwareVersion = 1};
 
 /* USER CODE END 0 */
 
@@ -185,14 +189,14 @@ int main(void)
   EE_Init(EE_FORCED_ERASE);
   HAL_FLASH_Lock();
 
-  HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, 1);
-  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
-  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);
-  HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, 1);
-  HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, 1);
-  HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, 1);
-  HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, 1);
-  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, 1);
+  HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
 
   // Set our power bus
   SetVBusMode(MODE_CAN); // TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE
@@ -206,13 +210,8 @@ int main(void)
   cells[1] = CreateCell(1, CELL_ANALOG);
   cells[2] = CreateCell(2, CELL_ANALOG);
 
-  deviceSpec.name = "Rev2Ctl";
-  deviceSpec.type = DIVECAN_SOLO;
-  deviceSpec.manufacturerID = DIVECAN_MANUFACTURER_GEN;
-  deviceSpec.firmwareVersion = 1;
-
   InitDiveCAN(&deviceSpec);
-  InitPPO2TX(&deviceSpec, cells[0] , cells[1] , cells[2]);
+  InitPPO2TX(&deviceSpec, cells[0], cells[1], cells[2]);
 
   /* USER CODE END 2 */
 

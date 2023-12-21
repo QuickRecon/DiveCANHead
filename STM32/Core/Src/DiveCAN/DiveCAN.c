@@ -26,13 +26,10 @@ const osThreadAttr_t CANTask_attributes = {
     .priority = (osPriority_t)osPriorityNormal};
 osThreadId_t CANTaskHandle;
 
-DiveCANDevice_t dev = {0}; // TODO: Crime
-
 void InitDiveCAN(DiveCANDevice_t *deviceSpec)
 {
     InitRXQueue();
-    dev = *deviceSpec;
-    CANTaskHandle = osThreadNew(CANTask, &dev, &CANTask_attributes);
+    CANTaskHandle = osThreadNew(CANTask, deviceSpec, &CANTask_attributes);
     txStartDevice(DIVECAN_CONTROLLER, DIVECAN_SOLO);
 }
 

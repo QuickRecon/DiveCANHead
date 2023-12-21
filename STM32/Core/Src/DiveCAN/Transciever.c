@@ -24,15 +24,16 @@
 
 extern CAN_HandleTypeDef hcan1;
 
+#define CAN_QUEUE_LEN 10
 static QueueHandle_t QInboundCAN = NULL;
 static StaticQueue_t QInboundCAN_QueueStruct = {0};
-static uint8_t QInboundCAN_Storage[sizeof(DiveCANMessage_t)];
+static uint8_t QInboundCAN_Storage[CAN_QUEUE_LEN * sizeof(DiveCANMessage_t)];
 
 void InitRXQueue(void)
 {
     if (NULL == QInboundCAN)
     {
-        QInboundCAN = xQueueCreateStatic(10, sizeof(DiveCANMessage_t), QInboundCAN_Storage, &QInboundCAN_QueueStruct);
+        QInboundCAN = xQueueCreateStatic(CAN_QUEUE_LEN, sizeof(DiveCANMessage_t), QInboundCAN_Storage, &QInboundCAN_QueueStruct);
     }
 }
 
@@ -46,19 +47,25 @@ BaseType_t GetLatestCAN(const uint32_t blockTime, DiveCANMessage_t *message)
 /// @param data data pointer
 void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const data)
 {
-    if(length > 8)
-    {
-        // TODO: panic
-    }
+
     DiveCANMessage_t message = {
         .id = id,
         .length = length,
-        .data = {0, 0, 0, 0, 0, 0, 0, 0}};
+        .data = {0}};
 
-    memcpy(message.data, data, length);
+    if (length > 8)
+    {
+        // TODO: panic
+    }
+    else
+    {
 
-    BaseType_t wakeHigherPriority = pdTRUE;
-    xQueueSendToBackFromISR(QInboundCAN, &message, &wakeHigherPriority); // TODO: Error handle
+        memcpy(message.data, data, length);
+    }
+    if (NULL != QInboundCAN)
+    {
+        xQueueSendToBackFromISR(QInboundCAN, &message, NULL); // TODO: Error handle
+    }
 }
 
 /// @brief Add message to the next free mailbox, waits until the next mailbox is avaliable.

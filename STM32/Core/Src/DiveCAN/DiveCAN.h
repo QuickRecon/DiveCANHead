@@ -6,7 +6,7 @@
 
 typedef struct DiveCANDevice_s
 {
-    char *name;
+    char name[9];
     DiveCANType_t type;
     DiveCANManufacturer_t manufacturerID;
     uint8_t firmwareVersion;
