@@ -46,7 +46,10 @@ BaseType_t GetLatestCAN(const uint32_t blockTime, DiveCANMessage_t *message)
 /// @param data data pointer
 void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const data)
 {
-    // TODO: Check length
+    if(length > 8)
+    {
+        // TODO: panic
+    }
     DiveCANMessage_t message = {
         .id = id,
         .length = length,
