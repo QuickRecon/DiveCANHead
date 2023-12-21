@@ -74,7 +74,6 @@ DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueu
         .priority = (osPriority_t)PPO2_SENSOR_PRIORITY};
 
     handle->processor = osThreadNew(decodeCellMessage, handle, &processor_attributes);
-    sendCellCommand(GET_OXY_COMMAND, handle);
     return handle;
 }
 

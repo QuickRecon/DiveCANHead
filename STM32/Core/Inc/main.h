@@ -91,6 +91,9 @@ void JumpToBootloader(void);
 #define LED6_GPIO_Port GPIOB
 #define LED7_Pin GPIO_PIN_14
 #define LED7_GPIO_Port GPIOB
+#define CAN_EN_Pin GPIO_PIN_6
+#define CAN_EN_GPIO_Port GPIOC
+#define CAN_EN_EXTI_IRQn EXTI9_5_IRQn
 #define ADC1_ALERT_Pin GPIO_PIN_11
 #define ADC1_ALERT_GPIO_Port GPIOA
 #define ADC1_ALERT_EXTI_IRQn EXTI15_10_IRQn
@@ -99,8 +102,6 @@ void JumpToBootloader(void);
 #define ADC2_ALERT_EXTI_IRQn EXTI15_10_IRQn
 #define BATTERY_Pin GPIO_PIN_14
 #define BATTERY_GPIO_Port GPIOA
-#define CAN_EN_Pin GPIO_PIN_11
-#define CAN_EN_GPIO_Port GPIOC
 #define SOL_SEL2_Pin GPIO_PIN_3
 #define SOL_SEL2_GPIO_Port GPIOB
 #define SOL_SEL1_Pin GPIO_PIN_4

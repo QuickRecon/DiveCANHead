@@ -23,7 +23,7 @@ const osThreadAttr_t CANTask_attributes = {
     .cb_size = sizeof(CANTask_ControlBlock),
     .stack_mem = &CANTask_buffer[0],
     .stack_size = sizeof(CANTask_buffer),
-    .priority = (osPriority_t)CAN_RX_PRIORITY};
+    .priority = CAN_RX_PRIORITY};
 osThreadId_t CANTaskHandle;
 
 void InitDiveCAN(DiveCANDevice_t *deviceSpec)

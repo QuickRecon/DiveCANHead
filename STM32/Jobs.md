@@ -1,10 +1,11 @@
 # Things that really ought to happen before this gets used on a dive
 - A proper error handling approach, using printfs is absolutely useless underwater
 - Include timestamp on cell queue data
-- Assign task priorites
 - Calibration routine
 - Menu logic
 - Poweroff/standby
+- IWDG verify program state
+- Two asserts per function
 
 
 

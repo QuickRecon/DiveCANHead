@@ -9,8 +9,6 @@ static const uint8_t CELL_3 = 2;
 static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
 
 #define PPO2TXTASK_STACK_SIZE 400 // 264 bytes by static analysis
-
-extern IWDG_HandleTypeDef hiwdg;
 typedef struct cellValueContainer_s
 {
     uint8_t cellNumber;
@@ -66,7 +64,6 @@ void PPO2TXTask(void *arg)
     {
 
         ++i;
-        HAL_IWDG_Refresh(&hiwdg); // PPO2 sampling is the critical loop
         osDelay(500);
 
         OxygenCell_t c1 = {0};
