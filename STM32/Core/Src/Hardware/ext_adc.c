@@ -16,6 +16,8 @@ static const uint8_t TRANSMIT_COMPLETE_FLAG = 0b01;
 static const uint8_t READ_READY_FLAG = 0b010;
 static const uint8_t READ_COMPLETE_FLAG = 0b100;
 
+const uint32_t I2C_TIMEOUT = pdMS_TO_TICKS(1000);
+
 extern I2C_HandleTypeDef hi2c1;
 
 #define ADC_COUNT 4
@@ -28,7 +30,7 @@ extern void serial_printf(const char *fmt, ...);
 // /void configureADC(void *arg);
 void ADCTask(void *arg);
 
-#define ADCTASK_STACK_SIZE 400 //352 by static analysis
+#define ADCTASK_STACK_SIZE 400 // 352 by static analysis
 
 // FreeRTOS tasks
 static uint32_t ADCTask_buffer[ADCTASK_STACK_SIZE];
@@ -67,7 +69,8 @@ uint16_t GetInputValue(uint8_t inputIndex)
     return adcCounts;
 }
 
-void BlockForADC(uint8_t inputIndex){
+void BlockForADC(uint8_t inputIndex)
+{
     xQueueReset(QInputValues[inputIndex]);
     xQueueReset(QInputValues[inputIndex]);
 
@@ -107,19 +110,28 @@ void configureADC(uint16_t configuration, InputState_s input)
     {
         serial_printf("Err i2c update lower threshold");
     }
-    osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
+    if (osFlagsErrorTimeout == osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
+    {
+        serial_printf("Err i2c tx lower threshold");
+    }
 
     if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t *)&highThreshold, sizeof(highThreshold)) != HAL_OK)
     {
         serial_printf("Err i2c update upper threshold");
     }
-    osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
+    if (osFlagsErrorTimeout == osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
+    {
+        serial_printf("Err i2c tx upper threshold");
+    }
 
     if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)) != HAL_OK)
     {
         serial_printf("Err i2c update config");
     }
-    osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
+    if (osFlagsErrorTimeout == osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
+    {
+        serial_printf("Err i2c tx update config");
+    }
 }
 
 // Tasks
@@ -179,12 +191,19 @@ void ADCTask(void *arg)
             {
                 serial_printf("Err i2c update config");
             }
-            osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, osWaitForever);
+
+            if (osFlagsErrorTimeout == osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
+            {
+                serial_printf("Err adc readReady Timeout");
+            }
 
             // Read the ADC
             uint8_t conversionRegister[2] = {0}; // Memory space to recieve inputs into
             HAL_I2C_Mem_Read_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), 0x00, 1, conversionRegister, sizeof(conversionRegister));
-            osThreadFlagsWait(READ_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
+            if (osFlagsErrorTimeout == osThreadFlagsWait(READ_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
+            {
+                serial_printf("Err adc read Timeout");
+            }
 
             // Export the value to the queue
             uint16_t adcCounts = (uint16_t)((uint16_t)conversionRegister[0] << 8) | conversionRegister[1];

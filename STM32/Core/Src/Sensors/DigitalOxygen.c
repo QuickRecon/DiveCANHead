@@ -192,16 +192,17 @@ void decodeCellMessage(void *arg)
             {
 
                 serial_printf("UNKNOWN CELL MESSSAGE: %s\r\n", msgBuf);
+                osDelay(500);
                 // Not a command we care about
             }
-            Digital_broadcastPPO2(cell);
-            sendCellCommand(GET_OXY_COMMAND, cell);
         }
         else
         {
             serial_printf("Cell RX timeout");
-            sendCellCommand(GET_OXY_COMMAND, cell);
+            osDelay(500);
         }
+        Digital_broadcastPPO2(cell);
+        sendCellCommand(GET_OXY_COMMAND, cell);
     }
 }
 
@@ -254,7 +255,8 @@ void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell)
     uint16_t sendLength = strlen((char *)cell->txBuf);
     HAL_StatusTypeDef txER = HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength);
     HAL_StatusTypeDef rxER = HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH);
-    if(txER != HAL_OK || rxER != HAL_OK){
+    if (txER != HAL_OK || rxER != HAL_OK)
+    {
         serial_printf("tx: %d, rx: %d\r\n", txER, rxER);
     }
 }
