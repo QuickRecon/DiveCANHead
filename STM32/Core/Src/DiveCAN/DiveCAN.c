@@ -4,15 +4,15 @@
 extern void serial_printf(const char *fmt, ...);
 
 void CANTask(void *arg);
-void RespBusInit(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
-void RespPing(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
-void RespCal(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
-void RespMenu(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
-void RespSetpoint(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
-void RespAtmos(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
-void RespShutdown(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
+void RespBusInit(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
+void RespPing(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
+void RespCal(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
+void RespMenu(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
+void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
+void RespAtmos(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
+void RespShutdown(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
 
-#define CANTASK_STACK_SIZE 500 //208 by static analysis
+#define CANTASK_STACK_SIZE 500 // 208 by static analysis
 
 // FreeRTOS tasks
 static uint32_t CANTask_buffer[CANTASK_STACK_SIZE];
@@ -23,7 +23,7 @@ const osThreadAttr_t CANTask_attributes = {
     .cb_size = sizeof(CANTask_ControlBlock),
     .stack_mem = &CANTask_buffer[0],
     .stack_size = sizeof(CANTask_buffer),
-    .priority = (osPriority_t)osPriorityNormal};
+    .priority = (osPriority_t)CAN_RX_PRIORITY};
 osThreadId_t CANTaskHandle;
 
 void InitDiveCAN(DiveCANDevice_t *deviceSpec)
@@ -92,13 +92,13 @@ void CANTask(void *arg)
     }
 }
 
-void RespBusInit(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
+void RespBusInit(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
     // Do startup stuff and then ping the bus
     RespPing(message, deviceSpec);
 }
 
-void RespPing(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
+void RespPing(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
     serial_printf("Ping %d, %s\r\n", deviceSpec->type, deviceSpec->name);
 
@@ -109,27 +109,27 @@ void RespPing(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
     txName(devType, deviceSpec->name);
 }
 
-void RespCal(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
+void RespCal(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: calibration routine
 }
 
-void RespMenu(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
+void RespMenu(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: calibration routine
 }
 
-void RespSetpoint(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
+void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: setpoint setting
 }
 
-void RespAtmos(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
+void RespAtmos(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: respond to atmos
 }
 
-void RespShutdown(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec)
+void RespShutdown(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
     // TODO: Shutdown procedure
 }

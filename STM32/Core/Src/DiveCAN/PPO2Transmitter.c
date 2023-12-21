@@ -41,7 +41,7 @@ const osThreadAttr_t PPO2TXTask_attributes = {
     .cb_size = sizeof(PPO2TXTask_ControlBlock),
     .stack_mem = &PPO2TXTask_buffer[0],
     .stack_size = sizeof(PPO2TXTask_buffer),
-    .priority = (osPriority_t)osPriorityNormal};
+    .priority = (osPriority_t)CAN_PPO2_TX_PRIORITY};
 
 osThreadId_t PPO2TXTaskHandle;
 PPO2TXTask_params_t taskParams;

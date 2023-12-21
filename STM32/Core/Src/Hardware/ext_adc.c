@@ -41,7 +41,7 @@ const osThreadAttr_t ADCTask_attributes = {
     .cb_size = sizeof(ADCTask_ControlBlock),
     .stack_mem = &ADCTask_buffer[0],
     .stack_size = sizeof(ADCTask_buffer),
-    .priority = (osPriority_t)osPriorityNormal};
+    .priority = (osPriority_t)ADC_PRIORITY};
 osThreadId_t ADCTaskHandle;
 
 void InitADCs(void)
