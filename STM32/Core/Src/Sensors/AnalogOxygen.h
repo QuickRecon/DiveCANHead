@@ -29,6 +29,6 @@ typedef struct AnalogOxygenState_s
 // Analog Cell
 AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue);
 void ReadCalibration(AnalogOxygenState_t *handle);
-void Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2);
+ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2);
 
 #endif

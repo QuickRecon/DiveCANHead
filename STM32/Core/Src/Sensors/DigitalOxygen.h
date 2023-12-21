@@ -6,6 +6,7 @@
 #include "cmsis_os.h"
 #include "queue.h"
 
+
 // Implementation consts
 #define RX_BUFFER_LENGTH 86
 #define TX_BUFFER_LENGTH 8
@@ -18,7 +19,10 @@ typedef struct DigitalOxygenState_s
 
     CellStatus_t status;
     UART_HandleTypeDef* huart;
-    uint32_t cellSample;
+    int32_t cellSample;
+    int32_t humidity;  // milliRH
+    int32_t temperature; // millicelsius
+    int32_t pressure; //microbar
     char lastMessage[RX_BUFFER_LENGTH];
     uint8_t txBuf[TX_BUFFER_LENGTH];
     uint32_t ticksOfLastMessage;

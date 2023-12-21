@@ -20,7 +20,7 @@ static const uint32_t PPO2_MILLIS_ID = 0xD110000;
 static const uint32_t PPO2_STATUS_ID = 0xDCA0000;
 static const uint32_t PPO2_SETPOINT_ID = 0xDC90000;
 
-static const uint32_t CAL_REQ_ID = 0xD130201;
+static const uint32_t CAL_REQ_ID = 0xD130000;
 static const uint32_t CAL_ID = 0xD120000;
 
 static const uint32_t MENU_ID = 0xD0A0000;

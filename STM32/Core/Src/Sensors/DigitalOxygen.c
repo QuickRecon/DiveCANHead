@@ -74,7 +74,7 @@ DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueu
         .priority = (osPriority_t)PPO2_SENSOR_PRIORITY};
 
     handle->processor = osThreadNew(decodeCellMessage, handle, &processor_attributes);
-    return handle;
+    return handle; // TODO: work out why sonar is flagging this as an overflow
 }
 
 void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
@@ -96,7 +96,7 @@ void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
         // serial_printf("handle = 0x%x, actual = 0x%x, buff = 0x%x\r\n6", handle->huart, &huart1, digital_cellStates[0].huart);
         HAL_UART_Abort(&huart1); // Abort so that we don't get stuck waiting for uart
         serial_printf("CELL %d TIMEOUT: %d\r\n", handle->cellNumber, (ticks - handle->ticksOfLastPPO2));
-        sendCellCommand(GET_OXY_COMMAND, handle);
+        sendCellCommand(GET_DETAIL_COMMAND, handle);
     }
 
     if ((handle->status == CELL_FAIL) || (handle->status == CELL_NEED_CAL))
@@ -152,21 +152,22 @@ void decodeCellMessage(void *arg)
         if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, pdMS_TO_TICKS(2000)))
         {
             char *msgBuf = cell->lastMessage;
-            if (msgBuf[0] == 0)
+            if (0 == msgBuf[0])
             {
-                msgBuf++;
+                ++msgBuf;
             }
             const char *const sep = " ";
-            const char *const CMD_Name = strtok(msgBuf, sep);
+            const char *const CMD_Name = strtok_r(msgBuf, sep,&msgBuf);
 
             // Decode either a #DRAW or a #DOXY, we don't care about anything else yet
-            if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
+            if (0 == strcmp(CMD_Name, GET_DETAIL_COMMAND))
             {
-                const char *const PPO2_str = strtok(NULL, sep);
-                strtok(NULL, sep); // Skip temperature
-                const char *const err_str = strtok(NULL, sep);
+                const char *const PPO2_str = strtok_r(NULL, sep,&msgBuf);
+                const char *const temperature_str = strtok_r(NULL, sep, &msgBuf);
+                const char *const err_str = strtok_r(NULL, sep,&msgBuf);
 
-                cell->cellSample = strtoul(PPO2_str, NULL, PPO2_BASE);
+                cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
+                cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
                 cell->status = cellErrorCheck(cell, err_str);
                 cell->ticksOfLastPPO2 = HAL_GetTick();
 
@@ -175,15 +176,18 @@ void decodeCellMessage(void *arg)
             else if (0 == strcmp(CMD_Name, GET_DETAIL_COMMAND))
             {
                 const char *const PPO2_str = strtok_r(NULL, sep, &msgBuf);
-                strtok_r(NULL, sep, &msgBuf); // Skip temperature
+                const char *const temperature_str = strtok_r(NULL, sep, &msgBuf);
                 const char *const err_str = strtok_r(NULL, sep, &msgBuf);
-                // strtok_r(NULL, sep, &msgBuf); // Skip phase
-                // strtok_r(NULL, sep, &msgBuf); // Skip intensity
-                // strtok_r(NULL, sep, &msgBuf); // Skip ambient light
-                // strtok_r(NULL, sep, &msgBuf); // Skip pressure
-                // strtok_r(NULL, sep, &msgBuf); // Skip humidity
+                strtok_r(NULL, sep, &msgBuf); // Skip phase
+                strtok_r(NULL, sep, &msgBuf); // Skip intensity
+                strtok_r(NULL, sep, &msgBuf); // Skip ambient light
+                const char *const pressure_str = strtok_r(NULL, sep, &msgBuf);
+                const char *const humidity_str = strtok_r(NULL, sep, &msgBuf);
 
-                cell->cellSample = strtoul(PPO2_str, NULL, PPO2_BASE);
+                cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
+                cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
+                cell->pressure = strtol(pressure_str, NULL, PPO2_BASE);
+                cell->humidity = strtol(humidity_str, NULL, PPO2_BASE);
                 cell->status = cellErrorCheck(cell, err_str);
                 cell->ticksOfLastPPO2 = HAL_GetTick();
             }
@@ -201,7 +205,7 @@ void decodeCellMessage(void *arg)
             osDelay(500);
         }
         Digital_broadcastPPO2(cell);
-        sendCellCommand(GET_OXY_COMMAND, cell);
+        sendCellCommand(GET_DETAIL_COMMAND, cell);
     }
 }
 

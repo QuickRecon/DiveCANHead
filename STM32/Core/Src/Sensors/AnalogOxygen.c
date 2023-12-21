@@ -91,13 +91,13 @@ void ReadCalibration(AnalogOxygenState_t *handle)
 }
 
 // Calculate and write the eeprom
-void Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
+ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
 {
     uint16_t adcCounts = GetInputValue(handle->adcInputIndex);
     // Our coefficient is simply the float needed to make the current sample the current PPO2
     handle->calibrationCoefficient = (CalCoeff_t)(PPO2) / ((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS);
 
-    serial_printf("Calibrated with coefficient %f\r\n", handle->calibrationCoefficient);
+    serial_printf("Calibrated cell %d with coefficient %f\r\n", handle->cellNumber, handle->calibrationCoefficient);
 
     // Convert it to raw bytes
     uint8_t bytes[sizeof(CalCoeff_t)] = {0, 0};
@@ -113,6 +113,7 @@ void Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
     {
         serial_printf("EEPROM write fail on cell %d\r\n", handle->cellNumber);
     }
+    return (ShortMillivolts_t)((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS/100);
 }
 
 Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
@@ -143,7 +144,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     if ((handle->status == CELL_FAIL) || (handle->status == CELL_NEED_CAL))
     {
         PPO2 = PPO2_FAIL; // Failed cell
-        serial_printf("CELL %d FAIL\r\n", handle->cellNumber);
+        //serial_printf("CELL %d FAIL\r\n", handle->cellNumber);
     }
     else
     {

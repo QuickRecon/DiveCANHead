@@ -1,5 +1,6 @@
 #include "DiveCAN.h"
 #include "cmsis_os.h"
+#include "../Sensors/OxygenCell.h"
 
 extern void serial_printf(const char *fmt, ...);
 
@@ -100,8 +101,6 @@ void RespBusInit(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceS
 
 void RespPing(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
-    serial_printf("Ping %d, %s\r\n", deviceSpec->type, deviceSpec->name);
-
     DiveCANType_t devType = deviceSpec->type;
 
     txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
@@ -111,7 +110,11 @@ void RespPing(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec
 
 void RespCal(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
-    // TODO: calibration routine
+    FO2_t fO2 = message->data[0];
+    uint16_t pressure = (uint16_t)(((uint16_t)(message->data[2] << 8)) | (message->data[1]));
+
+
+    RunCalibrationTask(deviceSpec->type, fO2, pressure);
 }
 
 void RespMenu(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)

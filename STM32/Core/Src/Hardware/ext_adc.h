@@ -2,6 +2,7 @@
 #define _EXT_ADC_H
 
 #include "../common.h"
+#include "main.h"
 #include "cmsis_os.h"
 #include "queue.h"
 

@@ -79,11 +79,11 @@ void PPO2TXTask(void *arg)
         txMillivolts(dev->type, consensus.millis[CELL_1], consensus.millis[CELL_2], consensus.millis[CELL_3]);
         txCellState(dev->type, consensus.included[CELL_1], consensus.included[CELL_2], consensus.included[CELL_3], consensus.consensus);
 
-        serial_printf("%d; C1: (%d, %d, %d); C2: (%d, %d, %d); C3: (%d, %d, %d), Consensus: %d\r\n", i,
-                      consensus.PPO2s[CELL_1], consensus.millis[CELL_1], consensus.included[CELL_1],
-                      consensus.PPO2s[CELL_2], consensus.millis[CELL_2], consensus.included[CELL_2],
-                      consensus.PPO2s[CELL_3], consensus.millis[CELL_3], consensus.included[CELL_3],
-                      consensus.consensus);
+        // serial_printf("%d; C1: (%d, %d, %d); C2: (%d, %d, %d); C3: (%d, %d, %d), Consensus: %d\r\n", i,
+        //               consensus.PPO2s[CELL_1], consensus.millis[CELL_1], consensus.included[CELL_1],
+        //               consensus.PPO2s[CELL_2], consensus.millis[CELL_2], consensus.included[CELL_2],
+        //               consensus.PPO2s[CELL_3], consensus.millis[CELL_3], consensus.included[CELL_3],
+        //               consensus.consensus);
     }
 }
 
@@ -135,17 +135,17 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
 
     // First check if any of the cells are begging for cal,
     // because that takes precidence over the rest of this logic
-    if ((consensus.statuses[CELL_1] == CELL_NEED_CAL) ||
-        (consensus.statuses[CELL_2] == CELL_NEED_CAL) ||
-        (consensus.statuses[CELL_3] == CELL_NEED_CAL))
-    {
-        serial_printf("Needs cal\r\n");
-        for (uint8_t i = 0; i < 3; ++i)
-        {
-            consensus.PPO2s[i] = PPO2_FAIL; // Every cell reads as failed, prompts needs cal warning on the shearwater
-        }
-    }
-    else
+    // if ((consensus.statuses[CELL_1] == CELL_NEED_CAL) ||
+    //     (consensus.statuses[CELL_2] == CELL_NEED_CAL) ||
+    //     (consensus.statuses[CELL_3] == CELL_NEED_CAL))
+    // {
+    //     serial_printf("Needs cal\r\n");
+    //     for (uint8_t i = 0; i < 3; ++i)
+    //     {
+    //         consensus.PPO2s[i] = PPO2_FAIL; // Every cell reads as failed, prompts needs cal warning on the shearwater
+    //     }
+    // }
+    // else
     {
         // Now for the vote itself, the logic here is to first sort the cells
         // by PPO2 and check if the max and min are more than MAX_DEVIATION apart

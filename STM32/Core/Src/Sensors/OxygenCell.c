@@ -4,17 +4,45 @@
 #include "AnalogOxygen.h"
 #include "DigitalOxygen.h"
 
+#define CELL_COUNT 3
 typedef struct OxygenHandle_s
 {
     CellType_t type;
     void *cellHandle;
 } OxygenHandle_t;
 
-StaticQueue_t CellQueues_QueueStruct[3];
-uint8_t CellQueues_Storage[3][sizeof(OxygenCell_t)];
-static QueueHandle_t CellQueues[3];
+typedef struct CalParameters_s
+{
+    DiveCANType_t deviceType;
+    FO2_t fO2;
+    uint16_t pressure_val;
 
-static OxygenHandle_t cells[3];
+    ShortMillivolts_t cell1;
+    ShortMillivolts_t cell2;
+    ShortMillivolts_t cell3;
+
+    OxygenCalMethod_t calMethod;
+} CalParameters_t;
+
+StaticQueue_t CellQueues_QueueStruct[CELL_COUNT];
+uint8_t CellQueues_Storage[CELL_COUNT][sizeof(OxygenCell_t)];
+static QueueHandle_t CellQueues[CELL_COUNT];
+static CalParameters_t glob_calParams;
+static OxygenHandle_t cells[CELL_COUNT];
+
+extern void serial_printf(const char *fmt, ...);
+
+#define CALTASK_STACK_SIZE 200
+
+static uint32_t CalTask_buffer[CALTASK_STACK_SIZE];
+static StaticTask_t CalTask_ControlBlock;
+const osThreadAttr_t CalTask_attributes = {
+    .name = "CalTask",
+    .cb_mem = &CalTask_ControlBlock,
+    .cb_size = sizeof(CalTask_ControlBlock),
+    .stack_mem = &CalTask_buffer[0],
+    .stack_size = sizeof(CalTask_buffer),
+    .priority = (osPriority_t)CAN_PPO2_TX_PRIORITY};
 
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
 {
@@ -33,4 +61,81 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
         // Panic
     }
     return CellQueues[cellNumber];
+}
+
+void DigitalReferenceCalibrate(CalParameters_t * calParams)
+{
+    DigitalOxygenState_t *refCell = NULL;
+    uint8_t refCellIndex = 0;
+    // Select the first digital cell
+    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+    {
+        if ((CELL_DIGITAL == cells[i].type) && (NULL == refCell))
+        {
+            refCell = (DigitalOxygenState_t *)cells[i].cellHandle;
+            refCellIndex = i;
+        }
+    }
+
+    if (refCell != NULL)
+    {
+        uint16_t pressure = refCell->pressure / 1000;
+        OxygenCell_t refCellData = {0};
+        xQueuePeek(CellQueues[refCellIndex], &refCellData, 100);
+        PPO2_t ppO2 = refCellData.ppo2;
+        serial_printf("!!CAL PPO2: %d", ppO2);
+        // Now that we have the PPO2 we cal all the analog cells
+        ShortMillivolts_t cellVals[CELL_COUNT] = {0};
+        for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        {
+            if (CELL_ANALOG == cells[i].type)
+            {
+                AnalogOxygenState_t* analogCell = (AnalogOxygenState_t *)cells[i].cellHandle;
+                cellVals[i] = Calibrate(analogCell, ppO2);
+            }
+        }
+
+        // Now that calibration is done lets grab the millivolts for the record
+        calParams->cell1 = cellVals[0];
+        calParams->cell2 = cellVals[1];
+        calParams->cell3 = cellVals[2];
+        calParams->pressure_val = pressure;
+        calParams->fO2 = ((float)ppO2 * (1000.0f/(float)pressure));
+    }
+    else
+    {
+        serial_printf("Cannot find digital cell to cal");
+        // Panic
+    }
+}
+
+void CalibrationTask(void *arg)
+{
+    CalParameters_t *calParams = (CalParameters_t *)arg;
+    switch (calParams->calMethod)
+    {
+    case CAL_DIGITAL_REFERENCE: // Calibrate using the solid state cell as a reference
+        DigitalReferenceCalibrate(calParams);
+        break;
+    default:
+        // TODO: panic
+    }
+    txCalResponse(calParams->deviceType, calParams->cell1, calParams->cell2, calParams->cell3, calParams->fO2, calParams->pressure_val);
+    osThreadExit();
+}
+
+void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val)
+{
+    glob_calParams.fO2 = in_fO2;
+    glob_calParams.pressure_val = in_pressure_val;
+    glob_calParams.deviceType = deviceType;
+    glob_calParams.cell1 = 0;
+    glob_calParams.cell2 = 0;
+    glob_calParams.cell3 = 0;
+
+    glob_calParams.calMethod = CAL_DIGITAL_REFERENCE;
+
+    txCalAck(deviceType);
+
+    osThreadNew(CalibrationTask, &glob_calParams, &CalTask_attributes);
 }

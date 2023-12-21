@@ -5,6 +5,8 @@
 
 #include "cmsis_os.h"
 #include "queue.h"
+
+#include "../DiveCAN/DiveCAN.h"
 typedef struct OxygenCell_s
 {
     // Configuration
@@ -17,7 +19,11 @@ typedef struct OxygenCell_s
     CellStatus_t status;
 } OxygenCell_t;
 
+typedef enum OxygenCalMethod_e {
+    CAL_DIGITAL_REFERENCE
+} OxygenCalMethod_t;
+
 
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);
-
+void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val);
 #endif

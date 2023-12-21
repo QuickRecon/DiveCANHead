@@ -6,6 +6,9 @@
 - Poweroff/standby
 - IWDG verify program state
 - Two asserts per function
+- Voting logic borked for D + no analog
+- Debounce cal
+- Work out why cal coeff calculation -> infinity
 
 
 
