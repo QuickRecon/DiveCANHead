@@ -1,5 +1,9 @@
 #include "DigitalOxygen.h"
 
+#include "OxygenCell.h"
+#include <stdbool.h>
+#include "string.h"
+
 // Newline for terminating uart message
 const uint8_t NEWLINE = 0x0D;
 
@@ -26,7 +30,6 @@ const uint8_t PPO2_BASE = 10;
 // Time to wait on the cell to do things
 const uint16_t DIGITAL_RESPONSE_TIMEOUT = 1000; // Milliseconds, how long before the cell *definitely* isn't coming back to us
 
-
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
@@ -35,13 +38,13 @@ static DigitalOxygenState_t digital_cellStates[3] = {0};
 
 extern void serial_printf(const char *fmt, ...);
 void decodeCellMessage(void *arg);
-void sendCellCommand(const char *const commandStr, DigitalOxygenState_p cell);
+void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell);
 
-DigitalOxygenState_p Digital_InitCell(uint8_t cellNumber)
+DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
 {
-    DigitalOxygenState_p handle = &(digital_cellStates[cellNumber]);
+    DigitalOxygenState_t *handle = &(digital_cellStates[cellNumber]);
     handle->cellNumber = cellNumber;
-
+    handle->outQueue = outQueue;
     switch (cellNumber)
     {
     case 0:
@@ -63,6 +66,7 @@ DigitalOxygenState_p Digital_InitCell(uint8_t cellNumber)
     // Create a task for the decoder
 
     osThreadAttr_t processor_attributes = {
+        .name = "DigitalCellTask",
         .cb_mem = &(handle->processor_controlblock),
         .cb_size = sizeof(handle->processor_controlblock),
         .stack_mem = &(handle->processor_buffer)[0],
@@ -74,7 +78,7 @@ DigitalOxygenState_p Digital_InitCell(uint8_t cellNumber)
     return handle;
 }
 
-PPO2_t Digital_getPPO2(DigitalOxygenState_p handle)
+void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
 {
     PPO2_t PPO2 = 0;
 
@@ -105,10 +109,19 @@ PPO2_t Digital_getPPO2(DigitalOxygenState_p handle)
     {
         PPO2 = (PPO2_t)(handle->cellSample / HPA_PER_BAR);
     }
-    return PPO2;
+
+    // Lodge the cell data
+    OxygenCell_t cellData = {
+        .cellNumber = handle->cellNumber,
+        .type = CELL_DIGITAL,
+        .ppo2 = PPO2,
+        .millivolts = 0,
+        .status = handle->status};
+    // serial_printf("%d", cellData.millivolts);
+    xQueueOverwrite(handle->outQueue, &cellData);
 }
 
-CellStatus_t cellErrorCheck(DigitalOxygenState_p cell, const char *err_str)
+CellStatus_t cellErrorCheck(DigitalOxygenState_t *cell, const char *err_str)
 {
     uint32_t errCode = (uint16_t)(strtol(err_str, NULL, PPO2_BASE));
     CellStatus_t status = CELL_OK;
@@ -133,58 +146,68 @@ CellStatus_t cellErrorCheck(DigitalOxygenState_p cell, const char *err_str)
 
 void decodeCellMessage(void *arg)
 {
-    DigitalOxygenState_p cell = (DigitalOxygenState_p)arg;
+    DigitalOxygenState_t *cell = (DigitalOxygenState_t *)arg;
 
     while (true)
     {
-        osThreadFlagsWait(0x0001U, osFlagsWaitAny, osWaitForever);
-        char *msgBuf = cell->lastMessage;
-        if (msgBuf[0] == 0)
+        if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, pdMS_TO_TICKS(1000)))
         {
-            msgBuf++;
-        }
-        // serial_printf("CELL MESSSAGE: %s\r\n", msgBuf);
-        const char *const sep = " ";
-        const char *const CMD_Name = strtok(msgBuf, sep);
+            char *msgBuf = cell->lastMessage;
+            if (msgBuf[0] == 0)
+            {
+                msgBuf++;
+            }
+            const char *const sep = " ";
+            const char *const CMD_Name = strtok(msgBuf, sep);
 
-        // Decode either a #DRAW or a #DOXY, we don't care about anything else yet
-        if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
-        {
-            const char *const PPO2_str = strtok(NULL, sep);
-            strtok(NULL, sep); // Skip temperature
-            const char *const err_str = strtok(NULL, sep);
+            // Decode either a #DRAW or a #DOXY, we don't care about anything else yet
+            if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
+            {
+                const char *const PPO2_str = strtok(NULL, sep);
+                strtok(NULL, sep); // Skip temperature
+                const char *const err_str = strtok(NULL, sep);
 
-            cell->cellSample = strtoul(PPO2_str, NULL, PPO2_BASE);
-            cell->status = cellErrorCheck(cell, err_str);
-            cell->ticksOfLastPPO2 = HAL_GetTick();
+                cell->cellSample = strtoul(PPO2_str, NULL, PPO2_BASE);
+                cell->status = cellErrorCheck(cell, err_str);
+                cell->ticksOfLastPPO2 = HAL_GetTick();
 
-            // serial_printf("PPO2: %d\r\n", cell->cellSample);
-        }
-        else if (0 == strcmp(CMD_Name, GET_DETAIL_COMMAND))
-        {
-            const char *const PPO2_str = strtok_r(NULL, sep, &msgBuf);
-            strtok_r(NULL, sep, &msgBuf); // Skip temperature
-            const char *const err_str = strtok_r(NULL, sep, &msgBuf);
-            // strtok_r(NULL, sep, &msgBuf); // Skip phase
-            // strtok_r(NULL, sep, &msgBuf); // Skip intensity
-            // strtok_r(NULL, sep, &msgBuf); // Skip ambient light
-            // strtok_r(NULL, sep, &msgBuf); // Skip pressure
-            // strtok_r(NULL, sep, &msgBuf); // Skip humidity
+                // serial_printf("PPO2: %d\r\n", cell->cellSample);
+            }
+            else if (0 == strcmp(CMD_Name, GET_DETAIL_COMMAND))
+            {
+                const char *const PPO2_str = strtok_r(NULL, sep, &msgBuf);
+                strtok_r(NULL, sep, &msgBuf); // Skip temperature
+                const char *const err_str = strtok_r(NULL, sep, &msgBuf);
+                // strtok_r(NULL, sep, &msgBuf); // Skip phase
+                // strtok_r(NULL, sep, &msgBuf); // Skip intensity
+                // strtok_r(NULL, sep, &msgBuf); // Skip ambient light
+                // strtok_r(NULL, sep, &msgBuf); // Skip pressure
+                // strtok_r(NULL, sep, &msgBuf); // Skip humidity
 
-            cell->cellSample = strtoul(PPO2_str, NULL, PPO2_BASE);
-            cell->status = cellErrorCheck(cell, err_str);
-            cell->ticksOfLastPPO2 = HAL_GetTick();
+                cell->cellSample = strtoul(PPO2_str, NULL, PPO2_BASE);
+                cell->status = cellErrorCheck(cell, err_str);
+                cell->ticksOfLastPPO2 = HAL_GetTick();
+            }
+            else
+            {
+
+                serial_printf("UNKNOWN CELL MESSSAGE: %s\r\n", msgBuf);
+                // Not a command we care about
+            }
+            Digital_broadcastPPO2(cell);
+            sendCellCommand(GET_OXY_COMMAND, cell);
         }
         else
         {
-            // Not a command we care about
+            serial_printf("Cell RX timeout");
+            sendCellCommand(GET_OXY_COMMAND, cell);
         }
+
         osDelay(500);
-        sendCellCommand(GET_OXY_COMMAND, cell);
     }
 }
 
-DigitalOxygenState_p uartToCell(const UART_HandleTypeDef *huart)
+DigitalOxygenState_t *uartToCell(const UART_HandleTypeDef *huart)
 {
     for (uint8_t i = 0; i < 3; ++i)
     {
@@ -199,7 +222,7 @@ DigitalOxygenState_p uartToCell(const UART_HandleTypeDef *huart)
 void Cell_TX_Complete(const UART_HandleTypeDef *huart)
 {
     // serial_printf("TXB");
-    DigitalOxygenState_p cell = uartToCell(huart);
+    DigitalOxygenState_t *cell = uartToCell(huart);
     if (cell != NULL)
     {
         HAL_UART_Receive_IT(cell->huart, (uint8_t *)cell->lastMessage, 1);
@@ -209,7 +232,7 @@ void Cell_TX_Complete(const UART_HandleTypeDef *huart)
 
 void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 {
-    DigitalOxygenState_p cell = uartToCell(huart);
+    DigitalOxygenState_t *cell = uartToCell(huart);
     if (cell != NULL)
     {
         cell->ticksOfLastMessage = HAL_GetTick();
@@ -217,11 +240,11 @@ void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
     }
 }
 
-void sendCellCommand(const char *const commandStr, DigitalOxygenState_p cell)
+void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell)
 {
     const uint8_t newlineStr[] = {NEWLINE, '\0'};
     const uint8_t reqRemainder = 2; // Less 2 chars, room for the EOL and null terminator
-    strncpy((char *)cell->txBuf, commandStr, TX_BUFFER_LENGTH - reqRemainder); 
+    strncpy((char *)cell->txBuf, commandStr, TX_BUFFER_LENGTH - reqRemainder);
     strncat((char *)cell->txBuf, (const char *)newlineStr, 1);
 
     // Make sure our RX buffer is clear
@@ -231,8 +254,8 @@ void sendCellCommand(const char *const commandStr, DigitalOxygenState_p cell)
     //     serial_printf("tx: 0x%x (%c)\r\n", cell->txBuf[i], cell->txBuf[i]);
     // }
     // serial_printf("tx: %s\r\n", txBuffer);
-
-    /*HAL_StatusTypeDef txER = */ HAL_UART_Transmit_IT(cell->huart, cell->txBuf, TX_BUFFER_LENGTH - 1);
-    /*HAL_StatusTypeDef rxER = */ HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH);
-    // serial_printf("tx: %d, rx: %d\r\n", txER, rxER);
+    uint16_t sendLength = strlen((char *)cell->txBuf);
+    HAL_StatusTypeDef txER = HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength);
+    HAL_StatusTypeDef rxER = HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH);
+    serial_printf("tx: %d, rx: %d\r\n", txER, rxER);
 }

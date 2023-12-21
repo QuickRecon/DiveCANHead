@@ -12,10 +12,10 @@ void RespSetpoint(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 void RespAtmos(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 void RespShutdown(DiveCANMessage_t *message, DiveCANDevice_t *deviceSpec);
 
-#define CANTASK_STACK_SIZE 250
+#define CANTASK_STACK_SIZE 500 //208 by static analysis
 
 // FreeRTOS tasks
-static uint32_t CANTask_buffer[200];
+static uint32_t CANTask_buffer[CANTASK_STACK_SIZE];
 static StaticTask_t CANTask_ControlBlock;
 const osThreadAttr_t CANTask_attributes = {
     .name = "CANTask",

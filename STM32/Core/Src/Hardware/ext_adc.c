@@ -19,8 +19,8 @@ static const uint8_t READ_COMPLETE_FLAG = 0b100;
 extern I2C_HandleTypeDef hi2c1;
 
 #define ADC_COUNT 4
-static QueueHandle_t QInputValues[ADC_COUNT];
-static QueueHandle_t QInputTicks[ADC_COUNT];
+static QueueHandle_t QInputValues[ADC_COUNT] = {NULL, NULL, NULL, NULL};
+static QueueHandle_t QInputTicks[ADC_COUNT] = {NULL, NULL, NULL, NULL};
 
 extern void serial_printf(const char *fmt, ...);
 
@@ -28,8 +28,10 @@ extern void serial_printf(const char *fmt, ...);
 // /void configureADC(void *arg);
 void ADCTask(void *arg);
 
+#define ADCTASK_STACK_SIZE 1500 //1104 by static analysis
+
 // FreeRTOS tasks
-static uint32_t ADCTask_buffer[250];
+static uint32_t ADCTask_buffer[ADCTASK_STACK_SIZE];
 static StaticTask_t ADCTask_ControlBlock;
 const osThreadAttr_t ADCTask_attributes = {
     .name = "ADCTask",
@@ -40,29 +42,30 @@ const osThreadAttr_t ADCTask_attributes = {
     .priority = (osPriority_t)osPriorityNormal};
 osThreadId_t ADCTaskHandle;
 
-
 void InitADCs(void)
 {
-    for(uint8_t i = 0; i < ADC_COUNT; ++i){
-        QInputValues[i] = xQueueCreate(1, sizeof(uint16_t));
-        QInputTicks[i] = xQueueCreate(1, sizeof(uint32_t));
-    }
     ADCTaskHandle = osThreadNew(ADCTask, NULL, &ADCTask_attributes);
-    //readADCHandle = osThreadNew(readADC, NULL, &readADC_attributes);
+    // readADCHandle = osThreadNew(readADC, NULL, &readADC_attributes);
 }
 
-
-uint32_t GetInputTicks(uint8_t inputIndex){
+uint32_t GetInputTicks(uint8_t inputIndex)
+{
     uint32_t ticks = 0;
-    xQueuePeek(QInputTicks[inputIndex], &ticks, 0);
+    if (QInputTicks[inputIndex] != NULL)
+    {
+        xQueuePeek(QInputTicks[inputIndex], &ticks, 0);
+    }
     return ticks;
 }
-uint16_t GetInputValue(uint8_t inputIndex){
+uint16_t GetInputValue(uint8_t inputIndex)
+{
     uint16_t adcCounts = 0;
-    xQueuePeek(QInputValues[inputIndex], &adcCounts, 0);
+    if (QInputValues[inputIndex] != NULL)
+    {
+        xQueuePeek(QInputValues[inputIndex], &adcCounts, 0);
+    }
     return adcCounts;
 }
-
 
 ////////////////////////////// ADC EVENTS
 /// Happens in IRQ so gotta be quick
@@ -90,13 +93,13 @@ void configureADC(uint16_t configuration, InputState_s input)
     configBytes[1] = (uint8_t)configuration;
     configBytes[0] = (uint8_t)(configuration >> 8);
 
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (uint8_t*)&lowThreshold, sizeof(lowThreshold)) != HAL_OK)
+    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (uint8_t *)&lowThreshold, sizeof(lowThreshold)) != HAL_OK)
     {
         serial_printf("Err i2c update lower threshold");
     }
     osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
 
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t*)&highThreshold, sizeof(highThreshold)) != HAL_OK)
+    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t *)&highThreshold, sizeof(highThreshold)) != HAL_OK)
     {
         serial_printf("Err i2c update upper threshold");
     }
@@ -110,10 +113,10 @@ void configureADC(uint16_t configuration, InputState_s input)
 }
 
 // Tasks
+static InputState_s adcInput[ADC_COUNT] = {0};
+
 void ADCTask(void *arg)
 {
-    InputState_s adcInput[ADC_COUNT] = {0};
-
     const uint8_t INPUT_1 = 0;
     const uint8_t INPUT_2 = 1;
     const uint8_t INPUT_3 = 2;
@@ -130,6 +133,15 @@ void ADCTask(void *arg)
 
     adcInput[INPUT_4].adcAddress = ADC2_ADDR;
     adcInput[INPUT_4].inputIndex = ADC_INPUT_2;
+
+    for (uint8_t i = 0; i < ADC_COUNT; ++i)
+    {
+        adcInput[i].QInputValue = xQueueCreateStatic(1, sizeof(uint16_t), adcInput[i].QInputValue_Storage, &(adcInput[i].QInputValue_QueueStruct));
+        adcInput[i].QInputTick = xQueueCreateStatic(1, sizeof(uint32_t), adcInput[i].QInputTicks_Storage, &(adcInput[i].QInputTicks_QueueStruct));
+
+        QInputValues[i] = adcInput[i].QInputValue;
+        QInputTicks[i] = adcInput[i].QInputTick;
+    }
 
     while (1 != 0) // Loop forever as we are an RTOS task
     {
@@ -148,7 +160,6 @@ void ADCTask(void *arg)
             // Configure for the next input
             configureADC(configuration, adcInput[i]); // Will yield during I2C TX
 
-
             // Start the conversion
             uint16_t triggerReadConfiguration = (uint16_t)((1 << 15) | configuration); // Set the operation bit to start a conversion
             uint8_t configBytes[2] = {0};
@@ -160,7 +171,6 @@ void ADCTask(void *arg)
             }
             osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, osWaitForever);
 
-
             // Read the ADC
             uint8_t conversionRegister[2] = {0}; // Memory space to recieve inputs into
             HAL_I2C_Mem_Read_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), 0x00, 1, conversionRegister, sizeof(conversionRegister));
@@ -169,9 +179,8 @@ void ADCTask(void *arg)
             // Export the value to the queue
             uint16_t adcCounts = (uint16_t)((uint16_t)conversionRegister[0] << 8) | conversionRegister[1];
             uint32_t ticks = HAL_GetTick();
-            xQueueOverwrite(QInputValues[i], &adcCounts);
-            xQueueOverwrite(QInputTicks[i], &ticks);
+            xQueueOverwrite(adcInput[i].QInputValue, &adcCounts);
+            xQueueOverwrite(adcInput[i].QInputTick, &ticks);
         }
     }
 }
-

@@ -16,6 +16,6 @@ typedef struct Consensus_s
 } Consensus_t;
 
 
-void InitPPO2TX(DiveCANDevice_t* device, OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3);
+void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3);
 
 #endif

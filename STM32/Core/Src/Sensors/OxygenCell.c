@@ -4,49 +4,33 @@
 #include "AnalogOxygen.h"
 #include "DigitalOxygen.h"
 
-PPO2_t analogPPO2(OxygenCell_t *self){
-    return Analog_getPPO2((AnalogOxygenState_t*)self->cellHandle);
-}
+typedef struct OxygenHandle_s
+{
+    CellType_t type;
+    void *cellHandle;
+} OxygenHandle_t;
 
-PPO2_t digitalPPO2(OxygenCell_t *self){
-    return Digital_getPPO2((DigitalOxygenState_p)self->cellHandle);
-}
+StaticQueue_t CellQueues_QueueStruct[3];
+uint8_t CellQueues_Storage[3][sizeof(OxygenCell_t)];
+static QueueHandle_t CellQueues[3];
 
-Millivolts_t analogMillis(OxygenCell_t *self){
-    return getMillivolts((AnalogOxygenState_t*)self->cellHandle);
-}
+static OxygenHandle_t cells[3];
 
-Millivolts_t digitalMillis(OxygenCell_t *self){
-    return 0;
-}
-
-CellStatus_t analogState(OxygenCell_t *self){
-    return ((AnalogOxygenState_t*)self->cellHandle)->status;
-}
-
-CellStatus_t digitalState(OxygenCell_t *self){
-    return ((DigitalOxygenState_t*)self->cellHandle)->status;
-}
-
-OxygenCell_t CreateCell(uint8_t cellNumber, CellType_t type){
-    OxygenCell_t cell = {0};
-    cell.cellNumber = cellNumber;
-    cell.type = type;
-    switch(type){
-        case CELL_ANALOG:
-            cell.ppo2 = &analogPPO2;
-            cell.millivolts = &analogMillis;
-            cell.status = &analogState;
-            cell.cellHandle = Analog_InitCell(cellNumber);
-            break;
-        case CELL_DIGITAL:
-            cell.ppo2 = &digitalPPO2;
-            cell.millivolts = &digitalMillis;
-            cell.status = &digitalState;
-            cell.cellHandle = Digital_InitCell(cellNumber);
-            break;
-        default:
-            // Panic
+QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
+{
+    OxygenHandle_t *cell = &cells[cellNumber];
+    CellQueues[cellNumber] = xQueueCreateStatic(1, sizeof(OxygenCell_t), CellQueues_Storage[cellNumber], &(CellQueues_QueueStruct[cellNumber]));
+    cell->type = type;
+    switch (type)
+    {
+    case CELL_ANALOG:
+        cell->cellHandle = Analog_InitCell(cellNumber, CellQueues[cellNumber]);
+        break;
+    case CELL_DIGITAL:
+        cell->cellHandle = Digital_InitCell(cellNumber, CellQueues[cellNumber]);
+        break;
+    default:
+        // Panic
     }
-    return cell;
+    return CellQueues[cellNumber];
 }

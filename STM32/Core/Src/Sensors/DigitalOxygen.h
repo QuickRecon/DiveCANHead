@@ -2,15 +2,15 @@
 #define __DIGITALOXYGEN_H__
 
 #include "../common.h"
-#include "string.h"
 #include "main.h"
-#include <stdbool.h>
 #include "cmsis_os.h"
+#include "queue.h"
 
 // Implementation consts
 #define RX_BUFFER_LENGTH 86
 #define TX_BUFFER_LENGTH 8
-#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 200 // The analyser reckons 128, but can't handle the string functions
+#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 160, but can't handle the string functions
+
 typedef struct DigitalOxygenState_s
 {
     // Configuration
@@ -28,13 +28,12 @@ typedef struct DigitalOxygenState_s
 
     uint32_t processor_buffer[DIGITAL_CELL_PROCESSOR_STACK_SIZE];
     StaticTask_t processor_controlblock;
+
+    QueueHandle_t outQueue;
 } DigitalOxygenState_t;
 
 
-typedef DigitalOxygenState_t* DigitalOxygenState_p;
-
-DigitalOxygenState_p Digital_InitCell(uint8_t cellNumber);
-PPO2_t Digital_getPPO2(DigitalOxygenState_p handle);
+DigitalOxygenState_t* Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueue);
 
 void Cell_TX_Complete(const UART_HandleTypeDef* huart);
 void Cell_RX_Complete(const UART_HandleTypeDef* huart, uint16_t size);

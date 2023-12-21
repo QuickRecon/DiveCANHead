@@ -84,7 +84,7 @@ const osThreadAttr_t defaultTask_attributes = {
     .priority = (osPriority_t)osPriorityNormal,
 };
 /* USER CODE BEGIN PV */
-CAN_FilterTypeDef sFilterConfig; //declare CAN filter structure
+CAN_FilterTypeDef sFilterConfig; // declare CAN filter structure
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -113,14 +113,14 @@ static void MX_NVIC_Init(void);
 char string[200];
 void vprint(const char *fmt, va_list argp)
 {
-  // if (0 < vsprintf(string, fmt, argp)) // build string
-  // {
-  //   while (huart2.gState != HAL_UART_STATE_READY)
-  //   {
-  //     osDelay(5);
-  //   }
-  //   HAL_UART_Transmit(&huart2, (uint8_t *)string, strlen(string), 0xffffff); // send message via UART
-  // }
+  if (0 < vsprintf(string, fmt, argp)) // build string
+  {
+    while (huart2.gState != HAL_UART_STATE_READY)
+    {
+      osDelay(5);
+    }
+    HAL_UART_Transmit(&huart2, (uint8_t *)string, strlen(string), 0xffffff); // send message via UART
+  }
 }
 
 void serial_printf(const char *fmt, ...) // custom printf() function
@@ -131,9 +131,6 @@ void serial_printf(const char *fmt, ...) // custom printf() function
   va_end(argp);
 }
 
-OxygenCell_t c1 = {0};
-OxygenCell_t c2 = {0};
-OxygenCell_t c3 = {0};
 DiveCANDevice_t deviceSpec = {0};
 
 /* USER CODE END 0 */
@@ -203,9 +200,11 @@ int main(void)
   // Kick off our threads
   InitADCs();
 
-  c1 = CreateCell(0, CELL_DIGITAL);
-  c2 = CreateCell(1, CELL_ANALOG);
-  c3 = CreateCell(2, CELL_ANALOG);
+  QueueHandle_t cells[3];
+
+  cells[0] = CreateCell(0, CELL_DIGITAL);
+  cells[1] = CreateCell(1, CELL_ANALOG);
+  cells[2] = CreateCell(2, CELL_ANALOG);
 
   deviceSpec.name = "Rev2Ctl";
   deviceSpec.type = DIVECAN_SOLO;
@@ -213,7 +212,7 @@ int main(void)
   deviceSpec.firmwareVersion = 1;
 
   InitDiveCAN(&deviceSpec);
-  InitPPO2TX(&deviceSpec, &c1, &c2, &c3);
+  InitPPO2TX(&deviceSpec, cells[0] , cells[1] , cells[2]);
 
   /* USER CODE END 2 */
 

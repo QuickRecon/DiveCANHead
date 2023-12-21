@@ -25,12 +25,14 @@
 extern CAN_HandleTypeDef hcan1;
 
 static QueueHandle_t QInboundCAN = NULL;
+static StaticQueue_t QInboundCAN_QueueStruct = {0};
+static uint8_t QInboundCAN_Storage[sizeof(DiveCANMessage_t)];
 
 void InitRXQueue(void)
 {
     if (NULL == QInboundCAN)
     {
-        QInboundCAN = xQueueCreate(10, sizeof(DiveCANMessage_t));
+        QInboundCAN = xQueueCreateStatic(10, sizeof(DiveCANMessage_t), QInboundCAN_Storage, &QInboundCAN_QueueStruct);
     }
 }
 

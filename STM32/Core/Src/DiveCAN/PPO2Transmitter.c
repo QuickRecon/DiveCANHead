@@ -8,7 +8,7 @@ static const uint8_t CELL_3 = 2;
 
 static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
 
-#define PPO2TXTASK_STACK_SIZE 200
+#define PPO2TXTASK_STACK_SIZE 500 // 264 bytes by static analysis
 
 extern IWDG_HandleTypeDef hiwdg;
 typedef struct cellValueContainer_s
@@ -20,9 +20,9 @@ typedef struct cellValueContainer_s
 typedef struct PPO2TXTask_params_s
 {
     DiveCANDevice_t *device;
-    OxygenCell_t *c1;
-    OxygenCell_t *c2;
-    OxygenCell_t *c3;
+    QueueHandle_t c1;
+    QueueHandle_t c2;
+    QueueHandle_t c3;
 } PPO2TXTask_params_t;
 
 extern void serial_printf(const char *fmt, ...);
@@ -46,7 +46,7 @@ const osThreadAttr_t PPO2TXTask_attributes = {
 osThreadId_t PPO2TXTaskHandle;
 PPO2TXTask_params_t taskParams;
 
-void InitPPO2TX(DiveCANDevice_t *device, OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3)
+void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
 {
     PPO2TXTask_params_t params = {
         .device = device,
@@ -61,18 +61,23 @@ void PPO2TXTask(void *arg)
 {
     PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;
     DiveCANDevice_t *dev = params->device;
-    OxygenCell_t *c1 = params->c1;
-    OxygenCell_t *c2 = params->c2;
-    OxygenCell_t *c3 = params->c3;
-
+    serial_printf("Start PPO2 Task");
     int i = 0;
     while (true)
     {
+
         ++i;
         HAL_IWDG_Refresh(&hiwdg); // PPO2 sampling is the critical loop
         osDelay(500);
 
-        Consensus_t consensus = calculateConsensus(c1, c2, c3);
+        OxygenCell_t c1 = {0};
+        xQueuePeek(params->c1, &c1, 100);
+        OxygenCell_t c2 = {0};
+        xQueuePeek(params->c2, &c2, 100);
+        OxygenCell_t c3 = {0};
+        xQueuePeek(params->c3, &c3, 100);
+
+        Consensus_t consensus = calculateConsensus(&c1, &c2, &c3);
 
         txPPO2(dev->type, consensus.PPO2s[CELL_1], consensus.PPO2s[CELL_2], consensus.PPO2s[CELL_3]);
         txMillivolts(dev->type, consensus.millis[CELL_1], consensus.millis[CELL_2], consensus.millis[CELL_3]);
@@ -115,19 +120,19 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
     // Zeroth step, load up the millis, status and PPO2
     Consensus_t consensus = {
         .statuses = {
-            c1->status(c1),
-            c2->status(c2),
-            c3->status(c3),
+            c1->status,
+            c2->status,
+            c3->status,
         },
         .PPO2s = {
-            c1->ppo2(c1),
-            c2->ppo2(c2),
-            c3->ppo2(c3),
+            c1->ppo2,
+            c2->ppo2,
+            c3->ppo2,
         },
         .millis = {
-            c1->millivolts(c1),
-            c2->millivolts(c2),
-            c3->millivolts(c3),
+            c1->millivolts,
+            c2->millivolts,
+            c3->millivolts,
         },
         .consensus = 0,
         .included = {true, true, true}};
