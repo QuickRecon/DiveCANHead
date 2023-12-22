@@ -58,7 +58,7 @@ TEST_GROUP(PPO2Transmitter){
 }
 ;
 
-TEST(PPO2Transmitter, calculateConsensusAveragesCells)
+TEST(PPO2Transmitter, calculateConsensus_AveragesCells)
 {
     OxygenCell_t c1 = {
         .cellNumber = 0,
@@ -99,4 +99,145 @@ TEST(PPO2Transmitter, calculateConsensusAveragesCells)
     mock().expectOneCall("HAL_GetTick");
     consensus = calculateConsensus(&c1, &c3, &c2);
     CHECK(consensus.consensus == 110);
+}
+
+TEST(PPO2Transmitter, calculateConsensus_ExcludesHigh)
+{
+    OxygenCell_t c1 = {
+        .cellNumber = 0,
+        .type = CELL_ANALOG,
+        .ppo2 = 110,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .data_time = 0};
+    OxygenCell_t c2 = { // CELL 2 should be excluded
+        .cellNumber = 1,
+        .type = CELL_ANALOG,
+        .ppo2 = 130,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .data_time = 0};
+    OxygenCell_t c3 = {
+        .cellNumber = 2,
+        .type = CELL_ANALOG,
+        .ppo2 = 100,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .data_time = 0};
+
+    Consensus_t consensus;
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c1, &c2, &c3);
+    CHECK(consensus.included[1] == false);
+    CHECK(consensus.consensus == 105);
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c2, &c1, &c3);
+    CHECK(consensus.included[0] == false);
+    CHECK(consensus.consensus == 105);
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c3, &c2, &c1);
+    CHECK(consensus.included[1] == false);
+    CHECK(consensus.consensus == 105);
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c1, &c3, &c2);
+    CHECK(consensus.included[2] == false);
+    CHECK(consensus.consensus == 105);
+}
+
+TEST(PPO2Transmitter, calculateConsensus_ExcludesLow)
+{
+    OxygenCell_t c1 = {
+        .cellNumber = 0,
+        .type = CELL_ANALOG,
+        .ppo2 = 120,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .data_time = 0};
+    OxygenCell_t c2 = {
+        .cellNumber = 1,
+        .type = CELL_ANALOG,
+        .ppo2 = 130,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .data_time = 0};
+    OxygenCell_t c3 = {
+        .cellNumber = 2,
+        .type = CELL_ANALOG,
+        .ppo2 = 100,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .data_time = 0};
+
+    Consensus_t consensus;
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c1, &c2, &c3);
+    CHECK(consensus.included[2] == false);
+    CHECK(consensus.consensus == 125);
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c2, &c1, &c3);
+    CHECK(consensus.included[2] == false);
+    CHECK(consensus.consensus == 125);
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c3, &c2, &c1);
+    CHECK(consensus.included[0] == false);
+    CHECK(consensus.consensus == 125);
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c1, &c3, &c2);
+    CHECK(consensus.included[1] == false);
+    CHECK(consensus.consensus == 125);
+}
+
+TEST(PPO2Transmitter, calculateConsensus_ExcludesTimedOutCell)
+{
+    OxygenCell_t c1 = {
+        .cellNumber = 0,
+        .type = CELL_ANALOG,
+        .ppo2 = 120,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .data_time = 1500};
+    OxygenCell_t c2 = {
+        .cellNumber = 1,
+        .type = CELL_ANALOG,
+        .ppo2 = 110,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .data_time = 0};
+    OxygenCell_t c3 = {
+        .cellNumber = 2,
+        .type = CELL_ANALOG,
+        .ppo2 = 100,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .data_time = 0};
+
+    Consensus_t consensus;
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c1, &c2, &c3);
+    CHECK(consensus.included[0] == false);
+    CHECK(consensus.consensus == 105);
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c2, &c1, &c3);
+    CHECK(consensus.included[1] == false);
+    CHECK(consensus.consensus == 105);
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c3, &c2, &c1);
+    CHECK(consensus.included[2] == false);
+    CHECK(consensus.consensus == 105);
+
+    mock().expectOneCall("HAL_GetTick");
+    consensus = calculateConsensus(&c1, &c3, &c2);
+    CHECK(consensus.included[0] == false);
+    CHECK(consensus.consensus == 105);
 }

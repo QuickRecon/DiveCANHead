@@ -9,7 +9,7 @@
             "cwd": "${workspaceFolder}"
         },
         {
-            "name": "C/C++: g++ build and debug active file",
+            "name": "Run tests",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/Tests/DiveCAN_tests",

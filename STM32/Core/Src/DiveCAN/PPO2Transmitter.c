@@ -194,7 +194,7 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
     // Lower cell
     // If we're outside the deviation then mark it in the mask
     // but if we're within it then add it to our average
-    if (((sortList[CELL_2].PPO2 - sortList[CELL_1].PPO2) > MAX_DEVIATION) ||
+    if (((sortList[CELL_1].PPO2 - sortList[CELL_2].PPO2) > MAX_DEVIATION) ||
         (consensus.statuses[sortList[CELL_1].cellNumber] == CELL_NEED_CAL) ||
         (consensus.statuses[sortList[CELL_1].cellNumber] == CELL_FAIL) ||
         ((now - sampleTimes[sortList[CELL_1].cellNumber]) > timeout))
@@ -208,7 +208,7 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
     }
 
     // Upper cell
-    if (((sortList[CELL_3].PPO2 - sortList[CELL_2].PPO2) > MAX_DEVIATION) ||
+    if (((sortList[CELL_2].PPO2 - sortList[CELL_3].PPO2) > MAX_DEVIATION) ||
         (consensus.statuses[sortList[CELL_3].cellNumber] == CELL_NEED_CAL) ||
         (consensus.statuses[sortList[CELL_3].cellNumber] == CELL_FAIL) ||
         ((now - sampleTimes[sortList[CELL_3].cellNumber]) > timeout))
