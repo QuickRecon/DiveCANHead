@@ -3,7 +3,7 @@ COMPONENT_NAME = DiveCAN
 
 #--- Inputs ----#
 PROJECT_HOME_DIR = .
-CPPUTEST_HOME = ../cpputest/
+CPPUTEST_HOME = /home/aren/libs/cpputest/
 
 # --- SRC_FILES and SRC_DIRS ---
 # Production code files are compiled and put into
@@ -76,7 +76,7 @@ INCLUDE_DIRS += /home/aren/Dropbox/DiveCANHeadRev2/STM32/Core/Src/
 # .o and .d files to be put under objs.
 CPPUTEST_OBJS_DIR = test-obj/
 
-CPPUTEST_LIB_DIR = $(CPPUTEST_HOME)/lib
+CPPUTEST_LIB_DIR = test-lib
 
 # You may have to tweak these compiler flags
 #    CPPUTEST_WARNINGFLAGS - apply to C and C++
