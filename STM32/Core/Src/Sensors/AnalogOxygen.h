@@ -7,6 +7,10 @@
 
 #define ANALOG_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 168, but can't handle the string functions
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef int16_t ADCCount_t;
 
 typedef struct AnalogOxygenState_s
@@ -32,5 +36,9 @@ typedef struct AnalogOxygenState_s
 AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue);
 void ReadCalibration(AnalogOxygenState_t *handle);
 ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -73,7 +73,12 @@ void PPO2TXTask(void *arg)
         OxygenCell_t c3 = {0};
         xQueuePeek(params->c3, &c3, 100);
 
+        // First we calculate the consensus struct, which includes the voting logic
+        // This is aware of cell status but does not set the PPO2 data for Fail states
         Consensus_t consensus = calculateConsensus(&c1, &c2, &c3);
+
+        // Go through each cell and if any need cal, flag cal
+        // Also check for fail and mark the cell value as fail
 
         txPPO2(dev->type, consensus.PPO2s[CELL_1], consensus.PPO2s[CELL_2], consensus.PPO2s[CELL_3]);
         txMillivolts(dev->type, consensus.millis[CELL_1], consensus.millis[CELL_2], consensus.millis[CELL_3]);
@@ -107,13 +112,25 @@ int CelValComp(const void *num1, const void *num2) // comparing function
     return ret;
 }
 
-// Ok kids this is the big one, cell voting logic
-// If the shearwater starts doing bad things it probably
-// happened in here, everything else is just dragging this logic
-// into the real world.
+/// @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
+///        In an all fail scenario we want that data to still be intact so we can still have our best guess
+/// @param c1
+/// @param c2
+/// @param c3
+/// @return
 Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3)
 {
     // Zeroth step, load up the millis, status and PPO2
+    // We also load up the timestamps of each cell sample so that we can check the other tasks
+    // haven't been sitting idle and starved us of information
+    Timestamp_t sampleTimes[CELL_COUNT] = {
+        c1->data_time,
+        c2->data_time,
+        c3->data_time};
+
+    const Timestamp_t timeout = 1000; // 1000 millisecond timeout to avoid stale data
+    Timestamp_t now = HAL_GetTick();
+
     Consensus_t consensus = {
         .statuses = {
             c1->status,
@@ -133,79 +150,78 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
         .consensus = 0,
         .included = {true, true, true}};
 
-    // First check if any of the cells are begging for cal,
-    // because that takes precidence over the rest of this logic
-    // if ((consensus.statuses[CELL_1] == CELL_NEED_CAL) ||
-    //     (consensus.statuses[CELL_2] == CELL_NEED_CAL) ||
-    //     (consensus.statuses[CELL_3] == CELL_NEED_CAL))
-    // {
-    //     serial_printf("Needs cal\r\n");
-    //     for (uint8_t i = 0; i < 3; ++i)
-    //     {
-    //         consensus.PPO2s[i] = PPO2_FAIL; // Every cell reads as failed, prompts needs cal warning on the shearwater
-    //     }
-    // }
-    // else
+    // Now for the vote itself, the logic here is to first sort the cells
+    // by PPO2 and check if the max and min are more than MAX_DEVIATION apart
+    cellValueContainer_t sortList[3] = {{CELL_1, consensus.PPO2s[CELL_1]},
+                                        {CELL_2, consensus.PPO2s[CELL_2]},
+                                        {CELL_3, consensus.PPO2s[CELL_3]}};
+
+    // Do a non-recursive inplace sort
+    uint8_t maxIdx = 0;
+    uint8_t size = 3;
+    for (uint8_t i = 0; i < (size - 1); ++i)
     {
-        // Now for the vote itself, the logic here is to first sort the cells
-        // by PPO2 and check if the max and min are more than MAX_DEVIATION apart
-        cellValueContainer_t sortList[3] = {{CELL_1, consensus.PPO2s[CELL_1]},
-                                            {CELL_2, consensus.PPO2s[CELL_2]},
-                                            {CELL_3, consensus.PPO2s[CELL_3]}};
-
-        // Do a non-recursive bounded sort
-        uint8_t maxIdx = 0;
-        uint8_t size = 3;
-        for (uint8_t i = 0; i < (size - 1); ++i)
+        // Find the maximum element in
+        // unsorted array
+        maxIdx = i;
+        for (uint8_t j = i + 1; j < size; ++j)
         {
-            // Find the maximum element in
-            // unsorted array
-            maxIdx = i;
-            for (uint8_t j = i + 1; j < size; ++j)
+            if (sortList[j].PPO2 > sortList[maxIdx].PPO2)
             {
-                if (sortList[j].PPO2 > sortList[maxIdx].PPO2)
-                {
-                    maxIdx = j;
-                }
+                maxIdx = j;
             }
-            // Swap the found minimum element
-            // with the first element
-            cellValueContainer_t temp = sortList[maxIdx];
-            sortList[maxIdx] = sortList[i];
-            sortList[i] = temp;
         }
-
-        // Now check the upper and lower cells, and start a tally of the included cells
-        uint16_t PPO2_acc = sortList[CELL_2].PPO2; // Start an accumulator to take an average, include the median cell always
-        uint8_t includedCellCount = 1;
-
-        // Lower cell
-        // If we're outside the deviation then mark it in the mask
-        // but if we're within it then add it to our average
-        if ((sortList[CELL_2].PPO2 - sortList[CELL_1].PPO2) > MAX_DEVIATION)
-        {
-            consensus.included[sortList[CELL_1].cellNumber] = false;
-        }
-        else
-        {
-            consensus.included[sortList[CELL_1].cellNumber] = true;
-            PPO2_acc += sortList[CELL_1].PPO2;
-            ++includedCellCount;
-        }
-
-        // Upper cell
-        if ((sortList[CELL_3].PPO2 - sortList[CELL_2].PPO2) > MAX_DEVIATION)
-        {
-            consensus.included[sortList[CELL_3].cellNumber] = false;
-        }
-        else
-        {
-            consensus.included[sortList[CELL_3].cellNumber] = true;
-            PPO2_acc += sortList[CELL_3].PPO2;
-            ++includedCellCount;
-        }
-
-        consensus.consensus = (PPO2_t)(PPO2_acc / includedCellCount);
+        // Swap the found minimum element
+        // with the first element
+        cellValueContainer_t temp = sortList[maxIdx];
+        sortList[maxIdx] = sortList[i];
+        sortList[i] = temp;
     }
+
+    // Now check the upper and lower cells, and start a tally of the included cells
+    uint16_t PPO2_acc = 0; // Start an accumulator to take an average, include the median cell always
+    uint8_t includedCellCount = 0;
+
+    if ((consensus.statuses[sortList[CELL_2].cellNumber] == CELL_NEED_CAL) ||
+        (consensus.statuses[sortList[CELL_2].cellNumber] == CELL_FAIL) ||
+        ((now - sampleTimes[sortList[CELL_2].cellNumber]) > timeout))
+    {
+        // TODO: panic because the one cell that we were hoping would be good is not good
+    } else {
+        PPO2_acc = sortList[CELL_2].PPO2;
+        ++includedCellCount;
+    }
+    // Lower cell
+    // If we're outside the deviation then mark it in the mask
+    // but if we're within it then add it to our average
+    if (((sortList[CELL_2].PPO2 - sortList[CELL_1].PPO2) > MAX_DEVIATION) ||
+        (consensus.statuses[sortList[CELL_1].cellNumber] == CELL_NEED_CAL) ||
+        (consensus.statuses[sortList[CELL_1].cellNumber] == CELL_FAIL) ||
+        ((now - sampleTimes[sortList[CELL_1].cellNumber]) > timeout))
+    {
+        consensus.included[sortList[CELL_1].cellNumber] = false;
+    }
+    else
+    {
+        PPO2_acc += sortList[CELL_1].PPO2;
+        ++includedCellCount;
+    }
+
+    // Upper cell
+    if (((sortList[CELL_3].PPO2 - sortList[CELL_2].PPO2) > MAX_DEVIATION) ||
+        (consensus.statuses[sortList[CELL_3].cellNumber] == CELL_NEED_CAL) ||
+        (consensus.statuses[sortList[CELL_3].cellNumber] == CELL_FAIL) ||
+        ((now - sampleTimes[sortList[CELL_3].cellNumber]) > timeout))
+    {
+        consensus.included[sortList[CELL_3].cellNumber] = false;
+    }
+    else
+    {
+        PPO2_acc += sortList[CELL_3].PPO2;
+        ++includedCellCount;
+    }
+
+    consensus.consensus = (PPO2_t)(PPO2_acc / includedCellCount);
+
     return consensus;
 }

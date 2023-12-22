@@ -4,6 +4,9 @@
 #include "../common.h"
 #include "Transciever.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 typedef struct DiveCANDevice_s
 {
     char name[9];
@@ -13,5 +16,9 @@ typedef struct DiveCANDevice_s
 } DiveCANDevice_t;
 
 void InitDiveCAN(DiveCANDevice_t *deviceSpec);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

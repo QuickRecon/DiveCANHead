@@ -99,15 +99,7 @@ void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
         sendCellCommand(GET_DETAIL_COMMAND, handle);
     }
 
-    if ((handle->status == CELL_FAIL) || (handle->status == CELL_NEED_CAL))
-    {
-        PPO2 = PPO2_FAIL; // Failed cell
-        serial_printf("CELL %d FAIL\r\n", handle->cellNumber);
-    }
-    else
-    {
-        PPO2 = (PPO2_t)(handle->cellSample / HPA_PER_BAR);
-    }
+    PPO2 = (PPO2_t)(handle->cellSample / HPA_PER_BAR);
 
     // Lodge the cell data
     OxygenCell_t cellData = {
@@ -115,7 +107,8 @@ void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
         .type = CELL_DIGITAL,
         .ppo2 = PPO2,
         .millivolts = 0,
-        .status = handle->status};
+        .status = handle->status,
+        .data_time = HAL_GetTick()};
     // serial_printf("%d", cellData.millivolts);
     xQueueOverwrite(handle->outQueue, &cellData);
 }
@@ -157,21 +150,21 @@ void decodeCellMessage(void *arg)
                 ++msgBuf;
             }
             const char *const sep = " ";
-            const char *const CMD_Name = strtok_r(msgBuf, sep,&msgBuf);
+            const char *const CMD_Name = strtok_r(msgBuf, sep, &msgBuf);
 
             // Decode either a #DRAW or a #DOXY, we don't care about anything else yet
             if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
             {
-                const char *const PPO2_str = strtok_r(NULL, sep,&msgBuf);
+                const char *const PPO2_str = strtok_r(NULL, sep, &msgBuf);
                 const char *const temperature_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const err_str = strtok_r(NULL, sep,&msgBuf);
+                const char *const err_str = strtok_r(NULL, sep, &msgBuf);
 
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
                 cell->status = cellErrorCheck(cell, err_str);
                 cell->ticksOfLastPPO2 = HAL_GetTick();
 
-                //serial_printf("PPO2: %d\r\n", cell->cellSample);
+                // serial_printf("PPO2: %d\r\n", cell->cellSample);
             }
             else if (0 == strcmp(CMD_Name, GET_DETAIL_COMMAND))
             {
@@ -191,7 +184,7 @@ void decodeCellMessage(void *arg)
                 cell->status = cellErrorCheck(cell, err_str);
                 cell->ticksOfLastPPO2 = HAL_GetTick();
 
-                //serial_printf("Pressure string %s\r\n", pressure_str);
+                // serial_printf("Pressure string %s\r\n", pressure_str);
             }
             else
             {

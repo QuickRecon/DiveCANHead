@@ -151,16 +151,8 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
         serial_printf("CELL %d TIMEOUT: %d\r\n", handle->cellNumber, (ticks - ticksOfLastPPO2));
     }
 
-    if ((handle->status == CELL_FAIL) || (handle->status == CELL_NEED_CAL))
-    {
-        PPO2 = PPO2_FAIL; // Failed cell
-        // serial_printf("CELL %d FAIL\r\n", handle->cellNumber);
-    }
-    else
-    {
-        CalCoeff_t calPPO2 = (CalCoeff_t)abs(handle->lastCounts) * COUNTS_TO_MILLIS * handle->calibrationCoefficient;
-        PPO2 = (PPO2_t)(calPPO2);
-    }
+    CalCoeff_t calPPO2 = (CalCoeff_t)abs(handle->lastCounts) * COUNTS_TO_MILLIS * handle->calibrationCoefficient;
+    PPO2 = (PPO2_t)(calPPO2);
 
     // Lodge the cell data
     OxygenCell_t cellData = {
@@ -168,7 +160,8 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
         .type = CELL_ANALOG,
         .ppo2 = PPO2,
         .millivolts = getMillivolts(handle),
-        .status = handle->status};
+        .status = handle->status,
+        .data_time = HAL_GetTick()};
     // serial_printf("%d", cellData.millivolts);
     xQueueOverwrite(handle->outQueue, &cellData);
 }

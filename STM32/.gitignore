@@ -4,3 +4,6 @@ _autosave*
 *.lck
 stm32-cppcheck-build-dir
 stackAnalysis.txt
+test-obj/
+Tests/DiveCAN_tests
+test-lib/

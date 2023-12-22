@@ -5,7 +5,6 @@
 #include "DigitalOxygen.h"
 #include "eeprom_emul.h"
 
-#define CELL_COUNT 3
 typedef struct OxygenHandle_s
 {
     CellType_t type;

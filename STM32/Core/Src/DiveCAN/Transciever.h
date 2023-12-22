@@ -6,6 +6,10 @@
 
 #include "cmsis_os.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 static const uint32_t BUS_INIT_ID = 0xD370000;
 static const uint32_t BUS_OFF_ID = 0xD030000;
 static const uint32_t BUS_UNKNOWN1_ID = 0xD300000;
@@ -89,5 +93,9 @@ void txCalResponse(const DiveCANType_t deviceType, const ShortMillivolts_t cell1
 void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType);
 void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t index, const char *const fieldText);
 void txMenuOpts(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t index); // TODO: work out how this works
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

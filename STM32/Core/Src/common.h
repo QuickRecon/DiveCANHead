@@ -3,12 +3,17 @@
 #include <stdlib.h>
 #include "cmsis_os.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Value types
 typedef uint8_t PPO2_t;
 typedef uint8_t FO2_t;
 typedef uint16_t Millivolts_t;
 typedef uint8_t ShortMillivolts_t;
 typedef float CalCoeff_t;
+typedef uint32_t Timestamp_t; // Internal tick count used for tracking timeouts
 
 
 // PPO2 values
@@ -43,4 +48,9 @@ const static osPriority_t PPO2_SENSOR_PRIORITY = osPriorityHigh1;
 const static osPriority_t CAN_RX_PRIORITY = osPriorityNormal;
 const static osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh;
 const static osPriority_t ADC_PRIORITY = osPriorityHigh2;
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif

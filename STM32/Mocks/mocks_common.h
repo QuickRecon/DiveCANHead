@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef long BaseType_t;
 typedef unsigned long UBaseType_t;
 typedef long TickType_t;
@@ -20,3 +24,7 @@ typedef struct
 } StaticQueue_t;
 
 uint32_t HAL_GetTick();
+
+#ifdef __cplusplus
+}
+#endif

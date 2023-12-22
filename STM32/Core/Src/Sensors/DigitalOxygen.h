@@ -6,6 +6,9 @@
 #include "cmsis_os.h"
 #include "queue.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // Implementation consts
 #define RX_BUFFER_LENGTH 86
@@ -41,5 +44,9 @@ DigitalOxygenState_t* Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueu
 
 void Cell_TX_Complete(const UART_HandleTypeDef* huart);
 void Cell_RX_Complete(const UART_HandleTypeDef* huart, uint16_t size);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

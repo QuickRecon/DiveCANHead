@@ -4,6 +4,9 @@
 #include "main.h"
 #include "stdbool.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 typedef enum PowerSource_e {
     SOURCE_BATTERY,
     SOURCE_CAN
@@ -20,5 +23,9 @@ void SetVBusMode(PowerSelectMode_t powerMode);
 PowerSource_t GetVCCSource(void);
 PowerSource_t GetVBusSource(void);
 void SetBattery(bool enable);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
