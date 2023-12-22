@@ -45,7 +45,6 @@ void CANTask(void *arg)
         DiveCANMessage_t message = {0};
         if (pdTRUE == GetLatestCAN(1000, &message))
         {
-            serial_printf("DCM\r\n");
             uint32_t message_id = message.id & 0x1FFFF000; // Drop the source/dest stuff, we're listening for anything from anyone
             switch (message_id)
             {
@@ -110,6 +109,9 @@ void RespPing(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec
 
 void RespCal(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
 {
+    serial_printf("CAL message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message->id,
+                              message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
+
     FO2_t fO2 = message->data[0];
     uint16_t pressure = (uint16_t)(((uint16_t)(message->data[2] << 8)) | (message->data[1]));
 

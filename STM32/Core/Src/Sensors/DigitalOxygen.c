@@ -160,7 +160,7 @@ void decodeCellMessage(void *arg)
             const char *const CMD_Name = strtok_r(msgBuf, sep,&msgBuf);
 
             // Decode either a #DRAW or a #DOXY, we don't care about anything else yet
-            if (0 == strcmp(CMD_Name, GET_DETAIL_COMMAND))
+            if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
             {
                 const char *const PPO2_str = strtok_r(NULL, sep,&msgBuf);
                 const char *const temperature_str = strtok_r(NULL, sep, &msgBuf);
@@ -171,7 +171,7 @@ void decodeCellMessage(void *arg)
                 cell->status = cellErrorCheck(cell, err_str);
                 cell->ticksOfLastPPO2 = HAL_GetTick();
 
-                // serial_printf("PPO2: %d\r\n", cell->cellSample);
+                //serial_printf("PPO2: %d\r\n", cell->cellSample);
             }
             else if (0 == strcmp(CMD_Name, GET_DETAIL_COMMAND))
             {
@@ -190,6 +190,8 @@ void decodeCellMessage(void *arg)
                 cell->humidity = strtol(humidity_str, NULL, PPO2_BASE);
                 cell->status = cellErrorCheck(cell, err_str);
                 cell->ticksOfLastPPO2 = HAL_GetTick();
+
+                //serial_printf("Pressure string %s\r\n", pressure_str);
             }
             else
             {

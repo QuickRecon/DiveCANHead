@@ -32,7 +32,7 @@ static OxygenHandle_t cells[CELL_COUNT];
 
 extern void serial_printf(const char *fmt, ...);
 
-#define CALTASK_STACK_SIZE 200
+#define CALTASK_STACK_SIZE 400 // Static analysis 304
 
 static uint32_t CalTask_buffer[CALTASK_STACK_SIZE];
 static StaticTask_t CalTask_ControlBlock;
@@ -63,7 +63,7 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
     return CellQueues[cellNumber];
 }
 
-void DigitalReferenceCalibrate(CalParameters_t * calParams)
+void DigitalReferenceCalibrate(CalParameters_t *calParams)
 {
     DigitalOxygenState_t *refCell = NULL;
     uint8_t refCellIndex = 0;
@@ -83,14 +83,14 @@ void DigitalReferenceCalibrate(CalParameters_t * calParams)
         OxygenCell_t refCellData = {0};
         xQueuePeek(CellQueues[refCellIndex], &refCellData, 100);
         PPO2_t ppO2 = refCellData.ppo2;
-        serial_printf("!!CAL PPO2: %d", ppO2);
+        serial_printf("!!CAL PPO2: %d, %d", ppO2, pressure);
         // Now that we have the PPO2 we cal all the analog cells
         ShortMillivolts_t cellVals[CELL_COUNT] = {0};
         for (uint8_t i = 0; i < CELL_COUNT; ++i)
         {
             if (CELL_ANALOG == cells[i].type)
             {
-                AnalogOxygenState_t* analogCell = (AnalogOxygenState_t *)cells[i].cellHandle;
+                AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cells[i].cellHandle;
                 cellVals[i] = Calibrate(analogCell, ppO2);
             }
         }
@@ -100,7 +100,7 @@ void DigitalReferenceCalibrate(CalParameters_t * calParams)
         calParams->cell2 = cellVals[1];
         calParams->cell3 = cellVals[2];
         calParams->pressure_val = pressure;
-        calParams->fO2 = ((float)ppO2 * (1000.0f/(float)pressure));
+        calParams->fO2 = ((float)ppO2 * (1000.0f / (float)pressure));
     }
     else
     {
@@ -116,14 +116,16 @@ void CalibrationTask(void *arg)
     {
     case CAL_DIGITAL_REFERENCE: // Calibrate using the solid state cell as a reference
         DigitalReferenceCalibrate(calParams);
+        osDelay(1000); // Give the shearwater time to catch up
         break;
     default:
         // TODO: panic
     }
+    serial_printf("TX cal response");
     txCalResponse(calParams->deviceType, calParams->cell1, calParams->cell2, calParams->cell3, calParams->fO2, calParams->pressure_val);
     osThreadExit();
 }
-
+osThreadId_t calTask;
 void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val)
 {
     glob_calParams.fO2 = in_fO2;
@@ -137,5 +139,11 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
 
     txCalAck(deviceType);
 
-    osThreadNew(CalibrationTask, &glob_calParams, &CalTask_attributes);
+    // Don't start the thread if we're already calibrating, shearwater double shots us sometimes
+    if ((osThreadGetState(calTask) == osThreadError) ||
+        (osThreadGetState(calTask) == osThreadInactive) ||
+        (osThreadGetState(calTask) == osThreadTerminated))
+    {
+        calTask = osThreadNew(CalibrationTask, &glob_calParams, &CalTask_attributes);
+    }
 }

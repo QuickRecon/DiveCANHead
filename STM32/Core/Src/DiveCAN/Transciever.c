@@ -205,7 +205,6 @@ void txCalAck(DiveCANType_t deviceType)
 /// @param atmosphericPressure Atmospheric pressure at the time of calibration
 void txCalResponse(DiveCANType_t deviceType, ShortMillivolts_t cell1, ShortMillivolts_t cell2, ShortMillivolts_t cell3, FO2_t FO2, uint16_t atmosphericPressure)
 {
-
     uint8_t atmosBytes[2] = {(uint8_t)(atmosphericPressure >> 8), (uint8_t)atmosphericPressure};
 
     uint8_t data[CAL_LEN] = {(uint8_t)DIVECAN_CAL_RESULT, cell1, cell2, cell3, FO2, atmosBytes[0], atmosBytes[1], 0x07};

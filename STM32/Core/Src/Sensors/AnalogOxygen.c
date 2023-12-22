@@ -93,7 +93,7 @@ void ReadCalibration(AnalogOxygenState_t *handle)
 // Calculate and write the eeprom
 ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
 {
-    uint16_t adcCounts = GetInputValue(handle->adcInputIndex);
+    uint16_t adcCounts = handle->lastCounts;
     // Our coefficient is simply the float needed to make the current sample the current PPO2
     handle->calibrationCoefficient = (CalCoeff_t)(PPO2) / ((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS);
 
@@ -131,6 +131,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     uint32_t ticksOfLastPPO2 = GetInputTicks(handle->adcInputIndex);
 
     uint32_t ticks = HAL_GetTick();
+    handle->lastCounts = GetInputValue(handle->adcInputIndex);
     if (ticks < ticksOfLastPPO2)
     { // If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out
         ticksOfLastPPO2 = 0;
@@ -148,8 +149,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     }
     else
     {
-        uint16_t adcCounts = GetInputValue(handle->adcInputIndex);
-        CalCoeff_t calPPO2 = (CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS * handle->calibrationCoefficient;
+        CalCoeff_t calPPO2 = (CalCoeff_t)abs(handle->lastCounts) * COUNTS_TO_MILLIS * handle->calibrationCoefficient;
         PPO2 = (PPO2_t)(calPPO2);
     }
 
