@@ -5,13 +5,13 @@
 extern void serial_printf(const char *fmt, ...);
 
 void CANTask(void *arg);
-void RespBusInit(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
-void RespPing(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
-void RespCal(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
-void RespMenu(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
-void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
-void RespAtmos(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
-void RespShutdown(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec);
+void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 
 #define CANTASK_STACK_SIZE 500 // 208 by static analysis
 
@@ -38,7 +38,7 @@ void InitDiveCAN(DiveCANDevice_t *deviceSpec)
 /// @param arg
 void CANTask(void *arg)
 {
-    DiveCANDevice_t *deviceSpec = (DiveCANDevice_t *)arg;
+    const DiveCANDevice_t *const deviceSpec = (DiveCANDevice_t *)arg;
 
     while (true)
     {
@@ -92,13 +92,13 @@ void CANTask(void *arg)
     }
 }
 
-void RespBusInit(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
+void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     // Do startup stuff and then ping the bus
     RespPing(message, deviceSpec);
 }
 
-void RespPing(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
+void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     DiveCANType_t devType = deviceSpec->type;
 
@@ -107,34 +107,33 @@ void RespPing(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec
     txName(devType, deviceSpec->name);
 }
 
-void RespCal(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
+void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     serial_printf("CAL message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message->id,
-                              message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
+                  message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
 
     FO2_t fO2 = message->data[0];
     uint16_t pressure = (uint16_t)(((uint16_t)(message->data[2] << 8)) | (message->data[1]));
 
-
     RunCalibrationTask(deviceSpec->type, fO2, pressure);
 }
 
-void RespMenu(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
+void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     // TODO: calibration routine
 }
 
-void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
+void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     // TODO: setpoint setting
 }
 
-void RespAtmos(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
+void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     // TODO: respond to atmos
 }
 
-void RespShutdown(const DiveCANMessage_t *const message, DiveCANDevice_t *deviceSpec)
+void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     // TODO: Shutdown procedure
 }
