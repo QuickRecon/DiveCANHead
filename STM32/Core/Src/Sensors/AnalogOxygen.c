@@ -14,8 +14,9 @@ static AnalogOxygenState_t analog_cellStates[3] = {0};
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x1;
 
 // Chosen so that 13 to 8mV in air is a valid cal coeff
-static const CalCoeff_t ANALOG_CAL_UPPER = 0.0002625f;
-static const CalCoeff_t ANALOG_CAL_LOWER = 0.00016153846153846154f;
+static const CalCoeff_t ANALOG_CAL_UPPER = 0.02625f;
+static const uint32_t CAL_TO_INT32 = 10000000;
+static const CalCoeff_t ANALOG_CAL_LOWER = 0.0016153846153846154f;
 
 static const CalCoeff_t COUNTS_TO_MILLIS = ((0.256f * 100000.0f) / 32767.0f);
 
@@ -51,7 +52,10 @@ AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
 // Dredge up the cal-coefficient from the eeprom
 void ReadCalibration(AnalogOxygenState_t *handle)
 {
-    EE_Status result = EE_ReadVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, (uint32_t *)&(handle->calibrationCoefficient));
+    uint32_t calInt = 0;
+    EE_Status result = EE_ReadVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, &calInt);
+
+    handle->calibrationCoefficient = (float)calInt / (float)CAL_TO_INT32;
 
     if (result == EE_OK)
     {
@@ -95,25 +99,30 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
 {
     uint16_t adcCounts = handle->lastCounts;
     // Our coefficient is simply the float needed to make the current sample the current PPO2
-    handle->calibrationCoefficient = (CalCoeff_t)(PPO2) / ((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS);
+    CalCoeff_t newCal = (CalCoeff_t)(PPO2) / ((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS);
 
-    serial_printf("Calibrated cell %d with coefficient %f\r\n", handle->cellNumber, handle->calibrationCoefficient);
+    serial_printf("Calibrated cell %d with coefficient %f\r\n", handle->cellNumber, newCal);
 
     // Convert it to raw bytes
-    uint8_t bytes[sizeof(CalCoeff_t)] = {0, 0};
-    bytes[0] = (uint8_t)handle->calibrationCoefficient;
-    bytes[1] = (uint8_t)((uint8_t)handle->calibrationCoefficient << 8);
-    // memcpy(bytes, &(handle->calibrationCoefficient), sizeof(CalCoeff_t));
+    uint32_t calInt = (int32_t)(newCal * (float)CAL_TO_INT32);
     //  Write that shit to the eeprom
-    uint32_t byte = ((uint32_t)(bytes[3]) << 24) | ((uint32_t)(bytes[2]) << 16) | ((uint32_t)(bytes[1]) << 8) | (uint32_t)bytes[0];
     HAL_FLASH_Unlock();
-    EE_Status result = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, byte);
+    EE_Status result = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, calInt);
     HAL_FLASH_Lock();
     if (result != EE_OK)
     {
         serial_printf("EEPROM write fail on cell %d\r\n", handle->cellNumber);
     }
-    return (ShortMillivolts_t)((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS/100);
+
+    ReadCalibration(handle);
+
+    if (((handle->calibrationCoefficient - newCal) > 0.000001) ||
+        ((handle->calibrationCoefficient - newCal) < 0.000001))
+    {
+        serial_printf("CAL FAILURE");
+    }
+
+    return (ShortMillivolts_t)((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS / 100);
 }
 
 Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
@@ -145,7 +154,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     if ((handle->status == CELL_FAIL) || (handle->status == CELL_NEED_CAL))
     {
         PPO2 = PPO2_FAIL; // Failed cell
-        //serial_printf("CELL %d FAIL\r\n", handle->cellNumber);
+        // serial_printf("CELL %d FAIL\r\n", handle->cellNumber);
     }
     else
     {

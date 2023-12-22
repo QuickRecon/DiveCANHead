@@ -3,6 +3,7 @@
 #include "OxygenCell.h"
 #include "AnalogOxygen.h"
 #include "DigitalOxygen.h"
+#include "eeprom_emul.h"
 
 #define CELL_COUNT 3
 typedef struct OxygenHandle_s
@@ -112,6 +113,7 @@ void DigitalReferenceCalibrate(CalParameters_t *calParams)
 void CalibrationTask(void *arg)
 {
     CalParameters_t *calParams = (CalParameters_t *)arg;
+
     switch (calParams->calMethod)
     {
     case CAL_DIGITAL_REFERENCE: // Calibrate using the solid state cell as a reference

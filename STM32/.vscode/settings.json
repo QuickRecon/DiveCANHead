@@ -27,7 +27,8 @@
         "common.h": "c",
         "ppo2transmitter.h": "c",
         "i2c.h": "c",
-        "analogoxygen.h": "c"
+        "analogoxygen.h": "c",
+        "eeprom_emul.h": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
