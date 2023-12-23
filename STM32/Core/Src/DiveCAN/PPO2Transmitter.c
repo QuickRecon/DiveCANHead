@@ -9,11 +9,6 @@ static const uint8_t CELL_3 = 2;
 static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
 
 #define PPO2TXTASK_STACK_SIZE 400 // 264 bytes by static analysis
-typedef struct cellValueContainer_s
-{
-    uint8_t cellNumber;
-    PPO2_t PPO2;
-} cellValueContainer_t;
 
 typedef struct PPO2TXTask_params_s
 {
@@ -28,7 +23,7 @@ extern void serial_printf(const char *fmt, ...);
 // Forward decls of local funcs
 // /void configureADC(void *arg);
 void PPO2TXTask(void *arg);
-Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3);
+Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3);
 
 // FreeRTOS tasks
 static uint32_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
@@ -92,33 +87,13 @@ void PPO2TXTask(void *arg)
     }
 }
 
-int CelValComp(const void *num1, const void *num2) // comparing function
-{
-    const cellValueContainer_t a = *(const cellValueContainer_t *)num1;
-    const cellValueContainer_t b = *(const cellValueContainer_t *)num2;
-    int ret = 0;
-    if (a.PPO2 > b.PPO2)
-    {
-        ret = 1;
-    }
-    else if (a.PPO2 < b.PPO2)
-    {
-        ret = -1;
-    }
-    else
-    {
-        ret = 0;
-    }
-    return ret;
-}
-
 /// @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
 ///        In an all fail scenario we want that data to still be intact so we can still have our best guess
 /// @param c1
 /// @param c2
 /// @param c3
 /// @return
-Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3)
+Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3)
 {
     // Zeroth step, load up the millis, status and PPO2
     // We also load up the timestamps of each cell sample so that we can check the other tasks
@@ -150,80 +125,44 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
         .consensus = 0,
         .included = {true, true, true}};
 
-    // Now for the vote itself, the logic here is to first sort the cells
-    // by PPO2 and check if the max and min are more than MAX_DEVIATION apart
-    cellValueContainer_t sortList[3] = {{CELL_1, consensus.PPO2s[CELL_1]},
-                                        {CELL_2, consensus.PPO2s[CELL_2]},
-                                        {CELL_3, consensus.PPO2s[CELL_3]}};
-
-    // Do a non-recursive inplace sort
-    uint8_t maxIdx = 0;
-    uint8_t size = 3;
-    for (uint8_t i = 0; i < (size - 1); ++i)
-    {
-        // Find the maximum element in
-        // unsorted array
-        maxIdx = i;
-        for (uint8_t j = i + 1; j < size; ++j)
-        {
-            if (sortList[j].PPO2 > sortList[maxIdx].PPO2)
-            {
-                maxIdx = j;
-            }
-        }
-        // Swap the found minimum element
-        // with the first element
-        cellValueContainer_t temp = sortList[maxIdx];
-        sortList[maxIdx] = sortList[i];
-        sortList[i] = temp;
-    }
-
-    // Now check the upper and lower cells, and start a tally of the included cells
+    // Do a two pass check, loop through the cells and average the "good" cells
+    // Then afterwards we check each cells value against the average, and exclude deviations
     uint16_t PPO2_acc = 0; // Start an accumulator to take an average, include the median cell always
     uint8_t includedCellCount = 0;
 
-    if ((consensus.statuses[sortList[CELL_2].cellNumber] == CELL_NEED_CAL) ||
-        (consensus.statuses[sortList[CELL_2].cellNumber] == CELL_FAIL) ||
-        ((now - sampleTimes[sortList[CELL_2].cellNumber]) > timeout))
+    for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
     {
-        consensus.included[sortList[CELL_2].cellNumber] = false;
-        // TODO: panic because the one cell that we were hoping would be good is not good
-    }
-    else
-    {
-        PPO2_acc = sortList[CELL_2].PPO2;
-        ++includedCellCount;
-    }
-    // Lower cell
-    // If we're outside the deviation then mark it in the mask
-    // but if we're within it then add it to our average
-    if (((sortList[CELL_1].PPO2 - sortList[CELL_2].PPO2) > MAX_DEVIATION) ||
-        (consensus.statuses[sortList[CELL_1].cellNumber] == CELL_NEED_CAL) ||
-        (consensus.statuses[sortList[CELL_1].cellNumber] == CELL_FAIL) ||
-        ((now - sampleTimes[sortList[CELL_1].cellNumber]) > timeout))
-    {
-        consensus.included[sortList[CELL_1].cellNumber] = false;
-    }
-    else
-    {
-        PPO2_acc += sortList[CELL_1].PPO2;
-        ++includedCellCount;
+        if ((consensus.statuses[cellIdx] == CELL_NEED_CAL) ||
+            (consensus.statuses[cellIdx] == CELL_FAIL) ||
+            ((now - sampleTimes[cellIdx]) > timeout))
+        {
+            consensus.included[cellIdx] = false;
+        }
+        else
+        {
+            PPO2_acc += consensus.PPO2s[cellIdx];
+            ++includedCellCount;
+        }
     }
 
-    // Upper cell
-    if (((sortList[CELL_2].PPO2 - sortList[CELL_3].PPO2) > MAX_DEVIATION) ||
-        (consensus.statuses[sortList[CELL_3].cellNumber] == CELL_NEED_CAL) ||
-        (consensus.statuses[sortList[CELL_3].cellNumber] == CELL_FAIL) ||
-        ((now - sampleTimes[sortList[CELL_3].cellNumber]) > timeout))
+    // Assert that we actually have cells that got included
+    if (includedCellCount > 0)
     {
-        consensus.included[sortList[CELL_3].cellNumber] = false;
+        // Now second pass, check to see if any of the included cells are deviant from the average
+        for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
+        {
+            if (consensus.included[cellIdx] && (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.PPO2s[cellIdx]) > MAX_DEVIATION)) // We want to make sure the cell is actually included before we start checking it
+            {
+                // Removing cells in this way can result in a change in the outcome depending on
+                // cell position, depending on exactly how split-brained the cells are, but
+                // frankly if things are that cooked then we're borderline guessing anyway
+                PPO2_acc -= consensus.PPO2s[cellIdx];
+                --includedCellCount;
+                consensus.included[cellIdx] = false;
+            }
+        }
     }
-    else
-    {
-        PPO2_acc += sortList[CELL_3].PPO2;
-        ++includedCellCount;
-    }
-    
+
     if (includedCellCount > 0)
     {
         consensus.consensus = (PPO2_t)(PPO2_acc / includedCellCount);

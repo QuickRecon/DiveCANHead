@@ -206,7 +206,7 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesLow)
 
 TEST(PPO2Transmitter, calculateConsensus_ExcludesTimedOutCell)
 {
-    uint8_t concensusVal[3] = {105, 110, 115};
+    uint8_t consensusVal[3] = {105, 110, 115};
     for (int i = 0; i < 3; i++)
     {
         OxygenCell_t c1 = {
@@ -235,7 +235,7 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesTimedOutCell)
             .statuses = {CELL_OK, CELL_OK, CELL_OK},
             .PPO2s = {120, 110, 100},
             .millis = {0, 0, 0},
-            .consensus = concensusVal[i],
+            .consensus = consensusVal[i],
             .included = {(i == 0) ? false : true,
                          (i == 1) ? false : true,
                          (i == 2) ? false : true}};
@@ -246,7 +246,7 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesTimedOutCell)
 
 TEST(PPO2Transmitter, calculateConsensus_ExcludesFailedCell)
 {
-    uint8_t concensusVal[3] = {105, 110, 115};
+    uint8_t consensusVal[3] = {105, 110, 115};
     for (int i = 0; i < 3; i++)
     {
         OxygenCell_t c1 = {
@@ -277,7 +277,7 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesFailedCell)
                          (i == 2) ? CELL_FAIL : CELL_OK},
             .PPO2s = {120, 110, 100},
             .millis = {0, 0, 0},
-            .consensus = concensusVal[i],
+            .consensus = consensusVal[i],
             .included = {(i == 0) ? false : true,
                          (i == 1) ? false : true,
                          (i == 2) ? false : true}};
@@ -288,7 +288,7 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesFailedCell)
 
 TEST(PPO2Transmitter, calculateConsensus_ExcludesCalCell)
 {
-    uint8_t concensusVal[3] = {105, 110, 115};
+    uint8_t consensusVal[3] = {105, 110, 115};
     for (int i = 0; i < 3; i++)
     {
         OxygenCell_t c1 = {
@@ -319,7 +319,7 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesCalCell)
                          (i == 2) ? CELL_NEED_CAL : CELL_OK},
             .PPO2s = {120, 110, 100},
             .millis = {0, 0, 0},
-            .consensus = concensusVal[i],
+            .consensus = consensusVal[i],
             .included = {(i == 0) ? false : true,
                          (i == 1) ? false : true,
                          (i == 2) ? false : true}};
@@ -330,7 +330,7 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesCalCell)
 
 TEST(PPO2Transmitter, calculateConsensus_DualCellFailure)
 {
-    uint8_t concensusVal[3] = {120, 110, 100};
+    uint8_t consensusVal[3] = {120, 110, 100};
     for (int i = 0; i < 3; i++)
     {
         OxygenCell_t c1 = {
@@ -361,7 +361,7 @@ TEST(PPO2Transmitter, calculateConsensus_DualCellFailure)
                          (i == 2) ? CELL_OK : CELL_FAIL},
             .PPO2s = {120, 110, 100},
             .millis = {0, 0, 0},
-            .consensus = concensusVal[i],
+            .consensus = consensusVal[i],
             .included = {(i == 0),
                          (i == 1),
                          (i == 2)}};
@@ -370,10 +370,9 @@ TEST(PPO2Transmitter, calculateConsensus_DualCellFailure)
     }
 }
 
-
 TEST(PPO2Transmitter, calculateConsensus_DivergedDualCellFailure)
 {
-    uint8_t concensusVal[3] = {200, 100, 20};
+    uint8_t consensusVal[3] = {200, 100, 20};
     for (int i = 0; i < 3; i++)
     {
         OxygenCell_t c1 = {
@@ -402,9 +401,9 @@ TEST(PPO2Transmitter, calculateConsensus_DivergedDualCellFailure)
             .statuses = {(i == 0) ? CELL_OK : CELL_FAIL,
                          (i == 1) ? CELL_OK : CELL_FAIL,
                          (i == 2) ? CELL_OK : CELL_FAIL},
-            .PPO2s = {120, 110, 100},
+            .PPO2s = {200, 100, 20},
             .millis = {0, 0, 0},
-            .consensus = concensusVal[i],
+            .consensus = consensusVal[i],
             .included = {(i == 0),
                          (i == 1),
                          (i == 2)}};
