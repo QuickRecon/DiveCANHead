@@ -3,6 +3,7 @@
 #include "cmsis_os.h"
 #include "queue.h"
 #include "main.h"
+#include "../errors.h"
 
 #define BUS_INIT_LEN 3
 #define BUS_ID_LEN 3
@@ -51,11 +52,11 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     DiveCANMessage_t message = {
         .id = id,
         .length = length,
-        .data = {0}};
+        .data = {0,0,0,0,0,0,0,0}};
 
-    if (length > 8)
+    if (length > MAX_CAN_RX_LENGTH)
     {
-        // TODO: panic
+        NonFatalErrorISR(CAN_OVERFLOW);
     }
     else
     {
@@ -64,7 +65,10 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     }
     if (NULL != QInboundCAN)
     {
-        xQueueSendToBackFromISR(QInboundCAN, &message, NULL); // TODO: Error handle
+        BaseType_t err = xQueueSendToBackFromISR(QInboundCAN, &message, NULL);
+        if(errQUEUE_FULL == err){
+            NonFatalErrorISR(QUEUEING_ERROR);
+        }
     }
 }
 

@@ -1,10 +1,7 @@
 #include "PPO2Transmitter.h"
 #include "cmsis_os.h"
 #include "main.h"
-
-static const uint8_t CELL_1 = 0;
-static const uint8_t CELL_2 = 1;
-static const uint8_t CELL_3 = 2;
+#include "../errors.h"
 
 static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
 
@@ -57,20 +54,37 @@ void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, Que
 void PPO2TXTask(void *arg)
 {
     PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;
-    const DiveCANDevice_t * const dev = params->device;
+    const DiveCANDevice_t *const dev = params->device;
     uint32_t i = 0;
     do
     {
         ++i;
         osDelay(500);
 
-        // TODO: catch timing out here
         OxygenCell_t c1 = {0};
-        xQueuePeek(params->c1, &c1, 100);
+        bool c1pick = xQueuePeek(params->c1, &c1, 100);
         OxygenCell_t c2 = {0};
-        xQueuePeek(params->c2, &c2, 100);
+        bool c2pick = xQueuePeek(params->c2, &c2, 100);
         OxygenCell_t c3 = {0};
-        xQueuePeek(params->c3, &c3, 100);
+        bool c3pick = xQueuePeek(params->c3, &c3, 100);
+
+        // If the peek timed out then we mark the cell as failed going into the consensus calculation
+        // and lodge the nonfatal error
+        if (!c1pick)
+        {
+            c1.status = CELL_FAIL;
+            NonFatalError(TIMEOUT_ERROR);
+        }
+        if (!c2pick)
+        {
+            c2.status = CELL_FAIL;
+            NonFatalError(TIMEOUT_ERROR);
+        }
+        if (!c3pick)
+        {
+            c3.status = CELL_FAIL;
+            NonFatalError(TIMEOUT_ERROR);
+        }
 
         // First we calculate the consensus struct, which includes the voting logic
         // This is aware of cell status but does not set the PPO2 data for Fail states

@@ -6,6 +6,7 @@
 #include "main.h"
 #include <stdbool.h>
 #include "OxygenCell.h"
+#include "../errors.h"
 
 // static const uint8_t adc_addr[3] = {ADC1_ADDR, ADC1_ADDR, ADC2_ADDR};
 // static const uint8_t adc_input_num[3] = {0, 1, 0};
@@ -29,23 +30,30 @@ extern void serial_printf(const char *fmt, ...);
 
 AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
 {
-    AnalogOxygenState_t *handle = &(analog_cellStates[cellNumber]);
-    handle->cellNumber = cellNumber;
-    handle->adcInputIndex = cellNumber;
-    handle->outQueue = outQueue;
-    ReadCalibration(handle);
+    AnalogOxygenState_t *handle = NULL;
+    if (cellNumber > CELL_3)
+    {
+        NonFatalError(INVALID_CELL_NUMBER);
+    }
+    else
+    {
+        handle = &(analog_cellStates[cellNumber]);
+        handle->cellNumber = cellNumber;
+        handle->adcInputIndex = cellNumber;
+        handle->outQueue = outQueue;
+        ReadCalibration(handle);
 
-    osThreadAttr_t processor_attributes = {
+        osThreadAttr_t processor_attributes = {
 
-        .name = "AnalogCellTask",
-        .cb_mem = &(handle->processor_controlblock),
-        .cb_size = sizeof(handle->processor_controlblock),
-        .stack_mem = &(handle->processor_buffer)[0],
-        .stack_size = sizeof(handle->processor_buffer),
-        .priority = (osPriority_t)PPO2_SENSOR_PRIORITY};
+            .name = "AnalogCellTask",
+            .cb_mem = &(handle->processor_controlblock),
+            .cb_size = sizeof(handle->processor_controlblock),
+            .stack_mem = &(handle->processor_buffer)[0],
+            .stack_size = sizeof(handle->processor_buffer),
+            .priority = PPO2_SENSOR_PRIORITY};
 
-    handle->processor = osThreadNew(analogProcessor, handle, &processor_attributes);
-
+        handle->processor = osThreadNew(analogProcessor, handle, &processor_attributes);
+    }
     return handle;
 }
 

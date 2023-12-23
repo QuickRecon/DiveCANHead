@@ -29,10 +29,13 @@ static const uint32_t CAL_ID = 0xD120000;
 
 static const uint32_t MENU_ID = 0xD0A0000;
 
+
+#define MAX_CAN_RX_LENGTH 8
+
 typedef struct DiveCANMessage_s {
     uint32_t id;
     uint8_t length;
-    uint8_t data[8];
+    uint8_t data[MAX_CAN_RX_LENGTH];
 } DiveCANMessage_t;
 
 typedef enum DiveCANType_e

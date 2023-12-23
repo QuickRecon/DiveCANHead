@@ -33,6 +33,11 @@ extern "C"
         CELL_ANALOG
     } CellType_t;
 
+    // Provide names for the cell numbers
+    static const uint8_t CELL_1 = 0;
+    static const uint8_t CELL_2 = 1;
+    static const uint8_t CELL_3 = 2;
+
     // Define some priority levels
     // The general rules are that things critical to providing PPO2 and
     // life support are high priority to get the tightest possible loop

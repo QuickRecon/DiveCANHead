@@ -4,6 +4,7 @@
 #include "AnalogOxygen.h"
 #include "DigitalOxygen.h"
 #include "eeprom_emul.h"
+#include "../errors.h"
 
 typedef struct OxygenHandle_s
 {
@@ -120,7 +121,8 @@ void CalibrationTask(void *arg)
         osDelay(1000); // Give the shearwater time to catch up
         break;
     default:
-        // TODO: panic
+        NonFatalError(UNDEFINED_CAL_METHOD);
+        osThreadExit();
     }
     serial_printf("TX cal response");
     txCalResponse(calParams->deviceType, calParams->cell1, calParams->cell2, calParams->cell3, calParams->fO2, calParams->pressure_val);

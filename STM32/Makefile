@@ -38,6 +38,7 @@ BUILD_DIR = build
 C_SOURCES =  \
 Core/Src/main.c \
 Core/Src/HAL_callbacks.c \
+Core/Src/errors.c \
 Core/Src/Sensors/AnalogOxygen.c \
 Core/Src/Sensors/DigitalOxygen.c \
 Core/Src/Sensors/OxygenCell.c \

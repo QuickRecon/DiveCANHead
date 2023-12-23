@@ -3,6 +3,7 @@
 #include "OxygenCell.h"
 #include <stdbool.h>
 #include "string.h"
+#include "../errors.h"
 
 // Newline for terminating uart message
 const uint8_t NEWLINE = 0x0D;
@@ -42,39 +43,48 @@ void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell);
 
 DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
 {
-    DigitalOxygenState_t *handle = &(digital_cellStates[cellNumber]);
-    handle->cellNumber = cellNumber;
-    handle->outQueue = outQueue;
-    switch (cellNumber)
+    DigitalOxygenState_t *handle = NULL;
+    if (cellNumber > CELL_3)
     {
-    case 0:
-        handle->huart = &huart1;
-        break;
-
-    case 1:
-        handle->huart = &huart2;
-        break;
-
-    case 2:
-        handle->huart = &huart3;
-        break;
-
-    default:
-        // TODO: Panic
+        NonFatalError(INVALID_CELL_NUMBER);
     }
+    else
+    {
+        handle = &(digital_cellStates[cellNumber]);
+        handle->cellNumber = cellNumber;
+        handle->outQueue = outQueue;
+        switch (cellNumber)
+        {
+        case CELL_1:
+            handle->huart = &huart1;
+            break;
 
-    // Create a task for the decoder
+        case CELL_2:
+            handle->huart = &huart2;
+            break;
 
-    osThreadAttr_t processor_attributes = {
-        .name = "DigitalCellTask",
-        .cb_mem = &(handle->processor_controlblock),
-        .cb_size = sizeof(handle->processor_controlblock),
-        .stack_mem = &(handle->processor_buffer)[0],
-        .stack_size = sizeof(handle->processor_buffer),
-        .priority = (osPriority_t)PPO2_SENSOR_PRIORITY};
+        case CELL_3:
+            handle->huart = &huart3;
+            break;
 
-    handle->processor = osThreadNew(decodeCellMessage, handle, &processor_attributes);
-    return handle; // TODO: work out why sonar is flagging this as an overflow
+        default:
+            NonFatalError(INVALID_CELL_NUMBER);
+            handle->huart = &huart1; // Default to using uart 1
+        }
+
+        // Create a task for the decoder
+
+        osThreadAttr_t processor_attributes = {
+            .name = "DigitalCellTask",
+            .cb_mem = &(handle->processor_controlblock),
+            .cb_size = sizeof(handle->processor_controlblock),
+            .stack_mem = &(handle->processor_buffer)[0],
+            .stack_size = sizeof(handle->processor_buffer),
+            .priority = PPO2_SENSOR_PRIORITY};
+
+        handle->processor = osThreadNew(decodeCellMessage, handle, &processor_attributes);
+    }
+    return handle;
 }
 
 void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
@@ -206,14 +216,15 @@ void decodeCellMessage(void *arg)
 
 DigitalOxygenState_t *uartToCell(const UART_HandleTypeDef *huart)
 {
-    for (uint8_t i = 0; i < 3; ++i)
+    DigitalOxygenState_t *ptr = NULL;
+    for (uint8_t i = 0; i < CELL_COUNT; ++i)
     {
         if (huart == digital_cellStates[i].huart)
         {
-            return &(digital_cellStates[i]);
+            ptr = &(digital_cellStates[i]);
         }
     }
-    return NULL;
+    return ptr;
 }
 
 void Cell_TX_Complete(const UART_HandleTypeDef *huart)
