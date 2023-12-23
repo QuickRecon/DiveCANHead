@@ -51,6 +51,9 @@ void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, Que
     PPO2TXTaskHandle = osThreadNew(PPO2TXTask, &taskParams, &PPO2TXTask_attributes);
 }
 
+/// @brief The job of this task is to ingest the cell data passed to it via queues, calculate their consensus,
+///        then transmit this data via the CAN transiever to any other devices on the CAN network.
+/// @param arg Pointer to PPO2TXTask_params_t*, which has the cells and our device spec for the can bus
 void PPO2TXTask(void *arg)
 {
     PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;

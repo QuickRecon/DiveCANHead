@@ -10,6 +10,7 @@ extern "C"
     // Extern to access "hidden" internal methods
     extern Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3);
     extern void setFailedCellsValues(Consensus_t *consensus);
+    extern void PPO2TXTask(void *arg);
 
     typedef struct PPO2TXTask_params_s
     {
@@ -21,7 +22,7 @@ extern "C"
 
     struct QueueDefinition
     {
-        int test;
+        OxygenCell_t cellData;
     };
 
     // Here be mocks
@@ -34,22 +35,23 @@ extern "C"
     BaseType_t xQueuePeek(QueueHandle_t xQueue, void *const pvBuffer, TickType_t xTicksToWait)
     {
         mock().actualCall("xQueuePeek");
+        *((OxygenCell_t*)pvBuffer) = xQueue->cellData;
         return 0;
     }
 
     void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cell2, const PPO2_t cell3)
     {
-        mock().actualCall("txPPO2");
+        mock().actualCall("txPPO2").withParameter("deviceType", deviceType).withParameter("cell1", cell1).withParameter("cell2", cell2).withParameter("cell3", cell3);
     }
 
     void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, const Millivolts_t cell2, const Millivolts_t cell3)
     {
-        mock().actualCall("txMillivolts");
+        mock().actualCall("txMillivolts").withParameter("deviceType", deviceType).withParameter("cell1", cell1).withParameter("cell2", cell2).withParameter("cell3", cell3);
     }
 
     void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool cell2, const bool cell3, const PPO2_t PPO2)
     {
-        mock().actualCall("txCellState");
+        mock().actualCall("txCellState").withParameter("deviceType", deviceType).withParameter("cell1", cell1).withParameter("cell2", cell2).withParameter("cell3", cell3).withParameter("PPO2", PPO2);
     }
 
     osThreadId_t osThreadNew(osThreadFunc_t func, void *argument, const osThreadAttr_t *attr)
@@ -174,7 +176,55 @@ TEST(PPO2Transmitter, InitPPO2TX)
 
 TEST(PPO2Transmitter, TaskTXsValues)
 {
-    CHECK(RTOS_LOOP_FOREVER == false);
+    CHECK(RTOS_LOOP_FOREVER == false); // Ensure that we're compiled with the correct options for testing RTOS
+
+    QueueDefinition c1_struct = {.cellData = {
+                                     .cellNumber = 0,
+                                     .type = CELL_ANALOG,
+                                     .ppo2 = 90,
+                                     .millivolts = 11,
+                                     .status = CELL_OK,
+                                     .data_time = 0}};
+    QueueDefinition c2_struct = {.cellData = {
+                                     .cellNumber = 1,
+                                     .type = CELL_ANALOG,
+                                     .ppo2 = 110,
+                                     .millivolts = 12,
+                                     .status = CELL_OK,
+                                     .data_time = 0}};
+    QueueDefinition c3_struct = {.cellData = {
+                                     .cellNumber = 2,
+                                     .type = CELL_ANALOG,
+                                     .ppo2 = 100,
+                                     .millivolts = 13,
+                                     .status = CELL_OK,
+                                     .data_time = 0}};
+
+    DiveCANDevice_t mockDevice = {
+        .name = "test",
+        .type = DIVECAN_SOLO,
+        .manufacturerID = DIVECAN_MANUFACTURER_GEN,
+        .firmwareVersion = 8};
+
+    QueueHandle_t c1 = &c1_struct;
+    QueueHandle_t c2 = &c2_struct;
+    QueueHandle_t c3 = &c3_struct;
+
+    PPO2TXTask_params_t expectedParams = {
+        .device = &mockDevice,
+        .c1 = c1,
+        .c2 = c2,
+        .c3 = c3};
+
+    // The job of this test is mainly to make sure that our can TX methods are fired correctly
+    mock().expectOneCall("osDelay");
+    mock().expectOneCall("HAL_GetTick");
+    mock().expectNCalls(3, "xQueuePeek");
+
+    mock().expectOneCall("txPPO2").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", 90).withParameter("cell2", 110).withParameter("cell3", 100);
+    mock().expectOneCall("txMillivolts").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", 11).withParameter("cell2", 12).withParameter("cell3", 13);
+    mock().expectOneCall("txCellState").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", true).withParameter("cell2", true).withParameter("cell3", true).withParameter("PPO2", 100);
+    PPO2TXTask(&expectedParams);
 }
 
 TEST(PPO2Transmitter, setFailedCellsValues_FFsFailedCells)
