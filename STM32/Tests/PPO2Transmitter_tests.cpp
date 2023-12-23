@@ -9,6 +9,7 @@ extern "C"
 {
     // Extern to access "hidden" internal methods
     extern Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3);
+    extern void setFailedCellsValues(Consensus_t *consensus);
 
     typedef struct PPO2TXTask_params_s
     {
@@ -113,8 +114,8 @@ public:
     virtual bool isEqual(const void *object1, const void *object2)
     {
         bool equal = true;
-        PPO2TXTask_params_t* struct1 = (PPO2TXTask_params_t*) object1;
-        PPO2TXTask_params_t* struct2 = (PPO2TXTask_params_t*) object2;
+        PPO2TXTask_params_t *struct1 = (PPO2TXTask_params_t *)object1;
+        PPO2TXTask_params_t *struct2 = (PPO2TXTask_params_t *)object2;
 
         equal &= struct1->device == struct2->device;
         equal &= struct1->c1 == struct2->c1;
@@ -169,6 +170,94 @@ TEST(PPO2Transmitter, InitPPO2TX)
 
     mock().expectOneCall("osThreadNew").withParameterOfType("PPO2TXTask_params", "argument", &expectedParams);
     InitPPO2TX(&mockDevice, c1, c2, c3);
+}
+
+TEST(PPO2Transmitter, setFailedCellsValues_FFsFailedCells)
+{
+    bool FailedPermutations[8][3] = {
+        {0, 0, 0},
+        {0, 0, 1},
+        {0, 1, 0},
+        {0, 1, 1},
+        {1, 0, 0},
+        {1, 0, 1},
+        {1, 1, 0},
+        {1, 1, 1}};
+
+    PPO2_t referencePPO2Vals[3] = {1, 2, 3};
+
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        Consensus_t consensus = {
+            .statuses = {(FailedPermutations[i][0] == 0) ? CELL_OK : CELL_FAIL,
+                         (FailedPermutations[i][1] == 0) ? CELL_OK : CELL_FAIL,
+                         (FailedPermutations[i][2] == 0) ? CELL_OK : CELL_FAIL},
+            .PPO2s = {referencePPO2Vals[0], referencePPO2Vals[1], referencePPO2Vals[2]},
+            .millis = {0, 0, 0},
+            .consensus = 0,
+            .included = {true, true, true}};
+
+        setFailedCellsValues(&consensus);
+
+        for (uint8_t j = 0; j < 3; ++j)
+        {
+            if (FailedPermutations[i][j] == 1)
+            {
+                CHECK(consensus.PPO2s[j] == 0xFF);
+            }
+            else
+            {
+                CHECK(consensus.PPO2s[j] == referencePPO2Vals[j]);
+            }
+        }
+    }
+}
+
+TEST(PPO2Transmitter, setFailedCellsValues_FFsCalNeededCells)
+{
+    bool FailedPermutations[8][3] = {
+        {0, 0, 0},
+        {0, 0, 1},
+        {0, 1, 0},
+        {0, 1, 1},
+        {1, 0, 0},
+        {1, 0, 1},
+        {1, 1, 0},
+        {1, 1, 1}};
+
+    PPO2_t referencePPO2Vals[3] = {1, 2, 3};
+
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+        Consensus_t consensus = {
+            .statuses = {(FailedPermutations[i][0] == 0) ? CELL_OK : CELL_NEED_CAL,
+                         (FailedPermutations[i][1] == 0) ? CELL_OK : CELL_NEED_CAL,
+                         (FailedPermutations[i][2] == 0) ? CELL_OK : CELL_NEED_CAL},
+            .PPO2s = {referencePPO2Vals[0], referencePPO2Vals[1], referencePPO2Vals[2]},
+            .millis = {0, 0, 0},
+            .consensus = 0,
+            .included = {true, true, true}};
+
+        setFailedCellsValues(&consensus);
+
+        // If any of the cells need cal then they should all be FF
+        if ((FailedPermutations[i][0] == 0) &&
+            (FailedPermutations[i][1] == 0) &&
+            (FailedPermutations[i][2] == 0))
+        {
+            for (uint8_t j = 0; j < 3; ++j)
+            {
+                CHECK(consensus.PPO2s[j] == referencePPO2Vals[j]);
+            }
+        }
+        else
+        {
+            for (uint8_t j = 0; j < 3; ++j)
+            {
+                CHECK(consensus.PPO2s[j] == 0xFF);
+            }
+        }
+    }
 }
 
 TEST(PPO2Transmitter, calculateConsensus_AveragesCells)

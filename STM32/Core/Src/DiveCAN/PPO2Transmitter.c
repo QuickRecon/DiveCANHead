@@ -24,6 +24,7 @@ extern void serial_printf(const char *fmt, ...);
 // /void configureADC(void *arg);
 void PPO2TXTask(void *arg);
 Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3);
+void setFailedCellsValues(Consensus_t *consensus);
 
 // FreeRTOS tasks
 static uint32_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
@@ -74,6 +75,7 @@ void PPO2TXTask(void *arg)
 
         // Go through each cell and if any need cal, flag cal
         // Also check for fail and mark the cell value as fail
+        setFailedCellsValues(&consensus);
 
         txPPO2(dev->type, consensus.PPO2s[CELL_1], consensus.PPO2s[CELL_2], consensus.PPO2s[CELL_3]);
         txMillivolts(dev->type, consensus.millis[CELL_1], consensus.millis[CELL_2], consensus.millis[CELL_3]);
@@ -84,6 +86,33 @@ void PPO2TXTask(void *arg)
         //               consensus.PPO2s[CELL_2], consensus.millis[CELL_2], consensus.included[CELL_2],
         //               consensus.PPO2s[CELL_3], consensus.millis[CELL_3], consensus.included[CELL_3],
         //               consensus.consensus);
+    }
+}
+
+/// @brief Update the provided consensus object based on the cell states so that not-ok cells are FFed
+///        Will also FF the whole set if we're wanting a calibration
+/// @param consensus the consensus struct to update
+void setFailedCellsValues(Consensus_t *consensus)
+{
+    // First check if we need to go into "needs cal" state
+    if ((consensus->statuses[0] == CELL_NEED_CAL) ||
+        (consensus->statuses[1] == CELL_NEED_CAL) ||
+        (consensus->statuses[2] == CELL_NEED_CAL))
+    {
+        for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        {
+            consensus->PPO2s[i] = PPO2_FAIL;
+        }
+    }
+    else // Otherwise just FF as needed
+    {
+        for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        {
+            if (consensus->statuses[i] == CELL_FAIL)
+            {
+                consensus->PPO2s[i] = PPO2_FAIL;
+            }
+        }
     }
 }
 
