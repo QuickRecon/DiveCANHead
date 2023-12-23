@@ -125,6 +125,8 @@ CPPUTEST_CXXFLAGS += -Wno-c++98-compat
 # Coloroze output
 CPPUTEST_EXE_FLAGS += -c
 
+CPPUTEST_USE_GCOV=Y
+
 # --- LD_LIBRARIES -- Additional needed libraries can be added here.
 # commented out example specifies math library
 #LD_LIBRARIES += -lm

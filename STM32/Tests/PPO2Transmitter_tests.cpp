@@ -3,10 +3,27 @@
 
 #include "OxygenCell.h"
 #include "PPO2Transmitter.h"
+
+// All the C stuff has to be externed
 extern "C"
 {
+    // Extern to access "hidden" internal methods
     extern Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t *c3);
 
+    typedef struct PPO2TXTask_params_s
+    {
+        DiveCANDevice_t *device;
+        QueueHandle_t c1;
+        QueueHandle_t c2;
+        QueueHandle_t c3;
+    } PPO2TXTask_params_t;
+
+    struct QueueDefinition
+    {
+        int test;
+    };
+
+    // Here be mocks
     uint32_t HAL_GetTick(void)
     {
         mock().actualCall("HAL_GetTick");
@@ -36,7 +53,8 @@ extern "C"
 
     osThreadId_t osThreadNew(osThreadFunc_t func, void *argument, const osThreadAttr_t *attr)
     {
-        mock().actualCall("osThreadNew");
+        // We're only checking the thread parameters, func and attributes are too burried in RTOS land to meaningfully test
+        mock().actualCall("osThreadNew").withParameterOfType("PPO2TXTask_params", "argument", argument);
         return NULL;
     }
 
@@ -89,16 +107,69 @@ void checkConsensus(Consensus_t expectedConsensus, OxygenCell_t *c1, OxygenCell_
     }
 }
 
+class PPO2TXTask_paramsComparator : public MockNamedValueComparator
+{
+public:
+    virtual bool isEqual(const void *object1, const void *object2)
+    {
+        bool equal = true;
+        PPO2TXTask_params_t* struct1 = (PPO2TXTask_params_t*) object1;
+        PPO2TXTask_params_t* struct2 = (PPO2TXTask_params_t*) object2;
+
+        equal &= struct1->device == struct2->device;
+        equal &= struct1->c1 == struct2->c1;
+        equal &= struct1->c2 == struct2->c2;
+        equal &= struct1->c3 == struct2->c3;
+
+        return equal;
+    }
+    virtual SimpleString valueToString(const void *object)
+    {
+        return ((PPO2TXTask_params_t *)object)->device->name;
+    }
+};
+
+PPO2TXTask_paramsComparator taskParamsComparator;
 TEST_GROUP(PPO2Transmitter){
     void setup(){
         // Init stuff
-    }
+        mock().installComparator("PPO2TXTask_params", taskParamsComparator);
+}
 
-    void teardown(){
-        mock().clear();
+void teardown()
+{
+    mock().removeAllComparatorsAndCopiers();
+    mock().clear();
 }
 }
 ;
+
+TEST(PPO2Transmitter, InitPPO2TX)
+{
+    // All the init does is structure its parameters and spool up the thread with the appropriate parameters
+    QueueDefinition c1_struct = {0};
+    QueueDefinition c2_struct = {0};
+    QueueDefinition c3_struct = {0};
+
+    DiveCANDevice_t mockDevice = {
+        .name = "test",
+        .type = DIVECAN_CONTROLLER,
+        .manufacturerID = DIVECAN_MANUFACTURER_GEN,
+        .firmwareVersion = 8};
+
+    QueueHandle_t c1 = &c1_struct;
+    QueueHandle_t c2 = &c2_struct;
+    QueueHandle_t c3 = &c3_struct;
+
+    PPO2TXTask_params_t expectedParams = {
+        .device = &mockDevice,
+        .c1 = c1,
+        .c2 = c2,
+        .c3 = c3};
+
+    mock().expectOneCall("osThreadNew").withParameterOfType("PPO2TXTask_params", "argument", &expectedParams);
+    InitPPO2TX(&mockDevice, c1, c2, c3);
+}
 
 TEST(PPO2Transmitter, calculateConsensus_AveragesCells)
 {

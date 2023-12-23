@@ -29,7 +29,8 @@
         "i2c.h": "c",
         "analogoxygen.h": "c",
         "eeprom_emul.h": "c",
-        "oxygencell.h": "c"
+        "oxygencell.h": "c",
+        "typeinfo": "cpp"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
