@@ -48,5 +48,7 @@
     ],
     "sonarlint.disableTelemetry": true,
     "sonarlint.focusOnNewCode": false,
-    "sonarlint.testFilePattern": "**/Tests/**"
+    "sonarlint.testFilePattern": "**/Tests/**",
+    "cpputestTestAdapter.testExecutable": "${workspaceFolder}/Tests/DiveCAN_tests",
+    "cpputestTestAdapter.testExecutablePath": "${workspaceFolder}/Tests"
 }

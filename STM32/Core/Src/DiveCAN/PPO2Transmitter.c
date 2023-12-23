@@ -186,6 +186,7 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
         (consensus.statuses[sortList[CELL_2].cellNumber] == CELL_FAIL) ||
         ((now - sampleTimes[sortList[CELL_2].cellNumber]) > timeout))
     {
+        consensus.included[sortList[CELL_2].cellNumber] = false;
         // TODO: panic because the one cell that we were hoping would be good is not good
     } else {
         PPO2_acc = sortList[CELL_2].PPO2;
