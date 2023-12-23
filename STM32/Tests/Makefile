@@ -115,12 +115,18 @@ CPPUTEST_WARNINGFLAGS += -Wno-shadow
 CPPUTEST_WARNINGFLAGS += -Wno-missing-field-initializers
 CPPUTEST_WARNINGFLAGS += -Wno-unused-parameter
 CPPUTEST_CFLAGS += -pedantic
+
 CPPUTEST_CFLAGS += -Wno-missing-prototypes
 CPPUTEST_CFLAGS += -Wno-strict-prototypes
 CPPUTEST_CXXFLAGS += -Wno-c++14-compat
 CPPUTEST_CXXFLAGS += --std=c++11
 CPPUTEST_CXXFLAGS += -Wno-c++98-compat-pedantic
 CPPUTEST_CXXFLAGS += -Wno-c++98-compat
+
+
+CPPUTEST_CFLAGS += -DRTOS_LOOP_FOREVER=false
+CPPUTEST_CPPFLAGS += -DRTOS_LOOP_FOREVER=false
+CPPUTEST_CXXFLAGS += -DRTOS_LOOP_FOREVER=false
 
 # Coloroze output
 CPPUTEST_EXE_FLAGS += -c

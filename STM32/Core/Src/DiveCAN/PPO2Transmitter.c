@@ -54,14 +54,14 @@ void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, Que
 void PPO2TXTask(void *arg)
 {
     PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;
-    DiveCANDevice_t *dev = params->device;
-    int i = 0;
-    while (true)
+    const DiveCANDevice_t * const dev = params->device;
+    uint32_t i = 0;
+    do
     {
-
         ++i;
         osDelay(500);
 
+        // TODO: catch timing out here
         OxygenCell_t c1 = {0};
         xQueuePeek(params->c1, &c1, 100);
         OxygenCell_t c2 = {0};
@@ -86,7 +86,7 @@ void PPO2TXTask(void *arg)
         //               consensus.PPO2s[CELL_2], consensus.millis[CELL_2], consensus.included[CELL_2],
         //               consensus.PPO2s[CELL_3], consensus.millis[CELL_3], consensus.included[CELL_3],
         //               consensus.consensus);
-    }
+    } while (RTOS_LOOP_FOREVER);
 }
 
 /// @brief Update the provided consensus object based on the cell states so that not-ok cells are FFed

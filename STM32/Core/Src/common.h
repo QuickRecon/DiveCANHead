@@ -31,7 +31,6 @@ typedef enum CellType_e {
     CELL_ANALOG
 } CellType_t;
 
-
 // Define some priority levels
 // The general rules are that things critical to providing PPO2 and
 // life support are high priority to get the tightest possible loop
@@ -48,6 +47,13 @@ const static osPriority_t PPO2_SENSOR_PRIORITY = osPriorityHigh1;
 const static osPriority_t CAN_RX_PRIORITY = osPriorityNormal;
 const static osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh;
 const static osPriority_t ADC_PRIORITY = osPriorityHigh2;
+
+// conditional compilation for RTOS loop breaking is pretty 
+// shit as a testing method
+// but I can't work out a better approach at this time
+#ifndef RTOS_LOOP_FOREVER
+#define RTOS_LOOP_FOREVER true
+#endif
 
 #ifdef __cplusplus
 }

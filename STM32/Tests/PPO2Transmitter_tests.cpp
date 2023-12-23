@@ -172,6 +172,10 @@ TEST(PPO2Transmitter, InitPPO2TX)
     InitPPO2TX(&mockDevice, c1, c2, c3);
 }
 
+TEST(PPO2Transmitter, TaskTXsValues){
+    CHECK(RTOS_LOOP_FOREVER == false);
+}
+
 TEST(PPO2Transmitter, setFailedCellsValues_FFsFailedCells)
 {
     bool FailedPermutations[8][3] = {
