@@ -188,7 +188,9 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
     {
         consensus.included[sortList[CELL_2].cellNumber] = false;
         // TODO: panic because the one cell that we were hoping would be good is not good
-    } else {
+    }
+    else
+    {
         PPO2_acc = sortList[CELL_2].PPO2;
         ++includedCellCount;
     }
@@ -221,8 +223,11 @@ Consensus_t calculateConsensus(OxygenCell_t *c1, OxygenCell_t *c2, OxygenCell_t 
         PPO2_acc += sortList[CELL_3].PPO2;
         ++includedCellCount;
     }
-
-    consensus.consensus = (PPO2_t)(PPO2_acc / includedCellCount);
+    
+    if (includedCellCount > 0)
+    {
+        consensus.consensus = (PPO2_t)(PPO2_acc / includedCellCount);
+    }
 
     return consensus;
 }

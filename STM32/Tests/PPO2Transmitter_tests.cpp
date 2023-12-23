@@ -369,3 +369,46 @@ TEST(PPO2Transmitter, calculateConsensus_DualCellFailure)
         checkConsensus(expectedConsensus, &c1, &c2, &c3);
     }
 }
+
+
+TEST(PPO2Transmitter, calculateConsensus_DivergedDualCellFailure)
+{
+    uint8_t concensusVal[3] = {200, 100, 20};
+    for (int i = 0; i < 3; i++)
+    {
+        OxygenCell_t c1 = {
+            .cellNumber = 0,
+            .type = CELL_ANALOG,
+            .ppo2 = 200,
+            .millivolts = 0,
+            .status = (i == 0) ? CELL_OK : CELL_FAIL,
+            .data_time = 0};
+        OxygenCell_t c2 = {
+            .cellNumber = 1,
+            .type = CELL_ANALOG,
+            .ppo2 = 100,
+            .millivolts = 0,
+            .status = (i == 1) ? CELL_OK : CELL_FAIL,
+            .data_time = 0};
+        OxygenCell_t c3 = {
+            .cellNumber = 2,
+            .type = CELL_ANALOG,
+            .ppo2 = 20,
+            .millivolts = 0,
+            .status = (i == 2) ? CELL_OK : CELL_FAIL,
+            .data_time = 0};
+
+        Consensus_t expectedConsensus = {
+            .statuses = {(i == 0) ? CELL_OK : CELL_FAIL,
+                         (i == 1) ? CELL_OK : CELL_FAIL,
+                         (i == 2) ? CELL_OK : CELL_FAIL},
+            .PPO2s = {120, 110, 100},
+            .millis = {0, 0, 0},
+            .consensus = concensusVal[i],
+            .included = {(i == 0),
+                         (i == 1),
+                         (i == 2)}};
+
+        checkConsensus(expectedConsensus, &c1, &c2, &c3);
+    }
+}
