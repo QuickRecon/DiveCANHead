@@ -103,7 +103,9 @@ void DigitalReferenceCalibrate(CalParameters_t *calParams)
             calParams->cell3 = cellVals[CELL_3];
             calParams->pressure_val = pressure;
             calParams->fO2 = (FO2_t)((float)ppO2 * (1000.0f / (float)pressure));
-        } else {
+        }
+        else
+        {
             // We couldn't get any data to cal with
             NON_FATAL_ERROR(CAL_METHOD_ERROR);
         }
@@ -123,7 +125,7 @@ void CalibrationTask(void *arg)
     {
     case CAL_DIGITAL_REFERENCE: // Calibrate using the solid state cell as a reference
         DigitalReferenceCalibrate(calParams);
-        osDelay(1000); // Give the shearwater time to catch up
+        osDelay(4000); // Give the shearwater time to catch up
         break;
     default:
         NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
@@ -133,7 +135,16 @@ void CalibrationTask(void *arg)
     txCalResponse(calParams->deviceType, calParams->cell1, calParams->cell2, calParams->cell3, calParams->fO2, calParams->pressure_val);
     osThreadExit();
 }
+
 osThreadId_t calTask;
+
+bool isCalibrating(void)
+{
+    return !((osThreadGetState(calTask) == osThreadError) ||
+             (osThreadGetState(calTask) == osThreadInactive) ||
+             (osThreadGetState(calTask) == osThreadTerminated));
+}
+
 void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val)
 {
     glob_calParams.fO2 = in_fO2;
@@ -148,9 +159,7 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
     txCalAck(deviceType);
 
     // Don't start the thread if we're already calibrating, shearwater double shots us sometimes
-    if ((osThreadGetState(calTask) == osThreadError) ||
-        (osThreadGetState(calTask) == osThreadInactive) ||
-        (osThreadGetState(calTask) == osThreadTerminated))
+    if (!isCalibrating())
     {
         calTask = osThreadNew(CalibrationTask, &glob_calParams, &CalTask_attributes);
     }

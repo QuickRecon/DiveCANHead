@@ -34,6 +34,8 @@ typedef enum OxygenCalMethod_e
 } OxygenCalMethod_t;
 
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);
+
+bool isCalibrating(void);
 void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val);
 
 #ifdef __cplusplus

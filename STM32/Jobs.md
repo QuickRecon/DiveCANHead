@@ -5,7 +5,6 @@
 - Two asserts per function
 - Handle cal failure
 - Battery reading and power switching
-- Cal warning logic should go away during cal
 - Startup sequencing issue
 ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:62
 ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74

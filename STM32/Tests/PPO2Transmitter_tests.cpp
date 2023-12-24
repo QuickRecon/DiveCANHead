@@ -32,11 +32,16 @@ extern "C"
         return 0;
     }
 
+    bool isCalibrating(){
+        mock().actualCall("isCalibrating");
+        return false;
+    }
+
     BaseType_t xQueuePeek(QueueHandle_t xQueue, void *const pvBuffer, TickType_t xTicksToWait)
     {
         mock().actualCall("xQueuePeek");
         *((OxygenCell_t*)pvBuffer) = xQueue->cellData;
-        return 0;
+        return true;
     }
 
     void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cell2, const PPO2_t cell3)
@@ -252,6 +257,7 @@ TEST(PPO2Transmitter, setFailedCellsValues_FFsFailedCells)
             .consensus = 0,
             .included = {true, true, true}};
 
+        mock().expectOneCall("isCalibrating");
         setFailedCellsValues(&consensus);
 
         for (uint8_t j = 0; j < 3; ++j)
@@ -293,6 +299,7 @@ TEST(PPO2Transmitter, setFailedCellsValues_FFsCalNeededCells)
             .consensus = 0,
             .included = {true, true, true}};
 
+        mock().expectOneCall("isCalibrating");
         setFailedCellsValues(&consensus);
 
         // If any of the cells need cal then they should all be FF

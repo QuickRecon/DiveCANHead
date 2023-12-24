@@ -142,10 +142,16 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
     }
     ReadCalibration(handle);
 
-    if (((handle->calibrationCoefficient - newCal) > 0.000001) ||
-        ((handle->calibrationCoefficient - newCal) < 0.000001))
+    // If we're still saying needs cal, then we change that to failure as we've tried and failed to cal the system
+    if(handle->status == CELL_NEED_CAL){
+        handle->status = CELL_FAIL;
+    }
+
+    if (((handle->calibrationCoefficient - newCal) > 0.00001) ||
+        ((handle->calibrationCoefficient - newCal) < -0.00001))
     {
-        serial_printf("CAL FAILURE"); // TODO: handle this in a way that lets the shearwater know we're cooked
+        handle->status = CELL_FAIL;
+        NON_FATAL_ERROR(CAL_MISMATCH_ERR);
     }
 
     return (ShortMillivolts_t)((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS / 100);

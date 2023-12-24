@@ -62,6 +62,9 @@ typedef enum NonFatalError_e
     /// @brief The configured calibration method cannot complete
     CAL_METHOD_ERROR,
 
+    /// @brief The calibration info we stored is not the calibration info that we got
+    CAL_MISMATCH_ERR,
+
     /// @brief The cell number can't be mapped to an input (too high?)
     INVALID_CELL_NUMBER
 } NonFatalError_t;

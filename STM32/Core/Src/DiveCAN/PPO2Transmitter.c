@@ -112,9 +112,11 @@ void PPO2TXTask(void *arg)
 void setFailedCellsValues(Consensus_t *consensus)
 {
     // First check if we need to go into "needs cal" state
-    if ((consensus->statuses[0] == CELL_NEED_CAL) ||
-        (consensus->statuses[1] == CELL_NEED_CAL) ||
-        (consensus->statuses[2] == CELL_NEED_CAL))
+    bool needsCal = (consensus->statuses[0] == CELL_NEED_CAL) ||
+                    (consensus->statuses[1] == CELL_NEED_CAL) ||
+                    (consensus->statuses[2] == CELL_NEED_CAL);
+
+    if ((needsCal) && (!isCalibrating()))
     {
         for (uint8_t i = 0; i < CELL_COUNT; ++i)
         {
