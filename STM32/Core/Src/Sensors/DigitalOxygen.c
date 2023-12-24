@@ -46,7 +46,7 @@ DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueu
     DigitalOxygenState_t *handle = NULL;
     if (cellNumber > CELL_3)
     {
-        NonFatalError(INVALID_CELL_NUMBER);
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
     }
     else
     {
@@ -68,8 +68,7 @@ DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueu
             break;
 
         default:
-            NonFatalError(INVALID_CELL_NUMBER);
-            handle->huart = &huart1; // Default to using uart 1
+            NON_FATAL_ERROR(UNREACHABLE_ERROR);
         }
 
         // Create a task for the decoder
@@ -103,9 +102,14 @@ void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
     if ((ticks - handle->ticksOfLastPPO2) > DIGITAL_RESPONSE_TIMEOUT)
     { // If we've taken longer than timeout, fail the cell, no lies here
         handle->status = CELL_FAIL;
-        // serial_printf("handle = 0x%x, actual = 0x%x, buff = 0x%x\r\n6", handle->huart, &huart1, digital_cellStates[0].huart);
-        HAL_UART_Abort(&huart1); // Abort so that we don't get stuck waiting for uart
-        serial_printf("CELL %d TIMEOUT: %d\r\n", handle->cellNumber, (ticks - handle->ticksOfLastPPO2));
+
+        NON_FATAL_ERROR(OUT_OF_DATE_ERROR);
+
+        if (HAL_OK != HAL_UART_Abort(&huart1))
+        { // Abort so that we don't get stuck waiting for uart
+            NON_FATAL_ERROR(UART_ERROR);
+        }
+
         sendCellCommand(GET_DETAIL_COMMAND, handle);
     }
 
@@ -119,8 +123,11 @@ void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
         .millivolts = 0,
         .status = handle->status,
         .data_time = HAL_GetTick()};
-    // serial_printf("%d", cellData.millivolts);
-    xQueueOverwrite(handle->outQueue, &cellData);
+
+    if (pdFALSE == xQueueOverwrite(handle->outQueue, &cellData))
+    {
+        NON_FATAL_ERROR(QUEUEING_ERROR);
+    }
 }
 
 CellStatus_t cellErrorCheck(DigitalOxygenState_t *cell, const char *err_str)
@@ -206,7 +213,7 @@ void decodeCellMessage(void *arg)
         }
         else
         {
-            serial_printf("Cell RX timeout");
+            NON_FATAL_ERROR(TIMEOUT_ERROR);
             osDelay(500);
         }
         Digital_broadcastPPO2(cell);
@@ -229,7 +236,6 @@ DigitalOxygenState_t *uartToCell(const UART_HandleTypeDef *huart)
 
 void Cell_TX_Complete(const UART_HandleTypeDef *huart)
 {
-    // serial_printf("TXB");
     DigitalOxygenState_t *cell = uartToCell(huart);
     if (cell != NULL)
     {
@@ -243,7 +249,10 @@ void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
     if (cell != NULL)
     {
         cell->ticksOfLastMessage = HAL_GetTick();
-        osThreadFlagsSet(cell->processor, 0x0001U);
+        if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsSet(cell->processor, 0x0001U)))
+        {
+            NON_FATAL_ERROR(FLAG_ERROR);
+        }
     }
 }
 
@@ -256,16 +265,17 @@ void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell)
 
     // Make sure our RX buffer is clear
     memset(cell->lastMessage, 0, RX_BUFFER_LENGTH);
-    // for (int i = 0; i < 6; i++)
-    // {
-    //     serial_printf("tx: 0x%x (%c)\r\n", cell->txBuf[i], cell->txBuf[i]);
-    // }
-    // serial_printf("tx: %s\r\n", txBuffer);
-    uint16_t sendLength = strlen((char *)cell->txBuf);
-    HAL_StatusTypeDef txER = HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength);
-    HAL_StatusTypeDef rxER = HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH);
-    if (txER != HAL_OK || rxER != HAL_OK)
+
+    uint16_t sendLength = (uint16_t)strlen((char *)cell->txBuf);
+    if (HAL_OK == HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength))
     {
-        serial_printf("tx: %d, rx: %d\r\n", txER, rxER);
+        if (HAL_OK != HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH))
+        {
+            NON_FATAL_ERROR(UART_ERROR);
+        }
+    }
+    else
+    {
+        NON_FATAL_ERROR(UART_ERROR);
     }
 }

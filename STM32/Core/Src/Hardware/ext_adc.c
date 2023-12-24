@@ -1,6 +1,8 @@
 #include "ext_adc.h"
 #include "main.h"
 #include "cmsis_os.h"
+#include "../errors.h"
+#include <stdbool.h>
 
 const uint8_t ADC1_ADDR = 0x48;
 const uint8_t ADC2_ADDR = 0x49;
@@ -30,7 +32,7 @@ extern void serial_printf(const char *fmt, ...);
 // /void configureADC(void *arg);
 void ADCTask(void *arg);
 
-#define ADCTASK_STACK_SIZE 400 // 352 by static analysis
+#define ADCTASK_STACK_SIZE 450 // 400 by static analysis
 
 // FreeRTOS tasks
 static uint32_t ADCTask_buffer[ADCTASK_STACK_SIZE];
@@ -55,7 +57,10 @@ uint32_t GetInputTicks(uint8_t inputIndex)
     uint32_t ticks = 0;
     if (QInputTicks[inputIndex] != NULL)
     {
-        xQueuePeek(QInputTicks[inputIndex], &ticks, 0);
+        if (pdFALSE == xQueuePeek(QInputTicks[inputIndex], &ticks, 0))
+        {
+            NON_FATAL_ERROR(TIMEOUT_ERROR);
+        }
     }
     return ticks;
 }
@@ -64,37 +69,66 @@ uint16_t GetInputValue(uint8_t inputIndex)
     uint16_t adcCounts = 0;
     if (QInputValues[inputIndex] != NULL)
     {
-        xQueuePeek(QInputValues[inputIndex], &adcCounts, 0);
+        if (pdFALSE == xQueuePeek(QInputValues[inputIndex], &adcCounts, 0))
+        {
+            NON_FATAL_ERROR(TIMEOUT_ERROR);
+        }
     }
     return adcCounts;
 }
 
 void BlockForADC(uint8_t inputIndex)
 {
-    xQueueReset(QInputValues[inputIndex]);
-    xQueueReset(QInputValues[inputIndex]);
+    bool valuesReset = xQueueReset(QInputValues[inputIndex]);
+    bool inputReset = xQueueReset(QInputValues[inputIndex]);
 
-    uint32_t ticks = 0;
-    uint16_t adcCounts = 0;
-    xQueuePeek(QInputTicks[inputIndex], &ticks, pdMS_TO_TICKS(1000));
-    xQueuePeek(QInputValues[inputIndex], &adcCounts, pdMS_TO_TICKS(1000));
+    if (valuesReset && inputReset) // reset always returns pdPASS, so this should always evaluate to true
+    {
+        uint32_t ticks = 0;
+        uint16_t adcCounts = 0;
+        bool ticksAvailable = xQueuePeek(QInputTicks[inputIndex], &ticks, pdMS_TO_TICKS(1000));
+        bool inputAvailable = xQueuePeek(QInputValues[inputIndex], &adcCounts, pdMS_TO_TICKS(1000));
+
+        if ((!ticksAvailable) && (!inputAvailable))
+        {
+            // Data is not avaliable, but the later code is able to handle that,
+            // This method mainly exists to rest for a convenient, event-based amount
+            NON_FATAL_ERROR(TIMEOUT_ERROR);
+        }
+    }
+    else
+    {
+        NON_FATAL_ERROR(UNREACHABLE_ERROR);
+    }
 }
 
 ////////////////////////////// ADC EVENTS
 /// Happens in IRQ so gotta be quick
 void ADC_I2C_Receive_Complete(uint8_t adcAddr, I2C_HandleTypeDef *hi2c)
 {
-    osThreadFlagsSet(ADCTaskHandle, READ_COMPLETE_FLAG);
+    uint32_t err = osThreadFlagsSet(ADCTaskHandle, READ_COMPLETE_FLAG);
+    if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
+    { // Detect any flag error states
+        NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
+    }
 }
 
 void ADC_I2C_Transmit_Complete(uint8_t adcAddr)
 {
-    osThreadFlagsSet(ADCTaskHandle, TRANSMIT_COMPLETE_FLAG);
+    uint32_t err = osThreadFlagsSet(ADCTaskHandle, TRANSMIT_COMPLETE_FLAG);
+    if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
+    { // Detect any flag error states
+        NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
+    }
 }
 
 void ADC_Ready_Interrupt(uint8_t adcAddr)
 {
-    osThreadFlagsSet(ADCTaskHandle, READ_READY_FLAG);
+    uint32_t err = osThreadFlagsSet(ADCTaskHandle, READ_READY_FLAG);
+    if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
+    { // Detect any flag error states
+        NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
+    }
 }
 
 void configureADC(uint16_t configuration, InputState_s input)
@@ -106,31 +140,31 @@ void configureADC(uint16_t configuration, InputState_s input)
     configBytes[1] = (uint8_t)configuration;
     configBytes[0] = (uint8_t)(configuration >> 8);
 
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (uint8_t *)&lowThreshold, sizeof(lowThreshold)) != HAL_OK)
+    if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (uint8_t *)&lowThreshold, sizeof(lowThreshold)))
     {
-        serial_printf("Err i2c update lower threshold");
+        NON_FATAL_ERROR(I2C_BUS_ERROR);
     }
-    if (osFlagsErrorTimeout == osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
+    if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
     {
-        serial_printf("Err i2c tx lower threshold");
-    }
-
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t *)&highThreshold, sizeof(highThreshold)) != HAL_OK)
-    {
-        serial_printf("Err i2c update upper threshold");
-    }
-    if (osFlagsErrorTimeout == osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
-    {
-        serial_printf("Err i2c tx upper threshold");
+        NON_FATAL_ERROR(FLAG_ERROR);
     }
 
-    if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)) != HAL_OK)
+    if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t *)&highThreshold, sizeof(highThreshold)))
     {
-        serial_printf("Err i2c update config");
+        NON_FATAL_ERROR(I2C_BUS_ERROR);
     }
-    if (osFlagsErrorTimeout == osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
+    if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
     {
-        serial_printf("Err i2c tx update config");
+        NON_FATAL_ERROR(FLAG_ERROR);
+    }
+
+    if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)))
+    {
+        NON_FATAL_ERROR(I2C_BUS_ERROR);
+    }
+    if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(TRANSMIT_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
+    {
+        NON_FATAL_ERROR(FLAG_ERROR);
     }
 }
 
@@ -187,29 +221,41 @@ void ADCTask(void *arg)
             uint8_t configBytes[2] = {0};
             configBytes[1] = (uint8_t)triggerReadConfiguration;
             configBytes[0] = (uint8_t)(triggerReadConfiguration >> 8);
-            if (HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)) != HAL_OK)
+            if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)))
             {
-                serial_printf("Err i2c update config");
+                NON_FATAL_ERROR(I2C_BUS_ERROR);
             }
 
-            if (osFlagsErrorTimeout == osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
+            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
             {
-                serial_printf("Err adc readReady Timeout");
+                NON_FATAL_ERROR(FLAG_ERROR);
             }
 
             // Read the ADC
             uint8_t conversionRegister[2] = {0}; // Memory space to recieve inputs into
-            HAL_I2C_Mem_Read_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), 0x00, 1, conversionRegister, sizeof(conversionRegister));
-            if (osFlagsErrorTimeout == osThreadFlagsWait(READ_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT))
+            if (HAL_OK != HAL_I2C_Mem_Read_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), 0x00, 1, conversionRegister, sizeof(conversionRegister)))
             {
-                serial_printf("Err adc read Timeout");
+                NON_FATAL_ERROR(I2C_BUS_ERROR);
+            }
+
+            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(READ_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
+            {
+                NON_FATAL_ERROR(FLAG_ERROR);
             }
 
             // Export the value to the queue
             uint16_t adcCounts = (uint16_t)((uint16_t)conversionRegister[0] << 8) | conversionRegister[1];
             uint32_t ticks = HAL_GetTick();
-            xQueueOverwrite(adcInput[i].QInputValue, &adcCounts);
-            xQueueOverwrite(adcInput[i].QInputTick, &ticks);
+            bool valueWrite = xQueueOverwrite(adcInput[i].QInputValue, &adcCounts);
+            if (valueWrite) // Make sure our value got updated first, we don't want the ticks queue to lie about the currency of the data
+            {
+                bool tickWrite = xQueueOverwrite(adcInput[i].QInputTick, &ticks);
+                if(!tickWrite){
+                    NON_FATAL_ERROR(QUEUEING_ERROR);
+                }
+            } else {
+                NON_FATAL_ERROR(QUEUEING_ERROR);
+            }
         }
     }
 }

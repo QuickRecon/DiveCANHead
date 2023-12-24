@@ -9,10 +9,10 @@ extern "C" {
 #endif
 typedef struct DiveCANDevice_s
 {
-    char name[9];
-    DiveCANType_t type;
-    DiveCANManufacturer_t manufacturerID;
-    uint8_t firmwareVersion;
+    const char name[9];
+    const DiveCANType_t type;
+    const DiveCANManufacturer_t manufacturerID;
+    const uint8_t firmwareVersion;
 } DiveCANDevice_t;
 
 void InitDiveCAN(DiveCANDevice_t *deviceSpec);

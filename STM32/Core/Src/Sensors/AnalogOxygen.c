@@ -33,7 +33,7 @@ AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
     AnalogOxygenState_t *handle = NULL;
     if (cellNumber > CELL_3)
     {
-        NonFatalError(INVALID_CELL_NUMBER);
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
     }
     else
     {
@@ -82,22 +82,31 @@ void ReadCalibration(AnalogOxygenState_t *handle)
     else if (result == EE_NO_DATA) // If this is a fresh EEPROM then we need to init it
     {
         serial_printf("Cal not found %d\r\n", handle->cellNumber);
-        HAL_FLASH_Unlock();
-        uint32_t defaultVal = 0; // 0 is 0, be it float or int, either way its invalid, so we're winge about an invalid cal and make the user do one
-        EE_Status writeResult = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, defaultVal);
-        if (writeResult == EE_OK)
+        if (HAL_OK == HAL_FLASH_Unlock())
         {
-            handle->calibrationCoefficient = (CalCoeff_t)defaultVal;
+            uint32_t defaultVal = 0; // 0 is 0, be it float or int, either way its invalid, so we're winge about an invalid cal and make the user do one
+            EE_Status writeResult = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, defaultVal);
+            if (writeResult == EE_OK)
+            {
+                handle->calibrationCoefficient = (CalCoeff_t)defaultVal;
+            }
+            else
+            {
+                NON_FATAL_ERROR_DETAIL(EEPROM_ERROR, handle->cellNumber);
+            }
+            if (HAL_OK != HAL_FLASH_Lock())
+            {
+                NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+            }
         }
         else
         {
-            serial_printf("EEPROM write fail on cell %d code %d\r\n", handle->cellNumber, writeResult);
+            NON_FATAL_ERROR(FLASH_LOCK_ERROR);
         }
-        HAL_FLASH_Lock();
     }
     else
     {
-        serial_printf("EEPROM read fail on cell %d code %d\r\n", handle->cellNumber, result);
+        NON_FATAL_ERROR_DETAIL(EEPROM_ERROR, handle->cellNumber);
         handle->status = CELL_NEED_CAL;
     }
 }
@@ -114,20 +123,29 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
     // Convert it to raw bytes
     uint32_t calInt = (int32_t)(newCal * (float)CAL_TO_INT32);
     //  Write that shit to the eeprom
-    HAL_FLASH_Unlock();
-    EE_Status result = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, calInt);
-    HAL_FLASH_Lock();
-    if (result != EE_OK)
+    if (HAL_OK == HAL_FLASH_Unlock())
     {
-        serial_printf("EEPROM write fail on cell %d\r\n", handle->cellNumber);
-    }
+        EE_Status result = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, calInt);
+        if (HAL_OK != HAL_FLASH_Lock())
+        {
+            NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+        }
 
+        if (result != EE_OK)
+        {
+            NON_FATAL_ERROR(EEPROM_ERROR);
+        }
+    }
+    else
+    {
+        NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+    }
     ReadCalibration(handle);
 
     if (((handle->calibrationCoefficient - newCal) > 0.000001) ||
         ((handle->calibrationCoefficient - newCal) < 0.000001))
     {
-        serial_printf("CAL FAILURE");
+        serial_printf("CAL FAILURE"); // TODO: handle this in a way that lets the shearwater know we're cooked
     }
 
     return (ShortMillivolts_t)((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS / 100);
@@ -156,7 +174,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     if ((ticks - ticksOfLastPPO2) > ANALOG_RESPONSE_TIMEOUT)
     { // If we've taken longer than timeout, fail the cell
         handle->status = CELL_FAIL;
-        serial_printf("CELL %d TIMEOUT: %d\r\n", handle->cellNumber, (ticks - ticksOfLastPPO2));
+        NON_FATAL_ERROR_DETAIL(TIMEOUT_ERROR, handle->cellNumber);
     }
 
     CalCoeff_t calPPO2 = (CalCoeff_t)abs(handle->lastCounts) * COUNTS_TO_MILLIS * handle->calibrationCoefficient;
@@ -170,13 +188,15 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
         .millivolts = getMillivolts(handle),
         .status = handle->status,
         .data_time = HAL_GetTick()};
-    // serial_printf("%d", cellData.millivolts);
-    xQueueOverwrite(handle->outQueue, &cellData);
+
+    if (pdFALSE == xQueueOverwrite(handle->outQueue, &cellData))
+    {
+        NON_FATAL_ERROR(QUEUEING_ERROR);
+    }
 }
 
 void analogProcessor(void *arg)
 {
-
     AnalogOxygenState_t *cell = (AnalogOxygenState_t *)arg;
 
     while (true)

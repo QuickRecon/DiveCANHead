@@ -1,11 +1,21 @@
 # Things that really ought to happen before this gets used on a dive
-- A proper error handling approach, using printfs is absolutely useless underwater
 - Menu logic
 - Poweroff/standby
 - IWDG verify program state
 - Two asserts per function
 - Handle cal failure
-
+- Battery reading and power switching
+- Cal warning logic should go away during cal
+- Startup sequencing issue
+ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:62
+ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
+ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
+ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
+ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
+ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
+ERR CODE 5(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:76
+ERR CODE 5(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:76
+ERR CODE 5(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:76
 
 
     Avoid complex flow constructs, such as goto and recursion

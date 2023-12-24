@@ -56,7 +56,7 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
 
     if (length > MAX_CAN_RX_LENGTH)
     {
-        NonFatalErrorISR(CAN_OVERFLOW);
+        NON_FATAL_ERROR_ISR(CAN_OVERFLOW);
     }
     else
     {
@@ -67,7 +67,7 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     {
         BaseType_t err = xQueueSendToBackFromISR(QInboundCAN, &message, NULL);
         if(errQUEUE_FULL == err){
-            NonFatalErrorISR(QUEUEING_ERROR);
+            NON_FATAL_ERROR_ISR(QUEUEING_ERROR);
         }
     }
 }
@@ -94,7 +94,10 @@ void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t 
 
     uint32_t mailboxNumber = 0;
 
-    HAL_CAN_AddTxMessage(&hcan1, &header, data, &mailboxNumber);
+    HAL_StatusTypeDef err = HAL_CAN_AddTxMessage(&hcan1, &header, data, &mailboxNumber);
+    if(HAL_OK != err){
+        NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, err);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////

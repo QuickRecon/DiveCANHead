@@ -33,7 +33,7 @@ static OxygenHandle_t cells[CELL_COUNT];
 
 extern void serial_printf(const char *fmt, ...);
 
-#define CALTASK_STACK_SIZE 400 // Static analysis 304
+#define CALTASK_STACK_SIZE 450 // Static analysis 400
 
 static uint32_t CalTask_buffer[CALTASK_STACK_SIZE];
 static StaticTask_t CalTask_ControlBlock;
@@ -59,54 +59,59 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
         cell->cellHandle = Digital_InitCell(cellNumber, CellQueues[cellNumber]);
         break;
     default:
-        // Panic
+        NON_FATAL_ERROR(UNREACHABLE_ERROR);
     }
     return CellQueues[cellNumber];
 }
 
 void DigitalReferenceCalibrate(CalParameters_t *calParams)
 {
-    DigitalOxygenState_t *refCell = NULL;
+    const DigitalOxygenState_t *refCell = NULL;
     uint8_t refCellIndex = 0;
     // Select the first digital cell
     for (uint8_t i = 0; i < CELL_COUNT; ++i)
     {
         if ((CELL_DIGITAL == cells[i].type) && (NULL == refCell))
         {
-            refCell = (DigitalOxygenState_t *)cells[i].cellHandle;
+            refCell = (const DigitalOxygenState_t *)cells[i].cellHandle;
             refCellIndex = i;
         }
     }
 
     if (refCell != NULL)
     {
-        uint16_t pressure = refCell->pressure / 1000;
+        uint16_t pressure = (uint16_t)(refCell->pressure / 1000);
         OxygenCell_t refCellData = {0};
-        xQueuePeek(CellQueues[refCellIndex], &refCellData, 100);
-        PPO2_t ppO2 = refCellData.ppo2;
-        serial_printf("!!CAL PPO2: %d, %d", ppO2, pressure);
-        // Now that we have the PPO2 we cal all the analog cells
-        ShortMillivolts_t cellVals[CELL_COUNT] = {0};
-        for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        if (pdTRUE == xQueuePeek(CellQueues[refCellIndex], &refCellData, 100))
         {
-            if (CELL_ANALOG == cells[i].type)
+            PPO2_t ppO2 = refCellData.ppo2;
+            serial_printf("!!CAL PPO2: %d, %d", ppO2, pressure);
+            // Now that we have the PPO2 we cal all the analog cells
+            ShortMillivolts_t cellVals[CELL_COUNT] = {0};
+            for (uint8_t i = 0; i < CELL_COUNT; ++i)
             {
-                AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cells[i].cellHandle;
-                cellVals[i] = Calibrate(analogCell, ppO2);
+                if (CELL_ANALOG == cells[i].type)
+                {
+                    AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cells[i].cellHandle;
+                    cellVals[i] = Calibrate(analogCell, ppO2);
+                }
             }
-        }
 
-        // Now that calibration is done lets grab the millivolts for the record
-        calParams->cell1 = cellVals[0];
-        calParams->cell2 = cellVals[1];
-        calParams->cell3 = cellVals[2];
-        calParams->pressure_val = pressure;
-        calParams->fO2 = ((float)ppO2 * (1000.0f / (float)pressure));
+            // Now that calibration is done lets grab the millivolts for the record
+            calParams->cell1 = cellVals[CELL_1];
+            calParams->cell2 = cellVals[CELL_2];
+            calParams->cell3 = cellVals[CELL_3];
+            calParams->pressure_val = pressure;
+            calParams->fO2 = (FO2_t)((float)ppO2 * (1000.0f / (float)pressure));
+        } else {
+            // We couldn't get any data to cal with
+            NON_FATAL_ERROR(CAL_METHOD_ERROR);
+        }
     }
     else
     {
-        serial_printf("Cannot find digital cell to cal");
-        // Panic
+        // We can't find a digital cell to cal with
+        NON_FATAL_ERROR(CAL_METHOD_ERROR);
     }
 }
 
@@ -121,7 +126,7 @@ void CalibrationTask(void *arg)
         osDelay(1000); // Give the shearwater time to catch up
         break;
     default:
-        NonFatalError(UNDEFINED_CAL_METHOD);
+        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
         osThreadExit();
     }
     serial_printf("TX cal response");

@@ -5,7 +5,7 @@
 
 static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
 
-#define PPO2TXTASK_STACK_SIZE 400 // 264 bytes by static analysis
+#define PPO2TXTASK_STACK_SIZE 350 // 296 bytes by static analysis
 
 typedef struct PPO2TXTask_params_s
 {
@@ -73,17 +73,17 @@ void PPO2TXTask(void *arg)
         if (!c1pick)
         {
             c1.status = CELL_FAIL;
-            NonFatalError(TIMEOUT_ERROR);
+            NON_FATAL_ERROR(TIMEOUT_ERROR);
         }
         if (!c2pick)
         {
             c2.status = CELL_FAIL;
-            NonFatalError(TIMEOUT_ERROR);
+            NON_FATAL_ERROR(TIMEOUT_ERROR);
         }
         if (!c3pick)
         {
             c3.status = CELL_FAIL;
-            NonFatalError(TIMEOUT_ERROR);
+            NON_FATAL_ERROR(TIMEOUT_ERROR);
         }
 
         // First we calculate the consensus struct, which includes the voting logic
