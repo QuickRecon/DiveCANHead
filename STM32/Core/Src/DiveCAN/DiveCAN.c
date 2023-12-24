@@ -120,7 +120,7 @@ void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const
 
 void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
-    // TODO: calibration routine
+    // TODO: menu routine
 }
 
 void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
