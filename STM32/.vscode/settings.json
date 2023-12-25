@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.h": "c",
         "array": "c",
         "string": "c",
         "string_view": "c",
@@ -30,7 +31,8 @@
         "analogoxygen.h": "c",
         "eeprom_emul.h": "c",
         "oxygencell.h": "c",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "optional": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",

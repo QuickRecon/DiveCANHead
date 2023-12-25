@@ -30,11 +30,38 @@ static QueueHandle_t QInboundCAN = NULL;
 static StaticQueue_t QInboundCAN_QueueStruct = {0};
 static uint8_t QInboundCAN_Storage[CAN_QUEUE_LEN * sizeof(DiveCANMessage_t)];
 
+static QueueHandle_t QDataAvail = NULL;
+static StaticQueue_t QDataAvail_QueueStruct = {0};
+static uint8_t QDataAvail_Storage[sizeof(bool)];
+
+extern void serial_printf(const char *fmt, ...);
+
 void InitRXQueue(void)
 {
     if (NULL == QInboundCAN)
     {
         QInboundCAN = xQueueCreateStatic(CAN_QUEUE_LEN, sizeof(DiveCANMessage_t), QInboundCAN_Storage, &QInboundCAN_QueueStruct);
+        QDataAvail = xQueueCreateStatic(1, sizeof(bool), QDataAvail_Storage, &QDataAvail_QueueStruct);
+    }
+}
+
+void BlockForCAN()
+{
+    if (xQueueReset(QDataAvail)) // reset always returns pdPASS, so this should always evaluate to true
+    {
+        bool data = false;
+        bool msgAvailable = xQueuePeek(QDataAvail, &data, pdMS_TO_TICKS(1000));
+
+        if (!msgAvailable)
+        {
+            // Data is not avaliable, but the later code is able to handle that,
+            // This method mainly exists to rest for a convenient, event-based amount
+            NON_FATAL_ERROR(TIMEOUT_ERROR);
+        }
+    }
+    else
+    {
+        NON_FATAL_ERROR(UNREACHABLE_ERROR);
     }
 }
 
@@ -52,7 +79,7 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     DiveCANMessage_t message = {
         .id = id,
         .length = length,
-        .data = {0,0,0,0,0,0,0,0}};
+        .data = {0, 0, 0, 0, 0, 0, 0, 0}};
 
     if (length > MAX_CAN_RX_LENGTH)
     {
@@ -65,8 +92,12 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     }
     if (NULL != QInboundCAN)
     {
+        bool dataReady = true;
+        xQueueOverwriteFromISR(QDataAvail, &dataReady, NULL);
+
         BaseType_t err = xQueueSendToBackFromISR(QInboundCAN, &message, NULL);
-        if(errQUEUE_FULL == err){
+        if (errQUEUE_FULL == err)
+        {
             NON_FATAL_ERROR_ISR(QUEUEING_ERROR);
         }
     }
@@ -95,7 +126,8 @@ void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t 
     uint32_t mailboxNumber = 0;
 
     HAL_StatusTypeDef err = HAL_CAN_AddTxMessage(&hcan1, &header, data, &mailboxNumber);
-    if(HAL_OK != err){
+    if (HAL_OK != err)
+    {
         NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, err);
     }
 }
@@ -108,7 +140,7 @@ void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t 
 void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType)
 {
     uint8_t data[BUS_INIT_LEN] = {0x8a, 0xf3, 0x00};
-    uint32_t Id = BUS_INIT_ID | (deviceType << 2) | targetDeviceType;
+    uint32_t Id = BUS_INIT_ID | (deviceType << 8) | targetDeviceType;
     sendCANMessage(Id, data, BUS_INIT_LEN);
 }
 
@@ -185,7 +217,7 @@ void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, cons
 /// @param PPO2 The consensus PPO2 of the cells
 void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool cell2, const bool cell3, const PPO2_t PPO2)
 {
-    uint8_t cellMask = (uint8_t)((uint8_t)cell1 | (uint8_t)((uint8_t)cell2 << 1) | (uint8_t)((uint8_t)cell3 << 2));
+    uint8_t cellMask = (uint8_t)((uint8_t)cell1 | (uint8_t)((uint8_t)cell2 << 1) | (uint8_t)((uint8_t)cell3 << 8));
 
     uint8_t data[PPO2_STATUS_LEN] = {cellMask, PPO2};
     uint32_t Id = PPO2_STATUS_ID | deviceType;
@@ -220,32 +252,71 @@ void txCalResponse(DiveCANType_t deviceType, ShortMillivolts_t cell1, ShortMilli
 }
 
 // Bus Devices
-void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType)
+void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, uint8_t itemCount)
 {
-    uint8_t data[MENU_ACK_LEN] = {0x05, 0x00, 0x62, 0x91, 0x00, 0x05};
-    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 2);
+    uint8_t data[MENU_ACK_LEN] = {0x05, 0x00, 0x62, 0x91, 0x00, itemCount};
+    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
+    serial_printf("ID: 0x%x\r\n", Id);
     sendCANMessage(Id, data, MENU_ACK_LEN);
 }
-void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t index, const char *fieldText)
+
+void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText, const bool integerField, const bool editable)
 {
     uint8_t strData[MENU_FIELD_LEN + 1] = {0};
     strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
 
-    uint8_t data1[MENU_LEN] = {0x10, 0x10, 0x00, 0x62, 0x91, index, strData[0], strData[1]};
+    uint8_t data1[MENU_LEN] = {0x10, 0x10, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]};
     uint8_t data2[MENU_LEN] = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]};
-    uint8_t data3[MENU_FIELD_END_LEN] = {0x22, strData[9], 0x00, 0x00};
-    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 2);
-    sendCANMessage(Id, data1, MENU_ACK_LEN);
-    sendCANMessage(Id, data2, MENU_ACK_LEN);
+    uint8_t data3[MENU_FIELD_END_LEN] = {0x22, strData[9], integerField, editable};
+    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
+    sendCANMessage(Id, data1, MENU_LEN);
+
+    BlockForCAN();
+    sendCANMessage(Id, data2, MENU_LEN);
     sendCANMessage(Id, data3, MENU_FIELD_END_LEN);
 }
-void txMenuOpts(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t index)
+
+
+/// @brief Send the flags associated with a writable field, currently only the number of fields
+/// @param targetDeviceType Device we're sending the menu information to
+/// @param deviceType  Device that we are
+/// @param reqId Request byte that we're replying to
+/// @param fieldCount The number of values this item can take, set to 1 to force it to reload the text every time.
+void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const uint8_t fieldCount)
 {
-    uint8_t data1[MENU_LEN] = {0x10, 0x14, 0x00, 0x62, 0x91, index, 0x00, 0x00};
-    uint8_t data2[MENU_LEN] = {0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00};
-    uint8_t data3[MENU_LEN] = {0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 2);
-    sendCANMessage(Id, data1, MENU_ACK_LEN);
-    sendCANMessage(Id, data2, MENU_ACK_LEN);
+    uint8_t data1[MENU_LEN] = {0x10, 0x14, 0x00, 0x62, 0x91, reqId, 0x00, 0x00};
+    uint8_t data2[MENU_LEN] = {0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00};
+    uint8_t data3[MENU_LEN] = {0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, fieldCount-1};
+    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
+    sendCANMessage(Id, data1, MENU_LEN);
+
+    BlockForCAN();
+    sendCANMessage(Id, data2, MENU_LEN);
+    sendCANMessage(Id, data3, MENU_LEN);
+}
+
+void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t fieldId)
+{
+    uint8_t data1[3] = {0x30, 0x23, 0x00};
+    uint8_t data2[5] = {0x04, 0x00, 0x6e, 0x93, fieldId};
+    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
+    sendCANMessage(Id, data1, 3);
+
+    BlockForCAN();
+    sendCANMessage(Id, data2, 5);
+}
+
+void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText)
+{
+    uint8_t strData[MENU_FIELD_LEN + 1] = {0};
+    strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
+
+    uint8_t data1[MENU_LEN] = {0x10, 0x0c, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]};
+    uint8_t data2[MENU_LEN] = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]};
+    uint8_t data3[MENU_FIELD_END_LEN] = {0x22, strData[9], 0x00, 0x00};
+    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
+    sendCANMessage(Id, data1, MENU_LEN);
+
+    sendCANMessage(Id, data2, MENU_LEN);
     sendCANMessage(Id, data3, MENU_FIELD_END_LEN);
 }

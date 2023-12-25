@@ -1,6 +1,7 @@
 #include "DiveCAN.h"
 #include "cmsis_os.h"
 #include "../Sensors/OxygenCell.h"
+#include "menu.h"
 
 extern void serial_printf(const char *fmt, ...);
 
@@ -26,6 +27,9 @@ const osThreadAttr_t CANTask_attributes = {
     .stack_size = sizeof(CANTask_buffer),
     .priority = CAN_RX_PRIORITY};
 osThreadId_t CANTaskHandle;
+
+
+
 
 void InitDiveCAN(DiveCANDevice_t *deviceSpec)
 {
@@ -109,9 +113,6 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
 
 void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
-    serial_printf("CAL message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message->id,
-                  message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
-
     FO2_t fO2 = message->data[0];
     uint16_t pressure = (uint16_t)(((uint16_t)(message->data[2] << 8)) | (message->data[1]));
 
@@ -120,7 +121,9 @@ void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const
 
 void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
-    // TODO: menu routine
+    serial_printf("MENU message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message->id,
+                  message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
+    ProcessMenu(message, deviceSpec);
 }
 
 void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)

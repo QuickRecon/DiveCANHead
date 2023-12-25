@@ -134,8 +134,8 @@ void serial_printf(const char *fmt, ...) // custom printf() function
 DiveCANDevice_t deviceSpec = {
     .name = "Rev2Ctl",
     .type = DIVECAN_SOLO,
-    .manufacturerID = DIVECAN_MANUFACTURER_GEN,
-    .firmwareVersion = 1};
+    .manufacturerID = DIVECAN_MANUFACTURER_SRI,
+    .firmwareVersion = 0x05};
 
 /* USER CODE END 0 */
 

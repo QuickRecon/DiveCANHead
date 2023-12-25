@@ -93,9 +93,11 @@ void txCalAck(const DiveCANType_t deviceType);
 void txCalResponse(const DiveCANType_t deviceType, const ShortMillivolts_t cell1, const ShortMillivolts_t cell2, const ShortMillivolts_t cell3, const FO2_t FO2, const uint16_t atmosphericPressure);
 
 // Bus Devices
-void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType);
-void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t index, const char *const fieldText);
-void txMenuOpts(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t index); // TODO: work out how this works
+void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, uint8_t itemCount);
+void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *const fieldText, const bool integerField, const bool editable);
+void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t fieldId);
+void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const uint8_t fieldCount);
+void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText);
 
 #ifdef __cplusplus
 }

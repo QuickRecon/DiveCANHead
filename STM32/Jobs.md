@@ -6,6 +6,7 @@
 - Handle cal failure
 - Battery reading and power switching
 - Startup sequencing issue
+
 ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:62
 ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
 ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
