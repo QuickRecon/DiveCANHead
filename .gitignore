@@ -1,0 +1,8 @@
+production
+Plot
+*.bak
+*.log
+fp-info-cache
+*.lck
+*.FCBak
+*-backups
