@@ -61,11 +61,11 @@ extern "C"
     //
     // The watchdog task should be just above idle, so that we reset on runtime starvation
     // CAN RX priority is normal because it is not particularly time critical
-    const static osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
-    const static osPriority_t PPO2_SENSOR_PRIORITY = osPriorityHigh1;
-    const static osPriority_t CAN_RX_PRIORITY = osPriorityNormal;
-    const static osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh;
-    const static osPriority_t ADC_PRIORITY = osPriorityHigh2;
+    static const osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
+    static const osPriority_t PPO2_SENSOR_PRIORITY = osPriorityHigh1;
+    static const osPriority_t CAN_RX_PRIORITY = osPriorityNormal;
+    static const osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh;
+    static const osPriority_t ADC_PRIORITY = osPriorityHigh2;
 
 // conditional compilation for RTOS loop breaking is pretty
 // shit as a testing method

@@ -3,6 +3,7 @@
 - Poweroff/standby
 - IWDG verify program state
 - Handle cal failure
+- Error logging to eeprom emulation
 - Add -Wextra -Wpedantic -Wconversion to the cflags
 - Battery reading and power switching
 - Startup sequencing issue:
@@ -28,3 +29,8 @@ ERR CODE 5(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:76
     Use the preprocessor sparingly
     Limit pointer use to a single dereference, and do not use function pointers
     Compile with all possible warnings active; all warnings should then be addressed before the release of the software
+
+# Things that ought to get done
+- Menu for setting cell type
+- Make DiveCAN multi-device safe so we can make multiple menu rows
+- Predive "app", show loop pressure and such
