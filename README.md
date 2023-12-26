@@ -1,3 +1,9 @@
+# Current State
+Revision 2.1 hardware has been fabricated, programming is in its final stages with test dives expected soon.
+Current software TODO is listed under STM32/Jobs.md
+
+Constructive critisism, suggestions, and pull requests are always welcome.
+
 # Goals
 The goals of this project are pretty simple:
 - Have a reliable PPO2 monitor that can handle both digital and analog PPO2 cell inputs
