@@ -23,7 +23,7 @@ typedef struct InputState_s
     StaticQueue_t QInputTicks_QueueStruct;
     uint8_t QInputTicks_Storage[sizeof(uint32_t)];
     QueueHandle_t QInputTick;
-} InputState_s;
+} InputState_t;
 
 void InitADCs(void);
 
@@ -32,9 +32,9 @@ uint16_t GetInputValue(uint8_t inputIndex);
 void BlockForADC(uint8_t inputIndex);
 
 // ADC interface
-void ADC_I2C_Receive_Complete(uint8_t adcAddr, I2C_HandleTypeDef *hi2c);
-void ADC_I2C_Transmit_Complete(uint8_t adcAddr);
-void ADC_Ready_Interrupt(uint8_t adcAddr);
+void ADC_I2C_Receive_Complete(void );
+void ADC_I2C_Transmit_Complete(void );
+void ADC_Ready_Interrupt(void);
 
 #ifdef __cplusplus
 }

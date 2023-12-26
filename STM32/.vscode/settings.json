@@ -38,8 +38,11 @@
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
     "cSpell.words": [
+        "ADCTASK",
         "Callbackx",
         "CALTASK",
+        "CANTASK",
+        "controlblock",
         "Cplt",
         "Devaddress",
         "DIVECAN",
@@ -47,9 +50,12 @@
         "FATFS",
         "hcan",
         "huart",
+        "microbar",
+        "millicelsius",
         "NVIC",
         "SDMMC",
-        "setpoint"
+        "setpoint",
+        "TESTITEM"
     ],
     "sonarlint.disableTelemetry": true,
     "sonarlint.focusOnNewCode": false,

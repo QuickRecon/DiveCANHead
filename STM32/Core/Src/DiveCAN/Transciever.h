@@ -68,14 +68,14 @@ typedef enum DiveCANManufacturer_e
 } DiveCANManufacturer_t;
 
 void InitRXQueue(void);
-BaseType_t GetLatestCAN(const uint32_t blockTime, DiveCANMessage_t *message);
+BaseType_t GetLatestCAN(const Timestamp_t blockTime, DiveCANMessage_t *message);
 void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t* const data);
 
 // Device Metadata
 void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType);
 void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, uint8_t firmwareVersion);
 void txName(const DiveCANType_t deviceType, const char *name);
-void txStatus(const DiveCANType_t deviceType, const uint8_t batteryVoltage, const uint8_t setpoint, const DiveCANError_t error);
+void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error);
 
 // PPO2 Messages
 void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cell2, const PPO2_t cell3);

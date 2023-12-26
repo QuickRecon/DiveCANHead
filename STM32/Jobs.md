@@ -2,11 +2,10 @@
 - Menu logic
 - Poweroff/standby
 - IWDG verify program state
-- Two asserts per function
 - Handle cal failure
 - Add -Wextra -Wpedantic -Wconversion to the cflags
 - Battery reading and power switching
-- Startup sequencing issue
+- Startup sequencing issue:
 
 ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:62
 ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74

@@ -13,6 +13,8 @@ typedef struct DiveCANDevice_s
     const DiveCANType_t type;
     const DiveCANManufacturer_t manufacturerID;
     const uint8_t firmwareVersion;
+    const PPO2_t setpoint;
+    const BatteryV_t batteryVoltage;
 } DiveCANDevice_t;
 
 void InitDiveCAN(DiveCANDevice_t *deviceSpec);

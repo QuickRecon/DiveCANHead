@@ -13,6 +13,8 @@ typedef enum FatalError_e
     NMI_TRIGGERED,
     MEM_FAULT,
     BUS_FAULT,
+    /// @brief We ran past the end of a buffer, even if it didn't trip a hard fault we've clobbered unknown memory in an unknown way, better just to reset
+    BUFFER_OVERRUN,
     UNDEFINED_STATE
 } FatalError_t;
 
@@ -66,7 +68,10 @@ typedef enum NonFatalError_e
     CAL_MISMATCH_ERR,
 
     /// @brief The cell number can't be mapped to an input (too high?)
-    INVALID_CELL_NUMBER
+    INVALID_CELL_NUMBER,
+
+    /// @brief The adc input number can't be mapped to an input
+    INVALID_ADC_NUMBER
 } NonFatalError_t;
 
 void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);
@@ -81,4 +86,5 @@ void FatalError(FatalError_t error, uint32_t lineNumber, const char *fileName);
 #define NON_FATAL_ERROR_DETAIL(x, y) (NonFatalError_Detail(x, y, __LINE__, __FILE__))
 #define NON_FATAL_ERROR_ISR(x) (NonFatalErrorISR(x, __LINE__, __FILE__))
 #define NON_FATAL_ERROR_ISR_DETAIL(x, y) (NonFatalErrorISR_Detail(x, y, __LINE__, __FILE__))
+#define FATAL_ERROR(x) (FatalError(x, __LINE__, __FILE__))
 #endif

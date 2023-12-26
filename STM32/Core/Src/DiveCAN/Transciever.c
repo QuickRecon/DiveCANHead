@@ -20,37 +20,56 @@
 #define MENU_LEN 8
 #define MENU_FIELD_LEN 10
 #define MENU_FIELD_END_LEN 4
+#define MENU_SAVE_ACK_LEN 3
+#define MENU_SAVE_FIELD_ACK_LEN 5
 
 #define TX_WAIT_DELAY 10
 
 extern CAN_HandleTypeDef hcan1;
 
 #define CAN_QUEUE_LEN 10
-static QueueHandle_t QInboundCAN = NULL;
-static StaticQueue_t QInboundCAN_QueueStruct = {0};
-static uint8_t QInboundCAN_Storage[CAN_QUEUE_LEN * sizeof(DiveCANMessage_t)];
-
-static QueueHandle_t QDataAvail = NULL;
-static StaticQueue_t QDataAvail_QueueStruct = {0};
-static uint8_t QDataAvail_Storage[sizeof(bool)];
 
 extern void serial_printf(const char *fmt, ...);
 
+static QueueHandle_t *getInboundQueue(void)
+{
+    static QueueHandle_t QInboundCAN = NULL;
+    return &QInboundCAN;
+}
+
+static QueueHandle_t *getDataAvailQueue(void)
+{
+    static QueueHandle_t QDataAvail = NULL;
+    return &QDataAvail;
+}
+
 void InitRXQueue(void)
 {
-    if (NULL == QInboundCAN)
+    QueueHandle_t *inbound = getInboundQueue();
+    QueueHandle_t *dataAvail = getDataAvailQueue();
+
+    if ((NULL == *inbound) && (NULL == *dataAvail))
     {
-        QInboundCAN = xQueueCreateStatic(CAN_QUEUE_LEN, sizeof(DiveCANMessage_t), QInboundCAN_Storage, &QInboundCAN_QueueStruct);
-        QDataAvail = xQueueCreateStatic(1, sizeof(bool), QDataAvail_Storage, &QDataAvail_QueueStruct);
+
+        static StaticQueue_t QInboundCAN_QueueStruct = {0};
+        static uint8_t QInboundCAN_Storage[CAN_QUEUE_LEN * sizeof(DiveCANMessage_t)];
+
+        *inbound = xQueueCreateStatic(CAN_QUEUE_LEN, sizeof(DiveCANMessage_t), QInboundCAN_Storage, &QInboundCAN_QueueStruct);
+
+        static StaticQueue_t QDataAvail_QueueStruct = {0};
+        static uint8_t QDataAvail_Storage[sizeof(bool)];
+
+        *dataAvail = xQueueCreateStatic(1, sizeof(bool), QDataAvail_Storage, &QDataAvail_QueueStruct);
     }
 }
 
-void BlockForCAN()
+void BlockForCAN(void)
 {
-    if (xQueueReset(QDataAvail)) // reset always returns pdPASS, so this should always evaluate to true
+    QueueHandle_t *dataAvail = getDataAvailQueue();
+    if (xQueueReset(*dataAvail)) // reset always returns pdPASS, so this should always evaluate to true
     {
         bool data = false;
-        bool msgAvailable = xQueuePeek(QDataAvail, &data, pdMS_TO_TICKS(1000));
+        bool msgAvailable = xQueuePeek(*dataAvail, &data, pdMS_TO_TICKS(1000));
 
         if (!msgAvailable)
         {
@@ -65,9 +84,10 @@ void BlockForCAN()
     }
 }
 
-BaseType_t GetLatestCAN(const uint32_t blockTime, DiveCANMessage_t *message)
+BaseType_t GetLatestCAN(const Timestamp_t blockTime, DiveCANMessage_t *message)
 {
-    return xQueueReceive(QInboundCAN, message, blockTime);
+    QueueHandle_t *inbound = getInboundQueue();
+    return xQueueReceive(*inbound, message, blockTime);
 }
 /// @brief !! ISR METHOD !! Called when CAN mailbox receives message
 /// @param id message extended ID
@@ -87,15 +107,17 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     }
     else
     {
-
         memcpy(message.data, data, length);
     }
-    if (NULL != QInboundCAN)
+
+    QueueHandle_t *inbound = getInboundQueue();
+    QueueHandle_t *dataAvail = getDataAvailQueue();
+    if ((NULL != *inbound) && (NULL != *dataAvail))
     {
         bool dataReady = true;
-        xQueueOverwriteFromISR(QDataAvail, &dataReady, NULL);
+        xQueueOverwriteFromISR(*dataAvail, &dataReady, NULL);
 
-        BaseType_t err = xQueueSendToBackFromISR(QInboundCAN, &message, NULL);
+        BaseType_t err = xQueueSendToBackFromISR(*inbound, &message, NULL);
         if (errQUEUE_FULL == err)
         {
             NON_FATAL_ERROR_ISR(QUEUEING_ERROR);
@@ -171,7 +193,7 @@ void txName(const DiveCANType_t deviceType, const char *const name)
 /// @param batteryVoltage Battery voltage of this device
 /// @param setpoint The setpoint that the PPO2 controller is trying to maintain
 /// @param error Current error state
-void txStatus(const DiveCANType_t deviceType, const uint8_t batteryVoltage, const uint8_t setpoint, const DiveCANError_t error)
+void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error)
 {
     uint8_t data[BUS_STATUS_LEN] = {batteryVoltage, 0x00, 0x02, 0x00, 0x00, setpoint, 0x63, (uint8_t)error};
     uint32_t Id = BUS_STATUS_ID | deviceType;
@@ -276,7 +298,6 @@ void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t device
     sendCANMessage(Id, data3, MENU_FIELD_END_LEN);
 }
 
-
 /// @brief Send the flags associated with a writable field, currently only the number of fields
 /// @param targetDeviceType Device we're sending the menu information to
 /// @param deviceType  Device that we are
@@ -286,7 +307,7 @@ void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t devic
 {
     uint8_t data1[MENU_LEN] = {0x10, 0x14, 0x00, 0x62, 0x91, reqId, 0x00, 0x00};
     uint8_t data2[MENU_LEN] = {0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00};
-    uint8_t data3[MENU_LEN] = {0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, fieldCount-1};
+    uint8_t data3[MENU_LEN] = {0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, fieldCount - 1};
     uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
     sendCANMessage(Id, data1, MENU_LEN);
 
@@ -297,13 +318,13 @@ void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t devic
 
 void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t fieldId)
 {
-    uint8_t data1[3] = {0x30, 0x23, 0x00};
-    uint8_t data2[5] = {0x04, 0x00, 0x6e, 0x93, fieldId};
+    uint8_t data1[MENU_SAVE_ACK_LEN] = {0x30, 0x23, 0x00};
+    uint8_t data2[MENU_SAVE_FIELD_ACK_LEN] = {0x04, 0x00, 0x6e, 0x93, fieldId};
     uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
-    sendCANMessage(Id, data1, 3);
+    sendCANMessage(Id, data1, MENU_SAVE_ACK_LEN);
 
     BlockForCAN();
-    sendCANMessage(Id, data2, 5);
+    sendCANMessage(Id, data2, MENU_SAVE_FIELD_ACK_LEN);
 }
 
 void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText)

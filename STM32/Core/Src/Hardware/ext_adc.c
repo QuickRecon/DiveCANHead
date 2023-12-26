@@ -23,8 +23,38 @@ const uint32_t I2C_TIMEOUT = pdMS_TO_TICKS(1000);
 extern I2C_HandleTypeDef hi2c1;
 
 #define ADC_COUNT 4
-static QueueHandle_t QInputValues[ADC_COUNT] = {NULL, NULL, NULL, NULL};
-static QueueHandle_t QInputTicks[ADC_COUNT] = {NULL, NULL, NULL, NULL};
+
+static QueueHandle_t *getInputQueue(uint8_t inputNumber)
+{
+    static QueueHandle_t QInputValues[ADC_COUNT] = {NULL, NULL, NULL, NULL};
+    QueueHandle_t *queueHandle = NULL;
+    if (inputNumber >= ADC_COUNT)
+    {
+        NON_FATAL_ERROR(INVALID_ADC_NUMBER);
+        queueHandle = &(QInputValues[0]); // A safe fallback
+    }
+    else
+    {
+        queueHandle = &(QInputValues[inputNumber]);
+    }
+    return queueHandle;
+}
+
+static QueueHandle_t *getTicksQueue(uint8_t inputNumber)
+{
+    static QueueHandle_t QInputTicks[ADC_COUNT] = {NULL, NULL, NULL, NULL};
+    QueueHandle_t *queueHandle = NULL;
+    if (inputNumber >= ADC_COUNT)
+    {
+        NON_FATAL_ERROR(INVALID_ADC_NUMBER);
+        queueHandle = &(QInputTicks[0]); // A safe fallback
+    }
+    else
+    {
+        queueHandle = &(QInputTicks[inputNumber]);
+    }
+    return queueHandle;
+}
 
 extern void serial_printf(const char *fmt, ...);
 
@@ -35,63 +65,79 @@ void ADCTask(void *arg);
 #define ADCTASK_STACK_SIZE 450 // 400 by static analysis
 
 // FreeRTOS tasks
-static uint32_t ADCTask_buffer[ADCTASK_STACK_SIZE];
-static StaticTask_t ADCTask_ControlBlock;
-const osThreadAttr_t ADCTask_attributes = {
-    .name = "ADCTask",
-    .cb_mem = &ADCTask_ControlBlock,
-    .cb_size = sizeof(ADCTask_ControlBlock),
-    .stack_mem = &ADCTask_buffer[0],
-    .stack_size = sizeof(ADCTask_buffer),
-    .priority = (osPriority_t)ADC_PRIORITY};
-osThreadId_t ADCTaskHandle;
+static osThreadId_t *getOSThreadId(void)
+{
+    static osThreadId_t ADCTaskHandle;
+    return &ADCTaskHandle;
+}
 
 void InitADCs(void)
 {
-    ADCTaskHandle = osThreadNew(ADCTask, NULL, &ADCTask_attributes);
-    // readADCHandle = osThreadNew(readADC, NULL, &readADC_attributes);
+    static uint32_t ADCTask_buffer[ADCTASK_STACK_SIZE];
+    static StaticTask_t ADCTask_ControlBlock;
+    static const osThreadAttr_t ADCTask_attributes = {
+        .name = "ADCTask",
+        .attr_bits = osThreadDetached,
+        .cb_mem = &ADCTask_ControlBlock,
+        .cb_size = sizeof(ADCTask_ControlBlock),
+        .stack_mem = &ADCTask_buffer[0],
+        .stack_size = sizeof(ADCTask_buffer),
+        .priority = ADC_PRIORITY,
+        .tz_module = 0,
+        .reserved = 0};
+
+    osThreadId_t *ADCTaskHandle = getOSThreadId();
+    *ADCTaskHandle = osThreadNew(ADCTask, NULL, &ADCTask_attributes);
 }
 
 uint32_t GetInputTicks(uint8_t inputIndex)
 {
     uint32_t ticks = 0;
-    if (QInputTicks[inputIndex] != NULL)
+
+    QueueHandle_t *ticksQueue = getTicksQueue(inputIndex);
+    if ((*ticksQueue != NULL) && (pdTRUE == xQueuePeek(*ticksQueue, &ticks, 0)))
     {
-        if (pdFALSE == xQueuePeek(QInputTicks[inputIndex], &ticks, 0))
-        {
-            NON_FATAL_ERROR(TIMEOUT_ERROR);
-        }
+        // Everything is fine
+    }
+    else
+    {
+
+        NON_FATAL_ERROR(TIMEOUT_ERROR);
     }
     return ticks;
 }
 uint16_t GetInputValue(uint8_t inputIndex)
 {
     uint16_t adcCounts = 0;
-    if (QInputValues[inputIndex] != NULL)
+    QueueHandle_t *inputQueue = getInputQueue(inputIndex);
+    if ((*inputQueue != NULL) && (pdTRUE == xQueuePeek(*inputQueue, &adcCounts, 0)))
     {
-        if (pdFALSE == xQueuePeek(QInputValues[inputIndex], &adcCounts, 0))
-        {
-            NON_FATAL_ERROR(TIMEOUT_ERROR);
-        }
+        // Everything is fine
+    }
+    else
+    {
+        NON_FATAL_ERROR(TIMEOUT_ERROR);
     }
     return adcCounts;
 }
 
 void BlockForADC(uint8_t inputIndex)
 {
-    bool valuesReset = xQueueReset(QInputValues[inputIndex]);
-    bool inputReset = xQueueReset(QInputValues[inputIndex]);
+    QueueHandle_t *ticksQueue = getTicksQueue(inputIndex);
+    QueueHandle_t *inputQueue = getInputQueue(inputIndex);
+    bool ticksReset = xQueueReset(*ticksQueue);
+    bool inputReset = xQueueReset(*inputQueue);
 
-    if (valuesReset && inputReset) // reset always returns pdPASS, so this should always evaluate to true
+    if (ticksReset && inputReset) // reset always returns pdPASS, so this should always evaluate to true
     {
         uint32_t ticks = 0;
         uint16_t adcCounts = 0;
-        bool ticksAvailable = xQueuePeek(QInputTicks[inputIndex], &ticks, pdMS_TO_TICKS(1000));
-        bool inputAvailable = xQueuePeek(QInputValues[inputIndex], &adcCounts, pdMS_TO_TICKS(1000));
+        bool ticksAvailable = xQueuePeek(*ticksQueue, &ticks, pdMS_TO_TICKS(1000));
+        bool inputAvailable = xQueuePeek(*inputQueue, &adcCounts, pdMS_TO_TICKS(1000));
 
         if ((!ticksAvailable) && (!inputAvailable))
         {
-            // Data is not avaliable, but the later code is able to handle that,
+            // Data is not available, but the later code is able to handle that,
             // This method mainly exists to rest for a convenient, event-based amount
             NON_FATAL_ERROR(TIMEOUT_ERROR);
         }
@@ -104,43 +150,46 @@ void BlockForADC(uint8_t inputIndex)
 
 ////////////////////////////// ADC EVENTS
 /// Happens in IRQ so gotta be quick
-void ADC_I2C_Receive_Complete(uint8_t adcAddr, I2C_HandleTypeDef *hi2c)
+void ADC_I2C_Receive_Complete(void)
 {
-    uint32_t err = osThreadFlagsSet(ADCTaskHandle, READ_COMPLETE_FLAG);
+    osThreadId_t *ADCTaskHandle = getOSThreadId();
+    uint32_t err = osThreadFlagsSet(*ADCTaskHandle, READ_COMPLETE_FLAG);
     if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
     { // Detect any flag error states
         NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
     }
 }
 
-void ADC_I2C_Transmit_Complete(uint8_t adcAddr)
+void ADC_I2C_Transmit_Complete(void)
 {
-    uint32_t err = osThreadFlagsSet(ADCTaskHandle, TRANSMIT_COMPLETE_FLAG);
+    osThreadId_t *ADCTaskHandle = getOSThreadId();
+    uint32_t err = osThreadFlagsSet(*ADCTaskHandle, TRANSMIT_COMPLETE_FLAG);
     if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
     { // Detect any flag error states
         NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
     }
 }
 
-void ADC_Ready_Interrupt(uint8_t adcAddr)
+void ADC_Ready_Interrupt(void)
 {
-    uint32_t err = osThreadFlagsSet(ADCTaskHandle, READ_READY_FLAG);
+    osThreadId_t *ADCTaskHandle = getOSThreadId();
+    uint32_t err = osThreadFlagsSet(*ADCTaskHandle, READ_READY_FLAG);
     if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
     { // Detect any flag error states
         NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
     }
 }
 
-void configureADC(uint16_t configuration, InputState_s input)
+void configureADC(uint16_t configuration, const InputState_t* const input)
 {
     uint16_t lowThreshold = 0;
     uint16_t highThreshold = 0xFFFF;
 
     uint8_t configBytes[2] = {0};
     configBytes[1] = (uint8_t)configuration;
-    configBytes[0] = (uint8_t)(configuration >> 8);
+    configBytes[0] = (uint8_t)(configuration >> BYTE_WIDTH);
 
-    if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (uint8_t *)&lowThreshold, sizeof(lowThreshold)))
+    if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input->adcAddress) << 1), ADC_LOW_THRESHOLD_REGISTER, sizeof(ADC_LOW_THRESHOLD_REGISTER), (uint8_t *)&lowThreshold, sizeof(lowThreshold)))
     {
         NON_FATAL_ERROR(I2C_BUS_ERROR);
     }
@@ -149,7 +198,7 @@ void configureADC(uint16_t configuration, InputState_s input)
         NON_FATAL_ERROR(FLAG_ERROR);
     }
 
-    if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t *)&highThreshold, sizeof(highThreshold)))
+    if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input->adcAddress) << 1), ADC_HIGH_THRESHOLD_REGISTER, sizeof(ADC_HIGH_THRESHOLD_REGISTER), (uint8_t *)&highThreshold, sizeof(highThreshold)))
     {
         NON_FATAL_ERROR(I2C_BUS_ERROR);
     }
@@ -158,7 +207,7 @@ void configureADC(uint16_t configuration, InputState_s input)
         NON_FATAL_ERROR(FLAG_ERROR);
     }
 
-    if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input.adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)))
+    if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(input->adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)))
     {
         NON_FATAL_ERROR(I2C_BUS_ERROR);
     }
@@ -169,43 +218,67 @@ void configureADC(uint16_t configuration, InputState_s input)
 }
 
 // Tasks
-static InputState_s adcInput[ADC_COUNT] = {0};
+static InputState_t *getInputState(uint8_t inputIdx)
+{
+    static InputState_t adcInput[ADC_COUNT] = {0};
+    InputState_t *inputState = NULL;
+    if (inputIdx >= ADC_COUNT)
+    {
+        NON_FATAL_ERROR(INVALID_ADC_NUMBER);
+        inputState = &(adcInput[0]); // A safe fallback
+    }
+    else
+    {
+        inputState = &(adcInput[inputIdx]);
+    }
+    return inputState;
+}
 
-void ADCTask(void *arg)
+void ADCTask(void *arg) // Yes this warns but it needs to be that way for matching the caller
 {
     const uint8_t INPUT_1 = 0;
     const uint8_t INPUT_2 = 1;
     const uint8_t INPUT_3 = 2;
     const uint8_t INPUT_4 = 3;
 
-    adcInput[INPUT_1].adcAddress = ADC1_ADDR;
-    adcInput[INPUT_1].inputIndex = ADC_INPUT_1;
+    InputState_t *adcInput1 = getInputState(INPUT_1);
+    adcInput1->adcAddress = ADC1_ADDR;
+    adcInput1->inputIndex = ADC_INPUT_1;
 
-    adcInput[INPUT_2].adcAddress = ADC1_ADDR;
-    adcInput[INPUT_2].inputIndex = ADC_INPUT_2;
+    InputState_t *adcInput2 = getInputState(INPUT_2);
+    adcInput2->adcAddress = ADC1_ADDR;
+    adcInput2->inputIndex = ADC_INPUT_2;
 
-    adcInput[INPUT_3].adcAddress = ADC2_ADDR;
-    adcInput[INPUT_3].inputIndex = ADC_INPUT_1;
+    InputState_t *adcInput3 = getInputState(INPUT_3);
+    adcInput3->adcAddress = ADC2_ADDR;
+    adcInput3->inputIndex = ADC_INPUT_1;
 
-    adcInput[INPUT_4].adcAddress = ADC2_ADDR;
-    adcInput[INPUT_4].inputIndex = ADC_INPUT_2;
+    InputState_t *adcInput4 = getInputState(INPUT_4);
+    adcInput4->adcAddress = ADC2_ADDR;
+    adcInput4->inputIndex = ADC_INPUT_2;
 
     for (uint8_t i = 0; i < ADC_COUNT; ++i)
     {
-        adcInput[i].QInputValue = xQueueCreateStatic(1, sizeof(uint16_t), adcInput[i].QInputValue_Storage, &(adcInput[i].QInputValue_QueueStruct));
-        adcInput[i].QInputTick = xQueueCreateStatic(1, sizeof(uint32_t), adcInput[i].QInputTicks_Storage, &(adcInput[i].QInputTicks_QueueStruct));
+        InputState_t *adcInput = getInputState(i);
+        adcInput->QInputValue = xQueueCreateStatic(1, sizeof(uint16_t), adcInput->QInputValue_Storage, &(adcInput->QInputValue_QueueStruct));
+        adcInput->QInputTick = xQueueCreateStatic(1, sizeof(uint32_t), adcInput->QInputTicks_Storage, &(adcInput->QInputTicks_QueueStruct));
 
-        QInputValues[i] = adcInput[i].QInputValue;
-        QInputTicks[i] = adcInput[i].QInputTick;
+        QueueHandle_t *inputQueue = getInputQueue(i);
+        *inputQueue = adcInput->QInputValue;
+
+        QueueHandle_t *ticksQueue = getTicksQueue(i);
+        *ticksQueue = adcInput->QInputTick;
     }
 
-    while (1 != 0) // Loop forever as we are an RTOS task
+    while (true) // Loop forever as we are an RTOS task
     {
         for (uint8_t i = 0; i < ADC_COUNT; ++i)
         {
+            InputState_t *adcInput = getInputState(i);
+
             // Configure the ADC
             uint16_t configuration = (uint16_t)((0 << 15) |                      // Operational status: noop
-                                                (adcInput[i].inputIndex << 12) | // ADC Input: Inputs are either 0b00 (input 0) or 0b11 (input 1)
+                                                ((uint16_t)((uint16_t)adcInput->inputIndex << 12)) | // ADC Input: Inputs are either 0b00 (input 0) or 0b11 (input 1)
                                                 (0b111 << 9) |                   // PGA: 16x
                                                 (1 << 8) |                       // Mode: single shot
                                                 (0b00 << 5) |                    // Data rate: 8SPS
@@ -214,14 +287,14 @@ void ADCTask(void *arg)
                                                 (0 << 2) |                       // Comparator latch: non-latching
                                                 0);                              // Comparator queue: 1 conversion
             // Configure for the next input
-            configureADC(configuration, adcInput[i]); // Will yield during I2C TX
+            configureADC(configuration, adcInput); // Will yield during I2C TX
 
             // Start the conversion
             uint16_t triggerReadConfiguration = (uint16_t)((1 << 15) | configuration); // Set the operation bit to start a conversion
             uint8_t configBytes[2] = {0};
             configBytes[1] = (uint8_t)triggerReadConfiguration;
-            configBytes[0] = (uint8_t)(triggerReadConfiguration >> 8);
-            if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)))
+            configBytes[0] = (uint8_t)(triggerReadConfiguration >> BYTE_WIDTH);
+            if (HAL_OK != HAL_I2C_Mem_Write_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput->adcAddress) << 1), ADC_CONFIG_REGISTER, sizeof(ADC_CONFIG_REGISTER), configBytes, sizeof(configBytes)))
             {
                 NON_FATAL_ERROR(I2C_BUS_ERROR);
             }
@@ -232,8 +305,8 @@ void ADCTask(void *arg)
             }
 
             // Read the ADC
-            uint8_t conversionRegister[2] = {0}; // Memory space to recieve inputs into
-            if (HAL_OK != HAL_I2C_Mem_Read_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput[i].adcAddress) << 1), 0x00, 1, conversionRegister, sizeof(conversionRegister)))
+            uint8_t conversionRegister[2] = {0}; // Memory space to receive inputs into
+            if (HAL_OK != HAL_I2C_Mem_Read_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput->adcAddress) << 1), 0x00, 1, conversionRegister, sizeof(conversionRegister)))
             {
                 NON_FATAL_ERROR(I2C_BUS_ERROR);
             }
@@ -246,14 +319,20 @@ void ADCTask(void *arg)
             // Export the value to the queue
             uint16_t adcCounts = (uint16_t)((uint16_t)conversionRegister[0] << 8) | conversionRegister[1];
             uint32_t ticks = HAL_GetTick();
-            bool valueWrite = xQueueOverwrite(adcInput[i].QInputValue, &adcCounts);
-            if (valueWrite) // Make sure our value got updated first, we don't want the ticks queue to lie about the currency of the data
+            bool valueWrite = xQueueOverwrite(adcInput->QInputValue, &adcCounts);
+            bool tickWrite = false;
+            if (true == valueWrite) // Make sure our value got updated first, we don't want the ticks queue to lie about the currency of the data
             {
-                bool tickWrite = xQueueOverwrite(adcInput[i].QInputTick, &ticks);
-                if(!tickWrite){
-                    NON_FATAL_ERROR(QUEUEING_ERROR);
-                }
-            } else {
+                tickWrite = xQueueOverwrite(adcInput->QInputTick, &ticks);
+            }
+            else
+            {
+                NON_FATAL_ERROR(QUEUEING_ERROR);
+            }
+
+            // Check the tick write before packing up
+            if (!tickWrite)
+            {
                 NON_FATAL_ERROR(QUEUEING_ERROR);
             }
         }

@@ -17,24 +17,32 @@ void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *
 #define CANTASK_STACK_SIZE 400 // 312 by static analysis
 
 // FreeRTOS tasks
-static uint32_t CANTask_buffer[CANTASK_STACK_SIZE];
-static StaticTask_t CANTask_ControlBlock;
-const osThreadAttr_t CANTask_attributes = {
-    .name = "CANTask",
-    .cb_mem = &CANTask_ControlBlock,
-    .cb_size = sizeof(CANTask_ControlBlock),
-    .stack_mem = &CANTask_buffer[0],
-    .stack_size = sizeof(CANTask_buffer),
-    .priority = CAN_RX_PRIORITY};
-osThreadId_t CANTaskHandle;
 
-
-
+static osThreadId_t *getOSThreadId(void)
+{
+    static osThreadId_t CANTaskHandle;
+    return &CANTaskHandle;
+}
 
 void InitDiveCAN(DiveCANDevice_t *deviceSpec)
 {
     InitRXQueue();
-    CANTaskHandle = osThreadNew(CANTask, deviceSpec, &CANTask_attributes);
+
+    static uint32_t CANTask_buffer[CANTASK_STACK_SIZE];
+    static StaticTask_t CANTask_ControlBlock;
+    static const osThreadAttr_t CANTask_attributes = {
+        .name = "CANTask",
+        .attr_bits = osThreadDetached,
+        .cb_mem = &CANTask_ControlBlock,
+        .cb_size = sizeof(CANTask_ControlBlock),
+        .stack_mem = &CANTask_buffer[0],
+        .stack_size = sizeof(CANTask_buffer),
+        .priority = CAN_RX_PRIORITY,
+        .tz_module = 0,
+        .reserved = 0};
+
+    osThreadId_t *CANTaskHandle = getOSThreadId();
+    *CANTaskHandle = osThreadNew(CANTask, deviceSpec, &CANTask_attributes);
     txStartDevice(DIVECAN_CONTROLLER, DIVECAN_SOLO);
 }
 
@@ -47,7 +55,7 @@ void CANTask(void *arg)
     while (true)
     {
         DiveCANMessage_t message = {0};
-        if (pdTRUE == GetLatestCAN(1000, &message))
+        if (pdTRUE == GetLatestCAN(TIMEOUT_1S, &message))
         {
             uint32_t message_id = message.id & 0x1FFFF000; // Drop the source/dest stuff, we're listening for anything from anyone
             switch (message_id)
@@ -106,15 +114,19 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
 {
     DiveCANType_t devType = deviceSpec->type;
 
-    txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
-    txStatus(devType, 55, 70, DIVECAN_ERR_NONE);
-    txName(devType, deviceSpec->name);
+    // We only want to reply to a ping from the handset
+    if (((message->id & 0xF) == DIVECAN_CONTROLLER) || ((message->id & 0xF) == DIVECAN_MONITOR))
+    {
+        txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
+        txStatus(devType, deviceSpec->batteryVoltage, deviceSpec->setpoint, DIVECAN_ERR_NONE);
+        txName(devType, deviceSpec->name);
+    }
 }
 
 void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     FO2_t fO2 = message->data[0];
-    uint16_t pressure = (uint16_t)(((uint16_t)(message->data[2] << 8)) | (message->data[1]));
+    uint16_t pressure = (uint16_t)(((uint16_t)((uint16_t)message->data[2] << BYTE_WIDTH)) | (message->data[1]));
 
     RunCalibrationTask(deviceSpec->type, fO2, pressure);
 }

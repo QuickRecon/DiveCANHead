@@ -23,29 +23,40 @@ void PPO2TXTask(void *arg);
 Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3);
 void setFailedCellsValues(Consensus_t *consensus);
 
-// FreeRTOS tasks
-static uint32_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
-static StaticTask_t PPO2TXTask_ControlBlock;
-const osThreadAttr_t PPO2TXTask_attributes = {
-    .name = "PPO2TXTask",
-    .cb_mem = &PPO2TXTask_ControlBlock,
-    .cb_size = sizeof(PPO2TXTask_ControlBlock),
-    .stack_mem = &PPO2TXTask_buffer[0],
-    .stack_size = sizeof(PPO2TXTask_buffer),
-    .priority = (osPriority_t)CAN_PPO2_TX_PRIORITY};
-
-osThreadId_t PPO2TXTaskHandle;
-PPO2TXTask_params_t taskParams;
+static osThreadId_t *getOSThreadId(void)
+{
+    static osThreadId_t PPO2TXTaskHandle;
+    return &PPO2TXTaskHandle;
+}
 
 void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
 {
+
+    // Need to init the struct locally then value copy into the static
+    static PPO2TXTask_params_t taskParams;
     PPO2TXTask_params_t params = {
         .device = device,
         .c1 = c1,
         .c2 = c2,
         .c3 = c3};
+
     taskParams = params;
-    PPO2TXTaskHandle = osThreadNew(PPO2TXTask, &taskParams, &PPO2TXTask_attributes);
+
+    static uint32_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
+    static StaticTask_t PPO2TXTask_ControlBlock;
+    static const osThreadAttr_t PPO2TXTask_attributes = {
+        .name = "PPO2TXTask",
+        .attr_bits = osThreadDetached,
+        .cb_mem = &PPO2TXTask_ControlBlock,
+        .cb_size = sizeof(PPO2TXTask_ControlBlock),
+        .stack_mem = &PPO2TXTask_buffer[0],
+        .stack_size = sizeof(PPO2TXTask_buffer),
+        .priority = CAN_PPO2_TX_PRIORITY,
+        .tz_module = 0,
+        .reserved = 0};
+
+    osThreadId_t *PPO2TXTaskHandle = getOSThreadId();
+    *PPO2TXTaskHandle = osThreadNew(PPO2TXTask, &taskParams, &PPO2TXTask_attributes);
 }
 
 /// @brief The job of this task is to ingest the cell data passed to it via queues, calculate their consensus,
@@ -59,7 +70,7 @@ void PPO2TXTask(void *arg)
     do
     {
         ++i;
-        osDelay(500);
+        osDelay(TIMEOUT_500MS);
 
         OxygenCell_t c1 = {0};
         bool c1pick = xQueuePeek(params->c1, &c1, 100);
@@ -116,7 +127,7 @@ void setFailedCellsValues(Consensus_t *consensus)
                     (consensus->statuses[1] == CELL_NEED_CAL) ||
                     (consensus->statuses[2] == CELL_NEED_CAL);
 
-    if ((needsCal) && (!isCalibrating()))
+    if (needsCal && (!isCalibrating()))
     {
         for (uint8_t i = 0; i < CELL_COUNT; ++i)
         {

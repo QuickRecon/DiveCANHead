@@ -1,6 +1,5 @@
 #include "menu.h"
 #include "Transciever.h"
-#include <stdio.h>
 
 extern void serial_printf(const char *fmt, ...);
 
@@ -24,6 +23,7 @@ typedef enum DiveCANMenuReq_e
 static const uint8_t numberMask = 0x0F;
 static const uint8_t reqMask = 0xF0;
 static const uint8_t ReqOpFieldIdx = 4;
+static const uint8_t minValuesval = 5; // If the second hex digit is above this value its a value request
 
 const uint8_t menuCount = 2;
 const char *const menuItems[2] = {"TESTITEM 1", "TESTITEM 2"};
@@ -34,7 +34,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
     DiveCANType_t target = (DiveCANType_t)(0xF & (message->id));
     DiveCANType_t source = deviceSpec->type;
     uint8_t reqByte = message->data[ReqOpFieldIdx];
-    static uint8_t value = 0;
+    //static uint8_t value = 0;
 
     if (0 == reqByte)
     { // If we just need to ack then do that
@@ -55,13 +55,13 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
             serial_printf("Flags\r\n");
             txMenuFlags(target, source, reqByte, 1);
         }
-        else if (((reqByte & reqMask) >> 4) >= 5)
+        else if (((reqByte & reqMask) >> HALF_BYTE_WIDTH) >= minValuesval)
         {
             serial_printf("Field\r\n");
-            char teststr[9] = "";
-            value++;
-            sprintf(teststr, "F %d", value);
-            txMenuField(target, source, reqByte, teststr);
+            char test_str[9] = "TEST";
+            // value++;
+            // sprintf(test_str, "F %d", value);
+            txMenuField(target, source, reqByte, test_str);
         }
         else
         {

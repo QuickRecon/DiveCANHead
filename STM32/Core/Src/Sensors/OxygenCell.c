@@ -28,7 +28,6 @@ typedef struct CalParameters_s
 
 static QueueHandle_t *getQueueHandle(uint8_t cellNum)
 {
-
     static QueueHandle_t cellQueues[CELL_COUNT];
     QueueHandle_t *queueHandle = NULL;
     if (cellNum >= CELL_COUNT)

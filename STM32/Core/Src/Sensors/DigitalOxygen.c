@@ -35,7 +35,21 @@ extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
 
-static DigitalOxygenState_t digital_cellStates[3] = {0};
+static DigitalOxygenState_t *getCellState(uint8_t cellNum)
+{
+    static DigitalOxygenState_t digital_cellStates[3] = {0};
+    DigitalOxygenState_t *cellState = NULL;
+    if (cellNum >= CELL_COUNT)
+    {
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        cellState = &(digital_cellStates[0]); // A safe fallback
+    }
+    else
+    {
+        cellState = &(digital_cellStates[cellNum]);
+    }
+    return cellState;
+}
 
 extern void serial_printf(const char *fmt, ...);
 void decodeCellMessage(void *arg);
@@ -50,7 +64,7 @@ DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueu
     }
     else
     {
-        handle = &(digital_cellStates[cellNumber]);
+        handle = getCellState(cellNumber);
         handle->cellNumber = cellNumber;
         handle->outQueue = outQueue;
         switch (cellNumber)
@@ -75,11 +89,14 @@ DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueu
 
         osThreadAttr_t processor_attributes = {
             .name = "DigitalCellTask",
+            .attr_bits = osThreadDetached,
             .cb_mem = &(handle->processor_controlblock),
             .cb_size = sizeof(handle->processor_controlblock),
             .stack_mem = &(handle->processor_buffer)[0],
             .stack_size = sizeof(handle->processor_buffer),
-            .priority = PPO2_SENSOR_PRIORITY};
+            .priority = PPO2_SENSOR_PRIORITY,
+            .tz_module = 0,
+            .reserved = 0};
 
         handle->processor = osThreadNew(decodeCellMessage, handle, &processor_attributes);
     }
@@ -130,7 +147,7 @@ void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
     }
 }
 
-CellStatus_t cellErrorCheck(DigitalOxygenState_t *cell, const char *err_str)
+CellStatus_t cellErrorCheck(const char *err_str)
 {
     uint32_t errCode = (uint16_t)(strtol(err_str, NULL, PPO2_BASE));
     CellStatus_t status = CELL_OK;
@@ -178,7 +195,7 @@ void decodeCellMessage(void *arg)
 
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
-                cell->status = cellErrorCheck(cell, err_str);
+                cell->status = cellErrorCheck(err_str);
                 cell->ticksOfLastPPO2 = HAL_GetTick();
 
                 // serial_printf("PPO2: %d\r\n", cell->cellSample);
@@ -198,7 +215,7 @@ void decodeCellMessage(void *arg)
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
                 cell->pressure = strtol(pressure_str, NULL, PPO2_BASE);
                 cell->humidity = strtol(humidity_str, NULL, PPO2_BASE);
-                cell->status = cellErrorCheck(cell, err_str);
+                cell->status = cellErrorCheck(err_str);
                 cell->ticksOfLastPPO2 = HAL_GetTick();
 
                 // serial_printf("Pressure string %s\r\n", pressure_str);
@@ -207,14 +224,14 @@ void decodeCellMessage(void *arg)
             {
 
                 serial_printf("UNKNOWN CELL MESSSAGE: %s\r\n", msgBuf);
-                osDelay(500);
+                osDelay(TIMEOUT_500MS);
                 // Not a command we care about
             }
         }
         else
         {
             NON_FATAL_ERROR(TIMEOUT_ERROR);
-            osDelay(500);
+            osDelay(TIMEOUT_500MS);
         }
         Digital_broadcastPPO2(cell);
         sendCellCommand(GET_DETAIL_COMMAND, cell);
@@ -226,9 +243,10 @@ DigitalOxygenState_t *uartToCell(const UART_HandleTypeDef *huart)
     DigitalOxygenState_t *ptr = NULL;
     for (uint8_t i = 0; i < CELL_COUNT; ++i)
     {
-        if (huart == digital_cellStates[i].huart)
+        DigitalOxygenState_t *provisionalPtr = getCellState(i);
+        if (huart == provisionalPtr->huart)
         {
-            ptr = &(digital_cellStates[i]);
+            ptr = provisionalPtr;
         }
     }
     return ptr;
@@ -246,12 +264,22 @@ void Cell_TX_Complete(const UART_HandleTypeDef *huart)
 void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 {
     DigitalOxygenState_t *cell = uartToCell(huart);
-    if (cell != NULL)
+
+    if (size > RX_BUFFER_LENGTH)
     {
-        cell->ticksOfLastMessage = HAL_GetTick();
-        if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsSet(cell->processor, 0x0001U)))
+        FATAL_ERROR(BUFFER_OVERRUN);
+    }
+    else
+    {
+        if (cell != NULL)
         {
-            NON_FATAL_ERROR(FLAG_ERROR);
+            cell->ticksOfLastMessage = HAL_GetTick();
+            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsSet(cell->processor, 0x0001U)))
+            {
+                NON_FATAL_ERROR(FLAG_ERROR);
+            }
+        } else {
+            NON_FATAL_ERROR(INVALID_CELL_NUMBER); // We couldn't find the cell to alert the thread
         }
     }
 }

@@ -7,10 +7,23 @@
 #include <stdbool.h>
 #include "OxygenCell.h"
 #include "../errors.h"
+#include <math.h>
 
-// static const uint8_t adc_addr[3] = {ADC1_ADDR, ADC1_ADDR, ADC2_ADDR};
-// static const uint8_t adc_input_num[3] = {0, 1, 0};
-static AnalogOxygenState_t analog_cellStates[3] = {0};
+static AnalogOxygenState_t *getCellState(uint8_t cellNum)
+{
+    static AnalogOxygenState_t analog_cellStates[3] = {0};
+    AnalogOxygenState_t *cellState = NULL;
+    if (cellNum >= CELL_COUNT)
+    {
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        cellState = &(analog_cellStates[0]); // A safe fallback
+    }
+    else
+    {
+        cellState = &(analog_cellStates[cellNum]);
+    }
+    return cellState;
+}
 
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x1;
 
@@ -37,20 +50,22 @@ AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
     }
     else
     {
-        handle = &(analog_cellStates[cellNumber]);
+        handle = getCellState(cellNumber);
         handle->cellNumber = cellNumber;
         handle->adcInputIndex = cellNumber;
         handle->outQueue = outQueue;
         ReadCalibration(handle);
 
         osThreadAttr_t processor_attributes = {
-
             .name = "AnalogCellTask",
+            .attr_bits = osThreadDetached,
             .cb_mem = &(handle->processor_controlblock),
             .cb_size = sizeof(handle->processor_controlblock),
             .stack_mem = &(handle->processor_buffer)[0],
             .stack_size = sizeof(handle->processor_buffer),
-            .priority = PPO2_SENSOR_PRIORITY};
+            .priority = PPO2_SENSOR_PRIORITY,
+            .tz_module = 0,
+            .reserved = 0};
 
         handle->processor = osThreadNew(analogProcessor, handle, &processor_attributes);
     }
@@ -63,7 +78,7 @@ void ReadCalibration(AnalogOxygenState_t *handle)
     uint32_t calInt = 0;
     EE_Status result = EE_ReadVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, &calInt);
 
-    handle->calibrationCoefficient = (float)calInt / (float)CAL_TO_INT32;
+    handle->calibrationCoefficient = (Numeric_t)calInt / (Numeric_t)CAL_TO_INT32;
 
     if (result == EE_OK)
     {
@@ -121,7 +136,7 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
     serial_printf("Calibrated cell %d with coefficient %f\r\n", handle->cellNumber, newCal);
 
     // Convert it to raw bytes
-    uint32_t calInt = (int32_t)(newCal * (float)CAL_TO_INT32);
+    uint32_t calInt = (uint32_t)round(newCal * (CalCoeff_t)CAL_TO_INT32);
     //  Write that shit to the eeprom
     if (HAL_OK == HAL_FLASH_Unlock())
     {
@@ -143,7 +158,8 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
     ReadCalibration(handle);
 
     // If we're still saying needs cal, then we change that to failure as we've tried and failed to cal the system
-    if(handle->status == CELL_NEED_CAL){
+    if (handle->status == CELL_NEED_CAL)
+    {
         handle->status = CELL_FAIL;
     }
 
@@ -153,15 +169,15 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
         handle->status = CELL_FAIL;
         NON_FATAL_ERROR(CAL_MISMATCH_ERR);
     }
-
-    return (ShortMillivolts_t)((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS / 100);
+    const CalCoeff_t TO_SHORT_MILLIS = 1/100;
+    return (ShortMillivolts_t)round(((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS * TO_SHORT_MILLIS));
 }
 
 Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
 {
     uint16_t adcCounts = GetInputValue(handle->adcInputIndex);
-    float adcMillis = ((float)abs(adcCounts)) * COUNTS_TO_MILLIS;
-    return (Millivolts_t)(adcMillis);
+    Numeric_t adcMillis = ((Numeric_t)abs(adcCounts)) * COUNTS_TO_MILLIS;
+    return (Millivolts_t)round(adcMillis);
 }
 
 void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
