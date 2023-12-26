@@ -30,7 +30,9 @@ typedef struct OxygenCell_s
 
 typedef enum OxygenCalMethod_e
 {
-    CAL_DIGITAL_REFERENCE
+    CAL_DIGITAL_REFERENCE,
+    CAL_ANALOG_ABSOLUTE,
+    CAL_TOTAL_ABSOLUTE
 } OxygenCalMethod_t;
 
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);

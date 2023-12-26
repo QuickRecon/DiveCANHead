@@ -32,12 +32,14 @@
         "eeprom_emul.h": "c",
         "oxygencell.h": "c",
         "typeinfo": "cpp",
-        "optional": "c"
+        "optional": "c",
+        "cmath": "c"
     },
     "makefile.compileCommandsPath": ".vscode/compile_commands.json",
     "sonarlint.pathToCompileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
     "cSpell.words": [
         "Callbackx",
+        "CALTASK",
         "Cplt",
         "Devaddress",
         "DIVECAN",

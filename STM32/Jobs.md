@@ -4,6 +4,7 @@
 - IWDG verify program state
 - Two asserts per function
 - Handle cal failure
+- Add -Wextra -Wpedantic -Wconversion to the cflags
 - Battery reading and power switching
 - Startup sequencing issue
 

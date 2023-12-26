@@ -10,11 +10,18 @@ extern "C"
 
     // Value types
     typedef uint8_t PPO2_t;
+    typedef float Numeric_t; // A generic numeric type for when we want to do floating point calculations, for easy choosing between size of floats
     typedef uint8_t FO2_t;
     typedef uint16_t Millivolts_t;
     typedef uint8_t ShortMillivolts_t;
     typedef float CalCoeff_t;
     typedef uint32_t Timestamp_t; // Internal tick count used for tracking timeouts
+
+    // Static timouts
+    static const uint32_t TIMEOUT_100MS = 100;
+    static const uint32_t TIMEOUT_1S = 1000;
+    static const uint32_t TIMEOUT_4s = 4000;
+
 
     // PPO2 values
     static const PPO2_t PPO2_FAIL = 0xFF;
