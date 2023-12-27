@@ -324,6 +324,9 @@ void SystemClock_Config(void)
   */
 static void MX_NVIC_Init(void)
 {
+  /* EXTI9_5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
   /* I2C1_EV_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(I2C1_EV_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
@@ -774,9 +777,9 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(MOCK_SD_DETECT_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA0 PA8 PA13 BATTERY_Pin
+  /*Configure GPIO pins : PA0 PA8 PA13 BATTERY_V_Pin
                            PA15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_8|GPIO_PIN_13|BATTERY_Pin
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_8|GPIO_PIN_13|BATTERY_V_Pin
                           |GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -814,8 +817,8 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : CAN_EN_Pin */
   GPIO_InitStruct.Pin = CAN_EN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(CAN_EN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : ADC1_ALERT_Pin ADC2_ALERT_Pin */
@@ -835,10 +838,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */

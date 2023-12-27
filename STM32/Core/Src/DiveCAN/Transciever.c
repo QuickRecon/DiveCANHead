@@ -115,10 +115,14 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     if ((NULL != *inbound) && (NULL != *dataAvail))
     {
         bool dataReady = true;
-        xQueueOverwriteFromISR(*dataAvail, &dataReady, NULL);
+        BaseType_t err = xQueueOverwriteFromISR(*dataAvail, &dataReady, NULL);
+        if (pdPASS != err)
+        {
+            NON_FATAL_ERROR_ISR(QUEUEING_ERROR);
+        }
 
-        BaseType_t err = xQueueSendToBackFromISR(*inbound, &message, NULL);
-        if (errQUEUE_FULL == err)
+        xQueueSendToBackFromISR(*inbound, &message, NULL);
+        if (pdPASS != err)
         {
             NON_FATAL_ERROR_ISR(QUEUEING_ERROR);
         }

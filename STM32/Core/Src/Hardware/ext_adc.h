@@ -26,6 +26,7 @@ typedef struct InputState_s
 } InputState_t;
 
 void InitADCs(void);
+void DeInitADCs(void);
 
 uint32_t GetInputTicks(uint8_t inputIndex);
 uint16_t GetInputValue(uint8_t inputIndex);

@@ -1,11 +1,16 @@
 # Things that really ought to happen before this gets used on a dive
-- Menu logic
-- Poweroff/standby
+- Menu logic, this should allow for cell mode switching, display any error states, as well as firmware commit
 - IWDG verify program state
 - Error logging to eeprom emulation
+- Work out why the brightness goes down when the CAN bus connects
 
 # Hardware changes
+- Work out why standby power consumption is 10 mA
 - Battery reading and power switching (REQUIRES HARDWARE CHANGE, BATTERY ADC unavail, should route to PC3)
+- CAN_EN should be routed to any of PA0, PC13, PE6, PA2, or PC5 so we can go to standby/shutdown rather than just STOP
+- Expand CAN voltage tolerance, 9v batter suitable (12v so we have headroom?)
+- DAC output to cell port
+- Add pulldowns on some pins (HW version identification, so we can do common core software)
 
 # Things that ought to get done
 - Menu for setting cell type

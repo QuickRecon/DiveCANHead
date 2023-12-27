@@ -65,8 +65,8 @@ void JumpToBootloader(void);
 #define MOCK_SD_DETECT_GPIO_Port GPIOC
 #define SOLENOID_Pin GPIO_PIN_1
 #define SOLENOID_GPIO_Port GPIOC
-#define CAN_Pin GPIO_PIN_2
-#define CAN_GPIO_Port GPIOC
+#define CAN_V_Pin GPIO_PIN_2
+#define CAN_V_GPIO_Port GPIOC
 #define BATTERY_EN_Pin GPIO_PIN_1
 #define BATTERY_EN_GPIO_Port GPIOA
 #define VCC_STAT_Pin GPIO_PIN_4
@@ -102,8 +102,8 @@ void JumpToBootloader(void);
 #define ADC2_ALERT_Pin GPIO_PIN_12
 #define ADC2_ALERT_GPIO_Port GPIOA
 #define ADC2_ALERT_EXTI_IRQn EXTI15_10_IRQn
-#define BATTERY_Pin GPIO_PIN_14
-#define BATTERY_GPIO_Port GPIOA
+#define BATTERY_V_Pin GPIO_PIN_14
+#define BATTERY_V_GPIO_Port GPIOA
 #define SOL_SEL2_Pin GPIO_PIN_3
 #define SOL_SEL2_GPIO_Port GPIOB
 #define SOL_SEL1_Pin GPIO_PIN_4

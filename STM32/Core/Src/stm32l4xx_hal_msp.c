@@ -116,10 +116,10 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
     /**ADC1 GPIO Configuration
     PC2     ------> ADC1_IN3
     */
-    GPIO_InitStruct.Pin = CAN_Pin;
+    GPIO_InitStruct.Pin = CAN_V_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(CAN_GPIO_Port, &GPIO_InitStruct);
+    HAL_GPIO_Init(CAN_V_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN ADC1_MspInit 1 */
 
@@ -147,7 +147,7 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* hadc)
     /**ADC1 GPIO Configuration
     PC2     ------> ADC1_IN3
     */
-    HAL_GPIO_DeInit(CAN_GPIO_Port, CAN_Pin);
+    HAL_GPIO_DeInit(CAN_V_GPIO_Port, CAN_V_Pin);
 
   /* USER CODE BEGIN ADC1_MspDeInit 1 */
 

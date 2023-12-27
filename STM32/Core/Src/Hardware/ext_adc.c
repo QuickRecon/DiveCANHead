@@ -90,6 +90,10 @@ void InitADCs(void)
     *ADCTaskHandle = osThreadNew(ADCTask, NULL, &ADCTask_attributes);
 }
 
+void DeInitADCs(void){
+    osThreadTerminate(*getOSThreadId());
+}
+
 uint32_t GetInputTicks(uint8_t inputIndex)
 {
     uint32_t ticks = 0;

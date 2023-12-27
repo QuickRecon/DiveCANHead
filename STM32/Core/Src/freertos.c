@@ -53,27 +53,11 @@ extern void serial_printf(const char *fmt, ...);
 /* USER CODE END FunctionPrototypes */
 
 /* Hook prototypes */
-void configureTimerForRunTimeStats(void);
-unsigned long getRunTimeCounterValue(void);
-void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
+void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
 
-/* USER CODE BEGIN 1 */
-volatile unsigned long ulHighFrequencyTimerTicks;
-/* Functions needed when configGENERATE_RUN_TIME_STATS is on */
-void configureTimerForRunTimeStats(void)
-{
-    ulHighFrequencyTimerTicks = 0;
-}
-
-unsigned long getRunTimeCounterValue(void)
-{
-	return ulHighFrequencyTimerTicks;
-}
-/* USER CODE END 1 */
-
 /* USER CODE BEGIN 4 */
-void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName)
+void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
 {
   serial_printf("STACK OVERFLOW: %s", pcTaskName);
    /* Run time stack overflow checking is performed if
