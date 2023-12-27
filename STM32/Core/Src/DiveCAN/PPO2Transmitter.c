@@ -193,6 +193,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
     {
         if ((consensus.statuses[cellIdx] == CELL_NEED_CAL) ||
             (consensus.statuses[cellIdx] == CELL_FAIL) ||
+            (consensus.statuses[cellIdx] == CELL_DEGRADED) ||
             ((now - sampleTimes[cellIdx]) > timeout))
         {
             consensus.included[cellIdx] = false;

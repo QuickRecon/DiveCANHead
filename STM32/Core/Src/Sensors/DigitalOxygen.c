@@ -162,10 +162,12 @@ CellStatus_t cellErrorCheck(const char *err_str)
         // Fatal errors
         status = CELL_FAIL;
     }
-    else
+    else if(errCode > 0)
     {
         // Nonfatal errors
         status = CELL_DEGRADED;
+    } else {
+        status = CELL_OK; // Everything is fine
     }
     return status;
 }

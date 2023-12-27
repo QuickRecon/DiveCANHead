@@ -239,7 +239,7 @@ void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, cons
 /// @param PPO2 The consensus PPO2 of the cells
 void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool cell2, const bool cell3, const PPO2_t PPO2)
 {
-    uint8_t cellMask = (uint8_t)((uint8_t)cell1 | (uint8_t)((uint8_t)cell2 << 1) | (uint8_t)((uint8_t)cell3 << 8));
+    uint8_t cellMask = (uint8_t)((uint8_t)cell1 | (uint8_t)((uint8_t)cell2 << 1) | (uint8_t)((uint8_t)cell3 << 2));
 
     uint8_t data[PPO2_STATUS_LEN] = {cellMask, PPO2};
     uint32_t Id = PPO2_STATUS_ID | deviceType;

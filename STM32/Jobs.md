@@ -2,7 +2,6 @@
 - Menu logic
 - Poweroff/standby
 - IWDG verify program state
-- Handle cal failure
 - Error logging to eeprom emulation
 - Battery reading and power switching
 - Startup sequencing issue:

@@ -550,6 +550,48 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesCalCell)
     }
 }
 
+TEST(PPO2Transmitter, calculateConsensus_ExcludesDegradedCell)
+{
+    uint8_t consensusVal[3] = {105, 110, 115};
+    for (int i = 0; i < 3; i++)
+    {
+        OxygenCell_t c1 = {
+            .cellNumber = 0,
+            .type = CELL_ANALOG,
+            .ppo2 = 120,
+            .millivolts = 0,
+            .status = (i == 0) ? CELL_DEGRADED : CELL_OK,
+            .data_time = 0};
+        OxygenCell_t c2 = {
+            .cellNumber = 1,
+            .type = CELL_ANALOG,
+            .ppo2 = 110,
+            .millivolts = 0,
+            .status = (i == 1) ? CELL_DEGRADED : CELL_OK,
+            .data_time = 0};
+        OxygenCell_t c3 = {
+            .cellNumber = 2,
+            .type = CELL_ANALOG,
+            .ppo2 = 100,
+            .millivolts = 0,
+            .status = (i == 2) ? CELL_DEGRADED : CELL_OK,
+            .data_time = 0};
+
+        Consensus_t expectedConsensus = {
+            .statuses = {(i == 0) ? CELL_DEGRADED : CELL_OK,
+                         (i == 1) ? CELL_DEGRADED : CELL_OK,
+                         (i == 2) ? CELL_DEGRADED : CELL_OK},
+            .PPO2s = {120, 110, 100},
+            .millis = {0, 0, 0},
+            .consensus = consensusVal[i],
+            .included = {(i == 0) ? false : true,
+                         (i == 1) ? false : true,
+                         (i == 2) ? false : true}};
+
+        checkConsensus(expectedConsensus, &c1, &c2, &c3);
+    }
+}
+
 TEST(PPO2Transmitter, calculateConsensus_DualCellFailure)
 {
     uint8_t consensusVal[3] = {120, 110, 100};

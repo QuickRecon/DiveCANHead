@@ -105,7 +105,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
     QueueHandle_t *queueHandle = getQueueHandle(refCellIndex);
 
     OxygenCell_t refCellData = {0};
-    if ((refCell != NULL) && (pdTRUE == xQueuePeek(*queueHandle, &refCellData, TIMEOUT_100MS)))
+    if ((refCell != NULL) && (pdTRUE == xQueuePeek(*queueHandle, &refCellData, TIMEOUT_100MS)) && (refCellData.status == CELL_OK))
     {
         PPO2_t ppO2 = refCellData.ppo2;
         uint16_t pressure = (uint16_t)(refCell->pressure / 1000);
