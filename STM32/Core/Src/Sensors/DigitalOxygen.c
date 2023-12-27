@@ -162,11 +162,13 @@ CellStatus_t cellErrorCheck(const char *err_str)
         // Fatal errors
         status = CELL_FAIL;
     }
-    else if(errCode > 0)
+    else if (errCode > 0)
     {
         // Nonfatal errors
         status = CELL_DEGRADED;
-    } else {
+    }
+    else
+    {
         status = CELL_OK; // Everything is fine
     }
     return status;
@@ -176,8 +178,28 @@ void decodeCellMessage(void *arg)
 {
     DigitalOxygenState_t *cell = (DigitalOxygenState_t *)arg;
 
+    // The cell needs 1 second to power up before its ready to deal with commands
+    // So we lodge an failure datapoint while we spool up
+    cell->status = CELL_FAIL; // We're failed while we start, we have no valid PPO2 data to give
+    OxygenCell_t cellData = {
+        .cellNumber = cell->cellNumber,
+        .type = CELL_DIGITAL,
+        .ppo2 = 0,
+        .millivolts = 0,
+        .status = cell->status,
+        .data_time = HAL_GetTick()};
+
+    if (pdFALSE == xQueueOverwrite(cell->outQueue, &cellData))
+    {
+        NON_FATAL_ERROR(QUEUEING_ERROR);
+    }
+
+    // Do the wait for cell startup
+    osDelay(TIMEOUT_1S);
+
     while (true)
     {
+        sendCellCommand(GET_DETAIL_COMMAND, cell);
         if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, pdMS_TO_TICKS(2000)))
         {
             char *msgBuf = cell->lastMessage;
@@ -236,7 +258,6 @@ void decodeCellMessage(void *arg)
             osDelay(TIMEOUT_500MS);
         }
         Digital_broadcastPPO2(cell);
-        sendCellCommand(GET_DETAIL_COMMAND, cell);
     }
 }
 
@@ -280,7 +301,9 @@ void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
             {
                 NON_FATAL_ERROR(FLAG_ERROR);
             }
-        } else {
+        }
+        else
+        {
             NON_FATAL_ERROR(INVALID_CELL_NUMBER); // We couldn't find the cell to alert the thread
         }
     }

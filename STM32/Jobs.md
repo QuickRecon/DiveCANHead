@@ -3,19 +3,6 @@
 - Poweroff/standby
 - IWDG verify program state
 - Error logging to eeprom emulation
-- Startup sequencing issue:
-ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:105
-ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
-ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
-ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
-ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
-ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
-ERR CODE 9(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:87
-ERR CODE 9(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:87
-ERR CODE 9(0x0) AT Core/Src/Sensors/DigitalOxygen.c:235
-ERR CODE 9(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:87
-ERR CODE 3(0x0) AT Core/Src/Sensors/DigitalOxygen.c:123
-ERR CODE 5(0x0) AT Core/Src/Sensors/DigitalOxygen.c:309
 
 # Hardware changes
 - Battery reading and power switching (REQUIRES HARDWARE CHANGE, BATTERY ADC unavail, should route to PC3)
