@@ -227,7 +227,7 @@ void analogProcessor(void *arg)
 
     while (true)
     {
-        Analog_broadcastPPO2(cell);
         BlockForADC(cell->cellNumber);
+        Analog_broadcastPPO2(cell);
     }
 }

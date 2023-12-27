@@ -101,7 +101,6 @@ uint32_t GetInputTicks(uint8_t inputIndex)
     }
     else
     {
-
         NON_FATAL_ERROR(TIMEOUT_ERROR);
     }
     return ticks;
