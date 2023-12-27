@@ -264,14 +264,15 @@ void txCalAck(DiveCANType_t deviceType)
 /// @param cell3 Millivolts of cell 3
 /// @param FO2 FO2 of the calibration mixture
 /// @param atmosphericPressure Atmospheric pressure at the time of calibration
-void txCalResponse(DiveCANType_t deviceType, ShortMillivolts_t cell1, ShortMillivolts_t cell2, ShortMillivolts_t cell3, FO2_t FO2, uint16_t atmosphericPressure)
+void txCalResponse(DiveCANType_t deviceType, DiveCANCalResponse_t response, ShortMillivolts_t cell1, ShortMillivolts_t cell2, ShortMillivolts_t cell3, FO2_t FO2, uint16_t atmosphericPressure)
 {
     uint8_t atmosBytes[2] = {(uint8_t)(atmosphericPressure >> 8), (uint8_t)atmosphericPressure};
 
-    uint8_t data[CAL_LEN] = {(uint8_t)DIVECAN_CAL_RESULT, cell1, cell2, cell3, FO2, atmosBytes[0], atmosBytes[1], 0x07};
+    uint8_t data[CAL_LEN] = {(uint8_t)response, cell1, cell2, cell3, FO2, atmosBytes[0], atmosBytes[1], 0x07};
     uint32_t Id = CAL_ID | deviceType;
     sendCANMessage(Id, data, CAL_LEN);
 }
+
 
 // Bus Devices
 void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, uint8_t itemCount)

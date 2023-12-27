@@ -4,7 +4,6 @@
 - IWDG verify program state
 - Handle cal failure
 - Error logging to eeprom emulation
-- Add -Wextra -Wpedantic -Wconversion to the cflags
 - Battery reading and power switching
 - Startup sequencing issue:
 

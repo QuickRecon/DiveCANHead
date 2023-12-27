@@ -6,7 +6,6 @@
 #include "main.h"
 #include <stdbool.h>
 #include "OxygenCell.h"
-#include "../errors.h"
 #include <math.h>
 
 static AnalogOxygenState_t *getCellState(uint8_t cellNum)
@@ -127,8 +126,9 @@ void ReadCalibration(AnalogOxygenState_t *handle)
 }
 
 // Calculate and write the eeprom
-ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
+ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
 {
+    *calError = ERR_NONE;
     uint16_t adcCounts = handle->lastCounts;
     // Our coefficient is simply the float needed to make the current sample the current PPO2
     CalCoeff_t newCal = (CalCoeff_t)(PPO2) / ((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS);
@@ -143,17 +143,20 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
         EE_Status result = EE_WriteVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + handle->cellNumber, calInt);
         if (HAL_OK != HAL_FLASH_Lock())
         {
-            NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+            *calError = FLASH_LOCK_ERROR;
+            NON_FATAL_ERROR(*calError);
         }
 
         if (result != EE_OK)
         {
-            NON_FATAL_ERROR(EEPROM_ERROR);
+            *calError = EEPROM_ERROR;
+            NON_FATAL_ERROR(*calError);
         }
     }
     else
     {
-        NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+        *calError = FLASH_LOCK_ERROR;
+        NON_FATAL_ERROR(*calError);
     }
     ReadCalibration(handle);
 
@@ -167,9 +170,10 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2)
         ((handle->calibrationCoefficient - newCal) < -0.00001))
     {
         handle->status = CELL_FAIL;
-        NON_FATAL_ERROR(CAL_MISMATCH_ERR);
+        *calError = CAL_MISMATCH_ERR;
+        NON_FATAL_ERROR(*calError);
     }
-    const CalCoeff_t TO_SHORT_MILLIS = 1/100;
+    const CalCoeff_t TO_SHORT_MILLIS = (CalCoeff_t)(1e-2);
     return (ShortMillivolts_t)round(((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS * TO_SHORT_MILLIS));
 }
 

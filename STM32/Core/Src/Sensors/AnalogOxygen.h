@@ -4,6 +4,7 @@
 #include "../common.h"
 #include "cmsis_os.h"
 #include "queue.h"
+#include "../errors.h"
 
 #define ANALOG_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 168, but can't handle the string functions
 
@@ -35,7 +36,7 @@ typedef struct AnalogOxygenState_s
 // Analog Cell
 AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue);
 void ReadCalibration(AnalogOxygenState_t *handle);
-ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2);
+ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);
 
 #ifdef __cplusplus
 }

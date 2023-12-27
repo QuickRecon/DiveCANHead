@@ -86,8 +86,9 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
     return *queueHandle;
 }
 
-void DigitalReferenceCalibrate(CalParameters_t *calParams)
+DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
 {
+    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
     const DigitalOxygenState_t *refCell = NULL;
     uint8_t refCellIndex = 0;
     // Select the first digital cell
@@ -109,16 +110,26 @@ void DigitalReferenceCalibrate(CalParameters_t *calParams)
         PPO2_t ppO2 = refCellData.ppo2;
         uint16_t pressure = (uint16_t)(refCell->pressure / 1000);
 
-        serial_printf("!!CAL PPO2: %d, %d", ppO2, pressure);
         // Now that we have the PPO2 we cal all the analog cells
         ShortMillivolts_t cellVals[CELL_COUNT] = {0};
+        NonFatalError_t calErrors[CELL_COUNT] = {ERR_NONE, ERR_NONE, ERR_NONE};
+
         for (uint8_t i = 0; i < CELL_COUNT; ++i)
         {
             OxygenHandle_t *cell = getCell(i);
             if (CELL_ANALOG == cell->type)
             {
                 AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cell->cellHandle;
-                cellVals[i] = Calibrate(analogCell, ppO2);
+                cellVals[i] = Calibrate(analogCell, ppO2, &(calErrors[i]));
+            }
+
+            if (calErrors[i] == ERR_NONE)
+            {
+                calPass = DIVECAN_CAL_RESULT;
+            }
+            else
+            {
+                calPass = DIVECAN_CAL_FAIL_GEN;
             }
         }
 
@@ -126,6 +137,7 @@ void DigitalReferenceCalibrate(CalParameters_t *calParams)
         calParams->cell1 = cellVals[CELL_1];
         calParams->cell2 = cellVals[CELL_2];
         calParams->cell3 = cellVals[CELL_3];
+
         calParams->pressure_val = pressure;
         calParams->fO2 = (FO2_t)round((Numeric_t)ppO2 * (1000.0f / (Numeric_t)pressure));
     }
@@ -133,28 +145,33 @@ void DigitalReferenceCalibrate(CalParameters_t *calParams)
     {
         // We can't find a digital cell to cal with
         NON_FATAL_ERROR(CAL_METHOD_ERROR);
+        calPass = DIVECAN_CAL_FAIL_REJECTED;
     }
+    return calPass;
 }
 
 void CalibrationTask(void *arg)
 {
     CalParameters_t calParams = *((CalParameters_t *)arg);
-
+    DiveCANCalResponse_t calResult = DIVECAN_CAL_FAIL_REJECTED;
     switch (calParams.calMethod)
     {
     case CAL_DIGITAL_REFERENCE: // Calibrate using the solid state cell as a reference
-        DigitalReferenceCalibrate(&calParams);
+        calResult = DigitalReferenceCalibrate(&calParams);
         osDelay(TIMEOUT_4s); // Give the shearwater time to catch up
         break;
     case CAL_ANALOG_ABSOLUTE:
     case CAL_TOTAL_ABSOLUTE:
+        calResult = DIVECAN_CAL_FAIL_REJECTED;
+        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
         break;
     default:
+        calResult = DIVECAN_CAL_FAIL_REJECTED;
         NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
-        osThreadExit();
     }
-    serial_printf("TX cal response");
-    txCalResponse(calParams.deviceType, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressure_val);
+
+    txCalResponse(calParams.deviceType, calResult, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressure_val);
+
     osThreadExit();
 }
 

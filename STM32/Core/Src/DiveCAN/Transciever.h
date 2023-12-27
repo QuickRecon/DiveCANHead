@@ -86,11 +86,15 @@ void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool ce
 typedef enum DiveCANCalResponse_e
 {
     DIVECAN_CAL_ACK = 0x05,
-    DIVECAN_CAL_RESULT = 0x01
+    DIVECAN_CAL_RESULT = 0x01,
+    DIVECAN_CAL_FAIL_LOW_EXT_BAT    = 0b00010000,
+    DIVECAN_CAL_FAIL_FO2_RANGE      = 0b00100000,
+    DIVECAN_CAL_FAIL_REJECTED       = 0b00001000,
+    DIVECAN_CAL_FAIL_GEN = 0x09, //0x11 0x07
 } DiveCANCalResponse_t;
 
 void txCalAck(const DiveCANType_t deviceType);
-void txCalResponse(const DiveCANType_t deviceType, const ShortMillivolts_t cell1, const ShortMillivolts_t cell2, const ShortMillivolts_t cell3, const FO2_t FO2, const uint16_t atmosphericPressure);
+void txCalResponse(const DiveCANType_t deviceType, DiveCANCalResponse_t response, const ShortMillivolts_t cell1, const ShortMillivolts_t cell2, const ShortMillivolts_t cell3, const FO2_t FO2, const uint16_t atmosphericPressure);
 
 // Bus Devices
 void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, uint8_t itemCount);
