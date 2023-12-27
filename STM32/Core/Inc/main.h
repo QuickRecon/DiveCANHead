@@ -65,6 +65,8 @@ void JumpToBootloader(void);
 #define MOCK_SD_DETECT_GPIO_Port GPIOC
 #define SOLENOID_Pin GPIO_PIN_1
 #define SOLENOID_GPIO_Port GPIOC
+#define CAN_Pin GPIO_PIN_2
+#define CAN_GPIO_Port GPIOC
 #define BATTERY_EN_Pin GPIO_PIN_1
 #define BATTERY_EN_GPIO_Port GPIOA
 #define VCC_STAT_Pin GPIO_PIN_4

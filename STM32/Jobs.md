@@ -3,20 +3,29 @@
 - Poweroff/standby
 - IWDG verify program state
 - Error logging to eeprom emulation
-- Battery reading and power switching
 - Startup sequencing issue:
+ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:105
+ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
+ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
+ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
+ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
+ERR CODE 9(0x0) AT Core/Src/Hardware/ext_adc.c:119
+ERR CODE 9(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:87
+ERR CODE 9(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:87
+ERR CODE 9(0x0) AT Core/Src/Sensors/DigitalOxygen.c:235
+ERR CODE 9(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:87
+ERR CODE 3(0x0) AT Core/Src/Sensors/DigitalOxygen.c:123
+ERR CODE 5(0x0) AT Core/Src/Sensors/DigitalOxygen.c:309
 
-ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:62
-ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
-ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
-ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
-ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
-ERR CODE 5(0x0) AT Core/Src/Hardware/ext_adc.c:74
-ERR CODE 5(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:76
-ERR CODE 5(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:76
-ERR CODE 5(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:76
+# Hardware changes
+- Battery reading and power switching (REQUIRES HARDWARE CHANGE, BATTERY ADC unavail, should route to PC3)
 
+# Things that ought to get done
+- Menu for setting cell type
+- Make DiveCAN multi-device safe so we can make multiple menu rows
+- Predive "app", show loop pressure and such
 
+# NASA rules of 10
     Avoid complex flow constructs, such as goto and recursion
     All loops must have fixed bounds (this prevents runaway code)
     Avoid heap memory allocation
@@ -27,8 +36,3 @@ ERR CODE 5(0x0) AT Core/Src/DiveCAN/PPO2Transmitter.c:76
     Use the preprocessor sparingly
     Limit pointer use to a single dereference, and do not use function pointers
     Compile with all possible warnings active; all warnings should then be addressed before the release of the software
-
-# Things that ought to get done
-- Menu for setting cell type
-- Make DiveCAN multi-device safe so we can make multiple menu rows
-- Predive "app", show loop pressure and such
