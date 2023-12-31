@@ -46,6 +46,8 @@ These are required before the firmware can be considered ready for any kind of t
 
 ### Current hardware issues (required on next board version)
 - standby power consumption is 10 mA (should be low hundreds of micro amps at most)
+    - This has been identified as coming from the DC-DC converter, perhaps this is a good opportunity to change to a wider input range
+- Battery is not enabled without can-power, kind of defeats the point of a redundant power supply
 - BATTERY ADC unavail due to internal mux, should route to PC3
 - CAN_PWR only takes 1.8-5.5v, should be able to comfortably take 9v for compatibility with rEvo bus and 9v batteries.
 
