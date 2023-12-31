@@ -20,6 +20,7 @@ typedef enum PowerSelectMode_e {
 } PowerSelectMode_t;
 
 void Shutdown(void);
+void SetSolenoidMode(PowerSelectMode_t powerMode);
 void SetVBusMode(PowerSelectMode_t powerMode);
 PowerSource_t GetVCCSource(void);
 PowerSource_t GetVBusSource(void);
