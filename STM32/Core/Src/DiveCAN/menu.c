@@ -20,12 +20,50 @@ typedef enum DiveCANMenuReq_e
     REQ_FLAGS = 0x30
 } DiveCANMenuReq_t;
 
+typedef enum DiveCANMenuItemType_e
+{
+    STATIC_TEXT,
+    DYNAMIC_TEXT,
+    DYNAMIC_NUM
+} DiveCANMenuItemType_t;
+
+// Struct to hold the details of static menu items
+// Doing dynamic menu items in a clean way (sensor values, errors, etc)
+// is going to have to be via a different route, because
+// no function pointers
+typedef struct DiveCANMenuItem_s
+{
+    const char *const title;
+    const uint8_t fieldCount;
+    const char *const fieldItems[10];
+    const DiveCANMenuItemType_t itemType;
+} DiveCANMenuItem_t;
+
+
+const uint8_t menuCount = 4;
+const DiveCANMenuItem_t menu[4] = {
+    {.title = "CELL1 MODE",
+     .fieldCount = 2,
+     .fieldItems = {"DIGITAL   ", "ANALOG    "},
+     .itemType = STATIC_TEXT},
+    {.title = "CELL2 MODE",
+     .fieldCount = 2,
+     .fieldItems = {"DIGITAL   ", "ANALOG    "},
+     .itemType = STATIC_TEXT},
+    {.title = "CELL3 MODE",
+     .fieldCount = 2,
+     .fieldItems = {"DIGITAL   ", "ANALOG    "},
+     .itemType = STATIC_TEXT},
+    {.title = "COMMIT",
+     .fieldCount = 1,
+     .fieldItems = {COMMIT_HASH},
+     .itemType = STATIC_TEXT}};
+
 static const uint8_t numberMask = 0x0F;
 static const uint8_t reqMask = 0xF0;
 static const uint8_t ReqOpFieldIdx = 4;
-static const uint8_t minValuesval = 5; // If the second hex digit is above this value its a value request
+static const uint8_t minValuesval = 4; // If the second hex digit is above this value its a value request
 
-const uint8_t menuCount = 2;
 const char *const menuItems[2] = {"TESTITEM 1", "TESTITEM 2"};
 const char *const fieldItems[3] = {"FIELD 1", "FIELD 2", "FIELD 3"};
 
@@ -34,7 +72,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
     DiveCANType_t target = (DiveCANType_t)(0xF & (message->id));
     DiveCANType_t source = deviceSpec->type;
     uint8_t reqByte = message->data[ReqOpFieldIdx];
-    //static uint8_t value = 0;
+    // static uint8_t value = 0;
 
     if (0 == reqByte)
     { // If we just need to ack then do that
@@ -48,20 +86,18 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
         if ((reqByte & reqMask) == REQ_ITEM)
         {
             serial_printf("Item\r\n");
-            txMenuItem(target, source, reqByte, menuItems[itemNumber], true, true);
+            txMenuItem(target, source, reqByte, menu[itemNumber].title, true, true);
         }
         else if ((reqByte & reqMask) == REQ_FLAGS)
         {
             serial_printf("Flags\r\n");
-            txMenuFlags(target, source, reqByte, 1);
+            txMenuFlags(target, source, reqByte, menu[itemNumber].fieldCount);
         }
-        else if (((reqByte & reqMask) >> HALF_BYTE_WIDTH) >= minValuesval)
+        else if (((reqByte & reqMask) >> HALF_BYTE_WIDTH) > minValuesval)
         {
             serial_printf("Field\r\n");
-            char test_str[9] = "TEST";
-            // value++;
-            // sprintf(test_str, "F %d", value);
-            txMenuField(target, source, reqByte, test_str);
+            uint8_t menuItemNumber = ((reqByte & reqMask) >> 5) - 1;
+            txMenuField(target, source, reqByte, menu[menuItemNumber].fieldItems[itemNumber]);
         }
         else
         {
