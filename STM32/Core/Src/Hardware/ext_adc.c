@@ -109,9 +109,9 @@ uint32_t GetInputTicks(uint8_t inputIndex)
     }
     return ticks;
 }
-uint16_t GetInputValue(uint8_t inputIndex)
+int16_t GetInputValue(uint8_t inputIndex)
 {
-    uint16_t adcCounts = 0;
+    int16_t adcCounts = 0;
     QueueHandle_t *inputQueue = getInputQueue(inputIndex);
     if ((*inputQueue != NULL) && (pdTRUE == xQueuePeek(*inputQueue, &adcCounts, 0)))
     {

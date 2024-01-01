@@ -24,7 +24,7 @@ typedef struct AnalogOxygenState_s
     CellStatus_t status;
     uint8_t adcInputIndex;
 
-    uint16_t lastCounts;
+    int16_t lastCounts;
 
     osThreadId_t processor;
     uint32_t processor_buffer[ANALOG_CELL_PROCESSOR_STACK_SIZE];

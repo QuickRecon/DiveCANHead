@@ -146,11 +146,15 @@ MCU = $(CPU) -mthumb $(FPU) $(FLOAT-ABI) -u _printf_float
 # AS defines
 AS_DEFS = 
 
+# Get the commit into a define
+COMMIT = \"$(shell git describe --always --dirty)\"
 # C defines
 C_DEFS =  \
 -DUSE_HAL_DRIVER \
 -DSTM32L431xx \
--DSTM32_THREAD_SAFE_STRATEGY=4
+-DSTM32_THREAD_SAFE_STRATEGY=4 \
+-DENABLE_SD_DMA_CACHE_MAINTENANCE=0 \
+-DCOMMIT_HASH=$(COMMIT)
 
 
 # AS includes
@@ -174,9 +178,14 @@ C_INCLUDES =  \
 
 
 # compile gcc flags
-ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish
+# TODO: Remove Wno-unused-parameter 
+WARN_FLAGS = -Wall -Wwrite-strings -Wextra \
+ -Wduplicated-cond -Wlogical-op -Wrestrict  -Wnull-dereference -Wjump-misses-init  -Wshadow -Wswitch -Wundef \
+ -Wno-unused-parameter
 
-CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections -Werror -std=gnu17 -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish
+ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) $(WARN_FLAGS) -fdata-sections -ffunction-sections -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish
+
+CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) $(WARN_FLAGS) -fdata-sections -ffunction-sections -Werror -std=gnu17 -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish
 
 ifeq ($(DEBUG), 1)
 CFLAGS += -g -gdwarf-2

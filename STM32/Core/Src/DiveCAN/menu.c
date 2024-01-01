@@ -64,8 +64,6 @@ static const uint8_t reqMask = 0xF0;
 static const uint8_t ReqOpFieldIdx = 4;
 static const uint8_t minValuesval = 4; // If the second hex digit is above this value its a value request
 
-const char *const menuItems[2] = {"TESTITEM 1", "TESTITEM 2"};
-const char *const fieldItems[3] = {"FIELD 1", "FIELD 2", "FIELD 3"};
 
 void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {

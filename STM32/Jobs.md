@@ -5,7 +5,7 @@
 - Work out why the brightness goes down when the CAN bus connects
 
 # Hardware changes
-- Work out why standby power consumption is 10 mA
+- Work out why standby power consumption is 10 mA (this was the CAN PWR Boost-Buck, root cause TBD)
 - Battery reading and power switching (REQUIRES HARDWARE CHANGE, BATTERY ADC unavail, should route to PC3)
 - CAN_EN should be routed to any of PA0, PC13, PE6, PA2, or PC5 so we can go to standby/shutdown rather than just STOP
 - Expand CAN voltage tolerance, 9v batter suitable (12v so we have headroom?)

@@ -129,7 +129,7 @@ void ReadCalibration(AnalogOxygenState_t *handle)
 ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
 {
     *calError = ERR_NONE;
-    uint16_t adcCounts = handle->lastCounts;
+    int16_t adcCounts = handle->lastCounts;
     // Our coefficient is simply the float needed to make the current sample the current PPO2
     CalCoeff_t newCal = (CalCoeff_t)(PPO2) / ((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS);
 
@@ -179,7 +179,7 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonF
 
 Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
 {
-    uint16_t adcCounts = GetInputValue(handle->adcInputIndex);
+    int16_t adcCounts = GetInputValue(handle->adcInputIndex);
     Numeric_t adcMillis = ((Numeric_t)abs(adcCounts)) * COUNTS_TO_MILLIS;
     return (Millivolts_t)round(adcMillis);
 }

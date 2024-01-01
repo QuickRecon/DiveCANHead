@@ -29,7 +29,7 @@ void InitADCs(void);
 void DeInitADCs(void);
 
 uint32_t GetInputTicks(uint8_t inputIndex);
-uint16_t GetInputValue(uint8_t inputIndex);
+int16_t GetInputValue(uint8_t inputIndex);
 void BlockForADC(uint8_t inputIndex);
 
 // ADC interface
