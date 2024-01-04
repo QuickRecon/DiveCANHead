@@ -10,24 +10,26 @@
 extern "C" {
 #endif
 
-static const uint32_t BUS_INIT_ID = 0xD370000;
-static const uint32_t BUS_OFF_ID = 0xD030000;
-static const uint32_t BUS_UNKNOWN1_ID = 0xD300000;
 static const uint32_t BUS_ID_ID = 0xD000000;
 static const uint32_t BUS_NAME_ID = 0xD010000;
-static const uint32_t BUS_STATUS_ID = 0xDCB0000;
-static const uint32_t BUS_MENU_OPEN_ID = 0xD300000;
+static const uint32_t BUS_OFF_ID = 0xD030000;
+static const uint32_t PPO2_PPO2_ID = 0xD040000;
 
 static const uint32_t PPO2_ATMOS_ID = 0xD080000;
-static const uint32_t PPO2_PPO2_ID = 0xD040000;
-static const uint32_t PPO2_MILLIS_ID = 0xD110000;
-static const uint32_t PPO2_STATUS_ID = 0xDCA0000;
-static const uint32_t PPO2_SETPOINT_ID = 0xDC90000;
-
-static const uint32_t CAL_REQ_ID = 0xD130000;
-static const uint32_t CAL_ID = 0xD120000;
 
 static const uint32_t MENU_ID = 0xD0A0000;
+
+static const uint32_t PPO2_MILLIS_ID = 0xD110000;
+static const uint32_t CAL_ID = 0xD120000;
+static const uint32_t CAL_REQ_ID = 0xD130000;
+
+static const uint32_t BUS_MENU_OPEN_ID = 0xD300000;
+
+static const uint32_t BUS_INIT_ID = 0xD370000;
+
+static const uint32_t PPO2_SETPOINT_ID = 0xDC90000;
+static const uint32_t PPO2_STATUS_ID = 0xDCA0000;
+static const uint32_t BUS_STATUS_ID = 0xDCB0000;
 
 
 #define MAX_CAN_RX_LENGTH 8
