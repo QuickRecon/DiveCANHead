@@ -1,6 +1,6 @@
 cansend can0 005# 
 #sleep 0.1
-#cansend can0 079#00 
+cansend can0 079#00 
 #sleep 0.1
 #cansend can0 092#00
 #sleep 0.1
