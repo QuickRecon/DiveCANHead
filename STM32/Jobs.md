@@ -2,7 +2,6 @@
 - Menu logic, this should allow for cell mode switching, display any error states, as well as firmware commit
 - IWDG verify program state
 - Error logging to eeprom emulation
-- Work out why the brightness goes down when the CAN bus connects
 
 # Hardware changes
 - Work out why standby power consumption is 10 mA (this was the CAN PWR Boost-Buck, root cause TBD)

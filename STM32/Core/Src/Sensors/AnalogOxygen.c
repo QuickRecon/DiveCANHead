@@ -193,6 +193,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
 
     uint32_t ticks = HAL_GetTick();
     handle->lastCounts = GetInputValue(handle->adcInputIndex);
+
     if (ticks < ticksOfLastPPO2)
     { // If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out
         ticksOfLastPPO2 = 0;
@@ -201,8 +202,12 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     { // If we've taken longer than timeout, fail the cell
         handle->status = CELL_FAIL;
         NON_FATAL_ERROR_DETAIL(TIMEOUT_ERROR, handle->cellNumber);
-    } else {
+    }
+    else if (CELL_NEED_CAL != handle->status)
+    {
         handle->status = CELL_OK;
+    } else {
+        // Only get here if we're not timed out and need cal, don't really need to do anything
     }
 
     CalCoeff_t calPPO2 = (CalCoeff_t)abs(handle->lastCounts) * COUNTS_TO_MILLIS * handle->calibrationCoefficient;
@@ -227,12 +232,13 @@ void analogProcessor(void *arg)
 {
     AnalogOxygenState_t *cell = (AnalogOxygenState_t *)arg;
 
-    cell->status = CELL_FAIL; // We're failed while we start, we have no valid PPO2 data to give
-    
+    if (CELL_NEED_CAL != cell->status)
+    {
+        cell->status = CELL_FAIL; // We're failed while we start, we have no valid PPO2 data to give
+    }
     // We lodge an failure datapoint while we spool up, ADC takes an indeterminate (hopefully smol) time to spool up
     // and we might not make the timeout of the TX task, this lets the timeout be on the consensus calculation
     // rather than causing an empty queue error
-    cell->status = CELL_FAIL; // We're failed while we start, we have no valid PPO2 data to give
     OxygenCell_t cellData = {
         .cellNumber = cell->cellNumber,
         .type = CELL_ANALOG,
