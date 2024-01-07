@@ -66,6 +66,7 @@ extern "C"
     static const osPriority_t CAN_RX_PRIORITY = osPriorityNormal;
     static const osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh;
     static const osPriority_t ADC_PRIORITY = osPriorityHigh2;
+    static const osPriority_t PRINTER_PRIORITY = osPriorityLow;
 
 // Define the stack sizes for all the tasks
 #define CANTASK_STACK_SIZE 450                // 384 by static analysis
@@ -74,6 +75,7 @@ extern "C"
 #define ANALOG_CELL_PROCESSOR_STACK_SIZE 500  // The analyser reckons 208, but can't handle the string functions
 #define DIGITAL_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 216, but can't handle the string functions
 #define CALTASK_STACK_SIZE 500                // Static analysis 456
+#define PRINTER_STACK_SIZE 500                // Static analysis 456
 
 // conditional compilation for RTOS loop breaking is pretty
 // shit as a testing method

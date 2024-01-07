@@ -23,15 +23,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include <string.h>
-#include <stdarg.h>
 #include <string.h>
 #include "eeprom_emul.h"
 #include "Sensors/OxygenCell.h"
 #include "Sensors/AnalogOxygen.h"
 #include "Hardware/pwr_management.h"
 #include "Hardware/ext_adc.h"
+#include "Hardware/printer.h"
 #include "DiveCAN/DiveCAN.h"
 #include "DiveCAN/PPO2Transmitter.h"
 /* USER CODE END Includes */
@@ -110,26 +108,7 @@ static void MX_NVIC_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-char string[200];
-void vprint(const char *fmt, va_list argp)
-{
-  if (0 < vsprintf(string, fmt, argp)) // build string
-  {
-    while (huart2.gState != HAL_UART_STATE_READY)
-    {
-      osDelay(5);
-    }
-    HAL_UART_Transmit(&huart2, (uint8_t *)string, strlen(string), 0xffffff); // send message via UART
-  }
-}
-
-void serial_printf(const char *fmt, ...) // custom printf() function
-{
-  va_list argp;
-  va_start(argp, fmt);
-  vprint(fmt, argp);
-  va_end(argp);
-}
+extern void serial_printf(const char *fmt, ...);
 
 DiveCANDevice_t deviceSpec = {
     .name = "Rev2Ctl",
@@ -184,6 +163,7 @@ int main(void)
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
+  InitPrinter();
   serial_printf("Booting...\r\n");
 
   // Set up flash erase

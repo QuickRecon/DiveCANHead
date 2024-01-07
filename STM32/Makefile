@@ -45,6 +45,7 @@ Core/Src/Sensors/OxygenCell.c \
 Core/Src/Hardware/pwr_management.c \
 Core/Src/Hardware/flash.c \
 Core/Src/Hardware/ext_adc.c \
+Core/Src/Hardware/printer.c \
 Core/Src/DiveCAN/menu.c \
 Core/Src/DiveCAN/Transciever.c \
 Core/Src/DiveCAN/DiveCAN.c \
