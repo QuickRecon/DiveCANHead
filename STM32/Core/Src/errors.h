@@ -18,7 +18,10 @@ extern "C"
         BUS_FAULT = 6,
         /// @brief We ran past the end of a buffer, even if it didn't trip a hard fault we've clobbered unknown memory in an unknown way, better just to reset
         BUFFER_OVERRUN = 7,
-        UNDEFINED_STATE = 8
+        UNDEFINED_STATE = 8,
+
+        /// @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors
+        FATAL_ERR_MAX = UNDEFINED_STATE
     } FatalError_t;
 
     typedef enum NonFatalError_e
@@ -77,7 +80,10 @@ extern "C"
         INVALID_ADC_NUMBER = 19,
 
         /// @brief A null pointer was passed to a function not designed to handle it
-        NULL_PTR = 20
+        NULL_PTR = 20,
+
+        /// @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors
+        NONFATAL_ERR_MAX = NULL_PTR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);
