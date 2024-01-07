@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "Hardware/printer.h"
+#include "errors.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -80,10 +81,7 @@ void NMI_Handler(void)
   /* USER CODE END NonMaskableInt_IRQn 0 */
   HAL_RCC_NMI_IRQHandler();
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
-  serial_printf("NMI TRIGGERED");
-  while (1)
-  {
-  }
+  FATAL_ERROR(NMI_TRIGGERED);
   /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
@@ -93,13 +91,9 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-serial_printf("hard Fault");
+FATAL_ERROR(HARD_FAULT);
   /* USER CODE END HardFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
-  }
+
 }
 
 /**
@@ -108,13 +102,9 @@ serial_printf("hard Fault");
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-  serial_printf("MEMORY MGMT");
+  FATAL_ERROR(MEM_FAULT);
   /* USER CODE END MemoryManagement_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
-    /* USER CODE END W1_MemoryManagement_IRQn 0 */
-  }
+
 }
 
 /**
@@ -123,13 +113,8 @@ void MemManage_Handler(void)
 void BusFault_Handler(void)
 {
   /* USER CODE BEGIN BusFault_IRQn 0 */
-  serial_printf("BUS FAULT");
+  FATAL_ERROR(BUS_FAULT);
   /* USER CODE END BusFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_BusFault_IRQn 0 */
-    /* USER CODE END W1_BusFault_IRQn 0 */
-  }
 }
 
 /**
@@ -138,13 +123,8 @@ void BusFault_Handler(void)
 void UsageFault_Handler(void)
 {
   /* USER CODE BEGIN UsageFault_IRQn 0 */
-  serial_printf("USAGE FAULT");
+  FATAL_ERROR(USAGE_FAULT);
   /* USER CODE END UsageFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
-    /* USER CODE END W1_UsageFault_IRQn 0 */
-  }
 }
 
 /**

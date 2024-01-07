@@ -16,9 +16,11 @@ extern "C"
         NMI_TRIGGERED = 4,
         MEM_FAULT = 5,
         BUS_FAULT = 6,
+        USAGE_FAULT = 7,
+        ASSERT_FAIL = 8,
         /// @brief We ran past the end of a buffer, even if it didn't trip a hard fault we've clobbered unknown memory in an unknown way, better just to reset
-        BUFFER_OVERRUN = 7,
-        UNDEFINED_STATE = 8,
+        BUFFER_OVERRUN = 9,
+        UNDEFINED_STATE = 10,
 
         /// @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors
         FATAL_ERR_MAX = UNDEFINED_STATE

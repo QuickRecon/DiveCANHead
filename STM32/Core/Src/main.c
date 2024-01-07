@@ -879,7 +879,7 @@ void Error_Handler(void)
   /* User can add his own implementation to report the HAL error return state */
   // __disable_irq();
   // while (1)
-  serial_printf("Critical Error");
+  NON_FATAL_ERROR(CRITICAL_ERROR);
   // {
   // }
   /* USER CODE END Error_Handler_Debug */
@@ -897,6 +897,7 @@ void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   serial_printf("ASSERT failed %s: %d", file, line);
+  FATAL_ERROR(ASSERT_FAIL);
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
