@@ -43,6 +43,7 @@ Core/Src/Sensors/AnalogOxygen.c \
 Core/Src/Sensors/DigitalOxygen.c \
 Core/Src/Sensors/OxygenCell.c \
 Core/Src/Hardware/pwr_management.c \
+Core/Src/Hardware/flash.c \
 Core/Src/Hardware/ext_adc.c \
 Core/Src/DiveCAN/menu.c \
 Core/Src/DiveCAN/Transciever.c \

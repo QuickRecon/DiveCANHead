@@ -20,6 +20,7 @@ ROOT_DIR = /home/aren/Dropbox/DiveCANHeadRev2/
 # production code C and CPP files.
 #
 SRC_FILES += $(ROOT_DIR)STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
+SRC_FILES += $(ROOT_DIR)STM32/Core/Src/Hardware/flash.c
 SRC_DIRS += 
 
 # --- TEST_SRC_FILES and TEST_SRC_DIRS ---
