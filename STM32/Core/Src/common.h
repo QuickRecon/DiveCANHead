@@ -68,12 +68,12 @@ extern "C"
     static const osPriority_t ADC_PRIORITY = osPriorityHigh2;
 
 // Define the stack sizes for all the tasks
-#define CANTASK_STACK_SIZE 400               // 312 by static analysis
-#define PPO2TXTASK_STACK_SIZE 350            // 296 bytes by static analysis
-#define ADCTASK_STACK_SIZE 450               // 400 by static analysis
-#define ANALOG_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 168, but can't handle the string functions
-#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 160, but can't handle the string functions
-#define CALTASK_STACK_SIZE 450 // Static analysis 400
+#define CANTASK_STACK_SIZE 450                // 384 by static analysis
+#define PPO2TXTASK_STACK_SIZE 350             // 296 bytes by static analysis
+#define ADCTASK_STACK_SIZE 250                // 216 by static analysis
+#define ANALOG_CELL_PROCESSOR_STACK_SIZE 500  // The analyser reckons 208, but can't handle the string functions
+#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 216, but can't handle the string functions
+#define CALTASK_STACK_SIZE 500                // Static analysis 456
 
 // conditional compilation for RTOS loop breaking is pretty
 // shit as a testing method
