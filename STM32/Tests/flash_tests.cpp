@@ -24,6 +24,12 @@ extern "C"
         return WriteReturnCode;
     }
 
+    EE_Status EE_CleanUp(void)
+    {
+        mock().actualCall("EE_CleanUp");
+        return EE_OK;
+    }
+
     static HAL_StatusTypeDef UnlockReturnCode = HAL_OK;
     HAL_StatusTypeDef HAL_FLASH_Unlock(void)
     {
@@ -227,6 +233,29 @@ TEST(flash, SetCalibrationEEPROMFail)
     }
 }
 
+TEST(flash, SetCalibrationCleanupRequired)
+{
+    uint16_t cellAddresses[3] = {1, 2, 3};
+    for (int i = 0; i < 3; ++i)
+    {
+        CalCoeff_t calVal = 123.0;
+
+        uint32_t expectedData = 123 * 10000000;
+
+        mock().expectOneCall("HAL_FLASH_Unlock");
+        mock().expectOneCall("HAL_FLASH_Lock");
+        mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERROR);
+
+        WriteReturnCode = EE_CLEANUP_REQUIRED;
+        mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
+        mock().expectOneCall("EE_CleanUp");
+
+        bool calOk = SetCalibration(i, calVal);
+
+        CHECK(calOk == true);
+    }
+}
+
 // Get Cal
 TEST(flash, GetCalibrationInvalidCell)
 {
@@ -387,7 +416,7 @@ TEST(flash, GetNonFatalErrUnknownErr)
         mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x05 + i);
         mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERROR);
         ReadReturnCode = EE_NO_PAGE_FOUND; // An error we don't handle explictly
-        
+
         uint32_t count = 0;
         bool calOk = GetNonFatalError(err, &count);
 

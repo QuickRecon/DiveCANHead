@@ -4,8 +4,6 @@
 #include <math.h>
 #include "stm32l4xx_hal.h"
 
-// TODO(Aren): Flash Cleanup as needed
-
 // Define where stuff lives in the eeprom (only 100 vars up for grabs with current configuration)
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x01;
 static const uint8_t FATAL_ERROR_BASE_ADDR = 0x04;
@@ -26,7 +24,16 @@ static bool WriteInt32(uint16_t addr, uint32_t value)
             writeOk = false;
         }
 
-        if (result != EE_OK)
+        if (result == EE_CLEANUP_REQUIRED)
+        {
+            // This could be expensive, maybe it should be a queued job rather than eating up time in a task?
+            (void)EE_CleanUp(); // If it doesn't work we don't really care, we'll just get told to try it again next time, and if it keeps failing evenutally something more important will break
+        }
+        else if (result == EE_OK)
+        {
+            // Happy days, nothing really to do
+        }
+        else // An error we don't handle
         {
             NON_FATAL_ERROR(EEPROM_ERROR);
             writeOk = false;

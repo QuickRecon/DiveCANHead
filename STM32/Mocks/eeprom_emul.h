@@ -49,6 +49,8 @@ extern "C"
 
     EE_Status EE_WriteVariable32bits(uint16_t VirtAddress, uint32_t Data);
 
+    EE_Status EE_CleanUp(void);
+
     HAL_StatusTypeDef HAL_FLASH_Unlock(void);
     HAL_StatusTypeDef HAL_FLASH_Lock(void);
 
