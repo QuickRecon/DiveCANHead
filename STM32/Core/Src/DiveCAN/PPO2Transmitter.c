@@ -2,6 +2,7 @@
 #include "cmsis_os.h"
 #include "main.h"
 #include "../errors.h"
+#include "../Hardware/printer.h"
 
 static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
 
@@ -12,8 +13,6 @@ typedef struct PPO2TXTask_params_s
     QueueHandle_t c2;
     QueueHandle_t c3;
 } PPO2TXTask_params_t;
-
-extern void serial_printf(const char *fmt, ...);
 
 // Forward decls of local funcs
 // /void configureADC(void *arg);

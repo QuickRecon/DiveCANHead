@@ -3,7 +3,7 @@
 
 #include "CppUTestExt/MockSupport.h"
 
-extern void serial_printf(const char *fmt, ...);
+#include "../Hardware/printer.h"
 
 static void PrintERR(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName)
 {

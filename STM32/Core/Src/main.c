@@ -108,8 +108,6 @@ static void MX_NVIC_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-extern void serial_printf(const char *fmt, ...);
-
 DiveCANDevice_t deviceSpec = {
     .name = "Rev2Ctl",
     .type = DIVECAN_SOLO,

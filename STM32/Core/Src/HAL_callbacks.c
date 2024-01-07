@@ -4,10 +4,10 @@
 #include "Hardware/ext_adc.h"
 #include "DiveCAN/Transciever.h"
 #include "DiveCAN/DiveCAN.h"
+#include "Hardware/printer.h"
 
 extern const uint8_t ADC1_ADDR;
 extern const uint8_t ADC2_ADDR;
-extern void serial_printf(const char *fmt, ...);
 
 const uint8_t BOOTLOADER_MSG = 0x79;
 

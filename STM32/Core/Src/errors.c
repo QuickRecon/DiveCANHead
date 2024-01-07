@@ -1,6 +1,5 @@
 #include "errors.h"
-
-extern void serial_printf(const char *fmt, ...);
+#include "Hardware/printer.h"
 
 void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char* fileName)
 {

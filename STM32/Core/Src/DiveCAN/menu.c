@@ -1,7 +1,6 @@
 #include "menu.h"
 #include "Transciever.h"
-
-extern void serial_printf(const char *fmt, ...);
+#include "../Hardware/printer.h"
 
 typedef enum DiveCANMenuOp_e
 {
@@ -43,7 +42,7 @@ typedef struct DiveCANMenuItem_s
 
 // A maximum of 5 items can be shown in the bus menu
 const uint8_t menuCount = 5;
-const DiveCANMenuItem_t menu[6] = {
+const DiveCANMenuItem_t menu[5] = {
     {.title = "CELL1 MODE",
      .fieldCount = 2,
      .fieldItems = {"DIGITAL   ", "ANALOG    "},

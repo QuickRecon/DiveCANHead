@@ -3,6 +3,7 @@
 #include "cmsis_os.h"
 #include "../errors.h"
 #include <stdbool.h>
+#include "../Hardware/printer.h"
 
 const uint8_t ADC1_ADDR = 0x48;
 const uint8_t ADC2_ADDR = 0x49;
@@ -55,8 +56,6 @@ static QueueHandle_t *getTicksQueue(uint8_t inputNumber)
     }
     return queueHandle;
 }
-
-extern void serial_printf(const char *fmt, ...);
 
 // Forward decls of local funcs
 // /void configureADC(void *arg);

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include "string.h"
 #include "../errors.h"
+#include "../Hardware/printer.h"
 
 // Newline for terminating uart message
 const uint8_t NEWLINE = 0x0D;
@@ -51,7 +52,6 @@ static DigitalOxygenState_t *getCellState(uint8_t cellNum)
     return cellState;
 }
 
-extern void serial_printf(const char *fmt, ...);
 void decodeCellMessage(void *arg);
 void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell);
 

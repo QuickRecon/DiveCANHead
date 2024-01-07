@@ -1,8 +1,8 @@
 #include "pwr_management.h"
 #include "stm32l4xx_hal_pwr_ex.h"
 #include "ext_adc.h"
+#include "../Hardware/printer.h"
 
-extern void serial_printf(const char *fmt, ...);
 extern IWDG_HandleTypeDef hiwdg;
 
 extern UART_HandleTypeDef huart1;

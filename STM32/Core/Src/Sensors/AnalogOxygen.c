@@ -8,6 +8,7 @@
 #include "OxygenCell.h"
 #include <math.h>
 #include "../Hardware/flash.h"
+#include "../Hardware/printer.h"
 
 static AnalogOxygenState_t *getCellState(uint8_t cellNum)
 {
@@ -35,8 +36,6 @@ static const CalCoeff_t COUNTS_TO_MILLIS = ((0.256f * 100000.0f) / 32767.0f);
 const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; // Milliseconds, how long before the cell *definitely* isn't coming back to us
 
 void analogProcessor(void *arg);
-
-extern void serial_printf(const char *fmt, ...);
 
 AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
 {

@@ -6,6 +6,7 @@
 #include "eeprom_emul.h"
 #include "../errors.h"
 #include <math.h>
+#include "../Hardware/printer.h"
 
 typedef struct OxygenHandle_s
 {
@@ -57,8 +58,6 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
     }
     return cellHandle;
 }
-
-extern void serial_printf(const char *fmt, ...);
 
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
 {

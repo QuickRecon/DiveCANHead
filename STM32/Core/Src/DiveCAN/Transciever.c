@@ -4,6 +4,7 @@
 #include "queue.h"
 #include "main.h"
 #include "../errors.h"
+#include "../Hardware/printer.h"
 
 #define BUS_INIT_LEN 3
 #define BUS_ID_LEN 3
@@ -28,8 +29,6 @@
 extern CAN_HandleTypeDef hcan1;
 
 #define CAN_QUEUE_LEN 10
-
-extern void serial_printf(const char *fmt, ...);
 
 static QueueHandle_t *getInboundQueue(void)
 {

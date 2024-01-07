@@ -3,8 +3,7 @@
 #include "../Sensors/OxygenCell.h"
 #include "menu.h"
 #include "../Hardware/pwr_management.h"
-
-extern void serial_printf(const char *fmt, ...);
+#include "../Hardware/printer.h"
 
 void CANTask(void *arg);
 void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
