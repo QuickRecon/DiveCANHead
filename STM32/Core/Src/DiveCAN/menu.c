@@ -37,27 +37,38 @@ typedef struct DiveCANMenuItem_s
     const uint8_t fieldCount;
     const char *const fieldItems[10];
     const DiveCANMenuItemType_t itemType;
+    const bool editable;
 } DiveCANMenuItem_t;
 
 
-const uint8_t menuCount = 4;
-const DiveCANMenuItem_t menu[4] = {
+// A maximum of 5 items can be shown in the bus menu
+const uint8_t menuCount = 5;
+const DiveCANMenuItem_t menu[6] = {
     {.title = "CELL1 MODE",
      .fieldCount = 2,
      .fieldItems = {"DIGITAL   ", "ANALOG    "},
-     .itemType = STATIC_TEXT},
+     .itemType = STATIC_TEXT,
+     .editable = true},
     {.title = "CELL2 MODE",
      .fieldCount = 2,
      .fieldItems = {"DIGITAL   ", "ANALOG    "},
-     .itemType = STATIC_TEXT},
+     .itemType = STATIC_TEXT,
+     .editable = true},
     {.title = "CELL3 MODE",
      .fieldCount = 2,
      .fieldItems = {"DIGITAL   ", "ANALOG    "},
-     .itemType = STATIC_TEXT},
+     .itemType = STATIC_TEXT,
+     .editable = true},
     {.title = "COMMIT",
      .fieldCount = 1,
      .fieldItems = {COMMIT_HASH},
-     .itemType = STATIC_TEXT}};
+     .itemType = STATIC_TEXT,
+     .editable = false},
+    {.title = "COMMIT",
+     .fieldCount = 1,
+     .fieldItems = {COMMIT_HASH},
+     .itemType = STATIC_TEXT,
+     .editable = false}};
 
 static const uint8_t numberMask = 0x0F;
 static const uint8_t reqMask = 0xF0;
@@ -84,7 +95,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
         if ((reqByte & reqMask) == REQ_ITEM)
         {
             serial_printf("Item\r\n");
-            txMenuItem(target, source, reqByte, menu[itemNumber].title, true, true);
+            txMenuItem(target, source, reqByte, menu[itemNumber].title, true, menu[itemNumber].editable);
         }
         else if ((reqByte & reqMask) == REQ_FLAGS)
         {

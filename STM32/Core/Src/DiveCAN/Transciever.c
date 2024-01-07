@@ -287,14 +287,14 @@ void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceT
     sendCANMessage(Id, data, MENU_ACK_LEN);
 }
 
-void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText, const bool integerField, const bool editable)
+void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText, const bool textField, const bool editable)
 {
     uint8_t strData[MENU_FIELD_LEN + 1] = {0};
     strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
 
     uint8_t data1[MENU_LEN] = {0x10, 0x10, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]};
     uint8_t data2[MENU_LEN] = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]};
-    uint8_t data3[MENU_FIELD_END_LEN] = {0x22, strData[9], integerField, editable};
+    uint8_t data3[MENU_FIELD_END_LEN] = {0x22, strData[9], textField, editable};
     uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
     sendCANMessage(Id, data1, MENU_LEN);
 
