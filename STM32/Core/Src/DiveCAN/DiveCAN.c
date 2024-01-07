@@ -11,7 +11,7 @@ void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *c
 void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
-void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t *const deviceSpec);
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 
@@ -72,7 +72,7 @@ void BusStateChanged(bool CAN_Enabled)
 /// @param arg
 void CANTask(void *arg)
 {
-    const DiveCANDevice_t *const deviceSpec = (DiveCANDevice_t *)arg;
+    DiveCANDevice_t * const deviceSpec = (DiveCANDevice_t *)arg;
 
     while (true)
     {
@@ -160,9 +160,9 @@ void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
     ProcessMenu(message, deviceSpec);
 }
 
-void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
+void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t * const deviceSpec)
 {
-    // TODO: setpoint setting
+    deviceSpec->setpoint = message->data[0];
 }
 
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
