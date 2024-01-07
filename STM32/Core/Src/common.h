@@ -25,7 +25,7 @@ extern "C"
     static const uint32_t TIMEOUT_4s = 4000;
 
     // Handy consts
-    static const uint32_t BYTE_WIDTH = 8; // Bitshift operations
+    static const uint32_t BYTE_WIDTH = 8;      // Bitshift operations
     static const uint32_t HALF_BYTE_WIDTH = 4; // Bitshift operations
 
     // PPO2 values
@@ -66,6 +66,14 @@ extern "C"
     static const osPriority_t CAN_RX_PRIORITY = osPriorityNormal;
     static const osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh;
     static const osPriority_t ADC_PRIORITY = osPriorityHigh2;
+
+// Define the stack sizes for all the tasks
+#define CANTASK_STACK_SIZE 400               // 312 by static analysis
+#define PPO2TXTASK_STACK_SIZE 350            // 296 bytes by static analysis
+#define ADCTASK_STACK_SIZE 450               // 400 by static analysis
+#define ANALOG_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 168, but can't handle the string functions
+#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 160, but can't handle the string functions
+#define CALTASK_STACK_SIZE 450 // Static analysis 400
 
 // conditional compilation for RTOS loop breaking is pretty
 // shit as a testing method

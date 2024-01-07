@@ -60,8 +60,6 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
 
 extern void serial_printf(const char *fmt, ...);
 
-#define CALTASK_STACK_SIZE 450 // Static analysis 400
-
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
 {
     OxygenHandle_t *cell = getCell(cellNumber);

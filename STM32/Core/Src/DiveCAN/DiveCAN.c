@@ -15,8 +15,6 @@ void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 
-#define CANTASK_STACK_SIZE 400 // 312 by static analysis
-
 static const uint8_t DIVECAN_TYPE_MASK = 0xF;
 
 // FreeRTOS tasks

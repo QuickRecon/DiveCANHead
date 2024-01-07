@@ -6,8 +6,6 @@
 #include "queue.h"
 #include "../errors.h"
 
-#define ANALOG_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 168, but can't handle the string functions
-
 #ifdef __cplusplus
 extern "C" {
 #endif

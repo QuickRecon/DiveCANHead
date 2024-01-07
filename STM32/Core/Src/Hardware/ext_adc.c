@@ -62,8 +62,6 @@ extern void serial_printf(const char *fmt, ...);
 // /void configureADC(void *arg);
 void ADCTask(void *arg);
 
-#define ADCTASK_STACK_SIZE 450 // 400 by static analysis
-
 // FreeRTOS tasks
 static osThreadId_t *getOSThreadId(void)
 {

@@ -5,8 +5,6 @@
 
 static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
 
-#define PPO2TXTASK_STACK_SIZE 350 // 296 bytes by static analysis
-
 typedef struct PPO2TXTask_params_s
 {
     DiveCANDevice_t *device;

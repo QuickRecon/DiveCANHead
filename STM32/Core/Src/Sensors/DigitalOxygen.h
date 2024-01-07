@@ -13,8 +13,6 @@ extern "C" {
 // Implementation consts
 #define RX_BUFFER_LENGTH 86
 #define TX_BUFFER_LENGTH 8
-#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 500 // The analyser reckons 160, but can't handle the string functions
-
 typedef struct DigitalOxygenState_s
 {
     // Configuration
