@@ -9,6 +9,8 @@ extern const uint8_t ADC1_ADDR;
 extern const uint8_t ADC2_ADDR;
 extern void serial_printf(const char *fmt, ...);
 
+const uint8_t BOOTLOADER_MSG = 0x79;
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     // HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
@@ -70,7 +72,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
     HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &pRxHeader, pData);
 
     // Use 0x05 to reset into bootloader for flashing
-    if (0x05 == pRxHeader.StdId)
+    if (BOOTLOADER_MSG == pRxHeader.StdId)
     {
         JumpToBootloader();
     }
@@ -88,7 +90,7 @@ void HAL_CAN_RxFifo1MsgPendingCallbackxFifo1(CAN_HandleTypeDef *hcan)
     HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &pRxHeader, pData);
 
     // Use 0x05 to reset into bootloader for flashing
-    if (0x05 == pRxHeader.StdId)
+    if (BOOTLOADER_MSG == pRxHeader.StdId)
     {
         JumpToBootloader();
     }
