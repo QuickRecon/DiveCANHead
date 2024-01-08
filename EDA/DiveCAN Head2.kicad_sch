@@ -4,6 +4,13 @@
 
   (paper "A4")
 
+  (title_block
+    (title "DiveCAN Head")
+    (date "2024-01-08")
+    (rev "2.1")
+    (company "Aren Leishman")
+  )
+
   (lib_symbols
     (symbol "Connector:Conn_01x06_Pin" (pin_names (offset 1.016) hide) (in_bom yes) (on_board yes)
       (property "Reference" "J" (at 0 7.62 0)
@@ -3776,9 +3783,6 @@
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "C8") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
-          (reference "C6") (unit 1)
-        )
       )
     )
   )
@@ -5352,9 +5356,6 @@
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "BT1") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
-          (reference "BT1") (unit 1)
-        )
       )
     )
   )
@@ -5931,9 +5932,6 @@
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "C11") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
-          (reference "C6") (unit 1)
-        )
       )
     )
   )
@@ -6457,9 +6455,6 @@
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "TP4") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
-          (reference "TP7") (unit 1)
-        )
       )
     )
   )
@@ -6509,9 +6504,6 @@
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR021") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
-          (reference "#PWR015") (unit 1)
         )
       )
     )
@@ -7290,9 +7282,6 @@
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "#PWR045") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
-          (reference "#PWR015") (unit 1)
-        )
       )
     )
   )
@@ -7367,9 +7356,6 @@
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d"
           (reference "TP1") (unit 1)
-        )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
-          (reference "TP3") (unit 1)
         )
       )
     )
