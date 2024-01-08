@@ -3013,6 +3013,11 @@
     (uuid 89fc8d85-261e-433b-a293-d442d1e5e209)
   )
 
+  (text "TODO:\n- SD card chip detect\n- CAN LDO regulator\n- Battery LDO regulator\n- Battery voltage pin to PC3\n- VBUS battery voltage monitor\n- CAN_EN to PA0, PC13, PE6, PA2, or PC5\n- Battery enable without CAN power\n- 12V solenoid driver\n\nWANTS:\n- DAC output for secondary analog monitoring\n- Additional GPIOs to pin headers\n- Pulldowns on spare pins"
+    (at 302.26 36.83 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid 03792447-c3e8-4648-81d7-f39f850a7981)
+  )
   (text "Mounting Hole Annex" (at 17.78 172.72 0)
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid 3202f972-c813-490d-b648-9129ac969608)
