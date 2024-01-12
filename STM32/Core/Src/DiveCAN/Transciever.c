@@ -198,7 +198,7 @@ void txName(const DiveCANType_t deviceType, const char *const name)
 /// @param error Current error state
 void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error)
 {
-    uint8_t data[BUS_STATUS_LEN] = {batteryVoltage, 0x00, 0x02, 0x00, 0x00, setpoint, 0x63, (uint8_t)error};
+    uint8_t data[BUS_STATUS_LEN] = {batteryVoltage, 0x00, 0x00, 0x00, 0x00, setpoint, 0x63, (uint8_t)error};
     uint32_t Id = BUS_STATUS_ID | deviceType;
     sendCANMessage(Id, data, BUS_STATUS_LEN);
 }
@@ -275,7 +275,6 @@ void txCalResponse(DiveCANType_t deviceType, DiveCANCalResponse_t response, Shor
     uint32_t Id = CAL_ID | deviceType;
     sendCANMessage(Id, data, CAL_LEN);
 }
-
 
 // Bus Devices
 void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, uint8_t itemCount)

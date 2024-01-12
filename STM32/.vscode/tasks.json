@@ -38,6 +38,25 @@
             "problemMatcher": "$msCompile"
         },
         {
+            "label": "Build Coverage",
+            "type": "shell",
+            "command": "",
+            "args": [
+                "make",
+                "-j20",
+                "--directory=${workspaceFolder}/Tests/",
+                "gcov"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always"
+            },
+            "problemMatcher": "$msCompile"
+        },
+        {
             "label": "flash",
             "type": "shell",
             "command": "${command:workbench.action.debug.start}",
