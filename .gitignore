@@ -6,3 +6,4 @@ fp-info-cache
 *.lck
 *.FCBak
 *-backups
+\#auto_saved_files\#
