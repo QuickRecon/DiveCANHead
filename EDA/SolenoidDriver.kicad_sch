@@ -991,6 +991,31 @@
     )
   )
 
+  (symbol (lib_id "power:GNDREF") (at 143.51 77.47 0) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
+    (uuid 8e574ede-ab45-4bc8-a3d7-0162fc64a335)
+    (property "Reference" "#PWR011" (at 143.51 83.82 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Value" "GNDREF" (at 143.51 81.415 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "" (at 143.51 77.47 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "" (at 143.51 77.47 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid 75e41fc7-73e9-47de-b0d2-15970371a121))
+    (instances
+      (project "DiveCAN Head2"
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/9021e904-ec93-4c28-9903-7bba14359351"
+          (reference "#PWR011") (unit 1)
+        )
+      )
+    )
+  )
+
   (symbol (lib_id "Library:R") (at 151.13 83.82 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 92da5bce-fcd6-4827-86d9-e15b891c6896)
