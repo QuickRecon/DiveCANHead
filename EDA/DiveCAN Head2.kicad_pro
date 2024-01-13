@@ -558,12 +558,12 @@
       "BatteryConverter"
     ],
     [
-      "43f35934-7d95-448c-989a-d83dd71666be",
-      "External ADC"
-    ],
-    [
       "9021e904-ec93-4c28-9903-7bba14359351",
       "Solenoid Driver"
+    ],
+    [
+      "43f35934-7d95-448c-989a-d83dd71666be",
+      "External ADC"
     ],
     [
       "a695df33-b48d-4ed9-a29f-bb0896c20222",
