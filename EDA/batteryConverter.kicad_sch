@@ -314,7 +314,7 @@
   (symbol (lib_id "Library:C") (at 125.73 64.77 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 061d5bc7-fff5-4768-a60a-5a84d7cf2c96)
-    (property "Reference" "C21" (at 122.809 63.5579 0)
+    (property "Reference" "C12" (at 122.809 63.5579 0)
       (effects (font (size 1.27 1.27)) (justify right))
     )
     (property "Value" "10u" (at 122.809 65.9821 0)
@@ -333,11 +333,11 @@
     (pin "2" (uuid 57e6ee7e-d52e-4c23-86b7-2179de65dcbf))
     (instances
       (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "C21") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
+          (reference "C12") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "C10") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+          (reference "C9") (unit 1)
         )
       )
     )
@@ -346,7 +346,7 @@
   (symbol (lib_id "power:GNDREF") (at 149.86 72.39 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 2fa5451f-a8f5-44ac-a08d-424e8170dc33)
-    (property "Reference" "#PWR067" (at 149.86 78.74 0)
+    (property "Reference" "#PWR041" (at 149.86 78.74 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 149.86 76.335 0)
@@ -361,11 +361,11 @@
     (pin "1" (uuid f0c0e6b8-fc3b-48d0-8468-b157a7235c62))
     (instances
       (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "#PWR067") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+          (reference "#PWR041") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "#PWR049") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
+          (reference "#PWR045") (unit 1)
         )
       )
     )
@@ -374,7 +374,7 @@
   (symbol (lib_id "Library:R") (at 170.18 60.96 270) (mirror x) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 44621dfa-5b0a-4ef8-8378-a8a8d91e2d06)
-    (property "Reference" "R54" (at 170.18 54.61 90)
+    (property "Reference" "R35" (at 170.18 54.61 90)
       (effects (font (size 1.27 1.27)))
     )
     (property "Value" "10k" (at 170.18 57.15 90)
@@ -393,11 +393,11 @@
     (pin "2" (uuid 818c94f7-7fe6-4b1a-8ebf-312482b342fa))
     (instances
       (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "R54") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
+          (reference "R35") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "R41") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+          (reference "R34") (unit 1)
         )
       )
     )
@@ -406,7 +406,7 @@
   (symbol (lib_id "Project:TPS7A2533DRVR") (at 149.86 64.77 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 44eeaebe-5c4a-4e72-bbcb-65252509d060)
-    (property "Reference" "U6" (at 149.86 54.61 0)
+    (property "Reference" "U3" (at 149.86 54.61 0)
       (effects (font (size 1.27 1.27)))
     )
     (property "Value" "TPS7A2533DRVR" (at 149.86 57.15 0)
@@ -427,11 +427,11 @@
     (pin "1" (uuid 8a7c82e9-5453-4234-9387-f6cde6ec6664))
     (instances
       (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "U6") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+          (reference "U3") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "U10") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
+          (reference "U4") (unit 1)
         )
       )
     )
@@ -440,7 +440,7 @@
   (symbol (lib_id "power:GNDREF") (at 181.61 68.58 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 476c6e6e-02bc-46d3-8b73-adceab0fd306)
-    (property "Reference" "#PWR068" (at 181.61 74.93 0)
+    (property "Reference" "#PWR042" (at 181.61 74.93 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 181.61 72.525 0)
@@ -455,11 +455,11 @@
     (pin "1" (uuid 26d9b58d-3d11-41e6-b137-e3a328ac71cd))
     (instances
       (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "#PWR068") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+          (reference "#PWR042") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "#PWR050") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
+          (reference "#PWR046") (unit 1)
         )
       )
     )
@@ -468,7 +468,7 @@
   (symbol (lib_id "power:GNDREF") (at 125.73 68.58 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 4d612cfe-f7f7-4cd3-bbaf-fec257662da2)
-    (property "Reference" "#PWR066" (at 125.73 74.93 0)
+    (property "Reference" "#PWR040" (at 125.73 74.93 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 125.73 72.525 0)
@@ -483,11 +483,11 @@
     (pin "1" (uuid 369cb492-e74f-496b-ba71-f474af9996b3))
     (instances
       (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "#PWR066") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+          (reference "#PWR040") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "#PWR048") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
+          (reference "#PWR044") (unit 1)
         )
       )
     )
@@ -496,7 +496,7 @@
   (symbol (lib_id "Library:C") (at 181.61 64.77 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 9effd604-2ac7-4fba-9066-a449b2d77b5e)
-    (property "Reference" "C22" (at 184.531 63.5579 0)
+    (property "Reference" "C13" (at 184.531 63.5579 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "100n" (at 184.531 65.9821 0)
@@ -515,11 +515,11 @@
     (pin "2" (uuid fc439fd6-7b08-4d76-8807-dd25f9cfa7e1))
     (instances
       (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "C22") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
+          (reference "C13") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "C11") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+          (reference "C10") (unit 1)
         )
       )
     )
@@ -528,7 +528,7 @@
   (symbol (lib_id "power:GNDREF") (at 191.77 68.58 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid c8f5ed8c-0589-416e-97e5-9220709a4dd4)
-    (property "Reference" "#PWR069" (at 191.77 74.93 0)
+    (property "Reference" "#PWR043" (at 191.77 74.93 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 191.77 72.525 0)
@@ -543,11 +543,11 @@
     (pin "1" (uuid 5d6d5e44-bfac-4091-b370-52a264720e53))
     (instances
       (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "#PWR069") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+          (reference "#PWR043") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "#PWR051") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
+          (reference "#PWR047") (unit 1)
         )
       )
     )
@@ -556,7 +556,7 @@
   (symbol (lib_id "Library:C") (at 191.77 64.77 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid cb3491e0-8af6-46d9-aa65-55c7dca13268)
-    (property "Reference" "C23" (at 194.691 63.746 0)
+    (property "Reference" "C14" (at 194.691 63.746 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "10u" (at 194.691 65.794 0)
@@ -575,11 +575,11 @@
     (pin "2" (uuid 916d2cff-372c-46c0-be85-164beef9719f))
     (instances
       (project "DiveCAN Head2"
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "C23") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
+          (reference "C14") (unit 1)
         )
-        (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "C12") (unit 1)
+        (path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+          (reference "C11") (unit 1)
         )
       )
     )
