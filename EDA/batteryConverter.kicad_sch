@@ -314,7 +314,7 @@
   (symbol (lib_id "Library:C") (at 125.73 64.77 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 061d5bc7-fff5-4768-a60a-5a84d7cf2c96)
-    (property "Reference" "C22" (at 122.809 63.5579 0)
+    (property "Reference" "C21" (at 122.809 63.5579 0)
       (effects (font (size 1.27 1.27)) (justify right))
     )
     (property "Value" "10u" (at 122.809 65.9821 0)
@@ -334,10 +334,10 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "C22") (unit 1)
+          (reference "C21") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "C22") (unit 1)
+          (reference "C10") (unit 1)
         )
       )
     )
@@ -346,7 +346,7 @@
   (symbol (lib_id "power:GNDREF") (at 149.86 72.39 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 2fa5451f-a8f5-44ac-a08d-424e8170dc33)
-    (property "Reference" "#PWR0104" (at 149.86 78.74 0)
+    (property "Reference" "#PWR067" (at 149.86 78.74 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 149.86 76.335 0)
@@ -362,10 +362,10 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "#PWR0104") (unit 1)
+          (reference "#PWR067") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "#PWR054") (unit 1)
+          (reference "#PWR049") (unit 1)
         )
       )
     )
@@ -374,7 +374,7 @@
   (symbol (lib_id "Library:R") (at 170.18 60.96 270) (mirror x) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 44621dfa-5b0a-4ef8-8378-a8a8d91e2d06)
-    (property "Reference" "R32" (at 170.18 54.61 90)
+    (property "Reference" "R54" (at 170.18 54.61 90)
       (effects (font (size 1.27 1.27)))
     )
     (property "Value" "10k" (at 170.18 57.15 90)
@@ -394,10 +394,10 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "R32") (unit 1)
+          (reference "R54") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "R32") (unit 1)
+          (reference "R41") (unit 1)
         )
       )
     )
@@ -406,7 +406,7 @@
   (symbol (lib_id "Project:TPS7A2533DRVR") (at 149.86 64.77 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 44eeaebe-5c4a-4e72-bbcb-65252509d060)
-    (property "Reference" "U9" (at 149.86 54.61 0)
+    (property "Reference" "U6" (at 149.86 54.61 0)
       (effects (font (size 1.27 1.27)))
     )
     (property "Value" "TPS7A2533DRVR" (at 149.86 57.15 0)
@@ -428,10 +428,10 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "U9") (unit 1)
+          (reference "U6") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "U9") (unit 1)
+          (reference "U10") (unit 1)
         )
       )
     )
@@ -440,7 +440,7 @@
   (symbol (lib_id "power:GNDREF") (at 181.61 68.58 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 476c6e6e-02bc-46d3-8b73-adceab0fd306)
-    (property "Reference" "#PWR0103" (at 181.61 74.93 0)
+    (property "Reference" "#PWR068" (at 181.61 74.93 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 181.61 72.525 0)
@@ -456,10 +456,10 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "#PWR0103") (unit 1)
+          (reference "#PWR068") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "#PWR058") (unit 1)
+          (reference "#PWR050") (unit 1)
         )
       )
     )
@@ -468,7 +468,7 @@
   (symbol (lib_id "power:GNDREF") (at 125.73 68.58 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 4d612cfe-f7f7-4cd3-bbaf-fec257662da2)
-    (property "Reference" "#PWR0101" (at 125.73 74.93 0)
+    (property "Reference" "#PWR066" (at 125.73 74.93 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 125.73 72.525 0)
@@ -484,10 +484,10 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "#PWR0101") (unit 1)
+          (reference "#PWR066") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "#PWR066") (unit 1)
+          (reference "#PWR048") (unit 1)
         )
       )
     )
@@ -496,7 +496,7 @@
   (symbol (lib_id "Library:C") (at 181.61 64.77 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 9effd604-2ac7-4fba-9066-a449b2d77b5e)
-    (property "Reference" "C24" (at 184.531 63.5579 0)
+    (property "Reference" "C22" (at 184.531 63.5579 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "100n" (at 184.531 65.9821 0)
@@ -516,10 +516,10 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "C24") (unit 1)
+          (reference "C22") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "C24") (unit 1)
+          (reference "C11") (unit 1)
         )
       )
     )
@@ -528,7 +528,7 @@
   (symbol (lib_id "power:GNDREF") (at 191.77 68.58 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid c8f5ed8c-0589-416e-97e5-9220709a4dd4)
-    (property "Reference" "#PWR0102" (at 191.77 74.93 0)
+    (property "Reference" "#PWR069" (at 191.77 74.93 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "GNDREF" (at 191.77 72.525 0)
@@ -544,10 +544,10 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "#PWR0102") (unit 1)
+          (reference "#PWR069") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "#PWR059") (unit 1)
+          (reference "#PWR051") (unit 1)
         )
       )
     )
@@ -556,7 +556,7 @@
   (symbol (lib_id "Library:C") (at 191.77 64.77 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid cb3491e0-8af6-46d9-aa65-55c7dca13268)
-    (property "Reference" "C18" (at 194.691 63.746 0)
+    (property "Reference" "C23" (at 194.691 63.746 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "10u" (at 194.691 65.794 0)
@@ -576,10 +576,10 @@
     (instances
       (project "DiveCAN Head2"
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/113722a3-860b-4deb-adf7-14c4825bf494"
-          (reference "C18") (unit 1)
+          (reference "C23") (unit 1)
         )
         (path "/ab021047-3849-453b-b3dc-d234ace3779d/ef9e092e-8804-437c-bb6f-9d3759004dc2"
-          (reference "C18") (unit 1)
+          (reference "C12") (unit 1)
         )
       )
     )
