@@ -550,16 +550,16 @@
       ""
     ],
     [
+      "ef9e092e-8804-437c-bb6f-9d3759004dc2",
+      "CANConverter"
+    ],
+    [
       "9021e904-ec93-4c28-9903-7bba14359351",
       "Solenoid Driver"
     ],
     [
       "113722a3-860b-4deb-adf7-14c4825bf494",
       "BatteryConverter"
-    ],
-    [
-      "73b7918b-ce02-4f63-8843-2340af9521c2",
-      "CANConverter"
     ]
   ],
   "text_variables": {}
