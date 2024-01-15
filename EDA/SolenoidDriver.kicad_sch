@@ -556,8 +556,8 @@
     (uuid fc806644-4ccd-4658-8e48-8351bf58b26c)
   )
 
-  (text "This converter can either do 12V or ~6.2v for driving different\nsolenoids. Resistor values chosen for the 13.2ohm R2 value as \nsuggested by LMR62014 datasheet and JLC basic component library.\n\n6V Output enabled by bridging the 6v jumper"
-    (at 181.61 91.44 0)
+  (text "This converter can either do 12V or ~6.2v for driving different\nsolenoids. Resistor values chosen for the 13.2ohm R2 value as \nsuggested by LMR62014 datasheet and JLC basic component library.\n\n6V Output enabled by bridging the 6v jumper\n\n1.4A switching current"
+    (at 191.77 104.14 0)
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid 97c15aa8-75f5-4ac8-9973-604de007ada6)
   )
