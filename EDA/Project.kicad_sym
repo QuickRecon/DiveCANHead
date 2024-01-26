@@ -801,7 +801,7 @@
     (symbol "TPS2121_0_0"
       (pin power_out line (at 10.16 5.08 180) (length 2.54)
         (name "OUT" (effects (font (size 1.27 1.27))))
-        (number "1,8" (effects (font (size 1.27 1.27))))
+        (number "1" (effects (font (size 1.27 1.27))))
       )
       (pin output line (at 10.16 -3.81 180) (length 2.54)
         (name "ILIM" (effects (font (size 1.27 1.27))))
@@ -848,6 +848,12 @@
       (rectangle (start -7.62 7.62) (end 7.62 -20.32)
         (stroke (width 0.254) (type default))
         (fill (type background))
+      )
+    )
+    (symbol "TPS2121_1_0"
+      (pin power_out line (at 10.16 5.08 180) (length 2.54) hide
+        (name "OUT" (effects (font (size 1.27 1.27))))
+        (number "8" (effects (font (size 1.27 1.27))))
       )
     )
   )
