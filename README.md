@@ -1,5 +1,5 @@
 # Current State
-Revision 2.1 hardware has been fabricated, programming is in its final stages with test dives expected soon.
+Revision 2.2 is in prototype production, hardware validation pending, programming is in its final stages with test dives expected soon.
 Current software TODO is listed under STM32/Jobs.md
 
 Constructive criticism, suggestions, and pull requests are always welcome.
