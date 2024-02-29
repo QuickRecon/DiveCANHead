@@ -8,6 +8,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @struct DiveCANDevice_s
+ * @brief Contains information about a DiveCAN device.
+ *
+ * A `DiveCANDevice_t` struct contains information about a device that uses the DiveCAN protocol.
+ */
 typedef struct DiveCANDevice_s
 {
     const char name[9];

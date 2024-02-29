@@ -4,7 +4,7 @@
 #include "../errors.h"
 #include "../Hardware/printer.h"
 
-static const uint8_t MAX_DEVIATION = 15; // Max allowable deviation is 0.15 bar PPO2
+static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
 
 typedef struct PPO2TXTask_params_s
 {
@@ -14,8 +14,7 @@ typedef struct PPO2TXTask_params_s
     QueueHandle_t c3;
 } PPO2TXTask_params_t;
 
-// Forward decls of local funcs
-// /void configureADC(void *arg);
+/* Forward decls of local funcs */
 void PPO2TXTask(void *arg);
 Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3);
 void setFailedCellsValues(Consensus_t *consensus);
@@ -26,10 +25,16 @@ static osThreadId_t *getOSThreadId(void)
     return &PPO2TXTaskHandle;
 }
 
+/**
+ * @brief Initializes PPO2 TX Task with specified parameters.
+ * @param device Pointer to DiveCAN device struct
+ * @param c1 QueueHandle_t for cell queue 1
+ * @param c2 QueueHandle_t for cell queue 2
+ * @param c3 QueueHandle_t for cell queue 3
+ */
 void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
 {
-
-    // Need to init the struct locally then value copy into the static
+    /* Need to init the struct locally then value copy into the static */
     static PPO2TXTask_params_t taskParams;
     PPO2TXTask_params_t params = {
         .device = device,
@@ -56,9 +61,11 @@ void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, Que
     *PPO2TXTaskHandle = osThreadNew(PPO2TXTask, &taskParams, &PPO2TXTask_attributes);
 }
 
-/// @brief The job of this task is to ingest the cell data passed to it via queues, calculate their consensus,
-///        then transmit this data via the CAN transiever to any other devices on the CAN network.
-/// @param arg Pointer to PPO2TXTask_params_t*, which has the cells and our device spec for the can bus
+/**
+ * @brief The job of this task is to ingest the cell data passed to it via queues, calculate their consensus,
+ *        then transmit this data via the CAN transiever to any other devices on the CAN network.
+ * @param arg Pointer to PPO2TXTask_params_t*, which has the cells and our device spec for the can bus
+ */
 void PPO2TXTask(void *arg)
 {
     PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;
@@ -76,8 +83,8 @@ void PPO2TXTask(void *arg)
         OxygenCell_t c3 = {0};
         bool c3pick = xQueuePeek(params->c3, &c3, 100);
 
-        // If the peek timed out then we mark the cell as failed going into the consensus calculation
-        // and lodge the nonfatal error
+        /* If the peek timed out then we mark the cell as failed going into the consensus calculation
+         and lodge the nonfatal error */
         if (!c1pick)
         {
             c1.status = CELL_FAIL;
@@ -93,33 +100,28 @@ void PPO2TXTask(void *arg)
             c3.status = CELL_FAIL;
             NON_FATAL_ERROR(TIMEOUT_ERROR);
         }
-
-        // First we calculate the consensus struct, which includes the voting logic
-        // This is aware of cell status but does not set the PPO2 data for Fail states
+        /* First we calculate the consensus struct, which includes the voting logic
+         This is aware of cell status but does not set the PPO2 data for Fail states */
         Consensus_t consensus = calculateConsensus(&c1, &c2, &c3);
 
-        // Go through each cell and if any need cal, flag cal
-        // Also check for fail and mark the cell value as fail
+        /* Go through each cell and if any need cal, flag cal
+         Also check for fail and mark the cell value as fail */
         setFailedCellsValues(&consensus);
 
         txPPO2(dev->type, consensus.PPO2s[CELL_1], consensus.PPO2s[CELL_2], consensus.PPO2s[CELL_3]);
         txMillivolts(dev->type, consensus.millis[CELL_1], consensus.millis[CELL_2], consensus.millis[CELL_3]);
         txCellState(dev->type, consensus.included[CELL_1], consensus.included[CELL_2], consensus.included[CELL_3], consensus.consensus);
 
-        // serial_printf("%d; C1: (%d, %d, %d); C2: (%d, %d, %d); C3: (%d, %d, %d), Consensus: %d\r\n", i,
-        //               consensus.PPO2s[CELL_1], consensus.millis[CELL_1], consensus.included[CELL_1],
-        //               consensus.PPO2s[CELL_2], consensus.millis[CELL_2], consensus.included[CELL_2],
-        //               consensus.PPO2s[CELL_3], consensus.millis[CELL_3], consensus.included[CELL_3],
-        //               consensus.consensus);
     } while (RTOS_LOOP_FOREVER);
 }
 
-/// @brief Update the provided consensus object based on the cell states so that not-ok cells are FFed
-///        Will also FF the whole set if we're wanting a calibration
-/// @param consensus the consensus struct to update
+/** @brief Update the provided consensus object based on the cell states so that not-ok cells are FFed
+ *        Will also FF the whole set if we're wanting a calibration
+ * @param consensus the consensus struct to update
+ */
 void setFailedCellsValues(Consensus_t *consensus)
 {
-    // First check if we need to go into "needs cal" state
+    /* First check if we need to go into "needs cal" state */
     bool needsCal = (consensus->statuses[0] == CELL_NEED_CAL) ||
                     (consensus->statuses[1] == CELL_NEED_CAL) ||
                     (consensus->statuses[2] == CELL_NEED_CAL);
@@ -131,7 +133,7 @@ void setFailedCellsValues(Consensus_t *consensus)
             consensus->PPO2s[i] = PPO2_FAIL;
         }
     }
-    else // Otherwise just FF as needed
+    else /* Otherwise just FF as needed */
     {
         for (uint8_t i = 0; i < CELL_COUNT; ++i)
         {
@@ -143,23 +145,25 @@ void setFailedCellsValues(Consensus_t *consensus)
     }
 }
 
-/// @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
-///        In an all fail scenario we want that data to still be intact so we can still have our best guess
-/// @param c1
-/// @param c2
-/// @param c3
-/// @return
+/** @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
+ *        In an all fail scenario we want that data to still be intact so we can still have our best guess
+ * @param c1
+ * @param c2
+ * @param c3
+ * @return
+ */
 Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3)
 {
-    // Zeroth step, load up the millis, status and PPO2
-    // We also load up the timestamps of each cell sample so that we can check the other tasks
-    // haven't been sitting idle and starved us of information
+    /* Zeroth step, load up the millis, status and PPO2
+     * We also load up the timestamps of each cell sample so that we can check the other tasks
+     * haven't been sitting idle and starved us of information
+     */
     Timestamp_t sampleTimes[CELL_COUNT] = {
         c1->data_time,
         c2->data_time,
         c3->data_time};
 
-    const Timestamp_t timeout = 1000; // 1000 millisecond timeout to avoid stale data
+    const Timestamp_t timeout = 1000; /* 1000 millisecond timeout to avoid stale data */
     Timestamp_t now = HAL_GetTick();
 
     Consensus_t consensus = {
@@ -181,9 +185,10 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         .consensus = 0,
         .included = {true, true, true}};
 
-    // Do a two pass check, loop through the cells and average the "good" cells
-    // Then afterwards we check each cells value against the average, and exclude deviations
-    uint16_t PPO2_acc = 0; // Start an accumulator to take an average, include the median cell always
+    /* Do a two pass check, loop through the cells and average the "good" cells
+     * Then afterwards we check each cells value against the average, and exclude deviations
+     */
+    uint16_t PPO2_acc = 0; /* Start an accumulator to take an average, include the median cell always */
     uint8_t includedCellCount = 0;
 
     for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
@@ -202,17 +207,19 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         }
     }
 
-    // Assert that we actually have cells that got included
+    /* Assert that we actually have cells that got included */
     if (includedCellCount > 0)
     {
-        // Now second pass, check to see if any of the included cells are deviant from the average
+        /* Now second pass, check to see if any of the included cells are deviant from the average */
         for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
         {
-            if (consensus.included[cellIdx] && (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.PPO2s[cellIdx]) > MAX_DEVIATION)) // We want to make sure the cell is actually included before we start checking it
+            /* We want to make sure the cell is actually included before we start checking it */
+            if (consensus.included[cellIdx] && (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.PPO2s[cellIdx]) > MAX_DEVIATION))
             {
-                // Removing cells in this way can result in a change in the outcome depending on
-                // cell position, depending on exactly how split-brained the cells are, but
-                // frankly if things are that cooked then we're borderline guessing anyway
+                /* Removing cells in this way can result in a change in the outcome depending on
+                 * cell position, depending on exactly how split-brained the cells are, but
+                 * frankly if things are that cooked then we're borderline guessing anyway
+                 */
                 PPO2_acc -= consensus.PPO2s[cellIdx];
                 --includedCellCount;
                 consensus.included[cellIdx] = false;

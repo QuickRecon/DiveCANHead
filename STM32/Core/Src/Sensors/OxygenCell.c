@@ -1,4 +1,8 @@
-// Generic oxygen cell to provide a common calling convention for analog and digital cells
+/** \file OxygenCell.c
+ *  \author Aren Leishman
+ *  \brief This is a generic oxygen cell used by both analog and digital cells
+ *         as a common calling convention.
+ */
 
 #include "OxygenCell.h"
 #include "AnalogOxygen.h"
@@ -8,12 +12,26 @@
 #include <math.h>
 #include "../Hardware/printer.h"
 
+/** @struct OxygenHandle_s
+ *  @brief Contains the type and a pointer to an oxygen cell handle.
+ *
+ *  The `type` field contains the type of the cell, while the `cellHandle`
+ *  field contains a pointer to the actual cell handle object.
+ */
 typedef struct OxygenHandle_s
 {
     CellType_t type;
     void *cellHandle;
 } OxygenHandle_t;
 
+/** @struct CalParameters_s
+ *  @brief Contains calibration parameters for an oxygen sensor.
+ *
+ *  The `deviceType` field specifies the type of device being used, while the
+ *  `fO2`, `pressure_val`, and `calMethod` fields specify the FO2 value,
+ *  pressure value, and calibration method to be used. The remaining fields
+ *  are for individual cell parameters.
+ */
 typedef struct CalParameters_s
 {
     DiveCANType_t deviceType;
@@ -27,6 +45,16 @@ typedef struct CalParameters_s
     OxygenCalMethod_t calMethod;
 } CalParameters_t;
 
+/** @fn getQueueHandle
+ *  @brief Returns a pointer to the queue handle for a given oxygen cell.
+ *
+ *  The `cellNum` parameter specifies which cell to retrieve the queue handle
+ *  for. If `cellNum` is invalid, an error message will be logged and a safe
+ *  fallback queue handle will be returned.
+ *
+ *  @param[in] cellNum Index of the oxygen cell to retrieve the queue handle for.
+ *  @return Pointer to the queue handle for the specified oxygen cell.
+ */
 static QueueHandle_t *getQueueHandle(uint8_t cellNum)
 {
     static QueueHandle_t cellQueues[CELL_COUNT];
@@ -34,7 +62,7 @@ static QueueHandle_t *getQueueHandle(uint8_t cellNum)
     if (cellNum >= CELL_COUNT)
     {
         NON_FATAL_ERROR(INVALID_CELL_NUMBER);
-        queueHandle = &(cellQueues[0]); // A safe fallback
+        queueHandle = &(cellQueues[0]); /* A safe fallback */
     }
     else
     {
@@ -43,6 +71,16 @@ static QueueHandle_t *getQueueHandle(uint8_t cellNum)
     return queueHandle;
 }
 
+/** @fn getCell
+ *  @brief Returns a pointer to the oxygen cell handle for a given oxygen cell.
+ *
+ *  The `cellNum` parameter specifies which cell to retrieve the cell handle for.
+ *  If `cellNum` is invalid, an error message will be logged and a safe fallback
+ *  cell handle will be returned.
+ *
+ *  @param[in] cellNum Index of the oxygen cell to retrieve the cell handle for.
+ *  @return Pointer to the oxygen cell handle for the specified oxygen cell.
+ */
 static OxygenHandle_t *getCell(uint8_t cellNum)
 {
     static OxygenHandle_t cells[CELL_COUNT];
@@ -50,7 +88,7 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
     if (cellNum >= CELL_COUNT)
     {
         NON_FATAL_ERROR(INVALID_CELL_NUMBER);
-        cellHandle = &(cells[0]); // A safe fallback
+        cellHandle = &(cells[0]); /* A safe fallback */
     }
     else
     {
@@ -59,6 +97,13 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
     return cellHandle;
 }
 
+/**
+ * @brief Initializes and creates a new cell with the given cell number and cell type.
+ *
+ * @param[in] cellNumber The number of the cell to be initialized.
+ * @param[in] type The type of cell to be created (analog or digital).
+ * @return The handle to the newly created cell.
+ */
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
 {
     OxygenHandle_t *cell = getCell(cellNumber);
@@ -83,12 +128,22 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
     return *queueHandle;
 }
 
+/**
+ * @brief Calibrates the Oxygen sensor using a digital reference cell.
+ *
+ * This function searches for a digital reference cell and uses it to calibrate all the analog cells.
+ * The calibration parameters are then stored in the `CalParameters_t` struct.
+ *
+ * @param calParams Pointer to the CalParameters struct where the calibration results will be stored.
+ * @return DiveCANCalResponse_t - Indicates the success or failure of the calibration process.
+ * @see CalParameters_t, DigitalOxygenState_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, ERR_NONE, Numeric_t, FO2_t, CELL_DIGITAL, CELL_ANALOG
+ */
 DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
 {
     DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
     const DigitalOxygenState_t *refCell = NULL;
     uint8_t refCellIndex = 0;
-    // Select the first digital cell
+    /* Select the first digital cell */
     for (uint8_t i = 0; i < CELL_COUNT; ++i)
     {
         const OxygenHandle_t *const cell = getCell(i);
@@ -107,7 +162,8 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
         PPO2_t ppO2 = refCellData.ppo2;
         uint16_t pressure = (uint16_t)(refCell->pressure / 1000);
 
-        // Now that we have the PPO2 we cal all the analog cells
+        /* Now that we have the PPO2 we cal all the analog cells
+         */
         ShortMillivolts_t cellVals[CELL_COUNT] = {0};
         NonFatalError_t calErrors[CELL_COUNT] = {ERR_NONE, ERR_NONE, ERR_NONE};
 
@@ -130,7 +186,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
             }
         }
 
-        // Now that calibration is done lets grab the millivolts for the record
+        /* Now that calibration is done lets grab the millivolts for the record */
         calParams->cell1 = cellVals[CELL_1];
         calParams->cell2 = cellVals[CELL_2];
         calParams->cell3 = cellVals[CELL_3];
@@ -140,22 +196,26 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
     }
     else
     {
-        // We can't find a digital cell to cal with
+        /* We can't find a digital cell to cal with */
         NON_FATAL_ERROR(CAL_METHOD_ERROR);
         calPass = DIVECAN_CAL_FAIL_REJECTED;
     }
     return calPass;
 }
 
+/**
+ * @brief This task handles the calibration process of the device by checking the calibration method used and then calling the appropriate function accordingly. The available calibration methods are CAL_DIGITAL_REFERENCE, CAL_ANALOG_ABSOLUTE, and CAL_TOTAL_ABSOLUTE.
+ * @param arg A pointer to the CalParameters_t struct which contains all necessary parameters for the calibration process.
+ */
 void CalibrationTask(void *arg)
 {
     CalParameters_t calParams = *((CalParameters_t *)arg);
     DiveCANCalResponse_t calResult = DIVECAN_CAL_FAIL_REJECTED;
     switch (calParams.calMethod)
     {
-    case CAL_DIGITAL_REFERENCE: // Calibrate using the solid state cell as a reference
+    case CAL_DIGITAL_REFERENCE: /* Calibrate using the solid state cell as a reference */
         calResult = DigitalReferenceCalibrate(&calParams);
-        osDelay(TIMEOUT_4s); // Give the shearwater time to catch up
+        osDelay(TIMEOUT_4s); /* Give the shearwater time to catch up */
         break;
     case CAL_ANALOG_ABSOLUTE:
     case CAL_TOTAL_ABSOLUTE:
@@ -201,7 +261,8 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
 
     txCalAck(deviceType);
 
-    // Don't start the thread if we're already calibrating, shearwater double shots us sometimes
+    /*
+     Don't start the thread if we're already calibrating, shearwater double shots us sometimes */
     if (!isCalibrating())
     {
         static uint32_t CalTask_buffer[CALTASK_STACK_SIZE];

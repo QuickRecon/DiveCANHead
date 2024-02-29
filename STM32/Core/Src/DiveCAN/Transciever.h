@@ -39,71 +39,169 @@ static const uint32_t BUS_STATUS_ID = 0xDCB0000;
 
 #define MAX_CAN_RX_LENGTH 8
 
-typedef struct DiveCANMessage_s {
-    uint32_t id;
-    uint8_t length;
-    uint8_t data[MAX_CAN_RX_LENGTH];
+/**
+ * @struct DiveCANMessage_s
+ * @brief Struct to represent a DiveCAN message.
+ */
+typedef struct DiveCANMessage_s
+{
+  uint32_t id;
+  uint8_t length;
+  uint8_t data[MAX_CAN_RX_LENGTH];
 } DiveCANMessage_t;
 
+/**
+ * @enum    DiveCANType_e
+ * @brief   This enum represents different types of devices connected via CAN bus.
+ *          Each value corresponds to a specific device type.
+ */
 typedef enum DiveCANType_e
 {
-    DIVECAN_CONTROLLER = 1,
-    DIVECAN_OBOE = 2,
-    DIVECAN_MONITOR = 3,
-    DIVECAN_SOLO = 4,
-    DIVECAN_REVO = 5
+  /** @brief DiveCAN controller device (like a Petrel) */
+  DIVECAN_CONTROLLER = 1,
+
+  /** @brief DiveCAN Oboe (Oxygen BOard and Electronics) device */
+  DIVECAN_OBOE = 2,
+
+  /** @brief DiveCAN Monitor device (like a HUD) */
+  DIVECAN_MONITOR = 3,
+
+  /** @brief DiveCAN SOLO (SOLenoid and Oxygen) device  */
+  DIVECAN_SOLO = 4,
+
+  /** @brief DiveCAN Revo (RMS/battery box) device */
+  DIVECAN_REVO = 5
 } DiveCANType_t;
 
+/**
+ * @enum DiveCANError_e
+ * @brief Enum representing potential errors of a DiveCAN device.
+ */
 typedef enum DiveCANError_e
 {
-    DIVECAN_ERR_UNKNOWN1 = 0, // Nothing
-    DIVECAN_ERR_LOW_BATTERY = 1 << 0,
-    DIVECAN_ERR_UNKNOWN2 = 1 << 1, // Nothing
-    DIVECAN_ERR_SOLENOID = 1 << 2,
-    DIVECAN_ERR_NONE = 1 << 3,
-    DIVECAN_ERR_UNKNOWN3 = 1 << 4, // Nothing
-    DIVECAN_ERR_UNKNOWN4 = 1 << 5, // Nothing
-    DIVECAN_ERR_UNKNOWN5 = 1 << 6, // Nothing
-    DIVECAN_ERR_UNKNOWN6 = 1 << 7 // Nothing
+  /**
+   * @brief An unknown error 1.
+   */
+  DIVECAN_ERR_UNKNOWN1 = 0,
+
+  /**
+   * @brief Error indicating low battery status.
+   */
+  DIVECAN_ERR_LOW_BATTERY = 1 << 0,
+
+  /**
+   * @brief An unknown error 2.
+   */
+  DIVECAN_ERR_UNKNOWN2 = 1 << 1,
+
+  /**
+   * @brief Error indicating a problem with the solenoid.
+   */
+  DIVECAN_ERR_SOLENOID = 1 << 2,
+
+  /**
+   * @brief Indicates there are no errors in the system.
+   */
+  DIVECAN_ERR_NONE = 1 << 3,
+
+  /**
+   * @brief An unknown error 3.
+   */
+  DIVECAN_ERR_UNKNOWN3 = 1 << 4,
+
+  /**
+   * @brief An unknown error 4.
+   */
+  DIVECAN_ERR_UNKNOWN4 = 1 << 5,
+
+  /**
+   * @brief An unknown error 5.
+   */
+  DIVECAN_ERR_UNKNOWN5 = 1 << 6,
+
+  /**
+   * @brief An unknown error 6.
+   */
+  DIVECAN_ERR_UNKNOWN6 = 1 << 7
 } DiveCANError_t;
 
+/**
+ *  \enum DiveCANManufacturer_t
+ *  \brief Enum to define different manufacturers of DiveCAN devices.
+ */
 typedef enum DiveCANManufacturer_e
 {
-    DIVECAN_MANUFACTURER_ISC = 0x00,
-    DIVECAN_MANUFACTURER_SRI = 0x01,
-    DIVECAN_MANUFACTURER_GEN = 0x02
+  /**
+   * @brief Identifies the ISC (InnerSpace Systems Corp) manufacturer for a DiveCAN device.
+   */
+  DIVECAN_MANUFACTURER_ISC = 0x00,
+
+  /**
+   * @brief Identifies the SRI (Shearwater Research International) manufacturer for a DiveCAN device.
+   */
+  DIVECAN_MANUFACTURER_SRI = 0x01,
+
+  /**
+   * @brief Identifies a General/Unknown manufacturer for a DiveCAN device.
+   */
+  DIVECAN_MANUFACTURER_GEN = 0x02
 } DiveCANManufacturer_t;
 
 void InitRXQueue(void);
 BaseType_t GetLatestCAN(const Timestamp_t blockTime, DiveCANMessage_t *message);
-void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t* const data);
+void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const data);
 
-// Device Metadata
+/* Device Metadata */
 void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType);
 void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, uint8_t firmwareVersion);
 void txName(const DiveCANType_t deviceType, const char *name);
 void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error);
 
-// PPO2 Messages
+/* PPO2 Messages */
 void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cell2, const PPO2_t cell3);
 void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, const Millivolts_t cell2, const Millivolts_t cell3);
 void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool cell2, const bool cell3, PPO2_t PPO2);
 
-// Calibration
+/**
+ * @brief DiveCAN calibration result/response codes.
+ */
 typedef enum DiveCANCalResponse_e
 {
-    DIVECAN_CAL_ACK = 0x05,
-    DIVECAN_CAL_RESULT = 0x01,
-    DIVECAN_CAL_FAIL_LOW_EXT_BAT    = 0b00010000,
-    DIVECAN_CAL_FAIL_FO2_RANGE      = 0b00100000,
-    DIVECAN_CAL_FAIL_REJECTED       = 0b00001000,
-    DIVECAN_CAL_FAIL_GEN = 0x09, //0x11 0x07
+  /**
+   * @brief Acknowledgment of the start of the calibration process.
+   */
+  DIVECAN_CAL_ACK = 0x05,
+
+  /**
+   * @brief Calibration result/response code indicating success.
+   */
+  DIVECAN_CAL_RESULT = 0x01,
+
+  /**
+   * @brief Calibration failed due to low external battery voltage.
+   */
+  DIVECAN_CAL_FAIL_LOW_EXT_BAT = 0b00010000,
+
+  /**
+   * @brief Calibration failed because the FO2 sensor reading was out of its valid range.
+   */
+  DIVECAN_CAL_FAIL_FO2_RANGE = 0b00100000,
+
+  /**
+   * @brief Calibration was rejected.
+   */
+  DIVECAN_CAL_FAIL_REJECTED = 0b00001000,
+
+  /**
+   * @brief Generic calibration failure code.
+   */
+  DIVECAN_CAL_FAIL_GEN = 0x09
 } DiveCANCalResponse_t;
 
 void txCalAck(const DiveCANType_t deviceType);
 void txCalResponse(const DiveCANType_t deviceType, DiveCANCalResponse_t response, const ShortMillivolts_t cell1, const ShortMillivolts_t cell2, const ShortMillivolts_t cell3, const FO2_t FO2, const uint16_t atmosphericPressure);
 
-// Bus Devices
+/* Bus Devices */
 void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, uint8_t itemCount);
 void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *const fieldText, const bool textField, const bool editable);
 void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t fieldId);
