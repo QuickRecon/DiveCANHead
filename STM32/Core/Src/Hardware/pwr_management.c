@@ -121,20 +121,20 @@ void SetVBusMode(PowerSelectMode_t powerMode)
 
 void SetSolenoidMode(PowerSelectMode_t powerMode)
 {
-    GPIO_PinState Pin1 = GPIO_PIN_RESET;
-    if (1 == (powerMode & 0x01))
-    {
-        Pin1 = GPIO_PIN_SET;
-    }
+//     GPIO_PinState Pin1 = GPIO_PIN_RESET;
+//     if (1 == (powerMode & 0x01))
+//     {
+//         Pin1 = GPIO_PIN_SET;
+//     }
 
-    GPIO_PinState Pin2 = GPIO_PIN_RESET;
-    if (1 == ((powerMode >> 1) & 0x01))
-    {
-        Pin2 = GPIO_PIN_SET;
-    }
+//     GPIO_PinState Pin2 = GPIO_PIN_RESET;
+//     if (1 == ((powerMode >> 1) & 0x01))
+//     {
+//         Pin2 = GPIO_PIN_SET;
+//     }
 
-    HAL_GPIO_WritePin(SOL_SEL1_GPIO_Port, SOL_SEL1_Pin, Pin1);
-    HAL_GPIO_WritePin(SOL_SEL2_GPIO_Port, SOL_SEL2_Pin, Pin2);
+//     //HAL_GPIO_WritePin(SOL_SEL1_GPIO_Port, SOL_SEL1_Pin, Pin1);
+//     //HAL_GPIO_WritePin(SOL_SEL2_GPIO_Port, SOL_SEL2_Pin, Pin2);
 }
 
 void SetBattery(bool enable)

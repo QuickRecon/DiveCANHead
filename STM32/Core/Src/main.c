@@ -161,14 +161,6 @@ int main(void)
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
-  InitPrinter();
-  serial_printf("Booting...\r\n");
-
-  // Set up flash erase
-  HAL_FLASH_Unlock();
-  EE_Init(EE_FORCED_ERASE);
-  HAL_FLASH_Lock();
-
   HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
@@ -178,6 +170,14 @@ int main(void)
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
 
+  InitPrinter();
+  serial_printf("Booting...\r\n");
+
+  // Set up flash erase
+  HAL_FLASH_Unlock();
+  EE_Init(EE_FORCED_ERASE);
+  HAL_FLASH_Lock();
+  
   // Set our power bus
   SetVBusMode(MODE_CAN); // TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE
 
@@ -302,9 +302,6 @@ void SystemClock_Config(void)
  */
 static void MX_NVIC_Init(void)
 {
-  /* EXTI9_5_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
   /* I2C1_EV_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(I2C1_EV_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
@@ -714,74 +711,55 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, CAN_SILENT_Pin | CAN_SHDN_Pin | SOLENOID_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, CAN_SHDN_Pin | SOLENOID_Pin | GPIO_A_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, BATTERY_EN_Pin | BUS_SEL2_Pin | BUS_SEL1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, BATTERY_EN_Pin | BUS_SEL2_Pin | BUS_SEL1_Pin | PWM_1_Pin | GPIO_B_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LED0_Pin | LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | LED5_Pin | LED6_Pin | LED7_Pin | SOL_SEL2_Pin | SOL_SEL1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LED0_Pin | LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | LED5_Pin | LED6_Pin | LED7_Pin | PWM_2_Pin | SOL_DIS_BATT_Pin | SOL_DIS_CAN_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : CAN_SILENT_Pin CAN_SHDN_Pin SOLENOID_Pin */
-  GPIO_InitStruct.Pin = CAN_SILENT_Pin | CAN_SHDN_Pin | SOLENOID_Pin;
+  /*Configure GPIO pins : CAN_SHDN_Pin SOLENOID_Pin GPIO_A_Pin */
+  GPIO_InitStruct.Pin = CAN_SHDN_Pin | SOLENOID_Pin | GPIO_A_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC15 PC3 PC7 PC9
-                           PC10 PC11 */
-  GPIO_InitStruct.Pin = GPIO_PIN_15 | GPIO_PIN_3 | GPIO_PIN_7 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : MOCK_SD_DETECT_Pin */
-  GPIO_InitStruct.Pin = MOCK_SD_DETECT_Pin;
+  /*Configure GPIO pins : CAN_SILENT_Pin SD_DET_Pin */
+  GPIO_InitStruct.Pin = CAN_SILENT_Pin | SD_DET_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(MOCK_SD_DETECT_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA0 PA8 PA13 BATTERY_V_Pin
-                           PA15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_8 | GPIO_PIN_13 | BATTERY_V_Pin | GPIO_PIN_15;
+  /*Configure GPIO pins : PC0 PC9 PC10 PC11 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : BATTERY_EN_Pin BUS_SEL2_Pin BUS_SEL1_Pin */
-  GPIO_InitStruct.Pin = BATTERY_EN_Pin | BUS_SEL2_Pin | BUS_SEL1_Pin;
+  /*Configure GPIO pins : BATTERY_EN_Pin BUS_SEL2_Pin BUS_SEL1_Pin PWM_1_Pin
+                           GPIO_B_Pin */
+  GPIO_InitStruct.Pin = BATTERY_EN_Pin | BUS_SEL2_Pin | BUS_SEL1_Pin | PWM_1_Pin | GPIO_B_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : VCC_STAT_Pin BUS_STAT_Pin */
-  GPIO_InitStruct.Pin = VCC_STAT_Pin | BUS_STAT_Pin;
+  /*Configure GPIO pins : VCC_STAT_Pin BUS_STAT_Pin CAN_PG_Pin BATT_PG_Pin */
+  GPIO_InitStruct.Pin = VCC_STAT_Pin | BUS_STAT_Pin | CAN_PG_Pin | BATT_PG_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LED0_Pin LED1_Pin LED2_Pin LED3_Pin
                            LED4_Pin LED5_Pin LED6_Pin LED7_Pin
-                           SOL_SEL2_Pin SOL_SEL1_Pin */
-  GPIO_InitStruct.Pin = LED0_Pin | LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | LED5_Pin | LED6_Pin | LED7_Pin | SOL_SEL2_Pin | SOL_SEL1_Pin;
+                           PWM_2_Pin SOL_DIS_BATT_Pin SOL_DIS_CAN_Pin */
+  GPIO_InitStruct.Pin = LED0_Pin | LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | LED5_Pin | LED6_Pin | LED7_Pin | PWM_2_Pin | SOL_DIS_BATT_Pin | SOL_DIS_CAN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PB15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : CAN_EN_Pin */
-  GPIO_InitStruct.Pin = CAN_EN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(CAN_EN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : ADC1_ALERT_Pin ADC2_ALERT_Pin */
   GPIO_InitStruct.Pin = ADC1_ALERT_Pin | ADC2_ALERT_Pin;

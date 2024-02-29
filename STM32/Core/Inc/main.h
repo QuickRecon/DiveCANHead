@@ -57,16 +57,20 @@ void JumpToBootloader(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define CAN_SILENT_Pin GPIO_PIN_13
-#define CAN_SILENT_GPIO_Port GPIOC
+#define CAN_EN_Pin GPIO_PIN_13
+#define CAN_EN_GPIO_Port GPIOC
 #define CAN_SHDN_Pin GPIO_PIN_14
 #define CAN_SHDN_GPIO_Port GPIOC
-#define MOCK_SD_DETECT_Pin GPIO_PIN_0
-#define MOCK_SD_DETECT_GPIO_Port GPIOC
+#define CAN_SILENT_Pin GPIO_PIN_15
+#define CAN_SILENT_GPIO_Port GPIOC
 #define SOLENOID_Pin GPIO_PIN_1
 #define SOLENOID_GPIO_Port GPIOC
 #define CAN_V_Pin GPIO_PIN_2
 #define CAN_V_GPIO_Port GPIOC
+#define BATT_V_Pin GPIO_PIN_3
+#define BATT_V_GPIO_Port GPIOC
+#define VBUS_V_Pin GPIO_PIN_0
+#define VBUS_V_GPIO_Port GPIOA
 #define BATTERY_EN_Pin GPIO_PIN_1
 #define BATTERY_EN_GPIO_Port GPIOA
 #define VCC_STAT_Pin GPIO_PIN_4
@@ -93,21 +97,30 @@ void JumpToBootloader(void);
 #define LED6_GPIO_Port GPIOB
 #define LED7_Pin GPIO_PIN_14
 #define LED7_GPIO_Port GPIOB
-#define CAN_EN_Pin GPIO_PIN_6
-#define CAN_EN_GPIO_Port GPIOC
-#define CAN_EN_EXTI_IRQn EXTI9_5_IRQn
+#define PWM_2_Pin GPIO_PIN_15
+#define PWM_2_GPIO_Port GPIOB
+#define SD_DET_Pin GPIO_PIN_6
+#define SD_DET_GPIO_Port GPIOC
+#define GPIO_A_Pin GPIO_PIN_7
+#define GPIO_A_GPIO_Port GPIOC
+#define PWM_1_Pin GPIO_PIN_8
+#define PWM_1_GPIO_Port GPIOA
 #define ADC1_ALERT_Pin GPIO_PIN_11
 #define ADC1_ALERT_GPIO_Port GPIOA
 #define ADC1_ALERT_EXTI_IRQn EXTI15_10_IRQn
 #define ADC2_ALERT_Pin GPIO_PIN_12
 #define ADC2_ALERT_GPIO_Port GPIOA
 #define ADC2_ALERT_EXTI_IRQn EXTI15_10_IRQn
-#define BATTERY_V_Pin GPIO_PIN_14
-#define BATTERY_V_GPIO_Port GPIOA
-#define SOL_SEL2_Pin GPIO_PIN_3
-#define SOL_SEL2_GPIO_Port GPIOB
-#define SOL_SEL1_Pin GPIO_PIN_4
-#define SOL_SEL1_GPIO_Port GPIOB
+#define CAN_PG_Pin GPIO_PIN_13
+#define CAN_PG_GPIO_Port GPIOA
+#define BATT_PG_Pin GPIO_PIN_14
+#define BATT_PG_GPIO_Port GPIOA
+#define GPIO_B_Pin GPIO_PIN_15
+#define GPIO_B_GPIO_Port GPIOA
+#define SOL_DIS_BATT_Pin GPIO_PIN_3
+#define SOL_DIS_BATT_GPIO_Port GPIOB
+#define SOL_DIS_CAN_Pin GPIO_PIN_4
+#define SOL_DIS_CAN_GPIO_Port GPIOB
 #define SOL_STAT_Pin GPIO_PIN_5
 #define SOL_STAT_GPIO_Port GPIOB
 
