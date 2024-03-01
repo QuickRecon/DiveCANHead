@@ -46,27 +46,6 @@ void InitDiveCAN(DiveCANDevice_t *deviceSpec)
     txStartDevice(DIVECAN_CONTROLLER, DIVECAN_SOLO);
 }
 
-/// @brief !! ISR METHOD !! Called when the CAN bus state is changed
-/// @param CAN_Enabled The current bus state, true implies that the bus is up (and we should be awake)
-void BusStateChanged(bool CAN_Enabled)
-{
-    if (CAN_Enabled)
-    {
-        serial_printf("CAN UP");
-        // The bus is on, we're on, all is well with the world
-    }
-    else
-    {
-
-        serial_printf("CAN DOWN");
-        // We disable the downward slope as part of normal shutdown
-        // So if we get here then the bus went away without a clean shutdown
-        // Lets force it back on
-
-        // TODO: force it back on
-    }
-}
-
 /// @brief This task is the context in which we handle inbound CAN messages (which sometimes requires a response), dispatch of our other outgoing traffic may occur elsewhere
 /// @param arg
 void CANTask(void *arg)

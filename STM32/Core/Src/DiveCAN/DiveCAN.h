@@ -26,7 +26,6 @@ typedef struct DiveCANDevice_s
 } DiveCANDevice_t;
 
 void InitDiveCAN(DiveCANDevice_t *deviceSpec);
-void BusStateChanged(bool CAN_Enabled);
 
 #ifdef __cplusplus
 }

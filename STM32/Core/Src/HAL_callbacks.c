@@ -24,11 +24,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         // Trigger ADC2 read
         ADC_Ready_Interrupt();
     }
-    else if (CAN_EN_Pin == GPIO_Pin)
-    {
-        bool CAN_Enabled = HAL_GPIO_ReadPin(CAN_EN_GPIO_Port, CAN_EN_Pin) == GPIO_PIN_RESET; // LOW enable pin means the bus is enabled
-        BusStateChanged(CAN_Enabled);
-    }
     else
     {
         // Do nothing, we don't care about this pin (yet)
