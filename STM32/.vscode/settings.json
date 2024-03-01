@@ -50,9 +50,11 @@
         "FATFS",
         "hcan",
         "huart",
+        "IWDG",
         "microbar",
         "millicelsius",
         "NVIC",
+        "Predive",
         "SDMMC",
         "setpoint",
         "TESTITEM"
