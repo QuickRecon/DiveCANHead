@@ -177,7 +177,7 @@ int main(void)
   HAL_FLASH_Unlock();
   EE_Init(EE_FORCED_ERASE);
   HAL_FLASH_Lock();
-  
+
   // Set our power bus
   SetVBusMode(MODE_CAN); // TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE
 
@@ -224,7 +224,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
-  
+
   HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
@@ -755,10 +755,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : VCC_STAT_Pin BUS_STAT_Pin CAN_PG_Pin BATT_PG_Pin */
-  GPIO_InitStruct.Pin = VCC_STAT_Pin | BUS_STAT_Pin | CAN_PG_Pin | BATT_PG_Pin;
+  /*Configure GPIO pins : VCC_STAT_Pin BUS_STAT_Pin */
+  GPIO_InitStruct.Pin = VCC_STAT_Pin | BUS_STAT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LED0_Pin LED1_Pin LED2_Pin LED3_Pin
@@ -773,13 +773,19 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pins : ADC1_ALERT_Pin ADC2_ALERT_Pin */
   GPIO_InitStruct.Pin = ADC1_ALERT_Pin | ADC2_ALERT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : CAN_PG_Pin BATT_PG_Pin */
+  GPIO_InitStruct.Pin = CAN_PG_Pin | BATT_PG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SOL_STAT_Pin */
   GPIO_InitStruct.Pin = SOL_STAT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(SOL_STAT_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PH3 */

@@ -18,6 +18,30 @@ extern CAN_HandleTypeDef hcan1;
 /// @brief Go to our lowest power mode that we can be woken from by the DiveCAN bus
 void Shutdown(void)
 {
+
+    // Pull what we can high to try and get the current consumption down
+    HAL_PWREx_EnablePullUpPullDownConfig();
+
+    /* Silence the CAN transceiver */
+    /* CAN_SHDN: GPIO C Pin 14*/
+    /* CAN_SILENT: GPIO C Pin 15*/
+    HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_14);
+    HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_15);
+
+    /* Disable VBUS */
+    /* BUS_SEL1: GPIO A Pin 6*/
+    /* BUS_SEL2: GPIO A Pin 5*/
+    HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_6);
+    HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_5); BUS_SEL1_GPIO_Port
+
+    /* Disable solenoid */
+    /* SOL_DIS_BATT: GPIO B Pin 3*/
+    /* SOL_DIS_CAN: GPIO B Pin 4*/
+    /* SOLENOID: GPIO C Pin 1*/
+    HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_3);
+    HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_4);
+    HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_1);
+
     __disable_irq();
     __disable_fault_irq();
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);

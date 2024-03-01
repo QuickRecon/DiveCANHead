@@ -3714,7 +3714,7 @@
   )
 
   (symbol (lib_id "Library:R") (at 48.26 189.23 90) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no)
+    (in_bom yes) (on_board yes) (dnp yes)
     (uuid 1f2c6963-41e9-48c4-9c20-fed1ae16da2a)
     (property "Reference" "R11" (at 43.18 190.5 90)
       (effects (font (size 1.27 1.27)) hide)
@@ -3930,7 +3930,7 @@
   )
 
   (symbol (lib_id "Library:R") (at 48.26 194.31 90) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no)
+    (in_bom yes) (on_board yes) (dnp yes)
     (uuid 31b10c92-ffcf-4cca-aa1e-3b61c6a4ecc3)
     (property "Reference" "R13" (at 43.18 195.58 90)
       (effects (font (size 1.27 1.27)) hide)
@@ -4586,7 +4586,7 @@
   )
 
   (symbol (lib_id "Library:R") (at 48.26 184.15 90) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no)
+    (in_bom yes) (on_board yes) (dnp yes)
     (uuid 6f4a713e-a30a-4f05-ac63-8157467db633)
     (property "Reference" "R9" (at 43.18 185.42 90)
       (effects (font (size 1.27 1.27)) hide)
@@ -6058,7 +6058,7 @@
   )
 
   (symbol (lib_id "Library:R") (at 48.26 191.77 90) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no)
+    (in_bom yes) (on_board yes) (dnp yes)
     (uuid c399af5c-fbdb-4d1a-be87-08cb751c2df6)
     (property "Reference" "R12" (at 43.18 193.04 90)
       (effects (font (size 1.27 1.27)) hide)
@@ -6356,7 +6356,7 @@
   )
 
   (symbol (lib_id "Library:R") (at 48.26 186.69 90) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no)
+    (in_bom yes) (on_board yes) (dnp yes)
     (uuid cfb421d1-9867-459d-ac85-ab92908023bd)
     (property "Reference" "R10" (at 43.18 187.96 90)
       (effects (font (size 1.27 1.27)) hide)
