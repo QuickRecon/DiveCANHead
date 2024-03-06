@@ -16,11 +16,12 @@ extern ADC_HandleTypeDef hadc1;
 
 extern CAN_HandleTypeDef hcan1;
 
-/// @brief Go to our lowest power mode that we can be woken from by the DiveCAN bus
+/** @brief Go to our lowest power mode that we can be woken from by the DiveCAN bus
+ */
 void Shutdown(void)
 {
 
-    // Pull what we can high to try and get the current consumption down
+    /* Pull what we can high to try and get the current consumption down */
     HAL_PWREx_EnablePullUpPullDownConfig();
 
     /* Silence the CAN transceiver */
@@ -44,28 +45,21 @@ void Shutdown(void)
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_1);
 
     /* Pull everything else down */
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_0);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_1);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_2);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_3);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_4);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_5);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_6);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_7);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_8);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_9);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_10);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_11);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_12);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_13);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_14);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_15);
-    
+
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_0);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_1);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_2);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_3);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_4);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_5);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_6);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_7);
@@ -77,9 +71,8 @@ void Shutdown(void)
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_13);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_14);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_15);
-    
+
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_0);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_1);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_2);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_3);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_4);
@@ -91,11 +84,6 @@ void Shutdown(void)
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_10);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_11);
     HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_12);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_13);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_14);
-    //HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_15);
-    
-
 
     __disable_irq();
     __disable_fault_irq();
@@ -112,7 +100,7 @@ void Shutdown(void)
 
 PowerSource_t GetVCCSource(void)
 {
-    PowerSource_t source = SOURCE_BATTERY; // Init val
+    PowerSource_t source = SOURCE_DEFAULT;
 
     if (HAL_GPIO_ReadPin(VCC_STAT_GPIO_Port, VCC_STAT_Pin) != 0)
     {
@@ -127,7 +115,7 @@ PowerSource_t GetVCCSource(void)
 
 PowerSource_t GetVBusSource(void)
 {
-    PowerSource_t source = SOURCE_BATTERY; // Init val
+    PowerSource_t source = SOURCE_DEFAULT;
 
     if (HAL_GPIO_ReadPin(BUS_STAT_GPIO_Port, BUS_STAT_Pin) != 0)
     {
@@ -156,24 +144,6 @@ void SetVBusMode(PowerSelectMode_t powerMode)
 
     HAL_GPIO_WritePin(BUS_SEL1_GPIO_Port, BUS_SEL1_Pin, Pin1);
     HAL_GPIO_WritePin(BUS_SEL2_GPIO_Port, BUS_SEL2_Pin, Pin2);
-}
-
-void SetSolenoidMode(PowerSelectMode_t powerMode)
-{
-    //     GPIO_PinState Pin1 = GPIO_PIN_RESET;
-    //     if (1 == (powerMode & 0x01))
-    //     {
-    //         Pin1 = GPIO_PIN_SET;
-    //     }
-
-    //     GPIO_PinState Pin2 = GPIO_PIN_RESET;
-    //     if (1 == ((powerMode >> 1) & 0x01))
-    //     {
-    //         Pin2 = GPIO_PIN_SET;
-    //     }
-
-    //     //HAL_GPIO_WritePin(SOL_SEL1_GPIO_Port, SOL_SEL1_Pin, Pin1);
-    //     //HAL_GPIO_WritePin(SOL_SEL2_GPIO_Port, SOL_SEL2_Pin, Pin2);
 }
 
 void SetBattery(bool enable)

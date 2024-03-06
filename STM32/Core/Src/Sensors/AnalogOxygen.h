@@ -14,10 +14,10 @@ typedef int16_t ADCCount_t;
 
 typedef struct AnalogOxygenState_s
 {
-    // Configuration
+    /* Configuration*/
     uint8_t cellNumber;
 
-    // Dynamic variables
+    /* Dynamic variables*/
     CalCoeff_t calibrationCoefficient;
     CellStatus_t status;
     uint8_t adcInputIndex;
@@ -31,7 +31,7 @@ typedef struct AnalogOxygenState_s
     QueueHandle_t outQueue;
 } AnalogOxygenState_t;
 
-// Analog Cell
+/* Analog Cell*/
 AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue);
 void ReadCalibration(AnalogOxygenState_t *handle);
 ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);

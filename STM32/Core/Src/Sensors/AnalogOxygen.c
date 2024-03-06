@@ -17,7 +17,7 @@ static AnalogOxygenState_t *getCellState(uint8_t cellNum)
     if (cellNum >= CELL_COUNT)
     {
         NON_FATAL_ERROR(INVALID_CELL_NUMBER);
-        cellState = &(analog_cellStates[0]); // A safe fallback
+        cellState = &(analog_cellStates[0]); /* A safe fallback*/
     }
     else
     {
@@ -26,14 +26,14 @@ static AnalogOxygenState_t *getCellState(uint8_t cellNum)
     return cellState;
 }
 
-// Chosen so that 13 to 8mV in air is a valid cal coeff
+/* Chosen so that 13 to 8mV in air is a valid cal coeff*/
 static const CalCoeff_t ANALOG_CAL_UPPER = 0.02625f;
 static const CalCoeff_t ANALOG_CAL_LOWER = 0.0016153846153846154f;
 
 static const CalCoeff_t COUNTS_TO_MILLIS = ((0.256f * 100000.0f) / 32767.0f);
 
-// Time to wait on the cell to do things
-const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; // Milliseconds, how long before the cell *definitely* isn't coming back to us
+/* Time to wait on the cell to do things*/
+const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before the cell *definitely* isn't coming back to us*/
 
 void analogProcessor(void *arg);
 
@@ -68,7 +68,7 @@ AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
     return handle;
 }
 
-// Dredge up the cal-coefficient from the eeprom
+/* Dredge up the cal-coefficient from the eeprom*/
 void ReadCalibration(AnalogOxygenState_t *handle)
 {
     bool calOk = GetCalibration(handle->cellNumber, &(handle->calibrationCoefficient));
@@ -92,12 +92,12 @@ void ReadCalibration(AnalogOxygenState_t *handle)
     }
 }
 
-// Calculate and write the eeprom
+/* Calculate and write the eeprom*/
 ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
 {
     *calError = ERR_NONE;
     int16_t adcCounts = handle->lastCounts;
-    // Our coefficient is simply the float needed to make the current sample the current PPO2
+    /* Our coefficient is simply the float needed to make the current sample the current PPO2*/
     CalCoeff_t newCal = (CalCoeff_t)(PPO2) / ((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS);
 
     serial_printf("Calibrated cell %d with coefficient %f\r\n", handle->cellNumber, newCal);
@@ -109,7 +109,7 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonF
     }
     ReadCalibration(handle);
 
-    // If we're still saying needs cal, then we change that to failure as we've tried and failed to cal the system
+    /* If we're still saying needs cal, then we change that to failure as we've tried and failed to cal the system*/
     if (handle->status == CELL_NEED_CAL)
     {
         handle->status = CELL_FAIL;
@@ -136,7 +136,7 @@ Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
 void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
 {
     PPO2_t PPO2 = 0;
-    // First we check our timeouts to make sure we're not giving stale info
+    /* First we check our timeouts to make sure we're not giving stale info*/
 
     uint32_t ticksOfLastPPO2 = GetInputTicks(handle->adcInputIndex);
 
@@ -144,11 +144,11 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     handle->lastCounts = GetInputValue(handle->adcInputIndex);
 
     if (ticks < ticksOfLastPPO2)
-    { // If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out
+    { /* If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out*/
         ticksOfLastPPO2 = 0;
     }
     if ((ticks - ticksOfLastPPO2) > ANALOG_RESPONSE_TIMEOUT)
-    { // If we've taken longer than timeout, fail the cell
+    { /* If we've taken longer than timeout, fail the cell*/
         handle->status = CELL_FAIL;
         NON_FATAL_ERROR_DETAIL(TIMEOUT_ERROR, handle->cellNumber);
     }
@@ -158,13 +158,13 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     }
     else
     {
-        // Only get here if we're not timed out and need cal, don't really need to do anything
+        /* Only get here if we're not timed out and need cal, don't really need to do anything*/
     }
 
     CalCoeff_t calPPO2 = (CalCoeff_t)abs(handle->lastCounts) * COUNTS_TO_MILLIS * handle->calibrationCoefficient;
     PPO2 = (PPO2_t)(calPPO2);
 
-    // Lodge the cell data
+    /* Lodge the cell data*/
     OxygenCell_t cellData = {
         .cellNumber = handle->cellNumber,
         .type = CELL_ANALOG,
@@ -185,11 +185,11 @@ void analogProcessor(void *arg)
 
     if (CELL_NEED_CAL != cell->status)
     {
-        cell->status = CELL_FAIL; // We're failed while we start, we have no valid PPO2 data to give
+        cell->status = CELL_FAIL; /* We're failed while we start, we have no valid PPO2 data to give*/
     }
-    // We lodge an failure datapoint while we spool up, ADC takes an indeterminate (hopefully smol) time to spool up
-    // and we might not make the timeout of the TX task, this lets the timeout be on the consensus calculation
-    // rather than causing an empty queue error
+    /* We lodge an failure datapoint while we spool up, ADC takes an indeterminate (hopefully smol) time to spool up*/
+    /* and we might not make the timeout of the TX task, this lets the timeout be on the consensus calculation*/
+    /* rather than causing an empty queue error*/
     OxygenCell_t cellData = {
         .cellNumber = cell->cellNumber,
         .type = CELL_ANALOG,

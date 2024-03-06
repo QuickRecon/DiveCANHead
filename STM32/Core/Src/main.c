@@ -173,15 +173,15 @@ int main(void)
   InitPrinter();
   serial_printf("Booting...\r\n");
 
-  // Set up flash erase
+  /* Set up flash erase */
   HAL_FLASH_Unlock();
   EE_Init(EE_FORCED_ERASE);
   HAL_FLASH_Lock();
 
-  // Set our power bus
-  SetVBusMode(MODE_CAN); // TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE
+  /* Set our power bus */
+  SetVBusMode(MODE_CAN); /* TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE */
 
-  // Kick off our threads
+  /* Kick off our threads */
   InitADCs();
 
   QueueHandle_t cells[3];
@@ -247,7 +247,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    // HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
   }
   /* USER CODE END 3 */
 }

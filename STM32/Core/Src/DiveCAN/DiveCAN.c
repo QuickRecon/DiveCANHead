@@ -16,7 +16,7 @@ void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *
 
 static const uint8_t DIVECAN_TYPE_MASK = 0xF;
 
-// FreeRTOS tasks
+/* FreeRTOS tasks */
 
 static osThreadId_t *getOSThreadId(void)
 {
@@ -46,8 +46,9 @@ void InitDiveCAN(DiveCANDevice_t *deviceSpec)
     txStartDevice(DIVECAN_CONTROLLER, DIVECAN_SOLO);
 }
 
-/// @brief This task is the context in which we handle inbound CAN messages (which sometimes requires a response), dispatch of our other outgoing traffic may occur elsewhere
-/// @param arg
+/** @brief This task is the context in which we handle inbound CAN messages (which sometimes requires a response), dispatch of our other outgoing traffic may occur elsewhere
+* @param arg
+*/
 void CANTask(void *arg)
 {
     DiveCANDevice_t * const deviceSpec = (DiveCANDevice_t *)arg;
@@ -57,40 +58,40 @@ void CANTask(void *arg)
         DiveCANMessage_t message = {0};
         if (pdTRUE == GetLatestCAN(TIMEOUT_1S, &message))
         {
-            uint32_t message_id = message.id & 0x1FFFF000; // Drop the source/dest stuff, we're listening for anything from anyone
+            uint32_t message_id = message.id & 0x1FFFF000; /* Drop the source/dest stuff, we're listening for anything from anyone */
             switch (message_id)
             {
             case BUS_INIT_ID:
-                // Bus Init
+                /* Bus Init */
                 RespBusInit(&message, deviceSpec);
                 break;
             case BUS_ID_ID:
-                // Respond to pings
+                /* Respond to pings */
                 RespPing(&message, deviceSpec);
                 break;
             case CAL_REQ_ID:
-                // Respond to calibration request
+                /* Respond to calibration request */
                 RespCal(&message, deviceSpec);
                 break;
             case MENU_ID:
-                // Send Menu stuff
+                /* Send Menu stuff */
                 RespMenu(&message, deviceSpec);
                 break;
             case PPO2_SETPOINT_ID:
-                // Deal with setpoint being set
+                /* Deal with setpoint being set */
                 RespSetpoint(&message, deviceSpec);
                 break;
             case PPO2_ATMOS_ID:
-                // Error response
+                /* Error response */
                 RespAtmos(&message, deviceSpec);
                 break;
             case BUS_OFF_ID:
-                // Turn off bus
+                /* Turn off bus */
                 RespShutdown(&message, deviceSpec);
                 break;
             case BUS_NAME_ID:
             case BUS_MENU_OPEN_ID:
-                // Ignore messages
+                /* Ignore messages */
                 break;
             default:
                 serial_printf("Unknown message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message_id,
@@ -99,14 +100,14 @@ void CANTask(void *arg)
         }
         else
         {
-            // We didn't get a message, soldier forth
+            /* We didn't get a message, soldier forth */
         }
     }
 }
 
 void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
-    // Do startup stuff and then ping the bus
+    /* Do startup stuff and then ping the bus */
     RespPing(message, deviceSpec);
 }
 
@@ -114,7 +115,7 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
 {
     DiveCANType_t devType = deviceSpec->type;
 
-    // We only want to reply to a ping from the handset
+    /* We only want to reply to a ping from the handset */
     if (((message->id & DIVECAN_TYPE_MASK) == DIVECAN_CONTROLLER) || ((message->id & DIVECAN_TYPE_MASK) == DIVECAN_MONITOR))
     {
         txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
@@ -145,7 +146,7 @@ void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t * const
 
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
-    // TODO: respond to atmos
+    /* TODO: respond to atmos */
 }
 
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)

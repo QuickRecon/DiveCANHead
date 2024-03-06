@@ -65,15 +65,16 @@ void InitRXQueue(void)
 void BlockForCAN(void)
 {
     QueueHandle_t *dataAvail = getDataAvailQueue();
-    if (xQueueReset(*dataAvail)) // reset always returns pdPASS, so this should always evaluate to true
+    if (xQueueReset(*dataAvail)) /* reset always returns pdPASS, so this should always evaluate to true */
     {
         bool data = false;
         bool msgAvailable = xQueuePeek(*dataAvail, &data, pdMS_TO_TICKS(1000));
 
         if (!msgAvailable)
         {
-            // Data is not avaliable, but the later code is able to handle that,
-            // This method mainly exists to rest for a convenient, event-based amount
+            /** Data is not available, but the later code is able to handle that,
+             * This method mainly exists to rest for a convenient, event-based amount
+             */
             NON_FATAL_ERROR(TIMEOUT_ERROR);
         }
     }
@@ -88,10 +89,11 @@ BaseType_t GetLatestCAN(const Timestamp_t blockTime, DiveCANMessage_t *message)
     QueueHandle_t *inbound = getInboundQueue();
     return xQueueReceive(*inbound, message, blockTime);
 }
-/// @brief !! ISR METHOD !! Called when CAN mailbox receives message
-/// @param id message extended ID
-/// @param length length of data
-/// @param data data pointer
+/** @brief !! ISR METHOD !! Called when CAN mailbox receives message
+ * @param id message extended ID
+ * @param length length of data
+ * @param data data pointer
+ */
 void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const data)
 {
 
@@ -128,13 +130,13 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     }
 }
 
-/// @brief Add message to the next free mailbox, waits until the next mailbox is avaliable.
-/// @param Id Message ID (extended)
-/// @param data Pointer to the data to send, must be size dataLength
-/// @param dataLength Size of the data to send
+/** @brief Add message to the next free mailbox, waits until the next mailbox is avaliable.
+ * @param Id Message ID (extended)
+ * @param data Pointer to the data to send, must be size dataLength
+ * @param dataLength Size of the data to send */
 void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t dataLength)
 {
-    // This isn't super time critical so if we're still waiting on stuff to tx then we can quite happily just wait
+    /* This isn't super time critical so if we're still waiting on stuff to tx then we can quite happily just wait */
     while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))
     {
         osDelay(TX_WAIT_DELAY);
@@ -157,11 +159,12 @@ void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t 
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Device Metadata
+/*-----------------------------------------------------------------------------------*/
+/* Device Metadata */
 
-/// @brief Transmit the bus initialization message
-/// @param deviceType the device type of this device
+/** @brief Transmit the bus initialization message
+ *@param deviceType the device type of this device
+ */
 void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType)
 {
     uint8_t data[BUS_INIT_LEN] = {0x8a, 0xf3, 0x00};
@@ -169,10 +172,11 @@ void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
     sendCANMessage(Id, data, BUS_INIT_LEN);
 }
 
-/// @brief Transmit the id of this device
-/// @param deviceType the device type of this device
-/// @param manufacturerID Manufacturer ID
-/// @param firmwareVersion Firmware version
+/** @brief Transmit the id of this device
+ *@param deviceType the device type of this device
+ *@param manufacturerID Manufacturer ID
+ *@param firmwareVersion Firmware version
+ */
 void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, const uint8_t firmwareVersion)
 {
     uint8_t data[BUS_ID_LEN] = {(uint8_t)manufacturerID, 0x00, firmwareVersion};
@@ -180,9 +184,10 @@ void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufactur
     sendCANMessage(Id, data, BUS_ID_LEN);
 }
 
-/// @brief Transmit the name of this device
-/// @param deviceType the device type of this device
-/// @param name Name of this device (max 8 chars, excluding null terminator)
+/** @brief Transmit the name of this device
+ *@param deviceType the device type of this device
+ *@param name Name of this device (max 8 chars, excluding null terminator)
+ */
 void txName(const DiveCANType_t deviceType, const char *const name)
 {
     uint8_t data[BUS_NAME_LEN + 1] = {0};
@@ -191,11 +196,12 @@ void txName(const DiveCANType_t deviceType, const char *const name)
     sendCANMessage(Id, data, BUS_NAME_LEN);
 }
 
-/// @brief Transmit the current status of this device
-/// @param deviceType the device type of this device
-/// @param batteryVoltage Battery voltage of this device
-/// @param setpoint The setpoint that the PPO2 controller is trying to maintain
-/// @param error Current error state
+/** @brief Transmit the current status of this device
+ *@param deviceType the device type of this device
+ *@param batteryVoltage Battery voltage of this device
+ *@param setpoint The setpoint that the PPO2 controller is trying to maintain
+ *@param error Current error state
+ */
 void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error)
 {
     uint8_t data[BUS_STATUS_LEN] = {batteryVoltage, 0x00, 0x00, 0x00, 0x00, setpoint, 0x63, (uint8_t)error};
@@ -203,13 +209,14 @@ void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, c
     sendCANMessage(Id, data, BUS_STATUS_LEN);
 }
 
-// PPO2 Messages
+/* PPO2 Messages */
 
-/// @brief Transmit the PPO2 of the cells
-/// @param deviceType the device type of this device
-/// @param cell1 PPO2 of cell 1
-/// @param cell2 PPO2 of cell 2
-/// @param cell3 PPO2 of cell 3
+/** @brief Transmit the PPO2 of the cells
+ *@param deviceType the device type of this device
+ *@param cell1 PPO2 of cell 1
+ *@param cell2 PPO2 of cell 2
+ *@param cell3 PPO2 of cell 3
+ */
 void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cell2, const PPO2_t cell3)
 {
     uint8_t data[PPO2_PPO2_LEN] = {0x00, cell1, cell2, cell3};
@@ -217,14 +224,15 @@ void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cel
     sendCANMessage(Id, data, PPO2_PPO2_LEN);
 }
 
-/// @brief Transmit the millivolts of the cells
-/// @param deviceType the device type of this device
-/// @param cell1 Millivolts of cell 1
-/// @param cell2 Millivolts of cell 2
-/// @param cell3 Millivolts of cell 3
+/** @brief Transmit the millivolts of the cells
+ *@param deviceType the device type of this device
+ *@param cell1 Millivolts of cell 1
+ *@param cell2 Millivolts of cell 2
+ *@param cell3 Millivolts of cell 3
+ */
 void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, const Millivolts_t cell2, const Millivolts_t cell3)
 {
-    // Make the cell millis the proper endianness
+    /* Make the cell millis the proper endianness */
     uint8_t cell1bytes[2] = {(uint8_t)(cell1 >> 8), (uint8_t)cell1};
     uint8_t cell2bytes[2] = {(uint8_t)(cell2 >> 8), (uint8_t)cell2};
     uint8_t cell3bytes[2] = {(uint8_t)(cell3 >> 8), (uint8_t)cell3};
@@ -234,12 +242,13 @@ void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, cons
     sendCANMessage(Id, data, PPO2_MILLIS_LEN);
 }
 
-/// @brief Transmit the cell states and the consensus PPO2
-/// @param deviceType the device type of this device
-/// @param cell1 Include cell 1
-/// @param cell2 Include cell 2
-/// @param cell3 Inclide cell 3
-/// @param PPO2 The consensus PPO2 of the cells
+/** @brief Transmit the cell states and the consensus PPO2
+ *@param deviceType the device type of this device
+ *@param cell1 Include cell 1
+ *@param cell2 Include cell 2
+ *@param cell3 Inclide cell 3
+ *@param PPO2 The consensus PPO2 of the cells
+ */
 void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool cell2, const bool cell3, const PPO2_t PPO2)
 {
     uint8_t cellMask = (uint8_t)((uint8_t)cell1 | (uint8_t)((uint8_t)cell2 << 1) | (uint8_t)((uint8_t)cell3 << 2));
@@ -249,10 +258,11 @@ void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool ce
     sendCANMessage(Id, data, PPO2_STATUS_LEN);
 }
 
-// Calibration
+/* Calibration */
 
-/// @brief Acknowledge the request to go into calibration of the cells
-/// @param deviceType the device type of this device
+/** @brief Acknowledge the request to go into calibration of the cells
+ *@param deviceType the device type of this device
+ */
 void txCalAck(DiveCANType_t deviceType)
 {
     uint8_t data[CAL_LEN] = {(uint8_t)DIVECAN_CAL_ACK, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00};
@@ -260,13 +270,14 @@ void txCalAck(DiveCANType_t deviceType)
     sendCANMessage(Id, data, CAL_LEN);
 }
 
-/// @brief Send the response to the shearwater that we have completed calibration
-/// @param deviceType
-/// @param cell1 Millivolts of cell 1
-/// @param cell2 Millivolts of cell 2
-/// @param cell3 Millivolts of cell 3
-/// @param FO2 FO2 of the calibration mixture
-/// @param atmosphericPressure Atmospheric pressure at the time of calibration
+/** @brief Send the response to the shearwater that we have completed calibration
+ *@param deviceType
+ *@param cell1 Millivolts of cell 1
+ *@param cell2 Millivolts of cell 2
+ *@param cell3 Millivolts of cell 3
+ *@param FO2 FO2 of the calibration mixture
+ *@param atmosphericPressure Atmospheric pressure at the time of calibration
+ */
 void txCalResponse(DiveCANType_t deviceType, DiveCANCalResponse_t response, ShortMillivolts_t cell1, ShortMillivolts_t cell2, ShortMillivolts_t cell3, FO2_t FO2, uint16_t atmosphericPressure)
 {
     uint8_t atmosBytes[2] = {(uint8_t)(atmosphericPressure >> 8), (uint8_t)atmosphericPressure};
@@ -276,7 +287,7 @@ void txCalResponse(DiveCANType_t deviceType, DiveCANCalResponse_t response, Shor
     sendCANMessage(Id, data, CAL_LEN);
 }
 
-// Bus Devices
+/* Bus Devices */
 void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, uint8_t itemCount)
 {
     uint8_t data[MENU_ACK_LEN] = {0x05, 0x00, 0x62, 0x91, 0x00, itemCount};
@@ -301,11 +312,12 @@ void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t device
     sendCANMessage(Id, data3, MENU_FIELD_END_LEN);
 }
 
-/// @brief Send the flags associated with a writable field, currently only the number of fields
-/// @param targetDeviceType Device we're sending the menu information to
-/// @param deviceType  Device that we are
-/// @param reqId Request byte that we're replying to
-/// @param fieldCount The number of values this item can take, set to 1 to force it to reload the text every time.
+/** @brief Send the flags associated with a writable field, currently only the number of fields
+ *@param targetDeviceType Device we're sending the menu information to
+ *@param deviceType  Device that we are
+ *@param reqId Request byte that we're replying to
+ *@param fieldCount The number of values this item can take, set to 1 to force it to reload the text every time.
+ */
 void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const uint8_t fieldCount)
 {
     uint8_t data1[MENU_LEN] = {0x10, 0x14, 0x00, 0x62, 0x91, reqId, 0x00, 0x00};

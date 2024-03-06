@@ -32,7 +32,7 @@ static QueueHandle_t *getInputQueue(uint8_t inputNumber)
     if (inputNumber >= ADC_COUNT)
     {
         NON_FATAL_ERROR(INVALID_ADC_NUMBER);
-        queueHandle = &(QInputValues[0]); // A safe fallback
+        queueHandle = &(QInputValues[0]); /* A safe fallback */
     }
     else
     {
@@ -48,7 +48,7 @@ static QueueHandle_t *getTicksQueue(uint8_t inputNumber)
     if (inputNumber >= ADC_COUNT)
     {
         NON_FATAL_ERROR(INVALID_ADC_NUMBER);
-        queueHandle = &(QInputTicks[0]); // A safe fallback
+        queueHandle = &(QInputTicks[0]); /* A safe fallback */
     }
     else
     {
@@ -57,11 +57,10 @@ static QueueHandle_t *getTicksQueue(uint8_t inputNumber)
     return queueHandle;
 }
 
-// Forward decls of local funcs
-// /void configureADC(void *arg);
+/* Forward decls of local funcs */
 void ADCTask(void *arg);
 
-// FreeRTOS tasks
+/* FreeRTOS tasks */
 static osThreadId_t *getOSThreadId(void)
 {
     static osThreadId_t ADCTaskHandle;
@@ -87,7 +86,8 @@ void InitADCs(void)
     *ADCTaskHandle = osThreadNew(ADCTask, NULL, &ADCTask_attributes);
 }
 
-void DeInitADCs(void){
+void DeInitADCs(void)
+{
     osThreadTerminate(*getOSThreadId());
 }
 
@@ -98,7 +98,7 @@ uint32_t GetInputTicks(uint8_t inputIndex)
     QueueHandle_t *ticksQueue = getTicksQueue(inputIndex);
     if ((*ticksQueue != NULL) && (pdTRUE == xQueuePeek(*ticksQueue, &ticks, 0)))
     {
-        // Everything is fine
+        /* Everything is fine */
     }
     else
     {
@@ -112,7 +112,7 @@ int16_t GetInputValue(uint8_t inputIndex)
     QueueHandle_t *inputQueue = getInputQueue(inputIndex);
     if ((*inputQueue != NULL) && (pdTRUE == xQueuePeek(*inputQueue, &adcCounts, 0)))
     {
-        // Everything is fine
+        /* Everything is fine */
     }
     else
     {
@@ -128,7 +128,7 @@ void BlockForADC(uint8_t inputIndex)
     bool ticksReset = xQueueReset(*ticksQueue);
     bool inputReset = xQueueReset(*inputQueue);
 
-    if (ticksReset && inputReset) // reset always returns pdPASS, so this should always evaluate to true
+    if (ticksReset && inputReset) /* reset always returns pdPASS, so this should always evaluate to true */
     {
         uint32_t ticks = 0;
         uint16_t adcCounts = 0;
@@ -137,8 +137,9 @@ void BlockForADC(uint8_t inputIndex)
 
         if ((!ticksAvailable) && (!inputAvailable))
         {
-            // Data is not available, but the later code is able to handle that,
-            // This method mainly exists to rest for a convenient, event-based amount
+            /* Data is not available, but the later code is able to handle that,
+             * This method mainly exists to rest for a convenient, event-based amount
+             */
             NON_FATAL_ERROR(TIMEOUT_ERROR);
         }
     }
@@ -148,14 +149,19 @@ void BlockForADC(uint8_t inputIndex)
     }
 }
 
-////////////////////////////// ADC EVENTS
-/// Happens in IRQ so gotta be quick
+/* ADC EVENTS -------------- */
+
+/**
+ * @brief Called from the hal when the ADC has finished its receive
+ * @note Happens in IRQ so gotta be quick
+ */
 void ADC_I2C_Receive_Complete(void)
 {
     osThreadId_t *ADCTaskHandle = getOSThreadId();
     uint32_t err = osThreadFlagsSet(*ADCTaskHandle, READ_COMPLETE_FLAG);
+    /*Detect any flag error states*/
     if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
-    { // Detect any flag error states
+    {
         NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
     }
 }
@@ -164,8 +170,9 @@ void ADC_I2C_Transmit_Complete(void)
 {
     osThreadId_t *ADCTaskHandle = getOSThreadId();
     uint32_t err = osThreadFlagsSet(*ADCTaskHandle, TRANSMIT_COMPLETE_FLAG);
+    /*Detect any flag error states*/
     if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
-    { // Detect any flag error states
+    {
         NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
     }
 }
@@ -174,13 +181,14 @@ void ADC_Ready_Interrupt(void)
 {
     osThreadId_t *ADCTaskHandle = getOSThreadId();
     uint32_t err = osThreadFlagsSet(*ADCTaskHandle, READ_READY_FLAG);
+    /*Detect any flag error states*/
     if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
-    { // Detect any flag error states
+    {
         NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
     }
 }
 
-void configureADC(uint16_t configuration, const InputState_t* const input)
+void configureADC(uint16_t configuration, const InputState_t *const input)
 {
     uint16_t lowThreshold = 0;
     uint16_t highThreshold = 0xFFFF;
@@ -217,7 +225,7 @@ void configureADC(uint16_t configuration, const InputState_t* const input)
     }
 }
 
-// Tasks
+/* Tasks */
 static InputState_t *getInputState(uint8_t inputIdx)
 {
     static InputState_t adcInput[ADC_COUNT] = {0};
@@ -225,7 +233,7 @@ static InputState_t *getInputState(uint8_t inputIdx)
     if (inputIdx >= ADC_COUNT)
     {
         NON_FATAL_ERROR(INVALID_ADC_NUMBER);
-        inputState = &(adcInput[0]); // A safe fallback
+        inputState = &(adcInput[0]); /* A safe fallback */
     }
     else
     {
@@ -234,7 +242,7 @@ static InputState_t *getInputState(uint8_t inputIdx)
     return inputState;
 }
 
-void ADCTask(void *arg) // Yes this warns but it needs to be that way for matching the caller
+void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
 {
     const uint8_t INPUT_1 = 0;
     const uint8_t INPUT_2 = 1;
@@ -270,27 +278,27 @@ void ADCTask(void *arg) // Yes this warns but it needs to be that way for matchi
         *ticksQueue = adcInput->QInputTick;
     }
 
-    while (true) // Loop forever as we are an RTOS task
+    while (true) /* Loop forever as we are an RTOS task */
     {
         for (uint8_t i = 0; i < ADC_COUNT; ++i)
         {
             InputState_t *adcInput = getInputState(i);
 
-            // Configure the ADC
-            uint16_t configuration = (uint16_t)((0 << 15) |                      // Operational status: noop
-                                                ((uint16_t)((uint16_t)adcInput->inputIndex << 12)) | // ADC Input: Inputs are either 0b00 (input 0) or 0b11 (input 1)
-                                                (0b111 << 9) |                   // PGA: 16x
-                                                (1 << 8) |                       // Mode: single shot
-                                                (0b00 << 5) |                    // Data rate: 8SPS
-                                                (0 << 4) |                       // Comparator mode: traditional
-                                                (0 << 3) |                       // Comparator polarity: active low
-                                                (0 << 2) |                       // Comparator latch: non-latching
-                                                0);                              // Comparator queue: 1 conversion
-            // Configure for the next input
-            configureADC(configuration, adcInput); // Will yield during I2C TX
+            /* Configure the ADC */
+            uint16_t configuration = (uint16_t)((0 << 15) |                                          /* Operational status: noop */
+                                                ((uint16_t)((uint16_t)adcInput->inputIndex << 12)) | /* ADC Input: Inputs are either 0b00 (input 0) or 0b11 (input 1) */
+                                                (0b111 << 9) |                                       /* PGA: 16x */
+                                                (1 << 8) |                                           /* Mode: single shot */
+                                                (0b00 << 5) |                                        /* Data rate: 8SPS */
+                                                (0 << 4) |                                           /* Comparator mode: traditional */
+                                                (0 << 3) |                                           /* Comparator polarity: active low */
+                                                (0 << 2) |                                           /* Comparator latch: non-latching */
+                                                0);                                                  /* Comparator queue: 1 conversion */
+            /* Configure for the next input */
+            configureADC(configuration, adcInput); /* Will yield during I2C TX */
 
-            // Start the conversion
-            uint16_t triggerReadConfiguration = (uint16_t)((1 << 15) | configuration); // Set the operation bit to start a conversion
+            /* Start the conversion */
+            uint16_t triggerReadConfiguration = (uint16_t)((1 << 15) | configuration); /* Set the operation bit to start a conversion */
             uint8_t configBytes[2] = {0};
             configBytes[1] = (uint8_t)triggerReadConfiguration;
             configBytes[0] = (uint8_t)(triggerReadConfiguration >> BYTE_WIDTH);
@@ -304,8 +312,8 @@ void ADCTask(void *arg) // Yes this warns but it needs to be that way for matchi
                 NON_FATAL_ERROR(FLAG_ERROR);
             }
 
-            // Read the ADC
-            uint8_t conversionRegister[2] = {0}; // Memory space to receive inputs into
+            /* Read the ADC */
+            uint8_t conversionRegister[2] = {0}; /* Memory space to receive inputs into */
             if (HAL_OK != HAL_I2C_Mem_Read_IT(&hi2c1, (uint16_t)((uint16_t)(adcInput->adcAddress) << 1), 0x00, 1, conversionRegister, sizeof(conversionRegister)))
             {
                 NON_FATAL_ERROR(I2C_BUS_ERROR);
@@ -316,12 +324,12 @@ void ADCTask(void *arg) // Yes this warns but it needs to be that way for matchi
                 NON_FATAL_ERROR(FLAG_ERROR);
             }
 
-            // Export the value to the queue
+            /* Export the value to the queue */
             uint16_t adcCounts = (uint16_t)((uint16_t)conversionRegister[0] << 8) | conversionRegister[1];
             uint32_t ticks = HAL_GetTick();
             bool valueWrite = xQueueOverwrite(adcInput->QInputValue, &adcCounts);
             bool tickWrite = false;
-            if (true == valueWrite) // Make sure our value got updated first, we don't want the ticks queue to lie about the currency of the data
+            if (true == valueWrite) /* Make sure our value got updated first, we don't want the ticks queue to lie about the currency of the data */
             {
                 tickWrite = xQueueOverwrite(adcInput->QInputTick, &ticks);
             }
@@ -330,7 +338,7 @@ void ADCTask(void *arg) // Yes this warns but it needs to be that way for matchi
                 NON_FATAL_ERROR(QUEUEING_ERROR);
             }
 
-            // Check the tick write before packing up
+            /* Check the tick write before packing up */
             if (!tickWrite)
             {
                 NON_FATAL_ERROR(QUEUEING_ERROR);

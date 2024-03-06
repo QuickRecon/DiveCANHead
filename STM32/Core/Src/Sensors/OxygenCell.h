@@ -11,34 +11,35 @@
 #define CELL_COUNT 3
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-typedef struct OxygenCell_s
-{
-    // Configuration
-    uint8_t cellNumber;
+    typedef struct OxygenCell_s
+    {
+        /* Configuration*/
+        uint8_t cellNumber;
 
-    CellType_t type;
+        CellType_t type;
 
-    PPO2_t ppo2;
-    Millivolts_t millivolts;
-    CellStatus_t status;
+        PPO2_t ppo2;
+        Millivolts_t millivolts;
+        CellStatus_t status;
 
-    Timestamp_t data_time;
-} OxygenCell_t;
+        Timestamp_t data_time;
+    } OxygenCell_t;
 
-typedef enum OxygenCalMethod_e
-{
-    CAL_DIGITAL_REFERENCE,
-    CAL_ANALOG_ABSOLUTE,
-    CAL_TOTAL_ABSOLUTE
-} OxygenCalMethod_t;
+    typedef enum OxygenCalMethod_e
+    {
+        CAL_DIGITAL_REFERENCE,
+        CAL_ANALOG_ABSOLUTE,
+        CAL_TOTAL_ABSOLUTE
+    } OxygenCalMethod_t;
 
-QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);
+    QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);
 
-bool isCalibrating(void);
-void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val);
+    bool isCalibrating(void);
+    void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val);
 
 #ifdef __cplusplus
 }

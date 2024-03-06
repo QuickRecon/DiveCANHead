@@ -11,8 +11,8 @@ extern "C" {
 #endif
 typedef struct InputState_s
 {
-    uint8_t adcAddress; // Address on the I2C bus
-    uint8_t inputIndex; // input on the ADC
+    uint8_t adcAddress; /* Address on the I2C bus */
+    uint8_t inputIndex; /* input on the ADC */
 
     int16_t adcCounts;
 
@@ -32,7 +32,7 @@ uint32_t GetInputTicks(uint8_t inputIndex);
 int16_t GetInputValue(uint8_t inputIndex);
 void BlockForADC(uint8_t inputIndex);
 
-// ADC interface
+/* ADC interface */
 void ADC_I2C_Receive_Complete(void );
 void ADC_I2C_Transmit_Complete(void );
 void ADC_Ready_Interrupt(void);
