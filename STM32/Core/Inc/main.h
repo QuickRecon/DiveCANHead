@@ -49,6 +49,8 @@ extern "C" {
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -97,8 +99,6 @@ void JumpToBootloader(void);
 #define LED6_GPIO_Port GPIOB
 #define LED7_Pin GPIO_PIN_14
 #define LED7_GPIO_Port GPIOB
-#define PWM_2_Pin GPIO_PIN_15
-#define PWM_2_GPIO_Port GPIOB
 #define SD_DET_Pin GPIO_PIN_6
 #define SD_DET_GPIO_Port GPIOC
 #define GPIO_A_Pin GPIO_PIN_7
