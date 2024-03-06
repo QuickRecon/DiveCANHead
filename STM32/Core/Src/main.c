@@ -170,6 +170,12 @@ int main(void)
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
 
+  /* Ensure solenoid is fully off */
+  HAL_GPIO_WritePin(SOL_DIS_BATT_GPIO_Port, SOL_DIS_BATT_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(SOL_DIS_CAN_GPIO_Port, SOL_DIS_CAN_Pin, GPIO_PIN_SET);
+
+  HAL_GPIO_WritePin(SOLENOID_GPIO_Port, SOLENOID_Pin, GPIO_PIN_RESET);
+
   InitPrinter();
   serial_printf("Booting...\r\n");
 
