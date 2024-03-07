@@ -8,6 +8,8 @@
 #include "main.h"
 #include "../common.h"
 
+#define PRINTQUEUE_LENGTH 10
+
 extern UART_HandleTypeDef huart2;
 
 void PrinterTask(void *arg);
@@ -48,9 +50,9 @@ void InitPrinter(void)
 
     /* Setup print queue */
     static StaticQueue_t PrintQueue_QueueStruct;
-    static uint8_t PrintQueue_Storage[10 * sizeof(PrintQueue_t)];
+    static uint8_t PrintQueue_Storage[PRINTQUEUE_LENGTH * sizeof(PrintQueue_t)];
     QueueHandle_t *printQueue = getQueueHandle();
-    *printQueue = xQueueCreateStatic(1, sizeof(PrintQueue_t), PrintQueue_Storage, &PrintQueue_QueueStruct);
+    *printQueue = xQueueCreateStatic(PRINTQUEUE_LENGTH, sizeof(PrintQueue_t), PrintQueue_Storage, &PrintQueue_QueueStruct);
 
     osThreadId_t *PrinterTaskHandle = getOSThreadId();
     *PrinterTaskHandle = osThreadNew(PrinterTask, NULL, &PrinterTask_attributes);
