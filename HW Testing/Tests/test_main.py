@@ -1,7 +1,16 @@
-# content of test_sample.py
-def func(x):
-    return x + 1
+import pytest
+import can
+import serial
 
+@pytest.fixture
+def DiveCANClient():
+   bus = can.interface.Bus(interface='socketcan', channel='vcan0', bitrate=500000)
+   return bus
 
-def test_answer():
+@pytest.fixture
+def ShimHost():
+    ser = serial.Serial('/dev/ttyUSB0')  # open serial port
+    return ser
+
+def test_answer(DiveCANClient, ShimHost):
     assert func(3) == 5

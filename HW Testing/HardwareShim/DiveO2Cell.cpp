@@ -19,7 +19,7 @@ void DiveO2Cell::SetPPO2(float inPPO2){
 }
 
 void DiveO2Cell::Poll(){
-  if(Serial.available() == 0){
+  if(Serial.available()){
     unsigned long intPPO2 = PPO2*10000;
     serialPort->print("#DOXY ");
     serialPort->print(intPPO2);

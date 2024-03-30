@@ -26,6 +26,15 @@
 #include "AnalogCell.h"
 #include <Adafruit_ADS1X15.h>
 
+
+// Arcane SAM BS yanked shamelessly from https://forum.arduino.cc/t/due-software-reset/332764/6
+// probably works, I don't want to learn the datasheet of yet another uController for this project
+#define SYSRESETREQ    (1<<2)
+#define VECTKEY        (0x05fa0000UL)
+#define VECTKEY_MASK   (0x0000ffffUL)
+#define AIRCR          (*(uint32_t*)0xe000ed0cUL) // fixed arch-defined address
+#define REQUEST_EXTERNAL_RESET (AIRCR=(AIRCR&VECTKEY_MASK)|VECTKEY|SYSRESETREQ)
+
 Adafruit_ADS1115 ads;
 
 IDigitalCell* dCell1;
@@ -40,6 +49,8 @@ const int GPIO1Pin = 47;
 const int GPIO2Pin = 50;
 const int enPin = 53;
 const int VBusPin = 8;
+
+void(* resetFunc) (void) = 0; //declare reset function @ address 0 to jump back to the start of the program
 
 void setup() {
   Serial.begin(9600);
@@ -74,6 +85,7 @@ void setup() {
 // gc,n: Get the millvolts for cell output n
 // sio,n,i: Set io n to either 1 or 0
 // gio,n: Get state of GPIO, puts pin in highZ state
+// rst: Reset the shim
 
 void loop() {
   
@@ -83,17 +95,18 @@ void loop() {
   dCell3->Poll();
 
   // Check if we have things to respond to
-  if(Serial.available() == 0){
+  if(Serial.available()){
+    String inboundMsg = Serial.readString();
+    Serial.println("Parsing str");
     // Detokenize the inbound string
     char *strings[10];
     char *ptr = NULL;
-    String inboundMsg = Serial.readString();
     byte index = 0;
 
-    char inMsg[255];
-    strncmp(inMsg, inboundMsg.c_str(),255);
+    char inMsg[255] = {0};
+    strncpy(inMsg, inboundMsg.c_str(),255);
     ptr = strtok(inMsg, ",");  // takes a list of delimiters
-    while(ptr != NULL)
+    while(ptr != NULL && index < 10)
     {
         strings[index] = ptr;
         index++;
@@ -101,7 +114,7 @@ void loop() {
     }
 
     // If tower of destiny as we check all the messages
-    if(strcmp(strings[0], "sdc")){\
+    if(strcmp(strings[0], "sdc") == 0){
       int cellNum = String(strings[1]).toInt();
       float PPO2 = String(strings[2]).toFloat();
       switch(cellNum){
@@ -115,7 +128,7 @@ void loop() {
           dCell3->SetPPO2(PPO2);
           break;
       }
-    } else if(strcmp(strings[0], "sac")){
+    } else if(strcmp(strings[0], "sac") == 0){
       int cellNum = String(strings[1]).toInt();
       float millis = String(strings[2]).toFloat();
       switch(cellNum){
@@ -129,20 +142,22 @@ void loop() {
           aCell3->SetMillis(millis);
           break;
       }
-    } else if(strcmp(strings[0], "sdcen")){
+    } else if(strcmp(strings[0], "sdcen") == 0){
       pinMode(enPin, OUTPUT);
       digitalWrite(enPin, LOW);
-    } else if(strcmp(strings[0], "sdcden")){
+    } else if(strcmp(strings[0], "sdcden") == 0){
       pinMode(enPin, OUTPUT);
       digitalWrite(enPin, HIGH);
-    } else if(strcmp(strings[0], "gvbus")){
+    } else if(strcmp(strings[0], "gvbus") == 0){
       
-    } else if(strcmp(strings[0], "gc")){
+    } else if(strcmp(strings[0], "gc") == 0){
       
-    } else if(strcmp(strings[0], "sio")){
+    } else if(strcmp(strings[0], "sio") == 0){
       
-    } else if(strcmp(strings[0], "gio")){
+    } else if(strcmp(strings[0], "gio") == 0){
       
+    } else if(strcmp(strings[0], "rst") == 0) {
+      REQUEST_EXTERNAL_RESET;
     } else {
       // A message we don't know
       Serial.println("ERR: Unknown command sent to shim");
