@@ -10,7 +10,8 @@ AnalogCell::AnalogCell(int inCellNum){
 }
 
 void AnalogCell::SetMillis(float inMillis){
-  float vMax = (3.3f*R2)/(R1+R2);
-  int duty = (inMillis/vMax)*255;
+  float vMax = (3.3f*R2)/(R1+R2) *1000;
+  int duty = (inMillis/vMax)*255.0f;
+  Serial.println("millis" +String(inMillis) + ":" + String(vMax) + ":" + duty);
   analogWrite(pinMap[cellNum], duty);
 }

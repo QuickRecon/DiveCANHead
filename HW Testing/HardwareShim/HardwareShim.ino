@@ -67,6 +67,10 @@ void setup() {
   aCell2 = new AnalogCell(2);
   aCell3 = new AnalogCell(3);
 
+  aCell1->SetMillis(12);
+  aCell2->SetMillis(12);
+  aCell3->SetMillis(12);
+
   // Init ADC
   if (!ads.begin()) {
     Serial.println("Failed to initialize ADS.");
@@ -120,12 +124,15 @@ void loop() {
       switch(cellNum){
         case 1:
           dCell1->SetPPO2(PPO2);
+          Serial.println("sdc1");
           break;
         case 2:
           dCell2->SetPPO2(PPO2);
+          Serial.println("sdc2");
           break;
         case 3:
           dCell3->SetPPO2(PPO2);
+          Serial.println("sdc3");
           break;
       }
     } else if(strcmp(strings[0], "sac") == 0){
@@ -134,20 +141,25 @@ void loop() {
       switch(cellNum){
         case 1:
           aCell1->SetMillis(millis);
+          Serial.println("sac1");
           break;
         case 2:
           aCell2->SetMillis(millis);
+          Serial.println("sac2");
           break;
         case 3:
           aCell3->SetMillis(millis);
+          Serial.println("sac3");
           break;
       }
     } else if(strcmp(strings[0], "sdcen") == 0){
       pinMode(enPin, OUTPUT);
       digitalWrite(enPin, LOW);
+      Serial.println("sdcen");
     } else if(strcmp(strings[0], "sdcden") == 0){
       pinMode(enPin, OUTPUT);
       digitalWrite(enPin, HIGH);
+      Serial.println("sdcden");
     } else if(strcmp(strings[0], "gvbus") == 0){
       
     } else if(strcmp(strings[0], "gc") == 0){
