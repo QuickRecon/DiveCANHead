@@ -43,7 +43,7 @@ class DiveCAN(object):
     def listen_for_ppo2(self) -> None:
         self._bus.set_filters([{"can_id": 0xD040004, "can_mask": 0x1FFFFFFF, "extended": True}])
         return self._bus.recv(self._poll_timeout)
-    
+
     def listen_for_millis(self) -> None:
         self._bus.set_filters([{"can_id": 0xD110004, "can_mask": 0x1FFFFFFF, "extended": True}])
         return self._bus.recv(self._poll_timeout)
