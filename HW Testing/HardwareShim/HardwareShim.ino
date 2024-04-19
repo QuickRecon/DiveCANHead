@@ -67,9 +67,9 @@ void setup() {
   aCell2 = new AnalogCell(2);
   aCell3 = new AnalogCell(3);
 
-  aCell1->SetMillis(12);
-  aCell2->SetMillis(12);
-  aCell3->SetMillis(12);
+  aCell1->SetMillis(10);
+  aCell2->SetMillis(10);
+  aCell3->SetMillis(10);
 
   // Init ADC
   if (!ads.begin()) {
