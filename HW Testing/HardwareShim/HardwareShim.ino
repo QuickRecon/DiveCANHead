@@ -38,7 +38,7 @@
 Adafruit_ADS1115 ads;
 
 IDigitalCell* dCell1;
-IDigitalCell* dCell2;
+//IDigitalCell* dCell2;
 IDigitalCell* dCell3;
 
 AnalogCell* aCell1;
@@ -53,13 +53,14 @@ const int VBusPin = 8;
 void(* resetFunc) (void) = 0; //declare reset function @ address 0 to jump back to the start of the program
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(19200);
+  // Serial2.begin(19200);
   Serial.println("HW Shim Active");
 
 
   // Init SS Cell
   dCell1 =  new DiveO2Cell(&Serial1);
-  dCell2 =  new DiveO2Cell(&Serial2);
+  //dCell2 =  new DiveO2Cell(&Serial2);
   dCell3 =  new DiveO2Cell(&Serial3);
 
   // Init analog cells
@@ -95,12 +96,16 @@ void loop() {
   
   // First run through and poll the digital cells to see if they need to respond to traffic
   dCell1->Poll();
-  dCell2->Poll();
+  //dCell2->Poll();
   dCell3->Poll();
+
+  // if (Serial2.available()) {       // If anything comes in Serial1 (pins 0 & 1)
+  //   Serial.write(Serial2.read());  // read it and send it out Serial (USB)
+  // }
 
   // Check if we have things to respond to
   if(Serial.available()){
-    String inboundMsg = Serial.readString();
+    String inboundMsg = Serial.readStringUntil('\n');
     Serial.println("Parsing str");
     // Detokenize the inbound string
     char *strings[10];
@@ -127,7 +132,7 @@ void loop() {
           Serial.println("sdc1");
           break;
         case 2:
-          dCell2->SetPPO2(PPO2);
+          //dCell2->SetPPO2(PPO2);
           Serial.println("sdc2");
           break;
         case 3:

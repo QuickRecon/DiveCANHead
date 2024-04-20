@@ -25,11 +25,12 @@ void DiveO2Cell::Poll(){
     unsigned long intPPO2 = PPO2*10000;
     String respStr = "#DRAW ";
     respStr += String(intPPO2);
-    respStr += " ";
+    respStr += String(" ");
     respStr += String(temperature);
-    respStr += " 0 0 0 0 999734 40365";
-    respStr += (char)0x0D;
-    serialPort->println(respStr);
+    respStr += String(" 0 0 0 0 999734 40365");
+    respStr += String((char)0x0D);
+    serialPort->print(respStr);
+    serialPort->flush();
     // serialPort->print(intPPO2);
     // serialPort->print(" ");
     // serialPort->print(temperature);
