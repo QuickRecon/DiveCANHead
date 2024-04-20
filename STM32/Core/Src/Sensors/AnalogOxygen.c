@@ -109,12 +109,6 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonF
     }
     ReadCalibration(handle);
 
-    /* If we're still saying needs cal, then we change that to failure as we've tried and failed to cal the system*/
-    if (handle->status == CELL_NEED_CAL)
-    {
-        handle->status = CELL_FAIL;
-    }
-
     if (((handle->calibrationCoefficient - newCal) > 0.00001) ||
         ((handle->calibrationCoefficient - newCal) < -0.00001))
     {

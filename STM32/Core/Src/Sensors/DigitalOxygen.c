@@ -247,7 +247,7 @@ void decodeCellMessage(void *arg)
             else
             {
 
-                serial_printf("UNKNOWN CELL MESSSAGE: %s\r\n", msgBuf);
+                serial_printf("UNKNOWN CELL MESSSAGE: \r\n%s\r\n", msgBuf);
                 osDelay(TIMEOUT_500MS);
                 /* Not a command we care about*/
             }

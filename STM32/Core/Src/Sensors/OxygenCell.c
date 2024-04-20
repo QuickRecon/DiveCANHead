@@ -174,13 +174,21 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
             {
                 AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cell->cellHandle;
                 cellVals[i] = Calibrate(analogCell, ppO2, &(calErrors[i]));
+
+                // Check the cell calibrated properly, if it still says needs cal it was outside the cal envelope
+                if (analogCell->status == CELL_NEED_CAL)
+                {
+                    calPass = DIVECAN_CAL_FAIL_FO2_RANGE;
+                }
+
+                // A fail state means some kind of internal fault during cal
+                if (analogCell->status == CELL_FAIL)
+                {
+                    calPass = DIVECAN_CAL_FAIL_GEN;
+                }
             }
 
-            if (calErrors[i] == ERR_NONE)
-            {
-                calPass = DIVECAN_CAL_RESULT;
-            }
-            else
+            if (calErrors[i] != ERR_NONE)
             {
                 calPass = DIVECAN_CAL_FAIL_GEN;
             }
@@ -214,8 +222,8 @@ void CalibrationTask(void *arg)
     switch (calParams.calMethod)
     {
     case CAL_DIGITAL_REFERENCE: /* Calibrate using the solid state cell as a reference */
-        calResult = DigitalReferenceCalibrate(&calParams);
         osDelay(TIMEOUT_4s); /* Give the shearwater time to catch up */
+        calResult = DigitalReferenceCalibrate(&calParams);
         break;
     case CAL_ANALOG_ABSOLUTE:
     case CAL_TOTAL_ABSOLUTE:
