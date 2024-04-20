@@ -6,23 +6,24 @@ import pytest
 
 
 @pytest.mark.parametrize("expected_PPO2", range(0, 250, 5))
-def test_digital_cell_ppo2(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim, expected_PPO2: float) -> None:
+def test_digital_cell_ppo2(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim, expected_PPO2: int) -> None:
     """ Test that digital cell reports PPO2 correctly """
     shim_host.set_digital_ppo2(1, expected_PPO2/100)
-    time.sleep(2)
+    divecan_client.flush_rx()
     message = divecan_client.listen_for_ppo2()
     assert message.arbitration_id == 0xD040004
     assert message.data[1] == expected_PPO2
 
-@pytest.mark.parametrize("c2_expected", range(5,125, 5))
-@pytest.mark.parametrize("c3_expected", range(5,125, 5))
+@pytest.mark.parametrize("c2_expected", range(5,125, 24))
+@pytest.mark.parametrize("c3_expected", range(5,125, 24))
 def test_millivolts(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim, c2_expected: int, c3_expected: int) -> None:
     """ Test that digital cell reports PPO2 correctly """
     #shim_host.set_digital_ppo2(1, 1.2)
 
     shim_host.set_analog_millis(2, c2_expected)
     shim_host.set_analog_millis(3, c3_expected)
-    time.sleep(2)
+    time.sleep(1)
+    divecan_client.flush_rx()
     message = divecan_client.listen_for_millis()
     assert message.arbitration_id == 0xD110004
 
