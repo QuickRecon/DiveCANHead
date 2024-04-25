@@ -65,6 +65,8 @@ void JumpToBootloader(void);
 #define CAN_SHDN_GPIO_Port GPIOC
 #define CAN_SILENT_Pin GPIO_PIN_15
 #define CAN_SILENT_GPIO_Port GPIOC
+#define VER_DET_1_Pin GPIO_PIN_0
+#define VER_DET_1_GPIO_Port GPIOC
 #define SOLENOID_Pin GPIO_PIN_1
 #define SOLENOID_GPIO_Port GPIOC
 #define CAN_V_Pin GPIO_PIN_2
@@ -103,6 +105,8 @@ void JumpToBootloader(void);
 #define SD_DET_GPIO_Port GPIOC
 #define GPIO_A_Pin GPIO_PIN_7
 #define GPIO_A_GPIO_Port GPIOC
+#define VER_DET_2_Pin GPIO_PIN_9
+#define VER_DET_2_GPIO_Port GPIOC
 #define PWM_1_Pin GPIO_PIN_8
 #define PWM_1_GPIO_Port GPIOA
 #define ADC1_ALERT_Pin GPIO_PIN_11
@@ -111,14 +115,12 @@ void JumpToBootloader(void);
 #define ADC2_ALERT_Pin GPIO_PIN_12
 #define ADC2_ALERT_GPIO_Port GPIOA
 #define ADC2_ALERT_EXTI_IRQn EXTI15_10_IRQn
-#define CAN_PG_Pin GPIO_PIN_13
-#define CAN_PG_GPIO_Port GPIOA
-#define BATT_PG_Pin GPIO_PIN_14
-#define BATT_PG_GPIO_Port GPIOA
 #define GPIO_B_Pin GPIO_PIN_15
 #define GPIO_B_GPIO_Port GPIOA
-#define SOL_DIS_BATT_Pin GPIO_PIN_3
-#define SOL_DIS_BATT_GPIO_Port GPIOB
+#define VER_DET_3_Pin GPIO_PIN_10
+#define VER_DET_3_GPIO_Port GPIOC
+#define SOL_DIS_BATT_Pin GPIO_PIN_11
+#define SOL_DIS_BATT_GPIO_Port GPIOC
 #define SOL_DIS_CAN_Pin GPIO_PIN_4
 #define SOL_DIS_CAN_GPIO_Port GPIOB
 #define SOL_STAT_Pin GPIO_PIN_5

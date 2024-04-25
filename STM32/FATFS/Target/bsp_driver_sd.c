@@ -9,15 +9,15 @@
  *          - or BSP code from the FW pack files
  *          if such files are added to the generated project (by the user).
  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2023 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
+ * @attention
+ *
+ * Copyright (c) 2023 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
  ******************************************************************************
  */
 /* USER CODE END Header */
@@ -42,9 +42,9 @@ extern SD_HandleTypeDef hsd1;
 /* can be used to modify / undefine following code or add code */
 /* USER CODE END BeforeInitSection */
 /**
-  * @brief  Initializes the SD card device.
-  * @retval SD status
-  */
+ * @brief  Initializes the SD card device.
+ * @retval SD status
+ */
 __weak uint8_t BSP_SD_Init(void)
 {
   uint8_t sd_state = MSD_OK;
@@ -64,9 +64,9 @@ __weak uint8_t BSP_SD_Init(void)
 
 /* USER CODE BEGIN InterruptMode */
 /**
-  * @brief  Configures Interrupt mode for SD detection pin.
-  * @retval Returns 0
-  */
+ * @brief  Configures Interrupt mode for SD detection pin.
+ * @retval Returns 0
+ */
 __weak uint8_t BSP_SD_ITConfig(void)
 {
   /* Code to be updated by the user or replaced by one from the FW pack (in a stmxxxx_sd.c file) */
@@ -80,13 +80,13 @@ __weak uint8_t BSP_SD_ITConfig(void)
 /* can be used to modify previous code / undefine following code / add code */
 /* USER CODE END BeforeReadBlocksSection */
 /**
-  * @brief  Reads block(s) from a specified address in an SD card, in polling mode.
-  * @param  pData: Pointer to the buffer that will contain the data to transmit
-  * @param  ReadAddr: Address from where data is to be read
-  * @param  NumOfBlocks: Number of SD blocks to read
-  * @param  Timeout: Timeout for read operation
-  * @retval SD status
-  */
+ * @brief  Reads block(s) from a specified address in an SD card, in polling mode.
+ * @param  pData: Pointer to the buffer that will contain the data to transmit
+ * @param  ReadAddr: Address from where data is to be read
+ * @param  NumOfBlocks: Number of SD blocks to read
+ * @param  Timeout: Timeout for read operation
+ * @retval SD status
+ */
 __weak uint8_t BSP_SD_ReadBlocks(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOfBlocks, uint32_t Timeout)
 {
   uint8_t sd_state = MSD_OK;
@@ -103,13 +103,13 @@ __weak uint8_t BSP_SD_ReadBlocks(uint32_t *pData, uint32_t ReadAddr, uint32_t Nu
 /* can be used to modify previous code / undefine following code / add code */
 /* USER CODE END BeforeWriteBlocksSection */
 /**
-  * @brief  Writes block(s) to a specified address in an SD card, in polling mode.
-  * @param  pData: Pointer to the buffer that will contain the data to transmit
-  * @param  WriteAddr: Address from where data is to be written
-  * @param  NumOfBlocks: Number of SD blocks to write
-  * @param  Timeout: Timeout for write operation
-  * @retval SD status
-  */
+ * @brief  Writes block(s) to a specified address in an SD card, in polling mode.
+ * @param  pData: Pointer to the buffer that will contain the data to transmit
+ * @param  WriteAddr: Address from where data is to be written
+ * @param  NumOfBlocks: Number of SD blocks to write
+ * @param  Timeout: Timeout for write operation
+ * @retval SD status
+ */
 __weak uint8_t BSP_SD_WriteBlocks(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBlocks, uint32_t Timeout)
 {
   uint8_t sd_state = MSD_OK;
@@ -126,12 +126,12 @@ __weak uint8_t BSP_SD_WriteBlocks(uint32_t *pData, uint32_t WriteAddr, uint32_t 
 /* can be used to modify previous code / undefine following code / add code */
 /* USER CODE END BeforeReadDMABlocksSection */
 /**
-  * @brief  Reads block(s) from a specified address in an SD card, in DMA mode.
-  * @param  pData: Pointer to the buffer that will contain the data to transmit
-  * @param  ReadAddr: Address from where data is to be read
-  * @param  NumOfBlocks: Number of SD blocks to read
-  * @retval SD status
-  */
+ * @brief  Reads block(s) from a specified address in an SD card, in DMA mode.
+ * @param  pData: Pointer to the buffer that will contain the data to transmit
+ * @param  ReadAddr: Address from where data is to be read
+ * @param  NumOfBlocks: Number of SD blocks to read
+ * @retval SD status
+ */
 __weak uint8_t BSP_SD_ReadBlocks_DMA(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOfBlocks)
 {
   uint8_t sd_state = MSD_OK;
@@ -149,12 +149,12 @@ __weak uint8_t BSP_SD_ReadBlocks_DMA(uint32_t *pData, uint32_t ReadAddr, uint32_
 /* can be used to modify previous code / undefine following code / add code */
 /* USER CODE END BeforeWriteDMABlocksSection */
 /**
-  * @brief  Writes block(s) to a specified address in an SD card, in DMA mode.
-  * @param  pData: Pointer to the buffer that will contain the data to transmit
-  * @param  WriteAddr: Address from where data is to be written
-  * @param  NumOfBlocks: Number of SD blocks to write
-  * @retval SD status
-  */
+ * @brief  Writes block(s) to a specified address in an SD card, in DMA mode.
+ * @param  pData: Pointer to the buffer that will contain the data to transmit
+ * @param  WriteAddr: Address from where data is to be written
+ * @param  NumOfBlocks: Number of SD blocks to write
+ * @retval SD status
+ */
 __weak uint8_t BSP_SD_WriteBlocks_DMA(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBlocks)
 {
   uint8_t sd_state = MSD_OK;
@@ -172,11 +172,11 @@ __weak uint8_t BSP_SD_WriteBlocks_DMA(uint32_t *pData, uint32_t WriteAddr, uint3
 /* can be used to modify previous code / undefine following code / add code */
 /* USER CODE END BeforeEraseSection */
 /**
-  * @brief  Erases the specified memory area of the given SD card.
-  * @param  StartAddr: Start byte address
-  * @param  EndAddr: End byte address
-  * @retval SD status
-  */
+ * @brief  Erases the specified memory area of the given SD card.
+ * @param  StartAddr: Start byte address
+ * @param  EndAddr: End byte address
+ * @retval SD status
+ */
 __weak uint8_t BSP_SD_Erase(uint32_t StartAddr, uint32_t EndAddr)
 {
   uint8_t sd_state = MSD_OK;
@@ -194,23 +194,23 @@ __weak uint8_t BSP_SD_Erase(uint32_t StartAddr, uint32_t EndAddr)
 /* USER CODE END BeforeGetCardStateSection */
 
 /**
-  * @brief  Gets the current SD card data status.
-  * @param  None
-  * @retval Data transfer state.
-  *          This value can be one of the following values:
-  *            @arg  SD_TRANSFER_OK: No data transfer is acting
-  *            @arg  SD_TRANSFER_BUSY: Data transfer is acting
-  */
+ * @brief  Gets the current SD card data status.
+ * @param  None
+ * @retval Data transfer state.
+ *          This value can be one of the following values:
+ *            @arg  SD_TRANSFER_OK: No data transfer is acting
+ *            @arg  SD_TRANSFER_BUSY: Data transfer is acting
+ */
 __weak uint8_t BSP_SD_GetCardState(void)
 {
-  return ((HAL_SD_GetCardState(&hsd1) == HAL_SD_CARD_TRANSFER ) ? SD_TRANSFER_OK : SD_TRANSFER_BUSY);
+  return ((HAL_SD_GetCardState(&hsd1) == HAL_SD_CARD_TRANSFER) ? SD_TRANSFER_OK : SD_TRANSFER_BUSY);
 }
 
 /**
-  * @brief  Get SD information about specific SD card.
-  * @param  CardInfo: Pointer to HAL_SD_CardInfoTypedef structure
-  * @retval None
-  */
+ * @brief  Get SD information about specific SD card.
+ * @param  CardInfo: Pointer to HAL_SD_CardInfoTypedef structure
+ * @retval None
+ */
 __weak void BSP_SD_GetCardInfo(BSP_SD_CardInfo *CardInfo)
 {
   /* Get SD card Information */
@@ -221,30 +221,30 @@ __weak void BSP_SD_GetCardInfo(BSP_SD_CardInfo *CardInfo)
 /* can be used to modify previous code / undefine following code / add code */
 /* USER CODE END BeforeCallBacksSection */
 /**
-  * @brief SD Abort callbacks
-  * @param hsd: SD handle
-  * @retval None
-  */
+ * @brief SD Abort callbacks
+ * @param hsd: SD handle
+ * @retval None
+ */
 void HAL_SD_AbortCallback(SD_HandleTypeDef *hsd)
 {
   BSP_SD_AbortCallback();
 }
 
 /**
-  * @brief Tx Transfer completed callback
-  * @param hsd: SD handle
-  * @retval None
-  */
+ * @brief Tx Transfer completed callback
+ * @param hsd: SD handle
+ * @retval None
+ */
 void HAL_SD_TxCpltCallback(SD_HandleTypeDef *hsd)
 {
   BSP_SD_WriteCpltCallback();
 }
 
 /**
-  * @brief Rx Transfer completed callback
-  * @param hsd: SD handle
-  * @retval None
-  */
+ * @brief Rx Transfer completed callback
+ * @param hsd: SD handle
+ * @retval None
+ */
 void HAL_SD_RxCpltCallback(SD_HandleTypeDef *hsd)
 {
   BSP_SD_ReadCpltCallback();
@@ -252,33 +252,30 @@ void HAL_SD_RxCpltCallback(SD_HandleTypeDef *hsd)
 
 /* USER CODE BEGIN CallBacksSection_C */
 /**
-  * @brief BSP SD Abort callback
-  * @retval None
-  * @note empty (up to the user to fill it in or to remove it if useless)
-  */
+ * @brief BSP SD Abort callback
+ * @retval None
+ * @note empty (up to the user to fill it in or to remove it if useless)
+ */
 __weak void BSP_SD_AbortCallback(void)
 {
-
 }
 
 /**
-  * @brief BSP Tx Transfer completed callback
-  * @retval None
-  * @note empty (up to the user to fill it in or to remove it if useless)
-  */
+ * @brief BSP Tx Transfer completed callback
+ * @retval None
+ * @note empty (up to the user to fill it in or to remove it if useless)
+ */
 __weak void BSP_SD_WriteCpltCallback(void)
 {
-
 }
 
 /**
-  * @brief BSP Rx Transfer completed callback
-  * @retval None
-  * @note empty (up to the user to fill it in or to remove it if useless)
-  */
+ * @brief BSP Rx Transfer completed callback
+ * @retval None
+ * @note empty (up to the user to fill it in or to remove it if useless)
+ */
 __weak void BSP_SD_ReadCpltCallback(void)
 {
-
 }
 /* USER CODE END CallBacksSection_C */
 #endif
@@ -303,4 +300,3 @@ __weak uint8_t BSP_SD_IsDetected(void)
 /* USER CODE BEGIN AdditionalCode */
 /* user code can be inserted here */
 /* USER CODE END AdditionalCode */
-

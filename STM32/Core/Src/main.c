@@ -63,6 +63,7 @@ I2C_HandleTypeDef hi2c1;
 IWDG_HandleTypeDef hiwdg;
 
 SD_HandleTypeDef hsd1;
+DMA_HandleTypeDef hdma_sdmmc1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim7;
@@ -84,6 +85,18 @@ const osThreadAttr_t watchdogTask_attributes = {
     .stack_size = sizeof(watchdogTaskBuffer),
     .priority = (osPriority_t)osPriorityLow,
 };
+/* Definitions for sDInitTask */
+osThreadId_t sDInitTaskHandle;
+uint32_t SDInitTaskBuffer[2048];
+osStaticThreadDef_t SDInitTaskControlBlock;
+const osThreadAttr_t sDInitTask_attributes = {
+    .name = "sDInitTask",
+    .cb_mem = &SDInitTaskControlBlock,
+    .cb_size = sizeof(SDInitTaskControlBlock),
+    .stack_mem = &SDInitTaskBuffer[0],
+    .stack_size = sizeof(SDInitTaskBuffer),
+    .priority = (osPriority_t)osPriorityHigh,
+};
 /* USER CODE BEGIN PV */
 CAN_FilterTypeDef sFilterConfig; // declare CAN filter structure
 /* USER CODE END PV */
@@ -91,6 +104,7 @@ CAN_FilterTypeDef sFilterConfig; // declare CAN filter structure
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_CAN1_Init(void);
 static void MX_I2C1_Init(void);
@@ -104,6 +118,7 @@ static void MX_IWDG_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM15_Init(void);
 void WatchdogTask(void *argument);
+void SDInitTask(void *argument);
 
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
@@ -129,6 +144,7 @@ DiveCANDevice_t deviceSpec = {
  */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -151,6 +167,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_ADC1_Init();
   MX_CAN1_Init();
   MX_I2C1_Init();
@@ -231,6 +248,9 @@ int main(void)
   /* creation of watchdogTask */
   watchdogTaskHandle = osThreadNew(WatchdogTask, NULL, &watchdogTask_attributes);
 
+  /* creation of sDInitTask */
+  sDInitTaskHandle = osThreadNew(SDInitTask, NULL, &sDInitTask_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -247,13 +267,13 @@ int main(void)
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
 
-  //InitLog();
   /* USER CODE END RTOS_EVENTS */
 
   /* Start scheduler */
   osKernelStart();
 
   /* We should never get here as control is now taken by the scheduler */
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
@@ -330,15 +350,18 @@ static void MX_NVIC_Init(void)
   /* EXTI15_10_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
-  /* USART1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART1_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(USART1_IRQn);
+  /* SDMMC1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
   /* USART2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
   /* USART3_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(USART3_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(USART3_IRQn);
+  /* USART1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(USART1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(USART1_IRQn);
 }
 
 /**
@@ -569,9 +592,8 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_1B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd1.Init.ClockDiv = 0x80;
+  hsd1.Init.ClockDiv = 0;
   /* USER CODE BEGIN SDMMC1_Init 2 */
-
   /* USER CODE END SDMMC1_Init 2 */
 }
 
@@ -868,6 +890,21 @@ static void MX_USART3_UART_Init(void)
 }
 
 /**
+ * Enable DMA controller clock
+ */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Channel4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Channel4_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Channel4_IRQn);
+}
+
+/**
  * @brief GPIO Initialization Function
  * @param None
  * @retval None
@@ -886,30 +923,24 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, CAN_SHDN_Pin | SOLENOID_Pin | GPIO_A_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, CAN_SHDN_Pin | SOLENOID_Pin | GPIO_A_Pin | SOL_DIS_BATT_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, BATTERY_EN_Pin | BUS_SEL2_Pin | BUS_SEL1_Pin | GPIO_B_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LED0_Pin | LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | LED5_Pin | LED6_Pin | LED7_Pin | SOL_DIS_BATT_Pin | SOL_DIS_CAN_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LED0_Pin | LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | LED5_Pin | LED6_Pin | LED7_Pin | SOL_DIS_CAN_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : CAN_SHDN_Pin SOLENOID_Pin GPIO_A_Pin */
-  GPIO_InitStruct.Pin = CAN_SHDN_Pin | SOLENOID_Pin | GPIO_A_Pin;
+  /*Configure GPIO pins : CAN_SHDN_Pin SOLENOID_Pin GPIO_A_Pin SOL_DIS_BATT_Pin */
+  GPIO_InitStruct.Pin = CAN_SHDN_Pin | SOLENOID_Pin | GPIO_A_Pin | SOL_DIS_BATT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : CAN_SILENT_Pin */
-  GPIO_InitStruct.Pin = CAN_SILENT_Pin;
+  /*Configure GPIO pins : CAN_SILENT_Pin VER_DET_1_Pin VER_DET_2_Pin VER_DET_3_Pin */
+  GPIO_InitStruct.Pin = CAN_SILENT_Pin | VER_DET_1_Pin | VER_DET_2_Pin | VER_DET_3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(CAN_SILENT_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PC0 PC9 PC10 PC11 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
@@ -928,8 +959,8 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : LED0_Pin LED1_Pin LED2_Pin LED3_Pin
                            LED4_Pin LED5_Pin LED6_Pin LED7_Pin
-                           SOL_DIS_BATT_Pin SOL_DIS_CAN_Pin */
-  GPIO_InitStruct.Pin = LED0_Pin | LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | LED5_Pin | LED6_Pin | LED7_Pin | SOL_DIS_BATT_Pin | SOL_DIS_CAN_Pin;
+                           SOL_DIS_CAN_Pin */
+  GPIO_InitStruct.Pin = LED0_Pin | LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | LED5_Pin | LED6_Pin | LED7_Pin | SOL_DIS_CAN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -938,19 +969,13 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : SD_DET_Pin */
   GPIO_InitStruct.Pin = SD_DET_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(SD_DET_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : ADC1_ALERT_Pin ADC2_ALERT_Pin */
   GPIO_InitStruct.Pin = ADC1_ALERT_Pin | ADC2_ALERT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : CAN_PG_Pin BATT_PG_Pin */
-  GPIO_InitStruct.Pin = CAN_PG_Pin | BATT_PG_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SOL_STAT_Pin */
@@ -1009,6 +1034,25 @@ void WatchdogTask(void *argument)
     osDelay(1);
   }
   /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_SDInitTask */
+/**
+ * @brief Function implementing the sDInitTask thread.
+ * @param argument: Not used
+ * @retval None
+ */
+/* USER CODE END Header_SDInitTask */
+void SDInitTask(void *argument)
+{
+  /* USER CODE BEGIN SDInitTask */
+  osDelay(1000);
+  // serial_printf("SD HAL %d\n\r", HAL_SD_Init(&hsd1));
+  // HAL_SD_ConfigWideBusOperation(&hsd1, SDMMC_BUS_WIDE_1B);
+  // SDMMC_PowerState_ON(SDMMC1);
+  InitLog();
+  vTaskDelete(NULL);
+  /* USER CODE END SDInitTask */
 }
 
 /**
