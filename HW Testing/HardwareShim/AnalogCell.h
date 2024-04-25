@@ -5,7 +5,7 @@
 
 class AnalogCell {
   public:
-    AnalogCell(int inCellNum);
+    explicit AnalogCell(int inCellNum);
     ~AnalogCell() = default;
 
     void SetMillis(float inMillis);

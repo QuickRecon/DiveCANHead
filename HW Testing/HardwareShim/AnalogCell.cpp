@@ -1,12 +1,13 @@
 #include "AnalogCell.h"
+#include <array>
 
 const float R1 = 2000;
 const float R2 = 100;
 
-const unsigned int pinMap[4] = {0,2,3,4};
+const std::array<const unsigned int,4> pinMap = {0,2,3,4};
 
-AnalogCell::AnalogCell(int inCellNum){
-  cellNum = inCellNum;
+AnalogCell::AnalogCell(int inCellNum): cellNum(inCellNum){
+
 }
 
 void AnalogCell::SetMillis(float inMillis){

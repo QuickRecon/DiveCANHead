@@ -6,8 +6,8 @@
 
 class DiveO2Cell : public IDigitalCell {
   public:
-    DiveO2Cell(HardwareSerial* inSerialPort);
-    ~DiveO2Cell();
+    explicit DiveO2Cell(HardwareSerial* inSerialPort);
+    ~DiveO2Cell() = default;
 
     void SetPPO2(float inPPO2) override;
     void Poll() override;
