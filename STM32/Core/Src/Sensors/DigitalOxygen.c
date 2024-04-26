@@ -221,7 +221,7 @@ void decodeCellMessage(void *arg)
                 const char *const temperature_str = strtok_r(NULL, sep, &msgBuf);
                 const char *const err_str = strtok_r(NULL, sep, &msgBuf);
 
-                DiveO2CellSample(PPO2_str, temperature_str, err_str, "", "", "", "", "");
+                DiveO2CellSample(cell->cellNumber, PPO2_str, temperature_str, err_str, "", "", "", "", "");
 
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
@@ -239,7 +239,7 @@ void decodeCellMessage(void *arg)
                 const char *const pressure_str = strtok_r(NULL, sep, &msgBuf);
                 const char *const humidity_str = strtok_r(NULL, sep, &msgBuf);
 
-                DiveO2CellSample(PPO2_str, temperature_str, err_str, phase, intensity, ambientLight, pressure_str, humidity_str);
+                DiveO2CellSample(cell->cellNumber, PPO2_str, temperature_str, err_str, phase, intensity, ambientLight, pressure_str, humidity_str);
 
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);

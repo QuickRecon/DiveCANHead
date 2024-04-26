@@ -9,6 +9,7 @@
 #include <math.h>
 #include "../Hardware/flash.h"
 #include "../Hardware/printer.h"
+#include "../Hardware/log.h"
 
 static AnalogOxygenState_t *getCellState(uint8_t cellNum)
 {
@@ -134,8 +135,12 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
 
     uint32_t ticksOfLastPPO2 = GetInputTicks(handle->adcInputIndex);
 
+
+
     uint32_t ticks = HAL_GetTick();
     handle->lastCounts = GetInputValue(handle->adcInputIndex);
+
+    AnalogCellSample(handle->cellNumber, handle->lastCounts);
 
     if (ticks < ticksOfLastPPO2)
     { /* If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out*/

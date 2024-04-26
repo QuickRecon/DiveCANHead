@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -19,7 +21,8 @@ extern "C"
 
     void InitLog(void);
     void LogMsg(const char *msg);
-    void DiveO2CellSample(const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity);
+    void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity);
+    void AnalogCellSample(uint8_t cellNumber, uint16_t sample);
 
 #ifdef __cplusplus
 }

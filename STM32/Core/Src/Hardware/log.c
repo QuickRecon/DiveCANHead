@@ -207,13 +207,25 @@ void LogMsg(const char *msg)
     }
 }
 
-void DiveO2CellSample(const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity)
+void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity)
 {
     static LogQueue_t enQueueItem = {0};
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
     /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (double)osKernelGetTickCount() / (double)osKernelGetTickFreq(), PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
+    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%d,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (double)osKernelGetTickCount() / (double)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
+    {
+        xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+    }
+}
+
+void AnalogCellSample(uint8_t cellNumber, uint16_t sample)
+{
+    static LogQueue_t enQueueItem = {0};
+    enQueueItem.eventType = LOG_ANALOG_SENSOR;
+
+    /* Build the string and queue it if its legal */
+    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%d,%d\r\n", (double)osKernelGetTickCount() / (double)osKernelGetTickFreq(), cellNumber, sample)))
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }
