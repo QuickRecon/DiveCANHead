@@ -28,7 +28,6 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
-extern volatile unsigned long ulHighFrequencyTimerTicks;
 /* USER CODE END TD */
 
 /* Private define ------------------------------------------------------------*/
