@@ -68,7 +68,7 @@ void BlockForCAN(void)
     if (xQueueReset(*dataAvail)) /* reset always returns pdPASS, so this should always evaluate to true */
     {
         bool data = false;
-        bool msgAvailable = xQueuePeek(*dataAvail, &data, pdMS_TO_TICKS(1000));
+        bool msgAvailable = xQueuePeek(*dataAvail, &data, TIMEOUT_1S_TICKS);
 
         if (!msgAvailable)
         {

@@ -77,11 +77,11 @@ void PPO2TXTask(void *arg)
         osDelay(TIMEOUT_500MS);
 
         OxygenCell_t c1 = {0};
-        bool c1pick = xQueuePeek(params->c1, &c1, 100);
+        bool c1pick = xQueuePeek(params->c1, &c1, TIMEOUT_100MS_TICKS);
         OxygenCell_t c2 = {0};
-        bool c2pick = xQueuePeek(params->c2, &c2, 100);
+        bool c2pick = xQueuePeek(params->c2, &c2, TIMEOUT_100MS_TICKS);
         OxygenCell_t c3 = {0};
-        bool c3pick = xQueuePeek(params->c3, &c3, 100);
+        bool c3pick = xQueuePeek(params->c3, &c3, TIMEOUT_100MS_TICKS);
 
         /* If the peek timed out then we mark the cell as failed going into the consensus calculation
          and lodge the nonfatal error */

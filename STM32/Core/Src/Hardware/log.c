@@ -7,6 +7,7 @@
 #include "queue.h"
 #include "main.h"
 #include "../common.h"
+#include "./printer.h"
 #include "../errors.h"
 
 extern SD_HandleTypeDef hsd1;
@@ -14,12 +15,12 @@ extern SD_HandleTypeDef hsd1;
 #define LOGQUEUE_LENGTH 10
 
 const char *const LOG_FILENAMES[6] = {
-    "log.txt",
-    "divecan.csv",
-    "I2C.csv",
-    "PPO2.csv",
-    "AnalogSensor.csv",
-    "DiveO2Sensor.csv"};
+    "LOG.TXT",
+    "DIVECAN.CSV",
+    "I2C.CSV",
+    "PPO2.CSV",
+    "ANALOG.CSV",
+    "DIVEO2.CSV"};
 
 /* SD card driver overrides to make the DMA work properly */
 uint8_t BSP_SD_WriteBlocks_DMA(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBlocks)
@@ -93,21 +94,24 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
     FRESULT res = FR_OK; /* FatFs function common result code */
 
     LogType_t currLog = LOG_EVENT;
-    res = f_open(&SDFile, LOG_FILENAMES[currLog], FA_CREATE_ALWAYS | FA_WRITE);
-    bool synced = false;
+    res = f_open(&SDFile, LOG_FILENAMES[currLog], FA_OPEN_APPEND | FA_WRITE);
     while (FR_OK == res)
     {
         LogQueue_t logItem = {0};
         /* Wait until there is an item in the queue, if there is then Log it*/
-        if ((pdTRUE == xQueueReceive(*logQueue, &logItem, TIMEOUT_4s)))
+        if ((pdTRUE == xQueueReceive(*logQueue, &logItem, TIMEOUT_4s_TICKS)))
         {
             if (logItem.eventType != currLog)
             {
                 res = f_close(&SDFile);
                 if (FR_OK == res)
                 {
-                    res = f_open(&SDFile, LOG_FILENAMES[logItem.eventType], FA_CREATE_ALWAYS | FA_WRITE);
+                    res = f_open(&SDFile, LOG_FILENAMES[logItem.eventType], FA_OPEN_APPEND | FA_WRITE);
                     currLog = logItem.eventType;
+                }
+                else
+                {
+                    serial_printf("Cannot close");
                 }
             }
             if (FR_OK == res)
@@ -115,21 +119,24 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
                 uint32_t expectedLength = strnlen((char *)logItem.string, LOG_LINE_LENGTH);
                 uint32_t byteswritten = 0;
                 res = f_write(&SDFile, logItem.string, expectedLength, (void *)&byteswritten);
-                synced = false;
                 if (expectedLength > byteswritten)
                 {
                     /* Out of space (file grown > 4Gig?)*/
                     /* TODO: Handle this, move/delete file? and rollover?*/
                 }
             }
-        }
-        else
-        {
-            /* Nothing has happened for 4 seconds, probably a convenient time to flush */
-            if (!synced)
+            else
+            {
+                serial_printf("Cannot open %s\r\n", LOG_FILENAMES[logItem.eventType]);
+            }
+
+            if (FR_OK == res)
             {
                 res = f_sync(&SDFile);
-                synced = true;
+            }
+            else
+            {
+                serial_printf("Cannot write %s\r\n", LOG_FILENAMES[logItem.eventType]);
             }
         }
     }
@@ -195,6 +202,18 @@ void LogMsg(const char *msg)
 
     /* Build the string and queue it if its legal */
     if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "[%f]: %s\r\n", (double)osKernelGetTickCount() / (double)osKernelGetTickFreq(), local_msg)))
+    {
+        xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+    }
+}
+
+void DiveO2CellSample(const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity)
+{
+    static LogQueue_t enQueueItem = {0};
+    enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
+
+    /* Build the string and queue it if its legal */
+    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (double)osKernelGetTickCount() / (double)osKernelGetTickFreq(), PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }

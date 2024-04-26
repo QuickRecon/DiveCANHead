@@ -56,7 +56,7 @@ void CANTask(void *arg)
     while (true)
     {
         DiveCANMessage_t message = {0};
-        if (pdTRUE == GetLatestCAN(TIMEOUT_1S, &message))
+        if (pdTRUE == GetLatestCAN(TIMEOUT_1S_TICKS, &message))
         {
             uint32_t message_id = message.id & 0x1FFFF000; /* Drop the source/dest stuff, we're listening for anything from anyone */
             switch (message_id)

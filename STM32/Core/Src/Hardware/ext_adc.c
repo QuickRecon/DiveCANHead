@@ -132,8 +132,8 @@ void BlockForADC(uint8_t inputIndex)
     {
         uint32_t ticks = 0;
         uint16_t adcCounts = 0;
-        bool ticksAvailable = xQueuePeek(*ticksQueue, &ticks, pdMS_TO_TICKS(1000));
-        bool inputAvailable = xQueuePeek(*inputQueue, &adcCounts, pdMS_TO_TICKS(1000));
+        bool ticksAvailable = xQueuePeek(*ticksQueue, &ticks, TIMEOUT_1S_TICKS);
+        bool inputAvailable = xQueuePeek(*inputQueue, &adcCounts, TIMEOUT_1S_TICKS);
 
         if ((!ticksAvailable) && (!inputAvailable))
         {

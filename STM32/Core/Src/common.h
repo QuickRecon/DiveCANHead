@@ -20,10 +20,19 @@ extern "C"
     typedef uint32_t Timestamp_t; /* Internal tick count used for tracking timeouts */
 
     /* Static timouts */
-    static const uint32_t TIMEOUT_100MS = pdMS_TO_TICKS(100);
-    static const uint32_t TIMEOUT_500MS = pdMS_TO_TICKS(500);
-    static const uint32_t TIMEOUT_1S = pdMS_TO_TICKS(1000);
-    static const uint32_t TIMEOUT_4s = pdMS_TO_TICKS(4000);
+    static const uint32_t TIMEOUT_10MS = 10;
+    static const uint32_t TIMEOUT_100MS = 100;
+    static const uint32_t TIMEOUT_500MS = 500;
+    static const uint32_t TIMEOUT_1S = 1000;
+    static const uint32_t TIMEOUT_2S = 2000;
+    static const uint32_t TIMEOUT_4s = 4000;
+
+    static const uint32_t TIMEOUT_10MS_TICKS = pdMS_TO_TICKS(TIMEOUT_10MS);
+    static const uint32_t TIMEOUT_100MS_TICKS = pdMS_TO_TICKS(TIMEOUT_100MS);
+    static const uint32_t TIMEOUT_500MS_TICKS = pdMS_TO_TICKS(TIMEOUT_500MS);
+    static const uint32_t TIMEOUT_1S_TICKS = pdMS_TO_TICKS(TIMEOUT_1S);
+    static const uint32_t TIMEOUT_2S_TICKS = pdMS_TO_TICKS(TIMEOUT_2S);
+    static const uint32_t TIMEOUT_4s_TICKS = pdMS_TO_TICKS(TIMEOUT_4s);
 
     /* Handy consts */
     static const uint32_t BYTE_WIDTH = 8;      /* Bitshift operations */

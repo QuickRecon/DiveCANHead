@@ -19,6 +19,7 @@ extern "C"
 
     void InitLog(void);
     void LogMsg(const char *msg);
+    void DiveO2CellSample(const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity);
 
 #ifdef __cplusplus
 }

@@ -8,7 +8,6 @@
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x01;
 static const uint8_t FATAL_ERROR_BASE_ADDR = 0x04;
 static const uint8_t NON_FATAL_ERROR_BASE_ADDR = 0x05;
-/*  static const uint8_t NON_FATAL_ERROR_END_ADDR = NON_FATAL_ERROR_BASE_ADDR + NONFATAL_ERR_MAX; */
 
 static const uint32_t CAL_TO_INT32 = 10000000;
 

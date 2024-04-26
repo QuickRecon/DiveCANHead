@@ -67,7 +67,7 @@ void PrinterTask(void *arg) /* Yes this warns but it needs to be that way for ma
         PrintQueue_t printItem = {0};
 
         /* Wait until there is an item in the queue, if there is then print it over the uart */
-        if ((pdTRUE == xQueueReceive(*printQueue, &printItem, TIMEOUT_4s)))
+        if ((pdTRUE == xQueueReceive(*printQueue, &printItem, TIMEOUT_4s_TICKS)))
         {
             while (huart2.gState != HAL_UART_STATE_READY)
             {
@@ -77,7 +77,7 @@ void PrinterTask(void *arg) /* Yes this warns but it needs to be that way for ma
              * Better to be fast here and get back to keeping the diver alive rather than printing to a console that may or may not exist
              * TODO: this is a blocking call, this is bad
              */
-            (void)HAL_UART_Transmit(&huart2, (uint8_t *)(printItem.string), (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH), TIMEOUT_4s);
+            (void)HAL_UART_Transmit(&huart2, (uint8_t *)(printItem.string), (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH), TIMEOUT_4s_TICKS);
             LogMsg(printItem.string);
         }
     }
