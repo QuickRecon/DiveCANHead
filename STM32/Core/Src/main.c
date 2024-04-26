@@ -1008,11 +1008,13 @@ void JumpToBootloader(void)
   __set_MSP(p);
 
   void (*SysMemBootJump)(void);
+  /* Embedded crimes to jump into the bootloader*/
   SysMemBootJump = (void (*)(void))(*((uint32_t *)0x1FFF0004));
   SysMemBootJump();
 
   while (1)
   {
+    // We should have landed in the bootloader and never arrived here
   }
 }
 /* USER CODE END 4 */

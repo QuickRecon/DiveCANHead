@@ -329,7 +329,7 @@ void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matchi
             uint32_t ticks = HAL_GetTick();
             bool valueWrite = xQueueOverwrite(adcInput->QInputValue, &adcCounts);
             bool tickWrite = false;
-            if (true == valueWrite) /* Make sure our value got updated first, we don't want the ticks queue to lie about the currency of the data */
+            if (valueWrite) /* Make sure our value got updated first, we don't want the ticks queue to lie about the currency of the data */
             {
                 tickWrite = xQueueOverwrite(adcInput->QInputTick, &ticks);
             }
