@@ -10,7 +10,7 @@ extern "C" {
 
 typedef int16_t ADCCount_t;
 
-typedef struct AnalogOxygenState_s
+typedef struct
 {
     /* Configuration*/
     uint8_t cellNumber;
@@ -23,8 +23,8 @@ typedef struct AnalogOxygenState_s
     int16_t lastCounts;
 
     osThreadId_t processor;
-    uint32_t processor_buffer[ANALOG_CELL_PROCESSOR_STACK_SIZE];
-    StaticTask_t processor_controlblock;
+    uint32_t processorBuffer[ANALOG_CELL_PROCESSOR_STACK_SIZE];
+    StaticTask_t processorControlblock;
 
     QueueHandle_t outQueue;
 } AnalogOxygenState_t;

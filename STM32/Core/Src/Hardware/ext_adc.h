@@ -8,20 +8,20 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef struct InputState_s
+typedef struct
 {
     uint8_t adcAddress; /* Address on the I2C bus */
     uint8_t inputIndex; /* input on the ADC */
 
     int16_t adcCounts;
 
-    StaticQueue_t QInputValue_QueueStruct;
-    uint8_t QInputValue_Storage[sizeof(uint16_t)];
-    QueueHandle_t QInputValue;
+    StaticQueue_t qInputValueQueueStruct;
+    uint8_t qInputValueStorage[sizeof(uint16_t)];
+    QueueHandle_t qInputValue;
 
-    StaticQueue_t QInputTicks_QueueStruct;
-    uint8_t QInputTicks_Storage[sizeof(uint32_t)];
-    QueueHandle_t QInputTick;
+    StaticQueue_t qInputTicksQueueStruct;
+    uint8_t qInputTicksStorage[sizeof(uint32_t)];
+    QueueHandle_t qInputTick;
 } InputState_t;
 
 void InitADCs(void);

@@ -12,7 +12,7 @@ extern "C"
 /* Implementation consts*/
 #define RX_BUFFER_LENGTH 86
 #define TX_BUFFER_LENGTH 8
-    typedef struct DigitalOxygenState_s
+    typedef struct
     {
         /* Configuration*/
         uint8_t cellNumber;
@@ -30,8 +30,8 @@ extern "C"
         uint32_t ticksOfLastPPO2;
         osThreadId_t processor;
 
-        uint32_t processor_buffer[DIGITAL_CELL_PROCESSOR_STACK_SIZE];
-        StaticTask_t processor_controlblock;
+        uint32_t processorBuffer[DIGITAL_CELL_PROCESSOR_STACK_SIZE];
+        StaticTask_t processorControlblock;
 
         QueueHandle_t outQueue;
     } DigitalOxygenState_t;

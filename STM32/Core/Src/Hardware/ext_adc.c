@@ -268,14 +268,14 @@ void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matchi
     for (uint8_t i = 0; i < ADC_COUNT; ++i)
     {
         InputState_t *adcInput = getInputState(i);
-        adcInput->QInputValue = xQueueCreateStatic(1, sizeof(uint16_t), adcInput->QInputValue_Storage, &(adcInput->QInputValue_QueueStruct));
-        adcInput->QInputTick = xQueueCreateStatic(1, sizeof(uint32_t), adcInput->QInputTicks_Storage, &(adcInput->QInputTicks_QueueStruct));
+        adcInput->qInputValue = xQueueCreateStatic(1, sizeof(uint16_t), adcInput->qInputValueStorage, &(adcInput->qInputValueQueueStruct));
+        adcInput->qInputTick = xQueueCreateStatic(1, sizeof(uint32_t), adcInput->qInputTicksStorage, &(adcInput->qInputTicksQueueStruct));
 
         QueueHandle_t *inputQueue = getInputQueue(i);
-        *inputQueue = adcInput->QInputValue;
+        *inputQueue = adcInput->qInputValue;
 
         QueueHandle_t *ticksQueue = getTicksQueue(i);
-        *ticksQueue = adcInput->QInputTick;
+        *ticksQueue = adcInput->qInputTick;
     }
 
     while (true) /* Loop forever as we are an RTOS task */
@@ -327,11 +327,11 @@ void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matchi
             /* Export the value to the queue */
             uint16_t adcCounts = (uint16_t)((uint16_t)conversionRegister[0] << 8) | conversionRegister[1];
             uint32_t ticks = HAL_GetTick();
-            bool valueWrite = xQueueOverwrite(adcInput->QInputValue, &adcCounts);
+            bool valueWrite = xQueueOverwrite(adcInput->qInputValue, &adcCounts);
             bool tickWrite = false;
             if (valueWrite) /* Make sure our value got updated first, we don't want the ticks queue to lie about the currency of the data */
             {
-                tickWrite = xQueueOverwrite(adcInput->QInputTick, &ticks);
+                tickWrite = xQueueOverwrite(adcInput->qInputTick, &ticks);
             }
             else
             {

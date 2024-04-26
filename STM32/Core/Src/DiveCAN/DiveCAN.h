@@ -9,12 +9,12 @@ extern "C" {
 #endif
 
 /**
- * @struct DiveCANDevice_s
+ * @struct DiveCANDevice
  * @brief Contains information about a DiveCAN device.
  *
  * A `DiveCANDevice_t` struct contains information about a device that uses the DiveCAN protocol.
  */
-typedef struct DiveCANDevice_s
+typedef struct
 {
     const char name[9];
     const DiveCANType_t type;

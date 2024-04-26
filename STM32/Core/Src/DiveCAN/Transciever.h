@@ -33,15 +33,13 @@ static const uint32_t PPO2_SETPOINT_ID = 0xDC90000;
 static const uint32_t PPO2_STATUS_ID = 0xDCA0000;
 static const uint32_t BUS_STATUS_ID = 0xDCB0000;
 
-
-
 #define MAX_CAN_RX_LENGTH 8
 
 /**
  * @struct DiveCANMessage_s
  * @brief Struct to represent a DiveCAN message.
  */
-typedef struct DiveCANMessage_s
+typedef struct
 {
   uint32_t id;
   uint8_t length;
@@ -53,7 +51,7 @@ typedef struct DiveCANMessage_s
  * @brief   This enum represents different types of devices connected via CAN bus.
  *          Each value corresponds to a specific device type.
  */
-typedef enum DiveCANType_e
+typedef enum
 {
   /** @brief DiveCAN controller device (like a Petrel) */
   DIVECAN_CONTROLLER = 1,
@@ -75,7 +73,7 @@ typedef enum DiveCANType_e
  * @enum DiveCANError_e
  * @brief Enum representing potential errors of a DiveCAN device.
  */
-typedef enum DiveCANError_e
+typedef enum
 {
   /**
    * @brief An unknown error 1.
@@ -127,7 +125,7 @@ typedef enum DiveCANError_e
  *  \enum DiveCANManufacturer_t
  *  \brief Enum to define different manufacturers of DiveCAN devices.
  */
-typedef enum DiveCANManufacturer_e
+typedef enum
 {
   /**
    * @brief Identifies the ISC (InnerSpace Systems Corp) manufacturer for a DiveCAN device.
@@ -163,7 +161,7 @@ void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool ce
 /**
  * @brief DiveCAN calibration result/response codes.
  */
-typedef enum DiveCANCalResponse_e
+typedef enum
 {
   /**
    * @brief Acknowledgment of the start of the calibration process.

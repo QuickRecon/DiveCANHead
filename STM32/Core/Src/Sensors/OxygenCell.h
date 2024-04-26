@@ -13,7 +13,7 @@ extern "C"
 {
 #endif
 
-    typedef struct OxygenCell_s
+    typedef struct
     {
         /* Configuration*/
         uint8_t cellNumber;
@@ -24,10 +24,10 @@ extern "C"
         Millivolts_t millivolts;
         CellStatus_t status;
 
-        Timestamp_t data_time;
+        Timestamp_t dataTime;
     } OxygenCell_t;
 
-    typedef enum OxygenCalMethod_e
+    typedef enum
     {
         CAL_DIGITAL_REFERENCE,
         CAL_ANALOG_ABSOLUTE,

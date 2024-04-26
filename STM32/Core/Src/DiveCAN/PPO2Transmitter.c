@@ -108,9 +108,9 @@ void PPO2TXTask(void *arg)
          Also check for fail and mark the cell value as fail */
         setFailedCellsValues(&consensus);
 
-        txPPO2(dev->type, consensus.PPO2s[CELL_1], consensus.PPO2s[CELL_2], consensus.PPO2s[CELL_3]);
-        txMillivolts(dev->type, consensus.millis[CELL_1], consensus.millis[CELL_2], consensus.millis[CELL_3]);
-        txCellState(dev->type, consensus.included[CELL_1], consensus.included[CELL_2], consensus.included[CELL_3], consensus.consensus);
+        txPPO2(dev->type, consensus.ppo2Array[CELL_1], consensus.ppo2Array[CELL_2], consensus.ppo2Array[CELL_3]);
+        txMillivolts(dev->type, consensus.milliArray[CELL_1], consensus.milliArray[CELL_2], consensus.milliArray[CELL_3]);
+        txCellState(dev->type, consensus.includeArray[CELL_1], consensus.includeArray[CELL_2], consensus.includeArray[CELL_3], consensus.consensus);
 
     } while (RTOS_LOOP_FOREVER);
 }
@@ -122,24 +122,24 @@ void PPO2TXTask(void *arg)
 void setFailedCellsValues(Consensus_t *consensus)
 {
     /* First check if we need to go into "needs cal" state */
-    bool needsCal = (consensus->statuses[0] == CELL_NEED_CAL) ||
-                    (consensus->statuses[1] == CELL_NEED_CAL) ||
-                    (consensus->statuses[2] == CELL_NEED_CAL);
+    bool needsCal = (consensus->statusArray[0] == CELL_NEED_CAL) ||
+                    (consensus->statusArray[1] == CELL_NEED_CAL) ||
+                    (consensus->statusArray[2] == CELL_NEED_CAL);
 
     if (needsCal && (!isCalibrating()))
     {
         for (uint8_t i = 0; i < CELL_COUNT; ++i)
         {
-            consensus->PPO2s[i] = PPO2_FAIL;
+            consensus->ppo2Array[i] = PPO2_FAIL;
         }
     }
     else /* Otherwise just FF as needed */
     {
         for (uint8_t i = 0; i < CELL_COUNT; ++i)
         {
-            if (consensus->statuses[i] == CELL_FAIL)
+            if (consensus->statusArray[i] == CELL_FAIL)
             {
-                consensus->PPO2s[i] = PPO2_FAIL;
+                consensus->ppo2Array[i] = PPO2_FAIL;
             }
         }
     }
@@ -159,31 +159,31 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
      * haven't been sitting idle and starved us of information
      */
     Timestamp_t sampleTimes[CELL_COUNT] = {
-        c1->data_time,
-        c2->data_time,
-        c3->data_time};
+        c1->dataTime,
+        c2->dataTime,
+        c3->dataTime};
 
     const Timestamp_t timeout = 1000; /* 1000 millisecond timeout to avoid stale data */
     Timestamp_t now = HAL_GetTick();
 
     Consensus_t consensus = {
-        .statuses = {
+        .statusArray = {
             c1->status,
             c2->status,
             c3->status,
         },
-        .PPO2s = {
+        .ppo2Array = {
             c1->ppo2,
             c2->ppo2,
             c3->ppo2,
         },
-        .millis = {
+        .milliArray = {
             c1->millivolts,
             c2->millivolts,
             c3->millivolts,
         },
         .consensus = 0,
-        .included = {true, true, true}};
+        .includeArray = {true, true, true}};
 
     /* Do a two pass check, loop through the cells and average the "good" cells
      * Then afterwards we check each cells value against the average, and exclude deviations
@@ -193,16 +193,16 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
 
     for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
     {
-        if ((consensus.statuses[cellIdx] == CELL_NEED_CAL) ||
-            (consensus.statuses[cellIdx] == CELL_FAIL) ||
-            (consensus.statuses[cellIdx] == CELL_DEGRADED) ||
+        if ((consensus.statusArray[cellIdx] == CELL_NEED_CAL) ||
+            (consensus.statusArray[cellIdx] == CELL_FAIL) ||
+            (consensus.statusArray[cellIdx] == CELL_DEGRADED) ||
             ((now - sampleTimes[cellIdx]) > timeout))
         {
-            consensus.included[cellIdx] = false;
+            consensus.includeArray[cellIdx] = false;
         }
         else
         {
-            PPO2_acc += consensus.PPO2s[cellIdx];
+            PPO2_acc += consensus.ppo2Array[cellIdx];
             ++includedCellCount;
         }
     }
@@ -214,15 +214,15 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
         {
             /* We want to make sure the cell is actually included before we start checking it */
-            if (consensus.included[cellIdx] && (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.PPO2s[cellIdx]) > MAX_DEVIATION))
+            if (consensus.includeArray[cellIdx] && (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.ppo2Array[cellIdx]) > MAX_DEVIATION))
             {
                 /* Removing cells in this way can result in a change in the outcome depending on
                  * cell position, depending on exactly how split-brained the cells are, but
                  * frankly if things are that cooked then we're borderline guessing anyway
                  */
-                PPO2_acc -= consensus.PPO2s[cellIdx];
+                PPO2_acc -= consensus.ppo2Array[cellIdx];
                 --includedCellCount;
-                consensus.included[cellIdx] = false;
+                consensus.includeArray[cellIdx] = false;
             }
         }
     }

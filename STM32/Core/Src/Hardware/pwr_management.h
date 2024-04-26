@@ -5,13 +5,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef enum PowerSource_e {
+typedef enum {
     SOURCE_DEFAULT,
     SOURCE_BATTERY,
     SOURCE_CAN
 } PowerSource_t;
 
-typedef enum PowerSelectMode_e {
+typedef enum {
     MODE_BATTERY=0,
     MODE_BATTERY_THEN_CAN=1,
     MODE_CAN=2,

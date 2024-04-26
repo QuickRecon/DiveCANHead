@@ -9,13 +9,13 @@
 extern "C" {
 #endif
 
-typedef struct Consensus_s
+typedef struct
 {
-    CellStatus_t statuses[3];
-    PPO2_t PPO2s[3];
-    Millivolts_t millis[3];
+    CellStatus_t statusArray[3];
+    PPO2_t ppo2Array[3];
+    Millivolts_t milliArray[3];
     PPO2_t consensus;
-    bool included[3];
+    bool includeArray[3];
 } Consensus_t;
 
 

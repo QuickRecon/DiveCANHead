@@ -55,10 +55,10 @@ AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
         osThreadAttr_t processor_attributes = {
             .name = "AnalogCellTask",
             .attr_bits = osThreadDetached,
-            .cb_mem = &(handle->processor_controlblock),
-            .cb_size = sizeof(handle->processor_controlblock),
-            .stack_mem = &(handle->processor_buffer)[0],
-            .stack_size = sizeof(handle->processor_buffer),
+            .cb_mem = &(handle->processorControlblock),
+            .cb_size = sizeof(handle->processorControlblock),
+            .stack_mem = &(handle->processorBuffer)[0],
+            .stack_size = sizeof(handle->processorBuffer),
             .priority = PPO2_SENSOR_PRIORITY,
             .tz_module = 0,
             .reserved = 0};
@@ -165,7 +165,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
         .ppo2 = PPO2,
         .millivolts = getMillivolts(handle),
         .status = handle->status,
-        .data_time = HAL_GetTick()};
+        .dataTime = HAL_GetTick()};
 
     if (pdFALSE == xQueueOverwrite(handle->outQueue, &cellData))
     {
@@ -190,7 +190,7 @@ void analogProcessor(void *arg)
         .ppo2 = 0,
         .millivolts = 0,
         .status = cell->status,
-        .data_time = HAL_GetTick()};
+        .dataTime = HAL_GetTick()};
 
     if (pdFALSE == xQueueOverwrite(cell->outQueue, &cellData))
     {
