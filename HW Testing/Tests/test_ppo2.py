@@ -22,7 +22,7 @@ def test_millivolts(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim, c
 
     shim_host.set_analog_millis(2, c2_expected)
     shim_host.set_analog_millis(3, c3_expected)
-    time.sleep(3)
+    time.sleep(1)
     divecan_client.flush_rx()
     message = divecan_client.listen_for_millis()
     assert message.arbitration_id == 0xD110004
