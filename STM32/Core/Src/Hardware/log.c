@@ -1,8 +1,25 @@
-#include "printer.h"
+#include "log.h"
 #include "fatfs.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include "cmsis_os.h"
+#include "queue.h"
+#include "main.h"
+#include "../common.h"
+#include "../errors.h"
 
 extern SD_HandleTypeDef hsd1;
+
+#define LOGQUEUE_LENGTH 10
+
+const char *const LOG_FILENAMES[6] = {
+    "log.txt",
+    "divecan.csv",
+    "I2C.csv",
+    "PPO2.csv",
+    "AnalogSensor.csv",
+    "DiveO2Sensor.csv"};
 
 /* SD card driver overrides to make the DMA work properly */
 uint8_t BSP_SD_WriteBlocks_DMA(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBlocks)
@@ -49,44 +66,136 @@ uint8_t BSP_SD_ReadBlocks_DMA(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOf
     return sd_state;
 }
 
+void LogTask(void *arg);
+
+typedef struct
+{
+    LogType_t eventType;
+    char string[LOG_LINE_LENGTH];
+} LogQueue_t;
+
+/* FreeRTOS tasks */
+static osThreadId_t *getOSThreadId(void)
+{
+    static osThreadId_t LogTaskHandle;
+    return &LogTaskHandle;
+}
+
+static QueueHandle_t *getQueueHandle(void)
+{
+    static QueueHandle_t PrintQueue;
+    return &PrintQueue;
+}
+
+void LogTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
+{
+    QueueHandle_t *logQueue = getQueueHandle();
+    FRESULT res = FR_OK; /* FatFs function common result code */
+
+    LogType_t currLog = LOG_EVENT;
+    res = f_open(&SDFile, LOG_FILENAMES[currLog], FA_CREATE_ALWAYS | FA_WRITE);
+    bool synced = false;
+    while (FR_OK == res)
+    {
+        LogQueue_t logItem = {0};
+        /* Wait until there is an item in the queue, if there is then Log it*/
+        if ((pdTRUE == xQueueReceive(*logQueue, &logItem, TIMEOUT_4s)))
+        {
+            if (logItem.eventType != currLog)
+            {
+                res = f_close(&SDFile);
+                if (FR_OK == res)
+                {
+                    res = f_open(&SDFile, LOG_FILENAMES[logItem.eventType], FA_CREATE_ALWAYS | FA_WRITE);
+                    currLog = logItem.eventType;
+                }
+            }
+            if (FR_OK == res)
+            {
+                uint32_t expectedLength = strlen((char *)logItem.string);
+                uint32_t byteswritten = 0;
+                res = f_write(&SDFile, logItem.string, expectedLength, (void *)&byteswritten);
+                synced = false;
+                if (expectedLength > byteswritten)
+                {
+                    /* Out of space (file grown > 4Gig?)*/
+                    /* TODO: Handle this, move/delete file? and rollover?*/
+                }
+            }
+        }
+        else
+        {
+            /* Nothing has happened for 4 seconds, probably a convenient time to flush */
+            if (!synced)
+            {
+                res = f_sync(&SDFile);
+                synced = true;
+            }
+        }
+    }
+
+    NON_FATAL_ERROR_DETAIL(LOGGING_ERR, res);
+    vTaskDelete(NULL); /* Cleanly exit*/
+}
+
 void InitLog(void)
 {
-    serial_printf("Starting SD\r\n");
     FRESULT res = FR_OK; /* FatFs function common result code */
-    uint32_t byteswritten = 0;
-    uint8_t wtext[] = "STM32 FATFS works great!"; /* File write buffer */
 
     res = f_mount(&SDFatFS, (TCHAR const *)SDPath, 1);
     if (res != FR_OK)
     {
         Error_Handler();
-        serial_printf("mount error %d\r\n", res);
     }
     else
     {
-        /*  Open file for writing (Create) */
-        res = f_open(&SDFile, "STM32.TXT", FA_CREATE_ALWAYS | FA_WRITE);
-        if (res != FR_OK)
-        {
-            Error_Handler();
-            serial_printf("fopen error %d\r\n", res);
-        }
-        else
-        {
-            /*  Write to the text file */
-            res = f_write(&SDFile, wtext, strlen((char *)wtext), (void *)&byteswritten);
-            if ((0 == byteswritten) || (res != FR_OK))
-            {
-                Error_Handler();
-                serial_printf("bytes error %d\r\n", res);
-            }
-            else
-            {
+        /* Setup task */
+        static uint32_t LogTask_buffer[LOG_STACK_SIZE];
+        static StaticTask_t LogTask_ControlBlock;
+        static const osThreadAttr_t LogTask_attributes = {
+            .name = "LogTask",
+            .attr_bits = osThreadDetached,
+            .cb_mem = &LogTask_ControlBlock,
+            .cb_size = sizeof(LogTask_ControlBlock),
+            .stack_mem = &LogTask_buffer[0],
+            .stack_size = sizeof(LogTask_buffer),
+            .priority = LOG_PRIORITY,
+            .tz_module = 0,
+            .reserved = 0};
 
-                f_close(&SDFile);
-            }
-        }
+        /* Setup print queue */
+        static StaticQueue_t LogQueue_QueueStruct;
+        static uint8_t LogQueue_Storage[LOGQUEUE_LENGTH * sizeof(LogQueue_t)];
+        QueueHandle_t *LogQueue = getQueueHandle();
+        *LogQueue = xQueueCreateStatic(LOGQUEUE_LENGTH, sizeof(LogQueue_t), LogQueue_Storage, &LogQueue_QueueStruct);
+
+        osThreadId_t *LogTaskHandle = getOSThreadId();
+        *LogTaskHandle = osThreadNew(LogTask, NULL, &LogTask_attributes);
     }
+}
 
-    serial_printf("file written\r\n");
+bool logRunning(void)
+{
+    osThreadId_t *logTask = getOSThreadId();
+    return !((osThreadGetState(*logTask) == osThreadError) ||
+             (osThreadGetState(*logTask) == osThreadInactive) ||
+             (osThreadGetState(*logTask) == osThreadTerminated));
+}
+
+void LogMsg(const char *msg)
+{
+    static LogQueue_t enQueueItem = {0};
+    enQueueItem.eventType = LOG_EVENT;
+
+    char local_msg[LOG_LINE_LENGTH] = {0};
+    (void)strncpy(local_msg, msg, LOG_LINE_LENGTH);
+
+    /* Strip existing newlines */
+    local_msg[strcspn(local_msg, "\r\n")] = 0;
+
+    /* Build the string and queue it if its legal */
+    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "[%f]: %s\r\n", (double)osKernelGetTickCount() / (double)osKernelGetTickFreq(), local_msg)))
+    {
+        xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+    }
 }

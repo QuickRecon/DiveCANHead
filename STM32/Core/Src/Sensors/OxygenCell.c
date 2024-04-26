@@ -223,6 +223,7 @@ void CalibrationTask(void *arg)
 {
     CalParameters_t calParams = *((CalParameters_t *)arg);
     DiveCANCalResponse_t calResult = DIVECAN_CAL_FAIL_REJECTED;
+    serial_printf("Starting calibrate\r\n");
     switch (calParams.calMethod)
     {
     case CAL_DIGITAL_REFERENCE: /* Calibrate using the solid state cell as a reference */

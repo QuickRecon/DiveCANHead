@@ -7,6 +7,7 @@
 #include "queue.h"
 #include "main.h"
 #include "../common.h"
+#include "log.h"
 
 #define PRINTQUEUE_LENGTH 10
 
@@ -16,7 +17,7 @@ void PrinterTask(void *arg);
 
 typedef struct PrintQueue_s
 {
-    char string[200];
+    char string[LOG_LINE_LENGTH];
 } PrintQueue_t;
 
 /* FreeRTOS tasks */
@@ -77,6 +78,7 @@ void PrinterTask(void *arg) /* Yes this warns but it needs to be that way for ma
              * TODO: this is a blocking call, this is bad
              */
             (void)HAL_UART_Transmit(&huart2, (uint8_t *)(printItem.string), strlen(printItem.string), 0xFFFFFFFF);
+            LogMsg(printItem.string);
         }
     }
 }

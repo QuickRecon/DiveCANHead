@@ -350,6 +350,12 @@ static void MX_NVIC_Init(void)
   /* EXTI15_10_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+  /* CAN1_RX0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
+  /* CAN1_RX1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(CAN1_RX1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(CAN1_RX1_IRQn);
   /* SDMMC1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
@@ -1048,11 +1054,9 @@ void WatchdogTask(void *argument)
 void SDInitTask(void *argument)
 {
   /* USER CODE BEGIN SDInitTask */
-  osDelay(1000);
-  // serial_printf("SD HAL %d\n\r", HAL_SD_Init(&hsd1));
-  // HAL_SD_ConfigWideBusOperation(&hsd1, SDMMC_BUS_WIDE_1B);
-  // SDMMC_PowerState_ON(SDMMC1);
+  osDelay(100);
   InitLog();
+  LogMsg("Logging Active");
   vTaskDelete(NULL);
   /* USER CODE END SDInitTask */
 }
