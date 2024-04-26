@@ -1,6 +1,4 @@
-#ifndef _PWRMANAGEMENT_H
-#define _PWRMANAGEMENT_H
-
+#pragma once
 #include "main.h"
 #include "stdbool.h"
 
@@ -28,6 +26,4 @@ void SetBattery(bool enable);
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

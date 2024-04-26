@@ -1,6 +1,4 @@
-#ifndef __DIGITALOXYGEN_H__
-#define __DIGITALOXYGEN_H__
-
+#pragma once
 #include "../common.h"
 #include "main.h"
 #include "cmsis_os.h"
@@ -45,6 +43,4 @@ extern "C"
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

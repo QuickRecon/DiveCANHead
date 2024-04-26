@@ -1,6 +1,4 @@
-#ifndef __DIVECAN_TRANSCEIVER_H
-#define __DIVECAN_TRANSCEIVER_H
-
+#pragma once
 #include "../common.h"
 #include "stdbool.h"
 
@@ -210,6 +208,4 @@ void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t devic
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

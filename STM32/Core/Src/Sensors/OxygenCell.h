@@ -1,6 +1,4 @@
-#ifndef __OXYGENCELL_H
-#define __OXYGENCELL_H
-
+#pragma once
 #include "../common.h"
 
 #include "cmsis_os.h"
@@ -43,5 +41,4 @@ extern "C"
 
 #ifdef __cplusplus
 }
-#endif
 #endif

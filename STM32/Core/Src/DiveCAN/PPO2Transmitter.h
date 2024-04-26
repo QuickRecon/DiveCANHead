@@ -1,5 +1,4 @@
-#ifndef __PPO2_TRANSMITTER_H
-#define __PPO2_TRANSMITTER_H
+#pragma once
 
 #include "../common.h"
 #include <stdbool.h>
@@ -24,6 +23,4 @@ void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, Que
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

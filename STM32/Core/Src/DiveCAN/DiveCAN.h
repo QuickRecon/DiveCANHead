@@ -1,5 +1,4 @@
-#ifndef __DIVECAN_H
-#define __DIVECAN_H
+#pragma once
 
 #include "../common.h"
 #include "Transciever.h"
@@ -29,6 +28,4 @@ void InitDiveCAN(DiveCANDevice_t *deviceSpec);
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

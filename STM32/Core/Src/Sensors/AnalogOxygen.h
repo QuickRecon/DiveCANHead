@@ -1,6 +1,4 @@
-#ifndef __ANALOGOXYGEN_H__
-#define __ANALOGOXYGEN_H__
-
+#pragma once
 #include "../common.h"
 #include "cmsis_os.h"
 #include "queue.h"
@@ -38,6 +36,4 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonF
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

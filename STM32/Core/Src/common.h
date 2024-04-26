@@ -1,5 +1,4 @@
-#ifndef __COMMON_H__
-#define __COMMON_H__
+#pragma once
 #include <stdlib.h>
 #include "cmsis_os.h"
 
@@ -86,6 +85,4 @@ extern "C"
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

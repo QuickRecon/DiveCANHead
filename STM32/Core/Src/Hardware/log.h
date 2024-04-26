@@ -1,5 +1,4 @@
-#ifndef _LOG_H
-#define _LOG_H
+#pragma once
 
 #ifdef __cplusplus
 extern "C"
@@ -10,5 +9,4 @@ extern "C"
 
 #ifdef __cplusplus
 }
-#endif
 #endif

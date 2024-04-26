@@ -1,5 +1,4 @@
-#ifndef _EXT_ADC_H
-#define _EXT_ADC_H
+#pragma once
 
 #include "../common.h"
 #include "main.h"
@@ -39,6 +38,4 @@ void ADC_Ready_Interrupt(void);
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

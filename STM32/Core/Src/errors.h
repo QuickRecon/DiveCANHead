@@ -1,6 +1,4 @@
-#ifndef __ERROR_H
-#define __ERROR_H
-
+#pragma once
 #include "common.h"
 #ifdef __cplusplus
 extern "C"
@@ -104,5 +102,4 @@ extern "C"
 
 #ifdef __cplusplus
 }
-#endif
 #endif

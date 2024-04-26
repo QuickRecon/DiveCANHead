@@ -1,6 +1,4 @@
-#ifndef __PRINTER_H__
-#define __PRINTER_H__
-
+#pragma once
 #ifdef __cplusplus
 extern "C"
 {
@@ -9,5 +7,4 @@ extern "C"
     void serial_printf(const char *fmt, ...);
 #ifdef __cplusplus
 }
-#endif
 #endif

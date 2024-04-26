@@ -1,5 +1,4 @@
-#ifndef _FLASH_H
-#define _FLASH_H
+#pragma once
 
 #include "../Sensors/OxygenCell.h"
 #include "../errors.h"
@@ -20,5 +19,4 @@ extern "C"
 
 #ifdef __cplusplus
 }
-#endif
 #endif
