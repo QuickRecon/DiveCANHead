@@ -1014,7 +1014,7 @@ void JumpToBootloader(void)
 
   while (1)
   {
-    // We should have landed in the bootloader and never arrived here
+    /* We should have landed in the bootloader and never arrived here */
   }
 }
 /* USER CODE END 4 */
