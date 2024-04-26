@@ -319,7 +319,7 @@ void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell)
     /* Make sure our RX buffer is clear*/
     memset(cell->lastMessage, 0, RX_BUFFER_LENGTH);
 
-    uint16_t sendLength = (uint16_t)strlen((char *)cell->txBuf);
+    uint16_t sendLength = (uint16_t)strnlen((char *)cell->txBuf, TX_BUFFER_LENGTH);
     if (HAL_OK == HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength))
     {
         if (HAL_OK != HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH))

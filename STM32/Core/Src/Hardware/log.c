@@ -112,7 +112,7 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
             }
             if (FR_OK == res)
             {
-                uint32_t expectedLength = strlen((char *)logItem.string);
+                uint32_t expectedLength = strnlen_s((char *)logItem.string, LOG_LINE_LENGTH);
                 uint32_t byteswritten = 0;
                 res = f_write(&SDFile, logItem.string, expectedLength, (void *)&byteswritten);
                 synced = false;
