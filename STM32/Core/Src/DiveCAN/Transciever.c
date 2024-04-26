@@ -108,7 +108,7 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     }
     else
     {
-        memcpy(message.data, data, length);
+        (void)memcpy(message.data, data, length);
     }
 
     QueueHandle_t *inbound = getInboundQueue();
@@ -139,7 +139,7 @@ void sendCANMessage(const uint32_t Id, const uint8_t *const data, const uint8_t 
     /* This isn't super time critical so if we're still waiting on stuff to tx then we can quite happily just wait */
     while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))
     {
-        osDelay(TX_WAIT_DELAY);
+        (void)osDelay(TX_WAIT_DELAY);
     }
 
     CAN_TxHeaderTypeDef header = {0};
@@ -191,7 +191,7 @@ void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufactur
 void txName(const DiveCANType_t deviceType, const char *const name)
 {
     uint8_t data[BUS_NAME_LEN + 1] = {0};
-    strncpy((char *)data, name, BUS_NAME_LEN);
+    (void)strncpy((char *)data, name, BUS_NAME_LEN);
     uint32_t Id = BUS_NAME_ID | deviceType;
     sendCANMessage(Id, data, BUS_NAME_LEN);
 }
@@ -299,7 +299,7 @@ void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceT
 void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText, const bool textField, const bool editable)
 {
     uint8_t strData[MENU_FIELD_LEN + 1] = {0};
-    strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
+    (void)strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
 
     uint8_t data1[MENU_LEN] = {0x10, 0x10, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]};
     uint8_t data2[MENU_LEN] = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]};
@@ -345,7 +345,7 @@ void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
 void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText)
 {
     uint8_t strData[MENU_FIELD_LEN + 1] = {0};
-    strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
+    (void)strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
 
     uint8_t data1[MENU_LEN] = {0x10, 0x0c, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]};
     uint8_t data2[MENU_LEN] = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]};
