@@ -78,8 +78,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
     DiveCANType_t target = (DiveCANType_t)(0xF & (message->id));
     DiveCANType_t source = deviceSpec->type;
     uint8_t reqByte = message->data[ReqOpFieldIdx];
-    /*  static uint8_t value = 0; */
-
+    
     if (0 == reqByte)
     { /*  If we just need to ack then do that */
         serial_printf("ACK\r\n");

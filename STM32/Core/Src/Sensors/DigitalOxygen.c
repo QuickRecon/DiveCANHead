@@ -205,7 +205,7 @@ void decodeCellMessage(void *arg)
         if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, TIMEOUT_2S_TICKS))
         {
             char *msgBuf = cell->lastMessage;
-            while ((0 == msgBuf[0] || 0x0D == msgBuf[0])  && (msgBuf < (cell->lastMessage + RX_BUFFER_LENGTH - 1)))
+            while (((0 == msgBuf[0] )|| (NEWLINE == msgBuf[0]))  && (msgBuf < (cell->lastMessage + RX_BUFFER_LENGTH - 1)))
             {
                 ++msgBuf;
             }
@@ -265,7 +265,7 @@ void decodeCellMessage(void *arg)
         /* Sampling more than 10x per second is a bit excessive,
          * if the cell is getting back to us that quick we can take a break
          */
-        while((HAL_GetTick() - lastTicks) < pdMS_TO_TICKS(100)){
+        while((HAL_GetTick() - lastTicks) < TIMEOUT_100MS_TICKS){
             (void)osDelay(TIMEOUT_10MS);
         }
 

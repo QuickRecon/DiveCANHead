@@ -71,7 +71,7 @@ void PrinterTask(void *arg) /* Yes this warns but it needs to be that way for ma
         {
             while (huart2.gState != HAL_UART_STATE_READY)
             {
-                osDelay(5);
+                osDelay(TIMEOUT_5MS);
             }
             /* Printing is non-critical so shout our data at the peripheral and if it doesn't make it then we don't really care
              * Better to be fast here and get back to keeping the diver alive rather than printing to a console that may or may not exist

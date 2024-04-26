@@ -6,11 +6,7 @@
 
 class DiveO2Cell : public IDigitalCell {
   public:
-    explicit DiveO2Cell(HardwareSerial* inSerialPort) : PPO2(0.2)
-    {
-      serialPort = inSerialPort;
-      serialPort->begin(baudRate);
-    };
+    explicit DiveO2Cell(HardwareSerial* inSerialPort);
 
     ~DiveO2Cell() = default;
 

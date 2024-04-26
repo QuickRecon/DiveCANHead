@@ -191,7 +191,7 @@ bool logRunning(void)
 
 void LogMsg(const char *msg)
 {
-    static LogQueue_t enQueueItem = {0};
+    LogQueue_t enQueueItem = {0};
     enQueueItem.eventType = LOG_EVENT;
 
     char local_msg[LOG_LINE_LENGTH] = {0};
@@ -209,7 +209,7 @@ void LogMsg(const char *msg)
 
 void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity)
 {
-    static LogQueue_t enQueueItem = {0};
+    LogQueue_t enQueueItem = {0};
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
     /* Build the string and queue it if its legal */
@@ -221,7 +221,7 @@ void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *co
 
 void AnalogCellSample(uint8_t cellNumber, uint16_t sample)
 {
-    static LogQueue_t enQueueItem = {0};
+    LogQueue_t enQueueItem = {0};
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
 
     /* Build the string and queue it if its legal */

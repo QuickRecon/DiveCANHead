@@ -1038,8 +1038,8 @@ void WatchdogTask(void *argument)
   /* Infinite loop */
   for (;;)
   {
-    HAL_IWDG_Refresh(&hiwdg);
-    osDelay(1);
+    (void)HAL_IWDG_Refresh(&hiwdg);
+    (void)osDelay(1);
   }
   /* USER CODE END 5 */
 }
@@ -1054,7 +1054,7 @@ void WatchdogTask(void *argument)
 void SDInitTask(void *argument)
 {
   /* USER CODE BEGIN SDInitTask */
-  osDelay(100);
+  (void)osDelay(TIMEOUT_100MS);
   InitLog();
   LogMsg("Logging Active");
   vTaskDelete(NULL);
@@ -1091,11 +1091,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  // __disable_irq();
-  // while (1)
   NON_FATAL_ERROR(CRITICAL_ERROR);
-  // {
-  // }
   /* USER CODE END Error_Handler_Debug */
 }
 
