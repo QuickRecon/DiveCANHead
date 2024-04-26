@@ -1,6 +1,6 @@
 #pragma once
 
-typedef long TickType_t;
+typedef uint32_t TickType_t;
 
 /*
  * FreeRTOS Kernel V10.3.1

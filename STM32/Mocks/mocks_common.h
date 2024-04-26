@@ -7,20 +7,20 @@
 extern "C" {
 #endif
 
-typedef long BaseType_t;
-typedef unsigned long UBaseType_t;
-typedef long TickType_t;
+typedef uint32_t BaseType_t;
+typedef uint32_t UBaseType_t;
+typedef uint32_t TickType_t;
 
 typedef void *TaskHandle_t;
 
 typedef struct
 {
-    int data;
+    uint32_t data;
 } StaticTask_t;
 
 typedef struct
 {
-    int test;
+    uint32_t test;
 } StaticQueue_t;
 
 uint32_t HAL_GetTick();

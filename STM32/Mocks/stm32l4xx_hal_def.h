@@ -50,7 +50,6 @@ typedef enum
   HAL_LOCKED   = 0x01
 } HAL_LockTypeDef;
 
-
 #ifdef __cplusplus
 }
 #endif
