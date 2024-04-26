@@ -18,7 +18,7 @@
  *  The `type` field contains the type of the cell, while the `cellHandle`
  *  field contains a pointer to the actual cell handle object.
  */
-typedef struct OxygenHandle_s
+typedef struct
 {
     CellType_t type;
     void *cellHandle;
@@ -28,15 +28,14 @@ typedef struct OxygenHandle_s
  *  @brief Contains calibration parameters for an oxygen sensor.
  *
  *  The `deviceType` field specifies the type of device being used, while the
- *  `fO2`, `pressure_val`, and `calMethod` fields specify the FO2 value,
+ *  `fO2`, `pressureVal`, and `calMethod` fields specify the FO2 value,
  *  pressure value, and calibration method to be used. The remaining fields
  *  are for individual cell parameters.
  */
-typedef struct CalParameters_s
-{
+typedef struct {
     DiveCANType_t deviceType;
     FO2_t fO2;
-    uint16_t pressure_val;
+    uint16_t pressureVal;
 
     ShortMillivolts_t cell1;
     ShortMillivolts_t cell2;
@@ -128,6 +127,24 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
     return *queueHandle;
 }
 
+static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, OxygenHandle_t *cell, PPO2_t ppO2, ShortMillivolts_t* cellVals, NonFatalError_t* calErrors)
+{
+    AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cell->cellHandle;
+    cellVals[i] = Calibrate(analogCell, ppO2, &(calErrors[i]));
+
+    /* Check the cell calibrated properly, if it still says needs cal it was outside the cal envelope */
+    if (analogCell->status == CELL_NEED_CAL)
+    {
+        *calPass = DIVECAN_CAL_FAIL_FO2_RANGE;
+    }
+
+    /* A fail state means some kind of internal fault during cal */
+    if (analogCell->status == CELL_FAIL)
+    {
+        *calPass = DIVECAN_CAL_FAIL_GEN;
+    }
+}
+
 /**
  * @brief Calibrates the Oxygen sensor using a digital reference cell.
  *
@@ -172,20 +189,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
             OxygenHandle_t *cell = getCell(i);
             if (CELL_ANALOG == cell->type)
             {
-                AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cell->cellHandle;
-                cellVals[i] = Calibrate(analogCell, ppO2, &(calErrors[i]));
-
-                // Check the cell calibrated properly, if it still says needs cal it was outside the cal envelope
-                if (analogCell->status == CELL_NEED_CAL)
-                {
-                    calPass = DIVECAN_CAL_FAIL_FO2_RANGE;
-                }
-
-                // A fail state means some kind of internal fault during cal
-                if (analogCell->status == CELL_FAIL)
-                {
-                    calPass = DIVECAN_CAL_FAIL_GEN;
-                }
+                calibrateAnalogCell(&calPass, i, cell, ppO2, cellVals, calErrors);
             }
 
             if (calErrors[i] != ERR_NONE)
@@ -199,7 +203,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
         calParams->cell2 = cellVals[CELL_2];
         calParams->cell3 = cellVals[CELL_3];
 
-        calParams->pressure_val = pressure;
+        calParams->pressureVal = pressure;
         calParams->fO2 = (FO2_t)round((Numeric_t)ppO2 * (1000.0f / (Numeric_t)pressure));
     }
     else
@@ -222,7 +226,7 @@ void CalibrationTask(void *arg)
     switch (calParams.calMethod)
     {
     case CAL_DIGITAL_REFERENCE: /* Calibrate using the solid state cell as a reference */
-        osDelay(TIMEOUT_4s); /* Give the shearwater time to catch up */
+        (void)osDelay(TIMEOUT_4s);    /* Give the shearwater time to catch up */
         calResult = DigitalReferenceCalibrate(&calParams);
         break;
     case CAL_ANALOG_ABSOLUTE:
@@ -235,7 +239,7 @@ void CalibrationTask(void *arg)
         NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
     }
 
-    txCalResponse(calParams.deviceType, calResult, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressure_val);
+    txCalResponse(calParams.deviceType, calResult, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressureVal);
 
     osThreadExit();
 }
@@ -259,7 +263,7 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
     static CalParameters_t calParams;
 
     calParams.fO2 = in_fO2;
-    calParams.pressure_val = in_pressure_val;
+    calParams.pressureVal = in_pressure_val;
     calParams.deviceType = deviceType;
     calParams.cell1 = 0;
     calParams.cell2 = 0;
