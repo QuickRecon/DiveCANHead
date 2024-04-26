@@ -77,7 +77,7 @@ void PrinterTask(void *arg) /* Yes this warns but it needs to be that way for ma
              * Better to be fast here and get back to keeping the diver alive rather than printing to a console that may or may not exist
              * TODO: this is a blocking call, this is bad
              */
-            (void)HAL_UART_Transmit(&huart2, (uint8_t *)(printItem.string), strnlen(printItem.string, LOG_LINE_LENGTH), 0xFFFFFFFF);
+            (void)HAL_UART_Transmit(&huart2, (uint8_t *)(printItem.string), (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH), TIMEOUT_4s);
             LogMsg(printItem.string);
         }
     }

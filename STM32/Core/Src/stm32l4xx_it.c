@@ -189,30 +189,6 @@ void CAN1_RX0_IRQHandler(void)
   /* USER CODE END CAN1_RX0_IRQn 0 */
   HAL_CAN_IRQHandler(&hcan1);
   /* USER CODE BEGIN CAN1_RX0_IRQn 1 */
-  // CAN_RxHeaderTypeDef pRxHeader;
-  // uint8_t pData[64] = {0};
-  // HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &pRxHeader, pData);
-
-  // // Use 0x05 to reset into bootloader for flashing
-  // if (pRxHeader.StdId == 0x05)
-  // {
-  //   // Transmit an ack for sanity
-  //   CAN_TxHeaderTypeDef pTxHeader;
-  //   pTxHeader.DLC = 1;                                        // give message size of 1 byte
-  //   pTxHeader.IDE = CAN_ID_STD;                               // set identifier to standard
-  //   pTxHeader.RTR = CAN_RTR_DATA;                             // set RTR type to data
-  //   pTxHeader.StdId = 0x05;                                  // define a standard identifier, used for message identification by filters (switch this for the other microcontroller)
-  //   uint8_t data = 0x79;
-  //   uint32_t TxMailbox;
-  //   HAL_CAN_AddTxMessage(&hcan1, &pTxHeader, &data, &TxMailbox); // function to add message for transmition
-
-  //   // POLLING BAD
-  //   // wait for the txmessage to send
-  //   while(HAL_CAN_IsTxMessagePending(&hcan1, TxMailbox)){}; 
-
-  //   // TO THE BOOTLOADER!
-  //   JumpToBootloader();
-  // }
   /* USER CODE END CAN1_RX0_IRQn 1 */
 }
 
@@ -348,7 +324,6 @@ void TIM6_DAC_IRQHandler(void)
 void TIM7_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM7_IRQn 0 */
-  // Needed for freertos stats
   /* USER CODE END TIM7_IRQn 0 */
   HAL_TIM_IRQHandler(&htim7);
   /* USER CODE BEGIN TIM7_IRQn 1 */

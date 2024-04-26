@@ -2,13 +2,13 @@
 #include <stdlib.h>
 #include "cmsis_os.h"
 
+/* Log Line length used in printer and sd card logging*/
+#define LOG_LINE_LENGTH 200
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-    /* Log Line length used in printer and sd card logging*/
-    #define LOG_LINE_LENGTH 200
-
     /* Value types */
     typedef uint8_t PPO2_t;
     typedef float Numeric_t; /* A generic numeric type for when we want to do floating point calculations, for easy choosing between size of floats */
