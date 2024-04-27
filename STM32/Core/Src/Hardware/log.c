@@ -102,21 +102,23 @@ FRESULT GetNextDirIdx(uint32_t *index)
     res = f_opendir(&dir, "/"); /* Open the directory */
     if (res == FR_OK)
     {
-        do {
+        do
+        {
             res = f_readdir(&dir, &fno); /* Read a directory item */
             if (((fno.fattrib & AM_DIR) != 0) && (FR_OK == res) && (0 != fno.fname[0]))
             {
                 uint32_t dirNum = (uint32_t)strtol(fno.fname, NULL, 10);
-                serial_printf("reading dir %s\r\n",fno.fname );
                 if (dirNum > maxDir)
                 {
                     maxDir = dirNum;
                 }
             }
-            else if(FR_OK != res)
+            else if (FR_OK != res)
             {
                 serial_printf("Failed to read Dir (%u)\r\n", res);
-            } else {
+            }
+            else
+            {
                 /* its just a file don't worry about it */
             }
         } while ((res == FR_OK) && (0 != fno.fname[0]));
@@ -139,24 +141,29 @@ FRESULT MoveIntoDir(char *dirname)
     res = f_opendir(&dir, "/"); /* Open the directory */
     if (res == FR_OK)
     {
-        while ((res == FR_OK) && (0 != fno.fname[0]))
+        do
         {
             res = f_readdir(&dir, &fno); /* Read a directory item */
-            if ((0 == (fno.fattrib & AM_DIR)) && (FR_OK == res))
+            if ((!((fno.fattrib & AM_DIR) != 0)) && (FR_OK == res))
             {
                 char NewName[MAXPATH_LENGTH] = {0};
                 (void)snprintf(NewName, MAXPATH_LENGTH, "%s/%s", dirname, fno.fname);
                 res = f_rename(fno.fname, NewName);
+                serial_printf("Moved %s to %s\r\n", fno.fname, NewName);
                 if (res != FR_OK)
                 {
-                    serial_printf("Failed to rename %s", fno.fname);
+                    serial_printf("Failed to rename %s\r\n", fno.fname);
                 }
+            }
+            else if (FR_OK != res)
+            {
+                serial_printf("Failed to read file (%u)\r\n", res);
             }
             else
             {
-                serial_printf("Failed to read file (%u)\n", res);
+                /* its just a dir don't worry about it */
             }
-        }
+        } while ((res == FR_OK) && (0 != fno.fname[0]));
         res = f_closedir(&dir);
     }
     else
@@ -185,7 +192,7 @@ FRESULT RotateLogfiles(void)
     {
         serial_printf("Cannot find next dir (%d)\r\n", res);
     }
-
+    serial_printf("Found next dir\r\n");
     /* Step 3, move */
     if (FR_OK == res)
     {
@@ -195,6 +202,7 @@ FRESULT RotateLogfiles(void)
     {
         serial_printf("Cannot make next dir %s (%d)\r\n", dirname, res);
     }
+    serial_printf("finished move\r\n");
     return res;
 }
 
@@ -232,7 +240,7 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
                 if (expectedLength > byteswritten)
                 {
                     /* Out of space (file grown > 4Gig?)*/
-                    res = RotateLogfiles();
+                    //res = RotateLogfiles();
                 }
             }
             else
@@ -330,7 +338,7 @@ void LogMsg(const char *msg)
         local_msg[strcspn(local_msg, "\r\n")] = 0;
 
         /* Build the string and queue it if its legal */
-        if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "[%f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
+        if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "[%f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
         {
             xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
         }
@@ -347,10 +355,11 @@ void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *co
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
     static LogQueue_t enQueueItem = {0};
+    (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
     /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%d,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
+    if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%f,%d,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }
@@ -362,10 +371,11 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
     static LogQueue_t enQueueItem = {0};
+    (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
 
     /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%d,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)))
+    if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%f,%d,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)))
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }
