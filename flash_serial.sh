@@ -8,4 +8,4 @@ cansend can0 079#
 sleep 0.1
 
 killall screen
-stm32flash -vR -b 115200 -w build/STM32.hex /dev/ttyUSB0 && screen /dev/ttyUSB0 19200
+stm32flash -vR -b 115200 -w STM32/build/STM32.hex /dev/ttyUSB0 && screen /dev/ttyUSB0 19200
