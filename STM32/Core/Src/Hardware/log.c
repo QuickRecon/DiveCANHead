@@ -101,7 +101,7 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
     {
         LogQueue_t logItem = {0};
         /* Wait until there is an item in the queue, if there is then Log it*/
-        if ((pdTRUE == xQueueReceive(*logQueue, &logItem, TIMEOUT_4s_TICKS)))
+        if (pdTRUE == xQueueReceive(*logQueue, &logItem, TIMEOUT_4s_TICKS))
         {
             if (logItem.eventType != currLog)
             {
@@ -144,7 +144,7 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
     }
 
     NON_FATAL_ERROR_DETAIL(LOGGING_ERR, res);
-    (void)vTaskDelete(NULL); /* Cleanly exit*/
+    (void)osThreadTerminate(NULL); /* Cleanly exit*/
 }
 
 void InitLog(void)

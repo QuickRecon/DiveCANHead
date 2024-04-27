@@ -214,11 +214,11 @@ int main(void)
   /* Kick off our threads */
   InitADCs();
 
-  QueueHandle_t cells[3];
+  QueueHandle_t cells[3] = {0};
 
-  cells[0] = CreateCell(0, CELL_DIGITAL);
-  cells[1] = CreateCell(1, CELL_ANALOG);
-  cells[2] = CreateCell(2, CELL_ANALOG);
+  cells[CELL_1] = CreateCell(CELL_1, CELL_DIGITAL);
+  cells[CELL_2] = CreateCell(CELL_2, CELL_ANALOG);
+  cells[CELL_3] = CreateCell(CELL_3, CELL_ANALOG);
 
   InitDiveCAN(&deviceSpec);
   InitPPO2TX(&deviceSpec, cells[0], cells[1], cells[2]);
@@ -1004,13 +1004,13 @@ static void MX_GPIO_Init(void)
 typedef void (*BootloaderJumpFunc_t)(void);
 void JumpToBootloader(void)
 {
-  __enable_irq();
+  (void)__enable_irq();
   (void)HAL_RCC_DeInit();
   (void)HAL_DeInit();
   SysTick->VAL = 0;
   SysTick->LOAD = 0;
   SysTick->CTRL = 0;
-  __HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
+  (void)__HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
 
   const uint32_t p = (*((uint32_t *)0x1FFF0000));
   __set_MSP(p);
@@ -1060,7 +1060,7 @@ void SDInitTask(void *argument)
   (void)osDelay(TIMEOUT_100MS);
   InitLog();
   LogMsg("Logging Active");
-  vTaskDelete(NULL);
+  (void)osThreadTerminate(NULL);
   /* USER CODE END SDInitTask */
 }
 
