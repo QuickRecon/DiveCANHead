@@ -2,12 +2,6 @@
 
 const unsigned long temperature = 2250; //22.5C
 
-
-DiveO2Cell::DiveO2Cell(HardwareSerial* inSerialPort) : PPO2(0.2), serialPort(inSerialPort)
-{
-  serialPort->begin(baudRate);
-};
-
 void DiveO2Cell::SetPPO2(float inPPO2){
   PPO2 = inPPO2;
 }

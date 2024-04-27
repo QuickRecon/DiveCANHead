@@ -221,7 +221,7 @@ int main(void)
   cells[CELL_3] = CreateCell(CELL_3, CELL_ANALOG);
 
   InitDiveCAN(&deviceSpec);
-  InitPPO2TX(&deviceSpec, cells[0], cells[1], cells[2]);
+  InitPPO2TX(&deviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
 
   /* USER CODE END 2 */
 
