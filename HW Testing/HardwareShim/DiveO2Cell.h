@@ -7,7 +7,7 @@
 class DiveO2Cell : public IDigitalCell
 {
 public:
-  explicit DiveO2Cell(HardwareSerial *inSerialPort) : PPO2(0.2), serialPort(inSerialPort)
+  explicit DiveO2Cell(HardwareSerial *inSerialPort) : serialPort(inSerialPort)
   {
     serialPort->begin(baudRate);
   };
@@ -20,7 +20,7 @@ public:
 private:
   const unsigned long baudRate = 19200;
   HardwareSerial *serialPort;
-  float PPO2;
+  float PPO2 = 0.2;
 };
 
 #endif
