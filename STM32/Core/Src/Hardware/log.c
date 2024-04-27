@@ -144,7 +144,7 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
     }
 
     NON_FATAL_ERROR_DETAIL(LOGGING_ERR, res);
-    (void)osThreadTerminate(NULL); /* Cleanly exit*/
+    (void)vTaskDelete(NULL); /* Cleanly exit*/
 }
 
 void InitLog(void)
@@ -193,25 +193,43 @@ bool logRunning(void)
 
 void LogMsg(const char *msg)
 {
-    LogQueue_t enQueueItem = {0};
+    /* Single CPU with cooperative multitasking means that this is
+     * valid until we've enqueued (and hence no longer care)
+     * This is necessary to save literal kilobytes of ram*/
+    static LogQueue_t enQueueItem = {0};
+    (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
 
-    char local_msg[LOG_LINE_LENGTH] = {0};
-    (void)strncpy(local_msg, msg, LOG_LINE_LENGTH);
-
-    /* Strip existing newlines */
-    local_msg[strcspn(local_msg, "\r\n")] = 0;
-
-    /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "[%f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
+    if (msg != NULL)
     {
-        xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+        /* Single CPU with cooperative multitasking means that this is
+         * valid until we've enqueued (and hence no longer care)
+         * This is necessary to save literal kilobytes of ram*/
+        static char local_msg[LOG_LINE_LENGTH] = {0};
+        (void)memset(local_msg, 0, LOG_LINE_LENGTH);
+        (void)strncpy(local_msg, msg, LOG_LINE_LENGTH - 1);
+
+        /* Strip existing newlines */
+        local_msg[strcspn(local_msg, "\r\n")] = 0;
+
+        /* Build the string and queue it if its legal */
+        if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "[%f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
+        {
+            xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+        }
+    }
+    else
+    {
+        /* We have to silently fail here less we cause recursion */
     }
 }
 
 void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity)
 {
-    LogQueue_t enQueueItem = {0};
+    /* Single CPU with cooperative multitasking means that this is
+     * valid until we've enqueued (and hence no longer care)
+     * This is necessary to save literal kilobytes of ram*/
+    static LogQueue_t enQueueItem = {0};
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
     /* Build the string and queue it if its legal */
@@ -223,7 +241,10 @@ void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *co
 
 void AnalogCellSample(uint8_t cellNumber, int16_t sample)
 {
-    LogQueue_t enQueueItem = {0};
+    /* Single CPU with cooperative multitasking means that this is
+     * valid until we've enqueued (and hence no longer care)
+     * This is necessary to save literal kilobytes of ram*/
+    static LogQueue_t enQueueItem = {0};
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
 
     /* Build the string and queue it if its legal */

@@ -329,24 +329,32 @@ void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 
 void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell)
 {
-    const uint8_t newlineStr[] = {NEWLINE, '\0'};
-    const uint8_t reqRemainder = 2; /* Less 2 chars, room for the EOL and null terminator*/
-    (void)strncpy((char *)cell->txBuf, commandStr, TX_BUFFER_LENGTH - reqRemainder);
-    (void)strncat((char *)cell->txBuf, (const char *)newlineStr, 1);
-
-    /* Make sure our RX buffer is clear*/
-    (void)memset(cell->lastMessage, 0, RX_BUFFER_LENGTH);
-
-    uint16_t sendLength = (uint16_t)strnlen((char *)cell->txBuf, TX_BUFFER_LENGTH);
-    if (HAL_OK == HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength))
+    if ((NULL == cell) || (NULL == commandStr))
     {
-        if (HAL_OK != HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH))
-        {
-            NON_FATAL_ERROR(UART_ERROR);
-        }
+        NON_FATAL_ERROR(NULL_PTR);
     }
     else
     {
-        NON_FATAL_ERROR(UART_ERROR);
+        (void)memset(cell->txBuf, 0, TX_BUFFER_LENGTH);
+
+        /* Copy the string into the all-zero buffer, then replace the first zero with a newline*/
+        (void)strncpy((char *)cell->txBuf, commandStr, TX_BUFFER_LENGTH - 1);
+        cell->txBuf[strcspn((char *)cell->txBuf, "\0")] = NEWLINE;
+
+        /* Make sure our RX buffer is clear*/
+        (void)memset(cell->lastMessage, 0, RX_BUFFER_LENGTH);
+
+        uint16_t sendLength = (uint16_t)strnlen((char *)cell->txBuf, TX_BUFFER_LENGTH);
+        if (HAL_OK == HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength))
+        {
+            if (HAL_OK != HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH))
+            {
+                NON_FATAL_ERROR(UART_ERROR);
+            }
+        }
+        else
+        {
+            NON_FATAL_ERROR(UART_ERROR);
+        }
     }
 }

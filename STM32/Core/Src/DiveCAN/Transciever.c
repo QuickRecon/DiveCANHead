@@ -130,7 +130,7 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     }
 }
 
-/** @brief Add message to the next free mailbox, waits until the next mailbox is avaliable.
+/** @brief Add message to the next free mailbox, waits until the next mailbox is available.
  * @param Id Message ID (extended)
  * @param data Pointer to the data to send, must be size dataLength
  * @param dataLength Size of the data to send */
@@ -191,9 +191,16 @@ void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufactur
 void txName(const DiveCANType_t deviceType, const char *const name)
 {
     uint8_t data[BUS_NAME_LEN + 1] = {0};
-    (void)strncpy((char *)data, name, BUS_NAME_LEN);
-    uint32_t Id = BUS_NAME_ID | deviceType;
-    sendCANMessage(Id, data, BUS_NAME_LEN);
+    if (NULL == name)
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else
+    {
+        (void)strncpy((char *)data, name, BUS_NAME_LEN);
+        uint32_t Id = BUS_NAME_ID | deviceType;
+        sendCANMessage(Id, data, BUS_NAME_LEN);
+    }
 }
 
 /** @brief Transmit the current status of this device
@@ -246,7 +253,7 @@ void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, cons
  *@param deviceType the device type of this device
  *@param cell1 Include cell 1
  *@param cell2 Include cell 2
- *@param cell3 Inclide cell 3
+ *@param cell3 Include cell 3
  *@param PPO2 The consensus PPO2 of the cells
  */
 void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool cell2, const bool cell3, const PPO2_t PPO2)
@@ -299,17 +306,24 @@ void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceT
 void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText, const bool textField, const bool editable)
 {
     uint8_t strData[MENU_FIELD_LEN + 1] = {0};
-    (void)strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
+    if (NULL == fieldText)
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else
+    {
+        (void)strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
 
-    uint8_t data1[MENU_LEN] = {0x10, 0x10, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]};
-    uint8_t data2[MENU_LEN] = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]};
-    uint8_t data3[MENU_FIELD_END_LEN] = {0x22, strData[9], textField, editable};
-    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
-    sendCANMessage(Id, data1, MENU_LEN);
+        uint8_t data1[MENU_LEN] = {0x10, 0x10, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]};
+        uint8_t data2[MENU_LEN] = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]};
+        uint8_t data3[MENU_FIELD_END_LEN] = {0x22, strData[9], textField, editable};
+        uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
+        sendCANMessage(Id, data1, MENU_LEN);
 
-    BlockForCAN();
-    sendCANMessage(Id, data2, MENU_LEN);
-    sendCANMessage(Id, data3, MENU_FIELD_END_LEN);
+        BlockForCAN();
+        sendCANMessage(Id, data2, MENU_LEN);
+        sendCANMessage(Id, data3, MENU_FIELD_END_LEN);
+    }
 }
 
 /** @brief Send the flags associated with a writable field, currently only the number of fields
@@ -345,14 +359,21 @@ void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
 void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText)
 {
     uint8_t strData[MENU_FIELD_LEN + 1] = {0};
-    (void)strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
+    if (NULL == fieldText)
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else
+    {
+        (void)strncpy((char *)strData, fieldText, MENU_FIELD_LEN);
 
-    uint8_t data1[MENU_LEN] = {0x10, 0x0c, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]};
-    uint8_t data2[MENU_LEN] = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]};
-    uint8_t data3[MENU_FIELD_END_LEN] = {0x22, strData[9], 0x00, 0x00};
-    uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
-    sendCANMessage(Id, data1, MENU_LEN);
+        uint8_t data1[MENU_LEN] = {0x10, 0x0c, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]};
+        uint8_t data2[MENU_LEN] = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]};
+        uint8_t data3[MENU_FIELD_END_LEN] = {0x22, strData[9], 0x00, 0x00};
+        uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
+        sendCANMessage(Id, data1, MENU_LEN);
 
-    sendCANMessage(Id, data2, MENU_LEN);
-    sendCANMessage(Id, data3, MENU_FIELD_END_LEN);
+        sendCANMessage(Id, data2, MENU_LEN);
+        sendCANMessage(Id, data3, MENU_FIELD_END_LEN);
+    }
 }

@@ -88,7 +88,7 @@ void InitADCs(void)
 
 void DeInitADCs(void)
 {
-    (void)osThreadTerminate(*getOSThreadId());
+    (void)vTaskDelete(*getOSThreadId());
 }
 
 uint32_t GetInputTicks(uint8_t inputIndex)

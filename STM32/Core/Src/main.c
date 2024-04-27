@@ -87,7 +87,7 @@ const osThreadAttr_t watchdogTask_attributes = {
 };
 /* Definitions for sDInitTask */
 osThreadId_t sDInitTaskHandle;
-uint32_t SDInitTaskBuffer[2048];
+uint32_t SDInitTaskBuffer[1024];
 osStaticThreadDef_t SDInitTaskControlBlock;
 const osThreadAttr_t sDInitTask_attributes = {
     .name = "sDInitTask",
@@ -1060,7 +1060,7 @@ void SDInitTask(void *argument)
   (void)osDelay(TIMEOUT_100MS);
   InitLog();
   LogMsg("Logging Active");
-  (void)osThreadTerminate(NULL);
+  (void)vTaskDelete(NULL);
   /* USER CODE END SDInitTask */
 }
 
