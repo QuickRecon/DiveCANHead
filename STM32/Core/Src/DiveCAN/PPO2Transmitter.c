@@ -6,7 +6,7 @@
 
 static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
 
-typedef struct PPO2TXTask_params_s
+typedef struct
 {
     DiveCANDevice_t *device;
     QueueHandle_t c1;
@@ -74,7 +74,7 @@ void PPO2TXTask(void *arg)
     do
     {
         ++i;
-        osDelay(TIMEOUT_500MS);
+        (void)osDelay(TIMEOUT_500MS);
 
         OxygenCell_t c1 = {0};
         bool c1pick = xQueuePeek(params->c1, &c1, TIMEOUT_100MS_TICKS);

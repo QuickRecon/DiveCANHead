@@ -2,7 +2,7 @@
 #include "Transciever.h"
 #include "../Hardware/printer.h"
 
-typedef enum DiveCANMenuOp_e
+typedef enum
 {
     MENU_REQ = 0x04,
     MENU_ACK_INIT = 0x05,
@@ -12,14 +12,14 @@ typedef enum DiveCANMenuOp_e
     MENU_RESP_FLAGS = 0x00 /*  Unsure if this is accurate */
 } DiveCANMenuOp_t;
 
-typedef enum DiveCANMenuReq_e
+typedef enum
 {
     REQ_ITEM = 0x10,
     REQ_TEXT_FIELD = 0x50,
     REQ_FLAGS = 0x30
 } DiveCANMenuReq_t;
 
-typedef enum DiveCANMenuItemType_e
+typedef enum
 {
     STATIC_TEXT,
     DYNAMIC_TEXT,
@@ -30,7 +30,7 @@ typedef enum DiveCANMenuItemType_e
  *  Doing dynamic menu items in a clean way (sensor values, errors, etc)
  *  is going to have to be via a different route, because
  *  no function pointers */
-typedef struct DiveCANMenuItem_s
+typedef struct
 {
     const char *const title;
     const uint8_t fieldCount;
@@ -78,7 +78,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
     DiveCANType_t target = (DiveCANType_t)(0xF & (message->id));
     DiveCANType_t source = deviceSpec->type;
     uint8_t reqByte = message->data[ReqOpFieldIdx];
-    
+
     if (0 == reqByte)
     { /*  If we just need to ack then do that */
         serial_printf("ACK\r\n");

@@ -15,7 +15,7 @@ extern UART_HandleTypeDef huart2;
 
 void PrinterTask(void *arg);
 
-typedef struct PrintQueue_s
+typedef struct
 {
     char string[LOG_LINE_LENGTH];
 } PrintQueue_t;
@@ -67,11 +67,11 @@ void PrinterTask(void *arg) /* Yes this warns but it needs to be that way for ma
         PrintQueue_t printItem = {0};
 
         /* Wait until there is an item in the queue, if there is then print it over the uart */
-        if ((pdTRUE == xQueueReceive(*printQueue, &printItem, TIMEOUT_4s_TICKS)))
+        if (pdTRUE == xQueueReceive(*printQueue, &printItem, TIMEOUT_4s_TICKS))
         {
             while (huart2.gState != HAL_UART_STATE_READY)
             {
-                osDelay(TIMEOUT_5MS);
+                (void)osDelay(TIMEOUT_5MS);
             }
             /* Printing is non-critical so shout our data at the peripheral and if it doesn't make it then we don't really care
              * Better to be fast here and get back to keeping the diver alive rather than printing to a console that may or may not exist
@@ -99,7 +99,7 @@ void vprint(const char *fmt, va_list argp)
  */
 void serial_printf(const char *fmt, ...)
 {
-    va_list argp;
+    va_list argp = {0};
     va_start(argp, fmt);
     vprint(fmt, argp);
     va_end(argp);

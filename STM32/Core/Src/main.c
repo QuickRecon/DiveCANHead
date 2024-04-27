@@ -98,7 +98,7 @@ const osThreadAttr_t sDInitTask_attributes = {
     .priority = (osPriority_t)osPriorityHigh,
 };
 /* USER CODE BEGIN PV */
-CAN_FilterTypeDef sFilterConfig; // declare CAN filter structure
+CAN_FilterTypeDef sFilterConfig; /* declare CAN filter structure */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/

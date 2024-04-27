@@ -14,6 +14,8 @@ extern SD_HandleTypeDef hsd1;
 
 #define LOGQUEUE_LENGTH 10
 
+typedef double timestamp_t;
+
 const char *const LOG_FILENAMES[6] = {
     "LOG.TXT",
     "DIVECAN.CSV",
@@ -142,7 +144,7 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
     }
 
     NON_FATAL_ERROR_DETAIL(LOGGING_ERR, res);
-    vTaskDelete(NULL); /* Cleanly exit*/
+    (void)vTaskDelete(NULL); /* Cleanly exit*/
 }
 
 void InitLog(void)
@@ -201,7 +203,7 @@ void LogMsg(const char *msg)
     local_msg[strcspn(local_msg, "\r\n")] = 0;
 
     /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "[%f]: %s\r\n", (double)osKernelGetTickCount() / (double)osKernelGetTickFreq(), local_msg)))
+    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "[%f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }
@@ -213,19 +215,19 @@ void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *co
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
     /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%d,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (double)osKernelGetTickCount() / (double)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
+    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%d,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }
 }
 
-void AnalogCellSample(uint8_t cellNumber, uint16_t sample)
+void AnalogCellSample(uint8_t cellNumber, int16_t sample)
 {
     LogQueue_t enQueueItem = {0};
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
 
     /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%d,%d\r\n", (double)osKernelGetTickCount() / (double)osKernelGetTickFreq(), cellNumber, sample)))
+    if (logRunning() && (0 < snprintf(enQueueItem.string, sizeof(enQueueItem.string), "%f,%d,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)))
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }
