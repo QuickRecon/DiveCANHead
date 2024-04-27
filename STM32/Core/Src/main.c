@@ -209,7 +209,7 @@ int main(void)
   (void)HAL_FLASH_Lock();
 
   /* Set our power bus */
-  SetVBusMode(MODE_CAN); /* TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE */
+  SetVBusMode(MODE_CAN); /* TODO(Aren): THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE */
 
   /* Kick off our threads */
   InitADCs();

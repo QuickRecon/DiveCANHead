@@ -75,7 +75,7 @@ void PrinterTask(void *arg) /* Yes this warns but it needs to be that way for ma
             }
             /* Printing is non-critical so shout our data at the peripheral and if it doesn't make it then we don't really care
              * Better to be fast here and get back to keeping the diver alive rather than printing to a console that may or may not exist
-             * TODO: this is a blocking call, this is bad
+             * TODO(Aren): this is a blocking call, this is bad
              */
             (void)HAL_UART_Transmit(&huart2, (uint8_t *)(printItem.string), (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH), TIMEOUT_4s_TICKS);
             LogMsg(printItem.string);

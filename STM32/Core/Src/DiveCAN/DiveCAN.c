@@ -146,7 +146,7 @@ void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t * const
 
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
-    /* TODO: respond to atmos */
+    /* TODO(Aren): respond to atmos */
 }
 
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
