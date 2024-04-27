@@ -1,6 +1,11 @@
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=bugs)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
+
 # Current State
-Revision 2.2 is in prototype production, hardware validation pending, programming is in its final stages with test dives expected soon.
-Current software TODO is listed under STM32/Jobs.md
+Revision 2.3 has been produced and appears to be without hardware faults, current focus is on automated testing and configuration management.
 
 Constructive criticism, suggestions, and pull requests are always welcome.
 
@@ -39,17 +44,8 @@ The long thin aspect ratio was driven by the ease of manufacturing of housings, 
 ### Current software jobs
 These are required before the firmware can be considered ready for any kind of test diving:
 - Menu logic for displaying any error states, as well as firmware commit
-- IWDG task verify program state
-- Error logging to eeprom emulation
 - Work out why the brightness goes down when the CAN bus connects (protocol issue?)
 - ADC intermittently doesn't come online after shutdown logic added, board reset required to fix.
-
-### Current hardware issues (required on next board version)
-- standby power consumption is 10 mA (should be low hundreds of micro amps at most)
-    - This has been identified as coming from the DC-DC converter, perhaps this is a good opportunity to change to a wider input range
-- Battery is not enabled without can-power, kind of defeats the point of a redundant power supply
-- BATTERY ADC unavail due to internal mux, should route to PC3
-- CAN_PWR only takes 1.8-5.5v, should be able to comfortably take 9v for compatibility with rEvo bus and 9v batteries.
 
 ### Additional testing needs
 - More automated testing of each module, regression testing and behavior verification.

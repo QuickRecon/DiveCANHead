@@ -1,6 +1,5 @@
 # Things that really ought to happen before this gets used on a dive
 - Menu logic for displaying any error states, as well as firmware commit
-- IWDG task verify program state
 - Work out why the brightness goes down when the CAN bus connects (protocol issue?)
 - ADC intermittently doesn't come online after shutdown logic added, board reset required to fix.
 - Battery voltage checks
