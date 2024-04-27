@@ -13,10 +13,12 @@
 extern SD_HandleTypeDef hsd1;
 
 #define LOGQUEUE_LENGTH 10
+#define FILENAME_LENGTH 13
+#define MAXPATH_LENGTH 255
 
 typedef double timestamp_t;
 
-const char *const LOG_FILENAMES[6] = {
+const char LOG_FILENAMES[6][FILENAME_LENGTH] = {
     "LOG.TXT",
     "DIVECAN.CSV",
     "I2C.CSV",
@@ -90,6 +92,112 @@ static QueueHandle_t *getQueueHandle(void)
     return &PrintQueue;
 }
 
+FRESULT GetNextDirIdx(uint32_t *index)
+{
+    FRESULT res = FR_OK;
+    DIR dir = {0};
+    FILINFO fno = {0};
+    uint32_t maxDir = 0;
+
+    res = f_opendir(&dir, "/"); /* Open the directory */
+    if (res == FR_OK)
+    {
+        do {
+            res = f_readdir(&dir, &fno); /* Read a directory item */
+            if (((fno.fattrib & AM_DIR) != 0) && (FR_OK == res) && (0 != fno.fname[0]))
+            {
+                uint32_t dirNum = (uint32_t)strtol(fno.fname, NULL, 10);
+                serial_printf("reading dir %s\r\n",fno.fname );
+                if (dirNum > maxDir)
+                {
+                    maxDir = dirNum;
+                }
+            }
+            else if(FR_OK != res)
+            {
+                serial_printf("Failed to read Dir (%u)\r\n", res);
+            } else {
+                /* its just a file don't worry about it */
+            }
+        } while ((res == FR_OK) && (0 != fno.fname[0]));
+        res = f_closedir(&dir);
+        *index = maxDir + 1;
+    }
+    else
+    {
+        serial_printf("Failed to open root (%u)\r\n", res);
+    }
+    return res;
+}
+
+FRESULT MoveIntoDir(char *dirname)
+{
+    FRESULT res = FR_OK;
+    DIR dir = {0};
+    FILINFO fno = {0};
+
+    res = f_opendir(&dir, "/"); /* Open the directory */
+    if (res == FR_OK)
+    {
+        while ((res == FR_OK) && (0 != fno.fname[0]))
+        {
+            res = f_readdir(&dir, &fno); /* Read a directory item */
+            if ((0 == (fno.fattrib & AM_DIR)) && (FR_OK == res))
+            {
+                char NewName[MAXPATH_LENGTH] = {0};
+                (void)snprintf(NewName, MAXPATH_LENGTH, "%s/%s", dirname, fno.fname);
+                res = f_rename(fno.fname, NewName);
+                if (res != FR_OK)
+                {
+                    serial_printf("Failed to rename %s", fno.fname);
+                }
+            }
+            else
+            {
+                serial_printf("Failed to read file (%u)\n", res);
+            }
+        }
+        res = f_closedir(&dir);
+    }
+    else
+    {
+        serial_printf("Failed to open root (%u)\n", res);
+    }
+    return res;
+}
+
+FRESULT RotateLogfiles(void)
+{
+    char dirname[FILENAME_LENGTH] = {0};
+    FRESULT res = FR_OK;
+
+    /* Step 1, find the latest directory number */
+    uint32_t nextFileNum = 0;
+    res = GetNextDirIdx(&nextFileNum);
+
+    /* Step 2, make the next directory */
+    if (FR_OK == res)
+    {
+        (void)snprintf(dirname, FILENAME_LENGTH, "%ld", nextFileNum);
+        res = f_mkdir(dirname);
+    }
+    else
+    {
+        serial_printf("Cannot find next dir (%d)\r\n", res);
+    }
+
+    /* Step 3, move */
+    if (FR_OK == res)
+    {
+        res = MoveIntoDir(dirname);
+    }
+    else
+    {
+        serial_printf("Cannot make next dir %s (%d)\r\n", dirname, res);
+    }
+    return res;
+}
+
 void LogTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
 {
     QueueHandle_t *logQueue = getQueueHandle();
@@ -124,7 +232,7 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
                 if (expectedLength > byteswritten)
                 {
                     /* Out of space (file grown > 4Gig?)*/
-                    /* TODO: Handle this, move/delete file? and rollover?*/
+                    res = RotateLogfiles();
                 }
             }
             else
@@ -158,28 +266,37 @@ void InitLog(void)
     }
     else
     {
-        /* Setup task */
-        static uint32_t LogTask_buffer[LOG_STACK_SIZE];
-        static StaticTask_t LogTask_ControlBlock;
-        static const osThreadAttr_t LogTask_attributes = {
-            .name = "LogTask",
-            .attr_bits = osThreadDetached,
-            .cb_mem = &LogTask_ControlBlock,
-            .cb_size = sizeof(LogTask_ControlBlock),
-            .stack_mem = &LogTask_buffer[0],
-            .stack_size = sizeof(LogTask_buffer),
-            .priority = LOG_PRIORITY,
-            .tz_module = 0,
-            .reserved = 0};
+        res = RotateLogfiles();
 
-        /* Setup print queue */
-        static StaticQueue_t LogQueue_QueueStruct;
-        static uint8_t LogQueue_Storage[LOGQUEUE_LENGTH * sizeof(LogQueue_t)];
-        QueueHandle_t *LogQueue = getQueueHandle();
-        *LogQueue = xQueueCreateStatic(LOGQUEUE_LENGTH, sizeof(LogQueue_t), LogQueue_Storage, &LogQueue_QueueStruct);
+        if (FR_OK == res)
+        {
+            /* Setup task */
+            static uint32_t LogTask_buffer[LOG_STACK_SIZE];
+            static StaticTask_t LogTask_ControlBlock;
+            static const osThreadAttr_t LogTask_attributes = {
+                .name = "LogTask",
+                .attr_bits = osThreadDetached,
+                .cb_mem = &LogTask_ControlBlock,
+                .cb_size = sizeof(LogTask_ControlBlock),
+                .stack_mem = &LogTask_buffer[0],
+                .stack_size = sizeof(LogTask_buffer),
+                .priority = LOG_PRIORITY,
+                .tz_module = 0,
+                .reserved = 0};
 
-        osThreadId_t *LogTaskHandle = getOSThreadId();
-        *LogTaskHandle = osThreadNew(LogTask, NULL, &LogTask_attributes);
+            /* Setup print queue */
+            static StaticQueue_t LogQueue_QueueStruct;
+            static uint8_t LogQueue_Storage[LOGQUEUE_LENGTH * sizeof(LogQueue_t)];
+            QueueHandle_t *LogQueue = getQueueHandle();
+            *LogQueue = xQueueCreateStatic(LOGQUEUE_LENGTH, sizeof(LogQueue_t), LogQueue_Storage, &LogQueue_QueueStruct);
+
+            osThreadId_t *LogTaskHandle = getOSThreadId();
+            *LogTaskHandle = osThreadNew(LogTask, NULL, &LogTask_attributes);
+        }
+        else
+        {
+            serial_printf("Cannot rotate log files (%d)\r\n", res);
+        }
     }
 }
 
