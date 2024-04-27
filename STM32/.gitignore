@@ -9,5 +9,3 @@ Tests/DiveCAN_tests
 Tests/DiveCAN_tests.txt
 test-lib/
 gcov
-.vscode
-.sonarlint

@@ -61,7 +61,7 @@ void HAL_CAN_RxMsgPendingCallback(CAN_HandleTypeDef *hcan)
     HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
     CAN_RxHeaderTypeDef pRxHeader = {0};
     uint8_t pData[64] = {0};
-    HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &pRxHeader, pData);
+    (void)HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &pRxHeader, pData);
 
     /* Use 0x79 to reset into bootloader for flashing, because
      * it is a no-op in both DiveCAN land and bootloader land

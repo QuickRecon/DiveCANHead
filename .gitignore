@@ -7,3 +7,5 @@ fp-info-cache
 *.FCBak
 *-backups
 \#auto_saved_files\#
+.vscode
+.sonarlint

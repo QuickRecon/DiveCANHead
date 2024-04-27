@@ -204,9 +204,9 @@ int main(void)
   serial_printf("Booting...\r\n");
 
   /* Set up flash erase */
-  HAL_FLASH_Unlock();
-  EE_Init(EE_FORCED_ERASE);
-  HAL_FLASH_Lock();
+  (void)HAL_FLASH_Unlock();
+  (void)EE_Init(EE_FORCED_ERASE);
+  (void)HAL_FLASH_Lock();
 
   /* Set our power bus */
   SetVBusMode(MODE_CAN); /* TODO: THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE */
@@ -459,16 +459,16 @@ static void MX_CAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN1_Init 2 */
-  sFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0; // set fifo assignment
+  sFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0; /* set fifo assignment */
   sFilterConfig.FilterIdHigh = 0;
   sFilterConfig.FilterIdLow = 0;
   sFilterConfig.FilterMaskIdHigh = 0;
   sFilterConfig.FilterMaskIdLow = 0;
-  sFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT; // set filter scale
+  sFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT; /* set filter scale */
   sFilterConfig.FilterActivation = ENABLE;
-  HAL_CAN_ConfigFilter(&hcan1, &sFilterConfig);
-  HAL_CAN_Start(&hcan1);                                             // start CAN
-  HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING); // enable interrupts
+  (void)HAL_CAN_ConfigFilter(&hcan1, &sFilterConfig);
+  (void)HAL_CAN_Start(&hcan1);                                             /* start CAN */
+  (void)HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING); /* enable interrupts */
   /* USER CODE END CAN1_Init 2 */
 }
 
@@ -1001,21 +1001,24 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+typedef void (*BootloaderJumpFunc_t)(void);
 void JumpToBootloader(void)
 {
   __enable_irq();
-  HAL_RCC_DeInit();
-  HAL_DeInit();
-  SysTick->CTRL = SysTick->LOAD = SysTick->VAL = 0;
+  (void)HAL_RCC_DeInit();
+  (void)HAL_DeInit();
+  SysTick->VAL = 0;
+  SysTick->LOAD = 0;
+  SysTick->CTRL = 0;
   __HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
 
   const uint32_t p = (*((uint32_t *)0x1FFF0000));
   __set_MSP(p);
 
-  void (*SysMemBootJump)(void);
   /* Embedded crimes to jump into the bootloader*/
-  SysMemBootJump = (void (*)(void))(*((uint32_t *)0x1FFF0004));
+  /* 0x1FFF0004 is the start address of the system rom, ST bootloader*/
+  /* Ref rm0394 page 75/76 */
+  BootloaderJumpFunc_t SysMemBootJump = (void (*)(void))(*((uint32_t *)0x1FFF0004));
   SysMemBootJump();
 
   while (1)
