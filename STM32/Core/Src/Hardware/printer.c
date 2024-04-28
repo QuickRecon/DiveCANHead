@@ -104,3 +104,15 @@ void serial_printf(const char *fmt, ...)
     vprint(fmt, argp);
     va_end(argp);
 }
+
+void blocking_serial_printf(const char *fmt, ...)
+{
+    va_list argp = {0};
+    va_start(argp, fmt);
+    static char outStr[LOG_LINE_LENGTH] = {0};
+    if (0 < vsprintf(outStr, fmt, argp))
+    {
+        (void)HAL_UART_Transmit(&huart2, (uint8_t *)(outStr), (uint16_t)strnlen(outStr, LOG_LINE_LENGTH), TIMEOUT_4s_TICKS);
+    }
+    va_end(argp);
+}

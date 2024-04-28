@@ -42,7 +42,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
+volatile unsigned long ulHighFrequencyTimerTicks = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -92,7 +92,7 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-FATAL_ERROR(HARD_FAULT);
+  FATAL_ERROR(HARD_FAULT);
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
@@ -327,7 +327,7 @@ void TIM7_IRQHandler(void)
   /* USER CODE END TIM7_IRQn 0 */
   HAL_TIM_IRQHandler(&htim7);
   /* USER CODE BEGIN TIM7_IRQn 1 */
-
+  HAL_TIM_IRQHandler(&htim7);
   /* USER CODE END TIM7_IRQn 1 */
 }
 

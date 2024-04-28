@@ -35,7 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+extern TIM_HandleTypeDef htim7;
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,13 +54,28 @@
 /* USER CODE END FunctionPrototypes */
 
 /* Hook prototypes */
+void configureTimerForRunTimeStats(void);
+unsigned long getRunTimeCounterValue(void);
 void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
+
+/* USER CODE BEGIN 1 */
+/* Functions needed when configGENERATE_RUN_TIME_STATS is on */
+__weak void configureTimerForRunTimeStats(void)
+{
+  HAL_TIM_Base_Start_IT(&htim7);
+}
+extern volatile unsigned long ulHighFrequencyTimerTicks;
+__weak unsigned long getRunTimeCounterValue(void)
+{
+  return ulHighFrequencyTimerTicks;
+}
+/* USER CODE END 1 */
 
 /* USER CODE BEGIN 4 */
 void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
 {
-  serial_printf("STACK OVERFLOW: %s", pcTaskName);
+  blocking_serial_printf("STACK OVERFLOW: %s", pcTaskName);
   FATAL_ERROR(STACK_OVERFLOW);
   /* Run time stack overflow checking is performed if
   configCHECK_FOR_STACK_OVERFLOW is defined to 1 or 2. This hook function is
