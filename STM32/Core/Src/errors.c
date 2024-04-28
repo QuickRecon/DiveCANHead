@@ -5,18 +5,11 @@
 void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char* fileName)
 {
     serial_printf("ERR CODE %d(0x%x) AT %s:%d\r\n", error, additionalInfo, fileName, lineNumber);
-
-    uint32_t errCount = 0;
-    (void)GetNonFatalError(error, &errCount);
-    (void)SetNonFatalError(error, errCount+1);
 }
+
 void NonFatalErrorISR_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char* fileName)
 {
     serial_printf("ERR CODE %d(0x%x) AT %s:%d\r\n", error, additionalInfo, fileName, lineNumber);
-
-    uint32_t errCount = 0;
-    (void)GetNonFatalError(error, &errCount);
-    (void)SetNonFatalError(error, errCount+1);
 }
 
 void NonFatalError(NonFatalError_t error, uint32_t lineNumber, const char* fileName)
