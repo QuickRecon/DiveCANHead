@@ -97,6 +97,18 @@ const osThreadAttr_t sDInitTask_attributes = {
     .stack_size = sizeof(SDInitTaskBuffer),
     .priority = (osPriority_t)osPriorityHigh,
 };
+/* Definitions for perfMon */
+osThreadId_t perfMonHandle;
+uint32_t perfMonBuffer[128];
+osStaticThreadDef_t perfMonControlBlock;
+const osThreadAttr_t perfMon_attributes = {
+    .name = "perfMon",
+    .cb_mem = &perfMonControlBlock,
+    .cb_size = sizeof(perfMonControlBlock),
+    .stack_mem = &perfMonBuffer[0],
+    .stack_size = sizeof(perfMonBuffer),
+    .priority = (osPriority_t)osPriorityLow,
+};
 /* USER CODE BEGIN PV */
 CAN_FilterTypeDef sFilterConfig; /* declare CAN filter structure */
 /* USER CODE END PV */
@@ -119,6 +131,7 @@ static void MX_TIM1_Init(void);
 static void MX_TIM15_Init(void);
 void WatchdogTask(void *argument);
 void SDInitTask(void *argument);
+void PerfMon(void *argument);
 
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
@@ -251,6 +264,9 @@ int main(void)
   /* creation of sDInitTask */
   sDInitTaskHandle = osThreadNew(SDInitTask, NULL, &sDInitTask_attributes);
 
+  /* creation of perfMon */
+  // perfMonHandle = osThreadNew(PerfMon, NULL, &perfMon_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -344,6 +360,9 @@ void SystemClock_Config(void)
  */
 static void MX_NVIC_Init(void)
 {
+  /* SDMMC1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
   /* I2C1_EV_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(I2C1_EV_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
@@ -356,9 +375,6 @@ static void MX_NVIC_Init(void)
   /* CAN1_RX1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(CAN1_RX1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(CAN1_RX1_IRQn);
-  /* SDMMC1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
   /* USART2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
@@ -1062,6 +1078,27 @@ void SDInitTask(void *argument)
   LogMsg("Logging Active");
   (void)vTaskDelete(NULL);
   /* USER CODE END SDInitTask */
+}
+
+/* USER CODE BEGIN Header_PerfMon */
+/**
+ * @brief Function implementing the perfMon thread.
+ * @param argument: Not used
+ * @retval None
+ */
+/* USER CODE END Header_PerfMon */
+void PerfMon(void *argument)
+{
+  /* USER CODE BEGIN PerfMon */
+  /* Infinite loop */
+  static char outputBuffer[1024] = {0};
+  for (;;)
+  {
+    (void)osDelay(100);
+    vTaskGetRunTimeStats(outputBuffer);
+    serial_printf(outputBuffer);
+  }
+  /* USER CODE END PerfMon */
 }
 
 /**

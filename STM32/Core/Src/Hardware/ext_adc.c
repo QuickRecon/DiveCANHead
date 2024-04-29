@@ -289,7 +289,7 @@ void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matchi
                                                 ((uint16_t)((uint16_t)adcInput->inputIndex << 12)) | /* ADC Input: Inputs are either 0b00 (input 0) or 0b11 (input 1) */
                                                 (0b111 << 9) |                                       /* PGA: 16x */
                                                 (1 << 8) |                                           /* Mode: single shot */
-                                                (0b010 << 5) |                                       /* Data rate: 8SPS */
+                                                (0b010 << 5) |                                       /* Data rate: 16SPS */
                                                 (0 << 4) |                                           /* Comparator mode: traditional */
                                                 (0 << 3) |                                           /* Comparator polarity: active low */
                                                 (0 << 2) |                                           /* Comparator latch: non-latching */

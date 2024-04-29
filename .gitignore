@@ -9,3 +9,4 @@ fp-info-cache
 \#auto_saved_files\#
 .vscode
 .sonarlint
+.venv

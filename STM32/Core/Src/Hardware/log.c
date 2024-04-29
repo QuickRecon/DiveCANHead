@@ -18,7 +18,9 @@ extern SD_HandleTypeDef hsd1;
 
 typedef double timestamp_t;
 
-const char LOG_FILENAMES[6][FILENAME_LENGTH] = {
+#define LOGFILE_COUNT 6
+
+const char LOG_FILENAMES[LOGFILE_COUNT][FILENAME_LENGTH] = {
     "LOG.TXT",
     "DIVECAN.CSV",
     "I2C.CSV",
@@ -115,7 +117,7 @@ FRESULT GetNextDirIdx(uint32_t *index)
             }
             else if (FR_OK != res)
             {
-                serial_printf("Failed to read Dir (%u)\r\n", res);
+                blocking_serial_printf("Failed to read Dir (%u)\r\n", res);
             }
             else
             {
@@ -127,7 +129,7 @@ FRESULT GetNextDirIdx(uint32_t *index)
     }
     else
     {
-        serial_printf("Failed to open root (%u)\r\n", res);
+        blocking_serial_printf("Failed to open root (%u)\r\n", res);
     }
     return res;
 }
@@ -149,15 +151,15 @@ FRESULT MoveIntoDir(char *dirname)
                 char NewName[MAXPATH_LENGTH] = {0};
                 (void)snprintf(NewName, MAXPATH_LENGTH, "%s/%s", dirname, fno.fname);
                 res = f_rename(fno.fname, NewName);
-                serial_printf("Moved %s to %s\r\n", fno.fname, NewName);
+                blocking_serial_printf("Moved %s to %s\r\n", fno.fname, NewName);
                 if (res != FR_OK)
                 {
-                    serial_printf("Failed to rename %s\r\n", fno.fname);
+                    blocking_serial_printf("Failed to rename %s\r\n", fno.fname);
                 }
             }
             else if (FR_OK != res)
             {
-                serial_printf("Failed to read file (%u)\r\n", res);
+                blocking_serial_printf("Failed to read file (%u)\r\n", res);
             }
             else
             {
@@ -168,7 +170,7 @@ FRESULT MoveIntoDir(char *dirname)
     }
     else
     {
-        serial_printf("Failed to open root (%u)\n", res);
+        blocking_serial_printf("Failed to open root (%u)\n", res);
     }
     return res;
 }
@@ -190,9 +192,9 @@ FRESULT RotateLogfiles(void)
     }
     else
     {
-        serial_printf("Cannot find next dir (%d)\r\n", res);
+        blocking_serial_printf("Cannot find next dir (%d)\r\n", res);
     }
-    serial_printf("Found next dir\r\n");
+    blocking_serial_printf("Found next dir\r\n");
     /* Step 3, move */
     if (FR_OK == res)
     {
@@ -200,61 +202,60 @@ FRESULT RotateLogfiles(void)
     }
     else
     {
-        serial_printf("Cannot make next dir %s (%d)\r\n", dirname, res);
+        blocking_serial_printf("Cannot make next dir %s (%d)\r\n", dirname, res);
     }
-    serial_printf("finished move\r\n");
+    blocking_serial_printf("finished move\r\n");
     return res;
 }
 
 void LogTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
 {
+    FIL LOG_FILES[LOGFILE_COUNT] = {0};
     QueueHandle_t *logQueue = getQueueHandle();
     FRESULT res = FR_OK; /* FatFs function common result code */
 
-    LogType_t currLog = LOG_EVENT;
-    res = f_open(&SDFile, LOG_FILENAMES[currLog], FA_OPEN_APPEND | FA_WRITE);
+    uint8_t currSyncFile = 0;
+
+    for (uint32_t i = 0; (i < LOGFILE_COUNT) && (FR_OK == res); ++i)
+    {
+        res = f_open(&(LOG_FILES[i]), LOG_FILENAMES[i], FA_OPEN_APPEND | FA_WRITE);
+        if (res != FR_OK)
+        {
+            blocking_serial_printf("Failed to open %s", LOG_FILENAMES[i]);
+        }
+    }
+
+    uint32_t lastSynced = HAL_GetTick();
     while (FR_OK == res)
     {
         LogQueue_t logItem = {0};
         /* Wait until there is an item in the queue, if there is then Log it*/
         if (pdTRUE == xQueueReceive(*logQueue, &logItem, TIMEOUT_4s_TICKS))
         {
-            if (logItem.eventType != currLog)
+            uint32_t expectedLength = strnlen((char *)logItem.string, LOG_LINE_LENGTH);
+            uint32_t byteswritten = 0;
+            res = f_write(&(LOG_FILES[logItem.eventType]), logItem.string, expectedLength, (void *)&byteswritten);
+            if (expectedLength > byteswritten)
             {
-                res = f_close(&SDFile);
-                if (FR_OK == res)
-                {
-                    res = f_open(&SDFile, LOG_FILENAMES[logItem.eventType], FA_OPEN_APPEND | FA_WRITE);
-                    currLog = logItem.eventType;
-                }
-                else
-                {
-                    serial_printf("Cannot close");
-                }
-            }
-            if (FR_OK == res)
-            {
-                uint32_t expectedLength = strnlen((char *)logItem.string, LOG_LINE_LENGTH);
-                uint32_t byteswritten = 0;
-                res = f_write(&SDFile, logItem.string, expectedLength, (void *)&byteswritten);
-                if (expectedLength > byteswritten)
-                {
-                    /* Out of space (file grown > 4Gig?)*/
-                    //res = RotateLogfiles();
-                }
-            }
-            else
-            {
-                serial_printf("Cannot open %s\r\n", LOG_FILENAMES[logItem.eventType]);
+                /* Out of space (file grown > 4Gig?)*/
+                blocking_serial_printf("Rotating logs");
+                res = RotateLogfiles();
             }
 
-            if (FR_OK == res)
+            if (FR_OK != res)
             {
-                res = f_sync(&SDFile);
+                blocking_serial_printf("Cannot write %s\r\n", LOG_FILENAMES[logItem.eventType]);
             }
-            else
+        }
+
+        if ((HAL_GetTick() - lastSynced) > TIMEOUT_4s)
+        {
+            res = f_sync(&(LOG_FILES[currSyncFile]));
+            currSyncFile = (currSyncFile + 1) % LOGFILE_COUNT;
+            lastSynced = HAL_GetTick();
+            if (res != FR_OK)
             {
-                serial_printf("Cannot write %s\r\n", LOG_FILENAMES[logItem.eventType]);
+                blocking_serial_printf("Failed to sync %s", LOG_FILENAMES[currSyncFile]);
             }
         }
     }
@@ -270,7 +271,7 @@ void InitLog(void)
     res = f_mount(&SDFatFS, (TCHAR const *)SDPath, 1);
     if (res != FR_OK)
     {
-        Error_Handler();
+        blocking_serial_printf("Cannot mount SD card, is one installed?\r\nLogging disabled\r\n");
     }
     else
     {
@@ -358,10 +359,47 @@ void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *co
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
-    /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%f,%d,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
+    /* Null str check of destiny */
+    if ((NULL == PPO2) || (strnlen(PPO2, LOG_LINE_LENGTH) > 10))
     {
-        xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else if ((NULL == temperature) || (strnlen(temperature, LOG_LINE_LENGTH) > 10))
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else if ((NULL == err) || (strnlen(err, LOG_LINE_LENGTH) > 10))
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else if ((NULL == phase) || (strnlen(phase, LOG_LINE_LENGTH) > 10))
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else if ((NULL == intensity) || (strnlen(intensity, LOG_LINE_LENGTH) > 10))
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else if ((NULL == ambientLight) || (strnlen(ambientLight, LOG_LINE_LENGTH) > 10))
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else if ((NULL == pressure) || (strnlen(pressure, LOG_LINE_LENGTH) > 10))
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else if ((NULL == humidity) || (strnlen(humidity, LOG_LINE_LENGTH) > 10))
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+    else if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%f,%d,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
+    {
+        // xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+    }
+    else
+    {
+        blocking_serial_printf("Cooked diveo2 log\r\n");
+        /* Either the log ain't running or we're cooked up the string construction */
     }
 }
 

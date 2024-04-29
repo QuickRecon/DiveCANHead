@@ -73,8 +73,8 @@ extern TIM_HandleTypeDef htim6;
 /*           Cortex-M4 Processor Interruption and Exception Handlers          */
 /******************************************************************************/
 /**
-  * @brief This function handles Non maskable interrupt.
-  */
+ * @brief This function handles Non maskable interrupt.
+ */
 void NMI_Handler(void)
 {
   /* USER CODE BEGIN NonMaskableInt_IRQn 0 */
@@ -87,11 +87,46 @@ void NMI_Handler(void)
 }
 
 /**
-  * @brief This function handles Hard fault interrupt.
-  */
+ * @brief This function handles Hard fault interrupt.
+ */
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
+
+  volatile unsigned long _CFSR;
+  volatile unsigned long _HFSR;
+  volatile unsigned long _DFSR;
+  volatile unsigned long _AFSR;
+  volatile unsigned long _BFAR;
+  volatile unsigned long _MMAR;
+
+  // Configurable Fault Status Register
+  // Consists of MMSR, BFSR and UFSR
+  _CFSR = (*((volatile unsigned long *)(0xE000ED28)));
+
+  // Hard Fault Status Register
+  _HFSR = (*((volatile unsigned long *)(0xE000ED2C)));
+
+  // Debug Fault Status Register
+  _DFSR = (*((volatile unsigned long *)(0xE000ED30)));
+
+  // Auxiliary Fault Status Register
+  _AFSR = (*((volatile unsigned long *)(0xE000ED3C)));
+
+  // Read the Fault Address Registers. These may not contain valid values.
+  // Check BFARVALID/MMARVALID to see if they are valid values
+  // MemManage Fault Address Register
+  _MMAR = (*((volatile unsigned long *)(0xE000ED34)));
+  // Bus Fault Address Register
+  _BFAR = (*((volatile unsigned long *)(0xE000ED38)));
+
+  blocking_serial_printf("CFSR: 0x%x\r\n", _CFSR);
+  blocking_serial_printf("HFSR: 0x%x\r\n", _HFSR);
+  blocking_serial_printf("DFSR: 0x%x\r\n", _DFSR);
+  blocking_serial_printf("AFSR: 0x%x\r\n", _AFSR);
+  blocking_serial_printf("MMAR: 0x%x\r\n", _MMAR);
+  blocking_serial_printf("BFAR: 0x%x\r\n", _BFAR);
+  
   FATAL_ERROR(HARD_FAULT);
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
@@ -102,8 +137,8 @@ void HardFault_Handler(void)
 }
 
 /**
-  * @brief This function handles Memory management fault.
-  */
+ * @brief This function handles Memory management fault.
+ */
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
@@ -117,8 +152,8 @@ void MemManage_Handler(void)
 }
 
 /**
-  * @brief This function handles Prefetch fault, memory access fault.
-  */
+ * @brief This function handles Prefetch fault, memory access fault.
+ */
 void BusFault_Handler(void)
 {
   /* USER CODE BEGIN BusFault_IRQn 0 */
@@ -132,8 +167,8 @@ void BusFault_Handler(void)
 }
 
 /**
-  * @brief This function handles Undefined instruction or illegal state.
-  */
+ * @brief This function handles Undefined instruction or illegal state.
+ */
 void UsageFault_Handler(void)
 {
   /* USER CODE BEGIN UsageFault_IRQn 0 */
@@ -147,8 +182,8 @@ void UsageFault_Handler(void)
 }
 
 /**
-  * @brief This function handles Debug monitor.
-  */
+ * @brief This function handles Debug monitor.
+ */
 void DebugMon_Handler(void)
 {
   /* USER CODE BEGIN DebugMonitor_IRQn 0 */
@@ -167,8 +202,8 @@ void DebugMon_Handler(void)
 /******************************************************************************/
 
 /**
-  * @brief This function handles PVD/PVM1/PVM2/PVM3/PVM4 interrupts through EXTI lines 16/35/36/37/38.
-  */
+ * @brief This function handles PVD/PVM1/PVM2/PVM3/PVM4 interrupts through EXTI lines 16/35/36/37/38.
+ */
 void PVD_PVM_IRQHandler(void)
 {
   /* USER CODE BEGIN PVD_PVM_IRQn 0 */
@@ -181,8 +216,8 @@ void PVD_PVM_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles CAN1 RX0 interrupt.
-  */
+ * @brief This function handles CAN1 RX0 interrupt.
+ */
 void CAN1_RX0_IRQHandler(void)
 {
   /* USER CODE BEGIN CAN1_RX0_IRQn 0 */
@@ -193,8 +228,8 @@ void CAN1_RX0_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles CAN1 RX1 interrupt.
-  */
+ * @brief This function handles CAN1 RX1 interrupt.
+ */
 void CAN1_RX1_IRQHandler(void)
 {
   /* USER CODE BEGIN CAN1_RX1_IRQn 0 */
@@ -206,8 +241,8 @@ void CAN1_RX1_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles I2C1 event interrupt.
-  */
+ * @brief This function handles I2C1 event interrupt.
+ */
 void I2C1_EV_IRQHandler(void)
 {
   /* USER CODE BEGIN I2C1_EV_IRQn 0 */
@@ -220,8 +255,8 @@ void I2C1_EV_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles I2C1 error interrupt.
-  */
+ * @brief This function handles I2C1 error interrupt.
+ */
 void I2C1_ER_IRQHandler(void)
 {
   /* USER CODE BEGIN I2C1_ER_IRQn 0 */
@@ -234,8 +269,8 @@ void I2C1_ER_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles USART1 global interrupt.
-  */
+ * @brief This function handles USART1 global interrupt.
+ */
 void USART1_IRQHandler(void)
 {
   /* USER CODE BEGIN USART1_IRQn 0 */
@@ -248,8 +283,8 @@ void USART1_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles USART2 global interrupt.
-  */
+ * @brief This function handles USART2 global interrupt.
+ */
 void USART2_IRQHandler(void)
 {
   /* USER CODE BEGIN USART2_IRQn 0 */
@@ -262,8 +297,8 @@ void USART2_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles USART3 global interrupt.
-  */
+ * @brief This function handles USART3 global interrupt.
+ */
 void USART3_IRQHandler(void)
 {
   /* USER CODE BEGIN USART3_IRQn 0 */
@@ -276,8 +311,8 @@ void USART3_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles EXTI line[15:10] interrupts.
-  */
+ * @brief This function handles EXTI line[15:10] interrupts.
+ */
 void EXTI15_10_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI15_10_IRQn 0 */
@@ -291,8 +326,8 @@ void EXTI15_10_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles SDMMC1 global interrupt.
-  */
+ * @brief This function handles SDMMC1 global interrupt.
+ */
 void SDMMC1_IRQHandler(void)
 {
   /* USER CODE BEGIN SDMMC1_IRQn 0 */
@@ -305,8 +340,8 @@ void SDMMC1_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles TIM6 global interrupt, DAC channel1 and channel2 underrun error interrupts.
-  */
+ * @brief This function handles TIM6 global interrupt, DAC channel1 and channel2 underrun error interrupts.
+ */
 void TIM6_DAC_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM6_DAC_IRQn 0 */
@@ -319,8 +354,8 @@ void TIM6_DAC_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles TIM7 global interrupt.
-  */
+ * @brief This function handles TIM7 global interrupt.
+ */
 void TIM7_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM7_IRQn 0 */
@@ -332,8 +367,8 @@ void TIM7_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles DMA2 channel4 global interrupt.
-  */
+ * @brief This function handles DMA2 channel4 global interrupt.
+ */
 void DMA2_Channel4_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA2_Channel4_IRQn 0 */

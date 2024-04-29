@@ -82,14 +82,14 @@ extern "C"
     static const osPriority_t LOG_PRIORITY = osPriorityLow;
 
 /* Define the stack sizes for all the tasks */
-#define CANTASK_STACK_SIZE 450                /* 384 by static analysis */
-#define PPO2TXTASK_STACK_SIZE 350             /* 296 bytes by static analysis */
-#define ADCTASK_STACK_SIZE 250                /* 216 by static analysis */
-#define ANALOG_CELL_PROCESSOR_STACK_SIZE 500  /* The analyser reckons 208, but can't handle the string functions */
-#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 500 /* The analyser reckons 216, but can't handle the string functions */
-#define CALTASK_STACK_SIZE 500                /* Static analysis 456 */
-#define PRINTER_STACK_SIZE 500                /* Static analysis 760 */
-#define LOG_STACK_SIZE 500                    /* Static analysis ?? */
+#define CANTASK_STACK_SIZE 700                /* 408 by static analysis */
+#define PPO2TXTASK_STACK_SIZE 450             /* 320 bytes by static analysis */
+#define ADCTASK_STACK_SIZE 300                /* 224 by static analysis */
+#define ANALOG_CELL_PROCESSOR_STACK_SIZE 500  /* The analyser reckons 256, but can't handle the string functions */
+#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 600 /* The analyser reckons 304, but can't handle the string functions */
+#define CALTASK_STACK_SIZE 550                /* Static analysis 480 */
+#define PRINTER_STACK_SIZE 500                /* Static analysis 352 */
+#define LOG_STACK_SIZE 1024                    /* Static analysis unbounded */
 
 /* conditional compilation for RTOS loop breaking is pretty */
 /* shit as a testing method */

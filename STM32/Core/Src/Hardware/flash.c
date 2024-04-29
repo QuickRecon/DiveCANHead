@@ -3,6 +3,7 @@
 #include "eeprom_emul.h"
 #include <math.h>
 #include "stm32l4xx_hal.h"
+#include "log.h"
 
 /*  Define where stuff lives in the eeprom (only 100 vars up for grabs with current configuration) */
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x01;
@@ -19,7 +20,7 @@ static bool WriteInt32(uint16_t addr, uint32_t value)
         EE_Status result = EE_WriteVariable32bits(addr, value);
         if (HAL_OK != HAL_FLASH_Lock())
         {
-            NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+            LogMsg("WriteInt32: Flash lock error");
             writeOk = false;
         }
 
@@ -34,13 +35,13 @@ static bool WriteInt32(uint16_t addr, uint32_t value)
         }
         else /*  An error we don't handle */
         {
-            NON_FATAL_ERROR(EEPROM_ERROR);
+            LogMsg("WriteInt32: EEPROM error");
             writeOk = false;
         }
     }
     else
     {
-        NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+        LogMsg("WriteInt32: Flash unlock error");
         writeOk = false;
     }
     return writeOk;
@@ -58,11 +59,11 @@ bool GetCalibration(uint8_t cellNumber, CalCoeff_t *calCoeff)
 
     if (cellNumber > CELL_3)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        LogMsg("GetCalibration: Invalid cell number");
     }
     else if (NULL == calCoeff)
     {
-        NON_FATAL_ERROR(NULL_PTR);
+        LogMsg("GetCalibration: EEPROM Null calCoeff");
     }
     else
     {
@@ -82,7 +83,7 @@ bool GetCalibration(uint8_t cellNumber, CalCoeff_t *calCoeff)
         else
         {
             /*  We got an unmanageable eeprom error */
-            NON_FATAL_ERROR_DETAIL(EEPROM_ERROR, cellNumber);
+            LogMsg("GetCalibration: Unmanageable eeprom error");
         }
     }
 
@@ -99,7 +100,7 @@ bool SetCalibration(uint8_t cellNumber, CalCoeff_t calCoeff)
     bool writeOk = true; /*  Presume that we're doing ok, if we hit a fail state then false it */
     if (cellNumber > CELL_3)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        LogMsg("SetCalibration: Invalid cell number");
         writeOk = false;
     }
     else
@@ -121,7 +122,7 @@ bool GetFatalError(FatalError_t *err)
     bool readOk = false;
     if (NULL == err)
     {
-        NON_FATAL_ERROR(NULL_PTR);
+        LogMsg("GetFatalError: EEPROM Null err");
     }
     else
     {
@@ -142,7 +143,7 @@ bool GetFatalError(FatalError_t *err)
         else
         {
             /*  We got an unmanageable eeprom error */
-            NON_FATAL_ERROR(EEPROM_ERROR);
+            LogMsg("GetFatalError: EEPROM error");
         }
     }
 
@@ -167,7 +168,7 @@ bool GetNonFatalError(NonFatalError_t err, uint32_t *errCount)
     bool readOk = false;
     if (NULL == errCount)
     {
-        NON_FATAL_ERROR(NULL_PTR);
+        LogMsg("GetNonFatalError: EEPROM Null errCount");
     }
     else
     {
@@ -186,7 +187,7 @@ bool GetNonFatalError(NonFatalError_t err, uint32_t *errCount)
         else
         {
             /*  We got an unmanageable eeprom error */
-            NON_FATAL_ERROR(EEPROM_ERROR);
+             LogMsg("GetNonFatalError: Fatal eeprom error");
         }
     }
 

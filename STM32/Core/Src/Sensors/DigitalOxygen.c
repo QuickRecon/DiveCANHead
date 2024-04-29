@@ -266,16 +266,14 @@ void decodeCellMessage(void *arg)
             NON_FATAL_ERROR(TIMEOUT_ERROR);
             (void)osDelay(TIMEOUT_500MS);
         }
-
+        Digital_broadcastPPO2(cell);
         /* Sampling more than 10x per second is a bit excessive,
          * if the cell is getting back to us that quick we can take a break
          */
         while ((HAL_GetTick() - lastTicks) < TIMEOUT_100MS_TICKS)
         {
-            (void)osDelay(TIMEOUT_10MS);
+            (void)osDelay(TIMEOUT_100MS);
         }
-
-        Digital_broadcastPPO2(cell);
     }
 }
 
