@@ -264,10 +264,6 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
             {
                 blocking_serial_printf("Failed to sync %s", LOG_FILENAMES[currSyncFile]);
             }
-            else
-            {
-                blocking_serial_printf("synced %s\r\n", LOG_FILENAMES[currSyncFile]);
-            }
         }
     }
 
@@ -361,6 +357,11 @@ void LogMsg(const char *msg)
         /* Build the string and queue it if its legal */
         if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "[%0.4f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
         {
+            if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
+            {
+                LogQueue_t logItem = {0};
+                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+            }
             (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
         }
     }
@@ -381,6 +382,11 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
 
     if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
     {
+        if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
+        {
+            LogQueue_t logItem = {0};
+            (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+        }
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
     }
 }
@@ -397,6 +403,11 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     /* Build the string and queue it if its legal */
     if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)))
     {
+        if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
+        {
+            LogQueue_t logItem = {0};
+            (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+        }
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
     }
 }
