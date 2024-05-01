@@ -12,17 +12,6 @@
 #include <math.h>
 #include "../Hardware/printer.h"
 
-/** @struct OxygenHandle_s
- *  @brief Contains the type and a pointer to an oxygen cell handle.
- *
- *  The `type` field contains the type of the cell, while the `cellHandle`
- *  field contains a pointer to the actual cell handle object.
- */
-typedef struct
-{
-    CellType_t type;
-    void *cellHandle;
-} OxygenHandle_t;
 
 /** @struct CalParameters_s
  *  @brief Contains calibration parameters for an oxygen sensor.
@@ -106,6 +95,7 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
 {
     OxygenHandle_t *cell = getCell(cellNumber);
+    cell->cellNumber = cellNumber;
 
     static StaticQueue_t CellQueues_QueueStruct[CELL_COUNT];
     static uint8_t CellQueues_Storage[CELL_COUNT][sizeof(OxygenCell_t)];
@@ -116,10 +106,10 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
     switch (type)
     {
     case CELL_ANALOG:
-        cell->cellHandle = Analog_InitCell(cellNumber, *queueHandle);
+        cell->cellHandle = Analog_InitCell(cell, *queueHandle);
         break;
     case CELL_DIGITAL:
-        cell->cellHandle = Digital_InitCell(cellNumber, *queueHandle);
+        cell->cellHandle = Digital_InitCell(cell, *queueHandle);
         break;
     default:
         NON_FATAL_ERROR(UNREACHABLE_ERROR);

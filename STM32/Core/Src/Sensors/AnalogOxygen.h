@@ -3,6 +3,7 @@
 #include "cmsis_os.h"
 #include "queue.h"
 #include "../errors.h"
+#include "OxygenCell.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,14 +24,12 @@ typedef struct
     int16_t lastCounts;
 
     osThreadId_t processor;
-    uint32_t processorBuffer[ANALOG_CELL_PROCESSOR_STACK_SIZE];
-    StaticTask_t processorControlblock;
 
     QueueHandle_t outQueue;
 } AnalogOxygenState_t;
 
 /* Analog Cell*/
-AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue);
+AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t* cell, QueueHandle_t outQueue);
 void ReadCalibration(AnalogOxygenState_t *handle);
 ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);
 

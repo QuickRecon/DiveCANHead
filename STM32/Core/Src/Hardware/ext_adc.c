@@ -325,7 +325,7 @@ void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matchi
             }
 
             /* Export the value to the queue */
-            uint16_t adcCounts = (uint16_t)((uint16_t)conversionRegister[0] << 8) | conversionRegister[1];
+            uint16_t adcCounts = (uint16_t)(((uint16_t)(conversionRegister[0])) << 8) | conversionRegister[1];
             uint32_t ticks = HAL_GetTick();
             bool valueWrite = xQueueOverwrite(adcInput->qInputValue, &adcCounts);
             bool tickWrite = false;

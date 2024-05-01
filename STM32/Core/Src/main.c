@@ -87,7 +87,7 @@ const osThreadAttr_t watchdogTask_attributes = {
 };
 /* Definitions for sDInitTask */
 osThreadId_t sDInitTaskHandle;
-uint32_t SDInitTaskBuffer[1024];
+uint32_t SDInitTaskBuffer[512];
 osStaticThreadDef_t SDInitTaskControlBlock;
 const osThreadAttr_t sDInitTask_attributes = {
     .name = "sDInitTask",

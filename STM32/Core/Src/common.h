@@ -79,14 +79,13 @@ extern "C"
     static const osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh;
     static const osPriority_t ADC_PRIORITY = osPriorityHigh2;
     static const osPriority_t PRINTER_PRIORITY = osPriorityLow;
-    static const osPriority_t LOG_PRIORITY = osPriorityLow;
+    static const osPriority_t LOG_PRIORITY = osPriorityHigh2;
 
 /* Define the stack sizes for all the tasks */
 #define CANTASK_STACK_SIZE 700                /* 408 by static analysis */
 #define PPO2TXTASK_STACK_SIZE 450             /* 320 bytes by static analysis */
 #define ADCTASK_STACK_SIZE 300                /* 224 by static analysis */
-#define ANALOG_CELL_PROCESSOR_STACK_SIZE 500  /* The analyser reckons 256, but can't handle the string functions */
-#define DIGITAL_CELL_PROCESSOR_STACK_SIZE 600 /* The analyser reckons 304, but can't handle the string functions */
+#define CELL_PROCESSOR_STACK_SIZE 800
 #define CALTASK_STACK_SIZE 550                /* Static analysis 480 */
 #define PRINTER_STACK_SIZE 500                /* Static analysis 352 */
 #define LOG_STACK_SIZE 2048                    /* Static analysis unbounded */

@@ -38,28 +38,28 @@ const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before 
 
 void analogProcessor(void *arg);
 
-AnalogOxygenState_t *Analog_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
+AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t* cell, QueueHandle_t outQueue)
 {
     AnalogOxygenState_t *handle = NULL;
-    if (cellNumber > CELL_3)
+    if (cell->cellNumber > CELL_3)
     {
         NON_FATAL_ERROR(INVALID_CELL_NUMBER);
     }
     else
     {
-        handle = getCellState(cellNumber);
-        handle->cellNumber = cellNumber;
-        handle->adcInputIndex = cellNumber;
+        handle = getCellState(cell->cellNumber);
+        handle->cellNumber = cell->cellNumber;
+        handle->adcInputIndex = cell->cellNumber;
         handle->outQueue = outQueue;
         ReadCalibration(handle);
 
         osThreadAttr_t processor_attributes = {
             .name = "AnalogCellTask",
             .attr_bits = osThreadDetached,
-            .cb_mem = &(handle->processorControlblock),
-            .cb_size = sizeof(handle->processorControlblock),
-            .stack_mem = &(handle->processorBuffer)[0],
-            .stack_size = sizeof(handle->processorBuffer),
+            .cb_mem = &(cell->processorControlblock),
+            .cb_size = sizeof(cell->processorControlblock),
+            .stack_mem = &(cell->processorBuffer)[0],
+            .stack_size = sizeof(cell->processorBuffer),
             .priority = PPO2_SENSOR_PRIORITY,
             .tz_module = 0,
             .reserved = 0};

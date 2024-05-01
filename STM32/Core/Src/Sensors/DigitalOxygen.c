@@ -56,19 +56,19 @@ static DigitalOxygenState_t *getCellState(uint8_t cellNum)
 void decodeCellMessage(void *arg);
 void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell);
 
-DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueue)
+DigitalOxygenState_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
     DigitalOxygenState_t *handle = NULL;
-    if (cellNumber > CELL_3)
+    if (cell->cellNumber > CELL_3)
     {
         NON_FATAL_ERROR(INVALID_CELL_NUMBER);
     }
     else
     {
-        handle = getCellState(cellNumber);
-        handle->cellNumber = cellNumber;
+        handle = getCellState(cell->cellNumber);
+        handle->cellNumber = cell->cellNumber;
         handle->outQueue = outQueue;
-        switch (cellNumber)
+        switch (cell->cellNumber)
         {
         case CELL_1:
             handle->huart = &huart1;
@@ -91,10 +91,10 @@ DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueu
         osThreadAttr_t processor_attributes = {
             .name = "DigitalCellTask",
             .attr_bits = osThreadDetached,
-            .cb_mem = &(handle->processorControlblock),
-            .cb_size = sizeof(handle->processorControlblock),
-            .stack_mem = &(handle->processorBuffer)[0],
-            .stack_size = sizeof(handle->processorBuffer),
+            .cb_mem = &(cell->processorControlblock),
+            .cb_size = sizeof(cell->processorControlblock),
+            .stack_mem = &(cell->processorBuffer)[0],
+            .stack_size = sizeof(cell->processorBuffer),
             .priority = PPO2_SENSOR_PRIORITY,
             .tz_module = 0,
             .reserved = 0};
@@ -223,35 +223,35 @@ void decodeCellMessage(void *arg)
             msgBuf[strcspn(msgBuf, "\r\n")] = 0;
 
             const char *const sep = " ";
-            const char *const CMD_Name = strtok_r(msgBuf, sep, &msgBuf);
-
+            char* saveptr = NULL;
+            const char *const CMD_Name = strtok_r(msgBuf, sep, &saveptr);
+            
             /* Decode either a #DRAW or a #DOXY, we don't care about anything else yet*/
             if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
             {
-                const char *const PPO2_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const temperature_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const err_str = strtok_r(NULL, sep, &msgBuf);
+                const char *const PPO2_str = strtok_r(NULL, sep, &saveptr);
+                const char *const temperature_str = strtok_r(NULL, sep, &saveptr);
+                const char *const err_str = strtok_r(NULL, sep, &saveptr);
 
-                // DiveO2CellSample(cell->cellNumber, PPO2_str, temperature_str, err_str, "", "", "", "", "");
 
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
                 cell->status = cellErrorCheck(err_str);
+
+                DiveO2CellSample(cell->cellNumber, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), 0,0,0,0,0);
+
                 cell->ticksOfLastPPO2 = HAL_GetTick();
             }
             else if (0 == strcmp(CMD_Name, GET_DETAIL_COMMAND))
             {
-                const char *const PPO2_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const temperature_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const err_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const phase_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const intensity_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const ambientLight_str = strtok_r(NULL, sep, &msgBuf);
-                // strtok_r(NULL, sep, &msgBuf);
-                // strtok_r(NULL, sep, &msgBuf);
-                // strtok_r(NULL, sep, &msgBuf);
-                const char *const pressure_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const humidity_str = strtok_r(NULL, sep, &msgBuf);
+                const char *const PPO2_str = strtok_r(NULL, sep, &saveptr);
+                const char *const temperature_str = strtok_r(NULL, sep, &saveptr);
+                const char *const err_str = strtok_r(NULL, sep, &saveptr);
+                const char *const phase_str = strtok_r(NULL, sep, &saveptr);
+                const char *const intensity_str = strtok_r(NULL, sep, &saveptr);
+                const char *const ambientLight_str = strtok_r(NULL, sep, &saveptr);
+                const char *const pressure_str = strtok_r(NULL, sep, &saveptr);
+                const char *const humidity_str = strtok_r(NULL, sep, &saveptr);
 
 
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);

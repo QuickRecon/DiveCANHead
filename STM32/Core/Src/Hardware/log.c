@@ -12,7 +12,7 @@
 
 extern SD_HandleTypeDef hsd1;
 
-#define LOGQUEUE_LENGTH 10
+#define LOGQUEUE_LENGTH 2
 #define FILENAME_LENGTH 13
 #define MAXPATH_LENGTH 255
 
@@ -207,11 +207,11 @@ FRESULT RotateLogfiles(void)
     blocking_serial_printf("finished move\r\n");
     return res;
 }
-
+extern UART_HandleTypeDef huart2;
 void LogTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
 {
     FIL LOG_FILES[LOGFILE_COUNT] = {0};
-    QueueHandle_t *logQueue = getQueueHandle();
+    QueueHandle_t logQueue = *(getQueueHandle());
     FRESULT res = FR_OK; /* FatFs function common result code */
 
     uint8_t currSyncFile = 0;
@@ -230,11 +230,12 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
     {
         LogQueue_t logItem = {0};
         /* Wait until there is an item in the queue, if there is then Log it*/
-        if (pdTRUE == xQueueReceive(*logQueue, &logItem, TIMEOUT_4s_TICKS))
+        if (pdTRUE == xQueueReceive(logQueue, &logItem, TIMEOUT_4s_TICKS))
         {
             uint32_t expectedLength = strnlen((char *)logItem.string, LOG_LINE_LENGTH);
             uint32_t byteswritten = 0;
             res = f_write(&(LOG_FILES[logItem.eventType]), logItem.string, expectedLength, (void *)&byteswritten);
+            (void)HAL_UART_Transmit(&huart2, (uint8_t *)(logItem.string), (uint16_t)strnlen(logItem.string, LOG_LINE_LENGTH), TIMEOUT_4s_TICKS);
             if (expectedLength > byteswritten)
             {
                 /* Out of space (file grown > 4Gig?)*/
@@ -335,12 +336,14 @@ bool logRunning(void)
              (osThreadGetState(*logTask) == osThreadTerminated));
 }
 
+static LogQueue_t enQueueItem = {0};
+
 void LogMsg(const char *msg)
 {
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
-    static LogQueue_t enQueueItem = {0};
+
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
 
@@ -373,7 +376,6 @@ void DiveO2CellSample(uint8_t cellNumber,int32_t PPO2, int32_t temperature, int3
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
-    static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
@@ -388,7 +390,6 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
-    static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
 

@@ -3,6 +3,7 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "queue.h"
+#include "OxygenCell.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -30,13 +31,10 @@ extern "C"
         uint32_t ticksOfLastPPO2;
         osThreadId_t processor;
 
-        uint32_t processorBuffer[DIGITAL_CELL_PROCESSOR_STACK_SIZE];
-        StaticTask_t processorControlblock;
-
         QueueHandle_t outQueue;
     } DigitalOxygenState_t;
 
-    DigitalOxygenState_t *Digital_InitCell(uint8_t cellNumber, QueueHandle_t outQueue);
+    DigitalOxygenState_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue);
 
     void Cell_TX_Complete(const UART_HandleTypeDef *huart);
     void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size);
