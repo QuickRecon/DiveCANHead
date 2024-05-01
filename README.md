@@ -55,6 +55,8 @@ These are required before the firmware can be considered ready for any kind of t
 ### Future Hardware Improvements (desired on next board version)
 - CAN_EN should be routed to any of PA0, PC13, PE6, PA2, or PC5 so we can go to standby/shutdown rather than just STOP
 - Add pulldowns on some spare pins (HW version identification, so we can maintain backwards compatibility with old boards)
+- External watchdog
+- CAN IC with lower power
 
 ### Future Software Improvements
 - Battery reading and power switching 

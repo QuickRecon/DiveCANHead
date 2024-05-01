@@ -13,6 +13,10 @@
 - Make DiveCAN multi-device safe so we can make multiple menu rows
 - Predive "app", show loop pressure and such
 
+# Hardware fixes
+- external watchdog
+- lower power can IC
+
 # NASA rules of 10
     Avoid complex flow constructs, such as goto and recursion
     All loops must have fixed bounds (this prevents runaway code)
