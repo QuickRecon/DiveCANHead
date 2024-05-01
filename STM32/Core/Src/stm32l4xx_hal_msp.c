@@ -444,7 +444,7 @@ void HAL_SD_MspInit(SD_HandleTypeDef* hsd)
     hdma_sdmmc1.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD;
     hdma_sdmmc1.Init.MemDataAlignment = DMA_MDATAALIGN_WORD;
     hdma_sdmmc1.Init.Mode = DMA_NORMAL;
-    hdma_sdmmc1.Init.Priority = DMA_PRIORITY_LOW;
+    hdma_sdmmc1.Init.Priority = DMA_PRIORITY_VERY_HIGH;
     if (HAL_DMA_Init(&hdma_sdmmc1) != HAL_OK)
     {
       Error_Handler();

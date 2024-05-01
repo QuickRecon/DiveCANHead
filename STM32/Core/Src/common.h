@@ -89,7 +89,7 @@ extern "C"
 #define DIGITAL_CELL_PROCESSOR_STACK_SIZE 600 /* The analyser reckons 304, but can't handle the string functions */
 #define CALTASK_STACK_SIZE 550                /* Static analysis 480 */
 #define PRINTER_STACK_SIZE 500                /* Static analysis 352 */
-#define LOG_STACK_SIZE 1024                    /* Static analysis unbounded */
+#define LOG_STACK_SIZE 2048                    /* Static analysis unbounded */
 
 /* conditional compilation for RTOS loop breaking is pretty */
 /* shit as a testing method */

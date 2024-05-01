@@ -25,10 +25,10 @@ void Shutdown(void)
     HAL_PWREx_EnablePullUpPullDownConfig();
 
     /* Silence the CAN transceiver */
-    /* CAN_SHDN: GPIO C Pin 14*/
+    /* CAN_IO_PWR: GPIO C Pin 14*/
     /* CAN_SILENT: GPIO C Pin 15*/
-    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_14);
-    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_15);
+    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_14);
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_15);
 
     /* Disable VBUS */
     /* BUS_SEL1: GPIO A Pin 6*/

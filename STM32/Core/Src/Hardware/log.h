@@ -21,7 +21,7 @@ extern "C"
 
     void InitLog(void);
     void LogMsg(const char *msg);
-    void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity);
+    void DiveO2CellSample(uint8_t cellNumber,int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity);
     void AnalogCellSample(uint8_t cellNumber, int16_t sample);
 
 #ifdef __cplusplus

@@ -135,8 +135,6 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
 
     uint32_t ticksOfLastPPO2 = GetInputTicks(handle->adcInputIndex);
 
-
-
     uint32_t ticks = HAL_GetTick();
     handle->lastCounts = GetInputValue(handle->adcInputIndex);
 

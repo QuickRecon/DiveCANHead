@@ -205,13 +205,19 @@ void decodeCellMessage(void *arg)
         if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, TIMEOUT_2S_TICKS))
         {
             char *msgBuf = cell->lastMessage;
-
+            uint32_t skipped = 0;
             /* Scroll past any junk in the start of the buffer */
             while (((0 == msgBuf[0]) || (NEWLINE == msgBuf[0])) &&
-                   (msgBuf < (cell->lastMessage + (RX_BUFFER_LENGTH - 1))))
+                   (skipped < (RX_BUFFER_LENGTH - 1)))
             {
                 ++msgBuf;
+                ++skipped;
             }
+
+            char msgArray[RX_BUFFER_LENGTH] = {0};
+            (void)strncpy(msgArray, msgBuf, RX_BUFFER_LENGTH - skipped);
+
+            msgBuf = msgArray;
 
             /* Null terminate the end newline, interferes with logging */
             msgBuf[strcspn(msgBuf, "\r\n")] = 0;
@@ -226,7 +232,7 @@ void decodeCellMessage(void *arg)
                 const char *const temperature_str = strtok_r(NULL, sep, &msgBuf);
                 const char *const err_str = strtok_r(NULL, sep, &msgBuf);
 
-                DiveO2CellSample(cell->cellNumber, PPO2_str, temperature_str, err_str, "", "", "", "", "");
+                // DiveO2CellSample(cell->cellNumber, PPO2_str, temperature_str, err_str, "", "", "", "", "");
 
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
@@ -238,19 +244,28 @@ void decodeCellMessage(void *arg)
                 const char *const PPO2_str = strtok_r(NULL, sep, &msgBuf);
                 const char *const temperature_str = strtok_r(NULL, sep, &msgBuf);
                 const char *const err_str = strtok_r(NULL, sep, &msgBuf);
-                const char *const phase = strtok_r(NULL, sep, &msgBuf);
-                const char *const intensity = strtok_r(NULL, sep, &msgBuf);
-                const char *const ambientLight = strtok_r(NULL, sep, &msgBuf);
+                const char *const phase_str = strtok_r(NULL, sep, &msgBuf);
+                const char *const intensity_str = strtok_r(NULL, sep, &msgBuf);
+                const char *const ambientLight_str = strtok_r(NULL, sep, &msgBuf);
+                // strtok_r(NULL, sep, &msgBuf);
+                // strtok_r(NULL, sep, &msgBuf);
+                // strtok_r(NULL, sep, &msgBuf);
                 const char *const pressure_str = strtok_r(NULL, sep, &msgBuf);
                 const char *const humidity_str = strtok_r(NULL, sep, &msgBuf);
 
-                DiveO2CellSample(cell->cellNumber, PPO2_str, temperature_str, err_str, phase, intensity, ambientLight, pressure_str, humidity_str);
 
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
                 cell->pressure = strtol(pressure_str, NULL, PPO2_BASE);
                 cell->humidity = strtol(humidity_str, NULL, PPO2_BASE);
                 cell->status = cellErrorCheck(err_str);
+
+                int32_t phase = strtol(phase_str, NULL, PPO2_BASE);
+                int32_t intensity = strtol(intensity_str, NULL, PPO2_BASE);
+                int32_t ambientLight = strtol(ambientLight_str, NULL, PPO2_BASE);
+
+                DiveO2CellSample(cell->cellNumber, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), phase, intensity, ambientLight, cell->pressure, cell->humidity);
+
                 cell->ticksOfLastPPO2 = HAL_GetTick();
             }
             else

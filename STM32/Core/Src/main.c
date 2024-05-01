@@ -97,18 +97,6 @@ const osThreadAttr_t sDInitTask_attributes = {
     .stack_size = sizeof(SDInitTaskBuffer),
     .priority = (osPriority_t)osPriorityHigh,
 };
-/* Definitions for perfMon */
-osThreadId_t perfMonHandle;
-uint32_t perfMonBuffer[128];
-osStaticThreadDef_t perfMonControlBlock;
-const osThreadAttr_t perfMon_attributes = {
-    .name = "perfMon",
-    .cb_mem = &perfMonControlBlock,
-    .cb_size = sizeof(perfMonControlBlock),
-    .stack_mem = &perfMonBuffer[0],
-    .stack_size = sizeof(perfMonBuffer),
-    .priority = (osPriority_t)osPriorityLow,
-};
 /* USER CODE BEGIN PV */
 CAN_FilterTypeDef sFilterConfig; /* declare CAN filter structure */
 /* USER CODE END PV */
@@ -131,7 +119,6 @@ static void MX_TIM1_Init(void);
 static void MX_TIM15_Init(void);
 void WatchdogTask(void *argument);
 void SDInitTask(void *argument);
-void PerfMon(void *argument);
 
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
@@ -263,9 +250,6 @@ int main(void)
 
   /* creation of sDInitTask */
   sDInitTaskHandle = osThreadNew(SDInitTask, NULL, &sDInitTask_attributes);
-
-  /* creation of perfMon */
-  // perfMonHandle = osThreadNew(PerfMon, NULL, &perfMon_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -581,7 +565,7 @@ static void MX_IWDG_Init(void)
 
   /* USER CODE END IWDG_Init 1 */
   hiwdg.Instance = IWDG;
-  hiwdg.Init.Prescaler = IWDG_PRESCALER_4;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_32;
   hiwdg.Init.Window = 4095;
   hiwdg.Init.Reload = 4095;
   if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
@@ -611,10 +595,10 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Instance = SDMMC1;
   hsd1.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
   hsd1.Init.ClockBypass = SDMMC_CLOCK_BYPASS_DISABLE;
-  hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
+  hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_ENABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_1B;
-  hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd1.Init.ClockDiv = 0;
+  hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_ENABLE;
+  hsd1.Init.ClockDiv = 10;
   /* USER CODE BEGIN SDMMC1_Init 2 */
   /* USER CODE END SDMMC1_Init 2 */
 }
@@ -1073,32 +1057,11 @@ void WatchdogTask(void *argument)
 void SDInitTask(void *argument)
 {
   /* USER CODE BEGIN SDInitTask */
-  (void)osDelay(TIMEOUT_100MS);
+  (void)osDelay(TIMEOUT_1S);
   InitLog();
   LogMsg("Logging Active");
   (void)vTaskDelete(NULL);
   /* USER CODE END SDInitTask */
-}
-
-/* USER CODE BEGIN Header_PerfMon */
-/**
- * @brief Function implementing the perfMon thread.
- * @param argument: Not used
- * @retval None
- */
-/* USER CODE END Header_PerfMon */
-void PerfMon(void *argument)
-{
-  /* USER CODE BEGIN PerfMon */
-  /* Infinite loop */
-  static char outputBuffer[1024] = {0};
-  for (;;)
-  {
-    (void)osDelay(100);
-    vTaskGetRunTimeStats(outputBuffer);
-    serial_printf(outputBuffer);
-  }
-  /* USER CODE END PerfMon */
 }
 
 /**

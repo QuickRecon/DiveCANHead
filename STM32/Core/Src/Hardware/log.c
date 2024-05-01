@@ -16,7 +16,7 @@ extern SD_HandleTypeDef hsd1;
 #define FILENAME_LENGTH 13
 #define MAXPATH_LENGTH 255
 
-typedef double timestamp_t;
+typedef float timestamp_t;
 
 #define LOGFILE_COUNT 6
 
@@ -225,7 +225,7 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
         }
     }
 
-    uint32_t lastSynced = HAL_GetTick();
+    //uint32_t lastSynced = HAL_GetTick();
     while (FR_OK == res)
     {
         LogQueue_t logItem = {0};
@@ -246,18 +246,36 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
             {
                 blocking_serial_printf("Cannot write %s\r\n", LOG_FILENAMES[logItem.eventType]);
             }
-        }
+            else
+            {
+                // blocking_serial_printf("Written %s\r\n", LOG_FILENAMES[logItem.eventType]);
+            }
 
-        if ((HAL_GetTick() - lastSynced) > TIMEOUT_4s)
-        {
-            res = f_sync(&(LOG_FILES[currSyncFile]));
-            currSyncFile = (currSyncFile + 1) % LOGFILE_COUNT;
-            lastSynced = HAL_GetTick();
+            res = f_sync(&(LOG_FILES[logItem.eventType]));
             if (res != FR_OK)
             {
                 blocking_serial_printf("Failed to sync %s", LOG_FILENAMES[currSyncFile]);
             }
+            else
+            {
+                //blocking_serial_printf("synced %s\r\n", LOG_FILENAMES[currSyncFile]);
+            }
         }
+
+        // if ((HAL_GetTick() - lastSynced) > TIMEOUT_4s)
+        // {
+        //     res = f_sync(&(LOG_FILES[currSyncFile]));
+        //     currSyncFile = (currSyncFile + 1) % LOGFILE_COUNT;
+        //     lastSynced = HAL_GetTick();
+        //     if (res != FR_OK)
+        //     {
+        //         blocking_serial_printf("Failed to sync %s", LOG_FILENAMES[currSyncFile]);
+        //     }
+        //     else
+        //     {
+        //         blocking_serial_printf("synced %s\r\n", LOG_FILENAMES[currSyncFile]);
+        //     }
+        // }
     }
 
     NON_FATAL_ERROR_DETAIL(LOGGING_ERR, res);
@@ -339,7 +357,7 @@ void LogMsg(const char *msg)
         local_msg[strcspn(local_msg, "\r\n")] = 0;
 
         /* Build the string and queue it if its legal */
-        if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "[%f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
+        if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "[%0.4f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
         {
             xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
         }
@@ -350,7 +368,7 @@ void LogMsg(const char *msg)
     }
 }
 
-void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *const temperature, const char *const err, const char *const phase, const char *const intensity, const char *const ambientLight, const char *const pressure, const char *const humidity)
+void DiveO2CellSample(uint8_t cellNumber,int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity)
 {
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
@@ -359,47 +377,9 @@ void DiveO2CellSample(uint8_t cellNumber, const char *const PPO2, const char *co
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
-    /* Null str check of destiny */
-    if ((NULL == PPO2) || (strnlen(PPO2, LOG_LINE_LENGTH) > 10))
+    if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
     {
-        NON_FATAL_ERROR(NULL_PTR);
-    }
-    else if ((NULL == temperature) || (strnlen(temperature, LOG_LINE_LENGTH) > 10))
-    {
-        NON_FATAL_ERROR(NULL_PTR);
-    }
-    else if ((NULL == err) || (strnlen(err, LOG_LINE_LENGTH) > 10))
-    {
-        NON_FATAL_ERROR(NULL_PTR);
-    }
-    else if ((NULL == phase) || (strnlen(phase, LOG_LINE_LENGTH) > 10))
-    {
-        NON_FATAL_ERROR(NULL_PTR);
-    }
-    else if ((NULL == intensity) || (strnlen(intensity, LOG_LINE_LENGTH) > 10))
-    {
-        NON_FATAL_ERROR(NULL_PTR);
-    }
-    else if ((NULL == ambientLight) || (strnlen(ambientLight, LOG_LINE_LENGTH) > 10))
-    {
-        NON_FATAL_ERROR(NULL_PTR);
-    }
-    else if ((NULL == pressure) || (strnlen(pressure, LOG_LINE_LENGTH) > 10))
-    {
-        NON_FATAL_ERROR(NULL_PTR);
-    }
-    else if ((NULL == humidity) || (strnlen(humidity, LOG_LINE_LENGTH) > 10))
-    {
-        NON_FATAL_ERROR(NULL_PTR);
-    }
-    else if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%f,%d,%s,%s,%s,%s,%s,%s,%s,%s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
-    {
-        // xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
-    }
-    else
-    {
-        blocking_serial_printf("Cooked diveo2 log\r\n");
-        /* Either the log ain't running or we're cooked up the string construction */
+        xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }
 }
 
@@ -413,7 +393,7 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
 
     /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%f,%d,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)))
+    if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)))
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }
