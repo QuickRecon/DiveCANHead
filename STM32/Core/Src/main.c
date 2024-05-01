@@ -95,7 +95,7 @@ const osThreadAttr_t sDInitTask_attributes = {
     .cb_size = sizeof(SDInitTaskControlBlock),
     .stack_mem = &SDInitTaskBuffer[0],
     .stack_size = sizeof(SDInitTaskBuffer),
-    .priority = (osPriority_t)osPriorityHigh,
+    .priority = (osPriority_t)osPriorityRealtime,
 };
 /* USER CODE BEGIN PV */
 CAN_FilterTypeDef sFilterConfig; /* declare CAN filter structure */
@@ -200,6 +200,7 @@ int main(void)
 
   HAL_GPIO_WritePin(SOLENOID_GPIO_Port, SOLENOID_Pin, GPIO_PIN_RESET);
 
+  InitLog();
   InitPrinter();
   serial_printf("Booting...\r\n");
 
@@ -598,7 +599,7 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_ENABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_1B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_ENABLE;
-  hsd1.Init.ClockDiv = 10;
+  hsd1.Init.ClockDiv = 0;
   /* USER CODE BEGIN SDMMC1_Init 2 */
   /* USER CODE END SDMMC1_Init 2 */
 }
@@ -1058,7 +1059,7 @@ void SDInitTask(void *argument)
 {
   /* USER CODE BEGIN SDInitTask */
   (void)osDelay(TIMEOUT_1S);
-  InitLog();
+  StartLogTask();
   LogMsg("Logging Active");
   (void)vTaskDelete(NULL);
   /* USER CODE END SDInitTask */

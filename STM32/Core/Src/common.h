@@ -28,13 +28,13 @@ extern "C"
     static const uint32_t TIMEOUT_2S = 2000;
     static const uint32_t TIMEOUT_4s = 4000;
 
-    static const uint32_t TIMEOUT_5MS_TICKS = pdMS_TO_TICKS(TIMEOUT_5MS);
-    static const uint32_t TIMEOUT_10MS_TICKS = pdMS_TO_TICKS(TIMEOUT_10MS);
-    static const uint32_t TIMEOUT_100MS_TICKS = pdMS_TO_TICKS(TIMEOUT_100MS);
-    static const uint32_t TIMEOUT_500MS_TICKS = pdMS_TO_TICKS(TIMEOUT_500MS);
-    static const uint32_t TIMEOUT_1S_TICKS = pdMS_TO_TICKS(TIMEOUT_1S);
-    static const uint32_t TIMEOUT_2S_TICKS = pdMS_TO_TICKS(TIMEOUT_2S);
-    static const uint32_t TIMEOUT_4s_TICKS = pdMS_TO_TICKS(TIMEOUT_4s);
+    static const TickType_t TIMEOUT_5MS_TICKS = pdMS_TO_TICKS(TIMEOUT_5MS);
+    static const TickType_t TIMEOUT_10MS_TICKS = pdMS_TO_TICKS(TIMEOUT_10MS);
+    static const TickType_t TIMEOUT_100MS_TICKS = pdMS_TO_TICKS(TIMEOUT_100MS);
+    static const TickType_t TIMEOUT_500MS_TICKS = pdMS_TO_TICKS(TIMEOUT_500MS);
+    static const TickType_t TIMEOUT_1S_TICKS = pdMS_TO_TICKS(TIMEOUT_1S);
+    static const TickType_t TIMEOUT_2S_TICKS = pdMS_TO_TICKS(TIMEOUT_2S);
+    static const TickType_t TIMEOUT_4s_TICKS = pdMS_TO_TICKS(TIMEOUT_4s);
 
     /* Handy consts */
     static const uint32_t BYTE_WIDTH = 8;      /* Bitshift operations */
@@ -63,32 +63,33 @@ extern "C"
     static const uint8_t CELL_3 = 2;
 
     /* Define some priority levels */
-    /* The general rules are that things critical to providing PPO2 and */
-    /* life support are high priority to get the tightest possible loop */
-    /* , with the hardware support layer being higher priority */
-    /* than the aggregation/processing layer, which sits above the TX layer. */
-    /* */
-    /* This is because each step feeds the next and it makes no sense for the TX of a value to */
-    /* preempt the collection of that value */
+    /* The general rules are that data consumers should have a higher priority than data sources
+     * because otherwise we can be producing plenty of data but not consuming it, which is kind of
+     * useless.
+     * 
+     * We have safeguards around expired data, and the WDT should save us if things are getting really 
+     * starved. The consumers use queues to access other tasks data, so they'll block while we go and get
+     * the fresh data
     /* */
     /* The watchdog task should be just above idle, so that we reset on runtime starvation */
-    /* CAN RX priority is normal because it is not particularly time critical */
+    /* CAN RX priority less critical than data consumers but more than sensor fetching, we want to
+     * respond to messages in a timely manner, waiting on sensors can push us into timeout */
+    static const osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh1;
+    static const osPriority_t PRINTER_PRIORITY = osPriorityHigh;
+    static const osPriority_t LOG_PRIORITY = osPriorityHigh;
+    static const osPriority_t CAN_RX_PRIORITY = osPriorityNormal1;
+    static const osPriority_t PPO2_SENSOR_PRIORITY = osPriorityNormal;
+    static const osPriority_t ADC_PRIORITY = osPriorityLow1;
     static const osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
-    static const osPriority_t PPO2_SENSOR_PRIORITY = osPriorityHigh1;
-    static const osPriority_t CAN_RX_PRIORITY = osPriorityNormal;
-    static const osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh;
-    static const osPriority_t ADC_PRIORITY = osPriorityHigh2;
-    static const osPriority_t PRINTER_PRIORITY = osPriorityLow;
-    static const osPriority_t LOG_PRIORITY = osPriorityHigh2;
 
 /* Define the stack sizes for all the tasks */
-#define CANTASK_STACK_SIZE 700                /* 408 by static analysis */
-#define PPO2TXTASK_STACK_SIZE 450             /* 320 bytes by static analysis */
-#define ADCTASK_STACK_SIZE 300                /* 224 by static analysis */
+#define CANTASK_STACK_SIZE 700    /* 408 by static analysis */
+#define PPO2TXTASK_STACK_SIZE 450 /* 320 bytes by static analysis */
+#define ADCTASK_STACK_SIZE 300    /* 224 by static analysis */
 #define CELL_PROCESSOR_STACK_SIZE 800
-#define CALTASK_STACK_SIZE 550                /* Static analysis 480 */
-#define PRINTER_STACK_SIZE 500                /* Static analysis 352 */
-#define LOG_STACK_SIZE 2048                    /* Static analysis unbounded */
+#define CALTASK_STACK_SIZE 550 /* Static analysis 480 */
+#define PRINTER_STACK_SIZE 500 /* Static analysis 352 */
+#define LOG_STACK_SIZE 2048    /* Static analysis unbounded */
 
 /* conditional compilation for RTOS loop breaking is pretty */
 /* shit as a testing method */

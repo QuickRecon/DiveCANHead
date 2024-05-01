@@ -67,8 +67,58 @@ static osThreadId_t *getOSThreadId(void)
     return &ADCTaskHandle;
 }
 
+static InputState_t *getInputState(uint8_t inputIdx)
+{
+    static InputState_t adcInput[ADC_COUNT] = {0};
+    InputState_t *inputState = NULL;
+    if (inputIdx >= ADC_COUNT)
+    {
+        NON_FATAL_ERROR(INVALID_ADC_NUMBER);
+        inputState = &(adcInput[0]); /* A safe fallback */
+    }
+    else
+    {
+        inputState = &(adcInput[inputIdx]);
+    }
+    return inputState;
+}
+
 void InitADCs(void)
 {
+    const uint8_t INPUT_1 = 0;
+    const uint8_t INPUT_2 = 1;
+    const uint8_t INPUT_3 = 2;
+    const uint8_t INPUT_4 = 3;
+
+    InputState_t *adcInput1 = getInputState(INPUT_1);
+    adcInput1->adcAddress = ADC1_ADDR;
+    adcInput1->inputIndex = ADC_INPUT_1;
+
+    InputState_t *adcInput2 = getInputState(INPUT_2);
+    adcInput2->adcAddress = ADC1_ADDR;
+    adcInput2->inputIndex = ADC_INPUT_2;
+
+    InputState_t *adcInput3 = getInputState(INPUT_3);
+    adcInput3->adcAddress = ADC2_ADDR;
+    adcInput3->inputIndex = ADC_INPUT_1;
+
+    InputState_t *adcInput4 = getInputState(INPUT_4);
+    adcInput4->adcAddress = ADC2_ADDR;
+    adcInput4->inputIndex = ADC_INPUT_2;
+
+    for (uint8_t i = 0; i < ADC_COUNT; ++i)
+    {
+        InputState_t *adcInput = getInputState(i);
+        adcInput->qInputValue = xQueueCreateStatic(1, sizeof(uint16_t), adcInput->qInputValueStorage, &(adcInput->qInputValueQueueStruct));
+        adcInput->qInputTick = xQueueCreateStatic(1, sizeof(uint32_t), adcInput->qInputTicksStorage, &(adcInput->qInputTicksQueueStruct));
+
+        QueueHandle_t *inputQueue = getInputQueue(i);
+        *inputQueue = adcInput->qInputValue;
+
+        QueueHandle_t *ticksQueue = getTicksQueue(i);
+        *ticksQueue = adcInput->qInputTick;
+    }
+
     static uint32_t ADCTask_buffer[ADCTASK_STACK_SIZE];
     static StaticTask_t ADCTask_ControlBlock;
     static const osThreadAttr_t ADCTask_attributes = {
@@ -226,58 +276,8 @@ void configureADC(uint16_t configuration, const InputState_t *const input)
 }
 
 /* Tasks */
-static InputState_t *getInputState(uint8_t inputIdx)
-{
-    static InputState_t adcInput[ADC_COUNT] = {0};
-    InputState_t *inputState = NULL;
-    if (inputIdx >= ADC_COUNT)
-    {
-        NON_FATAL_ERROR(INVALID_ADC_NUMBER);
-        inputState = &(adcInput[0]); /* A safe fallback */
-    }
-    else
-    {
-        inputState = &(adcInput[inputIdx]);
-    }
-    return inputState;
-}
-
 void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
 {
-    const uint8_t INPUT_1 = 0;
-    const uint8_t INPUT_2 = 1;
-    const uint8_t INPUT_3 = 2;
-    const uint8_t INPUT_4 = 3;
-
-    InputState_t *adcInput1 = getInputState(INPUT_1);
-    adcInput1->adcAddress = ADC1_ADDR;
-    adcInput1->inputIndex = ADC_INPUT_1;
-
-    InputState_t *adcInput2 = getInputState(INPUT_2);
-    adcInput2->adcAddress = ADC1_ADDR;
-    adcInput2->inputIndex = ADC_INPUT_2;
-
-    InputState_t *adcInput3 = getInputState(INPUT_3);
-    adcInput3->adcAddress = ADC2_ADDR;
-    adcInput3->inputIndex = ADC_INPUT_1;
-
-    InputState_t *adcInput4 = getInputState(INPUT_4);
-    adcInput4->adcAddress = ADC2_ADDR;
-    adcInput4->inputIndex = ADC_INPUT_2;
-
-    for (uint8_t i = 0; i < ADC_COUNT; ++i)
-    {
-        InputState_t *adcInput = getInputState(i);
-        adcInput->qInputValue = xQueueCreateStatic(1, sizeof(uint16_t), adcInput->qInputValueStorage, &(adcInput->qInputValueQueueStruct));
-        adcInput->qInputTick = xQueueCreateStatic(1, sizeof(uint32_t), adcInput->qInputTicksStorage, &(adcInput->qInputTicksQueueStruct));
-
-        QueueHandle_t *inputQueue = getInputQueue(i);
-        *inputQueue = adcInput->qInputValue;
-
-        QueueHandle_t *ticksQueue = getTicksQueue(i);
-        *ticksQueue = adcInput->qInputTick;
-    }
-
     while (true) /* Loop forever as we are an RTOS task */
     {
         for (uint8_t i = 0; i < ADC_COUNT; ++i)

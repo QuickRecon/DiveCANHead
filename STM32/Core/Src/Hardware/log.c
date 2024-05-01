@@ -12,7 +12,7 @@
 
 extern SD_HandleTypeDef hsd1;
 
-#define LOGQUEUE_LENGTH 2
+#define LOGQUEUE_LENGTH 10
 #define FILENAME_LENGTH 13
 #define MAXPATH_LENGTH 255
 
@@ -88,9 +88,9 @@ static osThreadId_t *getOSThreadId(void)
     return &LogTaskHandle;
 }
 
-static QueueHandle_t *getQueueHandle(void)
+static osMessageQueueId_t *getQueueHandle(void)
 {
-    static QueueHandle_t PrintQueue;
+    static osMessageQueueId_t PrintQueue;
     return &PrintQueue;
 }
 
@@ -211,31 +211,33 @@ extern UART_HandleTypeDef huart2;
 void LogTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
 {
     FIL LOG_FILES[LOGFILE_COUNT] = {0};
-    QueueHandle_t logQueue = *(getQueueHandle());
+    osMessageQueueId_t *logQueue = getQueueHandle();
     FRESULT res = FR_OK; /* FatFs function common result code */
 
     uint8_t currSyncFile = 0;
 
-    for (uint32_t i = 0; (i < LOGFILE_COUNT) && (FR_OK == res); ++i)
+    for (uint32_t i = 0; i < LOGFILE_COUNT; ++i)
     {
-        res = f_open(&(LOG_FILES[i]), LOG_FILENAMES[i], FA_OPEN_APPEND | FA_WRITE);
-        if (res != FR_OK)
+        if (FR_OK == res)
         {
-            blocking_serial_printf("Failed to open %s", LOG_FILENAMES[i]);
+            res = f_open(&(LOG_FILES[i]), LOG_FILENAMES[i], FA_OPEN_APPEND | FA_WRITE);
+            if (res != FR_OK)
+            {
+                blocking_serial_printf("Failed to open %s", LOG_FILENAMES[i]);
+            }
         }
     }
 
-    //uint32_t lastSynced = HAL_GetTick();
+    uint32_t lastSynced = HAL_GetTick();
     while (FR_OK == res)
     {
         LogQueue_t logItem = {0};
         /* Wait until there is an item in the queue, if there is then Log it*/
-        if (pdTRUE == xQueueReceive(logQueue, &logItem, TIMEOUT_4s_TICKS))
+        if (osOK == osMessageQueueGet(*logQueue, &logItem, NULL, TIMEOUT_4s_TICKS))
         {
             uint32_t expectedLength = strnlen((char *)logItem.string, LOG_LINE_LENGTH);
             uint32_t byteswritten = 0;
             res = f_write(&(LOG_FILES[logItem.eventType]), logItem.string, expectedLength, (void *)&byteswritten);
-            (void)HAL_UART_Transmit(&huart2, (uint8_t *)(logItem.string), (uint16_t)strnlen(logItem.string, LOG_LINE_LENGTH), TIMEOUT_4s_TICKS);
             if (expectedLength > byteswritten)
             {
                 /* Out of space (file grown > 4Gig?)*/
@@ -247,36 +249,26 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
             {
                 blocking_serial_printf("Cannot write %s\r\n", LOG_FILENAMES[logItem.eventType]);
             }
-            else
-            {
-                // blocking_serial_printf("Written %s\r\n", LOG_FILENAMES[logItem.eventType]);
-            }
+        }
+        else
+        {
+            osDelay(TIMEOUT_4s_TICKS);
+        }
 
-            res = f_sync(&(LOG_FILES[logItem.eventType]));
+        if ((HAL_GetTick() - lastSynced) > TIMEOUT_4s)
+        {
+            res = f_sync(&(LOG_FILES[currSyncFile]));
+            currSyncFile = (currSyncFile + 1) % LOGFILE_COUNT;
+            lastSynced = HAL_GetTick();
             if (res != FR_OK)
             {
                 blocking_serial_printf("Failed to sync %s", LOG_FILENAMES[currSyncFile]);
             }
             else
             {
-                //blocking_serial_printf("synced %s\r\n", LOG_FILENAMES[currSyncFile]);
+                blocking_serial_printf("synced %s\r\n", LOG_FILENAMES[currSyncFile]);
             }
         }
-
-        // if ((HAL_GetTick() - lastSynced) > TIMEOUT_4s)
-        // {
-        //     res = f_sync(&(LOG_FILES[currSyncFile]));
-        //     currSyncFile = (currSyncFile + 1) % LOGFILE_COUNT;
-        //     lastSynced = HAL_GetTick();
-        //     if (res != FR_OK)
-        //     {
-        //         blocking_serial_printf("Failed to sync %s", LOG_FILENAMES[currSyncFile]);
-        //     }
-        //     else
-        //     {
-        //         blocking_serial_printf("synced %s\r\n", LOG_FILENAMES[currSyncFile]);
-        //     }
-        // }
     }
 
     NON_FATAL_ERROR_DETAIL(LOGGING_ERR, res);
@@ -284,6 +276,21 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
 }
 
 void InitLog(void)
+{
+    /* Setup print queue */
+    osMessageQueueId_t *LogQueue = getQueueHandle();
+    static uint8_t LogQueue_Storage[LOGQUEUE_LENGTH * sizeof(LogQueue_t)];
+    static StaticQueue_t LogQueue_ControlBlock = {0};
+    const osMessageQueueAttr_t LogQueue_Attributes = {
+        .name = "LogQueue",
+        .cb_mem = &LogQueue_ControlBlock,
+        .cb_size = sizeof(LogQueue_ControlBlock),
+        .mq_mem = &LogQueue_Storage,
+        .mq_size = sizeof(LogQueue_Storage)};
+    *LogQueue = osMessageQueueNew(LOGQUEUE_LENGTH, sizeof(LogQueue_t), &LogQueue_Attributes);
+}
+
+void StartLogTask(void)
 {
     FRESULT res = FR_OK; /* FatFs function common result code */
 
@@ -312,12 +319,6 @@ void InitLog(void)
                 .tz_module = 0,
                 .reserved = 0};
 
-            /* Setup print queue */
-            static StaticQueue_t LogQueue_QueueStruct;
-            static uint8_t LogQueue_Storage[LOGQUEUE_LENGTH * sizeof(LogQueue_t)];
-            QueueHandle_t *LogQueue = getQueueHandle();
-            *LogQueue = xQueueCreateStatic(LOGQUEUE_LENGTH, sizeof(LogQueue_t), LogQueue_Storage, &LogQueue_QueueStruct);
-
             osThreadId_t *LogTaskHandle = getOSThreadId();
             *LogTaskHandle = osThreadNew(LogTask, NULL, &LogTask_attributes);
         }
@@ -336,14 +337,12 @@ bool logRunning(void)
              (osThreadGetState(*logTask) == osThreadTerminated));
 }
 
-static LogQueue_t enQueueItem = {0};
-
 void LogMsg(const char *msg)
 {
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
-
+    static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
 
@@ -362,7 +361,7 @@ void LogMsg(const char *msg)
         /* Build the string and queue it if its legal */
         if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "[%0.4f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
         {
-            xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+            (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
         }
     }
     else
@@ -371,17 +370,18 @@ void LogMsg(const char *msg)
     }
 }
 
-void DiveO2CellSample(uint8_t cellNumber,int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity)
+void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity)
 {
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
+    static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
     if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
     {
-        xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+        (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
     }
 }
 
@@ -390,12 +390,13 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
+    static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
 
     /* Build the string and queue it if its legal */
     if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)))
     {
-        xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
+        (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
     }
 }
