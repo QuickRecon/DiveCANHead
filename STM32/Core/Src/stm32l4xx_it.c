@@ -32,7 +32,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -93,40 +92,35 @@ void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
 
-  volatile unsigned long _CFSR;
-  volatile unsigned long _HFSR;
-  volatile unsigned long _DFSR;
-  volatile unsigned long _AFSR;
-  volatile unsigned long _BFAR;
-  volatile unsigned long _MMAR;
 
-  // Configurable Fault Status Register
-  // Consists of MMSR, BFSR and UFSR
-  _CFSR = (*((volatile unsigned long *)(0xE000ED28)));
+  /* Configurable Fault Status Register */
+  /* Consists of MMSR, BFSR and UFSR */
+  volatile uint32_t cfsr = (*((volatile uint32_t *)(0xE000ED28U)));
 
-  // Hard Fault Status Register
-  _HFSR = (*((volatile unsigned long *)(0xE000ED2C)));
+  /* Hard Fault Status Register */
+  volatile uint32_t hfsr = (*((volatile uint32_t *)(0xE000ED2CU)));
 
-  // Debug Fault Status Register
-  _DFSR = (*((volatile unsigned long *)(0xE000ED30)));
+  /* Debug Fault Status Register */
+  volatile uint32_t dfsr = (*((volatile uint32_t *)(0xE000ED30U)));
 
-  // Auxiliary Fault Status Register
-  _AFSR = (*((volatile unsigned long *)(0xE000ED3C)));
+  /* Auxiliary Fault Status Register */
+  volatile uint32_t afsr = (*((volatile uint32_t *)(0xE000ED3CU)));
 
-  // Read the Fault Address Registers. These may not contain valid values.
-  // Check BFARVALID/MMARVALID to see if they are valid values
-  // MemManage Fault Address Register
-  _MMAR = (*((volatile unsigned long *)(0xE000ED34)));
-  // Bus Fault Address Register
-  _BFAR = (*((volatile unsigned long *)(0xE000ED38)));
+  /* Read the Fault Address Registers. These may not contain valid values. */
+  /* Check BFARVALID/MMARVALID to see if they are valid values */
+  /* Bus Fault Address Register */
+  volatile uint32_t bfar = (*((volatile uint32_t *)(0xE000ED38U)));
 
-  blocking_serial_printf("CFSR: 0x%x\r\n", _CFSR);
-  blocking_serial_printf("HFSR: 0x%x\r\n", _HFSR);
-  blocking_serial_printf("DFSR: 0x%x\r\n", _DFSR);
-  blocking_serial_printf("AFSR: 0x%x\r\n", _AFSR);
-  blocking_serial_printf("MMAR: 0x%x\r\n", _MMAR);
-  blocking_serial_printf("BFAR: 0x%x\r\n", _BFAR);
-  
+  /* MemManage Fault Address Register */
+  volatile uint32_t mmar = (*((volatile uint32_t *)(0xE000ED34U)));
+
+  blocking_serial_printf("CFSR: 0x%x\r\n", cfsr);
+  blocking_serial_printf("HFSR: 0x%x\r\n", hfsr);
+  blocking_serial_printf("DFSR: 0x%x\r\n", dfsr);
+  blocking_serial_printf("AFSR: 0x%x\r\n", afsr);
+  blocking_serial_printf("MMAR: 0x%x\r\n", mmar);
+  blocking_serial_printf("BFAR: 0x%x\r\n", bfar);
+
   FATAL_ERROR(HARD_FAULT);
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
