@@ -111,7 +111,6 @@ const osThreadAttr_t perfMonitor_attributes = {
     .priority = (osPriority_t)osPriorityLow1,
 };
 /* USER CODE BEGIN PV */
-CAN_FilterTypeDef sFilterConfig; /* declare CAN filter structure */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -137,9 +136,9 @@ void PerfMonitor(void *argument);
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 
-/** @brief  Possible STM32 system reset causes  
-*/
-typedef enum reset_cause_e
+/** @brief  Possible STM32 system reset causes
+ */
+typedef enum
 {
   RESET_CAUSE_UNKNOWN = 0,
   RESET_CAUSE_LOW_POWER_RESET,
@@ -154,41 +153,41 @@ typedef enum reset_cause_e
 /** @brief      Obtain the STM32 system reset cause
  ** @param      None
  ** @return     The system reset cause
-*/
+ */
 reset_cause_t reset_cause_get(void)
 {
   reset_cause_t reset_cause = RESET_CAUSE_UNKNOWN;
 
-  if (__HAL_RCC_GET_FLAG(RCC_FLAG_LPWRRST))
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_LPWRRST) != 0)
   {
     reset_cause = RESET_CAUSE_LOW_POWER_RESET;
   }
-  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_WWDGRST))
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_WWDGRST) != 0)
   {
     reset_cause = RESET_CAUSE_WINDOW_WATCHDOG_RESET;
   }
-  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST))
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST) != 0)
   {
     reset_cause = RESET_CAUSE_INDEPENDENT_WATCHDOG_RESET;
   }
-  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST))
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST) != 0)
   {
     /* This reset is induced by calling the ARM CMSIS */
     /* `NVIC_SystemReset()` function! */
     reset_cause = RESET_CAUSE_SOFTWARE_RESET;
   }
-  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_FWRST))
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_FWRST) != 0)
   {
     reset_cause = RESET_CAUSE_FIREWALL_RESET;
   }
-  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST))
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST) != 0)
   {
     reset_cause = RESET_CAUSE_EXTERNAL_RESET_PIN_RESET;
   }
   /* Needs to come *after* checking the `RCC_FLAG_PORRST` flag in order to */
   /* ensure first that the reset cause is NOT a POR/PDR reset. See note */
   /* below. */
-  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_BORRST))
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_BORRST) != 0)
   {
     reset_cause = RESET_CAUSE_BROWNOUT_RESET;
   }
@@ -199,7 +198,7 @@ reset_cause_t reset_cause_get(void)
 
   /* Clear all the reset flags or else they will remain set during future */
   /* resets until system power is fully removed. */
-  __HAL_RCC_CLEAR_RESET_FLAGS();
+  (void)__HAL_RCC_CLEAR_RESET_FLAGS();
 
   return reset_cause;
 }
@@ -220,11 +219,11 @@ reset_cause_t reset_cause_get(void)
  * reset cause is NOT a POR/PDR reset. */
 
 /** @brief      Obtain the system reset cause as an ASCII-printable name string
-  *             from a reset cause type
-  *  @param[in]  reset_cause     The previously-obtained system reset cause
-  * @return     A null-terminated ASCII name string describing the system
-  *             reset cause
-*/
+ *             from a reset cause type
+ *  @param[in]  reset_cause     The previously-obtained system reset cause
+ * @return     A null-terminated ASCII name string describing the system
+ *             reset cause
+ */
 const char *reset_cause_get_name(reset_cause_t reset_cause)
 {
   const char *reset_cause_name = NULL;
@@ -348,7 +347,6 @@ int main(void)
   (void)HAL_FLASH_Unlock();
   (void)EE_Init(EE_FORCED_ERASE);
   (void)HAL_FLASH_Lock();
-
 
   /* Set our power bus */
   SetVBusMode(deviceConfig.fields.powerMode);
@@ -604,6 +602,7 @@ static void MX_CAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN1_Init 2 */
+  CAN_FilterTypeDef sFilterConfig = {0};
   sFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0; /* set fifo assignment */
   sFilterConfig.FilterIdHigh = 0;
   sFilterConfig.FilterIdLow = 0;
@@ -1219,13 +1218,13 @@ void SDInitTask(void *argument)
 void PerfMonitor(void *argument)
 {
   /* USER CODE BEGIN PerfMonitor */
-  unsigned long ulTotalRunTime;
-  float runtime_percent;
+  unsigned long ulTotalRunTime = 0;
+  float runtime_percent = 0;
 
   /* Infinite loop */
   for (;;)
   {
-    (void)osDelay(5000);
+    (void)osDelay(TIMEOUT_5s);
 
     UBaseType_t uxArraySize = uxTaskGetNumberOfTasks();
     TaskStatus_t *pxTaskStatusArray = pvPortMalloc(uxArraySize * sizeof(TaskStatus_t)); /* a little bit scary! */
@@ -1241,7 +1240,7 @@ void PerfMonitor(void *argument)
       for (UBaseType_t x = 0; x < uxArraySize; ++x)
       {
 
-        runtime_percent = (float)(100 * (float)pxTaskStatusArray[x].ulRunTimeCounter / (float)ulTotalRunTime);
+        runtime_percent = 100.0f * (float)pxTaskStatusArray[x].ulRunTimeCounter / (float)ulTotalRunTime;
 
         blocking_serial_printf("Task %.2lu: %-17s %2d %7.4f %4i\r\n", x,
                                pxTaskStatusArray[x].pcTaskName,
