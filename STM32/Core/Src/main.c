@@ -137,6 +137,131 @@ void PerfMonitor(void *argument);
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 
+/** @brief  Possible STM32 system reset causes  
+*/
+typedef enum reset_cause_e
+{
+  RESET_CAUSE_UNKNOWN = 0,
+  RESET_CAUSE_LOW_POWER_RESET,
+  RESET_CAUSE_WINDOW_WATCHDOG_RESET,
+  RESET_CAUSE_INDEPENDENT_WATCHDOG_RESET,
+  RESET_CAUSE_SOFTWARE_RESET,
+  RESET_CAUSE_FIREWALL_RESET,
+  RESET_CAUSE_EXTERNAL_RESET_PIN_RESET,
+  RESET_CAUSE_BROWNOUT_RESET,
+} reset_cause_t;
+
+/** @brief      Obtain the STM32 system reset cause
+ ** @param      None
+ ** @return     The system reset cause
+*/
+reset_cause_t reset_cause_get(void)
+{
+  reset_cause_t reset_cause = RESET_CAUSE_UNKNOWN;
+
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_LPWRRST))
+  {
+    reset_cause = RESET_CAUSE_LOW_POWER_RESET;
+  }
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_WWDGRST))
+  {
+    reset_cause = RESET_CAUSE_WINDOW_WATCHDOG_RESET;
+  }
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST))
+  {
+    reset_cause = RESET_CAUSE_INDEPENDENT_WATCHDOG_RESET;
+  }
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST))
+  {
+    /* This reset is induced by calling the ARM CMSIS */
+    /* `NVIC_SystemReset()` function! */
+    reset_cause = RESET_CAUSE_SOFTWARE_RESET;
+  }
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_FWRST))
+  {
+    reset_cause = RESET_CAUSE_FIREWALL_RESET;
+  }
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST))
+  {
+    reset_cause = RESET_CAUSE_EXTERNAL_RESET_PIN_RESET;
+  }
+  /* Needs to come *after* checking the `RCC_FLAG_PORRST` flag in order to */
+  /* ensure first that the reset cause is NOT a POR/PDR reset. See note */
+  /* below. */
+  else if (__HAL_RCC_GET_FLAG(RCC_FLAG_BORRST))
+  {
+    reset_cause = RESET_CAUSE_BROWNOUT_RESET;
+  }
+  else
+  {
+    reset_cause = RESET_CAUSE_UNKNOWN;
+  }
+
+  /* Clear all the reset flags or else they will remain set during future */
+  /* resets until system power is fully removed. */
+  __HAL_RCC_CLEAR_RESET_FLAGS();
+
+  return reset_cause;
+}
+
+/* Note: any of the STM32 Hardware Abstraction Layer (HAL) Reset and Clock
+ * Controller (RCC) header files, such as
+ * "STM32Cube_FW_F7_V1.12.0/Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_rcc.h",
+ * "STM32Cube_FW_F2_V1.7.0/Drivers/STM32F2xx_HAL_Driver/Inc/stm32f2xx_hal_rcc.h",
+ * etc., indicate that the brownout flag, `RCC_FLAG_BORRST`, will be set in
+ * the event of a "POR/PDR or BOR reset". This means that a Power-On Reset
+ * (POR), Power-Down Reset (PDR), OR Brownout Reset (BOR) will trip this flag.
+ * See the doxygen just above their definition for the
+ * `__HAL_RCC_GET_FLAG()` macro to see this:
+ *      "@arg RCC_FLAG_BORRST: POR/PDR or BOR reset." <== indicates the Brownout
+ *      Reset flag will *also* be set in the event of a POR/PDR.
+ * Therefore, you must check the Brownout Reset flag, `RCC_FLAG_BORRST`, *after*
+ * first checking the `RCC_FLAG_PORRST` flag in order to ensure first that the
+ * reset cause is NOT a POR/PDR reset. */
+
+/** @brief      Obtain the system reset cause as an ASCII-printable name string
+  *             from a reset cause type
+  *  @param[in]  reset_cause     The previously-obtained system reset cause
+  * @return     A null-terminated ASCII name string describing the system
+  *             reset cause
+*/
+const char *reset_cause_get_name(reset_cause_t reset_cause)
+{
+  const char *reset_cause_name = NULL;
+
+  switch (reset_cause)
+  {
+  case RESET_CAUSE_UNKNOWN:
+    reset_cause_name = "UNKNOWN";
+    break;
+  case RESET_CAUSE_LOW_POWER_RESET:
+    reset_cause_name = "LOW_POWER_RESET";
+    break;
+  case RESET_CAUSE_WINDOW_WATCHDOG_RESET:
+    reset_cause_name = "WINDOW_WATCHDOG_RESET";
+    break;
+  case RESET_CAUSE_INDEPENDENT_WATCHDOG_RESET:
+    reset_cause_name = "INDEPENDENT_WATCHDOG_RESET";
+    break;
+  case RESET_CAUSE_SOFTWARE_RESET:
+    reset_cause_name = "SOFTWARE_RESET";
+    break;
+  case RESET_CAUSE_FIREWALL_RESET:
+    reset_cause_name = "FIREWALL_RESET";
+    break;
+  case RESET_CAUSE_EXTERNAL_RESET_PIN_RESET:
+    reset_cause_name = "EXTERNAL_RESET_PIN_RESET";
+    break;
+  case RESET_CAUSE_BROWNOUT_RESET:
+    reset_cause_name = "BROWNOUT_RESET (BOR)";
+    break;
+  default:
+    reset_cause_name = "UNDEFINED";
+  }
+
+  return reset_cause_name;
+}
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -158,7 +283,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+  const reset_cause_t reset_cause = reset_cause_get();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -212,17 +337,18 @@ int main(void)
 
   HAL_GPIO_WritePin(SOLENOID_GPIO_Port, SOLENOID_Pin, GPIO_PIN_RESET);
 
+  /* Load Config */
+  const Configuration_t deviceConfig = loadConfiguration();
+
   InitLog();
-  InitPrinter();
-  serial_printf("Booting...\r\n");
+  InitPrinter(deviceConfig.fields.enableUartPrinting);
+  serial_printf("Booting, Last Reset Reason(%s)\r\n", reset_cause_get_name(reset_cause));
 
   /* Set up flash erase */
   (void)HAL_FLASH_Unlock();
   (void)EE_Init(EE_FORCED_ERASE);
   (void)HAL_FLASH_Lock();
 
-  /* Load Config */
-  const Configuration_t deviceConfig = loadConfiguration();
 
   /* Set our power bus */
   SetVBusMode(deviceConfig.fields.powerMode);
@@ -268,7 +394,7 @@ int main(void)
   sDInitTaskHandle = osThreadNew(SDInitTask, NULL, &sDInitTask_attributes);
 
   /* creation of perfMonitor */
-  //perfMonitorHandle = osThreadNew(PerfMonitor, NULL, &perfMonitor_attributes);
+  /* perfMonitorHandle = osThreadNew(PerfMonitor, NULL, &perfMonitor_attributes); */
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -1102,7 +1228,7 @@ void PerfMonitor(void *argument)
     (void)osDelay(5000);
 
     UBaseType_t uxArraySize = uxTaskGetNumberOfTasks();
-    TaskStatus_t *pxTaskStatusArray = pvPortMalloc(uxArraySize * sizeof(TaskStatus_t)); // a little bit scary!
+    TaskStatus_t *pxTaskStatusArray = pvPortMalloc(uxArraySize * sizeof(TaskStatus_t)); /* a little bit scary! */
 
     if (pxTaskStatusArray != NULL)
     {
@@ -1118,9 +1244,9 @@ void PerfMonitor(void *argument)
         runtime_percent = (float)(100 * (float)pxTaskStatusArray[x].ulRunTimeCounter / (float)ulTotalRunTime);
 
         blocking_serial_printf("Task %.2lu: %-17s %2d %7.4f %4i\r\n", x,
-                      pxTaskStatusArray[x].pcTaskName,
-                      pxTaskStatusArray[x].eCurrentState, runtime_percent,
-                      pxTaskStatusArray[x].usStackHighWaterMark);
+                               pxTaskStatusArray[x].pcTaskName,
+                               pxTaskStatusArray[x].eCurrentState, runtime_percent,
+                               pxTaskStatusArray[x].usStackHighWaterMark);
       }
 
       vPortFree(pxTaskStatusArray);
