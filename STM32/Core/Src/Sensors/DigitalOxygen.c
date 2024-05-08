@@ -223,9 +223,9 @@ void decodeCellMessage(void *arg)
             msgBuf[strcspn(msgBuf, "\r\n")] = 0;
 
             const char *const sep = " ";
-            char* saveptr = NULL;
+            char *saveptr = NULL;
             const char *const CMD_Name = strtok_r(msgBuf, sep, &saveptr);
-            
+
             /* Decode either a #DRAW or a #DOXY, we don't care about anything else yet*/
             if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
             {
@@ -233,12 +233,11 @@ void decodeCellMessage(void *arg)
                 const char *const temperature_str = strtok_r(NULL, sep, &saveptr);
                 const char *const err_str = strtok_r(NULL, sep, &saveptr);
 
-
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
                 cell->status = cellErrorCheck(err_str);
 
-                DiveO2CellSample(cell->cellNumber, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), 0,0,0,0,0);
+                DiveO2CellSample(cell->cellNumber, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), 0, 0, 0, 0, 0);
 
                 cell->ticksOfLastPPO2 = HAL_GetTick();
             }
@@ -252,7 +251,6 @@ void decodeCellMessage(void *arg)
                 const char *const ambientLight_str = strtok_r(NULL, sep, &saveptr);
                 const char *const pressure_str = strtok_r(NULL, sep, &saveptr);
                 const char *const humidity_str = strtok_r(NULL, sep, &saveptr);
-
 
                 cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
                 cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);

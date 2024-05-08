@@ -162,6 +162,6 @@ void SetBattery(bool enable)
 }
 
 BatteryV_t getVoltage(PowerSource_t powerSource){
-    /* TODO: Implement */
+    /* TODO(Aren): Implement */
     return 33;
 }
