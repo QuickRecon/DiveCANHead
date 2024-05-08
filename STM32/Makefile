@@ -39,6 +39,7 @@ C_SOURCES =  \
 Core/Src/main.c \
 Core/Src/HAL_callbacks.c \
 Core/Src/errors.c \
+Core/Src/configuration.c \
 Core/Src/Sensors/AnalogOxygen.c \
 Core/Src/Sensors/DigitalOxygen.c \
 Core/Src/Sensors/OxygenCell.c \
@@ -51,6 +52,7 @@ Core/Src/DiveCAN/menu.c \
 Core/Src/DiveCAN/Transciever.c \
 Core/Src/DiveCAN/DiveCAN.c \
 Core/Src/DiveCAN/PPO2Transmitter.c \
+Core/Src/PPO2Control/PPO2Control.c \
 Core/Src/stm32l4xx_it.c \
 Core/Src/stm32l4xx_hal_msp.c \
 Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_adc.c \

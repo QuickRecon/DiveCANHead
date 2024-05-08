@@ -33,6 +33,7 @@
 #include "DiveCAN/DiveCAN.h"
 #include "DiveCAN/PPO2Transmitter.h"
 #include "Hardware/log.h"
+#include "configuration.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -220,17 +221,20 @@ int main(void)
   (void)EE_Init(EE_FORCED_ERASE);
   (void)HAL_FLASH_Lock();
 
+  /* Load Config */
+  const Configuration_t deviceConfig = loadConfiguration();
+
   /* Set our power bus */
-  SetVBusMode(MODE_CAN); /* TODO(Aren): THIS NEEDS TO CHANGE TO MODE_BATTERY BEFORE RELEASE */
+  SetVBusMode(deviceConfig.fields.powerMode);
 
   /* Kick off our threads */
   InitADCs();
 
   QueueHandle_t cells[3] = {0};
 
-  cells[CELL_1] = CreateCell(CELL_1, CELL_DIGITAL);
-  cells[CELL_2] = CreateCell(CELL_2, CELL_ANALOG);
-  cells[CELL_3] = CreateCell(CELL_3, CELL_ANALOG);
+  cells[CELL_1] = CreateCell(CELL_1, deviceConfig.fields.cell1);
+  cells[CELL_2] = CreateCell(CELL_2, deviceConfig.fields.cell2);
+  cells[CELL_3] = CreateCell(CELL_3, deviceConfig.fields.cell3);
 
   InitDiveCAN(&defaultDeviceSpec);
   InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
