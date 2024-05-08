@@ -63,6 +63,7 @@ extern "C"
     static const uint8_t CELL_1 = 0;
     static const uint8_t CELL_2 = 1;
     static const uint8_t CELL_3 = 2;
+    static const uint8_t CELL_COUNT = 3;
 
     /* Define some priority levels */
     /* The general rules are that data consumers should have a higher priority than data sources

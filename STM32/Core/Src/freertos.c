@@ -55,7 +55,7 @@ extern TIM_HandleTypeDef htim7;
 
 /* Hook prototypes */
 void configureTimerForRunTimeStats(void);
-unsigned long getRunTimeCounterValue(void);
+uint32_t getRunTimeCounterValue(void);
 void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
 
@@ -63,10 +63,10 @@ void vApplicationMallocFailedHook(void);
 /* Functions needed when configGENERATE_RUN_TIME_STATS is on */
 __weak void configureTimerForRunTimeStats(void)
 {
-  HAL_TIM_Base_Start_IT(&htim7);
+  (void)HAL_TIM_Base_Start_IT(&htim7);
 }
-extern volatile unsigned long ulHighFrequencyTimerTicks;
-__weak unsigned long getRunTimeCounterValue(void)
+extern volatile uint32_t ulHighFrequencyTimerTicks;
+__weak uint32_t getRunTimeCounterValue(void)
 {
   return ulHighFrequencyTimerTicks;
 }

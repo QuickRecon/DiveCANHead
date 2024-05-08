@@ -11,7 +11,7 @@ extern "C"
     {
         struct
         {
-            const unsigned int firmwareVersion : 8;
+            const uint8_t firmwareVersion : 8;
             CellType_t cell1 : 2;
             CellType_t cell2 : 2;
             CellType_t cell3 : 2;

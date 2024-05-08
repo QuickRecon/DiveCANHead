@@ -1,6 +1,8 @@
+#include "common.h"
 #include "configuration.h"
 
 const Configuration_t DefaultConfiguration = {.fields = {
+    .firmwareVersion = FIRMWARE_VERSION,
     .cell1 = CELL_DIGITAL,
     .cell2 = CELL_ANALOG,
     .cell3 = CELL_ANALOG,
@@ -23,7 +25,7 @@ bool ConfigurationValid(Configuration_t config){
      */
 
     /* Check cells are valid */
-    for(uint8_t i = 0; i < 3; ++i){
+    for(uint8_t i = 0; i < CELL_COUNT; ++i){
         valid = valid && CellValid(config, i);
     }
 
