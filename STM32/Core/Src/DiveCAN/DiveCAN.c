@@ -4,13 +4,14 @@
 #include "menu.h"
 #include "../Hardware/pwr_management.h"
 #include "../Hardware/printer.h"
+#include "../PPO2Control/PPO2Control.h"
 
 void CANTask(void *arg);
 void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
-void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t *const deviceSpec);
+void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 
@@ -24,12 +25,13 @@ static osThreadId_t *getOSThreadId(void)
     return &CANTaskHandle;
 }
 
-void InitDiveCAN(DiveCANDevice_t *deviceSpec)
+void InitDiveCAN(const DiveCANDevice_t * const deviceSpec)
 {
     InitRXQueue();
 
     static uint32_t CANTask_buffer[CANTASK_STACK_SIZE];
     static StaticTask_t CANTask_ControlBlock;
+    static DiveCANDevice_t taskDiveCANDevice;
     static const osThreadAttr_t CANTask_attributes = {
         .name = "CANTask",
         .attr_bits = osThreadDetached,
@@ -42,7 +44,8 @@ void InitDiveCAN(DiveCANDevice_t *deviceSpec)
         .reserved = 0};
 
     osThreadId_t *CANTaskHandle = getOSThreadId();
-    *CANTaskHandle = osThreadNew(CANTask, deviceSpec, &CANTask_attributes);
+    taskDiveCANDevice = *deviceSpec;
+    *CANTaskHandle = osThreadNew(CANTask, &taskDiveCANDevice, &CANTask_attributes);
     txStartDevice(DIVECAN_CONTROLLER, DIVECAN_SOLO);
 }
 
@@ -51,7 +54,7 @@ void InitDiveCAN(DiveCANDevice_t *deviceSpec)
 */
 void CANTask(void *arg)
 {
-    DiveCANDevice_t * const deviceSpec = (DiveCANDevice_t *)arg;
+    const DiveCANDevice_t * const deviceSpec = (DiveCANDevice_t *)arg;
 
     while (true)
     {
@@ -119,7 +122,7 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
     if (((message->id & DIVECAN_TYPE_MASK) == DIVECAN_CONTROLLER) || ((message->id & DIVECAN_TYPE_MASK) == DIVECAN_MONITOR))
     {
         txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
-        txStatus(devType, deviceSpec->batteryVoltage, deviceSpec->setpoint, DIVECAN_ERR_NONE);
+        txStatus(devType, getVoltage(SOURCE_DEFAULT), getSetpoint(), DIVECAN_ERR_NONE);
         txName(devType, deviceSpec->name);
     }
 }
@@ -139,9 +142,9 @@ void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
     ProcessMenu(message, deviceSpec);
 }
 
-void RespSetpoint(const DiveCANMessage_t *const message, DiveCANDevice_t * const deviceSpec)
+void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t * const deviceSpec)
 {
-    deviceSpec->setpoint = message->data[0];
+    setSetpoint(message->data[0]);
 }
 
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)

@@ -8,7 +8,7 @@ static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar 
 
 typedef struct
 {
-    DiveCANDevice_t *device;
+    DiveCANDevice_t * device;
     QueueHandle_t c1;
     QueueHandle_t c2;
     QueueHandle_t c3;
@@ -32,12 +32,16 @@ static osThreadId_t *getOSThreadId(void)
  * @param c2 QueueHandle_t for cell queue 2
  * @param c3 QueueHandle_t for cell queue 3
  */
-void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
+void InitPPO2TX(const DiveCANDevice_t * const device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
 {
     /* Need to init the struct locally then value copy into the static */
     static PPO2TXTask_params_t taskParams;
+    static DiveCANDevice_t taskDiveCANDevice;
+
+    taskDiveCANDevice = *device;
+
     PPO2TXTask_params_t params = {
-        .device = device,
+        .device = &taskDiveCANDevice,
         .c1 = c1,
         .c2 = c2,
         .c3 = c3};

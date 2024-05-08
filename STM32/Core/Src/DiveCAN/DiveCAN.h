@@ -16,15 +16,13 @@ extern "C" {
  */
 typedef struct
 {
-    const char name[9];
-    const DiveCANType_t type;
-    const DiveCANManufacturer_t manufacturerID;
-    const uint8_t firmwareVersion;
-    PPO2_t setpoint;
-    const BatteryV_t batteryVoltage;
+    char name[9];
+    DiveCANType_t type;
+    DiveCANManufacturer_t manufacturerID;
+    uint8_t firmwareVersion;
 } DiveCANDevice_t;
 
-void InitDiveCAN(DiveCANDevice_t *deviceSpec);
+void InitDiveCAN(const DiveCANDevice_t * const deviceSpec);
 
 #ifdef __cplusplus
 }

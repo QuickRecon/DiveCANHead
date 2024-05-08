@@ -141,13 +141,11 @@ static void MX_NVIC_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-DiveCANDevice_t deviceSpec = {
-    .name = "Rev2Ctl",
+static const DiveCANDevice_t defaultDeviceSpec = {
+    .name = "DC_HEAD",
     .type = DIVECAN_SOLO,
     .manufacturerID = DIVECAN_MANUFACTURER_SRI,
-    .firmwareVersion = 0x05,
-    .setpoint = 70,
-    .batteryVoltage = 55};
+    .firmwareVersion = 0x05};
 
 /* USER CODE END 0 */
 
@@ -234,8 +232,8 @@ int main(void)
   cells[CELL_2] = CreateCell(CELL_2, CELL_ANALOG);
   cells[CELL_3] = CreateCell(CELL_3, CELL_ANALOG);
 
-  InitDiveCAN(&deviceSpec);
-  InitPPO2TX(&deviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
+  InitDiveCAN(&defaultDeviceSpec);
+  InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
 
   /* USER CODE END 2 */
 

@@ -20,7 +20,6 @@ extern CAN_HandleTypeDef hcan1;
  */
 void Shutdown(void)
 {
-
     /* Pull what we can high to try and get the current consumption down */
     HAL_PWREx_EnablePullUpPullDownConfig();
 
@@ -160,4 +159,9 @@ void SetBattery(bool enable)
     }
 
     HAL_GPIO_WritePin(BATTERY_EN_GPIO_Port, BATTERY_EN_Pin, Pin);
+}
+
+BatteryV_t getVoltage(PowerSource_t powerSource){
+    /* TODO: Implement */
+    return 33;
 }

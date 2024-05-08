@@ -19,7 +19,7 @@ typedef struct
 } Consensus_t;
 
 
-void InitPPO2TX(DiveCANDevice_t *device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3);
+void InitPPO2TX(const DiveCANDevice_t * const device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3);
 
 #ifdef __cplusplus
 }
