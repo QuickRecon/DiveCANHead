@@ -25,6 +25,8 @@ typedef struct
 
 uint32_t HAL_GetTick();
 
+#define pdMS_TO_TICKS(x) x
+
 #ifdef __cplusplus
 }
 #endif

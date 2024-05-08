@@ -153,13 +153,18 @@ AS_DEFS =
 
 # Get the commit into a define
 COMMIT = \"$(shell git describe --always --dirty)\"
+
+# Firmware Version (Defines compatibility with configuration strings)
+FIRMWARE_VERSION = 5
+
 # C defines
 C_DEFS =  \
 -DUSE_HAL_DRIVER \
 -DSTM32L431xx \
 -DSTM32_THREAD_SAFE_STRATEGY=4 \
 -DENABLE_SD_DMA_CACHE_MAINTENANCE=0 \
--DCOMMIT_HASH=$(COMMIT)
+-DCOMMIT_HASH=$(COMMIT) \
+-DFIRMWARE_VERSION=$(FIRMWARE_VERSION)
 
 
 # AS includes

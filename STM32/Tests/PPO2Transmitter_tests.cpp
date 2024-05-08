@@ -99,18 +99,18 @@ void checkConsensus(Consensus_t expectedConsensus, OxygenCell_t *c1, OxygenCell_
         consensus = calculateConsensus(cells[POSITION_1], cells[POSITION_2], cells[POSITION_3]);
 
         // Verify our structure populates correctly
-        CHECK(consensus.statuses[0] == expectedConsensus.statuses[POSITION_1]);
-        CHECK(consensus.statuses[1] == expectedConsensus.statuses[POSITION_2]);
-        CHECK(consensus.statuses[2] == expectedConsensus.statuses[POSITION_3]);
-        CHECK(consensus.PPO2s[0] == expectedConsensus.PPO2s[POSITION_1]);
-        CHECK(consensus.PPO2s[1] == expectedConsensus.PPO2s[POSITION_2]);
-        CHECK(consensus.PPO2s[2] == expectedConsensus.PPO2s[POSITION_3]);
-        CHECK(consensus.millis[0] == expectedConsensus.millis[POSITION_1]);
-        CHECK(consensus.millis[1] == expectedConsensus.millis[POSITION_2]);
-        CHECK(consensus.millis[2] == expectedConsensus.millis[POSITION_3]);
-        CHECK(consensus.included[0] == expectedConsensus.included[POSITION_1]);
-        CHECK(consensus.included[1] == expectedConsensus.included[POSITION_2]);
-        CHECK(consensus.included[2] == expectedConsensus.included[POSITION_3]);
+        CHECK(consensus.statusArray[0] == expectedConsensus.statusArray[POSITION_1]);
+        CHECK(consensus.statusArray[1] == expectedConsensus.statusArray[POSITION_2]);
+        CHECK(consensus.statusArray[2] == expectedConsensus.statusArray[POSITION_3]);
+        CHECK(consensus.ppo2Array[0] == expectedConsensus.ppo2Array[POSITION_1]);
+        CHECK(consensus.ppo2Array[1] == expectedConsensus.ppo2Array[POSITION_2]);
+        CHECK(consensus.ppo2Array[2] == expectedConsensus.ppo2Array[POSITION_3]);
+        CHECK(consensus.milliArray[0] == expectedConsensus.milliArray[POSITION_1]);
+        CHECK(consensus.milliArray[1] == expectedConsensus.milliArray[POSITION_2]);
+        CHECK(consensus.milliArray[2] == expectedConsensus.milliArray[POSITION_3]);
+        CHECK(consensus.includeArray[0] == expectedConsensus.includeArray[POSITION_1]);
+        CHECK(consensus.includeArray[1] == expectedConsensus.includeArray[POSITION_2]);
+        CHECK(consensus.includeArray[2] == expectedConsensus.includeArray[POSITION_3]);
         CHECK(consensus.consensus == expectedConsensus.consensus);
     }
 }
@@ -124,7 +124,10 @@ public:
         PPO2TXTask_params_t *struct1 = (PPO2TXTask_params_t *)object1;
         PPO2TXTask_params_t *struct2 = (PPO2TXTask_params_t *)object2;
 
-        equal &= struct1->device == struct2->device;
+        equal &= strncmp(struct1->device->name, struct2->device->name, sizeof(struct1->device->name)) == 0;
+        equal &= struct1->device->type == struct2->device->type;
+        equal &= struct1->device->manufacturerID == struct2->device->manufacturerID;
+        equal &= struct1->device->firmwareVersion == struct2->device->firmwareVersion;
         equal &= struct1->c1 == struct2->c1;
         equal &= struct1->c2 == struct2->c2;
         equal &= struct1->c3 == struct2->c3;
@@ -189,21 +192,21 @@ TEST(PPO2Transmitter, TaskTXsValues)
                                      .ppo2 = 90,
                                      .millivolts = 11,
                                      .status = CELL_OK,
-                                     .data_time = 0}};
+                                     .dataTime = 0}};
     QueueDefinition c2_struct = {.cellData = {
                                      .cellNumber = 1,
                                      .type = CELL_ANALOG,
                                      .ppo2 = 110,
                                      .millivolts = 12,
                                      .status = CELL_OK,
-                                     .data_time = 0}};
+                                     .dataTime = 0}};
     QueueDefinition c3_struct = {.cellData = {
                                      .cellNumber = 2,
                                      .type = CELL_ANALOG,
                                      .ppo2 = 100,
                                      .millivolts = 13,
                                      .status = CELL_OK,
-                                     .data_time = 0}};
+                                     .dataTime = 0}};
 
     DiveCANDevice_t mockDevice = {
         .name = "test",
@@ -249,13 +252,13 @@ TEST(PPO2Transmitter, setFailedCellsValues_FFsFailedCells)
     for (uint8_t i = 0; i < 8; ++i)
     {
         Consensus_t consensus = {
-            .statuses = {(FailedPermutations[i][0] == 0) ? CELL_OK : CELL_FAIL,
+            .statusArray = {(FailedPermutations[i][0] == 0) ? CELL_OK : CELL_FAIL,
                          (FailedPermutations[i][1] == 0) ? CELL_OK : CELL_FAIL,
                          (FailedPermutations[i][2] == 0) ? CELL_OK : CELL_FAIL},
-            .PPO2s = {referencePPO2Vals[0], referencePPO2Vals[1], referencePPO2Vals[2]},
-            .millis = {0, 0, 0},
+            .ppo2Array = {referencePPO2Vals[0], referencePPO2Vals[1], referencePPO2Vals[2]},
+            .milliArray = {0, 0, 0},
             .consensus = 0,
-            .included = {true, true, true}};
+            .includeArray = {true, true, true}};
 
         mock().expectOneCall("isCalibrating");
         setFailedCellsValues(&consensus);
@@ -264,11 +267,11 @@ TEST(PPO2Transmitter, setFailedCellsValues_FFsFailedCells)
         {
             if (FailedPermutations[i][j] == 1)
             {
-                CHECK(consensus.PPO2s[j] == 0xFF);
+                CHECK(consensus.ppo2Array[j] == 0xFF);
             }
             else
             {
-                CHECK(consensus.PPO2s[j] == referencePPO2Vals[j]);
+                CHECK(consensus.ppo2Array[j] == referencePPO2Vals[j]);
             }
         }
     }
@@ -291,13 +294,13 @@ TEST(PPO2Transmitter, setFailedCellsValues_FFsCalNeededCells)
     for (uint8_t i = 0; i < 8; ++i)
     {
         Consensus_t consensus = {
-            .statuses = {(FailedPermutations[i][0] == 0) ? CELL_OK : CELL_NEED_CAL,
+            .statusArray = {(FailedPermutations[i][0] == 0) ? CELL_OK : CELL_NEED_CAL,
                          (FailedPermutations[i][1] == 0) ? CELL_OK : CELL_NEED_CAL,
                          (FailedPermutations[i][2] == 0) ? CELL_OK : CELL_NEED_CAL},
-            .PPO2s = {referencePPO2Vals[0], referencePPO2Vals[1], referencePPO2Vals[2]},
-            .millis = {0, 0, 0},
+            .ppo2Array = {referencePPO2Vals[0], referencePPO2Vals[1], referencePPO2Vals[2]},
+            .milliArray = {0, 0, 0},
             .consensus = 0,
-            .included = {true, true, true}};
+            .includeArray = {true, true, true}};
 
         mock().expectOneCall("isCalibrating");
         setFailedCellsValues(&consensus);
@@ -309,14 +312,14 @@ TEST(PPO2Transmitter, setFailedCellsValues_FFsCalNeededCells)
         {
             for (uint8_t j = 0; j < 3; ++j)
             {
-                CHECK(consensus.PPO2s[j] == referencePPO2Vals[j]);
+                CHECK(consensus.ppo2Array[j] == referencePPO2Vals[j]);
             }
         }
         else
         {
             for (uint8_t j = 0; j < 3; ++j)
             {
-                CHECK(consensus.PPO2s[j] == 0xFF);
+                CHECK(consensus.ppo2Array[j] == 0xFF);
             }
         }
     }
@@ -330,28 +333,28 @@ TEST(PPO2Transmitter, calculateConsensus_AveragesCells)
         .ppo2 = 110,
         .millivolts = 12,
         .status = CELL_OK,
-        .data_time = 0};
+        .dataTime = 0};
     OxygenCell_t c2 = {
         .cellNumber = 1,
         .type = CELL_ANALOG,
         .ppo2 = 120,
         .millivolts = 13,
         .status = CELL_OK,
-        .data_time = 0};
+        .dataTime = 0};
     OxygenCell_t c3 = {
         .cellNumber = 2,
         .type = CELL_ANALOG,
         .ppo2 = 100,
         .millivolts = 14,
         .status = CELL_OK,
-        .data_time = 0};
+        .dataTime = 0};
 
     Consensus_t expectedConsensus = {
-        .statuses = {CELL_OK, CELL_OK, CELL_OK},
-        .PPO2s = {110, 120, 100},
-        .millis = {12, 13, 14},
+        .statusArray = {CELL_OK, CELL_OK, CELL_OK},
+        .ppo2Array = {110, 120, 100},
+        .milliArray = {12, 13, 14},
         .consensus = 110,
-        .included = {true, true, true}};
+        .includeArray = {true, true, true}};
 
     checkConsensus(expectedConsensus, &c1, &c2, &c3);
 }
@@ -364,7 +367,7 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesHigh)
         .ppo2 = 110,
         .millivolts = 0,
         .status = CELL_OK,
-        .data_time = 0};
+        .dataTime = 0};
 
     // CELL 2 should be excluded
     OxygenCell_t c2 = {
@@ -373,21 +376,21 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesHigh)
         .ppo2 = 130,
         .millivolts = 0,
         .status = CELL_OK,
-        .data_time = 0};
+        .dataTime = 0};
     OxygenCell_t c3 = {
         .cellNumber = 2,
         .type = CELL_ANALOG,
         .ppo2 = 100,
         .millivolts = 0,
         .status = CELL_OK,
-        .data_time = 0};
+        .dataTime = 0};
 
     Consensus_t expectedConsensus = {
-        .statuses = {CELL_OK, CELL_OK, CELL_OK},
-        .PPO2s = {110, 130, 100},
-        .millis = {0, 0, 0},
+        .statusArray = {CELL_OK, CELL_OK, CELL_OK},
+        .ppo2Array = {110, 130, 100},
+        .milliArray = {0, 0, 0},
         .consensus = 105,
-        .included = {true, false, true}};
+        .includeArray = {true, false, true}};
 
     checkConsensus(expectedConsensus, &c1, &c2, &c3);
 }
@@ -400,28 +403,28 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesLow)
         .ppo2 = 120,
         .millivolts = 0,
         .status = CELL_OK,
-        .data_time = 0};
+        .dataTime = 0};
     OxygenCell_t c2 = {
         .cellNumber = 1,
         .type = CELL_ANALOG,
         .ppo2 = 130,
         .millivolts = 0,
         .status = CELL_OK,
-        .data_time = 0};
+        .dataTime = 0};
     OxygenCell_t c3 = {
         .cellNumber = 2,
         .type = CELL_ANALOG,
         .ppo2 = 100,
         .millivolts = 0,
         .status = CELL_OK,
-        .data_time = 0};
+        .dataTime = 0};
 
     Consensus_t expectedConsensus = {
-        .statuses = {CELL_OK, CELL_OK, CELL_OK},
-        .PPO2s = {120, 130, 100},
-        .millis = {0, 0, 0},
+        .statusArray = {CELL_OK, CELL_OK, CELL_OK},
+        .ppo2Array = {120, 130, 100},
+        .milliArray = {0, 0, 0},
         .consensus = 125,
-        .included = {true, true, false}};
+        .includeArray = {true, true, false}};
 
     checkConsensus(expectedConsensus, &c1, &c2, &c3);
 }
@@ -437,28 +440,28 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesTimedOutCell)
             .ppo2 = 120,
             .millivolts = 0,
             .status = CELL_OK,
-            .data_time = (i == 0) ? (Timestamp_t)1500 : (Timestamp_t)0};
+            .dataTime = (i == 0) ? (Timestamp_t)1500 : (Timestamp_t)0};
         OxygenCell_t c2 = {
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
             .millivolts = 0,
             .status = CELL_OK,
-            .data_time = (i == 1) ? (Timestamp_t)1500 : (Timestamp_t)0};
+            .dataTime = (i == 1) ? (Timestamp_t)1500 : (Timestamp_t)0};
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
             .millivolts = 0,
             .status = CELL_OK,
-            .data_time = (i == 2) ? (Timestamp_t)1500 : (Timestamp_t)0};
+            .dataTime = (i == 2) ? (Timestamp_t)1500 : (Timestamp_t)0};
 
         Consensus_t expectedConsensus = {
-            .statuses = {CELL_OK, CELL_OK, CELL_OK},
-            .PPO2s = {120, 110, 100},
-            .millis = {0, 0, 0},
+            .statusArray = {CELL_OK, CELL_OK, CELL_OK},
+            .ppo2Array = {120, 110, 100},
+            .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
-            .included = {(i == 0) ? false : true,
+            .includeArray = {(i == 0) ? false : true,
                          (i == 1) ? false : true,
                          (i == 2) ? false : true}};
 
@@ -477,30 +480,30 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesFailedCell)
             .ppo2 = 120,
             .millivolts = 0,
             .status = (i == 0) ? CELL_FAIL : CELL_OK,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c2 = {
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
             .millivolts = 0,
             .status = (i == 1) ? CELL_FAIL : CELL_OK,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
             .millivolts = 0,
             .status = (i == 2) ? CELL_FAIL : CELL_OK,
-            .data_time = 0};
+            .dataTime = 0};
 
         Consensus_t expectedConsensus = {
-            .statuses = {(i == 0) ? CELL_FAIL : CELL_OK,
+            .statusArray = {(i == 0) ? CELL_FAIL : CELL_OK,
                          (i == 1) ? CELL_FAIL : CELL_OK,
                          (i == 2) ? CELL_FAIL : CELL_OK},
-            .PPO2s = {120, 110, 100},
-            .millis = {0, 0, 0},
+            .ppo2Array = {120, 110, 100},
+            .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
-            .included = {(i == 0) ? false : true,
+            .includeArray = {(i == 0) ? false : true,
                          (i == 1) ? false : true,
                          (i == 2) ? false : true}};
 
@@ -519,30 +522,30 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesCalCell)
             .ppo2 = 120,
             .millivolts = 0,
             .status = (i == 0) ? CELL_NEED_CAL : CELL_OK,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c2 = {
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
             .millivolts = 0,
             .status = (i == 1) ? CELL_NEED_CAL : CELL_OK,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
             .millivolts = 0,
             .status = (i == 2) ? CELL_NEED_CAL : CELL_OK,
-            .data_time = 0};
+            .dataTime = 0};
 
         Consensus_t expectedConsensus = {
-            .statuses = {(i == 0) ? CELL_NEED_CAL : CELL_OK,
+            .statusArray = {(i == 0) ? CELL_NEED_CAL : CELL_OK,
                          (i == 1) ? CELL_NEED_CAL : CELL_OK,
                          (i == 2) ? CELL_NEED_CAL : CELL_OK},
-            .PPO2s = {120, 110, 100},
-            .millis = {0, 0, 0},
+            .ppo2Array = {120, 110, 100},
+            .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
-            .included = {(i == 0) ? false : true,
+            .includeArray = {(i == 0) ? false : true,
                          (i == 1) ? false : true,
                          (i == 2) ? false : true}};
 
@@ -561,30 +564,30 @@ TEST(PPO2Transmitter, calculateConsensus_ExcludesDegradedCell)
             .ppo2 = 120,
             .millivolts = 0,
             .status = (i == 0) ? CELL_DEGRADED : CELL_OK,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c2 = {
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
             .millivolts = 0,
             .status = (i == 1) ? CELL_DEGRADED : CELL_OK,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
             .millivolts = 0,
             .status = (i == 2) ? CELL_DEGRADED : CELL_OK,
-            .data_time = 0};
+            .dataTime = 0};
 
         Consensus_t expectedConsensus = {
-            .statuses = {(i == 0) ? CELL_DEGRADED : CELL_OK,
+            .statusArray = {(i == 0) ? CELL_DEGRADED : CELL_OK,
                          (i == 1) ? CELL_DEGRADED : CELL_OK,
                          (i == 2) ? CELL_DEGRADED : CELL_OK},
-            .PPO2s = {120, 110, 100},
-            .millis = {0, 0, 0},
+            .ppo2Array = {120, 110, 100},
+            .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
-            .included = {(i == 0) ? false : true,
+            .includeArray = {(i == 0) ? false : true,
                          (i == 1) ? false : true,
                          (i == 2) ? false : true}};
 
@@ -603,30 +606,30 @@ TEST(PPO2Transmitter, calculateConsensus_DualCellFailure)
             .ppo2 = 120,
             .millivolts = 0,
             .status = (i == 0) ? CELL_OK : CELL_FAIL,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c2 = {
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
             .millivolts = 0,
             .status = (i == 1) ? CELL_OK : CELL_FAIL,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
             .millivolts = 0,
             .status = (i == 2) ? CELL_OK : CELL_FAIL,
-            .data_time = 0};
+            .dataTime = 0};
 
         Consensus_t expectedConsensus = {
-            .statuses = {(i == 0) ? CELL_OK : CELL_FAIL,
+            .statusArray = {(i == 0) ? CELL_OK : CELL_FAIL,
                          (i == 1) ? CELL_OK : CELL_FAIL,
                          (i == 2) ? CELL_OK : CELL_FAIL},
-            .PPO2s = {120, 110, 100},
-            .millis = {0, 0, 0},
+            .ppo2Array = {120, 110, 100},
+            .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
-            .included = {(i == 0),
+            .includeArray = {(i == 0),
                          (i == 1),
                          (i == 2)}};
 
@@ -645,30 +648,30 @@ TEST(PPO2Transmitter, calculateConsensus_DivergedDualCellFailure)
             .ppo2 = 200,
             .millivolts = 0,
             .status = (i == 0) ? CELL_OK : CELL_FAIL,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c2 = {
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 100,
             .millivolts = 0,
             .status = (i == 1) ? CELL_OK : CELL_FAIL,
-            .data_time = 0};
+            .dataTime = 0};
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 20,
             .millivolts = 0,
             .status = (i == 2) ? CELL_OK : CELL_FAIL,
-            .data_time = 0};
+            .dataTime = 0};
 
         Consensus_t expectedConsensus = {
-            .statuses = {(i == 0) ? CELL_OK : CELL_FAIL,
+            .statusArray = {(i == 0) ? CELL_OK : CELL_FAIL,
                          (i == 1) ? CELL_OK : CELL_FAIL,
                          (i == 2) ? CELL_OK : CELL_FAIL},
-            .PPO2s = {200, 100, 20},
-            .millis = {0, 0, 0},
+            .ppo2Array = {200, 100, 20},
+            .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
-            .included = {(i == 0),
+            .includeArray = {(i == 0),
                          (i == 1),
                          (i == 2)}};
 

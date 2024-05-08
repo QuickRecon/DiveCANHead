@@ -145,7 +145,7 @@ static const DiveCANDevice_t defaultDeviceSpec = {
     .name = "DC_HEAD",
     .type = DIVECAN_SOLO,
     .manufacturerID = DIVECAN_MANUFACTURER_SRI,
-    .firmwareVersion = 0x05};
+    .firmwareVersion = FIRMWARE_VERSION};
 
 /* USER CODE END 0 */
 

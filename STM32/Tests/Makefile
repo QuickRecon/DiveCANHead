@@ -1,3 +1,6 @@
+# Firmware Version (Defines compatibility with configuration strings)
+FIRMWARE_VERSION = 5
+
 #---- Outputs ----#
 COMPONENT_NAME = DiveCAN
 
@@ -21,7 +24,7 @@ ROOT_DIR = /home/aren/Dropbox/DiveCANHeadRev2/
 #
 SRC_FILES += $(ROOT_DIR)STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
 SRC_FILES += $(ROOT_DIR)STM32/Core/Src/Hardware/flash.c
-SRC_DIRS += 
+SRC_FILES += $(ROOT_DIR)STM32/Core/Src/configuration.c
 
 # --- TEST_SRC_FILES and TEST_SRC_DIRS ---
 # Test files are always included in the build.
@@ -121,11 +124,12 @@ CPPUTEST_CFLAGS += -pedantic
 CPPUTEST_CFLAGS += -Wno-missing-prototypes
 CPPUTEST_CFLAGS += -Wno-strict-prototypes
 CPPUTEST_CXXFLAGS += -Wno-c++14-compat
-CPPUTEST_CXXFLAGS += --std=c++11
+CPPUTEST_CXXFLAGS += --std=c++20
 CPPUTEST_CXXFLAGS += -Wno-c++98-compat-pedantic
 CPPUTEST_CXXFLAGS += -Wno-c++98-compat
+CPPUTEST_CXXFLAGS += -DFIRMWARE_VERSION=$(FIRMWARE_VERSION)
 
-
+CPPUTEST_CFLAGS += -DFIRMWARE_VERSION=$(FIRMWARE_VERSION)
 CPPUTEST_CFLAGS += -DRTOS_LOOP_FOREVER=false
 CPPUTEST_CPPFLAGS += -DRTOS_LOOP_FOREVER=false
 CPPUTEST_CXXFLAGS += -DRTOS_LOOP_FOREVER=false

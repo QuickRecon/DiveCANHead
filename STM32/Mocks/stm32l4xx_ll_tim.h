@@ -21,6 +21,7 @@
 #define STM32L4xx_HAL_TIM_H
 #include <stddef.h>
 #include <stm32l4xx_hal_def.h>
+#include <stdint.h>
 #ifdef __cplusplus
 extern "C" {
 #endif

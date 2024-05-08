@@ -43,6 +43,10 @@ extern "C"
         mock().actualCall("HAL_FLASH_Lock");
         return LockReturnCode;
     }
+
+    void LogMsg(const char *msg){
+        // Do Nothing
+    }
 }
 
 TEST_GROUP(flash){

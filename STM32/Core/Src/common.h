@@ -53,8 +53,8 @@ extern "C"
 
     typedef enum
     {
-        CELL_DIGITAL,
-        CELL_ANALOG
+        CELL_DIGITAL = 0,
+        CELL_ANALOG = 1
     } CellType_t;
 
     /* Provide names for the cell numbers */
