@@ -66,8 +66,8 @@ extern "C"
     /* The general rules are that data consumers should have a higher priority than data sources
      * because otherwise we can be producing plenty of data but not consuming it, which is kind of
      * useless.
-     * 
-     * We have safeguards around expired data, and the WDT should save us if things are getting really 
+     *
+     * We have safeguards around expired data, and the WDT should save us if things are getting really
      * starved. The consumers use queues to access other tasks data, so they'll block while we go and get
      * the fresh data
      */
@@ -75,11 +75,11 @@ extern "C"
     /* CAN RX priority less critical than data consumers but more than sensor fetching, we want to
      * respond to messages in a timely manner, waiting on sensors can push us into timeout */
     static const osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh1;
-    static const osPriority_t PRINTER_PRIORITY = osPriorityHigh;
     static const osPriority_t CAN_RX_PRIORITY = osPriorityNormal1;
     static const osPriority_t PPO2_SENSOR_PRIORITY = osPriorityNormal;
-    static const osPriority_t ADC_PRIORITY = osPriorityLow2;
-    static const osPriority_t LOG_PRIORITY = osPriorityLow1;
+    static const osPriority_t ADC_PRIORITY = osPriorityLow3;
+    static const osPriority_t LOG_PRIORITY = osPriorityLow2;
+    static const osPriority_t PRINTER_PRIORITY = osPriorityHigh;
     static const osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
 
 /* Define the stack sizes for all the tasks */

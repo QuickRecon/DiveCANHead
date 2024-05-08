@@ -25,5 +25,5 @@ void NonFatalErrorISR(NonFatalError_t error, uint32_t lineNumber, const char* fi
 void FatalError(FatalError_t error, uint32_t lineNumber, const char* fileName)
 {
     blocking_serial_printf("!! FATAL ERR CODE %d AT %s:%d\r\n", error, fileName, lineNumber);
-    //(void)SetFatalError(error);
+    (void)SetFatalError(error);
 }

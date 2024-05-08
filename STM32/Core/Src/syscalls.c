@@ -1,1 +1,1 @@
-// STM32CubeMX seems to want this file now
+/* STM32CubeMX seems to want this file now */

@@ -250,10 +250,6 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
                 blocking_serial_printf("Cannot write %s\r\n", LOG_FILENAMES[logItem.eventType]);
             }
         }
-        else
-        {
-            osDelay(TIMEOUT_4s_TICKS);
-        }
 
         if ((HAL_GetTick() - lastSynced) > TIMEOUT_4s)
         {

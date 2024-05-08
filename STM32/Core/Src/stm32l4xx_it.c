@@ -92,7 +92,6 @@ void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
 
-
   /* Configurable Fault Status Register */
   /* Consists of MMSR, BFSR and UFSR */
   volatile uint32_t cfsr = (*((volatile uint32_t *)(0xE000ED28U)));
@@ -353,6 +352,7 @@ void TIM6_DAC_IRQHandler(void)
 void TIM7_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM7_IRQn 0 */
+  ++ulHighFrequencyTimerTicks;
   /* USER CODE END TIM7_IRQn 0 */
   HAL_TIM_IRQHandler(&htim7);
   /* USER CODE BEGIN TIM7_IRQn 1 */
