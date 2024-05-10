@@ -1203,7 +1203,6 @@ void SDInitTask(void *argument)
   /* USER CODE BEGIN SDInitTask */
   (void)osDelay(TIMEOUT_1S);
   StartLogTask();
-  LogMsg("Logging Active");
   (void)vTaskDelete(NULL);
   /* USER CODE END SDInitTask */
 }

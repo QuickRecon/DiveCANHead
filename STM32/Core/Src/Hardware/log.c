@@ -12,7 +12,7 @@
 
 extern SD_HandleTypeDef hsd1;
 
-#define LOGQUEUE_LENGTH 10
+#define LOGQUEUE_LENGTH 20
 #define FILENAME_LENGTH 13
 #define MAXPATH_LENGTH 255
 
@@ -194,7 +194,7 @@ FRESULT RotateLogfiles(void)
     {
         blocking_serial_printf("Cannot find next dir (%d)\r\n", res);
     }
-    blocking_serial_printf("Found next dir\r\n");
+    serial_printf("Found next dir %lu\r\n", nextFileNum);
     /* Step 3, move */
     if (FR_OK == res)
     {
@@ -207,6 +207,7 @@ FRESULT RotateLogfiles(void)
     blocking_serial_printf("finished move\r\n");
     return res;
 }
+
 extern UART_HandleTypeDef huart2;
 void LogTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
 {
@@ -237,8 +238,9 @@ void LogTask(void *arg) /* Yes this warns but it needs to be that way for matchi
         {
             uint32_t expectedLength = strnlen((char *)logItem.string, LOG_LINE_LENGTH);
             uint32_t byteswritten = 0;
+
             res = f_write(&(LOG_FILES[logItem.eventType]), logItem.string, expectedLength, (void *)&byteswritten);
-            if (expectedLength > byteswritten)
+            if ((expectedLength > byteswritten) && (FR_OK == res))
             {
                 /* Out of space (file grown > 4Gig?)*/
                 blocking_serial_printf("Rotating logs");
@@ -335,6 +337,7 @@ void LogMsg(const char *msg)
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
     static LogQueue_t enQueueItem = {0};
+    static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
 
@@ -350,15 +353,17 @@ void LogMsg(const char *msg)
         /* Strip existing newlines */
         local_msg[strcspn(local_msg, "\r\n")] = 0;
 
-        /* Build the string and queue it if its legal */
-        if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "[%0.4f]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), local_msg)))
+        /* Higher priority message, enqueue as long as the queue exists, remove existing elements if needed */
+        if ((getQueueHandle() != NULL) && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "[%0.4f, %lu]: %s\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, local_msg)))
         {
+            /* High priority, clear old items to make room */
             if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
             {
                 LogQueue_t logItem = {0};
                 (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
             }
             (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+            ++logMsgIndex;
         }
     }
     else
@@ -376,13 +381,11 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
 
-    if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)))
+    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+    if (logRunning() &&
+        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)) &&
+        0 != osMessageQueueGetSpace(*(getQueueHandle())))
     {
-        if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
-        {
-            LogQueue_t logItem = {0};
-            (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
-        }
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
     }
 }
@@ -396,14 +399,11 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
 
-    /* Build the string and queue it if its legal */
-    if (logRunning() && (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)))
+    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+    if (logRunning() &&
+        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)) &&
+        0 != osMessageQueueGetSpace(*(getQueueHandle())))
     {
-        if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
-        {
-            LogQueue_t logItem = {0};
-            (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
-        }
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
     }
 }
