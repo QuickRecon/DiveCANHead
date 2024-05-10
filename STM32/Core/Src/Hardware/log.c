@@ -384,7 +384,7 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
         (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)) &&
-        0 != osMessageQueueGetSpace(*(getQueueHandle())))
+        (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
     {
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
     }
@@ -402,7 +402,7 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
         (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)) &&
-        0 != osMessageQueueGetSpace(*(getQueueHandle())))
+        (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
     {
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
     }
