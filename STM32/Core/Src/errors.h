@@ -85,8 +85,11 @@ extern "C"
         /** @brief Logging quit due to an error in FATFS **/
         LOGGING_ERR = 21,
 
+        /** @brief Menu ended up out of bounds **/
+        MENU_ERR = 22,
+
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        NONFATAL_ERR_MAX = LOGGING_ERR
+        NONFATAL_ERR_MAX = MENU_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

@@ -4,7 +4,7 @@
 #include "cmsis_os.h"
 #include "queue.h"
 
-#include "../DiveCAN/DiveCAN.h"
+#include "../DiveCAN/Transciever.h"
 
 #define CELL_COUNT 3
 

@@ -341,7 +341,8 @@ int main(void)
 
   InitLog();
   InitPrinter(deviceConfig.fields.enableUartPrinting);
-  serial_printf("Booting, Last Reset Reason(%s)\r\n", reset_cause_get_name(reset_cause));
+  serial_printf("Booting, Last Reset Reason (%s)\r\n", reset_cause_get_name(reset_cause));
+  serial_printf("Configuration: 0x%lx\r\n", deviceConfig.bits);
 
   /* Set up flash erase */
   (void)HAL_FLASH_Unlock();
@@ -360,7 +361,7 @@ int main(void)
   cells[CELL_2] = CreateCell(CELL_2, deviceConfig.fields.cell2);
   cells[CELL_3] = CreateCell(CELL_3, deviceConfig.fields.cell3);
 
-  InitDiveCAN(&defaultDeviceSpec);
+  InitDiveCAN(&defaultDeviceSpec, &deviceConfig);
   InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
 
   /* USER CODE END 2 */
@@ -1234,7 +1235,7 @@ void PerfMonitor(void *argument)
                                          &ulTotalRunTime);
 
       blocking_serial_printf("Task count = %lu\r\n", uxArraySize);
-      blocking_serial_printf("No      Name          S Usage   HW\r\n");
+      blocking_serial_printf("No      Name              S Usage   HW\r\n");
 
       for (UBaseType_t x = 0; x < uxArraySize; ++x)
       {

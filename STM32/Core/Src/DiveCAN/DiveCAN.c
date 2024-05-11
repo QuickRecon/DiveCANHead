@@ -5,12 +5,13 @@
 #include "../Hardware/pwr_management.h"
 #include "../Hardware/printer.h"
 #include "../PPO2Control/PPO2Control.h"
+#include "../configuration.h"
 
 void CANTask(void *arg);
 void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
-void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpe, const Configuration_t *const configuration);
 void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
@@ -25,13 +26,19 @@ static osThreadId_t *getOSThreadId(void)
     return &CANTaskHandle;
 }
 
-void InitDiveCAN(const DiveCANDevice_t * const deviceSpec)
+typedef struct
+{
+    DiveCANDevice_t deviceSpec;
+    Configuration_t configuration;
+} DiveCANTask_params_t;
+
+void InitDiveCAN(const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
 {
     InitRXQueue();
 
     static uint32_t CANTask_buffer[CANTASK_STACK_SIZE];
     static StaticTask_t CANTask_ControlBlock;
-    static DiveCANDevice_t taskDiveCANDevice;
+    static DiveCANTask_params_t task_params;
     static const osThreadAttr_t CANTask_attributes = {
         .name = "CANTask",
         .attr_bits = osThreadDetached,
@@ -44,17 +51,19 @@ void InitDiveCAN(const DiveCANDevice_t * const deviceSpec)
         .reserved = 0};
 
     osThreadId_t *CANTaskHandle = getOSThreadId();
-    taskDiveCANDevice = *deviceSpec;
-    *CANTaskHandle = osThreadNew(CANTask, &taskDiveCANDevice, &CANTask_attributes);
+    task_params.deviceSpec = *deviceSpec;
+    task_params.configuration.bits = configuration->bits;
+    *CANTaskHandle = osThreadNew(CANTask, &task_params, &CANTask_attributes);
     txStartDevice(DIVECAN_CONTROLLER, DIVECAN_SOLO);
 }
 
 /** @brief This task is the context in which we handle inbound CAN messages (which sometimes requires a response), dispatch of our other outgoing traffic may occur elsewhere
-* @param arg
-*/
+ * @param arg
+ */
 void CANTask(void *arg)
 {
-    const DiveCANDevice_t * const deviceSpec = (DiveCANDevice_t *)arg;
+    const DiveCANDevice_t *const deviceSpec = &(((DiveCANTask_params_t *)arg)->deviceSpec);
+    const Configuration_t *const configuration = &(((DiveCANTask_params_t *)arg)->configuration);
 
     while (true)
     {
@@ -78,7 +87,7 @@ void CANTask(void *arg)
                 break;
             case MENU_ID:
                 /* Send Menu stuff */
-                RespMenu(&message, deviceSpec);
+                RespMenu(&message, deviceSpec, configuration);
                 break;
             case PPO2_SETPOINT_ID:
                 /* Deal with setpoint being set */
@@ -117,7 +126,6 @@ void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *c
 void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     DiveCANType_t devType = deviceSpec->type;
-
     /* We only want to reply to a ping from the handset */
     if (((message->id & DIVECAN_TYPE_MASK) == DIVECAN_CONTROLLER) || ((message->id & DIVECAN_TYPE_MASK) == DIVECAN_MONITOR))
     {
@@ -135,14 +143,14 @@ void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const
     RunCalibrationTask(deviceSpec->type, fO2, pressure);
 }
 
-void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
+void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
 {
     serial_printf("MENU message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message->id,
                   message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
-    ProcessMenu(message, deviceSpec);
+    ProcessMenu(message, deviceSpec, configuration);
 }
 
-void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t * const deviceSpec)
+void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
     setSetpoint(message->data[0]);
 }

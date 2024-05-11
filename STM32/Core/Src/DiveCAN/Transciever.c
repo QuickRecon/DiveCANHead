@@ -89,6 +89,7 @@ BaseType_t GetLatestCAN(const Timestamp_t blockTime, DiveCANMessage_t *message)
     QueueHandle_t *inbound = getInboundQueue();
     return xQueueReceive(*inbound, message, blockTime);
 }
+
 /** @brief !! ISR METHOD !! Called when CAN mailbox receives message
  * @param id message extended ID
  * @param length length of data
@@ -122,9 +123,10 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
             NON_FATAL_ERROR_ISR(QUEUEING_ERROR);
         }
 
-        xQueueSendToBackFromISR(*inbound, &message, NULL);
+        err = xQueueSendToBackFromISR(*inbound, &message, NULL);
         if (pdPASS != err)
         {
+            /* err can only ever be 0 if we get here, means we couldn't enqueue*/
             NON_FATAL_ERROR_ISR(QUEUEING_ERROR);
         }
     }
@@ -326,17 +328,20 @@ void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t device
     }
 }
 
-/** @brief Send the flags associated with a writable field, currently only the number of fields
+/** @brief Send the flags associated with a writable field
  *@param targetDeviceType Device we're sending the menu information to
  *@param deviceType  Device that we are
  *@param reqId Request byte that we're replying to
  *@param fieldCount The number of values this item can take, set to 1 to force it to reload the text every time.
  */
-void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const uint8_t fieldCount)
+void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, uint64_t maxVal, uint64_t currentVal)
 {
-    uint8_t data1[MENU_LEN] = {0x10, 0x14, 0x00, 0x62, 0x91, reqId, 0x00, 0x00};
-    uint8_t data2[MENU_LEN] = {0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00};
-    uint8_t data3[MENU_LEN] = {0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, fieldCount - 1};
+    uint8_t maxBytes[8] = {(uint8_t)(maxVal >> 56), (uint8_t)(maxVal >> 48), (uint8_t)(maxVal >> 40), (uint8_t)(maxVal >> 32), (uint8_t)(maxVal >> 24), (uint8_t)(maxVal >> 16), (uint8_t)(maxVal >> 8), (uint8_t)maxVal};
+    uint8_t currBytes[8] = {(uint8_t)(currentVal >> 56), (uint8_t)(currentVal >> 48), (uint8_t)(currentVal >> 40), (uint8_t)(currentVal >> 32), (uint8_t)(currentVal >> 24), (uint8_t)(currentVal >> 16), (uint8_t)(currentVal >> 8), (uint8_t)currentVal};
+
+    uint8_t data1[MENU_LEN] = {0x10, 0x14, 0x00, 0x62, 0x91, reqId, maxBytes[0], maxBytes[1]};
+    uint8_t data2[MENU_LEN] = {0x21, maxBytes[2], maxBytes[3], maxBytes[4], maxBytes[5], maxBytes[6], maxBytes[7], currBytes[0]};
+    uint8_t data3[MENU_LEN] = {0x22, currBytes[1], currBytes[2], currBytes[3], currBytes[4], currBytes[5], currBytes[6], currBytes[7]};
     uint32_t Id = MENU_ID | deviceType | (targetDeviceType << 8);
     sendCANMessage(Id, data1, MENU_LEN);
 
@@ -344,6 +349,7 @@ void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t devic
     sendCANMessage(Id, data2, MENU_LEN);
     sendCANMessage(Id, data3, MENU_LEN);
 }
+
 
 void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t fieldId)
 {

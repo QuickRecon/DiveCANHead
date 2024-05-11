@@ -2,7 +2,7 @@
 
 #include "../common.h"
 #include "Transciever.h"
-
+#include "../configuration.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,7 +22,7 @@ typedef struct
     uint8_t firmwareVersion;
 } DiveCANDevice_t;
 
-void InitDiveCAN(const DiveCANDevice_t * const deviceSpec);
+void InitDiveCAN(const DiveCANDevice_t * const deviceSpec, const Configuration_t * const configuration);
 
 #ifdef __cplusplus
 }

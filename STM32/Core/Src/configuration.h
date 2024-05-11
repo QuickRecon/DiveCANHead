@@ -20,7 +20,7 @@ extern "C"
             OxygenCalMethod_t calibrationMode : 3;
             bool enableUartPrinting;
         } fields;
-        uint64_t bits;
+        uint32_t bits;
     } Configuration_t;
 
     Configuration_t loadConfiguration(void);

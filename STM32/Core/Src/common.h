@@ -82,7 +82,7 @@ extern "C"
     static const osPriority_t PPO2_SENSOR_PRIORITY = osPriorityNormal;
     static const osPriority_t ADC_PRIORITY = osPriorityLow3;
     static const osPriority_t LOG_PRIORITY = osPriorityLow2;
-    static const osPriority_t PRINTER_PRIORITY = osPriorityHigh;
+    static const osPriority_t PRINTER_PRIORITY = osPriorityLow;
     static const osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
 
 /* Define the stack sizes for all the tasks */

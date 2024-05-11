@@ -194,6 +194,14 @@ typedef enum
   DIVECAN_CAL_FAIL_GEN = 0x09
 } DiveCANCalResponse_t;
 
+
+typedef enum
+{
+    DYNAMIC_NUM = 2,
+    STATIC_TEXT = 1,
+    DYNAMIC_TEXT = 0,
+} DiveCANMenuItemType_t;
+
 void txCalAck(const DiveCANType_t deviceType);
 void txCalResponse(const DiveCANType_t deviceType, DiveCANCalResponse_t response, const ShortMillivolts_t cell1, const ShortMillivolts_t cell2, const ShortMillivolts_t cell3, const FO2_t FO2, const uint16_t atmosphericPressure);
 
@@ -201,9 +209,8 @@ void txCalResponse(const DiveCANType_t deviceType, DiveCANCalResponse_t response
 void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, uint8_t itemCount);
 void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *const fieldText, const bool textField, const bool editable);
 void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t fieldId);
-void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const uint8_t fieldCount);
+void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, uint64_t maxVal, uint64_t currentVal);
 void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText);
-
 #ifdef __cplusplus
 }
 #endif

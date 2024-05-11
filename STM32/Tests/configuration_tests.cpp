@@ -32,7 +32,7 @@ TEST(configuration, CheckStructSize)
     Configuration_t testConfig = {0};
     size_t varSize = sizeof(testConfig.fields);
     CHECK(varSize == expectedStructSize);  // Check our struct size is what we expect it to be
-    CHECK(structSize == sizeof(uint64_t)); // Check we overall fit in a uint64
+    CHECK(structSize == sizeof(uint32_t)); // Check we overall fit in a uint32
 }
 
 TEST(configuration, TestLocationOfCellFields)

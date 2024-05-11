@@ -3,6 +3,7 @@
 #include "main.h"
 #include "../errors.h"
 #include "../Hardware/printer.h"
+#include "../PPO2Control/PPO2Control.h"
 
 static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
 
