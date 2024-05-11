@@ -46,9 +46,9 @@ extern "C"
 
     typedef enum
     {
-        CAL_DIGITAL_REFERENCE,
-        CAL_ANALOG_ABSOLUTE,
-        CAL_TOTAL_ABSOLUTE
+        CAL_DIGITAL_REFERENCE = 0,
+        CAL_ANALOG_ABSOLUTE = 1,
+        CAL_TOTAL_ABSOLUTE = 2
     } OxygenCalMethod_t;
 
     QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);

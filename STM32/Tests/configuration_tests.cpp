@@ -117,6 +117,39 @@ TEST(configuration, TestPowerModePosition)
     }
 }
 
+TEST(configuration, TestCalModePosition)
+{
+    uint8_t calModeBitfieldLength = 3;
+    for (uint8_t i = 0; i < (1 << calModeBitfieldLength); ++i)
+    {
+        Configuration_t testConfig = {0};
+        testConfig.fields.calibrationMode = (OxygenCalMethod_t)i;
+        CHECK(((testConfig.bits >> 16) & 0b111u) == i);
+    }
+}
+
+TEST(configuration, TestCalModeValidation)
+{
+    uint8_t calModeBitfieldLength = 3;
+    for (uint8_t i = 0; i < (1 << calModeBitfieldLength); ++i)
+    {
+        Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
+
+        testConfig.bits |= i << (16);
+
+        bool valid = ConfigurationValid(testConfig);
+        if (i > CAL_TOTAL_ABSOLUTE)
+        {
+            CHECK(!valid);
+        }
+        else
+        {
+            CHECK(valid);
+        }
+    }
+}
+
+
 TEST(configuration, TestFirmwareVersionValidation)
 {
     for (uint8_t i = 0; i < 0xFFu; ++i)

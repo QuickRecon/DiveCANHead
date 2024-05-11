@@ -2,22 +2,23 @@
 #include "configuration.h"
 
 const Configuration_t DefaultConfiguration = {.fields = {
-    .firmwareVersion = FIRMWARE_VERSION,
-    .cell1 = CELL_DIGITAL,
-    .cell2 = CELL_ANALOG,
-    .cell3 = CELL_ANALOG,
-    .powerMode = MODE_BATTERY_THEN_CAN,
-    .enableUartPrinting = true
-}};
+                                                  .firmwareVersion = FIRMWARE_VERSION,
+                                                  .cell1 = CELL_DIGITAL,
+                                                  .cell2 = CELL_ANALOG,
+                                                  .cell3 = CELL_ANALOG,
+                                                  .powerMode = MODE_BATTERY_THEN_CAN,
+                                                  .calibrationMode = CAL_DIGITAL_REFERENCE,
+                                                  .enableUartPrinting = true}};
 
-
-bool CellValid(Configuration_t config, uint8_t cellNumber){
+bool CellValid(Configuration_t config, uint8_t cellNumber)
+{
     /* Check that the enum */
-    uint8_t cellVal = (config.bits >> (8u+(cellNumber*2))) & 0b11u;
-    return (cellVal == (uint8_t)CELL_ANALOG )|| (cellVal == (uint8_t)CELL_DIGITAL);
+    uint8_t cellVal = (config.bits >> (8u + (cellNumber * 2))) & 0b11u;
+    return (cellVal == (uint8_t)CELL_ANALOG) || (cellVal == (uint8_t)CELL_DIGITAL);
 }
 
-bool ConfigurationValid(Configuration_t config){
+bool ConfigurationValid(Configuration_t config)
+{
     bool valid = true;
 
     /* Casting from an integer type to enums results in undefined values if outside the enum ranges
@@ -25,13 +26,23 @@ bool ConfigurationValid(Configuration_t config){
      */
 
     /* Check cells are valid */
-    for(uint8_t i = 0; i < CELL_COUNT; ++i){
+    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+    {
         valid = valid && CellValid(config, i);
     }
 
     /* Check power mode*/
     uint8_t powerMode = (config.bits >> 14) & 0b11u;
-    valid =  valid && ((powerMode == MODE_BATTERY) || (powerMode == MODE_BATTERY_THEN_CAN) || (powerMode == MODE_CAN) || (powerMode == MODE_OFF));
+    valid = valid && ((powerMode == MODE_BATTERY) ||
+                      (powerMode == MODE_BATTERY_THEN_CAN) ||
+                      (powerMode == MODE_CAN) ||
+                      (powerMode == MODE_OFF));
+
+    /* Check cal mode */
+    uint8_t calMode = (config.bits >> 16) & 0b111u;
+    valid = valid && ((calMode == CAL_DIGITAL_REFERENCE) ||
+                      (calMode == CAL_ANALOG_ABSOLUTE) ||
+                      (calMode == CAL_TOTAL_ABSOLUTE));
 
     /* Check that the firmware version matches*/
     uint8_t firmwareVersion = (config.bits) & 0xFFu;
@@ -45,11 +56,11 @@ bool ConfigurationValid(Configuration_t config){
     return valid;
 }
 
-Configuration_t loadConfiguration(void){
+Configuration_t loadConfiguration(void)
+{
     return DefaultConfiguration;
 }
 
-void saveConfiguration(Configuration_t config){
-
+void saveConfiguration(Configuration_t config)
+{
 }
-

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Hardware/pwr_management.h"
+#include "Sensors/OxygenCell.h"
 #ifdef __cplusplus
 extern "C"
 {
@@ -16,6 +17,7 @@ extern "C"
             CellType_t cell2 : 2;
             CellType_t cell3 : 2;
             PowerSelectMode_t powerMode : 2;
+            OxygenCalMethod_t calibrationMode : 3;
             bool enableUartPrinting;
         } fields;
         uint64_t bits;
