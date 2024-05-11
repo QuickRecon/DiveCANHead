@@ -6,8 +6,9 @@ COMPONENT_NAME = DiveCAN
 
 #--- Inputs ----#
 PROJECT_HOME_DIR = .
-CPPUTEST_HOME = /home/aren/libs/cpputest/
 ROOT_DIR = $(shell dirname $(shell dirname $(CURDIR)))
+CPPUTEST_HOME = $(ROOT_DIR)/STM32/Tests/cpputest/
+
 
 # --- SRC_FILES and SRC_DIRS ---
 # Production code files are compiled and put into
