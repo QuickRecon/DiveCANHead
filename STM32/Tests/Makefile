@@ -7,7 +7,7 @@ COMPONENT_NAME = DiveCAN
 #--- Inputs ----#
 PROJECT_HOME_DIR = .
 CPPUTEST_HOME = /home/aren/libs/cpputest/
-ROOT_DIR = /home/aren/Dropbox/DiveCANHeadRev2/
+ROOT_DIR = $(shell dirname $(shell dirname $(CURDIR)))
 
 # --- SRC_FILES and SRC_DIRS ---
 # Production code files are compiled and put into
@@ -22,9 +22,9 @@ ROOT_DIR = /home/aren/Dropbox/DiveCANHeadRev2/
 # SRC_DIRS specifies directories containing
 # production code C and CPP files.
 #
-SRC_FILES += $(ROOT_DIR)STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
-SRC_FILES += $(ROOT_DIR)STM32/Core/Src/Hardware/flash.c
-SRC_FILES += $(ROOT_DIR)STM32/Core/Src/configuration.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/flash.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/configuration.c
 
 # --- TEST_SRC_FILES and TEST_SRC_DIRS ---
 # Test files are always included in the build.
@@ -35,7 +35,7 @@ SRC_FILES += $(ROOT_DIR)STM32/Core/Src/configuration.c
 # TEST_SRC_FILES specifies individual test files to build.
 # TEST_SRC_DIRS, builds everything in the directory
 
-TEST_SRC_DIRS += $(ROOT_DIR)STM32/Tests
+TEST_SRC_DIRS += $(ROOT_DIR)/STM32/Tests
 TEST_SRC_DIRS += tests/io-cppumock
 TEST_SRC_DIRS += tests/printf-spy
 
@@ -46,7 +46,7 @@ TEST_SRC_DIRS += tests/printf-spy
 # MOCKS_SRC_DIRS specifies a directories where you can put your
 # mocks, stubs and fakes.  You can also just put them
 # in TEST_SRC_DIRS
-MOCKS_SRC_DIRS += $(ROOT_DIR)STM32/Mocks/
+MOCKS_SRC_DIRS += $(ROOT_DIR)/STM32/Mocks/
 
 TEST_TARGET = 
 
@@ -57,11 +57,11 @@ CPPUTEST_USE_EXTENSIONS = Y
 # containing directory
 INCLUDE_DIRS += $(CPPUTEST_HOME)/include
 INCLUDE_DIRS += $(CPPUTEST_HOME)/include/Platforms/Gcc
-INCLUDE_DIRS += $(ROOT_DIR)STM32/Core/Inc
-INCLUDE_DIRS += $(ROOT_DIR)STM32/Core/Src/DiveCAN
-INCLUDE_DIRS += $(ROOT_DIR)STM32/Core/Src/Hardware
-INCLUDE_DIRS += $(ROOT_DIR)STM32/Core/Src/Sensors
-INCLUDE_DIRS += $(ROOT_DIR)STM32/Core/Src/
+INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Inc
+INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/DiveCAN
+INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/Hardware
+INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/Sensors
+INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/
 
 
 # --- CPPUTEST_OBJS_DIR ---
