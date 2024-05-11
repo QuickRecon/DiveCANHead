@@ -12,6 +12,6 @@ AnalogCell::AnalogCell(int inCellNum): cellNum(inCellNum){
 
 void AnalogCell::SetMillis(float inMillis){
   float vMax = (3.3f*R2)/(R1+R2) *1000;
-  int duty = (inMillis/vMax)*255.0f;
+  int duty = (inMillis/vMax)*255.0f*1.04f;
   analogWrite(pinMap[cellNum], duty);
 }
