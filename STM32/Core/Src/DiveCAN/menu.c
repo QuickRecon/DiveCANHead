@@ -119,22 +119,21 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
                 switch (menu[itemNumber].dataVal)
                 {
                 case CONFIG_VALUE_1:
-                    currVal = (uint8_t)(configuration->bits & 0xFF);
+                    currVal = (uint8_t)(configuration->bits);
                     serial_printf("Cnf1: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 case CONFIG_VALUE_2:
-                    currVal = (uint8_t)((configuration->bits >> 8) & 0xFF);
+                    currVal = (uint8_t)(configuration->bits >> 8);
                     serial_printf("Cnf2: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 case CONFIG_VALUE_3:
-                    currVal = (uint8_t)((configuration->bits >> 16) & 0xFF);
+                    currVal = (uint8_t)(configuration->bits >> 16);
                     serial_printf("Cnf3: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 case CONFIG_VALUE_4:
-                    currVal = (uint8_t)((configuration->bits >> 24) & 0xFF);
+                    currVal = (uint8_t)(configuration->bits >> 24);
                     serial_printf("Cnf4: 0x%x\r\n", (uint8_t)currVal);
                     break;
-                case DATASOURCE_STATIC:
                 default:
                     NON_FATAL_ERROR(MENU_ERR);
                 }
@@ -149,7 +148,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
         {
             serial_printf("Field %d, %d\r\n", menuItemNumber, itemNumber);
 
-            txMenuField(target, source, reqByte, menu[menuItemNumber-1].fieldItems[itemNumber-1]);
+            txMenuField(target, source, reqByte, menu[menuItemNumber - 1].fieldItems[itemNumber - 1]);
         }
         else
         {
@@ -164,15 +163,43 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
 
 void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
+    static bool waitingForNextRow = false;
+    static DiveCANType_t last_target = 0;
+    static DiveCANType_t last_source = 0;
+    static uint8_t reqByte = 0;
+    static uint8_t itemNumber = 0;
+
     DiveCANType_t target = (DiveCANType_t)(0xF & (message->id));
     DiveCANType_t source = deviceSpec->type;
-    uint8_t reqByte = message->data[5];
-    txMenuSaveAck(target, source, reqByte);
+
+    uint8_t op = message->data[0] & 0xFC;
+    if (op == MENU_RESP_HEADER)
+    {
+        reqByte = message->data[5];
+        itemNumber = reqByte & numberMask;
+        uint8_t length = message->data[1];
+        if (length > 6)
+        {
+            waitingForNextRow = true;
+        }
+        txMenuSaveAck(target, source, reqByte);
+    }
+    else if ((op == MENU_RESP_BODY_BASE) &&
+             (last_target == target) &&
+             (last_source == source) &&
+             waitingForNextRow)
+    {
+        waitingForNextRow = false;
+        serial_printf("Got data 0x%x for item %u\r\n", message->data[2], itemNumber);
+    } else {
+        /* No match */
+        waitingForNextRow = false;
+    }
 }
 
 void ProcessMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
 {
-    uint8_t op = message->data[0];
+    uint8_t op = message->data[0] & 0xFC;
     switch (op)
     {
     case MENU_REQ:
@@ -182,6 +209,7 @@ void ProcessMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *c
         /*  Do nothing for now */
         break;
     case MENU_RESP_HEADER: /*  Handset sends that to us during save */
+    case MENU_RESP_BODY_BASE:
         HandleMenuSave(message, deviceSpec);
         break;
     default:
