@@ -3,7 +3,11 @@
 #include "../Hardware/printer.h"
 
 #define MENU_COUNT 5
-#define MENU_ITEMS 5
+#define MENU_ITEMS 1
+
+#define BYTE_1_OFFSET 8
+#define BYTE_2_OFFSET 16
+#define BYTE_3_OFFSET 24
 typedef enum
 {
     MENU_REQ = 0x04,
@@ -77,19 +81,21 @@ const DiveCANMenuItem_t menu[MENU_COUNT] = {
      .editable = true,
      .dataVal = CONFIG_VALUE_4}};
 
-static const uint8_t numberMask = 0x0F;
-static const uint8_t reqMask = 0xF0;
-static const uint8_t ReqOpFieldIdx = 4;
-static const uint8_t minValuesval = 4; /*  If the second hex digit is above this value its a value request */
+static const uint8_t NUMBER_MASK = 0x0F;
+static const uint8_t REQ_MASK = 0xF0;
+static const uint8_t REQ_OP_FIELD_IDX = 4;
+static const uint8_t SAVE_REQ_FIELD_IDX = 5;
+static const uint8_t MAX_1_MSG_SAVE_LEN = 6;
+static const uint8_t MIN_VALUES_VAL = 4; /*  If the second hex digit is above this value its a value request */
 
 void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
 {
     DiveCANType_t target = (DiveCANType_t)(0xF & (message->id));
     DiveCANType_t source = deviceSpec->type;
-    uint8_t reqByte = message->data[ReqOpFieldIdx];
+    uint8_t reqByte = message->data[REQ_OP_FIELD_IDX];
 
-    uint8_t itemNumber = reqByte & numberMask;
-    uint8_t menuItemNumber = ((reqByte & reqMask) >> 5) - 1;
+    uint8_t itemNumber = reqByte & NUMBER_MASK;
+    uint8_t menuItemNumber = ((reqByte & REQ_MASK) >> 5) - 1;
 
     if (0 == reqByte)
     { /*  If we just need to ack then do that */
@@ -98,12 +104,12 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
     }
     else if (itemNumber < MENU_COUNT)
     { /*  Otherwise we're decoding a bit more */
-        if ((reqByte & reqMask) == REQ_ITEM)
+        if ((reqByte & REQ_MASK) == REQ_ITEM)
         {
             serial_printf("Item %d\r\n", itemNumber);
             txMenuItem(target, source, reqByte, menu[itemNumber].title, menu[itemNumber].itemType == STATIC_TEXT, menu[itemNumber].editable);
         }
-        else if ((reqByte & reqMask) == REQ_FLAGS)
+        else if ((reqByte & REQ_MASK) == REQ_FLAGS)
         {
             serial_printf("Flags %d\r\n", itemNumber);
             if (menu[itemNumber].itemType == STATIC_TEXT)
@@ -123,15 +129,15 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
                     serial_printf("Cnf1: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 case CONFIG_VALUE_2:
-                    currVal = (uint8_t)(configuration->bits >> 8);
+                    currVal = (uint8_t)(configuration->bits >> BYTE_1_OFFSET);
                     serial_printf("Cnf2: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 case CONFIG_VALUE_3:
-                    currVal = (uint8_t)(configuration->bits >> 16);
+                    currVal = (uint8_t)(configuration->bits >> BYTE_2_OFFSET);
                     serial_printf("Cnf3: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 case CONFIG_VALUE_4:
-                    currVal = (uint8_t)(configuration->bits >> 24);
+                    currVal = (uint8_t)(configuration->bits >> BYTE_3_OFFSET);
                     serial_printf("Cnf4: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 default:
@@ -144,7 +150,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
                 NON_FATAL_ERROR(MENU_ERR);
             }
         }
-        else if (((reqByte & reqMask) >> HALF_BYTE_WIDTH) > minValuesval)
+        else if (((reqByte & REQ_MASK) >> HALF_BYTE_WIDTH) > MIN_VALUES_VAL)
         {
             serial_printf("Field %d, %d\r\n", menuItemNumber, itemNumber);
 
@@ -175,10 +181,10 @@ void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t
     uint8_t op = message->data[0] & 0xFC;
     if (op == MENU_RESP_HEADER)
     {
-        reqByte = message->data[5];
-        itemNumber = reqByte & numberMask;
+        reqByte = message->data[SAVE_REQ_FIELD_IDX];
+        itemNumber = reqByte & NUMBER_MASK;
         uint8_t length = message->data[1];
-        if (length > 6)
+        if (length > MAX_1_MSG_SAVE_LEN)
         {
             waitingForNextRow = true;
         }
