@@ -29,7 +29,7 @@ static AnalogOxygenState_t *getCellState(uint8_t cellNum)
 
 /* Chosen so that 13 to 8mV in air is a valid cal coeff*/
 static const CalCoeff_t ANALOG_CAL_UPPER = 0.02625f;
-static const CalCoeff_t ANALOG_CAL_LOWER = 0.0016153846153846154f;
+static const CalCoeff_t ANALOG_CAL_LOWER = 0.01428f;
 
 static const CalCoeff_t COUNTS_TO_MILLIS = ((0.256f * 100000.0f) / 32767.0f);
 
