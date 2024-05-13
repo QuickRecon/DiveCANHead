@@ -61,6 +61,14 @@ class DiveCAN(object):
         tx_msg = can.Message(arbitration_id = 0xD000001, data=[0x1,0x0,0x0])
         self._bus.send(tx_msg)
 
+    def send_bootloader(self) -> None:
+        tx_msg = can.Message(arbitration_id = 0x79, data=[], is_extended_id = False)
+        self._bus.send(tx_msg)
+
+    def send_bootloader_go(self) -> None:
+        tx_msg = can.Message(arbitration_id = 0x21, data=[0x08, 0x00, 0x00, 0x00], is_extended_id = False)
+        self._bus.send(tx_msg)
+
     def send_id(self, id: int) -> None:
         tx_msg = can.Message(arbitration_id = 0xD000000+id, data=[0x1,0x0,0x0])
         self._bus.send(tx_msg)
