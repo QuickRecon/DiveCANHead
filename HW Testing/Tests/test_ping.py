@@ -26,7 +26,7 @@ def test_ping_response_name(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.H
     divecan_client.flush_rx()
     divecan_client.send_id(device_id)
     message = divecan_client.listen_for_name()
-    assert message.data.decode("utf-8") == "Rev2Ctl\x00"
+    assert message.data.decode("utf-8") == "DC_HEAD\x00"
 
 @pytest.mark.parametrize("device_id", range(4,16))
 def test_ping_no_response(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim, device_id: int) -> None:
