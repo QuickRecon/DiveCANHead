@@ -61,6 +61,7 @@ Configuration_t loadConfiguration(void)
     return DefaultConfiguration;
 }
 
-void saveConfiguration(Configuration_t config)
+bool saveConfiguration(Configuration_t config)
 {
+    return ConfigurationValid(config);
 }

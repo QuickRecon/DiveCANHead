@@ -11,7 +11,7 @@ void CANTask(void *arg);
 void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
-void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpe, const Configuration_t *const configuration);
+void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration);
 void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
@@ -63,7 +63,7 @@ void InitDiveCAN(const DiveCANDevice_t *const deviceSpec, const Configuration_t 
 void CANTask(void *arg)
 {
     const DiveCANDevice_t *const deviceSpec = &(((DiveCANTask_params_t *)arg)->deviceSpec);
-    const Configuration_t *const configuration = &(((DiveCANTask_params_t *)arg)->configuration);
+    Configuration_t * const configuration = &(((DiveCANTask_params_t *)arg)->configuration);
 
     while (true)
     {
@@ -143,7 +143,7 @@ void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const
     RunCalibrationTask(deviceSpec->type, fO2, pressure);
 }
 
-void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
+void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration)
 {
     serial_printf("MENU message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message->id,
                   message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);

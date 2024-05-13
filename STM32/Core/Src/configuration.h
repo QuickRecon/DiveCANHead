@@ -24,7 +24,7 @@ extern "C"
     } Configuration_t;
 
     Configuration_t loadConfiguration(void);
-    void saveConfiguration(Configuration_t config);
+    bool saveConfiguration(Configuration_t config);
 #ifdef __cplusplus
 }
 #endif

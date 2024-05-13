@@ -167,7 +167,41 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
     }
 }
 
-void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
+void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const configuration)
+{
+    uint8_t configBytes[4] = {(uint8_t)(configuration->bits),
+                              (uint8_t)(configuration->bits >> BYTE_1_OFFSET),
+                              (uint8_t)(configuration->bits >> BYTE_2_OFFSET),
+                              (uint8_t)(configuration->bits >> BYTE_3_OFFSET)};
+
+    switch (menu[itemNumber].dataVal)
+    {
+    case CONFIG_VALUE_1:
+        configBytes[0] = newVal;
+        break;
+    case CONFIG_VALUE_2:
+        configBytes[1] = newVal;
+        break;
+    case CONFIG_VALUE_3:
+        configBytes[2] = newVal;
+        break;
+    case CONFIG_VALUE_4:
+        configBytes[3] = newVal;
+        break;
+    default:
+    }
+
+    configuration->bits = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
+    serial_printf("Saving config %ld", configuration->bits);
+    bool valid = saveConfiguration(*configuration);
+    if (valid){
+        serial_printf("Config accepted");
+    } else {
+        serial_printf("Config rejected");
+    }
+}
+
+void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration)
 {
     static bool waitingForNextRow = false;
     static DiveCANType_t last_target = 0;
@@ -197,13 +231,26 @@ void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t
     {
         waitingForNextRow = false;
         serial_printf("Got data 0x%x for item %u\r\n", message->data[2], itemNumber);
-    } else {
+
+        switch (menu[itemNumber].dataVal)
+        {
+        case CONFIG_VALUE_1:
+        case CONFIG_VALUE_2:
+        case CONFIG_VALUE_3:
+        case CONFIG_VALUE_4:
+            updateConfig(itemNumber, message->data[2], configuration);
+            break;
+        default:
+        }
+    }
+    else
+    {
         /* No match */
         waitingForNextRow = false;
     }
 }
 
-void ProcessMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
+void ProcessMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration)
 {
     uint8_t op = message->data[0] & 0xFC;
     switch (op)
@@ -216,7 +263,7 @@ void ProcessMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *c
         break;
     case MENU_RESP_HEADER: /*  Handset sends that to us during save */
     case MENU_RESP_BODY_BASE:
-        HandleMenuSave(message, deviceSpec);
+        HandleMenuSave(message, deviceSpec, configuration);
         break;
     default:
         serial_printf("Unexpected menu message [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\r\n", message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
