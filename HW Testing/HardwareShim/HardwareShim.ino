@@ -57,7 +57,7 @@ void setup() {
   // Serial2.begin(19200);
   Serial.println("HW Shim Active");
 
-
+  
   // Init SS Cell
   dCell1 =  new DiveO2Cell(&Serial1);
   //dCell2 =  new DiveO2Cell(&Serial2);
@@ -79,6 +79,10 @@ void setup() {
   }
   ads.setGain(GAIN_EIGHT); // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
 
+  // inputMode the unused pins
+  pinMode(GPIO1Pin, INPUT);
+  pinMode(GPIO2Pin, INPUT);
+  pinMode(enPin, INPUT);
 }
 
 // Serial Messages
