@@ -39,7 +39,7 @@ void Shutdown(void)
     /* SOL_DIS_BATT: GPIO B Pin 3*/
     /* SOL_DIS_CAN: GPIO B Pin 4*/
     /* SOLENOID: GPIO C Pin 1*/
-    (void) HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_3);
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_3);
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_4);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_1);
 
@@ -161,7 +161,8 @@ void SetBattery(bool enable)
     HAL_GPIO_WritePin(BATTERY_EN_GPIO_Port, BATTERY_EN_Pin, Pin);
 }
 
-BatteryV_t getVoltage(PowerSource_t powerSource){
+BatteryV_t getVoltage(PowerSource_t powerSource)
+{
     /* TODO(Aren): Implement */
     return 33;
 }
