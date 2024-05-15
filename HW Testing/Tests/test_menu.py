@@ -45,6 +45,7 @@ def test_menu_commit_flags(divecan_client: DiveCAN.DiveCAN, our_id: int):
     message2 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
     message3 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
 
+    assert message1.data[5] == 0x30
     maxVal = (message1.data[6] << 56) | (message1.data[7] << 48) | (message2.data[1] << 40) | (message2.data[2] << 32) | (message2.data[3] << 24) | (message2.data[4] << 16) | (message2.data[5] << 8) | message2.data[6]
     actualVal = (message2.data[7] << 56) | (message3.data[1] << 48) | (message3.data[2] << 40) | (message3.data[3] << 32) | (message3.data[4] << 24) | (message3.data[5] << 16) | (message3.data[6] << 8) | message3.data[7]
 
@@ -63,6 +64,28 @@ def test_menu_config_flags(divecan_client: DiveCAN.DiveCAN, our_id: int, configB
     maxVal = (message1.data[6] << 56) | (message1.data[7] << 48) | (message2.data[1] << 40) | (message2.data[2] << 32) | (message2.data[3] << 24) | (message2.data[4] << 16) | (message2.data[5] << 8) | message2.data[6]
     actualVal = (message2.data[7] << 56) | (message3.data[1] << 48) | (message3.data[2] << 40) | (message3.data[3] << 32) | (message3.data[4] << 24) | (message3.data[5] << 16) | (message3.data[6] << 8) | message3.data[7]
 
+    assert message1.data[5] == 0x30 | (configByte+1)
     assert maxVal == 0xFF
     # We can't define the actual val until we're testing config land
     #assert actualVal == 1
+
+@pytest.mark.parametrize("our_id", range(0,9))
+@pytest.mark.parametrize("configByte", range(0,4))
+@pytest.mark.parametrize("dataByte", range(0,0X100, 50))
+def test_menu_config_write(divecan_client: DiveCAN.DiveCAN, our_id: int, configByte: int, dataByte: int):
+    divecan_client.send_menu_value(DiveCAN.DUT_ID, our_id, configByte+1, dataByte)
+    divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID) # Wait for the ack
+    divecan_client.send_menu_ack(DiveCAN.DUT_ID, our_id)
+    divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID) # Wait for the ack pt 2
+    divecan_client.flush_rx()
+    divecan_client.send_menu_flag(DiveCAN.DUT_ID, our_id, configByte+1)
+
+    message1 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
+    divecan_client.send_menu_ack(DiveCAN.DUT_ID, our_id)
+    message2 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
+    message3 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
+
+    assert message1.data[5] == 0x30 | (configByte+1)
+    
+    actualVal = (message2.data[7] << 56) | (message3.data[1] << 48) | (message3.data[2] << 40) | (message3.data[3] << 32) | (message3.data[4] << 24) | (message3.data[5] << 16) | (message3.data[6] << 8) | message3.data[7]
+    assert actualVal == dataByte

@@ -75,6 +75,15 @@ class DiveCAN(object):
         tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, idx, 0x0, 0x0, 0x0])
         self._bus.send(tx_msg)
 
+    def send_menu_value(self, target_id: int, src_id: int, item_idx: int, value: int) -> None:
+        id = 0xd0a0000 | src_id | (target_id << 8)
+        idx = 0x50 | item_idx
+        tx_msg = can.Message(arbitration_id = id, data=[0x10, 0x8, 0x0, 0x2e, 0x93, idx, 0x0, 0x0])
+        self._bus.send(tx_msg)
+
+        tx_msg = can.Message(arbitration_id = id, data=[0x21, 0x0, value, 0x0, 0x0, 0x0, 0x0, 0x0])
+        self._bus.send(tx_msg)
+
     def send_menu_ack(self, target_id: int, src_id: int):
         id = 0xd0a0000 | src_id | (target_id << 8)
         tx_msg = can.Message(arbitration_id = id, data=[0x30, 0x23, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0])
