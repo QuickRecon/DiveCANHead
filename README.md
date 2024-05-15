@@ -9,6 +9,8 @@ Revision 2.3 has been produced and appears to be without hardware faults, curren
 
 Constructive criticism, suggestions, and pull requests are always welcome.
 
+Documentation for building and flashing firmware can be found under /Documentation/
+
 # Goals
 The goals of this project are pretty simple:
 - Have a reliable PPO2 monitor that can handle both digital and analog PPO2 cell inputs
@@ -17,7 +19,6 @@ The goals of this project are pretty simple:
 
 # DiveCAN
 DiveCAN is Shearwaters proprietary digital rebreather communications bus, more details about the electrical and protocol layers are discussed here: https://github.com/QuickRecon/DiveCAN
-
 
 # The platform
 The platform is based on an STM32 processor, connected to a pair of dual differential input ADCs for analog sensing. Digital cells are handled via the 3 UART ports on the STM32.
@@ -53,17 +54,13 @@ These are required before the firmware can be considered ready for any kind of t
 - Verification of compatibility with monitor bus devices, ISC.
 
 ### Future Hardware Improvements (desired on next board version)
-- CAN_EN should be routed to any of PA0, PC13, PE6, PA2, or PC5 so we can go to standby/shutdown rather than just STOP
-- Add pulldowns on some spare pins (HW version identification, so we can maintain backwards compatibility with old boards)
 - External watchdog
 - CAN IC with lower power
 
 ### Future Software Improvements
 - Battery reading and power switching 
-- Menu for setting cell type
 - Make DiveCAN multi-device safe so we can make multiple menu rows
 - Predive "app", show loop pressure and such
-
 
 ### Prospective future developments
 - Additional form-factors, shorter, more compact.
