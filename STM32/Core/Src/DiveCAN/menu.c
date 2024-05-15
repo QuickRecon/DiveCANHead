@@ -221,6 +221,8 @@ void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t
         if (length > MAX_1_MSG_SAVE_LEN)
         {
             waitingForNextRow = true;
+            last_target = target;
+            last_source = source;
         }
         txMenuSaveAck(target, source, reqByte);
     }
@@ -246,6 +248,7 @@ void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t
     else
     {
         /* No match */
+        serial_printf("Got menu save with no matching prefix");
         waitingForNextRow = false;
     }
 }

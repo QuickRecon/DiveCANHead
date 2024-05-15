@@ -3,6 +3,8 @@ import can
 import time
 import pytest
 
+DUT_ID = 4
+
 class DiveCANNoMessageException(Exception):
     """ Raised when we do not get the expected message within the timeout period """
     pass
@@ -20,38 +22,25 @@ class DiveCAN(object):
         self._poll_timeout = 2
 
         # Make a listener, consume the socket
-        reader = can.BufferedReader()
-        notifier = can.Notifier(self._bus, [reader])
-        while reader.get_message(0.1) is not None:
-            reader.get_message(0.1)
-        reader.stop()
-        notifier.stop()
+        self.reader = can.BufferedReader()
+        self.notifier = can.Notifier(self._bus, [self.reader])
+        while self.reader.get_message(0.1) is not None:
+            self.reader.get_message(0.1)
 
     def __del__(self)-> None:
+        self.notifier.stop()
         self._bus.shutdown()
 
     def flush_rx(self) -> None:
-        # Make a listener, consume the socket
-        reader = can.BufferedReader()
-        notifier = can.Notifier(self._bus, [reader])
-        while reader.get_message(0.1) is not None:
-            reader.get_message(0.1)
-        reader.stop()
-        notifier.stop()
+        while self.reader.get_message(0.1) is not None:
+            self.reader.get_message(0.1)
 
     def _rx_msg_timed(self, id: int, timeout: int) -> can.Message:
         start_time = time.time()
-        reader = can.BufferedReader()
-        notifier = can.Notifier(self._bus, [reader])
-
         while time.time() - start_time < timeout:
-            msg = reader.get_message(self._timeout)
+            msg = self.reader.get_message(self._timeout)
             if msg is not None and msg.arbitration_id == id:
-                notifier.stop()
-                reader.stop()
                 return msg
-        reader.stop()
-        notifier.stop()
         raise DiveCANNoMessageException("Expected message never arrived")
 
     def _rx_msg(self, id: int) -> can.Message:
@@ -69,6 +58,28 @@ class DiveCAN(object):
         tx_msg = can.Message(arbitration_id = 0x21, data=[0x08, 0x00, 0x00, 0x00], is_extended_id = False)
         self._bus.send(tx_msg)
 
+    def send_menu_req(self, target_id: int, src_id: int) -> None:
+        id = 0xd0a0000 | src_id | (target_id << 8)
+        tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, 0x0, 0x0, 0x0, 0x0])
+        self._bus.send(tx_msg)
+
+    def send_menu_item(self, target_id: int, src_id: int, item_idx: int) -> None:
+        id = 0xd0a0000 | src_id | (target_id << 8)
+        idx = 0x10 | item_idx
+        tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, idx, 0x0, 0x0, 0x0])
+        self._bus.send(tx_msg)
+
+    def send_menu_flag(self, target_id: int, src_id: int, item_idx: int) -> None:
+        id = 0xd0a0000 | src_id | (target_id << 8)
+        idx = 0x30 | item_idx
+        tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, idx, 0x0, 0x0, 0x0])
+        self._bus.send(tx_msg)
+
+    def send_menu_ack(self, target_id: int, src_id: int):
+        id = 0xd0a0000 | src_id | (target_id << 8)
+        tx_msg = can.Message(arbitration_id = id, data=[0x30, 0x23, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0])
+        self._bus.send(tx_msg)
+
     def send_id(self, id: int) -> None:
         tx_msg = can.Message(arbitration_id = 0xD000000+id, data=[0x1,0x0,0x0])
         self._bus.send(tx_msg)
@@ -77,20 +88,24 @@ class DiveCAN(object):
         tx_msg = can.Message(arbitration_id = 0xD130201, data=[0x64,0x04,0x00])
         self._bus.send(tx_msg)
 
-    def listen_for_id(self) -> None:
+    def listen_for_id(self) -> can.Message:
         return self._rx_msg(0xD000004)
 
-    def listen_for_name(self) -> None:
+    def listen_for_name(self) -> can.Message:
         return self._rx_msg(0xD010004)
 
-    def listen_for_status(self) -> None:
+    def listen_for_status(self) -> can.Message:
         return self._rx_msg(0xDCB0004)
 
-    def listen_for_ppo2(self) -> None:
+    def listen_for_ppo2(self) -> can.Message:
         return self._rx_msg(0xD040004)
 
-    def listen_for_millis(self) -> None:
+    def listen_for_millis(self) -> can.Message:
         return self._rx_msg(0xD110004)
 
-    def listen_for_cal(self) -> None:
+    def listen_for_cal(self) -> can.Message:
         return self._rx_msg_timed(0xD120004, 5)
+    
+    def listen_for_menu(self, target_id: int, src_id: int) -> can.Message:
+        id = 0xD0A0000 | src_id | (target_id << 8)
+        return self._rx_msg(id)
