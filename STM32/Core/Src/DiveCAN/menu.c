@@ -88,7 +88,7 @@ static const uint8_t SAVE_REQ_FIELD_IDX = 5;
 static const uint8_t MAX_1_MSG_SAVE_LEN = 6;
 static const uint8_t MIN_VALUES_VAL = 4; /*  If the second hex digit is above this value its a value request */
 
-void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
+void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration)
 {
     DiveCANType_t target = (DiveCANType_t)(0xF & (message->id));
     DiveCANType_t source = deviceSpec->type;
@@ -99,19 +99,19 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
 
     if (0 == reqByte)
     { /*  If we just need to ack then do that */
-        serial_printf("ACK %d\r\n", itemNumber);
+        serial_printf("ACK %u\r\n", itemNumber);
         txMenuAck(target, source, MENU_COUNT);
     }
     else if (itemNumber < MENU_COUNT)
     { /*  Otherwise we're decoding a bit more */
         if ((reqByte & REQ_MASK) == REQ_ITEM)
         {
-            serial_printf("Item %d\r\n", itemNumber);
+            serial_printf("Item %u\r\n", itemNumber);
             txMenuItem(target, source, reqByte, menu[itemNumber].title, menu[itemNumber].itemType == STATIC_TEXT, menu[itemNumber].editable);
         }
         else if ((reqByte & REQ_MASK) == REQ_FLAGS)
         {
-            serial_printf("Flags %d\r\n", itemNumber);
+            serial_printf("Flags %u\r\n", itemNumber);
             if (menu[itemNumber].itemType == STATIC_TEXT)
             {
                 txMenuFlags(target, source, reqByte, 1, menu[itemNumber].fieldCount);
@@ -152,7 +152,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
         }
         else if (((reqByte & REQ_MASK) >> HALF_BYTE_WIDTH) > MIN_VALUES_VAL)
         {
-            serial_printf("Field %d, %d\r\n", menuItemNumber, itemNumber);
+            serial_printf("Field %u, %u\r\n", menuItemNumber, itemNumber);
 
             txMenuField(target, source, reqByte, menu[menuItemNumber - 1].fieldItems[itemNumber - 1]);
         }
@@ -192,12 +192,12 @@ void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const con
     }
 
     configuration->bits = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
-    serial_printf("Saving config %ld", configuration->bits);
+    serial_printf("Saving config %lu\r\n", configuration->bits);
     bool valid = saveConfiguration(*configuration);
     if (valid){
-        serial_printf("Config accepted");
+        serial_printf("Config accepted\r\n");
     } else {
-        serial_printf("Config rejected");
+        serial_printf("Config rejected\r\n");
     }
 }
 
@@ -248,7 +248,7 @@ void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t
     else
     {
         /* No match */
-        serial_printf("Got menu save with no matching prefix");
+        serial_printf("Got menu save with no matching prefix\r\n");
         waitingForNextRow = false;
     }
 }
