@@ -14,12 +14,15 @@ class HWShim(object):
     def set_digital_ppo2(self, cell_num: int, ppo2: float) -> None:
         msg = "sdc,"+str(cell_num)+","+str(ppo2*100)+","
         self._serial_port.write(msg.encode())
-        self._serial_port.readline()
-        self._serial_port.read_all()
-
-
+        rx_str = ""
+        expected_str = "sdc"+str(cell_num)+"\r\n"
+        while rx_str != expected_str:
+            rx_str = self._serial_port.readline().decode("utf-8")
+        
     def set_analog_millis(self, cell_num: int, millis: float) -> None:
         msg = "sac,"+str(cell_num)+","+str(millis)+","
         self._serial_port.write(msg.encode())
-        self._serial_port.readline()
-        self._serial_port.read_all()
+        rx_str = ""
+        expected_str = "sac"+str(cell_num)+"\r\n"
+        while rx_str  != expected_str:
+            rx_str = self._serial_port.readline().decode("utf-8")
