@@ -24,16 +24,16 @@ class DiveCAN(object):
         # Make a listener, consume the socket
         self.reader = can.BufferedReader()
         self.notifier = can.Notifier(self._bus, [self.reader])
-        while self.reader.get_message(0.1) is not None:
-            self.reader.get_message(0.1)
+        while self.reader.get_message(0) is not None:
+            self.reader.get_message(0)
 
     def __del__(self)-> None:
         self.notifier.stop()
         self._bus.shutdown()
 
     def flush_rx(self) -> None:
-        while self.reader.get_message(0.1) is not None:
-            self.reader.get_message(0.1)
+        while self.reader.get_message(0) is not None:
+            self.reader.get_message(0)
 
     def _rx_msg_timed(self, id: int, timeout: int) -> can.Message:
         start_time = time.time()

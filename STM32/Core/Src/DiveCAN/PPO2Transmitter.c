@@ -79,7 +79,7 @@ void PPO2TXTask(void *arg)
     do
     {
         ++i;
-        (void)osDelay(TIMEOUT_500MS);
+        (void)osDelay(TIMEOUT_100MS);
 
         OxygenCell_t c1 = {0};
         bool c1pick = xQueuePeek(params->c1, &c1, TIMEOUT_100MS_TICKS);

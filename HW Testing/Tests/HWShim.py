@@ -6,7 +6,7 @@ import threading
 class HWShim(object):
     """ Class for interacting with the hardware shim over serial """
     def __init__(self) -> None:
-        self._serial_port = serial.Serial('/dev/ttyACM0', 19200)
+        self._serial_port = serial.Serial('/dev/ttyACM0', 115200)
 
     def __del__(self) -> None:
         self._serial_port.close()

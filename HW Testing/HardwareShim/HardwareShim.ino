@@ -53,7 +53,7 @@ const int VBusPin = 8;
 void(* resetFunc) (void) = 0; //declare reset function @ address 0 to jump back to the start of the program
 
 void setup() {
-  Serial.begin(19200);
+  Serial.begin(115200);
   // Serial2.begin(19200);
   Serial.println("HW Shim Active");
 

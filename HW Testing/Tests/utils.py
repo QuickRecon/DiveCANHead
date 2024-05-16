@@ -21,6 +21,8 @@ def calibrateBoard(divecan_client: DiveCAN.DiveCAN,  shim_host: HWShim.HWShim):
     shim_host.set_analog_millis(1, 50)
     shim_host.set_analog_millis(2, 50)
     shim_host.set_analog_millis(3, 50)
+
+    divecan_client.flush_rx()
     divecan_client.send_calibrate()
 
     # Listen for the ack
