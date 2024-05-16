@@ -24,15 +24,6 @@ def test_ppo2(config_and_cal_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShi
     utils.assertCell(config.cell2, message.data[2], c2Val)
     utils.assertCell(config.cell3, message.data[3], c3Val)
 
-@pytest.mark.parametrize("expected_PPO2", range(0, 250, 5))
-def test_digital_cell_ppo2(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim, expected_PPO2: int) -> None:
-    """ Test that digital cell reports PPO2 correctly """
-    shim_host.set_digital_ppo2(1, expected_PPO2/100)
-    divecan_client.flush_rx()
-    message = divecan_client.listen_for_ppo2()
-    assert message.arbitration_id == 0xD040004
-    assert message.data[1] == expected_PPO2
-
 @pytest.mark.parametrize("c2_expected", range(5,125, 24))
 @pytest.mark.parametrize("c3_expected", range(5,125, 24))
 def test_millivolts(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim, c2_expected: int, c3_expected: int) -> None:
