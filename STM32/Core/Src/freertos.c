@@ -55,7 +55,7 @@ extern TIM_HandleTypeDef htim7;
 
 /* Hook prototypes */
 void configureTimerForRunTimeStats(void);
-uint32_t getRunTimeCounterValue(void);
+unsigned long getRunTimeCounterValue(void);
 void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
 
@@ -104,4 +104,3 @@ void vApplicationMallocFailedHook(void)
 /* USER CODE BEGIN Application */
 
 /* USER CODE END Application */
-

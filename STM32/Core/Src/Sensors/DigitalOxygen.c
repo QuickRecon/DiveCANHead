@@ -123,7 +123,7 @@ void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
 
         NON_FATAL_ERROR(OUT_OF_DATE_ERROR);
 
-        if (HAL_OK != HAL_UART_Abort(&huart1))
+        if (HAL_OK != HAL_UART_Abort(handle->huart))
         { /* Abort so that we don't get stuck waiting for uart*/
             NON_FATAL_ERROR(UART_ERROR);
         }
@@ -277,7 +277,6 @@ void decodeCellMessage(void *arg)
         else
         {
             NON_FATAL_ERROR(TIMEOUT_ERROR);
-            (void)osDelay(TIMEOUT_500MS);
         }
         Digital_broadcastPPO2(cell);
         /* Sampling more than 10x per second is a bit excessive,
@@ -356,16 +355,18 @@ void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell)
         (void)memset(cell->lastMessage, 0, RX_BUFFER_LENGTH);
 
         uint16_t sendLength = (uint16_t)strnlen((char *)cell->txBuf, TX_BUFFER_LENGTH);
-        if (HAL_OK == HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength))
+        HAL_StatusTypeDef txStatus = HAL_UART_Transmit_IT(cell->huart, cell->txBuf, sendLength);
+        if (HAL_OK == txStatus)
         {
-            if (HAL_OK != HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH))
+            txStatus = HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, RX_BUFFER_LENGTH);
+            if (HAL_OK != txStatus)
             {
-                NON_FATAL_ERROR(UART_ERROR);
+                NON_FATAL_ERROR_DETAIL(UART_ERROR, txStatus);
             }
         }
         else
         {
-            NON_FATAL_ERROR(UART_ERROR);
+            NON_FATAL_ERROR_DETAIL(UART_ERROR, txStatus);
         }
     }
 }
