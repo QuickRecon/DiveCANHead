@@ -149,7 +149,6 @@ TEST(configuration, TestCalModeValidation)
     }
 }
 
-
 TEST(configuration, TestFirmwareVersionValidation)
 {
     for (uint8_t i = 0; i < 0xFFu; ++i)
@@ -173,4 +172,17 @@ TEST(configuration, TestUARTContentionValidation)
     testConfig.fields.enableUartPrinting = true;
     testConfig.fields.cell2 = CELL_DIGITAL;
     CHECK(!ConfigurationValid(testConfig));
+}
+
+TEST(configuration, GetIDOfDefaultConfig)
+{
+    const Configuration_t DefaultConfiguration = {.fields = {
+                                                  .firmwareVersion = FIRMWARE_VERSION,
+                                                  .cell1 = CELL_DIGITAL,
+                                                  .cell2 = CELL_ANALOG,
+                                                  .cell3 = CELL_ANALOG,
+                                                  .powerMode = MODE_BATTERY_THEN_CAN,
+                                                  .calibrationMode = CAL_DIGITAL_REFERENCE,
+                                                  .enableUartPrinting = true}};
+    printf("%u", DefaultConfiguration.bits);
 }
