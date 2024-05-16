@@ -17,6 +17,14 @@ def shim_host() -> HWShim.HWShim:
     return HWShim.HWShim()
 
 @pytest.fixture(params=configuration.SupportedConfigurations())
+def config_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]:
+   """ Test fixture for a DiveCAN interface, configure and calibrate the board """
+   divecan_client = DiveCAN.DiveCAN()
+   shim_host = HWShim.HWShim()
+   utils.configureBoard(divecan_client, request.param)
+   return (divecan_client, shim_host, request.param)
+
+@pytest.fixture(params=configuration.SupportedConfigurations())
 def config_and_cal_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]:
    """ Test fixture for a DiveCAN interface, configure and calibrate the board """
    divecan_client = DiveCAN.DiveCAN()
