@@ -2,7 +2,7 @@ from enum import IntEnum
 import pytest
 
 # Temporarily narrow the scope of our test to a fixed number of supported configurations rather than the entire space
-SUPPORTED_CONFIGS = [16798725]
+SUPPORTED_CONFIGS = [16798725, 16794885]
 
 FIRMWARE_VERSION = 5
 
@@ -15,7 +15,6 @@ class PowerSelectMode(IntEnum):
     MODE_BATTERY_THEN_CAN=1,
     MODE_CAN=2,
     MODE_OFF=3
-
 
 class OxygenCalMethod(IntEnum):
     CAL_DIGITAL_REFERENCE = 0,

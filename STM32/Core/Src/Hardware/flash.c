@@ -9,6 +9,7 @@
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x01;
 static const uint8_t FATAL_ERROR_BASE_ADDR = 0x04;
 static const uint8_t NON_FATAL_ERROR_BASE_ADDR = 0x05;
+static const uint8_t CONFIG_BASE_ADDRESS = 0x06;
 
 static const uint32_t CAL_TO_INT32 = 10000000;
 
@@ -187,7 +188,7 @@ bool GetNonFatalError(NonFatalError_t err, uint32_t *errCount)
         else
         {
             /*  We got an unmanageable eeprom error */
-             LogMsg("GetNonFatalError: Fatal eeprom error");
+            LogMsg("GetNonFatalError: Fatal eeprom error");
         }
     }
 
@@ -202,5 +203,49 @@ bool GetNonFatalError(NonFatalError_t err, uint32_t *errCount)
 bool SetNonFatalError(NonFatalError_t err, uint32_t errCount)
 {
     bool writeOk = WriteInt32((uint16_t)(NON_FATAL_ERROR_BASE_ADDR + (uint16_t)err), errCount);
+    return writeOk;
+}
+
+bool GetConfiguration(Configuration_t *const config)
+{
+    bool configOK = false;
+
+    if (NULL == config)
+    {
+        LogMsg("GetCalibration: EEPROM Null config");
+    }
+    else
+    {
+        EE_Status result = EE_ReadVariable32bits(CONFIG_BASE_ADDRESS, &(config->bits));
+        if (result == EE_OK)
+        {
+            configOK = true; /*  This is the happy path, everything else is flash errors that imply a bad cal read (and we just handle it gracefully here) */
+        }
+        else if (result == EE_NO_DATA) /*  If this is a fresh EEPROM then we need to init it */
+        {
+            (void)SetConfiguration(&DEFAULT_CONFIGURATION); /*  We don't really care about the return val, either way its a fail to read */
+        }
+        else
+        {
+            /*  We got an unmanageable eeprom error */
+            LogMsg("GetConfig: Unmanageable eeprom error");
+        }
+    }
+
+    return configOK;
+}
+
+bool SetConfiguration(const Configuration_t *const config)
+{
+    bool writeOk = true; /*  Presume that we're doing ok, if we hit a fail state then false it */
+    if (NULL == config)
+    {
+        LogMsg("SetCalibration: EEPROM Null config");
+    }
+    else
+    {
+        /*   Write that shit to the eeprom */
+        writeOk = WriteInt32(CONFIG_BASE_ADDRESS, config->bits);
+    }
     return writeOk;
 }

@@ -9,9 +9,39 @@ def resetBoard(divecan_client: DiveCAN.DiveCAN):
     divecan_client.send_bootloader()
     # This should kick us out of the bootloader
     divecan_client.send_id(1)
+    divecan_client.listen_for_ppo2() # Acts as a wait until the board is up and running
+
+def ReadConfigByte(divecan_client: DiveCAN.DiveCAN, index: int):
+    divecan_client.flush_rx()
+    divecan_client.send_menu_flag(DiveCAN.DUT_ID, 1, index)
+
+    divecan_client.listen_for_menu(1, DiveCAN.DUT_ID)
+    divecan_client.send_menu_ack(DiveCAN.DUT_ID, 1)
+    message2 = divecan_client.listen_for_menu(1, DiveCAN.DUT_ID)
+    message3 = divecan_client.listen_for_menu(1, DiveCAN.DUT_ID)
+    actualVal = (message2.data[7] << 56) | (message3.data[1] << 48) | (message3.data[2] << 40) | (message3.data[3] << 32) | (message3.data[4] << 24) | (message3.data[5] << 16) | (message3.data[6] << 8) | message3.data[7]
+    return actualVal
+
+def WriteConfigByte(divecan_client: DiveCAN.DiveCAN, index: int, conf_byte: int):
+    divecan_client.flush_rx()
+    divecan_client.send_menu_value(DiveCAN.DUT_ID, 1, index, conf_byte)
+    divecan_client.listen_for_menu(1, DiveCAN.DUT_ID) # Wait for the ack
+    divecan_client.send_menu_ack(DiveCAN.DUT_ID, 1)
+    divecan_client.listen_for_menu(1, DiveCAN.DUT_ID) # Wait for the ack pt 2
+
 
 def configureBoard(divecan_client: DiveCAN.DiveCAN, configuration: configuration.Configuration):
-    return 0
+    config_changed = False
+    for i in range(0,4):
+        expected_byte = configuration.getByte(i)
+        currentByte = ReadConfigByte(divecan_client, i+1)
+        if expected_byte != currentByte:
+            WriteConfigByte(divecan_client, i+1, expected_byte)
+            config_changed = True
+    
+    if config_changed:
+        resetBoard(divecan_client)
+    
 
 def calibrateBoard(divecan_client: DiveCAN.DiveCAN,  shim_host: HWShim.HWShim):
     """ Run the calibration happy path """

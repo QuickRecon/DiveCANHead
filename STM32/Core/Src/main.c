@@ -336,18 +336,19 @@ int main(void)
 
   HAL_GPIO_WritePin(SOLENOID_GPIO_Port, SOLENOID_Pin, GPIO_PIN_RESET);
 
-  /* Load Config */
-  const Configuration_t deviceConfig = loadConfiguration();
-
   InitLog();
-  InitPrinter(deviceConfig.fields.enableUartPrinting);
-  serial_printf("Booting, Last Reset Reason (%s)\r\n", reset_cause_get_name(reset_cause));
-  serial_printf("Configuration: 0x%lx\r\n", deviceConfig.bits);
 
   /* Set up flash erase */
   (void)HAL_FLASH_Unlock();
   (void)EE_Init(EE_FORCED_ERASE);
   (void)HAL_FLASH_Lock();
+
+  /* Load Config */
+  const Configuration_t deviceConfig = loadConfiguration();
+
+  InitPrinter(deviceConfig.fields.enableUartPrinting);
+  serial_printf("Booting, Last Reset Reason (%s)\r\n", reset_cause_get_name(reset_cause));
+  serial_printf("Configuration: 0x%lx\r\n", deviceConfig.bits);
 
   /* Set our power bus */
   SetVBusMode(deviceConfig.fields.powerMode);

@@ -178,9 +178,9 @@ TEST(configuration, GetIDOfDefaultConfig)
 {
     const Configuration_t DefaultConfiguration = {.fields = {
                                                   .firmwareVersion = FIRMWARE_VERSION,
-                                                  .cell1 = CELL_DIGITAL,
+                                                  .cell1 = CELL_ANALOG,
                                                   .cell2 = CELL_ANALOG,
-                                                  .cell3 = CELL_ANALOG,
+                                                  .cell3 = CELL_DIGITAL,
                                                   .powerMode = MODE_BATTERY_THEN_CAN,
                                                   .calibrationMode = CAL_DIGITAL_REFERENCE,
                                                   .enableUartPrinting = true}};

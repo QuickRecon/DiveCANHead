@@ -6,13 +6,12 @@
 extern "C"
 {
 #endif
-
     /* UPDATING THIS STRUCTURE REQUIRES UPDATING THE VERSION NUMBER*/
     typedef union ConfigUnion
     {
         struct
         {
-            const uint8_t firmwareVersion : 8;
+            uint8_t firmwareVersion : 8;
             CellType_t cell1 : 2;
             CellType_t cell2 : 2;
             CellType_t cell3 : 2;
@@ -25,6 +24,15 @@ extern "C"
 
     Configuration_t loadConfiguration(void);
     bool saveConfiguration(Configuration_t config);
+
+    static const Configuration_t DEFAULT_CONFIGURATION = {.fields = {
+                                                              .firmwareVersion = FIRMWARE_VERSION,
+                                                              .cell1 = CELL_DIGITAL,
+                                                              .cell2 = CELL_ANALOG,
+                                                              .cell3 = CELL_ANALOG,
+                                                              .powerMode = MODE_BATTERY_THEN_CAN,
+                                                              .calibrationMode = CAL_DIGITAL_REFERENCE,
+                                                              .enableUartPrinting = true}};
 #ifdef __cplusplus
 }
 #endif

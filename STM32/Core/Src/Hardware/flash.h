@@ -2,6 +2,7 @@
 
 #include "../Sensors/OxygenCell.h"
 #include "../errors.h"
+#include "../configuration.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -17,6 +18,8 @@ extern "C"
     bool GetNonFatalError(NonFatalError_t err, uint32_t *errCount);
     bool SetNonFatalError(NonFatalError_t err, uint32_t errCount);
 
+    bool GetConfiguration(Configuration_t* const config);
+    bool SetConfiguration(const Configuration_t* const config);
 #ifdef __cplusplus
 }
 #endif

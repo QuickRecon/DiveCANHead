@@ -1,14 +1,6 @@
 #include "common.h"
 #include "configuration.h"
-
-const Configuration_t DefaultConfiguration = {.fields = {
-                                                  .firmwareVersion = FIRMWARE_VERSION,
-                                                  .cell1 = CELL_DIGITAL,
-                                                  .cell2 = CELL_ANALOG,
-                                                  .cell3 = CELL_ANALOG,
-                                                  .powerMode = MODE_BATTERY_THEN_CAN,
-                                                  .calibrationMode = CAL_DIGITAL_REFERENCE,
-                                                  .enableUartPrinting = true}};
+#include "Hardware/flash.h"
 
 bool CellValid(Configuration_t config, uint8_t cellNumber)
 {
@@ -58,10 +50,21 @@ bool ConfigurationValid(Configuration_t config)
 
 Configuration_t loadConfiguration(void)
 {
-    return DefaultConfiguration;
+    Configuration_t config = {0};
+    if(GetConfiguration(&config) && ConfigurationValid(config)){
+        // Everything is fine
+    } else {
+        NON_FATAL_ERROR_ISR(CONFIG_ERROR); // We need to use the isr call because that is blocking
+        config = DEFAULT_CONFIGURATION;
+    }
+    return config;
 }
 
 bool saveConfiguration(Configuration_t config)
 {
-    return ConfigurationValid(config);
+    bool valid = ConfigurationValid(config);
+    if(valid){
+        valid = SetConfiguration(&config);
+    }
+    return valid;
 }
