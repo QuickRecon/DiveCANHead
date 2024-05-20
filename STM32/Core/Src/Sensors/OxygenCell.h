@@ -54,7 +54,7 @@ extern "C"
     QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);
 
     bool isCalibrating(void);
-    void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val);
+    void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod);
 
 #ifdef __cplusplus
 }

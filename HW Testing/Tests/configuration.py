@@ -18,8 +18,8 @@ class PowerSelectMode(IntEnum):
 
 class OxygenCalMethod(IntEnum):
     CAL_DIGITAL_REFERENCE = 0,
-    CAL_ANALOG_ABSOLUTE = 1,
-    CAL_TOTAL_ABSOLUTE = 2
+    CAL_ANALOG_ABSOLUTE = 1
+    #CAL_TOTAL_ABSOLUTE = 2
 
 class Configuration():
     def __init__(self, firmwareVersion: int, cell1: CellType, cell2: CellType, cell3: CellType, powerMode: PowerSelectMode, calMethod: OxygenCalMethod, enableUartPrinting: bool):
@@ -49,36 +49,9 @@ class Configuration():
 def SupportedConfigurations():
     configurations = []
     for cell1 in CellType:
-        for cell2 in CellType:
-            for cell3 in CellType:
-                cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, PowerSelectMode.MODE_BATTERY_THEN_CAN, OxygenCalMethod.CAL_DIGITAL_REFERENCE, True)
-                if cellConfig.getBits() in SUPPORTED_CONFIGS:
-                    configurations.append(pytest.param(cellConfig, id=f'{cellConfig.getBits()}'))
-    return configurations
-
-def MillivoltsTest():
-    configurations = []
-    for cell1 in CellType:
-        for cell2 in CellType:
-            for cell3 in CellType:
-                cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, PowerSelectMode.MODE_BATTERY_THEN_CAN, OxygenCalMethod.CAL_DIGITAL_REFERENCE, True)
-                if not (cell1 == CellType.CELL_DIGITAL and cell2 == CellType.CELL_DIGITAL and cell3 == CellType.CELL_DIGITAL):
-                    if cellConfig.getBits() in SUPPORTED_CONFIGS:
-                        configurations.append(cellConfig)
-
-def PPO2Test():
-    """ Gives all combinations of cell types and PPO2 values """
-    configurations = []
-    for cell1 in CellType:
-        for cell2 in CellType:
-            for cell3 in CellType:
-                cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, PowerSelectMode.MODE_BATTERY_THEN_CAN, OxygenCalMethod.CAL_DIGITAL_REFERENCE, True)
-                if cellConfig.getBits() in SUPPORTED_CONFIGS:
-                    c1Vals = range(0, 255, 35)
-                    c2Vals = range(0, 255, 35)
-                    c3Vals = range(0, 255, 35)
-                    for c1Val in c1Vals:
-                        for c2Val in c2Vals:
-                            for c3Val in c3Vals:
-                                configurations.append(pytest.param([cellConfig, c1Val, c2Val, c3Val], id=f'{cellConfig.getBits()}-{c1Val}-{c2Val}-{c3Val}'))
+        for cell3 in CellType:
+            for calMethod in OxygenCalMethod:
+                cell2 = CellType.CELL_ANALOG
+                cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, PowerSelectMode.MODE_BATTERY_THEN_CAN, calMethod, True)
+                configurations.append(pytest.param(cellConfig, id=f'{cellConfig.getBits()}'))
     return configurations

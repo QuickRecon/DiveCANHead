@@ -12,7 +12,6 @@
 #include <math.h>
 #include "../Hardware/printer.h"
 
-
 /** @struct CalParameters_s
  *  @brief Contains calibration parameters for an oxygen sensor.
  *
@@ -21,7 +20,8 @@
  *  pressure value, and calibration method to be used. The remaining fields
  *  are for individual cell parameters.
  */
-typedef struct {
+typedef struct
+{
     DiveCANType_t deviceType;
     FO2_t fO2;
     uint16_t pressureVal;
@@ -117,7 +117,7 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
     return *queueHandle;
 }
 
-static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, OxygenHandle_t *cell, PPO2_t ppO2, ShortMillivolts_t* cellVals, NonFatalError_t* calErrors)
+static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, OxygenHandle_t *cell, PPO2_t ppO2, ShortMillivolts_t *cellVals, NonFatalError_t *calErrors)
 {
     AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cell->cellHandle;
     cellVals[i] = Calibrate(analogCell, ppO2, &(calErrors[i]));
@@ -133,6 +133,38 @@ static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, Oxygen
     {
         *calPass = DIVECAN_CAL_FAIL_GEN;
     }
+}
+
+DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
+{
+    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
+    PPO2_t ppO2 = calParams->fO2 * (calParams->pressureVal/1000);
+
+    /* Now that we have the PPO2 we cal all the analog cells
+     */
+    ShortMillivolts_t cellVals[CELL_COUNT] = {0};
+    NonFatalError_t calErrors[CELL_COUNT] = {ERR_NONE, ERR_NONE, ERR_NONE};
+
+    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+    {
+        OxygenHandle_t *cell = getCell(i);
+        if (CELL_ANALOG == cell->type)
+        {
+            calibrateAnalogCell(&calPass, i, cell, ppO2, cellVals, calErrors);
+        }
+
+        if (calErrors[i] != ERR_NONE)
+        {
+            calPass = DIVECAN_CAL_FAIL_GEN;
+        }
+    }
+
+    /* Now that calibration is done lets grab the millivolts for the record */
+    calParams->cell1 = cellVals[CELL_1];
+    calParams->cell2 = cellVals[CELL_2];
+    calParams->cell3 = cellVals[CELL_3];
+
+    return calPass;
 }
 
 /**
@@ -216,11 +248,14 @@ void CalibrationTask(void *arg)
     serial_printf("Starting calibrate\r\n");
     switch (calParams.calMethod)
     {
-    case CAL_DIGITAL_REFERENCE: /* Calibrate using the solid state cell as a reference */
-        (void)osDelay(TIMEOUT_4s);    /* Give the shearwater time to catch up */
+    case CAL_DIGITAL_REFERENCE:    /* Calibrate using the solid state cell as a reference */
+        (void)osDelay(TIMEOUT_4s); /* Give the shearwater time to catch up */
         calResult = DigitalReferenceCalibrate(&calParams);
         break;
     case CAL_ANALOG_ABSOLUTE:
+        (void)osDelay(TIMEOUT_4s);
+        calResult = AnalogReferenceCalibrate(&calParams);
+        break;
     case CAL_TOTAL_ABSOLUTE:
         calResult = DIVECAN_CAL_FAIL_REJECTED;
         NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
@@ -249,7 +284,7 @@ bool isCalibrating(void)
              (osThreadGetState(*calTask) == osThreadTerminated));
 }
 
-void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val)
+void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod)
 {
     static CalParameters_t calParams;
 
@@ -260,7 +295,7 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
     calParams.cell2 = 0;
     calParams.cell3 = 0;
 
-    calParams.calMethod = CAL_DIGITAL_REFERENCE;
+    calParams.calMethod = calMethod;
 
     txCalAck(deviceType);
 

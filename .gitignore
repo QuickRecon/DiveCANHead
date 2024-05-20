@@ -11,3 +11,4 @@ fp-info-cache
 .sonarlint
 .venv
 prof
+.idea
