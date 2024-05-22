@@ -2,9 +2,6 @@ from enum import IntEnum
 import pytest
 import itertools
 
-# Temporarily narrow the scope of our test to a fixed number of supported configurations rather than the entire space
-SUPPORTED_CONFIGS = [16798725, 16794885, 16794629]
-
 FIRMWARE_VERSION = 5
 
 class CellType(IntEnum):
