@@ -38,11 +38,19 @@ def configureBoard(divecan_client: DiveCAN.DiveCAN, configuration: configuration
         if expected_byte != currentByte:
             WriteConfigByte(divecan_client, i+1, expected_byte)
             currentByte = ReadConfigByte(divecan_client, i+1)
+
+            # Ensure that the byte took
             assert currentByte == expected_byte
             config_changed = True
     
     if config_changed:
         resetBoard(divecan_client)
+        # Assert the bytes post reset, ensures the config wasn't rejected
+        for i in range(0,4):
+            expected_byte = configuration.getByte(i)
+            currentByte = ReadConfigByte(divecan_client, i+1)
+            assert currentByte == expected_byte 
+
     
 
 def calibrateBoard(divecan_client: DiveCAN.DiveCAN,  shim_host: HWShim.HWShim):

@@ -186,3 +186,13 @@ TEST(configuration, GetIDOfDefaultConfig)
                                                   .enableUartPrinting = true}};
     printf("%u", DefaultConfiguration.bits);
 }
+
+TEST(configuration, TestDigitalCalAnalogCellsValidation)
+{
+    Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
+    testConfig.fields.calibrationMode = CAL_DIGITAL_REFERENCE;
+    testConfig.fields.cell1 = CELL_ANALOG;
+    testConfig.fields.cell2 = CELL_ANALOG;
+    testConfig.fields.cell3 = CELL_ANALOG;
+    CHECK(!ConfigurationValid(testConfig));
+}

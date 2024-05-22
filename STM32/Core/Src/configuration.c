@@ -44,6 +44,7 @@ bool ConfigurationValid(Configuration_t config)
 
     /* Check for incompatible states */
     valid = valid && ((!config.fields.enableUartPrinting) || (config.fields.cell2 == CELL_ANALOG)); /* If uart printing is on, cell2 MUST be analog */
+    valid = valid && (!((config.fields.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.fields.cell1 == CELL_ANALOG) && (config.fields.cell2 == CELL_ANALOG) && (config.fields.cell3 == CELL_ANALOG))); /* Can't have digital cal if no digital cells */
 
     return valid;
 }
@@ -52,9 +53,9 @@ Configuration_t loadConfiguration(void)
 {
     Configuration_t config = {0};
     if(GetConfiguration(&config) && ConfigurationValid(config)){
-        // Everything is fine
+        /* Everything is fine */
     } else {
-        NON_FATAL_ERROR_ISR(CONFIG_ERROR); // We need to use the isr call because that is blocking
+        NON_FATAL_ERROR_ISR(CONFIG_ERROR); /* We need to use the isr call because that is blocking */
         config = DEFAULT_CONFIGURATION;
     }
     return config;

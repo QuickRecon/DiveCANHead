@@ -46,6 +46,18 @@ class Configuration():
         bits = self.getBits()
         return (bits >> (8*byteIndex)) & 0xFF
     
+# Configs which are explicitly not supported
+def UnsupportedConfigurations():
+    configurationsObjs = [
+        Configuration(FIRMWARE_VERSION, CellType.CELL_ANALOG, CellType.CELL_ANALOG, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY_THEN_CAN, OxygenCalMethod.CAL_DIGITAL_REFERENCE, True),
+        Configuration(FIRMWARE_VERSION, CellType.CELL_ANALOG, CellType.CELL_DIGITAL, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY_THEN_CAN, OxygenCalMethod.CAL_DIGITAL_REFERENCE, True)
+    ]
+    
+    configurations = []
+    for config in configurationsObjs:
+        configurations.append(pytest.param(config, id=f'{hex(config.getBits())}'))
+    return configurations
+
 def SupportedConfigurations():
     configurations = []
     for cell1 in CellType:
@@ -53,5 +65,7 @@ def SupportedConfigurations():
             for calMethod in OxygenCalMethod:
                 cell2 = CellType.CELL_ANALOG
                 cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, PowerSelectMode.MODE_BATTERY_THEN_CAN, calMethod, True)
-                configurations.append(pytest.param(cellConfig, id=f'{cellConfig.getBits()}'))
+                if cellConfig.getBits() not in [x.values[0].getBits() for x in UnsupportedConfigurations()]:
+                    configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
     return configurations
+
