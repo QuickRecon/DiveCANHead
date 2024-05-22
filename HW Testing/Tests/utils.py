@@ -37,6 +37,8 @@ def configureBoard(divecan_client: DiveCAN.DiveCAN, configuration: configuration
         currentByte = ReadConfigByte(divecan_client, i+1)
         if expected_byte != currentByte:
             WriteConfigByte(divecan_client, i+1, expected_byte)
+            currentByte = ReadConfigByte(divecan_client, i+1)
+            assert currentByte == expected_byte
             config_changed = True
     
     if config_changed:

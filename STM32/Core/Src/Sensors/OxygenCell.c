@@ -138,12 +138,14 @@ static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, Oxygen
 DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
 {
     DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
-    PPO2_t ppO2 = calParams->fO2 * (calParams->pressureVal/1000);
+    PPO2_t ppO2 = (calParams->fO2 * calParams->pressureVal)/1000;
 
     /* Now that we have the PPO2 we cal all the analog cells
      */
     ShortMillivolts_t cellVals[CELL_COUNT] = {0};
     NonFatalError_t calErrors[CELL_COUNT] = {ERR_NONE, ERR_NONE, ERR_NONE};
+
+    serial_printf("Using PPO2 %u for cal\r\n", ppO2);
 
     for (uint8_t i = 0; i < CELL_COUNT; ++i)
     {
@@ -245,7 +247,7 @@ void CalibrationTask(void *arg)
 {
     CalParameters_t calParams = *((CalParameters_t *)arg);
     DiveCANCalResponse_t calResult = DIVECAN_CAL_FAIL_REJECTED;
-    serial_printf("Starting calibrate\r\n");
+    serial_printf("Starting calibrate with method %u\r\n", calParams.calMethod);
     switch (calParams.calMethod)
     {
     case CAL_DIGITAL_REFERENCE:    /* Calibrate using the solid state cell as a reference */

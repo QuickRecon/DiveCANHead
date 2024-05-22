@@ -6,6 +6,7 @@
 #include "../Hardware/printer.h"
 #include "../PPO2Control/PPO2Control.h"
 #include "../configuration.h"
+#include "../Hardware/log.h"
 
 void CANTask(void *arg);
 void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
@@ -70,6 +71,7 @@ void CANTask(void *arg)
         DiveCANMessage_t message = {0};
         if (pdTRUE == GetLatestCAN(TIMEOUT_1S_TICKS, &message))
         {
+            LogRXDiveCANMessage(&message);
             uint32_t message_id = message.id & 0x1FFFF000; /* Drop the source/dest stuff, we're listening for anything from anyone */
             switch (message_id)
             {
@@ -138,7 +140,9 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
 void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
 {
     FO2_t fO2 = message->data[0];
-    uint16_t pressure = (uint16_t)(((uint16_t)((uint16_t)message->data[2] << BYTE_WIDTH)) | (message->data[1]));
+    uint16_t pressure = (uint16_t)(((uint16_t)((uint16_t)message->data[1] << BYTE_WIDTH)) | (message->data[2]));
+
+    serial_printf("RX cal request; PPO2: %u, Pressure: %u\r\n", fO2, pressure);
 
     RunCalibrationTask(deviceSpec->type, fO2, pressure, configuration->fields.calibrationMode);
 }
