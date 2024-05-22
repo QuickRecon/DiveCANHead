@@ -10,6 +10,7 @@ class AnalogCell {
 
     void SetMillis(float inMillis);
   private:
+    float millis;
     int cellNum;
 };
 
