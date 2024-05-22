@@ -1,5 +1,6 @@
 from enum import IntEnum
 import pytest
+import itertools
 
 # Temporarily narrow the scope of our test to a fixed number of supported configurations rather than the entire space
 SUPPORTED_CONFIGS = [16798725, 16794885, 16794629]
@@ -47,25 +48,44 @@ class Configuration():
         return (bits >> (8*byteIndex)) & 0xFF
     
 # Configs which are explicitly not supported
-def UnsupportedConfigurations():
-    configurationsObjs = [
-        Configuration(FIRMWARE_VERSION, CellType.CELL_ANALOG, CellType.CELL_ANALOG, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY_THEN_CAN, OxygenCalMethod.CAL_DIGITAL_REFERENCE, True),
-        Configuration(FIRMWARE_VERSION, CellType.CELL_ANALOG, CellType.CELL_DIGITAL, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY_THEN_CAN, OxygenCalMethod.CAL_DIGITAL_REFERENCE, True)
-    ]
-    
+def UnsupportedConfigurations():    
     configurations = []
-    for config in configurationsObjs:
-        configurations.append(pytest.param(config, id=f'{hex(config.getBits())}'))
+    uartConflictParamSet = itertools.product(CellType,[CellType.CELL_DIGITAL],CellType,PowerSelectMode,OxygenCalMethod,[True])
+    analogDigitalCalParamSet = itertools.product([CellType.CELL_ANALOG],[CellType.CELL_ANALOG],[CellType.CELL_ANALOG],PowerSelectMode,[OxygenCalMethod.CAL_DIGITAL_REFERENCE],[True, False])
+
+    unsupportedParameterSet = list(uartConflictParamSet) + list(analogDigitalCalParamSet)
+
+    for parameterTuple in unsupportedParameterSet:
+        cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting = parameterTuple
+        cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting)
+        if  cellConfig.getBits() not in [x.values[0].getBits() for x in UnableConfigurations()]:
+                     configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
     return configurations
 
+# Configs which we can't test
+def UnableConfigurations():    
+    configurations = []
+    powerParameterSet = itertools.product(CellType,CellType,CellType,[PowerSelectMode.MODE_BATTERY, PowerSelectMode.MODE_CAN, PowerSelectMode.MODE_OFF], OxygenCalMethod,[True, False])
+
+    unsupportedParameterSet = list(powerParameterSet)
+
+    for parameterTuple in unsupportedParameterSet:
+        cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting = parameterTuple
+        cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting)
+        configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
+    return configurations
+
+# Configs we support, which is the configuration space minus unsupported and unable configs
 def SupportedConfigurations():
     configurations = []
-    for cell1 in CellType:
-        for cell3 in CellType:
-            for calMethod in OxygenCalMethod:
-                cell2 = CellType.CELL_ANALOG
-                cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, PowerSelectMode.MODE_BATTERY_THEN_CAN, calMethod, True)
-                if cellConfig.getBits() not in [x.values[0].getBits() for x in UnsupportedConfigurations()]:
-                    configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
+
+    parameterTuples = itertools.product(CellType,CellType,CellType,PowerSelectMode,OxygenCalMethod,[True, False])
+
+    for parameterTuple in parameterTuples:
+        cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting = parameterTuple
+        cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting)
+        if cellConfig.getBits() not in [x.values[0].getBits() for x in UnsupportedConfigurations()] and cellConfig.getBits() not in [x.values[0].getBits() for x in UnableConfigurations()]:
+                     configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
+
     return configurations
 

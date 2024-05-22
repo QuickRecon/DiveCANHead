@@ -4,10 +4,13 @@ import configuration
 import utils
 
 @pytest.mark.parametrize("configuration", configuration.SupportedConfigurations())
-def test_change_configuration(divecan_client: DiveCAN.DiveCAN, configuration: configuration.Configuration):
-    utils.configureBoard(divecan_client, configuration)
+def test_change_configuration_valid(divecan_client: DiveCAN.DiveCAN, configuration: configuration.Configuration):
+    utils.configureBoard(divecan_client, configuration) # This fully validates the config switch
 
-    for i in range(0,4):
-        expected_byte = configuration.getByte(i)
-        currentByte = utils.ReadConfigByte(divecan_client, i+1)
-        assert expected_byte == currentByte
+
+@pytest.mark.parametrize("configuration", configuration.UnsupportedConfigurations())
+def test_change_configuration_invalid(divecan_client: DiveCAN.DiveCAN, configuration: configuration.Configuration):
+    # Expect this to bounce
+    with pytest.raises(Exception):
+        utils.configureBoard(divecan_client, configuration) # This fully validates the config switch
+
