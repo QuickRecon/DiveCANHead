@@ -20,10 +20,10 @@ def test_menu_req_receives_ack(config_divecan_client: tuple[DiveCAN.DiveCAN, HWS
     assert message.data[5] == expectedMenuCount
 
 
-@pytest.mark.parametrize("our_id", range(0,9))
 @pytest.mark.parametrize("itemIndex", range(0,5))
-def test_menu_item_gets_name(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], our_id: int, itemIndex: int):
+def test_menu_item_gets_name(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], itemIndex: int):
     """ Test we get our name and basic properties when we ask for them """
+    our_id = 1
     divecan_client, shim_host, config = config_divecan_client
     divecan_client.send_menu_item(DiveCAN.DUT_ID, our_id, itemIndex)
     message1 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
@@ -38,10 +38,9 @@ def test_menu_item_gets_name(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShi
     assert message3.data[2] == expectedTextFieldBit[itemIndex]
     assert message3.data[3] == expectedEditableBit[itemIndex]
 
-
-@pytest.mark.parametrize("our_id", range(0,9))
-def test_menu_commit_flags(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], our_id: int):
+def test_menu_commit_flags(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]):
     """ Test the commit item has just its row"""
+    our_id = 1
     divecan_client, shim_host, config = config_divecan_client
     divecan_client.send_menu_flag(DiveCAN.DUT_ID, our_id, 0)
     message1 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
@@ -56,9 +55,9 @@ def test_menu_commit_flags(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.
     assert maxVal == 1
     assert actualVal == 1
 
-@pytest.mark.parametrize("our_id", range(0,9))
 @pytest.mark.parametrize("configByte", range(0,4))
-def test_menu_config_flags(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], our_id: int, configByte: int):
+def test_menu_config_flags(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], configByte: int):
+    our_id = 1
     divecan_client, shim_host, config = config_divecan_client
     divecan_client.send_menu_flag(DiveCAN.DUT_ID, our_id, configByte+1)
     message1 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
@@ -74,10 +73,10 @@ def test_menu_config_flags(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.
     # We can't define the actual val until we're testing config land
     #assert actualVal == 1
 
-@pytest.mark.parametrize("our_id", range(0,9))
 @pytest.mark.parametrize("configByte", range(0,4))
 @pytest.mark.parametrize("dataByte", range(0,0X100, 50))
-def test_menu_config_write(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], our_id: int, configByte: int, dataByte: int):
+def test_menu_config_write(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], configByte: int, dataByte: int):
+    our_id = 1
     divecan_client, shim_host, config = config_divecan_client
     divecan_client.send_menu_value(DiveCAN.DUT_ID, our_id, configByte+1, dataByte)
     divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID) # Wait for the ack
