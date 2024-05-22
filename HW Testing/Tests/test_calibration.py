@@ -3,14 +3,25 @@ import DiveCAN
 import time
 import HWShim
 import configuration
+import utils
 
 def test_calibrate(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:
     """ Run the calibration happy path """
     divecan_client, shim_host, config = config_divecan_client
 
-    shim_host.set_digital_ppo2(1, 1.0)
-    shim_host.set_analog_millis(2, 50)
-    shim_host.set_analog_millis(3, 50)
+    # Init the shim to 0
+    shim_host.set_digital_ppo2(1, 0)
+    shim_host.set_digital_ppo2(2, 0)
+    shim_host.set_digital_ppo2(3, 0)
+    
+    shim_host.set_analog_millis(1, 0)
+    shim_host.set_analog_millis(2, 0)
+    shim_host.set_analog_millis(3, 0)
+
+    utils.configureCell(shim_host, 1, config.cell1, 100)
+    utils.configureCell(shim_host, 2, config.cell2, 100)
+    utils.configureCell(shim_host, 3, config.cell3, 100)
+
     divecan_client.send_calibrate()
 
     # Listen for the ack
