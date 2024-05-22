@@ -65,9 +65,9 @@ def UnsupportedConfigurations():
 # Configs which we can't test
 def UnableConfigurations():    
     configurations = []
-    powerParameterSet = itertools.product(CellType,CellType,CellType,[PowerSelectMode.MODE_BATTERY, PowerSelectMode.MODE_CAN, PowerSelectMode.MODE_OFF], OxygenCalMethod,[True, False])
-
-    unsupportedParameterSet = list(powerParameterSet)
+    powerParameterSet = itertools.product(CellType,CellType,CellType,[PowerSelectMode.MODE_BATTERY, PowerSelectMode.MODE_CAN, PowerSelectMode.MODE_OFF], OxygenCalMethod,[True, False]) # No battery power
+    noPrinting = itertools.product(CellType,CellType,CellType,PowerSelectMode, OxygenCalMethod,[False]) # Too scary
+    unsupportedParameterSet = list(powerParameterSet) + list(noPrinting)
 
     for parameterTuple in unsupportedParameterSet:
         cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting = parameterTuple
