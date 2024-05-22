@@ -407,3 +407,46 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
     }
 }
+
+void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
+{
+    /* Single CPU with cooperative multitasking means that this is
+     * valid until we've enqueued (and hence no longer care)
+     * This is necessary to save literal kilobytes of ram*/
+    static LogQueue_t enQueueItem = {0};
+    static uint32_t logMsgIndex = 0;
+    (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
+    enQueueItem.eventType = LOG_CAN;
+
+    if (message != NULL)
+    {
+        /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+        if (logRunning() &&
+            (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,%s,%u,%#010lx,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, rx ? "rx" : "tx", message->length, message->id,
+                          message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7])))
+        {
+            /* High priority, clear old items to make room */
+            if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
+            {
+                LogQueue_t logItem = {0};
+                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+            }
+            (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+            ++logMsgIndex;
+        }
+    }
+    else
+    {
+        NON_FATAL_ERROR(NULL_PTR);
+    }
+}
+
+void LogRXDiveCANMessage(const DiveCANMessage_t *const message)
+{
+    LogDiveCANMessage(message, true);
+}
+
+void LogTXDiveCANMessage(const DiveCANMessage_t *const message)
+{
+    LogDiveCANMessage(message, false);
+}
