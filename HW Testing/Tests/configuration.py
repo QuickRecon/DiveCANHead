@@ -86,3 +86,34 @@ def SupportedConfigurations():
 
     return configurations
 
+def MillivoltConfigurations():
+    testCases = []
+    testMillisSet = range(0, 125, 24)
+    zeroSet = [0]
+    for config in [x.values[0] for x in SupportedConfigurations()]:
+        configSet = [config]
+
+        c1Set = []
+        if config.cell1 == CellType.CELL_ANALOG:
+            c1Set = testMillisSet
+        else:
+            c1Set = zeroSet
+        
+        c2Set = []
+        if config.cell2 == CellType.CELL_ANALOG:
+            c2Set = testMillisSet
+        else:
+            c2Set = zeroSet
+        
+        c3Set = []
+        if config.cell3 == CellType.CELL_ANALOG:
+            c3Set = testMillisSet
+        else:
+            c3Set = zeroSet
+
+        testCases += [pytest.param(case,id=f'{hex(case[0].getBits())}-{case[1]}-{case[2]}-{case[3]}') for case in set(itertools.product(configSet, c1Set, c2Set, c3Set))]
+    
+    return testCases
+
+
+MillivoltConfigurations()

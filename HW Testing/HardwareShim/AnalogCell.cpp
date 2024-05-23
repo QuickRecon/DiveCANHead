@@ -26,7 +26,7 @@ void AnalogCell::SetMillis(float inMillis){
   float nTC = log(reqPercentage)/log(1-0.632);
   
   float secondsDelay = nTC*0.094; // Time constant for the shim
-  int millisDelay = max(secondsDelay*1000 - 500,0);
+  int millisDelay = max(secondsDelay*1000 - 400,0);
   Serial.println("Delay " + String(millisDelay) + "dm:"+String(deltaMillis));
   delay(millisDelay);
 }
