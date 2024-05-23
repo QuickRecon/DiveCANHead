@@ -66,6 +66,10 @@ bool saveConfiguration(Configuration_t config)
     bool valid = ConfigurationValid(config);
     if(valid){
         valid = SetConfiguration(&config);
+        // Clear the calibration on config change
+        valid = valid && SetCalibration(CELL_1, 0);
+        valid = valid && SetCalibration(CELL_2, 0);
+        valid = valid && SetCalibration(CELL_3, 0);
     }
     return valid;
 }
