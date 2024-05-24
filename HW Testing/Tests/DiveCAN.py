@@ -111,6 +111,9 @@ class DiveCAN(object):
 
     def listen_for_millis(self) -> can.Message:
         return self._rx_msg(0xD110004)
+    
+    def listen_for_cell_state(self) -> can.Message:
+        return self._rx_msg(0xDCA0004)
 
     def listen_for_cal(self) -> can.Message:
         return self._rx_msg_timed(0xD120004, 5)

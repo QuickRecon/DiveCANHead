@@ -48,9 +48,30 @@ def test_millivolts(config_divecan_client_millivolts: tuple[DiveCAN.DiveCAN, HWS
     c2 = message.data[2]<<8 | message.data[3]
     c3 = message.data[4]<<8 | message.data[5]
 
-    assert abs((c1/100) - c1Val) < max(0.05*c1Val,5) 
-    assert abs((c2/100) - c2Val) < max(0.05*c2Val,5) 
-    assert abs((c3/100) - c3Val) < max(0.05*c3Val,5) 
+    assert abs((c1/100) - c1Val) < max(0.01*c1Val,1)     
+    assert abs((c2/100) - c2Val) < max(0.01*c2Val,1) 
+    assert abs((c3/100) - c3Val) < max(0.01*c3Val,1) 
 
-def test_voting():
-    print("")
+
+@pytest.mark.parametrize("averageVal", range(15, 240, 36))
+@pytest.mark.parametrize("offset", range(-10, 10, 5))
+@pytest.mark.parametrize("outlierCell", [1,2,3])
+def test_concensus_averages_cells(config_and_cal_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], averageVal: int, offset: int, outlierCell):    
+    divecan_client, shim_host, config = config_and_cal_divecan_client
+    offsetCell = averageVal + offset
+    nomCells = (averageVal * 3 - offsetCell) / (3 - 1)
+
+    cellConfigs = [config.cell1, config.cell2, config.cell3]
+
+    for i in range(0,3):
+        if i+1 == outlierCell:
+            utils.configureCell(shim_host, i+1, cellConfigs[i], offsetCell)
+        else:
+            utils.configureCell(shim_host, i+1, cellConfigs[i], nomCells)
+
+    time.sleep(1)
+    divecan_client.flush_rx()
+    message = divecan_client.listen_for_cell_state()
+
+    assert message.data[0] == 0b111 # No cells should be excluded
+    abs((message.data[1]/100) - averageVal) < max(0.02*averageVal,2) 
