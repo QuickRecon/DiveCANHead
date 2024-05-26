@@ -26,3 +26,15 @@ class HWShim(object):
         expected_str = "sac"+str(cell_num)+"\r\n"
         while rx_str  != expected_str:
             rx_str = self._serial_port.readline().decode("utf-8")
+
+    def set_bus_on(self) -> None:
+        self._serial_port.write("sdcen".encode())
+        rx_str = ""
+        while rx_str != "sdcen\r\n":
+            rx_str = self._serial_port.readline().decode("utf-8")
+
+    def set_bus_off(self) -> None: 
+        self._serial_port.write("sdcden".encode())
+        rx_str = ""
+        while rx_str  != "sdcden\r\n":
+            rx_str = self._serial_port.readline().decode("utf-8")

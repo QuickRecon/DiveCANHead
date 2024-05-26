@@ -97,6 +97,10 @@ class DiveCAN(object):
         tx_msg = can.Message(arbitration_id = 0xD130201, data=[0x64,0x03,0xf6])
         self._bus.send(tx_msg)
 
+    def send_shutdown(self) -> None:
+        tx_msg = can.Message(arbitration_id = 0xD030004, data=[0x64,0x03,0xf6])
+        self._bus.send(tx_msg)
+
     def listen_for_id(self) -> can.Message:
         return self._rx_msg(0xD000004)
 

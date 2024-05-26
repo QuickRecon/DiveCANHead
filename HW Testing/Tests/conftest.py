@@ -14,7 +14,9 @@ def divecan_client() -> DiveCAN.DiveCAN:
 @pytest.fixture()
 def shim_host() -> HWShim.HWShim:
     """ Test fixture for connecting to the hardware shim """
-    return HWShim.HWShim()
+    shim = HWShim.HWShim()
+    shim.set_bus_on()
+    return shim
 
 @pytest.fixture(params=configuration.SupportedConfigurations())
 def config_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]:
