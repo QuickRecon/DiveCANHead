@@ -24,6 +24,7 @@ void SetVBusMode(PowerSelectMode_t powerMode);
 PowerSource_t GetVCCSource(void);
 PowerSource_t GetVBusSource(void);
 void SetBattery(bool enable);
+bool getBusStatus(void);
 
 BatteryV_t getVoltage(PowerSource_t powerSource);
 

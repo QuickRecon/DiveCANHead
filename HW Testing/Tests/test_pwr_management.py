@@ -41,4 +41,11 @@ def test_power_cycle_msg_then_bus(config_divecan_client: tuple[DiveCAN.DiveCAN, 
     time.sleep(1)
     divecan_client.listen_for_ppo2() # We should get a ping back with no error
 
-    
+def test_power_aborts_on_bus_up(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:
+    divecan_client, shim_host, config = config_divecan_client
+    shim_host.set_bus_on() # triple check we're holding the bus on
+    divecan_client.send_shutdown()
+    time.sleep(1)
+
+    divecan_client.flush_rx()
+    divecan_client.listen_for_ppo2() # We should get a ping back with no error as we're still online

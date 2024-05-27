@@ -102,6 +102,11 @@ void Shutdown(void)
     HAL_PWREx_EnterSHUTDOWNMode();
 }
 
+/* Pin low means bus on, so return true*/
+bool getBusStatus(void){
+    return !HAL_GPIO_ReadPin(CAN_EN_GPIO_Port, CAN_EN_Pin);
+}
+
 PowerSource_t GetVCCSource(void)
 {
     PowerSource_t source = SOURCE_DEFAULT;

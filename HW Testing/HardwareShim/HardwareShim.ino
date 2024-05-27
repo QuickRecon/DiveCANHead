@@ -82,6 +82,8 @@ void setup() {
   // inputMode the unused pins
   pinMode(GPIO1Pin, INPUT);
   pinMode(GPIO2Pin, INPUT);
+  pinMode(16, INPUT);
+  pinMode(17, INPUT);
   pinMode(enPin, INPUT);
 }
 
