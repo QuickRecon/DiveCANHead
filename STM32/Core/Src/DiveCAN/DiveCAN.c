@@ -166,11 +166,12 @@ void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *con
 
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
 {
-    for(uint8_t i = 0; i < 20; ++i){
+    const uint8_t SHUTDOWN_ATTEMPTS = 20;
+    for(uint8_t i = 0; i < SHUTDOWN_ATTEMPTS; ++i){
         if(!getBusStatus()){
             Shutdown();
         }
-        osDelay(100);
+        (void)osDelay(TIMEOUT_100MS_TICKS);
     }
     serial_printf("Shutdown attempted but timed out due to missing en signal");
 }
