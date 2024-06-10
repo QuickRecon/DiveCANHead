@@ -1,15 +1,20 @@
 """ Class for interacting with the hardware shim over serial """
 import serial
 import threading
+import pytest
 
 
 class HWShim(object):
     """ Class for interacting with the hardware shim over serial """
     def __init__(self) -> None:
-        self._serial_port = serial.Serial('/dev/ttyACM0', 115200)
+        try:
+            self._serial_port = serial.Serial('/dev/serial/by-id/usb-Arduino__www.arduino.org__Arduino_Due_Prog._Port_FFFFFFFFFFFF51DB6A64-if00', 115200)
+        except Exception:
+            pytest.skip("Cannot open hardware shim")
 
     def __del__(self) -> None:
-        self._serial_port.close()
+        if hasattr(self, '_serial_port'):
+            self._serial_port.close()
 
     def set_digital_ppo2(self, cell_num: int, ppo2: float) -> None:
         msg = "sdc,"+str(cell_num)+","+str(ppo2*100)+","
