@@ -5,7 +5,7 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
 
 # Current State
-Revision 2.3 has been produced and appears to be without hardware faults, current focus is on automated testing and configuration management.
+Revision 2.4 has been produced and is undergoing wet testing, current development work is focused on enhansing the automated testing (currently focusing on adding testing of various power states), as well as validating solenoid driver performance.
 
 Constructive criticism, suggestions, and pull requests are always welcome.
 
@@ -29,9 +29,11 @@ The board has a battery onboard which can provide full functionality, and can al
 Fundamentally the hardware is an IO board, bridging generic cells, sensors, and other peripherals to the DiveCAN bus. To do this it provides the following:
 - 3 uart ports
 - 4 analog differential inputs (3 terminated for O2 cells, 1 unterminated differential input)
-- the solenoid output (5.5v, max 800mA)
-- general DC out (3.3v, 800mA)
+- the solenoid output (12v/6v selectable, max 1.3A switching current (LMR62014 boost converter))
+- general DC out (3.3v, 227mA current limit)
 - the CAN bus itself
+- 2 DACs, configured for "cell like" outputs
+- 2 GPIOs
 
 Currently there are sensor drivers for analog oxygen cells and digital oxygen cells. Future development.
 
