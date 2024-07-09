@@ -52,10 +52,25 @@ def test_power_aborts_on_bus_up(config_divecan_client: tuple[DiveCAN.DiveCAN, HW
     divecan_client.listen_for_ppo2() # We should get a ping back with no error as we're still online
 
 
+# Note this will fail if an SD card is installed in the board
 @pytest.mark.parametrize("voltage", range(34,120,10))
 def test_active_power_consumption(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU], voltage: int):
     divecan_client, shim_host, config, pwr = config_and_power_divecan_client
-    pwr.SetCANPwr(voltage/10)
+    pwr.SetCANPwrVoltage(voltage/10)
     time.sleep(1)
     current = pwr.GetCANPwrCurrent()
-    assert current == 0.09
+    assert current >= 0.0075
+    assert current <= 0.0100
+
+@pytest.mark.parametrize("voltage", range(34,120,10))
+def test_stby_power_consumption(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU], voltage: int):
+    divecan_client, shim_host, config, pwr = config_and_power_divecan_client
+    pwr.SetCANPwrVoltage(voltage/10)
+    divecan_client.send_shutdown()
+    shim_host.set_bus_off()
+    time.sleep(1)
+    current = pwr.GetCANPwrCurrent()
+    assert current <= 0.0005
+
+    # Bring the board back up when we're done
+    shim_host.set_bus_on()
