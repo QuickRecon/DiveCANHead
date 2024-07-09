@@ -52,10 +52,11 @@ def UnsupportedConfigurations():
 
     unsupportedParameterSet = list(uartConflictParamSet) + list(analogDigitalCalParamSet)
 
+    unableConfigs = UnableConfigurations()
     for parameterTuple in unsupportedParameterSet:
         cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting = parameterTuple
         cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting)
-        if  cellConfig.getBits() not in [x.values[0].getBits() for x in UnableConfigurations()]:
+        if  cellConfig.getBits() not in [x.values[0].getBits() for x in unableConfigs]:
                      configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
     return configurations
 
@@ -78,10 +79,13 @@ def SupportedConfigurations():
 
     parameterTuples = itertools.product(CellType,CellType,CellType,PowerSelectMode,OxygenCalMethod,[True, False])
 
+    unsupportedConfigs = UnsupportedConfigurations()
+    unableConfigs = UnableConfigurations()
+
     for parameterTuple in parameterTuples:
         cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting = parameterTuple
         cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting)
-        if cellConfig.getBits() not in [x.values[0].getBits() for x in UnsupportedConfigurations()] and cellConfig.getBits() not in [x.values[0].getBits() for x in UnableConfigurations()]:
+        if cellConfig.getBits() not in [x.values[0].getBits() for x in unsupportedConfigs] and cellConfig.getBits() not in [x.values[0].getBits() for x in unableConfigs]:
                      configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
 
     return configurations
