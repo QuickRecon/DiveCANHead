@@ -178,13 +178,13 @@ TEST(configuration, GetIDOfDefaultConfig)
 {
     const Configuration_t DefaultConfiguration = {.fields = {
                                                   .firmwareVersion = FIRMWARE_VERSION,
-                                                  .cell1 = CELL_DIGITAL,
+                                                  .cell1 = CELL_ANALOG,
                                                   .cell2 = CELL_ANALOG,
-                                                  .cell3 = CELL_DIGITAL,
+                                                  .cell3 = CELL_ANALOG,
                                                   .powerMode = MODE_BATTERY_THEN_CAN,
-                                                  .calibrationMode = CAL_DIGITAL_REFERENCE,
+                                                  .calibrationMode = CAL_ANALOG_ABSOLUTE,
                                                   .enableUartPrinting = true}};
-    printf("%u", DefaultConfiguration.bits);
+    printf("%08x", DefaultConfiguration.bits);
 }
 
 TEST(configuration, TestDigitalCalAnalogCellsValidation)

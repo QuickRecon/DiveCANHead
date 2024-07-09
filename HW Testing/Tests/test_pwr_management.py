@@ -4,6 +4,7 @@ import HWShim
 import time
 import pytest
 import configuration
+import psu
 import utils
 
 def test_power_cycle_bus_then_msg(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:
@@ -49,3 +50,12 @@ def test_power_aborts_on_bus_up(config_divecan_client: tuple[DiveCAN.DiveCAN, HW
 
     divecan_client.flush_rx()
     divecan_client.listen_for_ppo2() # We should get a ping back with no error as we're still online
+
+
+@pytest.mark.parametrize("voltage", range(34,120,10))
+def test_active_power_consumption(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU], voltage: int):
+    divecan_client, shim_host, config, pwr = config_and_power_divecan_client
+    pwr.SetCANPwr(voltage/10)
+    time.sleep(1)
+    current = pwr.GetCANPwrCurrent()
+    assert current == 0.09

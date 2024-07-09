@@ -1,0 +1,16 @@
+# requirements.txt
+
+click==8.1.7
+iniconfig==2.0.0
+minimalmodbus==2.1.1
+modbus-tk==1.1.3
+msgpack==1.0.8
+packaging==24.1
+pluggy==1.5.0
+pyserial==3.5
+pytest==8.2.2
+python-can==4.4.0
+-e git+https://github.com/shaybox/riden.git@ecbda543cf566346dd28558d957b4aa7fe116a83#egg=Riden
+setuptools==70.0.0
+typing_extensions==4.12.2
+wrapt==1.16.0

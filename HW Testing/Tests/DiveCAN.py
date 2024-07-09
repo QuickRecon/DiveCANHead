@@ -14,7 +14,7 @@ class DiveCAN(object):
     """ Class to send and receive DiveCAN messages to the DUT """
     def __init__(self) -> None:
         try:
-            self._bus = can.interface.Bus(interface='socketcan', channel='can0', bitrate=500000)
+            self._bus = can.interface.Bus(interface='slcan', channel='/dev/ttyACM3', bitrate=125000)
 
             # Half a second for stuff we request
             self._timeout = 0.1
@@ -34,8 +34,8 @@ class DiveCAN(object):
         if hasattr(self, 'notifier'):
             self.notifier.stop()
 
-        if hasattr(self, '_bus'):
-            self._bus.shutdown()
+#        if hasattr(self, '_bus'):
+#            self._bus.shutdown()
 
     def flush_rx(self) -> None:
         while self.reader.get_message(0) is not None:
@@ -51,10 +51,6 @@ class DiveCAN(object):
 
     def _rx_msg(self, id: int) -> can.Message:
         return self._rx_msg_timed(id, self._poll_timeout)
-
-    def send_id(self) -> None:
-        tx_msg = can.Message(arbitration_id = 0xD000001, data=[0x1,0x0,0x0])
-        self._bus.send(tx_msg)
 
     def send_bootloader(self) -> None:
         tx_msg = can.Message(arbitration_id = 0x79, data=[], is_extended_id = False)
