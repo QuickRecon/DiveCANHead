@@ -28,6 +28,7 @@
 #include "Sensors/OxygenCell.h"
 #include "Sensors/AnalogOxygen.h"
 #include "Hardware/pwr_management.h"
+#include "Hardware/solenoid.h"
 #include "Hardware/ext_adc.h"
 #include "Hardware/printer.h"
 #include "DiveCAN/DiveCAN.h"
@@ -331,10 +332,7 @@ int main(void)
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
 
   /* Ensure solenoid is fully off */
-  HAL_GPIO_WritePin(SOL_DIS_BATT_GPIO_Port, SOL_DIS_BATT_Pin, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(SOL_DIS_CAN_GPIO_Port, SOL_DIS_CAN_Pin, GPIO_PIN_SET);
-
-  HAL_GPIO_WritePin(SOLENOID_GPIO_Port, SOLENOID_Pin, GPIO_PIN_RESET);
+  setSolenoidOff();
 
   InitLog();
 
