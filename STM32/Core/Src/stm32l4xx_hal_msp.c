@@ -1,3 +1,4 @@
+
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -140,6 +141,7 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
   /* USER CODE BEGIN ADC1_MspInit 1 */
 
   /* USER CODE END ADC1_MspInit 1 */
+
   }
 
 }
@@ -208,6 +210,7 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef* hcan)
   /* USER CODE BEGIN CAN1_MspInit 1 */
 
   /* USER CODE END CAN1_MspInit 1 */
+
   }
 
 }
@@ -262,6 +265,7 @@ void HAL_CRC_MspInit(CRC_HandleTypeDef* hcrc)
   /* USER CODE BEGIN CRC_MspInit 1 */
 
   /* USER CODE END CRC_MspInit 1 */
+
   }
 
 }
@@ -333,6 +337,7 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef* hi2c)
   /* USER CODE BEGIN I2C1_MspInit 1 */
 
   /* USER CODE END I2C1_MspInit 1 */
+
   }
 
 }
@@ -460,6 +465,7 @@ void HAL_SD_MspInit(SD_HandleTypeDef* hsd)
   /* USER CODE BEGIN SDMMC1_MspInit 1 */
 
   /* USER CODE END SDMMC1_MspInit 1 */
+
   }
 
 }
