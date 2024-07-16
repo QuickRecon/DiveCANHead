@@ -123,15 +123,10 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
     PC3     ------> ADC1_IN4
     PA0     ------> ADC1_IN5
     */
-    GPIO_InitStruct.Pin = CAN_V_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(CAN_V_GPIO_Port, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = BATT_V_Pin;
+    GPIO_InitStruct.Pin = CAN_V_Pin|BATT_V_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG_ADC_CONTROL;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(BATT_V_GPIO_Port, &GPIO_InitStruct);
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
     GPIO_InitStruct.Pin = VBUS_V_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG_ADC_CONTROL;
