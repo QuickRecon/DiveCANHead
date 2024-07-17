@@ -367,7 +367,6 @@ int main(void)
   InitDiveCAN(&defaultDeviceSpec, &deviceConfig);
   InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
-  getVoltage(SOURCE_DEFAULT);
   /* USER CODE END 2 */
 
   /* Init scheduler */

@@ -188,9 +188,10 @@ BatteryV_t sampleADC(uint32_t adcChannel)
     HAL_ADC_PollForConversion(&hadc1, 1000);
     uint32_t ref = HAL_ADC_GetValue(&hadc1);
     HAL_ADC_Stop(&hadc1);
+
     sConfig.Channel = adcChannel;
     sConfig.Rank = ADC_REGULAR_RANK_1;
-    sConfig.SamplingTime = ADC_SAMPLETIME_12CYCLES_5;
+    sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
     sConfig.SingleDiff = ADC_SINGLE_ENDED;
     sConfig.OffsetNumber = ADC_OFFSET_NONE;
     sConfig.Offset = 0;
@@ -202,6 +203,7 @@ BatteryV_t sampleADC(uint32_t adcChannel)
     HAL_ADC_PollForConversion(&hadc1, 1000);
     uint32_t ADCSample = HAL_ADC_GetValue(&hadc1);
     HAL_ADC_Stop(&hadc1);
+    
     float sourceVoltage = (float)ADCSample / ((float)ref) * 1.212f * (12.0f + 75.0f) / 12.0f * adc_correction_factor;
     return (BatteryV_t)(10 * sourceVoltage);
 }
