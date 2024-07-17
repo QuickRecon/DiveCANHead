@@ -86,7 +86,7 @@ extern "C"
     static const osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
 
 /* Define the stack sizes for all the tasks */
-#define CANTASK_STACK_SIZE 700    /* 408 by static analysis */
+#define CANTASK_STACK_SIZE 1000    /* 408 by static analysis */
 #define PPO2TXTASK_STACK_SIZE 450 /* 320 bytes by static analysis */
 #define ADCTASK_STACK_SIZE 300    /* 224 by static analysis */
 #define CELL_PROCESSOR_STACK_SIZE 800
