@@ -14,7 +14,7 @@ class DiveCAN(object):
     """ Class to send and receive DiveCAN messages to the DUT """
     def __init__(self) -> None:
         try:
-            self._bus = can.interface.Bus(interface='slcan', channel='/dev/ttyACM3', bitrate=125000)
+            self._bus = can.interface.Bus(interface='slcan', channel='/dev/ttyACM1', bitrate=125000)
 
             # Half a second for stuff we request
             self._timeout = 0.1

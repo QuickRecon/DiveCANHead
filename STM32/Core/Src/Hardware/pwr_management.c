@@ -103,7 +103,8 @@ void Shutdown(void)
 }
 
 /* Pin low means bus on, so return true*/
-bool getBusStatus(void){
+bool getBusStatus(void)
+{
     return !HAL_GPIO_ReadPin(CAN_EN_GPIO_Port, CAN_EN_Pin);
 }
 
@@ -166,8 +167,65 @@ void SetBattery(bool enable)
     HAL_GPIO_WritePin(BATTERY_EN_GPIO_Port, BATTERY_EN_Pin, Pin);
 }
 
+BatteryV_t sampleADC(uint32_t adcChannel)
+{
+    const float adc_correction_factor = 7.00f / 6.9257431f; // This may vary board-to-board, but its like 1% so no worries
+
+    /* First sample the internal reference */
+    ADC_ChannelConfTypeDef sConfig = {0};
+    sConfig.Channel = ADC_CHANNEL_VREFINT;
+    sConfig.Rank = ADC_REGULAR_RANK_1;
+    sConfig.SamplingTime = ADC_SAMPLETIME_12CYCLES_5;
+    sConfig.SingleDiff = ADC_SINGLE_ENDED;
+    sConfig.OffsetNumber = ADC_OFFSET_NONE;
+    sConfig.Offset = 0;
+    if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 1000);
+    uint32_t ref = HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Stop(&hadc1);
+    sConfig.Channel = adcChannel;
+    sConfig.Rank = ADC_REGULAR_RANK_1;
+    sConfig.SamplingTime = ADC_SAMPLETIME_12CYCLES_5;
+    sConfig.SingleDiff = ADC_SINGLE_ENDED;
+    sConfig.OffsetNumber = ADC_OFFSET_NONE;
+    sConfig.Offset = 0;
+    if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+    {
+        Error_Handler();
+    }
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 1000);
+    uint32_t ADCSample = HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Stop(&hadc1);
+    float sourceVoltage = (float)ADCSample / ((float)ref) * 1.212f * (12.0f + 75.0f) / 12.0f * adc_correction_factor;
+    return (BatteryV_t)(10 * sourceVoltage);
+}
+
+BatteryV_t getCANVoltage()
+{
+    return sampleADC(ADC_CHANNEL_3);
+}
+
+BatteryV_t getBatteryVoltage()
+{
+    return sampleADC(ADC_CHANNEL_4);
+}
+
 BatteryV_t getVoltage(PowerSource_t powerSource)
 {
-    /* TODO(Aren): Implement */
-    return 33;
+    BatteryV_t voltage = 0;
+    if (powerSource == SOURCE_BATTERY)
+    {
+        voltage = getBatteryVoltage();
+    }
+    else
+    {
+        voltage = getCANVoltage();
+    }
+    return voltage;
 }

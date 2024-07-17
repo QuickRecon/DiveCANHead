@@ -74,3 +74,12 @@ def test_stby_power_consumption(config_and_power_divecan_client: tuple[DiveCAN.D
 
     # Bring the board back up when we're done
     shim_host.set_bus_on()
+
+
+@pytest.mark.parametrize("voltage", range(34,120,10))
+def test_indicated_voltage(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU], voltage: int):
+    divecan_client, shim_host, config, pwr = config_and_power_divecan_client
+    pwr.SetCANPwrVoltage(voltage/10)
+    divecan_client.send_id(1)
+    message = divecan_client.listen_for_status()
+    assert abs(message.data[0] - voltage) < max(0.02*voltage,2)

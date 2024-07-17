@@ -333,8 +333,10 @@ int main(void)
 
   /* Ensure solenoid is fully off */
   setSolenoidOff();
+  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
 
   InitLog();
+  HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET);
 
   /* Set up flash erase */
   (void)HAL_FLASH_Unlock();
@@ -343,6 +345,7 @@ int main(void)
 
   /* Load Config */
   const Configuration_t deviceConfig = loadConfiguration();
+  HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET);
 
   InitPrinter(deviceConfig.fields.enableUartPrinting);
   serial_printf("Booting, Last Reset Reason (%s)\r\n", reset_cause_get_name(reset_cause));
@@ -350,19 +353,21 @@ int main(void)
 
   /* Set our power bus */
   SetVBusMode(deviceConfig.fields.powerMode);
+  HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
 
   /* Kick off our threads */
   InitADCs();
 
   QueueHandle_t cells[3] = {0};
-
   cells[CELL_1] = CreateCell(CELL_1, deviceConfig.fields.cell1);
   cells[CELL_2] = CreateCell(CELL_2, deviceConfig.fields.cell2);
   cells[CELL_3] = CreateCell(CELL_3, deviceConfig.fields.cell3);
+  HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
 
   InitDiveCAN(&defaultDeviceSpec, &deviceConfig);
   InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
-
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
+  getVoltage(SOURCE_DEFAULT);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -393,7 +398,7 @@ int main(void)
 
   /* creation of perfMonitor */
   /* perfMonitorHandle = osThreadNew(PerfMonitor, NULL, &perfMonitor_attributes); */
-  
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -403,12 +408,6 @@ int main(void)
 
   HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
 
   /* USER CODE END RTOS_EVENTS */
 
@@ -535,7 +534,7 @@ static void MX_ADC1_Init(void)
    */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
-  hadc1.Init.Resolution = ADC_RESOLUTION_16B;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
@@ -555,7 +554,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
    */
-  sConfig.Channel = ADC_CHANNEL_VBAT;
+  sConfig.Channel = ADC_CHANNEL_VREFINT;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -566,7 +565,10 @@ static void MX_ADC1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC1_Init 2 */
-
+  
+    HAL_ADC_Stop(&hadc1);
+    HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+   HAL_ADC_Start(&hadc1);
   /* USER CODE END ADC1_Init 2 */
 }
 

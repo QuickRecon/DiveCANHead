@@ -8,7 +8,7 @@ class HWShim(object):
     """ Class for interacting with the hardware shim over serial """
     def __init__(self) -> None:
         try:
-            self._serial_port = serial.Serial('/dev/ttyACM4', 115200)
+            self._serial_port = serial.Serial('/dev/ttyDUE0', 115200)
         except Exception:
             pytest.skip("Cannot open hardware shim")
 

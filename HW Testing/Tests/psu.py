@@ -2,8 +2,25 @@
 from riden import Riden
 import pytest
 
-BATTERY_PORT = '/dev/ttyUSB1'
-CAN_PWR_PORT = '/dev/ttyUSB2'
+BATTERY_PORT = '/dev/ttyPSU1'
+CAN_PWR_PORT = '/dev/ttyPSU2'
+
+def setOff():
+    """ Set the power to off to ensure a reset """
+    try:
+        battery = Riden(BATTERY_PORT, 115200, address = 1)
+        battery.set_output(False)
+    except Exception:
+        # We don't really care, we tried
+        print("Failed to power off battery supply")
+
+    try:
+        can_pwr = Riden(CAN_PWR_PORT, 115200, address = 1)
+        can_pwr.set_output(False)
+    except Exception:
+        # We don't really care if this fails
+        print("Failed to power off CAN supply")
+
 
 def setDefaultPower():
     """ Set a sane default power configuration for tests that aren't explicitly looking at power behavior """
