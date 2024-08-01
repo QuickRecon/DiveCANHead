@@ -3,11 +3,12 @@ import DiveCAN
 import HWShim
 import time
 import pytest
+import psu
 
 def test_bootloader_reset(divecan_client: DiveCAN.DiveCAN) -> None:
     """ Test that if we trip into the bootloader, the usual pings will kick us back to normal """
     divecan_client.send_bootloader()
-
+    divecan_client.flush_rx()
     # Make sure we don't hear anything
     with pytest.raises(DiveCAN.DiveCANNoMessageException):
         divecan_client.listen_for_ppo2()
@@ -24,7 +25,7 @@ def test_bootloader_stuck(divecan_client: DiveCAN.DiveCAN) -> None:
     """ This is done as a test so that we can find out if this known-bad-behavior changes, and also to serve as documentation of the reproduction steps """
     divecan_client.send_bootloader()
     divecan_client.send_bootloader()
-
+    divecan_client.flush_rx()
     # Make sure we don't hear anything
     with pytest.raises(DiveCAN.DiveCANNoMessageException):
         divecan_client.listen_for_ppo2()
@@ -36,8 +37,8 @@ def test_bootloader_stuck(divecan_client: DiveCAN.DiveCAN) -> None:
     with pytest.raises(DiveCAN.DiveCANNoMessageException):
         divecan_client.listen_for_ppo2()
 
-    # Manually tell the bootloader to execute the application code again
-    divecan_client.send_bootloader_go()
+    psu.setOff()
+    psu.setDefaultPower()
 
     time.sleep(5)
     # We should be back to normal now
