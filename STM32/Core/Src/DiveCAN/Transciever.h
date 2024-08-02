@@ -101,9 +101,9 @@ typedef enum
   DIVECAN_ERR_NONE = 1 << 3,
 
   /**
-   * @brief An unknown error 3.
+   * @brief Battery information is valid and should be shown.
    */
-  DIVECAN_ERR_UNKNOWN3 = 1 << 4,
+  DIVECAN_ERR_BAT_AVAIL = 1 << 4,
 
   /**
    * @brief An unknown error 4.
@@ -151,7 +151,7 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
 void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType);
 void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, uint8_t firmwareVersion);
 void txName(const DiveCANType_t deviceType, const char *name);
-void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error);
+void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error, bool showBattery);
 
 /* PPO2 Messages */
 void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cell2, const PPO2_t cell3);

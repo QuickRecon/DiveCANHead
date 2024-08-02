@@ -132,7 +132,7 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
     if (((message->id & DIVECAN_TYPE_MASK) == DIVECAN_CONTROLLER) || ((message->id & DIVECAN_TYPE_MASK) == DIVECAN_MONITOR))
     {
         txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
-        txStatus(devType, getVoltage(SOURCE_DEFAULT), getSetpoint(), DIVECAN_ERR_NONE);
+        txStatus(devType, getVoltage(SOURCE_DEFAULT), getSetpoint(), DIVECAN_ERR_NONE, true);
         txName(devType, deviceSpec->name);
     }
 }

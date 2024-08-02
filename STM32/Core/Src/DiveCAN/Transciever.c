@@ -214,12 +214,17 @@ void txName(const DiveCANType_t deviceType, const char *const name)
  *@param batteryVoltage Battery voltage of this device
  *@param setpoint The setpoint that the PPO2 controller is trying to maintain
  *@param error Current error state
+ *@param showBattery Display battery voltage on the handset
  */
-void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error)
+void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error, bool showBattery)
 {
+    uint8_t errByte = (uint8_t) error;
+    if(showBattery && error == DIVECAN_ERR_NONE){ // Only send the battery info if there aren't error
+        errByte = 0xA; // This for some reason doesn't compose well with other errors, TODO: work out a clean way to handle having an error and sending battery info
+    }
     const DiveCANMessage_t message = {
         .id = BUS_STATUS_ID | deviceType,
-        .data = {batteryVoltage, 0x00, 0x00, 0x00, 0x00, setpoint, 0x63, (uint8_t)error},
+        .data = {batteryVoltage, 0x00, 0x00, 0x00, 0x00, setpoint, 0xFF, errByte},
         .length = 8};
     sendCANMessage(message);
 }
