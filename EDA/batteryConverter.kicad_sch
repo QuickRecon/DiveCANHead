@@ -921,7 +921,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "2fa5451f-a8f5-44ac-a08d-424e8170dc33")
-		(property "Reference" "#PWR045"
+		(property "Reference" "#PWR049"
 			(at 149.86 78.74 0)
 			(effects
 				(font
@@ -970,12 +970,12 @@
 		)
 		(instances
 			(project "DiveCAN Head2"
-				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
-					(reference "#PWR045")
-					(unit 1)
-				)
 				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
 					(reference "#PWR049")
+					(unit 1)
+				)
+				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+					(reference "#PWR045")
 					(unit 1)
 				)
 			)
@@ -1073,7 +1073,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "44eeaebe-5c4a-4e72-bbcb-65252509d060")
-		(property "Reference" "U3"
+		(property "Reference" "U4"
 			(at 149.86 54.61 0)
 			(effects
 				(font
@@ -1158,12 +1158,12 @@
 		)
 		(instances
 			(project "DiveCAN Head2"
-				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
-					(reference "U3")
-					(unit 1)
-				)
 				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
 					(reference "U4")
+					(unit 1)
+				)
+				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+					(reference "U3")
 					(unit 1)
 				)
 			)
@@ -1179,7 +1179,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "476c6e6e-02bc-46d3-8b73-adceab0fd306")
-		(property "Reference" "#PWR046"
+		(property "Reference" "#PWR050"
 			(at 181.61 74.93 0)
 			(effects
 				(font
@@ -1228,12 +1228,12 @@
 		)
 		(instances
 			(project "DiveCAN Head2"
-				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
-					(reference "#PWR046")
-					(unit 1)
-				)
 				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
 					(reference "#PWR050")
+					(unit 1)
+				)
+				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+					(reference "#PWR046")
 					(unit 1)
 				)
 			)
@@ -1249,7 +1249,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "4d612cfe-f7f7-4cd3-bbaf-fec257662da2")
-		(property "Reference" "#PWR044"
+		(property "Reference" "#PWR048"
 			(at 125.73 74.93 0)
 			(effects
 				(font
@@ -1298,12 +1298,12 @@
 		)
 		(instances
 			(project "DiveCAN Head2"
-				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
-					(reference "#PWR044")
-					(unit 1)
-				)
 				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
 					(reference "#PWR048")
+					(unit 1)
+				)
+				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+					(reference "#PWR044")
 					(unit 1)
 				)
 			)
@@ -1402,7 +1402,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "c8f5ed8c-0589-416e-97e5-9220709a4dd4")
-		(property "Reference" "#PWR047"
+		(property "Reference" "#PWR051"
 			(at 191.77 74.93 0)
 			(effects
 				(font
@@ -1451,12 +1451,12 @@
 		)
 		(instances
 			(project "DiveCAN Head2"
-				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
-					(reference "#PWR047")
-					(unit 1)
-				)
 				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/15c577d2-26ea-416d-a101-a0b8b72da3d4"
 					(reference "#PWR051")
+					(unit 1)
+				)
+				(path "/ab021047-3849-453b-b3dc-d234ace3779d/a695df33-b48d-4ed9-a29f-bb0896c20222/a167d0ec-77af-4b56-93ce-66f247a312ee"
+					(reference "#PWR047")
 					(unit 1)
 				)
 			)

@@ -8194,9 +8194,9 @@
 		)
 		(uuid "9cd30aca-789c-44b9-96cb-6baf255e4d7f")
 	)
-	(text "Rev| 1 | 2 | 3\n2.2| Z | Z | Z\n2.3| 0 | Z | Z"
+	(text "Rev| 1 | 2 | 3\n2.2| Z | Z | Z\n2.3| 0 | Z | Z\n2.4| 0 | Z | Z"
 		(exclude_from_sim no)
-		(at 172.974 187.96 0)
+		(at 172.72 186.436 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -11838,7 +11838,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "TCAN33X"
+		(property "Value" "TCAN334"
 			(at 242.2241 44.45 0)
 			(effects
 				(font
@@ -11875,7 +11875,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "C73651"
+		(property "MPN" "C2871143"
 			(at 241.9859 45.458 0)
 			(effects
 				(font
@@ -13965,7 +13965,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp yes)
+		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "87461c52-fd60-4fde-b6a3-a8131dd0f973")
 		(property "Reference" "J5"
@@ -14005,6 +14005,15 @@
 			)
 		)
 		(property "Description" ""
+			(at 165.1 144.78 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "C448647"
 			(at 165.1 144.78 0)
 			(effects
 				(font
