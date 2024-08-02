@@ -11,6 +11,7 @@
 #include "../errors.h"
 #include <math.h>
 #include "../Hardware/printer.h"
+#include "assert.h"
 
 /** @struct CalParameters_s
  *  @brief Contains calibration parameters for an oxygen sensor.
@@ -94,6 +95,7 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
  */
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
 {
+    assert(cellNumber < 3); // This is only called at startup, so halt and catch fire is appropriate
     OxygenHandle_t *cell = getCell(cellNumber);
     cell->cellNumber = cellNumber;
 
