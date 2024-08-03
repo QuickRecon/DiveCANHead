@@ -91,6 +91,7 @@ void InitADCs(void)
     const uint8_t INPUT_4 = 3;
 
     InputState_t *adcInput1 = getInputState(INPUT_1);
+    //adcInput1->adcAddress = ADC2_ADDR;
     adcInput1->adcAddress = ADC1_ADDR;
     adcInput1->inputIndex = ADC_INPUT_1;
 
@@ -99,6 +100,7 @@ void InitADCs(void)
     adcInput2->inputIndex = ADC_INPUT_2;
 
     InputState_t *adcInput3 = getInputState(INPUT_3);
+    //adcInput3->adcAddress = ADC1_ADDR;
     adcInput3->adcAddress = ADC2_ADDR;
     adcInput3->inputIndex = ADC_INPUT_1;
 
@@ -307,6 +309,11 @@ void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matchi
                 NON_FATAL_ERROR(I2C_BUS_ERROR);
             }
 
+            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsClear(READ_READY_FLAG)))
+            {
+                NON_FATAL_ERROR(FLAG_ERROR);
+            }
+
             if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
             {
                 NON_FATAL_ERROR(FLAG_ERROR);
@@ -319,6 +326,10 @@ void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matchi
                 NON_FATAL_ERROR(I2C_BUS_ERROR);
             }
 
+            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsClear(READ_COMPLETE_FLAG)))
+            {
+                NON_FATAL_ERROR(FLAG_ERROR);
+            }
             if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(READ_COMPLETE_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
             {
                 NON_FATAL_ERROR(FLAG_ERROR);

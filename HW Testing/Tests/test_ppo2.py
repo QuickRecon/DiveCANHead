@@ -1,4 +1,5 @@
 """ Ensure that the PPO2 reported by the board matches the PPO2 signals sent to the board  """
+import psu
 import DiveCAN
 import HWShim
 import time
@@ -26,7 +27,7 @@ def test_ppo2(config_and_cal_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShi
     utils.assertCell(config.cell3, message.data[3], c3Val)
 
 @pytest.fixture(params=configuration.MillivoltConfigurations())
-def config_divecan_client_millivolts(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, int, int, int]:
+def config_divecan_client_millivolts(request: pytest.FixtureRequest) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, int, int, int]:
    """ Test fixture for a DiveCAN interface, configure and calibrate the board """
    divecan_client = DiveCAN.DiveCAN()
    shim_host = HWShim.HWShim()
@@ -98,3 +99,43 @@ def test_concensus_excludes_outlier(config_and_cal_divecan_client: tuple[DiveCAN
 
     assert message.data[0] == 0b111 - (0b1 << (outlierCell-1)) # Correct cell excluded
     abs((message.data[1]) - averageVal*100) <= max(0.02*averageVal*100,2) #+-2% or 0.02
+
+
+# Regression test for ADC2 not coming online when power is first applied
+def test_power_on_adc_function(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim):
+    config = configuration.Configuration(5,
+                                         configuration.CellType.CELL_ANALOG,
+                                         configuration.CellType.CELL_ANALOG,
+                                         configuration.CellType.CELL_ANALOG,
+                                         configuration.PowerSelectMode.MODE_BATTERY_THEN_CAN,
+                                         configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE,
+                                         True)
+    psu.setDefaultPower()
+    utils.configureBoard(divecan_client, config)
+
+    c1Val = 10
+    c2Val = 30
+    c3Val = 50
+
+    shim_host.set_analog_millis(1, c1Val)
+    shim_host.set_analog_millis(2, c2Val)
+    shim_host.set_analog_millis(3, c3Val)
+
+    psu.setOff()
+    psu.setDefaultPower()
+    divecan_client.flush_rx()
+    message = divecan_client.listen_for_millis()
+    time.sleep(3)
+
+    divecan_client.flush_rx()
+    message = divecan_client.listen_for_millis()
+
+    assert message.arbitration_id == 0xD110004
+
+    c1 = message.data[0]<<8 | message.data[1]
+    c2 = message.data[2]<<8 | message.data[3]
+    c3 = message.data[4]<<8 | message.data[5]
+
+    assert abs((c1) - c1Val*100) <= max(0.01*c1Val*100,100)     
+    assert abs((c2) - c2Val*100) <= max(0.01*c2Val*100,100) 
+    assert abs((c3) - c3Val*100) <= max(0.01*c3Val*100,100) 
