@@ -12,7 +12,7 @@ static const uint32_t BUS_ID_ID = 0xD000000;
 static const uint32_t BUS_NAME_ID = 0xD010000;
 static const uint32_t BUS_OFF_ID = 0xD030000;
 static const uint32_t PPO2_PPO2_ID = 0xD040000;
-
+static const uint32_t HUD_STAT_ID = 0xD070000;
 static const uint32_t PPO2_ATMOS_ID = 0xD080000;
 
 static const uint32_t MENU_ID = 0xD0A0000;
@@ -152,6 +152,7 @@ void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
 void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, uint8_t firmwareVersion);
 void txName(const DiveCANType_t deviceType, const char *name);
 void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error, bool showBattery);
+void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error);
 
 /* PPO2 Messages */
 void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cell2, const PPO2_t cell3);

@@ -115,16 +115,23 @@ def test_low_battery_notification(config_and_power_divecan_client: tuple[DiveCAN
     divecan_client.send_id(1)
 
     pwr.SetCANPwrVoltage((cutoffVoltage/10)+0.5)
-    time.sleep(0.5)
+    time.sleep(0.5) # We need to give the PSU time to slew, prior line returns when the cmd is acked
     divecan_client.flush_rx()
     divecan_client.send_id(1)
     message = divecan_client.listen_for_status()
     assert message.data[7] == DiveCAN.DiveCANErr.ERR_NONE or message.data[7] == DiveCAN.DiveCANErr.ERR_NONE_SHOW_BATT
 
+    message = divecan_client.listen_for_oboe_status()
+    assert message.data[0] == 1 # First byte is one if battery is fine
+
+
     pwr.SetCANPwrVoltage((cutoffVoltage/10)-0.5)
-    time.sleep(0.5)
+    time.sleep(0.5) # We need to give the PSU time to slew, prior line returns when the cmd is acked
     divecan_client.flush_rx()
     divecan_client.send_id(1)
     message = divecan_client.listen_for_status()
     assert message.data[7] == DiveCAN.DiveCANErr.ERR_BAT_LOW
+
+    message = divecan_client.listen_for_oboe_status()
+    assert message.data[0] == 0
     

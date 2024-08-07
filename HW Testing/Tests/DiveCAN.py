@@ -118,6 +118,9 @@ class DiveCAN(object):
     def listen_for_status(self) -> can.Message:
         return self._rx_msg(0xDCB0004)
 
+    def listen_for_oboe_status(self) -> can.Message:
+        return self._rx_msg(0xD070004)
+
     def listen_for_ppo2(self) -> can.Message:
         return self._rx_msg(0xD040004)
 

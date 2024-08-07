@@ -136,11 +136,12 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
         BatteryV_t busVoltage = getVoltage(SOURCE_DEFAULT);
         DiveCANError_t err = DIVECAN_ERR_NONE;
         if(busVoltage < (((uint16_t)configuration->fields.alarmVoltage)*10)/2){
-            err = 0b1011;
+            err = DIVECAN_ERR_LOW_BATTERY;
         }
 
         txStatus(devType, getVoltage(SOURCE_DEFAULT), getSetpoint(), err, true);
         txName(devType, deviceSpec->name);
+        txOBOEStat(devType, err);
     }
 }
 

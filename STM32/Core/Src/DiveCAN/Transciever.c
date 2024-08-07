@@ -229,6 +229,24 @@ void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, c
     sendCANMessage(message);
 }
 
+/**
+ * @brief Transmit the magic packet to the HUD, this lets it know to show the yellow bar of low-battery-ness during boot
+ * @param deviceType the device type of this device
+ * @param error Current error state (we only check if its DIVECAN_ERR_LOW_BATTERY or not)
+ */
+void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error){
+    uint8_t batByte = 0x1;
+    if(error == DIVECAN_ERR_LOW_BATTERY){
+        batByte = 0x0;
+    }
+
+    const DiveCANMessage_t message = {
+        .id = HUD_STAT_ID | deviceType,
+        .data = {batByte,0x23,0x0,0x0,0x1e},
+        .length = 5};
+    sendCANMessage(message);
+}
+
 /* PPO2 Messages */
 
 /** @brief Transmit the PPO2 of the cells
