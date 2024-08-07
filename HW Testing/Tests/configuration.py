@@ -2,7 +2,7 @@ from enum import IntEnum
 import pytest
 import itertools
 
-FIRMWARE_VERSION = 5
+FIRMWARE_VERSION = 6
 
 class CellType(IntEnum):
     CELL_DIGITAL = 0
@@ -20,7 +20,7 @@ class OxygenCalMethod(IntEnum):
     #CAL_TOTAL_ABSOLUTE = 2
 
 class Configuration():
-    def __init__(self, firmwareVersion: int, cell1: CellType, cell2: CellType, cell3: CellType, powerMode: PowerSelectMode, calMethod: OxygenCalMethod, enableUartPrinting: bool):
+    def __init__(self, firmwareVersion: int, cell1: CellType, cell2: CellType, cell3: CellType, powerMode: PowerSelectMode, calMethod: OxygenCalMethod, enableUartPrinting: bool, alarmVoltage: int):
         self.firmwareVersion = firmwareVersion
         self.cell1 = cell1
         self.cell2 = cell2
@@ -28,6 +28,7 @@ class Configuration():
         self.powerMode = powerMode
         self.calMethod = calMethod
         self.enableUartPrinting = enableUartPrinting
+        self.alarmVoltage = alarmVoltage
 
     def getBits(self):
         bits = 0
@@ -37,7 +38,8 @@ class Configuration():
         bits |= (int(self.cell3) & 0b11) << 12
         bits |= (int(self.powerMode) & 0b11) << 14
         bits |= (int(self.calMethod) & 0b111) << 16
-        bits |= (self.enableUartPrinting) << 24 # this got thrown onto a byte alignment
+        bits |= (int(self.enableUartPrinting) & 0b1) << 19
+        bits |= (int(self.alarmVoltage)& 0b1111111) << 24 # this got thrown onto a byte alignment
         return bits
 
     def getByte(self, byteIndex: int):
@@ -55,7 +57,7 @@ def UnsupportedConfigurations():
     unableConfigs = UnableConfigurations()
     for parameterTuple in unsupportedParameterSet:
         cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting = parameterTuple
-        cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting)
+        cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting, 0)
         if  cellConfig.getBits() not in [x.values[0].getBits() for x in unableConfigs]:
                      configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
     return configurations
@@ -69,7 +71,7 @@ def UnableConfigurations():
 
     for parameterTuple in unsupportedParameterSet:
         cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting = parameterTuple
-        cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting)
+        cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting, 0)
         configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
     return configurations
 
@@ -84,7 +86,7 @@ def SupportedConfigurations():
 
     for parameterTuple in parameterTuples:
         cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting = parameterTuple
-        cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting)
+        cellConfig = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, powerSelectMode, calMethod, uartPrinting, 0)
         if cellConfig.getBits() not in [x.values[0].getBits() for x in unsupportedConfigs] and cellConfig.getBits() not in [x.values[0].getBits() for x in unableConfigs]:
                      configurations.append(pytest.param(cellConfig, id=f'{hex(cellConfig.getBits())}'))
 

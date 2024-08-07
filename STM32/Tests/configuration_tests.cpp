@@ -166,12 +166,42 @@ TEST(configuration, TestFirmwareVersionValidation)
     }
 }
 
+TEST(configuration, TestAlarmVoltagePosition)
+{
+    uint8_t alarmVoltageBitfieldLength = 7;
+    for (uint8_t i = 0; i < (1 << alarmVoltageBitfieldLength); ++i)
+    {
+        Configuration_t testConfig = {0};
+        testConfig.fields.alarmVoltage = i;
+        CHECK(((testConfig.bits >> 24) & 0b1111111u) == i);
+    }
+}
+
+
+TEST(configuration, TestAlarmVoltageValidation)
+{
+    uint8_t alarmVoltageBitfieldLength = 7;
+    for (uint8_t i = 0; i < (1 << alarmVoltageBitfieldLength); ++i)
+    {
+        Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
+        testConfig.fields.alarmVoltage = i;
+        CHECK(ConfigurationValid(testConfig));
+    }
+}
+
 TEST(configuration, TestUARTContentionValidation)
 {
     Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
     testConfig.fields.enableUartPrinting = true;
     testConfig.fields.cell2 = CELL_DIGITAL;
     CHECK(!ConfigurationValid(testConfig));
+}
+
+TEST(configuration, TestUARTContentionPosition)
+{
+    Configuration_t testConfig = {.fields = {0}};
+    testConfig.fields.enableUartPrinting = true;
+    CHECK(((testConfig.bits >> 19) & 0b1u) == 1);
 }
 
 TEST(configuration, GetIDOfDefaultConfig)
@@ -183,7 +213,9 @@ TEST(configuration, GetIDOfDefaultConfig)
                                                   .cell3 = CELL_ANALOG,
                                                   .powerMode = MODE_BATTERY_THEN_CAN,
                                                   .calibrationMode = CAL_ANALOG_ABSOLUTE,
-                                                  .enableUartPrinting = true}};
+                                                  .enableUartPrinting = true,
+                                                  .alarmVoltage = 17} /* Reasonable level for a 9v batt, 8.5*2 = 17 as the cutoff */
+                                                  };
     printf("%08x", DefaultConfiguration.bits);
 }
 

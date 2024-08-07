@@ -29,11 +29,11 @@ void Shutdown(void)
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_14);
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_15);
 
-    /* Disable VBUS */
+    /* Persist VBUS */
     /* BUS_SEL1: GPIO A Pin 6*/
     /* BUS_SEL2: GPIO A Pin 5*/
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_6);
-    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_5);
+    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_5);
 
     /* Disable solenoid */
     /* SOL_DIS_BATT: GPIO B Pin 3*/
@@ -42,6 +42,10 @@ void Shutdown(void)
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_3);
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_4);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_1);
+
+    /* Pull the enable pin high for a safe high-idle*/
+    /* CAN_EN: GPIO C Pin 13*/
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_13);
 
     /* Pull everything else down */
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_1);
@@ -114,11 +118,11 @@ PowerSource_t GetVCCSource(void)
 
     if (HAL_GPIO_ReadPin(VCC_STAT_GPIO_Port, VCC_STAT_Pin) != 0)
     {
-        source = SOURCE_CAN;
+        source = SOURCE_BATTERY;
     }
     else
     {
-        source = SOURCE_BATTERY;
+        source = SOURCE_CAN;
     }
     return source;
 }
@@ -129,11 +133,11 @@ PowerSource_t GetVBusSource(void)
 
     if (HAL_GPIO_ReadPin(BUS_STAT_GPIO_Port, BUS_STAT_Pin) != 0)
     {
-        source = SOURCE_CAN;
+        source = SOURCE_BATTERY;
     }
     else
     {
-        source = SOURCE_BATTERY;
+        source = SOURCE_CAN;
     }
     return source;
 }
@@ -203,7 +207,7 @@ BatteryV_t sampleADC(uint32_t adcChannel)
     HAL_ADC_PollForConversion(&hadc1, 1000);
     uint32_t ADCSample = HAL_ADC_GetValue(&hadc1);
     HAL_ADC_Stop(&hadc1);
-    
+
     float sourceVoltage = (float)ADCSample / ((float)ref) * 1.212f * (12.0f + 75.0f) / 12.0f * adc_correction_factor;
     return (BatteryV_t)(10 * sourceVoltage);
 }
@@ -225,9 +229,22 @@ BatteryV_t getVoltage(PowerSource_t powerSource)
     {
         voltage = getBatteryVoltage();
     }
-    else
+    else if (powerSource == SOURCE_CAN)
     {
         voltage = getCANVoltage();
+    }
+    else
+    { /* SOURCE_DEFAULT */
+        PowerSource_t currSource = GetVCCSource();
+        /* This could be recursion but recursion means that stack tooling breaks, so just nested if */
+        if (currSource == SOURCE_BATTERY)
+        {
+            voltage = getBatteryVoltage();
+        }
+        else
+        {
+            voltage = getCANVoltage();
+        }
     }
     return voltage;
 }

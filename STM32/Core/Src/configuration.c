@@ -61,11 +61,17 @@ Configuration_t loadConfiguration(void)
     return config;
 }
 
-bool saveConfiguration(Configuration_t config)
+bool saveConfiguration(Configuration_t *config)
 {
-    bool valid = ConfigurationValid(config);
+    bool valid = ConfigurationValid(*config);
     if(valid){
-        valid = SetConfiguration(&config);
+        valid = SetConfiguration(config);
+
+        Configuration_t readbackConfig = {0};
+        GetConfiguration(&readbackConfig);
+
+        valid = valid && readbackConfig.bits == config->bits;
+
         // Clear the calibration on config change
         valid = valid && SetCalibration(CELL_1, 0);
         valid = valid && SetCalibration(CELL_2, 0);

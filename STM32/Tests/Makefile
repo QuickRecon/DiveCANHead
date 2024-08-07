@@ -1,5 +1,5 @@
 # Firmware Version (Defines compatibility with configuration strings)
-FIRMWARE_VERSION = 5
+FIRMWARE_VERSION = 6
 
 #---- Outputs ----#
 COMPONENT_NAME = DiveCAN

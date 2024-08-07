@@ -9,8 +9,8 @@
 #include "../Hardware/log.h"
 
 void CANTask(void *arg);
-void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
-void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration/*  */);
+void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration);
 void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration);
 void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration);
 void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
@@ -77,11 +77,11 @@ void CANTask(void *arg)
             {
             case BUS_INIT_ID:
                 /* Bus Init */
-                RespBusInit(&message, deviceSpec);
+                RespBusInit(&message, deviceSpec, configuration);
                 break;
             case BUS_ID_ID:
                 /* Respond to pings */
-                RespPing(&message, deviceSpec);
+                RespPing(&message, deviceSpec, configuration);
                 break;
             case CAL_REQ_ID:
                 /* Respond to calibration request */
@@ -119,20 +119,27 @@ void CANTask(void *arg)
     }
 }
 
-void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
+void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
 {
     /* Do startup stuff and then ping the bus */
-    RespPing(message, deviceSpec);
+    RespPing(message, deviceSpec, configuration);
 }
 
-void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
+void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
 {
     DiveCANType_t devType = deviceSpec->type;
     /* We only want to reply to a ping from the handset */
     if (((message->id & DIVECAN_TYPE_MASK) == DIVECAN_CONTROLLER) || ((message->id & DIVECAN_TYPE_MASK) == DIVECAN_MONITOR))
     {
         txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
-        txStatus(devType, getVoltage(SOURCE_DEFAULT), getSetpoint(), DIVECAN_ERR_NONE, true);
+
+        BatteryV_t busVoltage = getVoltage(SOURCE_DEFAULT);
+        DiveCANError_t err = DIVECAN_ERR_NONE;
+        if(busVoltage < (((uint16_t)configuration->fields.alarmVoltage)*10)/2){
+            err = 0b1011;
+        }
+
+        txStatus(devType, getVoltage(SOURCE_DEFAULT), getSetpoint(), err, true);
         txName(devType, deviceSpec->name);
     }
 }

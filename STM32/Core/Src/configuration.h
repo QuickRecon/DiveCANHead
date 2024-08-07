@@ -17,13 +17,14 @@ extern "C"
             CellType_t cell3 : 2;
             PowerSelectMode_t powerMode : 2;
             OxygenCalMethod_t calibrationMode : 3;
-            bool enableUartPrinting;
+            bool enableUartPrinting : 1;
+            uint8_t alarmVoltage: 7; /* The level at which we chuck a low voltage tantrum*/
         } fields;
         uint32_t bits;
     } Configuration_t;
 
     Configuration_t loadConfiguration(void);
-    bool saveConfiguration(Configuration_t config);
+    bool saveConfiguration(Configuration_t* config);
 
     static const Configuration_t DEFAULT_CONFIGURATION = {.fields = {
                                                               .firmwareVersion = FIRMWARE_VERSION,
@@ -32,7 +33,8 @@ extern "C"
                                                               .cell3 = CELL_ANALOG,
                                                               .powerMode = MODE_BATTERY_THEN_CAN,
                                                               .calibrationMode = CAL_DIGITAL_REFERENCE,
-                                                              .enableUartPrinting = true}};
+                                                              .enableUartPrinting = true,
+                                                              .alarmVoltage = 17}};
 #ifdef __cplusplus
 }
 #endif

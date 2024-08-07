@@ -109,7 +109,8 @@ def test_power_on_adc_function(divecan_client: DiveCAN.DiveCAN, shim_host: HWShi
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.PowerSelectMode.MODE_BATTERY_THEN_CAN,
                                          configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE,
-                                         True)
+                                         True, 
+                                         0)
     psu.setDefaultPower()
     utils.configureBoard(divecan_client, config)
 

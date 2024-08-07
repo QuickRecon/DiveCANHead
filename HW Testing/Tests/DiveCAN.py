@@ -2,8 +2,14 @@
 import can
 import time
 import pytest
+from enum import IntEnum
 
 DUT_ID = 4
+
+class DiveCANErr(IntEnum):
+    ERR_BAT_LOW = 1
+    ERR_NONE = 8
+    ERR_NONE_SHOW_BATT = 0xa
 
 class DiveCANNoMessageException(Exception):
     """ Raised when we do not get the expected message within the timeout period """

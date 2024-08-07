@@ -158,7 +158,7 @@ AS_DEFS =
 COMMIT = \"$(shell git describe --always --dirty)\"
 
 # Firmware Version (Defines compatibility with configuration strings)
-FIRMWARE_VERSION = 5
+FIRMWARE_VERSION = 6
 
 # C defines
 C_DEFS =  \
