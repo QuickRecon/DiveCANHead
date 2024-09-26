@@ -56,7 +56,7 @@ extern TIM_HandleTypeDef htim7;
 /* Hook prototypes */
 void configureTimerForRunTimeStats(void);
 unsigned long getRunTimeCounterValue(void);
-void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName);
+void vApplicationStackOverflowHook(TaskHandle_t, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
 
 /* USER CODE BEGIN 1 */
@@ -73,7 +73,7 @@ __weak uint32_t getRunTimeCounterValue(void)
 /* USER CODE END 1 */
 
 /* USER CODE BEGIN 4 */
-void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
+void vApplicationStackOverflowHook(TaskHandle_t, signed char *pcTaskName)
 {
   blocking_serial_printf("STACK OVERFLOW: %s", pcTaskName);
   FATAL_ERROR(STACK_OVERFLOW);

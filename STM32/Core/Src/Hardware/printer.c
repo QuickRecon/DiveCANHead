@@ -67,7 +67,7 @@ void InitPrinter(bool uartOut)
     *PrinterTaskHandle = osThreadNew(PrinterTask, &params, &PrinterTask_attributes);
 }
 
-void PrinterTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
+void PrinterTask(void *arg)
 {
     PrinterTask_params_t *taskParams = (PrinterTask_params_t *)arg;
     QueueHandle_t *printQueue = getQueueHandle();

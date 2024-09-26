@@ -73,7 +73,7 @@ uint8_t BSP_SD_ReadBlocks_DMA(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOf
     return sd_state;
 }
 
-void LogTask(void *arg);
+void LogTask(void *);
 
 typedef struct
 {
@@ -209,7 +209,7 @@ FRESULT RotateLogfiles(void)
 }
 
 extern UART_HandleTypeDef huart2;
-void LogTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
+void LogTask(void *) /* Yes this warns but it needs to be that way for matching the caller */
 {
     FIL LOG_FILES[LOGFILE_COUNT] = {0};
     osMessageQueueId_t *logQueue = getQueueHandle();

@@ -58,7 +58,7 @@ static QueueHandle_t *getTicksQueue(uint8_t inputNumber)
 }
 
 /* Forward decls of local funcs */
-void ADCTask(void *arg);
+void ADCTask(void *);
 
 /* FreeRTOS tasks */
 static osThreadId_t *getOSThreadId(void)
@@ -278,7 +278,7 @@ void configureADC(uint16_t configuration, const InputState_t *const input)
 }
 
 /* Tasks */
-void ADCTask(void *arg) /* Yes this warns but it needs to be that way for matching the caller */
+void ADCTask(void *)
 {
     while (true) /* Loop forever as we are an RTOS task */
     {

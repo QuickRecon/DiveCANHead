@@ -162,17 +162,17 @@ void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
     ProcessMenu(message, deviceSpec, configuration);
 }
 
-void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
+void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t * )
 {
     setSetpoint(message->data[0]);
 }
 
-void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
+void RespAtmos(const DiveCANMessage_t *, const DiveCANDevice_t *)
 {
     /* TODO(Aren): respond to atmos */
 }
 
-void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
+void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *)
 {
     const uint8_t SHUTDOWN_ATTEMPTS = 20;
     for(uint8_t i = 0; i < SHUTDOWN_ATTEMPTS; ++i){
