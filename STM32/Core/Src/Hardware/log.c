@@ -73,7 +73,7 @@ uint8_t BSP_SD_ReadBlocks_DMA(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOf
     return sd_state;
 }
 
-void LogTask(void *);
+void LogTask(void * args);
 
 typedef struct
 {

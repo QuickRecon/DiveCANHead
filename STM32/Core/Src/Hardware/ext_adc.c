@@ -58,7 +58,7 @@ static QueueHandle_t *getTicksQueue(uint8_t inputNumber)
 }
 
 /* Forward decls of local funcs */
-void ADCTask(void *);
+void ADCTask(void * args);
 
 /* FreeRTOS tasks */
 static osThreadId_t *getOSThreadId(void)
@@ -91,7 +91,6 @@ void InitADCs(void)
     const uint8_t INPUT_4 = 3;
 
     InputState_t *adcInput1 = getInputState(INPUT_1);
-    //adcInput1->adcAddress = ADC2_ADDR;
     adcInput1->adcAddress = ADC1_ADDR;
     adcInput1->inputIndex = ADC_INPUT_1;
 
@@ -100,7 +99,6 @@ void InitADCs(void)
     adcInput2->inputIndex = ADC_INPUT_2;
 
     InputState_t *adcInput3 = getInputState(INPUT_3);
-    //adcInput3->adcAddress = ADC1_ADDR;
     adcInput3->adcAddress = ADC2_ADDR;
     adcInput3->inputIndex = ADC_INPUT_1;
 

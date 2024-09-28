@@ -564,10 +564,19 @@ static void MX_ADC1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC1_Init 2 */
-  
-    HAL_ADC_Stop(&hadc1);
-    HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
-   HAL_ADC_Start(&hadc1);
+
+  if (HAL_ADC_Stop(&hadc1) != HAL_OK)
+  {
+    NON_FATAL_ERROR(CRITICAL_ERROR);
+  }
+  if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK)
+  {
+    NON_FATAL_ERROR(CRITICAL_ERROR);
+  }
+  if (HAL_ADC_Start(&hadc1) != HAL_OK)
+  {
+    NON_FATAL_ERROR(CRITICAL_ERROR);
+  }
   /* USER CODE END ADC1_Init 2 */
 }
 
@@ -1179,11 +1188,10 @@ void JumpToBootloader(void)
 /* USER CODE BEGIN Header_WatchdogTask */
 /**
  * @brief  Function implementing the watchdogTask thread.
- * @param  argument: Not used
  * @retval None
  */
 /* USER CODE END Header_WatchdogTask */
-void WatchdogTask(void *argument)
+void WatchdogTask(void *)
 {
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
@@ -1198,11 +1206,10 @@ void WatchdogTask(void *argument)
 /* USER CODE BEGIN Header_SDInitTask */
 /**
  * @brief Function implementing the sDInitTask thread.
- * @param argument: Not used
  * @retval None
  */
 /* USER CODE END Header_SDInitTask */
-void SDInitTask(void *argument)
+void SDInitTask(void *)
 {
   /* USER CODE BEGIN SDInitTask */
   (void)osDelay(TIMEOUT_1S);
@@ -1214,11 +1221,10 @@ void SDInitTask(void *argument)
 /* USER CODE BEGIN Header_PerfMonitor */
 /**
  * @brief Function implementing the perfMonitor thread.
- * @param argument: Not used
  * @retval None
  */
 /* USER CODE END Header_PerfMonitor */
-void PerfMonitor(void *argument)
+void PerfMonitor(void *)
 {
   /* USER CODE BEGIN PerfMonitor */
   unsigned long ulTotalRunTime = 0;
