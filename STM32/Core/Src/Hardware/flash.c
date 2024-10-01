@@ -28,7 +28,7 @@ static bool WriteInt32(uint16_t addr, uint32_t value)
         if (result == EE_CLEANUP_REQUIRED)
         {
             /*  This could be expensive, maybe it should be a queued job rather than eating up time in a task? */
-            (void)EE_CleanUp(); /*  If it doesn't work we don't really care, we'll just get told to try it again next time, and if it keeps failing evenutally something more important will break */
+            (void)EE_CleanUp(); /*  If it doesn't work we don't really care, we'll just get told to try it again next time, and if it keeps failing eventually something more important will break */
         }
         else if (result == EE_OK)
         {
