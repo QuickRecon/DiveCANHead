@@ -40,8 +40,8 @@ class DiveCAN(object):
         if hasattr(self, 'notifier'):
             self.notifier.stop()
 
-#        if hasattr(self, '_bus'):
-#            self._bus.shutdown()
+        if hasattr(self, '_bus'):
+            self._bus.shutdown()
 
     def flush_rx(self) -> None:
         while self.reader.get_message(0) is not None:
