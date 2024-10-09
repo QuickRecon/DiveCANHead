@@ -76,7 +76,7 @@ def test_concensus_averages_cells(config_and_cal_divecan_client: tuple[DiveCAN.D
     message = divecan_client.listen_for_cell_state()
 
     assert message.data[0] == 0b111 # No cells should be excluded
-    assert abs((message.data[1]) - averageVal*100) <= max(0.02*averageVal*100,2) #+-2% or 0.02
+    assert abs((message.data[1]) - averageVal) <= max(0.02*averageVal,2) #+-2% or 0.02
 
 @pytest.mark.parametrize("averageVal", range(50, 229, 36))
 @pytest.mark.parametrize("offset", list(range(-40, -25, 5)) + list(range(40, 25, 5)))
@@ -98,12 +98,12 @@ def test_concensus_excludes_outlier(config_and_cal_divecan_client: tuple[DiveCAN
     message = divecan_client.listen_for_cell_state()
 
     assert message.data[0] == 0b111 - (0b1 << (outlierCell-1)) # Correct cell excluded
-    assert abs((message.data[1]) - averageVal*100) <= max(0.02*averageVal*100,2) #+-2% or 0.02
+    assert abs((message.data[1]) - averageVal) <= max(0.02*averageVal,2) #+-2% or 0.02
 
 
 # Regression test for ADC2 not coming online when power is first applied
 def test_power_on_adc_function(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim):
-    config = configuration.Configuration(5,
+    config = configuration.Configuration(6,
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.CellType.CELL_ANALOG,
