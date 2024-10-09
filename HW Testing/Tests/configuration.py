@@ -92,6 +92,11 @@ def SupportedConfigurations():
 
     return configurations
 
+def AnalogConfigurations():
+     tests =  [conf.values[0] for conf in SupportedConfigurations() if (conf.values[0].cell1 is CellType.CELL_ANALOG or conf.values[0].cell2 is CellType.CELL_ANALOG or conf.values[0].cell3 is CellType.CELL_ANALOG) and conf.values[0].calMethod is OxygenCalMethod.CAL_ANALOG_ABSOLUTE]
+     testCases = [pytest.param(case,id=f'{hex(case.getBits())}') for case in tests]
+     return testCases
+
 def MillivoltConfigurations():
     testCases = []
     testMillisSet = range(0, 125, 24)
@@ -120,6 +125,3 @@ def MillivoltConfigurations():
         testCases += [pytest.param(case,id=f'{hex(case[0].getBits())}-{case[1]}-{case[2]}-{case[3]}') for case in set(itertools.product(configSet, c1Set, c2Set, c3Set))]
     
     return testCases
-
-
-MillivoltConfigurations()
