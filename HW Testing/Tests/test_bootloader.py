@@ -8,6 +8,7 @@ import psu
 def test_bootloader_reset(divecan_client: DiveCAN.DiveCAN) -> None:
     """ Test that if we trip into the bootloader, the usual pings will kick us back to normal """
     divecan_client.send_bootloader()
+    time.sleep(5)
     divecan_client.flush_rx()
     # Make sure we don't hear anything
     with pytest.raises(DiveCAN.DiveCANNoMessageException):
