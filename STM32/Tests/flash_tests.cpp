@@ -44,7 +44,13 @@ extern "C"
         return LockReturnCode;
     }
 
-    void LogMsg(const char *msg){
+    void __HAL_FLASH_CLEAR_FLAG(uint32_t flags)
+    {
+        mock().actualCall("__HAL_FLASH_CLEAR_FLAG");
+    }
+
+    void LogMsg(const char *msg)
+    {
         // Do Nothing
     }
 }
@@ -96,7 +102,7 @@ TEST(flash, SetCalibration)
         mock().expectOneCall("HAL_FLASH_Unlock");
         mock().expectOneCall("HAL_FLASH_Lock");
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         bool calOk = SetCalibration(i, calVal);
 
         CHECK(calOk == true);
@@ -129,7 +135,7 @@ TEST(flash, SetFatalError)
         mock().expectOneCall("HAL_FLASH_Unlock");
         mock().expectOneCall("HAL_FLASH_Lock");
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", 0x04).withParameter("Data", expectedData);
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         bool calOk = SetFatalError(err);
 
         CHECK(calOk == true);
@@ -162,7 +168,7 @@ TEST(flash, SetNonFatalError)
         mock().expectOneCall("HAL_FLASH_Unlock");
         mock().expectOneCall("HAL_FLASH_Lock");
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", 0x05 + i).withParameter("Data", expectedData);
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         bool calOk = SetNonFatalError(err, expectedData);
 
         CHECK(calOk == true);
@@ -186,7 +192,7 @@ TEST(flash, SetCalibrationFlashLockFail)
 
         mock().expectOneCall("NonFatalError").withParameter("error", FLASH_LOCK_ERROR);
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         bool calOk = SetCalibration(i, calVal);
 
         CHECK(calOk == false);
@@ -208,7 +214,7 @@ TEST(flash, SetCalibrationFlashUnlockFail)
 
         mock().expectOneCall("NonFatalError").withParameter("error", FLASH_LOCK_ERROR);
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         bool calOk = SetCalibration(i, calVal);
 
         CHECK(calOk == false);
@@ -230,7 +236,7 @@ TEST(flash, SetCalibrationEEPROMFail)
 
         WriteReturnCode = EE_NO_DATA;
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         bool calOk = SetCalibration(i, calVal);
 
         CHECK(calOk == false);
@@ -253,7 +259,7 @@ TEST(flash, SetCalibrationCleanupRequired)
         WriteReturnCode = EE_CLEANUP_REQUIRED;
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
         mock().expectOneCall("EE_CleanUp");
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         bool calOk = SetCalibration(i, calVal);
 
         CHECK(calOk == true);
@@ -291,7 +297,7 @@ TEST(flash, GetCalibrationNoData)
         mock().expectOneCall("HAL_FLASH_Unlock");
         mock().expectOneCall("HAL_FLASH_Lock");
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", 0);
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         ReadReturnCode = EE_NO_DATA;
 
         bool calOk = GetCalibration(i, &calVal);
@@ -349,7 +355,7 @@ TEST(flash, GetFatalErrNoData)
         mock().expectOneCall("HAL_FLASH_Unlock");
         mock().expectOneCall("HAL_FLASH_Lock");
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", 0x04).withParameter("Data", 0);
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         ReadReturnCode = EE_NO_DATA;
 
         bool calOk = GetFatalError(&err);
@@ -399,7 +405,7 @@ TEST(flash, GetNonFatalErrNoData)
         mock().expectOneCall("HAL_FLASH_Unlock");
         mock().expectOneCall("HAL_FLASH_Lock");
         mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", 0x05 + i).withParameter("Data", 0);
-
+        mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
         ReadReturnCode = EE_NO_DATA;
 
         uint32_t count = 0;

@@ -16,9 +16,16 @@ static const uint32_t CAL_TO_INT32 = 10000000;
 static bool WriteInt32(uint16_t addr, uint32_t value)
 {
     bool writeOk = true; /*  Presume that we're doing ok, if we hit a fail state then false it */
+    EE_Status result;
+
     if (HAL_OK == HAL_FLASH_Unlock())
     {
-        EE_Status result = EE_WriteVariable32bits(addr, value);
+        __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_PROGERR | FLASH_FLAG_WRPERR |
+
+                               FLASH_FLAG_PGAERR | FLASH_FLAG_SIZERR | FLASH_FLAG_PGSERR | FLASH_FLAG_MISERR | FLASH_FLAG_FASTERR |
+
+                               FLASH_FLAG_RDERR | FLASH_FLAG_OPTVERR);
+        result = EE_WriteVariable32bits(addr, value);
         if (HAL_OK != HAL_FLASH_Lock())
         {
             LogMsg("WriteInt32: Flash lock error");
