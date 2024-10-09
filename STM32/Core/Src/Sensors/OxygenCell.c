@@ -95,7 +95,8 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
  */
 QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
 {
-    assert(cellNumber < 3); // This is only called at startup, so halt and catch fire is appropriate
+    /* This is only called at startup, so halt and catch fire is appropriate */
+    assert(cellNumber < 3);
     OxygenHandle_t *cell = getCell(cellNumber);
     cell->cellNumber = cellNumber;
 
@@ -140,7 +141,7 @@ static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, Oxygen
 DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
 {
     DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
-    PPO2_t ppO2 = (calParams->fO2 * calParams->pressureVal)/1000;
+    PPO2_t ppO2 = (calParams->fO2 * calParams->pressureVal) / 1000;
 
     /* Now that we have the PPO2 we cal all the analog cells
      */
@@ -191,16 +192,17 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
     {
         const OxygenHandle_t *const cell = getCell(i);
         if ((CELL_DIGITAL == cell->type) && (NULL == refCell))
-        {
-            refCell = (const DigitalOxygenState_t *)cell->cellHandle;
-            refCellIndex = i;
+            {
+                refCell = (const DigitalOxygenState_t *)cell->cellHandle;
+                refCellIndex = i;
         }
     }
 
     QueueHandle_t *queueHandle = getQueueHandle(refCellIndex);
 
     OxygenCell_t refCellData = {0};
-    if ((refCell != NULL) && (pdTRUE == xQueuePeek(*queueHandle, &refCellData, TIMEOUT_100MS_TICKS)) && (refCellData.status == CELL_OK))
+    BaseType_t peekStatus = xQueuePeek(*queueHandle, &refCellData, TIMEOUT_100MS_TICKS);
+    if ((refCell != NULL) && (pdTRUE == peekStatus) && (refCellData.status == CELL_OK))
     {
         PPO2_t ppO2 = refCellData.ppo2;
         uint16_t pressure = (uint16_t)(refCell->pressure / 1000);
