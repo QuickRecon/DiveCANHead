@@ -16,12 +16,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     if (ADC1_ALERT_Pin == GPIO_Pin)
     {
         /* Trigger ADC1 read */
-        ADC_Ready_Interrupt();
+        ADC1_Ready_Interrupt();
     }
     else if (ADC2_ALERT_Pin == GPIO_Pin)
     {
         /* Trigger ADC2 read */
-        ADC_Ready_Interrupt();
+        ADC2_Ready_Interrupt();
     }
     else
     {

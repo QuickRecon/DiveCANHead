@@ -15,9 +15,10 @@ static const uint8_t ADC_CONFIG_REGISTER = 0x01;
 static const uint8_t ADC_LOW_THRESHOLD_REGISTER = 0x02;
 static const uint8_t ADC_HIGH_THRESHOLD_REGISTER = 0x03;
 
-static const uint8_t TRANSMIT_COMPLETE_FLAG = 0b01;
-static const uint8_t READ_READY_FLAG = 0b010;
-static const uint8_t READ_COMPLETE_FLAG = 0b100;
+static const uint8_t TRANSMIT_COMPLETE_FLAG = 0b0001;
+static const uint8_t READ1_READY_FLAG = 0b0010;
+static const uint8_t READ2_READY_FLAG = 0b0100;
+static const uint8_t READ_COMPLETE_FLAG = 0b1000;
 
 const uint32_t I2C_TIMEOUT = pdMS_TO_TICKS(1000);
 
@@ -58,7 +59,7 @@ static QueueHandle_t *getTicksQueue(uint8_t inputNumber)
 }
 
 /* Forward decls of local funcs */
-void ADCTask(void * args);
+void ADCTask(void *args);
 
 /* FreeRTOS tasks */
 static osThreadId_t *getOSThreadId(void)
@@ -227,10 +228,21 @@ void ADC_I2C_Transmit_Complete(void)
     }
 }
 
-void ADC_Ready_Interrupt(void)
+void ADC1_Ready_Interrupt(void)
 {
     osThreadId_t *ADCTaskHandle = getOSThreadId();
-    uint32_t err = osThreadFlagsSet(*ADCTaskHandle, READ_READY_FLAG);
+    uint32_t err = osThreadFlagsSet(*ADCTaskHandle, READ1_READY_FLAG);
+    /*Detect any flag error states*/
+    if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
+    {
+        NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERROR, err);
+    }
+}
+
+void ADC2_Ready_Interrupt(void)
+{
+    osThreadId_t *ADCTaskHandle = getOSThreadId();
+    uint32_t err = osThreadFlagsSet(*ADCTaskHandle, READ2_READY_FLAG);
     /*Detect any flag error states*/
     if ((err & FLAG_ERR_MASK) == FLAG_ERR_MASK)
     {
@@ -275,6 +287,34 @@ void configureADC(uint16_t configuration, const InputState_t *const input)
     }
 }
 
+void waitForReadReady(const InputState_t *const adcInput)
+{
+    if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsClear(READ1_READY_FLAG)))
+    {
+        NON_FATAL_ERROR(FLAG_ERROR);
+    }
+
+    if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsClear(READ2_READY_FLAG)))
+    {
+        NON_FATAL_ERROR(FLAG_ERROR);
+    }
+
+    if (adcInput->adcAddress == ADC1_ADDR)
+    {
+        if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(READ1_READY_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
+        {
+            NON_FATAL_ERROR(FLAG_ERROR);
+        }
+    }
+    else
+    {
+        if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(READ2_READY_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
+        {
+            NON_FATAL_ERROR(FLAG_ERROR);
+        }
+    }
+}
+
 /* Tasks */
 void ADCTask(void *)
 {
@@ -307,15 +347,7 @@ void ADCTask(void *)
                 NON_FATAL_ERROR(I2C_BUS_ERROR);
             }
 
-            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsClear(READ_READY_FLAG)))
-            {
-                NON_FATAL_ERROR(FLAG_ERROR);
-            }
-
-            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsWait(READ_READY_FLAG, osFlagsWaitAny, I2C_TIMEOUT)))
-            {
-                NON_FATAL_ERROR(FLAG_ERROR);
-            }
+            waitForReadReady(adcInput);
 
             /* Read the ADC */
             uint8_t conversionRegister[2] = {0}; /* Memory space to receive inputs into */

@@ -34,7 +34,8 @@ void BlockForADC(uint8_t inputIndex);
 /* ADC interface */
 void ADC_I2C_Receive_Complete(void );
 void ADC_I2C_Transmit_Complete(void );
-void ADC_Ready_Interrupt(void);
+void ADC1_Ready_Interrupt(void);
+void ADC2_Ready_Interrupt(void);
 
 #ifdef __cplusplus
 }
