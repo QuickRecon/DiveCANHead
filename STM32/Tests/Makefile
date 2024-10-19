@@ -20,10 +20,11 @@ CPPUTEST_HOME = $(ROOT_DIR)/STM32/Tests/cpputest/
 # SRC_FILES specifies individual production
 # code files.
 #
-# SRC_DIRS specifies directories containing
+# SRC_DIRS specifies directories containingSRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
 # production code C and CPP files.
 #
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Sensors/OxygenCell.c 
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/flash.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/configuration.c
 

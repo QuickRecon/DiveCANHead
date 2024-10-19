@@ -682,7 +682,7 @@ osStatus_t osMessageQueuePut (osMessageQueueId_t mq_id, const void *msg_ptr, uin
 /// \param[out]    msg_ptr       pointer to buffer for message to get from a queue.
 /// \param[out]    msg_prio      pointer to buffer for message priority or NULL.
 /// \param[in]     timeout       \ref CMSIS_RTOS_TimeOutValue or 0 in case of no time-out.
-/// \return status code that indicates the execution status of the function.
+/// \return status code that indicates the equecution status of the function.
 osStatus_t osMessageQueueGet (osMessageQueueId_t mq_id, void *msg_ptr, uint8_t *msg_prio, uint32_t timeout);
 
 /// Get maximum number of messages in a Message Queue.

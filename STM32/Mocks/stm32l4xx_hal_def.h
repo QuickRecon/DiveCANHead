@@ -50,6 +50,11 @@ typedef enum
   HAL_LOCKED   = 0x01
 } HAL_LockTypeDef;
 
+typedef enum
+{
+  RESET = 0,
+  SET = !RESET
+} FlagStatus, ITStatus;
 #ifdef __cplusplus
 }
 #endif

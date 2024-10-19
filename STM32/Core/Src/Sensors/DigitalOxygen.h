@@ -2,6 +2,7 @@
 #include "../common.h"
 #include "main.h"
 #include "cmsis_os.h"
+#include "stm32l4xx_hal_uart.h"
 #include "queue.h"
 #include "OxygenCell.h"
 

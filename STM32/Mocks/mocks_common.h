@@ -1,11 +1,15 @@
 #pragma once
-
 #include <stdint.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
+#define configSUPPORT_STATIC_ALLOCATION 1
+#define pdFALSE			( ( BaseType_t ) 0 )
+#define pdTRUE			( ( BaseType_t ) 1 )
 
 typedef uint32_t BaseType_t;
 typedef uint32_t UBaseType_t;

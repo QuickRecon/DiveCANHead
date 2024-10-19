@@ -223,6 +223,7 @@ typedef struct QueueDefinition * QueueSetMemberHandle_t;
  * \defgroup xQueueCreateStatic xQueueCreateStatic
  * \ingroup QueueManagement
  */
+
 #if( configSUPPORT_STATIC_ALLOCATION == 1 )
 	#define xQueueCreateStatic( uxQueueLength, uxItemSize, pucQueueStorage, pxQueueBuffer ) xQueueGenericCreateStatic( ( uxQueueLength ), ( uxItemSize ), ( pucQueueStorage ), ( pxQueueBuffer ), ( queueQUEUE_TYPE_BASE ) )
 #endif /* configSUPPORT_STATIC_ALLOCATION */
