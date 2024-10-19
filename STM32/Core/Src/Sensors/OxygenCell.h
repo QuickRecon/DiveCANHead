@@ -51,11 +51,21 @@ extern "C"
         CAL_TOTAL_ABSOLUTE = 2
     } OxygenCalMethod_t;
 
+    typedef struct
+    {
+        CellStatus_t statusArray[3];
+        PPO2_t ppo2Array[3];
+        Millivolts_t milliArray[3];
+        PPO2_t consensus;
+        bool includeArray[3];
+    } Consensus_t;
+
     QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);
 
     bool isCalibrating(void);
     void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod);
-
+    uint8_t cellConfidence(Consensus_t consensus);
+    Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3);
 #ifdef __cplusplus
 }
 #endif

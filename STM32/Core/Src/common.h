@@ -77,6 +77,7 @@ extern "C"
     /* The watchdog task should be just above idle, so that we reset on runtime starvation */
     /* CAN RX priority less critical than data consumers but more than sensor fetching, we want to
      * respond to messages in a timely manner, waiting on sensors can push us into timeout */
+    static const osPriority_t PPO2_CONTROL_PRIORITY = osPriorityHigh2;
     static const osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh1;
     static const osPriority_t CAN_RX_PRIORITY = osPriorityNormal1;
     static const osPriority_t PPO2_SENSOR_PRIORITY = osPriorityNormal;
@@ -86,13 +87,14 @@ extern "C"
     static const osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
 
 /* Define the stack sizes for all the tasks */
-#define CANTASK_STACK_SIZE 1000    /* 408 by static analysis */
-#define PPO2TXTASK_STACK_SIZE 450 /* 320 bytes by static analysis */
-#define ADCTASK_STACK_SIZE 300    /* 224 by static analysis */
-#define CELL_PROCESSOR_STACK_SIZE 800
-#define CALTASK_STACK_SIZE 550 /* Static analysis 480 */
-#define PRINTER_STACK_SIZE 500 /* Static analysis 352 */
-#define LOG_STACK_SIZE 2048    /* Static analysis unbounded */
+#define PPO2CONTROLTASK_STACK_SIZE 500 /* TODO: Static analyse*/
+#define CANTASK_STACK_SIZE 1200    /* 1120 by static analysis */
+#define PPO2TXTASK_STACK_SIZE 1000 /* 928 bytes by static analysis */
+#define ADCTASK_STACK_SIZE 600    /* 504 by static analysis */
+#define CELL_PROCESSOR_STACK_SIZE 800 /* 680 by static analysis*/
+#define CALTASK_STACK_SIZE 900 /* Static analysis 856 */
+#define PRINTER_STACK_SIZE 650 /* Static analysis 608 */
+#define LOG_STACK_SIZE 1700    /* Static analysis 1592 */
 
 /* conditional compilation for RTOS loop breaking is pretty */
 /* shit as a testing method */

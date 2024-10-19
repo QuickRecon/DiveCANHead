@@ -169,7 +169,7 @@ void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *
 
 void RespAtmos(const DiveCANMessage_t *, const DiveCANDevice_t *)
 {
-    /* TODO(Aren): respond to atmos */
+    setAtmoPressure(1024); /* TODO: Decode message*/
 }
 
 void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *)

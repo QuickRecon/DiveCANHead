@@ -120,6 +120,15 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
     return *queueHandle;
 }
 
+/**
+ * @brief Calibrate a given analog cell
+ * @param calPass Pointer to cal response variable
+ * @param i Cell index
+ * @param cell Pointer to oxygen cell handle
+ * @param ppO2 Calibration PPO2
+ * @param cellVals Response variable containing the millivolts of the calibration (i indexed)
+ * @param calErrors Response variable containing any calibration errors (i indexed)
+ */
 static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, OxygenHandle_t *cell, PPO2_t ppO2, ShortMillivolts_t *cellVals, NonFatalError_t *calErrors)
 {
     AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cell->cellHandle;
@@ -138,6 +147,11 @@ static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, Oxygen
     }
 }
 
+/**
+ * @brief Calibrate all of the analog cells based on the controller provided data
+ * @param calParams Struct containing the FO2 and atmospheric pressure, gets populated with cell millis and error messages
+ * @return Calibration status
+ */
 DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
 {
     DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
@@ -192,9 +206,9 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
     {
         const OxygenHandle_t *const cell = getCell(i);
         if ((CELL_DIGITAL == cell->type) && (NULL == refCell))
-            {
-                refCell = (const DigitalOxygenState_t *)cell->cellHandle;
-                refCellIndex = i;
+        {
+            refCell = (const DigitalOxygenState_t *)cell->cellHandle;
+            refCellIndex = i;
         }
     }
 
@@ -290,6 +304,13 @@ bool isCalibrating(void)
              (osThreadGetState(*calTask) == osThreadTerminated));
 }
 
+/**
+ * @brief Start a new task (one off) to execute a calibration, this will silently fail if a calibration is already being done (why are you trying to calibrate while you calibrate?)
+ * @param deviceType DiveCAN device to send responses from
+ * @param in_fO2 FO2 reported to us to use in the calibration
+ * @param in_pressure_val ambient pressure to use in the calibration (millibar)
+ * @param calMethod Calibration method to use for calibration
+ */
 void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod)
 {
     static CalParameters_t calParams;
@@ -325,4 +346,114 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
         osThreadId_t *calTask = getOSThreadId();
         *calTask = osThreadNew(CalibrationTask, &calParams, &CalTask_attributes);
     }
+}
+
+static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
+
+/** @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
+ *        In an all fail scenario we want that data to still be intact so we can still have our best guess
+ * @param c1
+ * @param c2
+ * @param c3
+ * @return
+ */
+Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3)
+{
+    /* Zeroth step, load up the millis, status and PPO2
+     * We also load up the timestamps of each cell sample so that we can check the other tasks
+     * haven't been sitting idle and starved us of information
+     */
+    Timestamp_t sampleTimes[CELL_COUNT] = {
+        c1->dataTime,
+        c2->dataTime,
+        c3->dataTime};
+
+    const Timestamp_t timeout = 1000; /* 1000 millisecond timeout to avoid stale data */
+    Timestamp_t now = HAL_GetTick();
+
+    Consensus_t consensus = {
+        .statusArray = {
+            c1->status,
+            c2->status,
+            c3->status,
+        },
+        .ppo2Array = {
+            c1->ppo2,
+            c2->ppo2,
+            c3->ppo2,
+        },
+        .milliArray = {
+            c1->millivolts,
+            c2->millivolts,
+            c3->millivolts,
+        },
+        .consensus = 0,
+        .includeArray = {true, true, true}};
+
+    /* Do a two pass check, loop through the cells and average the "good" cells
+     * Then afterwards we check each cells value against the average, and exclude deviations
+     */
+    uint16_t PPO2_acc = 0; /* Start an accumulator to take an average, include the median cell always */
+    uint8_t includedCellCount = 0;
+
+    for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
+    {
+        if ((consensus.statusArray[cellIdx] == CELL_NEED_CAL) ||
+            (consensus.statusArray[cellIdx] == CELL_FAIL) ||
+            (consensus.statusArray[cellIdx] == CELL_DEGRADED) ||
+            ((now - sampleTimes[cellIdx]) > timeout))
+        {
+            consensus.includeArray[cellIdx] = false;
+        }
+        else
+        {
+            PPO2_acc += consensus.ppo2Array[cellIdx];
+            ++includedCellCount;
+        }
+    }
+
+    /* Assert that we actually have cells that got included */
+    if (includedCellCount > 0)
+    {
+        /* Now second pass, check to see if any of the included cells are deviant from the average */
+        for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
+        {
+            /* We want to make sure the cell is actually included before we start checking it */
+            if (consensus.includeArray[cellIdx] && (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.ppo2Array[cellIdx]) > MAX_DEVIATION))
+            {
+                /* Removing cells in this way can result in a change in the outcome depending on
+                 * cell position, depending on exactly how split-brained the cells are, but
+                 * frankly if things are that cooked then we're borderline guessing anyway
+                 */
+                PPO2_acc -= consensus.ppo2Array[cellIdx];
+                --includedCellCount;
+                consensus.includeArray[cellIdx] = false;
+            }
+        }
+    }
+
+    if (includedCellCount > 0)
+    {
+        consensus.consensus = (PPO2_t)(PPO2_acc / includedCellCount);
+    }
+
+    return consensus;
+}
+
+/**
+ * @brief Calculate the cell confidence out of 3, 3 means 3 voted-in cells, 2 means 2 voted-in cells, etc
+ * @param consensus Consensus struct calculated from `calculateConsensus`
+ * @return Cell confidence out of 3
+ */
+uint8_t cellConfidence(Consensus_t consensus)
+{
+    uint8_t confidence = 0;
+    for (int i = 0; i < 3; i++)
+    {
+        if (consensus.includeArray[i])
+        {
+            confidence++;
+        }
+    }
+    return confidence;
 }

@@ -5,8 +5,6 @@
 #include "../Hardware/printer.h"
 #include "../PPO2Control/PPO2Control.h"
 
-static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
-
 typedef struct
 {
     DiveCANDevice_t * device;
@@ -148,94 +146,4 @@ void setFailedCellsValues(Consensus_t *consensus)
             }
         }
     }
-}
-
-/** @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
- *        In an all fail scenario we want that data to still be intact so we can still have our best guess
- * @param c1
- * @param c2
- * @param c3
- * @return
- */
-Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3)
-{
-    /* Zeroth step, load up the millis, status and PPO2
-     * We also load up the timestamps of each cell sample so that we can check the other tasks
-     * haven't been sitting idle and starved us of information
-     */
-    Timestamp_t sampleTimes[CELL_COUNT] = {
-        c1->dataTime,
-        c2->dataTime,
-        c3->dataTime};
-
-    const Timestamp_t timeout = 1000; /* 1000 millisecond timeout to avoid stale data */
-    Timestamp_t now = HAL_GetTick();
-
-    Consensus_t consensus = {
-        .statusArray = {
-            c1->status,
-            c2->status,
-            c3->status,
-        },
-        .ppo2Array = {
-            c1->ppo2,
-            c2->ppo2,
-            c3->ppo2,
-        },
-        .milliArray = {
-            c1->millivolts,
-            c2->millivolts,
-            c3->millivolts,
-        },
-        .consensus = 0,
-        .includeArray = {true, true, true}};
-
-    /* Do a two pass check, loop through the cells and average the "good" cells
-     * Then afterwards we check each cells value against the average, and exclude deviations
-     */
-    uint16_t PPO2_acc = 0; /* Start an accumulator to take an average, include the median cell always */
-    uint8_t includedCellCount = 0;
-
-    for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
-    {
-        if ((consensus.statusArray[cellIdx] == CELL_NEED_CAL) ||
-            (consensus.statusArray[cellIdx] == CELL_FAIL) ||
-            (consensus.statusArray[cellIdx] == CELL_DEGRADED) ||
-            ((now - sampleTimes[cellIdx]) > timeout))
-        {
-            consensus.includeArray[cellIdx] = false;
-        }
-        else
-        {
-            PPO2_acc += consensus.ppo2Array[cellIdx];
-            ++includedCellCount;
-        }
-    }
-
-    /* Assert that we actually have cells that got included */
-    if (includedCellCount > 0)
-    {
-        /* Now second pass, check to see if any of the included cells are deviant from the average */
-        for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
-        {
-            /* We want to make sure the cell is actually included before we start checking it */
-            if (consensus.includeArray[cellIdx] && (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.ppo2Array[cellIdx]) > MAX_DEVIATION))
-            {
-                /* Removing cells in this way can result in a change in the outcome depending on
-                 * cell position, depending on exactly how split-brained the cells are, but
-                 * frankly if things are that cooked then we're borderline guessing anyway
-                 */
-                PPO2_acc -= consensus.ppo2Array[cellIdx];
-                --includedCellCount;
-                consensus.includeArray[cellIdx] = false;
-            }
-        }
-    }
-
-    if (includedCellCount > 0)
-    {
-        consensus.consensus = (PPO2_t)(PPO2_acc / includedCellCount);
-    }
-
-    return consensus;
 }
