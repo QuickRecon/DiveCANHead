@@ -63,12 +63,13 @@ def calc_wcs(fxn_dict2: CallNode, parents: List[CallNode]) -> None:
         calc_wcs(call_dict, parents + [fxn_dict2])
 
         # If the called function is unbounded, so is this function
-        if call_dict['wcs'] == 'unbounded':
-            fxn_dict2['wcs'] = 'unbounded'
-            return
+        #if call_dict['wcs'] == 'unbounded':
+        #    fxn_dict2['wcs'] = 'unbounded'
+        #    return
 
         # Keep track of the call with the largest stack use
-        call_max = max(call_max, call_dict['wcs'])
+        if call_dict['wcs'] != 'unbounded':
+            call_max = max(call_max, call_dict['wcs'])
 
         # Propagate Unresolved Calls
         for unresolved_call in call_dict['unresolved_calls']:
