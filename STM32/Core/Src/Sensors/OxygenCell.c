@@ -348,6 +348,45 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
     }
 }
 
+/**
+ * @brief Peek the given cell queue handles and calculate the consensus, cells that do not respond within 100ms are marked as failed.
+ * @param cell1 Cell 1 queue handle
+ * @param cell2 Cell 2 queue handle
+ * @param cell3 Cell 3 queue handle
+ * @return `Consenus_t` as calculated by `calculateConsensus` using the latest cell values
+ */
+Consensus_t peekCellConsensus(QueueHandle_t cell1, QueueHandle_t cell2, QueueHandle_t cell3)
+{
+    /* First retreive the cell data */
+    OxygenCell_t c1 = {0};
+    bool c1pick = xQueuePeek(cell1, &c1, TIMEOUT_100MS_TICKS);
+    OxygenCell_t c2 = {0};
+    bool c2pick = xQueuePeek(cell2, &c2, TIMEOUT_100MS_TICKS);
+    OxygenCell_t c3 = {0};
+    bool c3pick = xQueuePeek(cell3, &c3, TIMEOUT_100MS_TICKS);
+
+    /* If the peek timed out then we mark the cell as failed going into the consensus calculation
+     and lodge the nonfatal error */
+    if (!c1pick)
+    {
+        c1.status = CELL_FAIL;
+        NON_FATAL_ERROR(TIMEOUT_ERROR);
+    }
+    if (!c2pick)
+    {
+        c2.status = CELL_FAIL;
+        NON_FATAL_ERROR(TIMEOUT_ERROR);
+    }
+    if (!c3pick)
+    {
+        c3.status = CELL_FAIL;
+        NON_FATAL_ERROR(TIMEOUT_ERROR);
+    }
+
+    /* We calculate the consensus ourselves so we can make interpretations based on the cell confidence*/
+    return calculateConsensus(&c1, &c2, &c3);
+}
+
 static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
 
 /** @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells

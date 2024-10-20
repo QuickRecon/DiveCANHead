@@ -7,7 +7,7 @@
 
 typedef struct
 {
-    DiveCANDevice_t * device;
+    DiveCANDevice_t *device;
     QueueHandle_t c1;
     QueueHandle_t c2;
     QueueHandle_t c3;
@@ -31,7 +31,7 @@ static osThreadId_t *getOSThreadId(void)
  * @param c2 QueueHandle_t for cell queue 2
  * @param c3 QueueHandle_t for cell queue 3
  */
-void InitPPO2TX(const DiveCANDevice_t * const device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
+void InitPPO2TX(const DiveCANDevice_t *const device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
 {
     /* Need to init the struct locally then value copy into the static */
     static PPO2TXTask_params_t taskParams;
@@ -73,39 +73,11 @@ void PPO2TXTask(void *arg)
 {
     PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;
     const DiveCANDevice_t *const dev = params->device;
-    uint32_t i = 0;
     do
     {
-        ++i;
         (void)osDelay(TIMEOUT_100MS);
 
-        OxygenCell_t c1 = {0};
-        bool c1pick = xQueuePeek(params->c1, &c1, TIMEOUT_100MS_TICKS);
-        OxygenCell_t c2 = {0};
-        bool c2pick = xQueuePeek(params->c2, &c2, TIMEOUT_100MS_TICKS);
-        OxygenCell_t c3 = {0};
-        bool c3pick = xQueuePeek(params->c3, &c3, TIMEOUT_100MS_TICKS);
-
-        /* If the peek timed out then we mark the cell as failed going into the consensus calculation
-         and lodge the nonfatal error */
-        if (!c1pick)
-        {
-            c1.status = CELL_FAIL;
-            NON_FATAL_ERROR(TIMEOUT_ERROR);
-        }
-        if (!c2pick)
-        {
-            c2.status = CELL_FAIL;
-            NON_FATAL_ERROR(TIMEOUT_ERROR);
-        }
-        if (!c3pick)
-        {
-            c3.status = CELL_FAIL;
-            NON_FATAL_ERROR(TIMEOUT_ERROR);
-        }
-        /* First we calculate the consensus struct, which includes the voting logic
-         This is aware of cell status but does not set the PPO2 data for Fail states */
-        Consensus_t consensus = calculateConsensus(&c1, &c2, &c3);
+        Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
 
         /* Go through each cell and if any need cal, flag cal
          Also check for fail and mark the cell value as fail */
