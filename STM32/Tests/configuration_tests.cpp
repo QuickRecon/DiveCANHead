@@ -30,7 +30,7 @@ TEST(configuration, CheckStructSize)
 {
     size_t structSize = sizeof(Configuration_t);
     Configuration_t testConfig = {0};
-    size_t varSize = sizeof(testConfig.fields);
+    size_t varSize = sizeof(testConfig);
     CHECK(varSize == expectedStructSize);  // Check our struct size is what we expect it to be
     CHECK(structSize == sizeof(uint32_t)); // Check we overall fit in a uint32
 }
@@ -43,18 +43,18 @@ TEST(configuration, TestLocationOfCellFields)
 
         if (0 == cellNum)
         {
-            testConfig.fields.cell1 = CELL_ANALOG;
+            testConfig.cell1 = CELL_ANALOG;
         }
         else if (1 == cellNum)
         {
-            testConfig.fields.cell2 = CELL_ANALOG;
+            testConfig.cell2 = CELL_ANALOG;
         }
         else if (2 == cellNum)
         {
-            testConfig.fields.cell3 = CELL_ANALOG;
+            testConfig.cell3 = CELL_ANALOG;
         }
 
-        CHECK(((testConfig.bits >> (8u + (cellNum * 2))) & 0b11u) == 1);
+        CHECK(((getConfigBytes(&testConfig) >> (8u + (cellNum * 2))) & 0b11u) == 1);
     }
 }
 
@@ -65,9 +65,7 @@ TEST(configuration, TestCellValidator)
     {
         for (uint8_t i = 0; i < (1 << cellBitfieldLength); ++i)
         {
-            Configuration_t testConfig = {0};
-
-            testConfig.bits = i << (8u + (cellNum * 2));
+            Configuration_t testConfig = setConfigBytes(i << (8u + (cellNum * 2)));
 
             bool valid = CellValid(testConfig, cellNum);
             if (i > CELL_ANALOG)
@@ -89,9 +87,10 @@ TEST(configuration, TestCellValidation)
     {
         for (uint8_t i = 0; i < (1 << cellBitfieldLength); ++i)
         {
-            Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
-
-            testConfig.bits |= i << (8u + (cellNum * 2));
+            Configuration_t testConfig = {.firmwareVersion = FIRMWARE_VERSION};
+            uint32_t configBytes = getConfigBytes(&testConfig);
+            configBytes |= i << (8u + (cellNum * 2));
+            testConfig = setConfigBytes(configBytes);
 
             bool valid = ConfigurationValid(testConfig);
             if (i > CELL_ANALOG)
@@ -112,8 +111,8 @@ TEST(configuration, TestPowerModePosition)
     for (uint8_t i = 0; i < (1 << powerModeBitfieldLength); ++i)
     {
         Configuration_t testConfig = {0};
-        testConfig.fields.powerMode = (PowerSelectMode_t)i;
-        CHECK(((testConfig.bits >> 14) & 0b11u) == i);
+        testConfig.powerMode = (PowerSelectMode_t)i;
+        CHECK(((getConfigBytes(&testConfig) >> 14) & 0b11u) == i);
     }
 }
 
@@ -123,8 +122,8 @@ TEST(configuration, TestCalModePosition)
     for (uint8_t i = 0; i < (1 << calModeBitfieldLength); ++i)
     {
         Configuration_t testConfig = {0};
-        testConfig.fields.calibrationMode = (OxygenCalMethod_t)i;
-        CHECK(((testConfig.bits >> 16) & 0b111u) == i);
+        testConfig.calibrationMode = (OxygenCalMethod_t)i;
+        CHECK(((getConfigBytes(&testConfig) >> 16) & 0b111u) == i);
     }
 }
 
@@ -133,9 +132,10 @@ TEST(configuration, TestCalModeValidation)
     uint8_t calModeBitfieldLength = 3;
     for (uint8_t i = 0; i < (1 << calModeBitfieldLength); ++i)
     {
-        Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
-
-        testConfig.bits |= i << (16);
+        Configuration_t testConfig = {.firmwareVersion = FIRMWARE_VERSION};
+        uint32_t configBytes = getConfigBytes(&testConfig);
+        configBytes |= i << (16);
+        testConfig = setConfigBytes(configBytes);
 
         bool valid = ConfigurationValid(testConfig);
         if (i > CAL_TOTAL_ABSOLUTE)
@@ -153,7 +153,7 @@ TEST(configuration, TestFirmwareVersionValidation)
 {
     for (uint8_t i = 0; i < 0xFFu; ++i)
     {
-        Configuration_t testConfig = {.fields = {.firmwareVersion = i}};
+        Configuration_t testConfig = {.firmwareVersion = i};
         bool valid = ConfigurationValid(testConfig);
         if (i == FIRMWARE_VERSION)
         {
@@ -172,8 +172,8 @@ TEST(configuration, TestAlarmVoltagePosition)
     for (uint8_t i = 0; i < (1 << dischargeThresholdBitfieldLength); ++i)
     {
         Configuration_t testConfig = {0};
-        testConfig.fields.dischargeThresholdMode = (VoltageThreshold_t)i;
-        CHECK(((testConfig.bits >> 20) & 0b11u) == i);
+        testConfig.dischargeThresholdMode = (VoltageThreshold_t)i;
+        CHECK(((getConfigBytes(&testConfig) >> 20) & 0b11u) == i);
     }
 }
 
@@ -182,8 +182,8 @@ TEST(configuration, PPO2ControlModeValidation)
     uint8_t ppo2ControlModeBitfieldLength = 2;
     for (uint8_t i = 0; i < (1 << ppo2ControlModeBitfieldLength); ++i)
     {
-        Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
-        testConfig.fields.ppo2controlMode = (PPO2ControlScheme_t)i;
+        Configuration_t testConfig = {.firmwareVersion = FIRMWARE_VERSION};
+        testConfig.ppo2controlMode = (PPO2ControlScheme_t)i;
         CHECK(ConfigurationValid(testConfig));
     }
 }
@@ -194,8 +194,8 @@ TEST(configuration, PPO2ControlModePosition)
     for (uint8_t i = 0; i < (1 << ppo2ControlModeBitfieldLength); ++i)
     {
         Configuration_t testConfig = {0};
-        testConfig.fields.ppo2controlMode = (PPO2ControlScheme_t)i;
-        CHECK(((testConfig.bits >> 22) & 0b11u) == i);
+        testConfig.ppo2controlMode = (PPO2ControlScheme_t)i;
+        CHECK(((getConfigBytes(&testConfig) >> 22) & 0b11u) == i);
     }
 }
 
@@ -204,48 +204,48 @@ TEST(configuration, TestAlarmVoltageValidation)
     uint8_t dischargeThresholdBitfieldLength = 2;
     for (uint8_t i = 0; i < (1 << dischargeThresholdBitfieldLength); ++i)
     {
-        Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
-        testConfig.fields.dischargeThresholdMode = (VoltageThreshold_t)i;
+        Configuration_t testConfig = {.firmwareVersion = FIRMWARE_VERSION};
+        testConfig.dischargeThresholdMode = (VoltageThreshold_t)i;
         CHECK(ConfigurationValid(testConfig));
     }
 }
 
 TEST(configuration, TestUARTContentionValidation)
 {
-    Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
-    testConfig.fields.enableUartPrinting = true;
-    testConfig.fields.cell2 = CELL_DIGITAL;
+    Configuration_t testConfig = {.firmwareVersion = FIRMWARE_VERSION};
+    testConfig.enableUartPrinting = true;
+    testConfig.cell2 = CELL_DIGITAL;
     CHECK(!ConfigurationValid(testConfig));
 }
 
 TEST(configuration, TestUARTContentionPosition)
 {
-    Configuration_t testConfig = {.fields = {0}};
-    testConfig.fields.enableUartPrinting = true;
-    CHECK(((testConfig.bits >> 19) & 0b1u) == 1);
+    Configuration_t testConfig = {0};
+    testConfig.enableUartPrinting = true;
+    CHECK(((getConfigBytes(&testConfig) >> 19) & 0b1u) == 1);
 }
 
 TEST(configuration, GetIDOfDefaultConfig)
 {
-    static const Configuration_t DefaultConfiguration = {.fields = {
-                                                             .firmwareVersion = FIRMWARE_VERSION,
-                                                             .cell1 = CELL_DIGITAL,
-                                                             .cell2 = CELL_ANALOG,
-                                                             .cell3 = CELL_ANALOG,
-                                                             .powerMode = MODE_BATTERY_THEN_CAN,
-                                                             .calibrationMode = CAL_DIGITAL_REFERENCE,
-                                                             .enableUartPrinting = true,
-                                                             .dischargeThresholdMode = V_THRESHOLD_9V,
-                                                             .ppo2controlMode = PPO2CONTROL_OFF}};
-    printf("%08x", DefaultConfiguration.bits);
+    static const Configuration_t DefaultConfiguration = {
+        .firmwareVersion = FIRMWARE_VERSION,
+        .cell1 = CELL_DIGITAL,
+        .cell2 = CELL_ANALOG,
+        .cell3 = CELL_ANALOG,
+        .powerMode = MODE_BATTERY_THEN_CAN,
+        .calibrationMode = CAL_DIGITAL_REFERENCE,
+        .enableUartPrinting = true,
+        .dischargeThresholdMode = V_THRESHOLD_9V,
+        .ppo2controlMode = PPO2CONTROL_OFF};
+    printf("%08x", getConfigBytes(&DefaultConfiguration));
 }
 
 TEST(configuration, TestDigitalCalAnalogCellsValidation)
 {
-    Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
-    testConfig.fields.calibrationMode = CAL_DIGITAL_REFERENCE;
-    testConfig.fields.cell1 = CELL_ANALOG;
-    testConfig.fields.cell2 = CELL_ANALOG;
-    testConfig.fields.cell3 = CELL_ANALOG;
+    Configuration_t testConfig = {.firmwareVersion = FIRMWARE_VERSION};
+    testConfig.calibrationMode = CAL_DIGITAL_REFERENCE;
+    testConfig.cell1 = CELL_ANALOG;
+    testConfig.cell2 = CELL_ANALOG;
+    testConfig.cell3 = CELL_ANALOG;
     CHECK(!ConfigurationValid(testConfig));
 }
