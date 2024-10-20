@@ -8,23 +8,6 @@ extern "C"
 {
 #endif
     /* UPDATING THIS STRUCTURE REQUIRES UPDATING THE VERSION NUMBER*/
-    // typedef union ConfigUnion
-    // {
-    //     struct
-    //     {
-    //         uint8_t firmwareVersion : 8;
-    //         CellType_t cell1 : 2;
-    //         CellType_t cell2 : 2;
-    //         CellType_t cell3 : 2;
-    //         PowerSelectMode_t powerMode : 2;
-    //         OxygenCalMethod_t calibrationMode : 3;
-    //         bool enableUartPrinting : 1;
-    //         VoltageThreshold_t dischargeThresholdMode: 2;
-    //         PPO2ControlScheme_t ppo2controlMode: 2;
-    //     } fields;
-    //     uint32_t bits;
-    // } Configuration_t;
-
     typedef struct
     {
         uint8_t firmwareVersion : 8;

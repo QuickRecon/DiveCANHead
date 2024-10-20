@@ -487,11 +487,11 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
 uint8_t cellConfidence(Consensus_t consensus)
 {
     uint8_t confidence = 0;
-    for (int i = 0; i < 3; i++)
+    for (uint8_t i = 0; i < CELL_COUNT; ++i)
     {
         if (consensus.includeArray[i])
         {
-            confidence++;
+            ++confidence;
         }
     }
     return confidence;

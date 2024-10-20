@@ -1,13 +1,16 @@
 #include "common.h"
 #include "configuration.h"
 #include "Hardware/flash.h"
+#include "assert.h"
 
 uint32_t getConfigBytes(const Configuration_t *const config){
-    return *((uint32_t*)config);
+    (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
+    return *((const uint32_t* const)config);
 }
 
 
 Configuration_t setConfigBytes(uint32_t configBits) {
+    (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
     Configuration_t config = {0};
     config = *((Configuration_t*)&configBits);
     return config;
@@ -50,14 +53,17 @@ bool ConfigurationValid(Configuration_t config)
                       (calMode == CAL_TOTAL_ABSOLUTE));
 
     /* Check that the firmware version matches*/
-    uint8_t firmwareVersion = (configBits) & 0xFFu;
+    uint8_t firmwareVersion = configBits & 0xFFu;
     valid = valid && (FIRMWARE_VERSION == firmwareVersion);
 
     /* We've checked our enums, using fields is allowed*/
 
     /* Check for incompatible states */
     valid = valid && ((!config.enableUartPrinting) || (config.cell2 == CELL_ANALOG)); /* If uart printing is on, cell2 MUST be analog */
-    valid = valid && (!((config.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.cell1 == CELL_ANALOG) && (config.cell2 == CELL_ANALOG) && (config.cell3 == CELL_ANALOG))); /* Can't have digital cal if no digital cells */
+
+    /* Can't have digital cal if no digital cells */
+    const bool configDigitalCellValid = !((config.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.cell1 == CELL_ANALOG) && (config.cell2 == CELL_ANALOG) && (config.cell3 == CELL_ANALOG));
+    valid = valid && configDigitalCellValid; 
 
     return valid;
 }
