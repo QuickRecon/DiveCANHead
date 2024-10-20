@@ -135,7 +135,7 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
 
         ADCV_t busVoltage = getVoltage(SOURCE_DEFAULT);
         DiveCANError_t err = DIVECAN_ERR_NONE;
-        if(busVoltage < getThresholdVoltage(configuration->fields.dischargeThresholdMode)){
+        if(busVoltage < getThresholdVoltage(configuration->dischargeThresholdMode)){
             err = DIVECAN_ERR_LOW_BATTERY;
         }
 
@@ -152,7 +152,7 @@ void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const
 
     serial_printf("RX cal request; PPO2: %u, Pressure: %u\r\n", fO2, pressure);
 
-    RunCalibrationTask(deviceSpec->type, fO2, pressure, configuration->fields.calibrationMode);
+    RunCalibrationTask(deviceSpec->type, fO2, pressure, configuration->calibrationMode);
 }
 
 void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration)

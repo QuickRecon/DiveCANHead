@@ -2,14 +2,14 @@
 #include "configuration.h"
 #include "Hardware/flash.h"
 
-uint32_t getConfigBytes(Configuration_t *config){
-    return config->bits;
+uint32_t getConfigBytes(const Configuration_t *const config){
+    return *((uint32_t*)config);
 }
 
 
 Configuration_t setConfigBytes(uint32_t configBits) {
     Configuration_t config = {0};
-    config.bits = configBits;
+    config = *((Configuration_t*)&configBits);
     return config;
 }
 
@@ -56,8 +56,8 @@ bool ConfigurationValid(Configuration_t config)
     /* We've checked our enums, using fields is allowed*/
 
     /* Check for incompatible states */
-    valid = valid && ((!config.fields.enableUartPrinting) || (config.fields.cell2 == CELL_ANALOG)); /* If uart printing is on, cell2 MUST be analog */
-    valid = valid && (!((config.fields.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.fields.cell1 == CELL_ANALOG) && (config.fields.cell2 == CELL_ANALOG) && (config.fields.cell3 == CELL_ANALOG))); /* Can't have digital cal if no digital cells */
+    valid = valid && ((!config.enableUartPrinting) || (config.cell2 == CELL_ANALOG)); /* If uart printing is on, cell2 MUST be analog */
+    valid = valid && (!((config.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.cell1 == CELL_ANALOG) && (config.cell2 == CELL_ANALOG) && (config.cell3 == CELL_ANALOG))); /* Can't have digital cal if no digital cells */
 
     return valid;
 }
@@ -74,7 +74,7 @@ Configuration_t loadConfiguration(void)
     return config;
 }
 
-bool saveConfiguration(Configuration_t *config)
+bool saveConfiguration(const Configuration_t *const config)
 {
     bool valid = ConfigurationValid(*config);
     if(valid){

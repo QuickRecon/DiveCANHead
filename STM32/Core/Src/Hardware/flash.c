@@ -227,9 +227,11 @@ bool GetConfiguration(Configuration_t *const config)
     }
     else
     {
-        EE_Status result = EE_ReadVariable32bits(CONFIG_BASE_ADDRESS, &(config->bits));
+        uint32_t configBits = 0;
+        EE_Status result = EE_ReadVariable32bits(CONFIG_BASE_ADDRESS, &(configBits));
         if (result == EE_OK)
         {
+            *config = setConfigBytes(configBits);
             configOK = true; /*  This is the happy path, everything else is flash errors that imply a bad cal read (and we just handle it gracefully here) */
         }
         else if (result == EE_NO_DATA) /*  If this is a fresh EEPROM then we need to init it */
@@ -256,7 +258,7 @@ bool SetConfiguration(const Configuration_t *const config)
     else
     {
         /*   Write that shit to the eeprom */
-        writeOk = WriteInt32(CONFIG_BASE_ADDRESS, config->bits);
+        writeOk = WriteInt32(CONFIG_BASE_ADDRESS, getConfigBytes(config));
     }
     return writeOk;
 }

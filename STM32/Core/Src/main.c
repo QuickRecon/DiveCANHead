@@ -347,21 +347,21 @@ int main(void)
   const Configuration_t deviceConfig = loadConfiguration();
   HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET);
 
-  InitPrinter(deviceConfig.fields.enableUartPrinting);
+  InitPrinter(deviceConfig.enableUartPrinting);
   serial_printf("Booting, Last Reset Reason (%s)\r\n", reset_cause_get_name(reset_cause));
-  serial_printf("Configuration: 0x%lx\r\n", deviceConfig.bits);
+  serial_printf("Configuration: 0x%lx\r\n", getConfigBytes(&deviceConfig));
 
   /* Set our power bus */
-  SetVBusMode(deviceConfig.fields.powerMode);
+  SetVBusMode(deviceConfig.powerMode);
   HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
 
   /* Kick off our threads */
   InitADCs();
 
   QueueHandle_t cells[3] = {0};
-  cells[CELL_1] = CreateCell(CELL_1, deviceConfig.fields.cell1);
-  cells[CELL_2] = CreateCell(CELL_2, deviceConfig.fields.cell2);
-  cells[CELL_3] = CreateCell(CELL_3, deviceConfig.fields.cell3);
+  cells[CELL_1] = CreateCell(CELL_1, deviceConfig.cell1);
+  cells[CELL_2] = CreateCell(CELL_2, deviceConfig.cell2);
+  cells[CELL_3] = CreateCell(CELL_3, deviceConfig.cell3);
   HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
 
   InitDiveCAN(&defaultDeviceSpec, &deviceConfig);
