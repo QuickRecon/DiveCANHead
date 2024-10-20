@@ -2,10 +2,21 @@
 #include "configuration.h"
 #include "Hardware/flash.h"
 
+uint32_t getConfigBytes(Configuration_t *config){
+    return config->bits;
+}
+
+
+Configuration_t setConfigBytes(uint32_t configBits) {
+    Configuration_t config = {0};
+    config.bits = configBits;
+    return config;
+}
+
 bool CellValid(Configuration_t config, uint8_t cellNumber)
 {
     /* Check that the enum */
-    uint8_t cellVal = (config.bits >> (8u + (cellNumber * 2))) & 0b11u;
+    uint8_t cellVal = (getConfigBytes(&config) >> (8u + (cellNumber * 2))) & 0b11u;
     return (cellVal == (uint8_t)CELL_ANALOG) || (cellVal == (uint8_t)CELL_DIGITAL);
 }
 
@@ -23,21 +34,23 @@ bool ConfigurationValid(Configuration_t config)
         valid = valid && CellValid(config, i);
     }
 
+    uint32_t configBits = getConfigBytes(&config);
+
     /* Check power mode*/
-    uint8_t powerMode = (config.bits >> 14) & 0b11u;
+    uint8_t powerMode = (configBits >> 14) & 0b11u;
     valid = valid && ((powerMode == MODE_BATTERY) ||
                       (powerMode == MODE_BATTERY_THEN_CAN) ||
                       (powerMode == MODE_CAN) ||
                       (powerMode == MODE_OFF));
 
     /* Check cal mode */
-    uint8_t calMode = (config.bits >> 16) & 0b111u;
+    uint8_t calMode = (configBits >> 16) & 0b111u;
     valid = valid && ((calMode == CAL_DIGITAL_REFERENCE) ||
                       (calMode == CAL_ANALOG_ABSOLUTE) ||
                       (calMode == CAL_TOTAL_ABSOLUTE));
 
     /* Check that the firmware version matches*/
-    uint8_t firmwareVersion = (config.bits) & 0xFFu;
+    uint8_t firmwareVersion = (configBits) & 0xFFu;
     valid = valid && (FIRMWARE_VERSION == firmwareVersion);
 
     /* We've checked our enums, using fields is allowed*/
@@ -68,11 +81,11 @@ bool saveConfiguration(Configuration_t *config)
         valid = SetConfiguration(config);
 
         Configuration_t readbackConfig = {0};
-        GetConfiguration(&readbackConfig);
+        bool readbackOk = GetConfiguration(&readbackConfig);
 
-        valid = valid && readbackConfig.bits == config->bits;
+        valid = (readbackOk && valid) && (getConfigBytes(&readbackConfig) == getConfigBytes(config));
 
-        // Clear the calibration on config change
+        /* Clear the calibration on config change */
         valid = valid && SetCalibration(CELL_1, 0);
         valid = valid && SetCalibration(CELL_2, 0);
         valid = valid && SetCalibration(CELL_3, 0);

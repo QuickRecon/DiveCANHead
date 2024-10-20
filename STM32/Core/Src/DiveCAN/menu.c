@@ -121,23 +121,25 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
                 uint32_t maxVal = 0xFF;
                 uint32_t currVal = 0;
 
-                serial_printf("Cnf_total: 0x%lx\r\n", configuration->bits);
+                uint32_t configBits = getConfigBytes(configuration);
+
+                serial_printf("Cnf_total: 0x%lx\r\n", configBits);
                 switch (menu[itemNumber].dataVal)
                 {
                 case CONFIG_VALUE_1:
-                    currVal = (uint8_t)(configuration->bits);
+                    currVal = (uint8_t)(configBits);
                     serial_printf("Cnf1: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 case CONFIG_VALUE_2:
-                    currVal = (uint8_t)(configuration->bits >> BYTE_1_OFFSET);
+                    currVal = (uint8_t)(configBits >> BYTE_1_OFFSET);
                     serial_printf("Cnf2: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 case CONFIG_VALUE_3:
-                    currVal = (uint8_t)(configuration->bits >> BYTE_2_OFFSET);
+                    currVal = (uint8_t)(configBits >> BYTE_2_OFFSET);
                     serial_printf("Cnf3: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 case CONFIG_VALUE_4:
-                    currVal = (uint8_t)(configuration->bits >> BYTE_3_OFFSET);
+                    currVal = (uint8_t)(configBits >> BYTE_3_OFFSET);
                     serial_printf("Cnf4: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 default:
@@ -169,10 +171,11 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
 
 void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const configuration)
 {
-    uint8_t configBytes[4] = {(uint8_t)(configuration->bits),
-                              (uint8_t)(configuration->bits >> BYTE_1_OFFSET),
-                              (uint8_t)(configuration->bits >> BYTE_2_OFFSET),
-                              (uint8_t)(configuration->bits >> BYTE_3_OFFSET)};
+    uint32_t configBits = getConfigBytes(configuration);
+    uint8_t configBytes[4] = {(uint8_t)(configBits),
+                              (uint8_t)(configBits >> BYTE_1_OFFSET),
+                              (uint8_t)(configBits >> BYTE_2_OFFSET),
+                              (uint8_t)(configBits >> BYTE_3_OFFSET)};
 
     switch (menu[itemNumber].dataVal)
     {
@@ -191,8 +194,9 @@ void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const con
     default:
     }
 
-    configuration->bits = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
-    serial_printf("Saving config %lu\r\n", configuration->bits);
+    uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
+    *configuration = setConfigBytes(newBytes);
+    serial_printf("Saving config %lu -> \r\n", newBytes, getConfigBytes(configuration));
     bool valid = saveConfiguration(configuration);
     if (valid){
         serial_printf("Config accepted\r\n");

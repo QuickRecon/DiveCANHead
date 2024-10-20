@@ -25,6 +25,9 @@ extern "C"
         uint32_t bits;
     } Configuration_t;
 
+
+    uint32_t getConfigBytes(Configuration_t *config);
+    Configuration_t setConfigBytes(uint32_t configBits);
     Configuration_t loadConfiguration(void);
     bool saveConfiguration(Configuration_t* config);
 

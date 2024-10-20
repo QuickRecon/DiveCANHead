@@ -53,7 +53,7 @@ void InitDiveCAN(const DiveCANDevice_t *const deviceSpec, const Configuration_t 
 
     osThreadId_t *CANTaskHandle = getOSThreadId();
     task_params.deviceSpec = *deviceSpec;
-    task_params.configuration.bits = configuration->bits;
+    task_params.configuration = *configuration;
     *CANTaskHandle = osThreadNew(CANTask, &task_params, &CANTask_attributes);
     txStartDevice(DIVECAN_CONTROLLER, DIVECAN_SOLO);
 }
