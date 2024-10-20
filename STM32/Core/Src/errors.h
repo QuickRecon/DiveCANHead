@@ -91,8 +91,11 @@ extern "C"
         /** @brief Error occurred when trying to load the config **/
         CONFIG_ERROR = 23,
 
+        /** @brief Error occured when trying to read the internal ADC */
+        INT_ADC_ERROR = 24,
+
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        NONFATAL_ERR_MAX = CONFIG_ERROR
+        NONFATAL_ERR_MAX = INT_ADC_ERROR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

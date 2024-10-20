@@ -21,7 +21,7 @@ typedef enum {
 
 typedef enum {
     V_THRESHOLD_9V = 0,
-    V_THRESHOLD_Li1s = 1
+    V_THRESHOLD_LI1S = 1
 } VoltageThreshold_t;
 
 void Shutdown(void);

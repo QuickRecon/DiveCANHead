@@ -18,7 +18,7 @@ extern CAN_HandleTypeDef hcan1;
 
 ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode)
 {
-    const double V_THRESHOLD_MAP[2] = {
+    const ADCV_t V_THRESHOLD_MAP[2] = {
         7.7f, /* 9V battery */
         3.0f  /* 1S Lithium Ion */
     };
@@ -119,7 +119,7 @@ void Shutdown(void)
 /* Pin low means bus on, so return true*/
 bool getBusStatus(void)
 {
-    return !HAL_GPIO_ReadPin(CAN_EN_GPIO_Port, CAN_EN_Pin);
+    return HAL_GPIO_ReadPin(CAN_EN_GPIO_Port, CAN_EN_Pin) == GPIO_PIN_RESET;
 }
 
 PowerSource_t GetVCCSource(void)
@@ -183,7 +183,7 @@ void SetBattery(bool enable)
 
 ADCV_t sampleADC(uint32_t adcChannel)
 {
-    const float adc_correction_factor = 7.00f / 6.9257431f; // This may vary board-to-board, but its like 1% so no worries
+    const ADCV_t adc_correction_factor = 7.00f / 6.9257431f; /* This may vary board-to-board, but its like 1% so no worries */
 
     /* First sample the internal reference */
     ADC_ChannelConfTypeDef sConfig = {0};
@@ -195,13 +195,22 @@ ADCV_t sampleADC(uint32_t adcChannel)
     sConfig.Offset = 0;
     if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
     {
-        Error_Handler();
+        NON_FATAL_ERROR(INT_ADC_ERROR);
     }
 
-    HAL_ADC_Start(&hadc1);
-    HAL_ADC_PollForConversion(&hadc1, 1000);
+    if (HAL_ADC_Start(&hadc1) != HAL_OK)
+    {
+        NON_FATAL_ERROR(INT_ADC_ERROR);
+    }
+    if (HAL_ADC_PollForConversion(&hadc1, TIMEOUT_1S_TICKS) != HAL_OK)
+    {
+        NON_FATAL_ERROR(INT_ADC_ERROR);
+    }
     uint32_t ref = HAL_ADC_GetValue(&hadc1);
-    HAL_ADC_Stop(&hadc1);
+    if (HAL_ADC_Stop(&hadc1) != HAL_OK)
+    {
+        NON_FATAL_ERROR(INT_ADC_ERROR);
+    }
 
     sConfig.Channel = adcChannel;
     sConfig.Rank = ADC_REGULAR_RANK_1;
@@ -211,23 +220,32 @@ ADCV_t sampleADC(uint32_t adcChannel)
     sConfig.Offset = 0;
     if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
     {
-        Error_Handler();
+        NON_FATAL_ERROR(INT_ADC_ERROR);
     }
-    HAL_ADC_Start(&hadc1);
-    HAL_ADC_PollForConversion(&hadc1, 1000);
+    if (HAL_ADC_Start(&hadc1) != HAL_OK)
+    {
+        NON_FATAL_ERROR(INT_ADC_ERROR);
+    }
+    if (HAL_ADC_PollForConversion(&hadc1, TIMEOUT_1S_TICKS) != HAL_OK)
+    {
+        NON_FATAL_ERROR(INT_ADC_ERROR);
+    }
     uint32_t ADCSample = HAL_ADC_GetValue(&hadc1);
-    HAL_ADC_Stop(&hadc1);
+    if (HAL_ADC_Stop(&hadc1) != HAL_OK)
+    {
+        NON_FATAL_ERROR(INT_ADC_ERROR);
+    }
 
-    float sourceVoltage = (float)ADCSample / ((float)ref) * 1.212f * (12.0f + 75.0f) / 12.0f * adc_correction_factor;
+    ADCV_t sourceVoltage = ((ADCV_t)ADCSample / ((ADCV_t)ref)) * 1.212f * ((12.0f + 75.0f) / 12.0f) * adc_correction_factor;
     return sourceVoltage;
 }
 
-ADCV_t getCANVoltage()
+ADCV_t getCANVoltage(void)
 {
     return sampleADC(ADC_CHANNEL_3);
 }
 
-ADCV_t getBatteryVoltage()
+ADCV_t getBatteryVoltage(void)
 {
     return sampleADC(ADC_CHANNEL_4);
 }
