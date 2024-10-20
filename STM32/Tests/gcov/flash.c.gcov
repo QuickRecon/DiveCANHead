@@ -1,0 +1,269 @@
+        -:    0:Source:/home/aren/DiveCANHeadRev2/STM32/Core/Src/Hardware/flash.c
+        -:    0:Graph:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/Hardware/flash.gcno
+        -:    0:Data:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/Hardware/flash.gcda
+        -:    0:Runs:1
+        -:    1:#include "flash.h"
+        -:    2:
+        -:    3:#include "eeprom_emul.h"
+        -:    4:#include <math.h>
+        -:    5:#include "stm32l4xx_hal.h"
+        -:    6:#include "log.h"
+        -:    7:
+        -:    8:/*  Define where stuff lives in the eeprom (only 100 vars up for grabs with current configuration) */
+        -:    9:static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x01;
+        -:   10:static const uint8_t FATAL_ERROR_BASE_ADDR = 0x04;
+        -:   11:static const uint8_t NON_FATAL_ERROR_BASE_ADDR = 0x05;
+        -:   12:static const uint8_t CONFIG_BASE_ADDRESS = 0x06;
+        -:   13:
+        -:   14:static const uint32_t CAL_TO_INT32 = 10000000;
+        -:   15:
+        -:   16:static const uint8_t MAX_WRITE_ATTEMPTS = 3;
+        -:   17:
+       86:   18:static bool WriteInt32(uint16_t addr, uint32_t value)
+        -:   19:{
+       86:   20:    bool writeOk = true; /*  Presume that we're doing ok, if we hit a fail state then false it */
+       86:   21:    uint8_t attempts = 0;
+       86:   22:    EE_Status result = EE_OK;
+        -:   23:    do
+        -:   24:    {
+      104:   25:        if (HAL_OK == HAL_FLASH_Unlock())
+        -:   26:        {
+       95:   27:            __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_PROGERR | FLASH_FLAG_WRPERR |
+        -:   28:                                   FLASH_FLAG_PGAERR | FLASH_FLAG_SIZERR | FLASH_FLAG_PGSERR | FLASH_FLAG_MISERR | FLASH_FLAG_FASTERR |
+        -:   29:                                   FLASH_FLAG_RDERR | FLASH_FLAG_OPTVERR);
+        -:   30:
+       95:   31:            result = EE_WriteVariable32bits(addr, value);
+       95:   32:            if (HAL_OK != HAL_FLASH_Lock())
+        -:   33:            {
+        9:   34:                LogMsg("WriteInt32: Flash lock error");
+        9:   35:                writeOk = false;
+        -:   36:            }
+        -:   37:
+       95:   38:            if (result == EE_CLEANUP_REQUIRED)
+        -:   39:            {
+        -:   40:                /*  This could be expensive, maybe it should be a queued job rather than eating up time in a task? */
+        3:   41:                (void)EE_CleanUp(); /*  If it doesn't work we don't really care, we'll just get told to try it again next time, and if it keeps failing eventually something more important will break */
+        -:   42:            }
+       92:   43:            else if (result == EE_OK)
+        -:   44:            {
+        -:   45:                /*  Happy days, nothing really to do */
+        -:   46:            }
+        -:   47:            else /*  An error we don't handle */
+        -:   48:            {
+        9:   49:                LogMsg("WriteInt32: EEPROM error");
+        9:   50:                writeOk = false;
+        -:   51:            }
+        -:   52:        }
+        -:   53:        else
+        -:   54:        {
+        9:   55:            LogMsg("WriteInt32: Flash unlock error");
+        9:   56:            writeOk = false;
+        -:   57:        }
+      104:   58:        ++attempts;
+      104:   59:    } while ((!writeOk) && (attempts < MAX_WRITE_ATTEMPTS));
+       86:   60:    return writeOk;
+        -:   61:}
+        -:   62:
+        -:   63:/**  @brief Get the calibration coefficient for the given cell number from the eeprom
+        -:   64: *  @param cellNumber The number of the cell to get the data for (0,1,2)
+        -:   65: *  @param calCoeff (OUTVAR) A pointer to the calibration coefficient
+        -:   66: *  @return Status of the read, true implies successful read with no errors
+        -:   67: */
+       11:   68:bool GetCalibration(uint8_t cellNumber, CalCoeff_t *calCoeff)
+        -:   69:{
+       11:   70:    uint32_t calInt = 0;
+       11:   71:    bool calOK = false;
+        -:   72:
+       11:   73:    if (cellNumber > CELL_3)
+        -:   74:    {
+        1:   75:        LogMsg("GetCalibration: Invalid cell number");
+        -:   76:    }
+       10:   77:    else if (NULL == calCoeff)
+        -:   78:    {
+        1:   79:        LogMsg("GetCalibration: EEPROM Null calCoeff");
+        -:   80:    }
+        -:   81:    else
+        -:   82:    {
+        9:   83:        EE_Status result = EE_ReadVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + cellNumber, &calInt);
+        -:   84:
+        9:   85:        *calCoeff = (Numeric_t)calInt / (Numeric_t)CAL_TO_INT32;
+        -:   86:
+        9:   87:        if (result == EE_OK)
+        -:   88:        {
+        3:   89:            calOK = true; /*  This is the happy path, everything else is flash errors that imply a bad cal read (and we just handle it gracefully here) */
+        -:   90:        }
+        6:   91:        else if (result == EE_NO_DATA) /*  If this is a fresh EEPROM then we need to init it */
+        -:   92:        {
+        3:   93:            CalCoeff_t defaultVal = 0;
+        3:   94:            (void)SetCalibration(cellNumber, defaultVal); /*  We don't really care about the return val, either way its a fail to read */
+        -:   95:        }
+        -:   96:        else
+        -:   97:        {
+        -:   98:            /*  We got an unmanageable eeprom error */
+        3:   99:            LogMsg("GetCalibration: Unmanageable eeprom error");
+        -:  100:        }
+        -:  101:    }
+        -:  102:
+       11:  103:    return calOK;
+        -:  104:}
+        -:  105:
+        -:  106:/** @brief Write the calibration coefficient to the eeprom
+        -:  107: *  @param cellNumber The number of the cell to get the data for (0,1,2)
+        -:  108: *  @param calCoeff The float to write to flash
+        -:  109: *  @return Status of the write, true implies successful write with no errors
+        -:  110: */
+       19:  111:bool SetCalibration(uint8_t cellNumber, CalCoeff_t calCoeff)
+        -:  112:{
+       19:  113:    bool writeOk = true; /*  Presume that we're doing ok, if we hit a fail state then false it */
+       19:  114:    if (cellNumber > CELL_3)
+        -:  115:    {
+        1:  116:        LogMsg("SetCalibration: Invalid cell number");
+        1:  117:        writeOk = false;
+        -:  118:    }
+        -:  119:    else
+        -:  120:    {
+        -:  121:        /*  Convert it to raw bytes */
+       18:  122:        uint32_t calInt = (uint32_t)round(calCoeff * (CalCoeff_t)CAL_TO_INT32);
+        -:  123:        /*   Write that shit to the eeprom */
+       18:  124:        writeOk = WriteInt32(ANALOG_CELL_EEPROM_BASE_ADDR + cellNumber, calInt);
+        -:  125:    }
+       19:  126:    return writeOk;
+        -:  127:}
+        -:  128:
+        -:  129:/** @brief Get the last fatal error to be lodged in the eeprom
+        -:  130: *  @param err (OUTVAR) A pointer to a fatal err value
+        -:  131: *  @return Status of the read, true implies successful read with no errors
+        -:  132: */
+       31:  133:bool GetFatalError(FatalError_t *err)
+        -:  134:{
+       31:  135:    bool readOk = false;
+       31:  136:    if (NULL == err)
+        -:  137:    {
+        1:  138:        LogMsg("GetFatalError: EEPROM Null err");
+        -:  139:    }
+        -:  140:    else
+        -:  141:    {
+       30:  142:        uint32_t errInt = 0;
+       30:  143:        EE_Status result = EE_ReadVariable32bits(FATAL_ERROR_BASE_ADDR, &errInt);
+        -:  144:
+       30:  145:        *err = (FatalError_t)errInt;
+        -:  146:
+       30:  147:        if (result == EE_OK)
+        -:  148:        {
+       10:  149:            readOk = true; /*  This is the happy path, everything else is flash errors that imply a bad read (and we just handle it gracefully here) */
+        -:  150:        }
+       20:  151:        else if (result == EE_NO_DATA) /*  If this is a fresh EEPROM then we need to init it */
+        -:  152:        {
+       10:  153:            FatalError_t defaultVal = FATAL_ERR_NONE;
+       10:  154:            (void)SetFatalError(defaultVal); /*  We don't really care about the return val, either way its a fail to read */
+        -:  155:        }
+        -:  156:        else
+        -:  157:        {
+        -:  158:            /*  We got an unmanageable eeprom error */
+       10:  159:            LogMsg("GetFatalError: EEPROM error");
+        -:  160:        }
+        -:  161:    }
+        -:  162:
+       31:  163:    return readOk;
+        -:  164:}
+        -:  165:
+        -:  166:/** @brief Write the fatal error to the flash NOTE: To avoid recursion this method cannot throw fatal errors
+        -:  167: * @param err The fatal error that has occurred
+        -:  168: * @return Status of the write, true implies successful write with no errors */
+       20:  169:bool SetFatalError(FatalError_t err)
+        -:  170:{
+       20:  171:    bool writeOk = WriteInt32(FATAL_ERROR_BASE_ADDR, (uint32_t)err);
+       20:  172:    return writeOk;
+        -:  173:}
+        -:  174:
+        -:  175:/** @brief Get the number of instances of a nonfatal error
+        -:  176: * @param err The error code to get the count for
+        -:  177: * @param errCount (OUTVAR) A pointer to a count variable
+        -:  178: * @return Status of the read, true implies successful read with no errors */
+       73:  179:bool GetNonFatalError(NonFatalError_t err, uint32_t *errCount)
+        -:  180:{
+       73:  181:    bool readOk = false;
+       73:  182:    if (NULL == errCount)
+        -:  183:    {
+        1:  184:        LogMsg("GetNonFatalError: EEPROM Null errCount");
+        -:  185:    }
+        -:  186:    else
+        -:  187:    {
+       72:  188:        EE_Status result = EE_ReadVariable32bits((uint16_t)(NON_FATAL_ERROR_BASE_ADDR + ((uint16_t)err)), errCount);
+        -:  189:
+       72:  190:        if (result == EE_OK)
+        -:  191:        {
+       24:  192:            readOk = true; /*  This is the happy path, everything else is flash errors that imply a bad read (and we just handle it gracefully here) */
+        -:  193:        }
+       48:  194:        else if (result == EE_NO_DATA) /*  If this is a fresh EEPROM then we need to init it */
+        -:  195:        {
+       24:  196:            NonFatalError_t defaultVal = err;
+       24:  197:            uint32_t defaultCount = 0;
+       24:  198:            (void)SetNonFatalError(defaultVal, defaultCount); /*  We don't really care about the return val, either way its a fail to read */
+        -:  199:        }
+        -:  200:        else
+        -:  201:        {
+        -:  202:            /*  We got an unmanageable eeprom error */
+       24:  203:            LogMsg("GetNonFatalError: Fatal eeprom error");
+        -:  204:        }
+        -:  205:    }
+        -:  206:
+       73:  207:    return readOk;
+        -:  208:}
+        -:  209:
+        -:  210:/** @brief Write the number of instances of a nonfatal error to the flash, each nonfatal error gets its own
+        -:  211: *        block of flash so number of incidents can be tracked individually. NOTE: To avoid recursion this method cannot throw nonfatal errors
+        -:  212: * @param err The nonfatal error that has occurred
+        -:  213: * @param errCount The number of times (cumulative) that the error has occurred
+        -:  214: * @return Status of the write, true implies successful write with no errors */
+       48:  215:bool SetNonFatalError(NonFatalError_t err, uint32_t errCount)
+        -:  216:{
+       48:  217:    bool writeOk = WriteInt32((uint16_t)(NON_FATAL_ERROR_BASE_ADDR + (uint16_t)err), errCount);
+       48:  218:    return writeOk;
+        -:  219:}
+        -:  220:
+    #####:  221:bool GetConfiguration(Configuration_t *const config)
+        -:  222:{
+    #####:  223:    bool configOK = false;
+        -:  224:
+    #####:  225:    if (NULL == config)
+        -:  226:    {
+    #####:  227:        LogMsg("GetCalibration: EEPROM Null config");
+        -:  228:    }
+        -:  229:    else
+        -:  230:    {
+    #####:  231:        uint32_t configBits = 0;
+    #####:  232:        EE_Status result = EE_ReadVariable32bits(CONFIG_BASE_ADDRESS, &configBits);
+    #####:  233:        if (result == EE_OK)
+        -:  234:        {
+    #####:  235:            *config = setConfigBytes(configBits);
+    #####:  236:            configOK = true; /*  This is the happy path, everything else is flash errors that imply a bad cal read (and we just handle it gracefully here) */
+        -:  237:        }
+    #####:  238:        else if (result == EE_NO_DATA) /*  If this is a fresh EEPROM then we need to init it */
+        -:  239:        {
+    #####:  240:            (void)SetConfiguration(&DEFAULT_CONFIGURATION); /*  We don't really care about the return val, either way its a fail to read */
+        -:  241:        }
+        -:  242:        else
+        -:  243:        {
+        -:  244:            /*  We got an unmanageable eeprom error */
+    #####:  245:            LogMsg("GetConfig: Unmanageable eeprom error");
+        -:  246:        }
+        -:  247:    }
+        -:  248:
+    #####:  249:    return configOK;
+        -:  250:}
+        -:  251:
+    #####:  252:bool SetConfiguration(const Configuration_t *const config)
+        -:  253:{
+    #####:  254:    bool writeOk = true; /*  Presume that we're doing ok, if we hit a fail state then false it */
+    #####:  255:    if (NULL == config)
+        -:  256:    {
+    #####:  257:        LogMsg("SetCalibration: EEPROM Null config");
+        -:  258:    }
+        -:  259:    else
+        -:  260:    {
+        -:  261:        /*   Write that shit to the eeprom */
+    #####:  262:        writeOk = WriteInt32(CONFIG_BASE_ADDRESS, getConfigBytes(config));
+        -:  263:    }
+    #####:  264:    return writeOk;
+        -:  265:}

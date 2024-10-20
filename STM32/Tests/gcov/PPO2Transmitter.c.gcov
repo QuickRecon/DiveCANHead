@@ -1,0 +1,125 @@
+        -:    0:Source:/home/aren/DiveCANHeadRev2/STM32/Core/Src/DiveCAN/PPO2Transmitter.c
+        -:    0:Graph:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/DiveCAN/PPO2Transmitter.gcno
+        -:    0:Data:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/DiveCAN/PPO2Transmitter.gcda
+        -:    0:Runs:1
+        -:    1:#include "PPO2Transmitter.h"
+        -:    2:#include "cmsis_os.h"
+        -:    3:#include "main.h"
+        -:    4:#include "../errors.h"
+        -:    5:#include "../Hardware/printer.h"
+        -:    6:#include "../PPO2Control/PPO2Control.h"
+        -:    7:
+        -:    8:typedef struct
+        -:    9:{
+        -:   10:    DiveCANDevice_t *device;
+        -:   11:    QueueHandle_t c1;
+        -:   12:    QueueHandle_t c2;
+        -:   13:    QueueHandle_t c3;
+        -:   14:} PPO2TXTask_params_t;
+        -:   15:
+        -:   16:/* Forward decls of local funcs */
+        -:   17:void PPO2TXTask(void *arg);
+        -:   18:Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3);
+        -:   19:void setFailedCellsValues(Consensus_t *consensus);
+        -:   20:
+        1:   21:static osThreadId_t *getOSThreadId(void)
+        -:   22:{
+        -:   23:    static osThreadId_t PPO2TXTaskHandle;
+        1:   24:    return &PPO2TXTaskHandle;
+        -:   25:}
+        -:   26:
+        -:   27:/**
+        -:   28: * @brief Initializes PPO2 TX Task with specified parameters.
+        -:   29: * @param device Pointer to DiveCAN device struct
+        -:   30: * @param c1 QueueHandle_t for cell queue 1
+        -:   31: * @param c2 QueueHandle_t for cell queue 2
+        -:   32: * @param c3 QueueHandle_t for cell queue 3
+        -:   33: */
+        1:   34:void InitPPO2TX(const DiveCANDevice_t *const device, QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
+        -:   35:{
+        -:   36:    /* Need to init the struct locally then value copy into the static */
+        -:   37:    static PPO2TXTask_params_t taskParams;
+        -:   38:    static DiveCANDevice_t taskDiveCANDevice;
+        -:   39:
+        1:   40:    taskDiveCANDevice = *device;
+        -:   41:
+        1:   42:    PPO2TXTask_params_t params = {
+        -:   43:        .device = &taskDiveCANDevice,
+        -:   44:        .c1 = c1,
+        -:   45:        .c2 = c2,
+        -:   46:        .c3 = c3};
+        -:   47:
+        1:   48:    taskParams = params;
+        -:   49:
+        -:   50:    static uint32_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
+        -:   51:    static StaticTask_t PPO2TXTask_ControlBlock;
+        -:   52:    static const osThreadAttr_t PPO2TXTask_attributes = {
+        -:   53:        .name = "PPO2TXTask",
+        -:   54:        .attr_bits = osThreadDetached,
+        -:   55:        .cb_mem = &PPO2TXTask_ControlBlock,
+        -:   56:        .cb_size = sizeof(PPO2TXTask_ControlBlock),
+        -:   57:        .stack_mem = &PPO2TXTask_buffer[0],
+        -:   58:        .stack_size = sizeof(PPO2TXTask_buffer),
+        -:   59:        .priority = CAN_PPO2_TX_PRIORITY,
+        -:   60:        .tz_module = 0,
+        -:   61:        .reserved = 0};
+        -:   62:
+        1:   63:    osThreadId_t *PPO2TXTaskHandle = getOSThreadId();
+        1:   64:    *PPO2TXTaskHandle = osThreadNew(PPO2TXTask, &taskParams, &PPO2TXTask_attributes);
+        1:   65:}
+        -:   66:
+        -:   67:/**
+        -:   68: * @brief The job of this task is to ingest the cell data passed to it via queues, calculate their consensus,
+        -:   69: *        then transmit this data via the CAN transiever to any other devices on the CAN network.
+        -:   70: * @param arg Pointer to PPO2TXTask_params_t*, which has the cells and our device spec for the can bus
+        -:   71: */
+        1:   72:void PPO2TXTask(void *arg)
+        -:   73:{
+        1:   74:    PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;
+        1:   75:    const DiveCANDevice_t *const dev = params->device;
+        -:   76:    do
+        -:   77:    {
+        1:   78:        (void)osDelay(TIMEOUT_100MS);
+        -:   79:
+        1:   80:        Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
+        -:   81:
+        -:   82:        /* Go through each cell and if any need cal, flag cal
+        -:   83:         Also check for fail and mark the cell value as fail */
+        1:   84:        setFailedCellsValues(&consensus);
+        -:   85:
+        1:   86:        txPPO2(dev->type, consensus.ppo2Array[CELL_1], consensus.ppo2Array[CELL_2], consensus.ppo2Array[CELL_3]);
+        1:   87:        txMillivolts(dev->type, consensus.milliArray[CELL_1], consensus.milliArray[CELL_2], consensus.milliArray[CELL_3]);
+        1:   88:        txCellState(dev->type, consensus.includeArray[CELL_1], consensus.includeArray[CELL_2], consensus.includeArray[CELL_3], consensus.consensus);
+        -:   89:
+        -:   90:    } while (RTOS_LOOP_FOREVER);
+        1:   91:}
+        -:   92:
+        -:   93:/** @brief Update the provided consensus object based on the cell states so that not-ok cells are FFed
+        -:   94: *        Will also FF the whole set if we're wanting a calibration
+        -:   95: * @param consensus the consensus struct to update
+        -:   96: */
+       17:   97:void setFailedCellsValues(Consensus_t *consensus)
+        -:   98:{
+        -:   99:    /* First check if we need to go into "needs cal" state */
+       47:  100:    bool needsCal = (consensus->statusArray[0] == CELL_NEED_CAL) ||
+       28:  101:                    (consensus->statusArray[1] == CELL_NEED_CAL) ||
+       11:  102:                    (consensus->statusArray[2] == CELL_NEED_CAL);
+        -:  103:
+       17:  104:    if (needsCal && (!isCalibrating()))
+        -:  105:    {
+       28:  106:        for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        -:  107:        {
+       21:  108:            consensus->ppo2Array[i] = PPO2_FAIL;
+        -:  109:        }
+        -:  110:    }
+        -:  111:    else /* Otherwise just FF as needed */
+        -:  112:    {
+       40:  113:        for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        -:  114:        {
+       30:  115:            if (consensus->statusArray[i] == CELL_FAIL)
+        -:  116:            {
+       12:  117:                consensus->ppo2Array[i] = PPO2_FAIL;
+        -:  118:            }
+        -:  119:        }
+        -:  120:    }
+       17:  121:}

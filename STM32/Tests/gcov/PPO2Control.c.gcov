@@ -1,0 +1,231 @@
+        -:    0:Source:/home/aren/DiveCANHeadRev2/STM32/Core/Src/PPO2Control/PPO2Control.c
+        -:    0:Graph:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/PPO2Control/PPO2Control.gcno
+        -:    0:Data:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/PPO2Control/PPO2Control.gcda
+        -:    0:Runs:1
+        -:    1:/** \file PPO2Control.c
+        -:    2: *  \author Aren Leishman
+        -:    3: *  \brief This file contains all of the logic for managing the setpoint, solenoid PID loop, and associated state.
+        -:    4: */
+        -:    5:#include "PPO2Control.h"
+        -:    6:#include "../Hardware/solenoid.h"
+        -:    7:#include "../Sensors/OxygenCell.h"
+        -:    8:#include "../errors.h"
+        -:    9:
+        -:   10:static PPO2_t setpoint = 70;
+        -:   11:
+        -:   12:typedef struct
+        -:   13:{
+        -:   14:    QueueHandle_t c1;
+        -:   15:    QueueHandle_t c2;
+        -:   16:    QueueHandle_t c3;
+        -:   17:} PPO2ControlTask_params_t;
+        -:   18:
+        -:   19:typedef struct
+        -:   20:{
+        -:   21:    /* PID State parameters */
+        -:   22:    double derState;
+        -:   23:    double integralState;
+        -:   24:
+        -:   25:    /* Integral Maximum Limits, set to the maximum and minium of the drive range */
+        -:   26:    double integralMax;
+        -:   27:    double integralMin;
+        -:   28:
+        -:   29:    /* PID Gains */
+        -:   30:    double integralGain;
+        -:   31:    double proportionalGain;
+        -:   32:    double derivativeGain;
+        -:   33:
+        -:   34:    /* Track how many PID cycles we remain in integral saturation, used to detect solenoid failure */
+        -:   35:    uint16_t saturationCount;
+        -:   36:} PIDState_t;
+        -:   37:
+      255:   38:void setSetpoint(PPO2_t ppo2)
+        -:   39:{
+      255:   40:    setpoint = ppo2;
+      255:   41:}
+        -:   42:
+      255:   43:PPO2_t getSetpoint(void)
+        -:   44:{
+      255:   45:    return setpoint;
+        -:   46:}
+        -:   47:
+    #####:   48:static osThreadId_t *getOSThreadId(void)
+        -:   49:{
+        -:   50:    static osThreadId_t PPO2ControllerTaskHandle;
+    #####:   51:    return &PPO2ControllerTaskHandle;
+        -:   52:}
+        -:   53:
+    #####:   54:static double *getDutyCyclePtr(void)
+        -:   55:{
+        -:   56:    static double dutyCycle = 0;
+    #####:   57:    return &dutyCycle;
+        -:   58:}
+        -:   59:
+    50000:   60:static uint16_t *getAtmoPressurePtr(void)
+        -:   61:{
+        -:   62:    static uint16_t atmoPressure = 1000;
+    50000:   63:    return &atmoPressure;
+        -:   64:}
+        -:   65:
+    25000:   66:uint16_t getAtmoPressure(void)
+        -:   67:{
+    25000:   68:    return *getAtmoPressurePtr();
+        -:   69:}
+        -:   70:
+    25000:   71:void setAtmoPressure(uint16_t pressure)
+        -:   72:{
+    25000:   73:    *getAtmoPressurePtr() = pressure;
+    25000:   74:}
+        -:   75:
+    #####:   76:static bool *getSolenoidEnablePtr(void)
+        -:   77:{
+        -:   78:    static bool solenoidEnable = true; /* Activate the solenoid by default to ensure we don't get errors if solenoid control disabled */
+    #####:   79:    return &solenoidEnable;
+        -:   80:}
+        -:   81:
+    #####:   82:bool getSolenoidEnable(void)
+        -:   83:{
+    #####:   84:    return *getSolenoidEnablePtr();
+        -:   85:}
+        -:   86:
+        -:   87:void PPO2ControlTask(void *arg);
+        -:   88:void SolenoidFireTask(void *);
+        -:   89:
+    #####:   90:void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
+        -:   91:{
+        -:   92:    static PPO2ControlTask_params_t taskParams;
+    #####:   93:    PPO2ControlTask_params_t params = {
+        -:   94:        .c1 = c1,
+        -:   95:        .c2 = c2,
+        -:   96:        .c3 = c3};
+        -:   97:
+    #####:   98:    taskParams = params;
+        -:   99:
+        -:  100:    static uint32_t PPO2ControlTask_buffer[PPO2CONTROLTASK_STACK_SIZE];
+        -:  101:    static StaticTask_t PPO2ControlTask_ControlBlock;
+        -:  102:    static const osThreadAttr_t PPO2ControlTask_attributes = {
+        -:  103:        .name = "PPO2ControlTask",
+        -:  104:        .attr_bits = osThreadDetached,
+        -:  105:        .cb_mem = &PPO2ControlTask_ControlBlock,
+        -:  106:        .cb_size = sizeof(PPO2ControlTask_ControlBlock),
+        -:  107:        .stack_mem = &PPO2ControlTask_buffer[0],
+        -:  108:        .stack_size = sizeof(PPO2ControlTask_buffer),
+        -:  109:        .priority = CAN_PPO2_TX_PRIORITY,
+        -:  110:        .tz_module = 0,
+        -:  111:        .reserved = 0};
+        -:  112:
+    #####:  113:    osThreadId_t *PPO2ControllerTaskHandle = getOSThreadId();
+    #####:  114:    *PPO2ControllerTaskHandle = osThreadNew(PPO2ControlTask, &taskParams, &PPO2ControlTask_attributes);
+    #####:  115:}
+        -:  116:
+    #####:  117:void SolenoidFireTask(void *)
+        -:  118:{
+        -:  119:    /* TODO: Adjust the max and min fire times based on depth to ensure a constant flow */
+    #####:  120:    uint32_t totalFireTime = 1000;  /* Fire for 1000ms */
+    #####:  121:    uint32_t minimumFireTime = 100; /* Fire for no less than 100ms */
+    #####:  122:    uint32_t maximumFireTime = 900; /* Fire for no longer than 900ms */
+        -:  123:
+    #####:  124:    double maximumDutyCycle = ((double)maximumFireTime) / ((double)totalFireTime);
+    #####:  125:    double minimumDutyCycle = ((double)minimumFireTime) / ((double)totalFireTime);
+        -:  126:
+        -:  127:    do
+        -:  128:    {
+    #####:  129:        double dutyCycle = *getDutyCyclePtr();
+        -:  130:
+        -:  131:        /* Establish upper bound on solenoid duty*/
+    #####:  132:        if (dutyCycle > maximumDutyCycle)
+        -:  133:        {
+    #####:  134:            dutyCycle = maximumDutyCycle;
+        -:  135:        }
+        -:  136:        /* Establish the lower bound on the solenoid duty, and ensure solenoid is active */
+    #####:  137:        if (dutyCycle > minimumDutyCycle && getSolenoidEnable())
+        -:  138:        {
+    #####:  139:            setSolenoidOn();
+    #####:  140:            osDelay(pdMS_TO_TICKS((double)totalFireTime * dutyCycle));
+    #####:  141:            setSolenoidOff();
+    #####:  142:            osDelay(pdMS_TO_TICKS((double)totalFireTime * (1.0f - dutyCycle)));
+        -:  143:        }
+        -:  144:        else
+        -:  145:        { /* If we don't reach the minimum duty then we just don't fire the solenoid */
+    #####:  146:            osDelay(pdMS_TO_TICKS(totalFireTime));
+        -:  147:        }
+        -:  148:    } while (RTOS_LOOP_FOREVER);
+    #####:  149:}
+        -:  150:
+    #####:  151:double updatePID(double d_setpoint, double measurement, PIDState_t *state)
+        -:  152:{
+        -:  153:    /* Step PID */
+    #####:  154:    double pTerm = 0;
+    #####:  155:    double iTerm = 0;
+    #####:  156:    double dTerm = 0;
+    #####:  157:    double error = d_setpoint - measurement;
+        -:  158:
+        -:  159:    /* proportional term*/
+    #####:  160:    pTerm = state->proportionalGain * error;
+        -:  161:
+        -:  162:    /* integral term*/
+    #####:  163:    state->integralState += error;
+        -:  164:
+    #####:  165:    if (state->integralState > state->integralMax)
+        -:  166:    {
+    #####:  167:        state->integralState = state->integralMax;
+    #####:  168:        state->saturationCount++;
+        -:  169:    }
+    #####:  170:    else if (state->integralState < state->integralMin)
+        -:  171:    {
+    #####:  172:        state->integralState = state->integralMin;
+    #####:  173:        state->saturationCount++;
+        -:  174:    }
+        -:  175:    else
+        -:  176:    {
+    #####:  177:        state->saturationCount = 0; /* We've come out of saturation so reset it */
+        -:  178:    }
+        -:  179:
+    #####:  180:    iTerm = state->integralGain * state->integralState;
+        -:  181:
+        -:  182:    /* derivative term */
+    #####:  183:    dTerm = state->derivativeGain * (state->derState - measurement);
+    #####:  184:    state->derState = measurement;
+        -:  185:
+    #####:  186:    return pTerm + dTerm + iTerm;
+        -:  187:}
+        -:  188:
+    #####:  189:void PPO2ControlTask(void *arg)
+        -:  190:{
+    #####:  191:    PPO2ControlTask_params_t *params = (PPO2ControlTask_params_t *)arg;
+        -:  192:
+    #####:  193:    uint32_t PIDPeriod = 100; /* 100ms period */
+        -:  194:
+    #####:  195:    PIDState_t pidState = {
+        -:  196:        .derState = 0.0f,
+        -:  197:        .integralState = 0.0f,
+        -:  198:        .integralMax = 1.0f,
+        -:  199:        .integralMin = 0.0f,
+        -:  200:        .integralGain = 0.0f,
+        -:  201:        .proportionalGain = 0.0f,
+        -:  202:        .derivativeGain = 0.0f,
+        -:  203:        .saturationCount = 0,
+        -:  204:    };
+        -:  205:
+        -:  206:    do
+        -:  207:    {
+    #####:  208:        Consensus_t consensus = peekCellConsensus(params->c1,params->c2,params->c3);
+        -:  209:        
+        -:  210:        /* It feels like we ought to do something with the cell confidence (go to SP low?) but that implementation is hard so avoid for now
+        -:  211:                uint8_t confidence = cellConfidence(consensus);
+        -:  212:        if (confidence =< 1)
+        -:  213:        {
+        -:  214:        }
+        -:  215:        else
+        -:  216:        {
+        -:  217:        }
+        -:  218:        */
+    #####:  219:        double d_setpoint = setpoint / 100.0f;
+    #####:  220:        double measurement = consensus.consensus / 100;
+        -:  221:
+    #####:  222:        double *dutyCycle = getDutyCyclePtr();
+    #####:  223:        *dutyCycle = updatePID(d_setpoint, measurement, &pidState);
+        -:  224:
+    #####:  225:        (void)osDelay(pdMS_TO_TICKS(PIDPeriod));
+        -:  226:    } while (RTOS_LOOP_FOREVER);
+    #####:  227:}

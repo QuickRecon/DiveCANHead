@@ -1,0 +1,502 @@
+        -:    0:Source:/home/aren/DiveCANHeadRev2/STM32/Core/Src/Sensors/OxygenCell.c
+        -:    0:Graph:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/Sensors/OxygenCell.gcno
+        -:    0:Data:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/Sensors/OxygenCell.gcda
+        -:    0:Runs:1
+        -:    1:/** \file OxygenCell.c
+        -:    2: *  \author Aren Leishman
+        -:    3: *  \brief This is a generic oxygen cell used by both analog and digital cells
+        -:    4: *         as a common calling convention.
+        -:    5: */
+        -:    6:
+        -:    7:#include "OxygenCell.h"
+        -:    8:#include "AnalogOxygen.h"
+        -:    9:#include "DigitalOxygen.h"
+        -:   10:#include "eeprom_emul.h"
+        -:   11:#include "../errors.h"
+        -:   12:#include <math.h>
+        -:   13:#include "../Hardware/printer.h"
+        -:   14:#include "assert.h"
+        -:   15:
+        -:   16:/** @struct CalParameters_s
+        -:   17: *  @brief Contains calibration parameters for an oxygen sensor.
+        -:   18: *
+        -:   19: *  The `deviceType` field specifies the type of device being used, while the
+        -:   20: *  `fO2`, `pressureVal`, and `calMethod` fields specify the FO2 value,
+        -:   21: *  pressure value, and calibration method to be used. The remaining fields
+        -:   22: *  are for individual cell parameters.
+        -:   23: */
+        -:   24:typedef struct
+        -:   25:{
+        -:   26:    DiveCANType_t deviceType;
+        -:   27:    FO2_t fO2;
+        -:   28:    uint16_t pressureVal;
+        -:   29:
+        -:   30:    ShortMillivolts_t cell1;
+        -:   31:    ShortMillivolts_t cell2;
+        -:   32:    ShortMillivolts_t cell3;
+        -:   33:
+        -:   34:    OxygenCalMethod_t calMethod;
+        -:   35:} CalParameters_t;
+        -:   36:
+        -:   37:/** @fn getQueueHandle
+        -:   38: *  @brief Returns a pointer to the queue handle for a given oxygen cell.
+        -:   39: *
+        -:   40: *  The `cellNum` parameter specifies which cell to retrieve the queue handle
+        -:   41: *  for. If `cellNum` is invalid, an error message will be logged and a safe
+        -:   42: *  fallback queue handle will be returned.
+        -:   43: *
+        -:   44: *  @param[in] cellNum Index of the oxygen cell to retrieve the queue handle for.
+        -:   45: *  @return Pointer to the queue handle for the specified oxygen cell.
+        -:   46: */
+    #####:   47:static QueueHandle_t *getQueueHandle(uint8_t cellNum)
+        -:   48:{
+        -:   49:    static QueueHandle_t cellQueues[CELL_COUNT];
+    #####:   50:    QueueHandle_t *queueHandle = NULL;
+    #####:   51:    if (cellNum >= CELL_COUNT)
+        -:   52:    {
+    #####:   53:        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+    #####:   54:        queueHandle = &(cellQueues[0]); /* A safe fallback */
+        -:   55:    }
+        -:   56:    else
+        -:   57:    {
+    #####:   58:        queueHandle = &(cellQueues[cellNum]);
+        -:   59:    }
+    #####:   60:    return queueHandle;
+        -:   61:}
+        -:   62:
+        -:   63:/** @fn getCell
+        -:   64: *  @brief Returns a pointer to the oxygen cell handle for a given oxygen cell.
+        -:   65: *
+        -:   66: *  The `cellNum` parameter specifies which cell to retrieve the cell handle for.
+        -:   67: *  If `cellNum` is invalid, an error message will be logged and a safe fallback
+        -:   68: *  cell handle will be returned.
+        -:   69: *
+        -:   70: *  @param[in] cellNum Index of the oxygen cell to retrieve the cell handle for.
+        -:   71: *  @return Pointer to the oxygen cell handle for the specified oxygen cell.
+        -:   72: */
+    #####:   73:static OxygenHandle_t *getCell(uint8_t cellNum)
+        -:   74:{
+        -:   75:    static OxygenHandle_t cells[CELL_COUNT];
+    #####:   76:    OxygenHandle_t *cellHandle = NULL;
+    #####:   77:    if (cellNum >= CELL_COUNT)
+        -:   78:    {
+    #####:   79:        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+    #####:   80:        cellHandle = &(cells[0]); /* A safe fallback */
+        -:   81:    }
+        -:   82:    else
+        -:   83:    {
+    #####:   84:        cellHandle = &(cells[cellNum]);
+        -:   85:    }
+    #####:   86:    return cellHandle;
+        -:   87:}
+        -:   88:
+        -:   89:/**
+        -:   90: * @brief Initializes and creates a new cell with the given cell number and cell type.
+        -:   91: *
+        -:   92: * @param[in] cellNumber The number of the cell to be initialized.
+        -:   93: * @param[in] type The type of cell to be created (analog or digital).
+        -:   94: * @return The handle to the newly created cell.
+        -:   95: */
+    #####:   96:QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
+        -:   97:{
+        -:   98:    /* This is only called at startup, so halt and catch fire is appropriate */
+    #####:   99:    assert(cellNumber < 3);
+    #####:  100:    OxygenHandle_t *cell = getCell(cellNumber);
+    #####:  101:    cell->cellNumber = cellNumber;
+        -:  102:
+        -:  103:    static StaticQueue_t CellQueues_QueueStruct[CELL_COUNT];
+        -:  104:    static uint8_t CellQueues_Storage[CELL_COUNT][sizeof(OxygenCell_t)];
+    #####:  105:    QueueHandle_t *queueHandle = getQueueHandle(cellNumber);
+    #####:  106:    *queueHandle = xQueueCreateStatic(1, sizeof(OxygenCell_t), CellQueues_Storage[cellNumber], &(CellQueues_QueueStruct[cellNumber]));
+        -:  107:
+    #####:  108:    cell->type = type;
+    #####:  109:    switch (type)
+        -:  110:    {
+    #####:  111:    case CELL_ANALOG:
+    #####:  112:        cell->cellHandle = Analog_InitCell(cell, *queueHandle);
+    #####:  113:        break;
+    #####:  114:    case CELL_DIGITAL:
+    #####:  115:        cell->cellHandle = Digital_InitCell(cell, *queueHandle);
+    #####:  116:        break;
+    #####:  117:    default:
+    #####:  118:        NON_FATAL_ERROR(UNREACHABLE_ERROR);
+        -:  119:    }
+    #####:  120:    return *queueHandle;
+        -:  121:}
+        -:  122:
+        -:  123:/**
+        -:  124: * @brief Calibrate a given analog cell
+        -:  125: * @param calPass Pointer to cal response variable
+        -:  126: * @param i Cell index
+        -:  127: * @param cell Pointer to oxygen cell handle
+        -:  128: * @param ppO2 Calibration PPO2
+        -:  129: * @param cellVals Response variable containing the millivolts of the calibration (i indexed)
+        -:  130: * @param calErrors Response variable containing any calibration errors (i indexed)
+        -:  131: */
+    #####:  132:static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, OxygenHandle_t *cell, PPO2_t ppO2, ShortMillivolts_t *cellVals, NonFatalError_t *calErrors)
+        -:  133:{
+    #####:  134:    AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cell->cellHandle;
+    #####:  135:    cellVals[i] = Calibrate(analogCell, ppO2, &(calErrors[i]));
+        -:  136:
+        -:  137:    /* Check the cell calibrated properly, if it still says needs cal it was outside the cal envelope */
+    #####:  138:    if (analogCell->status == CELL_NEED_CAL)
+        -:  139:    {
+    #####:  140:        *calPass = DIVECAN_CAL_FAIL_FO2_RANGE;
+        -:  141:    }
+        -:  142:
+        -:  143:    /* A fail state means some kind of internal fault during cal */
+    #####:  144:    if (analogCell->status == CELL_FAIL)
+        -:  145:    {
+    #####:  146:        *calPass = DIVECAN_CAL_FAIL_GEN;
+        -:  147:    }
+    #####:  148:}
+        -:  149:
+        -:  150:/**
+        -:  151: * @brief Calibrate all of the analog cells based on the controller provided data
+        -:  152: * @param calParams Struct containing the FO2 and atmospheric pressure, gets populated with cell millis and error messages
+        -:  153: * @return Calibration status
+        -:  154: */
+    #####:  155:DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
+        -:  156:{
+    #####:  157:    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
+    #####:  158:    PPO2_t ppO2 = (calParams->fO2 * calParams->pressureVal) / 1000;
+        -:  159:
+        -:  160:    /* Now that we have the PPO2 we cal all the analog cells
+        -:  161:     */
+    #####:  162:    ShortMillivolts_t cellVals[CELL_COUNT] = {0};
+    #####:  163:    NonFatalError_t calErrors[CELL_COUNT] = {ERR_NONE, ERR_NONE, ERR_NONE};
+        -:  164:
+    #####:  165:    serial_printf("Using PPO2 %u for cal\r\n", ppO2);
+        -:  166:
+    #####:  167:    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        -:  168:    {
+    #####:  169:        OxygenHandle_t *cell = getCell(i);
+    #####:  170:        if (CELL_ANALOG == cell->type)
+        -:  171:        {
+    #####:  172:            calibrateAnalogCell(&calPass, i, cell, ppO2, cellVals, calErrors);
+        -:  173:        }
+        -:  174:
+    #####:  175:        if (calErrors[i] != ERR_NONE)
+        -:  176:        {
+    #####:  177:            calPass = DIVECAN_CAL_FAIL_GEN;
+        -:  178:        }
+        -:  179:    }
+        -:  180:
+        -:  181:    /* Now that calibration is done lets grab the millivolts for the record */
+    #####:  182:    calParams->cell1 = cellVals[CELL_1];
+    #####:  183:    calParams->cell2 = cellVals[CELL_2];
+    #####:  184:    calParams->cell3 = cellVals[CELL_3];
+        -:  185:
+    #####:  186:    return calPass;
+        -:  187:}
+        -:  188:
+        -:  189:/**
+        -:  190: * @brief Calibrates the Oxygen sensor using a digital reference cell.
+        -:  191: *
+        -:  192: * This function searches for a digital reference cell and uses it to calibrate all the analog cells.
+        -:  193: * The calibration parameters are then stored in the `CalParameters_t` struct.
+        -:  194: *
+        -:  195: * @param calParams Pointer to the CalParameters struct where the calibration results will be stored.
+        -:  196: * @return DiveCANCalResponse_t - Indicates the success or failure of the calibration process.
+        -:  197: * @see CalParameters_t, DigitalOxygenState_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, ERR_NONE, Numeric_t, FO2_t, CELL_DIGITAL, CELL_ANALOG
+        -:  198: */
+    #####:  199:DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
+        -:  200:{
+    #####:  201:    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
+    #####:  202:    const DigitalOxygenState_t *refCell = NULL;
+    #####:  203:    uint8_t refCellIndex = 0;
+        -:  204:    /* Select the first digital cell */
+    #####:  205:    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        -:  206:    {
+    #####:  207:        const OxygenHandle_t *const cell = getCell(i);
+    #####:  208:        if ((CELL_DIGITAL == cell->type) && (NULL == refCell))
+        -:  209:        {
+    #####:  210:            refCell = (const DigitalOxygenState_t *)cell->cellHandle;
+    #####:  211:            refCellIndex = i;
+        -:  212:        }
+        -:  213:    }
+        -:  214:
+    #####:  215:    QueueHandle_t *queueHandle = getQueueHandle(refCellIndex);
+        -:  216:
+    #####:  217:    OxygenCell_t refCellData = {0};
+    #####:  218:    BaseType_t peekStatus = xQueuePeek(*queueHandle, &refCellData, TIMEOUT_100MS_TICKS);
+    #####:  219:    if ((refCell != NULL) && (pdTRUE == peekStatus) && (refCellData.status == CELL_OK))
+    #####:  220:    {
+    #####:  221:        PPO2_t ppO2 = refCellData.ppo2;
+    #####:  222:        uint16_t pressure = (uint16_t)(refCell->pressure / 1000);
+        -:  223:
+        -:  224:        /* Now that we have the PPO2 we cal all the analog cells
+        -:  225:         */
+    #####:  226:        ShortMillivolts_t cellVals[CELL_COUNT] = {0};
+    #####:  227:        NonFatalError_t calErrors[CELL_COUNT] = {ERR_NONE, ERR_NONE, ERR_NONE};
+        -:  228:
+    #####:  229:        for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        -:  230:        {
+    #####:  231:            OxygenHandle_t *cell = getCell(i);
+    #####:  232:            if (CELL_ANALOG == cell->type)
+        -:  233:            {
+    #####:  234:                calibrateAnalogCell(&calPass, i, cell, ppO2, cellVals, calErrors);
+        -:  235:            }
+        -:  236:
+    #####:  237:            if (calErrors[i] != ERR_NONE)
+        -:  238:            {
+    #####:  239:                calPass = DIVECAN_CAL_FAIL_GEN;
+        -:  240:            }
+        -:  241:        }
+        -:  242:
+        -:  243:        /* Now that calibration is done lets grab the millivolts for the record */
+    #####:  244:        calParams->cell1 = cellVals[CELL_1];
+    #####:  245:        calParams->cell2 = cellVals[CELL_2];
+    #####:  246:        calParams->cell3 = cellVals[CELL_3];
+        -:  247:
+    #####:  248:        calParams->pressureVal = pressure;
+    #####:  249:        calParams->fO2 = (FO2_t)round((Numeric_t)ppO2 * (1000.0f / (Numeric_t)pressure));
+        -:  250:    }
+        -:  251:    else
+        -:  252:    {
+        -:  253:        /* We can't find a digital cell to cal with */
+    #####:  254:        NON_FATAL_ERROR(CAL_METHOD_ERROR);
+    #####:  255:        calPass = DIVECAN_CAL_FAIL_REJECTED;
+        -:  256:    }
+    #####:  257:    return calPass;
+        -:  258:}
+        -:  259:
+        -:  260:/**
+        -:  261: * @brief This task handles the calibration process of the device by checking the calibration method used and then calling the appropriate function accordingly. The available calibration methods are CAL_DIGITAL_REFERENCE, CAL_ANALOG_ABSOLUTE, and CAL_TOTAL_ABSOLUTE.
+        -:  262: * @param arg A pointer to the CalParameters_t struct which contains all necessary parameters for the calibration process.
+        -:  263: */
+    #####:  264:void CalibrationTask(void *arg)
+        -:  265:{
+    #####:  266:    CalParameters_t calParams = *((CalParameters_t *)arg);
+    #####:  267:    DiveCANCalResponse_t calResult = DIVECAN_CAL_FAIL_REJECTED;
+    #####:  268:    serial_printf("Starting calibrate with method %u\r\n", calParams.calMethod);
+    #####:  269:    switch (calParams.calMethod)
+        -:  270:    {
+    #####:  271:    case CAL_DIGITAL_REFERENCE:    /* Calibrate using the solid state cell as a reference */
+    #####:  272:        (void)osDelay(TIMEOUT_4s); /* Give the shearwater time to catch up */
+    #####:  273:        calResult = DigitalReferenceCalibrate(&calParams);
+    #####:  274:        break;
+    #####:  275:    case CAL_ANALOG_ABSOLUTE:
+    #####:  276:        (void)osDelay(TIMEOUT_4s);
+    #####:  277:        calResult = AnalogReferenceCalibrate(&calParams);
+    #####:  278:        break;
+    #####:  279:    case CAL_TOTAL_ABSOLUTE:
+    #####:  280:        calResult = DIVECAN_CAL_FAIL_REJECTED;
+    #####:  281:        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
+    #####:  282:        break;
+    #####:  283:    default:
+    #####:  284:        calResult = DIVECAN_CAL_FAIL_REJECTED;
+    #####:  285:        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
+        -:  286:    }
+        -:  287:
+    #####:  288:    txCalResponse(calParams.deviceType, calResult, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressureVal);
+        -:  289:
+    #####:  290:    osThreadExit();
+    #####:  291:}
+        -:  292:
+        7:  293:static osThreadId_t *getOSThreadId(void)
+        -:  294:{
+        -:  295:    static osThreadId_t calTask;
+        7:  296:    return &calTask;
+        -:  297:}
+        -:  298:
+        7:  299:bool isCalibrating(void)
+        -:  300:{
+        7:  301:    osThreadId_t *calTask = getOSThreadId();
+      14*:  302:    return !((osThreadGetState(*calTask) == osThreadError) ||
+        7:  303:             (osThreadGetState(*calTask) == osThreadInactive) ||
+    #####:  304:             (osThreadGetState(*calTask) == osThreadTerminated));
+        -:  305:}
+        -:  306:
+        -:  307:/**
+        -:  308: * @brief Start a new task (one off) to execute a calibration, this will silently fail if a calibration is already being done (why are you trying to calibrate while you calibrate?)
+        -:  309: * @param deviceType DiveCAN device to send responses from
+        -:  310: * @param in_fO2 FO2 reported to us to use in the calibration
+        -:  311: * @param in_pressure_val ambient pressure to use in the calibration (millibar)
+        -:  312: * @param calMethod Calibration method to use for calibration
+        -:  313: */
+    #####:  314:void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod)
+        -:  315:{
+        -:  316:    static CalParameters_t calParams;
+        -:  317:
+    #####:  318:    calParams.fO2 = in_fO2;
+    #####:  319:    calParams.pressureVal = in_pressure_val;
+    #####:  320:    calParams.deviceType = deviceType;
+    #####:  321:    calParams.cell1 = 0;
+    #####:  322:    calParams.cell2 = 0;
+    #####:  323:    calParams.cell3 = 0;
+        -:  324:
+    #####:  325:    calParams.calMethod = calMethod;
+        -:  326:
+    #####:  327:    txCalAck(deviceType);
+        -:  328:
+        -:  329:    /*
+        -:  330:     Don't start the thread if we're already calibrating, shearwater double shots us sometimes */
+    #####:  331:    if (!isCalibrating())
+        -:  332:    {
+        -:  333:        static uint32_t CalTask_buffer[CALTASK_STACK_SIZE];
+        -:  334:        static StaticTask_t CalTask_ControlBlock;
+        -:  335:        static const osThreadAttr_t CalTask_attributes = {
+        -:  336:            .name = "CalTask",
+        -:  337:            .attr_bits = osThreadDetached,
+        -:  338:            .cb_mem = &CalTask_ControlBlock,
+        -:  339:            .cb_size = sizeof(CalTask_ControlBlock),
+        -:  340:            .stack_mem = &CalTask_buffer[0],
+        -:  341:            .stack_size = sizeof(CalTask_buffer),
+        -:  342:            .priority = CAN_PPO2_TX_PRIORITY,
+        -:  343:            .tz_module = 0,
+        -:  344:            .reserved = 0};
+        -:  345:
+    #####:  346:        osThreadId_t *calTask = getOSThreadId();
+    #####:  347:        *calTask = osThreadNew(CalibrationTask, &calParams, &CalTask_attributes);
+        -:  348:    }
+    #####:  349:}
+        -:  350:
+        -:  351:/**
+        -:  352: * @brief Peek the given cell queue handles and calculate the consensus, cells that do not respond within 100ms are marked as failed.
+        -:  353: * @param cell1 Cell 1 queue handle
+        -:  354: * @param cell2 Cell 2 queue handle
+        -:  355: * @param cell3 Cell 3 queue handle
+        -:  356: * @return `Consenus_t` as calculated by `calculateConsensus` using the latest cell values
+        -:  357: */
+        1:  358:Consensus_t peekCellConsensus(QueueHandle_t cell1, QueueHandle_t cell2, QueueHandle_t cell3)
+        -:  359:{
+        -:  360:    /* First retreive the cell data */
+        1:  361:    OxygenCell_t c1 = {0};
+        1:  362:    bool c1pick = xQueuePeek(cell1, &c1, TIMEOUT_100MS_TICKS);
+        1:  363:    OxygenCell_t c2 = {0};
+        1:  364:    bool c2pick = xQueuePeek(cell2, &c2, TIMEOUT_100MS_TICKS);
+        1:  365:    OxygenCell_t c3 = {0};
+        1:  366:    bool c3pick = xQueuePeek(cell3, &c3, TIMEOUT_100MS_TICKS);
+        -:  367:
+        -:  368:    /* If the peek timed out then we mark the cell as failed going into the consensus calculation
+        -:  369:     and lodge the nonfatal error */
+        1:  370:    if (!c1pick)
+        -:  371:    {
+    #####:  372:        c1.status = CELL_FAIL;
+    #####:  373:        NON_FATAL_ERROR(TIMEOUT_ERROR);
+        -:  374:    }
+        1:  375:    if (!c2pick)
+        -:  376:    {
+    #####:  377:        c2.status = CELL_FAIL;
+    #####:  378:        NON_FATAL_ERROR(TIMEOUT_ERROR);
+        -:  379:    }
+        1:  380:    if (!c3pick)
+        -:  381:    {
+    #####:  382:        c3.status = CELL_FAIL;
+    #####:  383:        NON_FATAL_ERROR(TIMEOUT_ERROR);
+        -:  384:    }
+        -:  385:
+        -:  386:    /* We calculate the consensus ourselves so we can make interpretations based on the cell confidence*/
+        1:  387:    return calculateConsensus(&c1, &c2, &c3);
+        -:  388:}
+        -:  389:
+        -:  390:static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
+        -:  391:
+        -:  392:/** @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
+        -:  393: *        In an all fail scenario we want that data to still be intact so we can still have our best guess
+        -:  394: * @param c1
+        -:  395: * @param c2
+        -:  396: * @param c3
+        -:  397: * @return
+        -:  398: */
+      127:  399:Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3)
+        -:  400:{
+        -:  401:    /* Zeroth step, load up the millis, status and PPO2
+        -:  402:     * We also load up the timestamps of each cell sample so that we can check the other tasks
+        -:  403:     * haven't been sitting idle and starved us of information
+        -:  404:     */
+      127:  405:    Timestamp_t sampleTimes[CELL_COUNT] = {
+      127:  406:        c1->dataTime,
+      127:  407:        c2->dataTime,
+      127:  408:        c3->dataTime};
+        -:  409:
+      127:  410:    const Timestamp_t timeout = 1000; /* 1000 millisecond timeout to avoid stale data */
+      127:  411:    Timestamp_t now = HAL_GetTick();
+        -:  412:
+      127:  413:    Consensus_t consensus = {
+        -:  414:        .statusArray = {
+      127:  415:            c1->status,
+      127:  416:            c2->status,
+      127:  417:            c3->status,
+        -:  418:        },
+        -:  419:        .ppo2Array = {
+      127:  420:            c1->ppo2,
+      127:  421:            c2->ppo2,
+      127:  422:            c3->ppo2,
+        -:  423:        },
+        -:  424:        .milliArray = {
+      127:  425:            c1->millivolts,
+      127:  426:            c2->millivolts,
+      127:  427:            c3->millivolts,
+        -:  428:        },
+        -:  429:        .consensus = 0,
+        -:  430:        .includeArray = {true, true, true}};
+        -:  431:
+        -:  432:    /* Do a two pass check, loop through the cells and average the "good" cells
+        -:  433:     * Then afterwards we check each cells value against the average, and exclude deviations
+        -:  434:     */
+      127:  435:    uint16_t PPO2_acc = 0; /* Start an accumulator to take an average, include the median cell always */
+      127:  436:    uint8_t includedCellCount = 0;
+        -:  437:
+      508:  438:    for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
+        -:  439:    {
+      381:  440:        if ((consensus.statusArray[cellIdx] == CELL_NEED_CAL) ||
+      363:  441:            (consensus.statusArray[cellIdx] == CELL_FAIL) ||
+      273:  442:            (consensus.statusArray[cellIdx] == CELL_DEGRADED) ||
+      255:  443:            ((now - sampleTimes[cellIdx]) > timeout))
+        -:  444:        {
+      144:  445:            consensus.includeArray[cellIdx] = false;
+        -:  446:        }
+        -:  447:        else
+        -:  448:        {
+      237:  449:            PPO2_acc += consensus.ppo2Array[cellIdx];
+      237:  450:            ++includedCellCount;
+        -:  451:        }
+        -:  452:    }
+        -:  453:
+        -:  454:    /* Assert that we actually have cells that got included */
+      127:  455:    if (includedCellCount > 0)
+        -:  456:    {
+        -:  457:        /* Now second pass, check to see if any of the included cells are deviant from the average */
+      508:  458:        for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
+        -:  459:        {
+        -:  460:            /* We want to make sure the cell is actually included before we start checking it */
+      381:  461:            if (consensus.includeArray[cellIdx] && (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.ppo2Array[cellIdx]) > MAX_DEVIATION))
+        -:  462:            {
+        -:  463:                /* Removing cells in this way can result in a change in the outcome depending on
+        -:  464:                 * cell position, depending on exactly how split-brained the cells are, but
+        -:  465:                 * frankly if things are that cooked then we're borderline guessing anyway
+        -:  466:                 */
+       12:  467:                PPO2_acc -= consensus.ppo2Array[cellIdx];
+       12:  468:                --includedCellCount;
+       12:  469:                consensus.includeArray[cellIdx] = false;
+        -:  470:            }
+        -:  471:        }
+        -:  472:    }
+        -:  473:
+      127:  474:    if (includedCellCount > 0)
+        -:  475:    {
+      127:  476:        consensus.consensus = (PPO2_t)(PPO2_acc / includedCellCount);
+        -:  477:    }
+        -:  478:
+      127:  479:    return consensus;
+        -:  480:}
+        -:  481:
+        -:  482:/**
+        -:  483: * @brief Calculate the cell confidence out of 3, 3 means 3 voted-in cells, 2 means 2 voted-in cells, etc
+        -:  484: * @param consensus Consensus struct calculated from `calculateConsensus`
+        -:  485: * @return Cell confidence out of 3
+        -:  486: */
+    #####:  487:uint8_t cellConfidence(Consensus_t consensus)
+        -:  488:{
+    #####:  489:    uint8_t confidence = 0;
+    #####:  490:    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        -:  491:    {
+    #####:  492:        if (consensus.includeArray[i])
+        -:  493:        {
+    #####:  494:            ++confidence;
+        -:  495:        }
+        -:  496:    }
+    #####:  497:    return confidence;
+        -:  498:}
