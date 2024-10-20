@@ -19,6 +19,11 @@ typedef enum {
     MODE_OFF=3
 } PowerSelectMode_t;
 
+typedef enum {
+    V_THRESHOLD_9V = 0,
+    V_THRESHOLD_Li1s = 1
+} VoltageThreshold_t;
+
 void Shutdown(void);
 void SetVBusMode(PowerSelectMode_t powerMode);
 PowerSource_t GetVCCSource(void);
@@ -26,7 +31,9 @@ PowerSource_t GetVBusSource(void);
 void SetBattery(bool enable);
 bool getBusStatus(void);
 
-BatteryV_t getVoltage(PowerSource_t powerSource);
+ADCV_t getVoltage(PowerSource_t powerSource);
+
+ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode);
 
 #ifdef __cplusplus
 }

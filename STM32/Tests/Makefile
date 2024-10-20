@@ -1,5 +1,5 @@
 # Firmware Version (Defines compatibility with configuration strings)
-FIRMWARE_VERSION = 6
+FIRMWARE_VERSION = 7
 
 #---- Outputs ----#
 COMPONENT_NAME = DiveCAN
@@ -23,6 +23,7 @@ CPPUTEST_HOME = $(ROOT_DIR)/STM32/Tests/cpputest/
 # SRC_DIRS specifies directories containingSRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
 # production code C and CPP files.
 #
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/PPO2Control/PPO2Control.c 
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Sensors/OxygenCell.c 
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/flash.c
@@ -63,6 +64,7 @@ INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Inc
 INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/DiveCAN
 INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/Hardware
 INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/Sensors
+INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/PPO2Control
 INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/
 
 

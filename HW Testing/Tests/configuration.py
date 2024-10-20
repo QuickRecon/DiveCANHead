@@ -2,7 +2,7 @@ from enum import IntEnum
 import pytest
 import itertools
 
-FIRMWARE_VERSION = 6
+FIRMWARE_VERSION = 7
 
 class CellType(IntEnum):
     CELL_DIGITAL = 0

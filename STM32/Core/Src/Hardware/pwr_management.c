@@ -16,6 +16,16 @@ extern ADC_HandleTypeDef hadc1;
 
 extern CAN_HandleTypeDef hcan1;
 
+ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode)
+{
+    const double V_THRESHOLD_MAP[2] = {
+        7.7f, /* 9V battery */
+        3.0f  /* 1S Lithium Ion */
+    };
+
+    return V_THRESHOLD_MAP[thresholdMode];
+}
+
 /** @brief Go to our lowest power mode that we can be woken from by the DiveCAN bus
  */
 void Shutdown(void)
@@ -171,7 +181,7 @@ void SetBattery(bool enable)
     HAL_GPIO_WritePin(BATTERY_EN_GPIO_Port, BATTERY_EN_Pin, Pin);
 }
 
-BatteryV_t sampleADC(uint32_t adcChannel)
+ADCV_t sampleADC(uint32_t adcChannel)
 {
     const float adc_correction_factor = 7.00f / 6.9257431f; // This may vary board-to-board, but its like 1% so no worries
 
@@ -209,22 +219,22 @@ BatteryV_t sampleADC(uint32_t adcChannel)
     HAL_ADC_Stop(&hadc1);
 
     float sourceVoltage = (float)ADCSample / ((float)ref) * 1.212f * (12.0f + 75.0f) / 12.0f * adc_correction_factor;
-    return (BatteryV_t)(10 * sourceVoltage);
+    return sourceVoltage;
 }
 
-BatteryV_t getCANVoltage()
+ADCV_t getCANVoltage()
 {
     return sampleADC(ADC_CHANNEL_3);
 }
 
-BatteryV_t getBatteryVoltage()
+ADCV_t getBatteryVoltage()
 {
     return sampleADC(ADC_CHANNEL_4);
 }
 
-BatteryV_t getVoltage(PowerSource_t powerSource)
+ADCV_t getVoltage(PowerSource_t powerSource)
 {
-    BatteryV_t voltage = 0;
+    ADCV_t voltage = 0;
     if (powerSource == SOURCE_BATTERY)
     {
         voltage = getBatteryVoltage();

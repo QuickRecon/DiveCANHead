@@ -168,23 +168,44 @@ TEST(configuration, TestFirmwareVersionValidation)
 
 TEST(configuration, TestAlarmVoltagePosition)
 {
-    uint8_t alarmVoltageBitfieldLength = 7;
-    for (uint8_t i = 0; i < (1 << alarmVoltageBitfieldLength); ++i)
+    uint8_t dischargeThresholdBitfieldLength = 2;
+    for (uint8_t i = 0; i < (1 << dischargeThresholdBitfieldLength); ++i)
     {
         Configuration_t testConfig = {0};
-        testConfig.fields.alarmVoltage = i;
-        CHECK(((testConfig.bits >> 24) & 0b1111111u) == i);
+        testConfig.fields.dischargeThresholdMode = (VoltageThreshold_t)i;
+        CHECK(((testConfig.bits >> 20) & 0b11u) == i);
     }
 }
 
+TEST(configuration, PPO2ControlModeValidation)
+{
+    uint8_t ppo2ControlModeBitfieldLength = 2;
+    for (uint8_t i = 0; i < (1 << ppo2ControlModeBitfieldLength); ++i)
+    {
+        Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
+        testConfig.fields.ppo2controlMode = (PPO2ControlScheme_t)i;
+        CHECK(ConfigurationValid(testConfig));
+    }
+}
+
+TEST(configuration, PPO2ControlModePosition)
+{
+    uint8_t ppo2ControlModeBitfieldLength = 2;
+    for (uint8_t i = 0; i < (1 << ppo2ControlModeBitfieldLength); ++i)
+    {
+        Configuration_t testConfig = {0};
+        testConfig.fields.ppo2controlMode = (PPO2ControlScheme_t)i;
+        CHECK(((testConfig.bits >> 22) & 0b11u) == i);
+    }
+}
 
 TEST(configuration, TestAlarmVoltageValidation)
 {
-    uint8_t alarmVoltageBitfieldLength = 7;
-    for (uint8_t i = 0; i < (1 << alarmVoltageBitfieldLength); ++i)
+    uint8_t dischargeThresholdBitfieldLength = 2;
+    for (uint8_t i = 0; i < (1 << dischargeThresholdBitfieldLength); ++i)
     {
         Configuration_t testConfig = {.fields = {.firmwareVersion = FIRMWARE_VERSION}};
-        testConfig.fields.alarmVoltage = i;
+        testConfig.fields.dischargeThresholdMode = (VoltageThreshold_t)i;
         CHECK(ConfigurationValid(testConfig));
     }
 }
@@ -206,16 +227,16 @@ TEST(configuration, TestUARTContentionPosition)
 
 TEST(configuration, GetIDOfDefaultConfig)
 {
-    const Configuration_t DefaultConfiguration = {.fields = {
-                                                  .firmwareVersion = FIRMWARE_VERSION,
-                                                  .cell1 = CELL_ANALOG,
-                                                  .cell2 = CELL_ANALOG,
-                                                  .cell3 = CELL_ANALOG,
-                                                  .powerMode = MODE_BATTERY_THEN_CAN,
-                                                  .calibrationMode = CAL_ANALOG_ABSOLUTE,
-                                                  .enableUartPrinting = true,
-                                                  .alarmVoltage = 17} /* Reasonable level for a 9v batt, 8.5*2 = 17 as the cutoff */
-                                                  };
+    static const Configuration_t DefaultConfiguration = {.fields = {
+                                                             .firmwareVersion = FIRMWARE_VERSION,
+                                                             .cell1 = CELL_DIGITAL,
+                                                             .cell2 = CELL_ANALOG,
+                                                             .cell3 = CELL_ANALOG,
+                                                             .powerMode = MODE_BATTERY_THEN_CAN,
+                                                             .calibrationMode = CAL_DIGITAL_REFERENCE,
+                                                             .enableUartPrinting = true,
+                                                             .dischargeThresholdMode = V_THRESHOLD_9V,
+                                                             .ppo2controlMode = PPO2CONTROL_OFF}};
     printf("%08x", DefaultConfiguration.bits);
 }
 

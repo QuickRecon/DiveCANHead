@@ -17,6 +17,7 @@ extern "C"
     typedef uint8_t ShortMillivolts_t;
     typedef float CalCoeff_t;
     typedef uint8_t BatteryV_t;
+    typedef float ADCV_t;
     typedef uint32_t Timestamp_t; /* Internal tick count used for tracking timeouts */
 
     /* Static timouts */

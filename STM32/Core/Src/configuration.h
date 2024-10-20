@@ -2,6 +2,7 @@
 
 #include "Hardware/pwr_management.h"
 #include "Sensors/OxygenCell.h"
+#include "PPO2Control/PPO2Control.h"
 #ifdef __cplusplus
 extern "C"
 {
@@ -18,7 +19,8 @@ extern "C"
             PowerSelectMode_t powerMode : 2;
             OxygenCalMethod_t calibrationMode : 3;
             bool enableUartPrinting : 1;
-            uint8_t alarmVoltage: 7; /* The level at which we chuck a low voltage tantrum*/
+            VoltageThreshold_t dischargeThresholdMode: 2;
+            PPO2ControlScheme_t ppo2controlMode: 2;
         } fields;
         uint32_t bits;
     } Configuration_t;
@@ -34,7 +36,8 @@ extern "C"
                                                               .powerMode = MODE_BATTERY_THEN_CAN,
                                                               .calibrationMode = CAL_DIGITAL_REFERENCE,
                                                               .enableUartPrinting = true,
-                                                              .alarmVoltage = 17}};
+                                                              .dischargeThresholdMode = V_THRESHOLD_9V,
+                                                              .ppo2controlMode = PPO2CONTROL_OFF}};
 #ifdef __cplusplus
 }
 #endif
