@@ -13,20 +13,21 @@ static const uint8_t CONFIG_BASE_ADDRESS = 0x06;
 
 static const uint32_t CAL_TO_INT32 = 10000000;
 
+static const uint8_t MAX_WRITE_ATTEMPTS = 3;
+
 static bool WriteInt32(uint16_t addr, uint32_t value)
 {
     bool writeOk = true; /*  Presume that we're doing ok, if we hit a fail state then false it */
     uint8_t attempts = 0;
-    EE_Status result;
+    EE_Status result = EE_OK;
     do
     {
         if (HAL_OK == HAL_FLASH_Unlock())
         {
             __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_PROGERR | FLASH_FLAG_WRPERR |
-
                                    FLASH_FLAG_PGAERR | FLASH_FLAG_SIZERR | FLASH_FLAG_PGSERR | FLASH_FLAG_MISERR | FLASH_FLAG_FASTERR |
-
                                    FLASH_FLAG_RDERR | FLASH_FLAG_OPTVERR);
+
             result = EE_WriteVariable32bits(addr, value);
             if (HAL_OK != HAL_FLASH_Lock())
             {
@@ -54,8 +55,8 @@ static bool WriteInt32(uint16_t addr, uint32_t value)
             LogMsg("WriteInt32: Flash unlock error");
             writeOk = false;
         }
-        attempts++;
-    } while (!writeOk && attempts < 3);
+        ++attempts;
+    } while ((!writeOk) && (attempts < MAX_WRITE_ATTEMPTS));
     return writeOk;
 }
 
@@ -228,7 +229,7 @@ bool GetConfiguration(Configuration_t *const config)
     else
     {
         uint32_t configBits = 0;
-        EE_Status result = EE_ReadVariable32bits(CONFIG_BASE_ADDRESS, &(configBits));
+        EE_Status result = EE_ReadVariable32bits(CONFIG_BASE_ADDRESS, &configBits);
         if (result == EE_OK)
         {
             *config = setConfigBytes(configBits);
