@@ -5,7 +5,7 @@
 #include "PPO2Control.h"
 #include "../Hardware/solenoid.h"
 #include "../Sensors/OxygenCell.h"
-
+#include "../errors.h"
 
 static PPO2_t setpoint = 70;
 
@@ -84,7 +84,7 @@ bool getSolenoidEnable(void)
     return *getSolenoidEnablePtr();
 }
 
-void PPO2ControlTask(void *);
+void PPO2ControlTask(void *arg);
 void SolenoidFireTask(void *);
 
 void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
@@ -124,7 +124,7 @@ void SolenoidFireTask(void *)
     double maximumDutyCycle = ((double)maximumFireTime) / ((double)totalFireTime);
     double minimumDutyCycle = ((double)minimumFireTime) / ((double)totalFireTime);
 
-    while (true)
+    do
     {
         double dutyCycle = *getDutyCyclePtr();
 
@@ -145,7 +145,7 @@ void SolenoidFireTask(void *)
         { /* If we don't reach the minimum duty then we just don't fire the solenoid */
             osDelay(pdMS_TO_TICKS(totalFireTime));
         }
-    }
+    } while (RTOS_LOOP_FOREVER);
 }
 
 double updatePID(double d_setpoint, double measurement, PIDState_t *state)
@@ -171,10 +171,12 @@ double updatePID(double d_setpoint, double measurement, PIDState_t *state)
     {
         state->integralState = state->integralMin;
         state->saturationCount++;
-    } else {
+    }
+    else
+    {
         state->saturationCount = 0; /* We've come out of saturation so reset it */
     }
-    
+
     iTerm = state->integralGain * state->integralState;
 
     /* derivative term */
@@ -201,7 +203,7 @@ void PPO2ControlTask(void *arg)
         .saturationCount = 0,
     };
 
-    while (true)
+    do
     {
         /* First retreive the cell data */
         OxygenCell_t c1 = {0};
@@ -247,6 +249,6 @@ void PPO2ControlTask(void *arg)
         double *dutyCycle = getDutyCyclePtr();
         *dutyCycle = updatePID(d_setpoint, measurement, &pidState);
 
-        osDelay(pdMS_TO_TICKS(PIDPeriod));
-    }
+        (void)osDelay(pdMS_TO_TICKS(PIDPeriod));
+    } while (RTOS_LOOP_FOREVER);
 }
