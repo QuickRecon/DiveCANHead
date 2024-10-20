@@ -5,6 +5,8 @@
 #define MENU_COUNT 5
 #define MENU_ITEMS 1
 
+#define MENU_SAVE_MSG_ITEM_INDEX 2
+
 #define BYTE_1_OFFSET 8
 #define BYTE_2_OFFSET 16
 #define BYTE_3_OFFSET 24
@@ -88,7 +90,7 @@ static const uint8_t SAVE_REQ_FIELD_IDX = 5;
 static const uint8_t MAX_1_MSG_SAVE_LEN = 6;
 static const uint8_t MIN_VALUES_VAL = 4; /*  If the second hex digit is above this value its a value request */
 
-void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration)
+void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration)
 {
     DiveCANType_t target = (DiveCANType_t)(0xF & (message->id));
     DiveCANType_t source = deviceSpec->type;
@@ -177,22 +179,7 @@ void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const con
                               (uint8_t)(configBits >> BYTE_2_OFFSET),
                               (uint8_t)(configBits >> BYTE_3_OFFSET)};
 
-    switch (menu[itemNumber].dataVal)
-    {
-    case CONFIG_VALUE_1:
-        configBytes[0] = newVal;
-        break;
-    case CONFIG_VALUE_2:
-        configBytes[1] = newVal;
-        break;
-    case CONFIG_VALUE_3:
-        configBytes[2] = newVal;
-        break;
-    case CONFIG_VALUE_4:
-        configBytes[3] = newVal;
-        break;
-    default:
-    }
+    configBytes[menu[itemNumber].dataVal] = newVal;
 
     uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
     *configuration = setConfigBytes(newBytes);
@@ -236,7 +223,7 @@ void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t
              waitingForNextRow)
     {
         waitingForNextRow = false;
-        serial_printf("Got data 0x%x for item %u\r\n", message->data[2], itemNumber);
+        serial_printf("Got data 0x%x for item %u\r\n", message->data[MENU_SAVE_MSG_ITEM_INDEX], itemNumber);
 
         switch (menu[itemNumber].dataVal)
         {
@@ -244,7 +231,7 @@ void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t
         case CONFIG_VALUE_2:
         case CONFIG_VALUE_3:
         case CONFIG_VALUE_4:
-            updateConfig(itemNumber, message->data[2], configuration);
+            updateConfig(itemNumber, message->data[MENU_SAVE_MSG_ITEM_INDEX], configuration);
             break;
         default:
         }
