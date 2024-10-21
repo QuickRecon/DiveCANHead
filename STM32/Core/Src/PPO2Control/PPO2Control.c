@@ -19,17 +19,17 @@ typedef struct
 typedef struct
 {
     /* PID State parameters */
-    double derState;
-    double integralState;
+    PIDNumeric_t derState;
+    PIDNumeric_t integralState;
 
     /* Integral Maximum Limits, set to the maximum and minium of the drive range */
-    double integralMax;
-    double integralMin;
+    PIDNumeric_t integralMax;
+    PIDNumeric_t integralMin;
 
     /* PID Gains */
-    double integralGain;
-    double proportionalGain;
-    double derivativeGain;
+    PIDNumeric_t integralGain;
+    PIDNumeric_t proportionalGain;
+    PIDNumeric_t derivativeGain;
 
     /* Track how many PID cycles we remain in integral saturation, used to detect solenoid failure */
     uint16_t saturationCount;
@@ -51,9 +51,9 @@ static osThreadId_t *getOSThreadId(void)
     return &PPO2ControllerTaskHandle;
 }
 
-static double *getDutyCyclePtr(void)
+static PIDNumeric_t *getDutyCyclePtr(void)
 {
-    static double dutyCycle = 0;
+    static PIDNumeric_t dutyCycle = 0;
     return &dutyCycle;
 }
 
@@ -85,7 +85,7 @@ bool getSolenoidEnable(void)
 }
 
 void PPO2ControlTask(void *arg);
-void SolenoidFireTask(void *);
+void SolenoidFireTask(void *arg);
 
 void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
 {
@@ -121,12 +121,12 @@ void SolenoidFireTask(void *)
     uint32_t minimumFireTime = 100; /* Fire for no less than 100ms */
     uint32_t maximumFireTime = 900; /* Fire for no longer than 900ms */
 
-    double maximumDutyCycle = ((double)maximumFireTime) / ((double)totalFireTime);
-    double minimumDutyCycle = ((double)minimumFireTime) / ((double)totalFireTime);
+    PIDNumeric_t maximumDutyCycle = ((PIDNumeric_t)maximumFireTime) / ((PIDNumeric_t)totalFireTime);
+    PIDNumeric_t minimumDutyCycle = ((PIDNumeric_t)minimumFireTime) / ((PIDNumeric_t)totalFireTime);
 
     do
     {
-        double dutyCycle = *getDutyCyclePtr();
+        PIDNumeric_t dutyCycle = *getDutyCyclePtr();
 
         /* Establish upper bound on solenoid duty*/
         if (dutyCycle > maximumDutyCycle)
@@ -134,27 +134,27 @@ void SolenoidFireTask(void *)
             dutyCycle = maximumDutyCycle;
         }
         /* Establish the lower bound on the solenoid duty, and ensure solenoid is active */
-        if (dutyCycle > minimumDutyCycle && getSolenoidEnable())
+        if ((dutyCycle > minimumDutyCycle) && getSolenoidEnable())
         {
             setSolenoidOn();
-            osDelay(pdMS_TO_TICKS((double)totalFireTime * dutyCycle));
+            (void)osDelay(pdMS_TO_TICKS((PIDNumeric_t)totalFireTime * dutyCycle));
             setSolenoidOff();
-            osDelay(pdMS_TO_TICKS((double)totalFireTime * (1.0f - dutyCycle)));
+            (void)osDelay(pdMS_TO_TICKS((PIDNumeric_t)totalFireTime * (1.0f - dutyCycle)));
         }
         else
         { /* If we don't reach the minimum duty then we just don't fire the solenoid */
-            osDelay(pdMS_TO_TICKS(totalFireTime));
+            (void)osDelay(pdMS_TO_TICKS(totalFireTime));
         }
     } while (RTOS_LOOP_FOREVER);
 }
 
-double updatePID(double d_setpoint, double measurement, PIDState_t *state)
+PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state)
 {
     /* Step PID */
-    double pTerm = 0;
-    double iTerm = 0;
-    double dTerm = 0;
-    double error = d_setpoint - measurement;
+    PIDNumeric_t pTerm = 0;
+    PIDNumeric_t iTerm = 0;
+    PIDNumeric_t dTerm = 0;
+    PIDNumeric_t error = d_setpoint - measurement;
 
     /* proportional term*/
     pTerm = state->proportionalGain * error;
@@ -165,12 +165,12 @@ double updatePID(double d_setpoint, double measurement, PIDState_t *state)
     if (state->integralState > state->integralMax)
     {
         state->integralState = state->integralMax;
-        state->saturationCount++;
+        ++state->saturationCount;
     }
     else if (state->integralState < state->integralMin)
     {
         state->integralState = state->integralMin;
-        state->saturationCount++;
+        ++state->saturationCount;
     }
     else
     {
@@ -206,7 +206,7 @@ void PPO2ControlTask(void *arg)
     do
     {
         Consensus_t consensus = peekCellConsensus(params->c1,params->c2,params->c3);
-        
+
         /* It feels like we ought to do something with the cell confidence (go to SP low?) but that implementation is hard so avoid for now
                 uint8_t confidence = cellConfidence(consensus);
         if (confidence =< 1)
@@ -216,10 +216,10 @@ void PPO2ControlTask(void *arg)
         {
         }
         */
-        double d_setpoint = setpoint / 100.0f;
-        double measurement = consensus.consensus / 100;
+        PIDNumeric_t d_setpoint = setpoint / 100.0f;
+        PIDNumeric_t measurement = consensus.consensus / 100;
 
-        double *dutyCycle = getDutyCyclePtr();
+        PIDNumeric_t *dutyCycle = getDutyCyclePtr();
         *dutyCycle = updatePID(d_setpoint, measurement, &pidState);
 
         (void)osDelay(pdMS_TO_TICKS(PIDPeriod));

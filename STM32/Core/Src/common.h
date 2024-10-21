@@ -19,6 +19,7 @@ extern "C"
     typedef uint8_t BatteryV_t;
     typedef float ADCV_t;
     typedef uint32_t Timestamp_t; /* Internal tick count used for tracking timeouts */
+    typedef double PIDNumeric_t;
 
     /* Static timouts */
     static const uint32_t TIMEOUT_5MS = 5;

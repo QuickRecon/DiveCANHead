@@ -63,7 +63,7 @@ bool ConfigurationValid(Configuration_t config)
 
     /* Can't have digital cal if no digital cells */
     const bool configDigitalCellValid = !((config.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.cell1 == CELL_ANALOG) && (config.cell2 == CELL_ANALOG) && (config.cell3 == CELL_ANALOG));
-    valid = valid && configDigitalCellValid; 
+    valid = valid && configDigitalCellValid;
 
     return valid;
 }
