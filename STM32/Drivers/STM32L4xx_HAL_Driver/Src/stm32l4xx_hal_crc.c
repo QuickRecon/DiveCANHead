@@ -46,13 +46,13 @@
 #include "stm32l4xx_hal.h"
 
 /** @addtogroup STM32L4xx_HAL_Driver
-  * @{
-  */
+ * @{
+ */
 
 /** @defgroup CRC CRC
-  * @brief CRC HAL module driver.
-  * @{
-  */
+ * @brief CRC HAL module driver.
+ * @{
+ */
 
 #ifdef HAL_CRC_MODULE_ENABLED
 
@@ -62,19 +62,19 @@
 /* Private variables ---------------------------------------------------------*/
 /* Private function prototypes -----------------------------------------------*/
 /** @defgroup CRC_Private_Functions CRC Private Functions
-  * @{
-  */
+ * @{
+ */
 static uint32_t CRC_Handle_8(CRC_HandleTypeDef *hcrc, uint8_t pBuffer[], uint32_t BufferLength);
 static uint32_t CRC_Handle_16(CRC_HandleTypeDef *hcrc, uint16_t pBuffer[], uint32_t BufferLength);
 /**
-  * @}
-  */
+ * @}
+ */
 
 /* Exported functions --------------------------------------------------------*/
 
 /** @defgroup CRC_Exported_Functions CRC Exported Functions
-  * @{
-  */
+ * @{
+ */
 
 /** @defgroup CRC_Exported_Functions_Group1 Initialization and de-initialization functions
   *  @brief    Initialization and Configuration functions.
@@ -95,11 +95,11 @@ static uint32_t CRC_Handle_16(CRC_HandleTypeDef *hcrc, uint16_t pBuffer[], uint3
   */
 
 /**
-  * @brief  Initialize the CRC according to the specified
-  *         parameters in the CRC_InitTypeDef and create the associated handle.
-  * @param  hcrc CRC handle
-  * @retval HAL status
-  */
+ * @brief  Initialize the CRC according to the specified
+ *         parameters in the CRC_InitTypeDef and create the associated handle.
+ * @param  hcrc CRC handle
+ * @retval HAL status
+ */
 HAL_StatusTypeDef HAL_CRC_Init(CRC_HandleTypeDef *hcrc)
 {
   /* Check the CRC handle allocation */
@@ -151,7 +151,6 @@ HAL_StatusTypeDef HAL_CRC_Init(CRC_HandleTypeDef *hcrc)
     WRITE_REG(hcrc->Instance->INIT, hcrc->Init.InitValue);
   }
 
-
   /* set input data inversion mode */
   assert_param(IS_CRC_INPUTDATA_INVERSION_MODE(hcrc->Init.InputDataInversionMode));
   MODIFY_REG(hcrc->Instance->CR, CRC_CR_REV_IN, hcrc->Init.InputDataInversionMode);
@@ -172,10 +171,10 @@ HAL_StatusTypeDef HAL_CRC_Init(CRC_HandleTypeDef *hcrc)
 }
 
 /**
-  * @brief  DeInitialize the CRC peripheral.
-  * @param  hcrc CRC handle
-  * @retval HAL status
-  */
+ * @brief  DeInitialize the CRC peripheral.
+ * @param  hcrc CRC handle
+ * @retval HAL status
+ */
 HAL_StatusTypeDef HAL_CRC_DeInit(CRC_HandleTypeDef *hcrc)
 {
   /* Check the CRC handle allocation */
@@ -222,10 +221,10 @@ HAL_StatusTypeDef HAL_CRC_DeInit(CRC_HandleTypeDef *hcrc)
 }
 
 /**
-  * @brief  Initializes the CRC MSP.
-  * @param  hcrc CRC handle
-  * @retval None
-  */
+ * @brief  Initializes the CRC MSP.
+ * @param  hcrc CRC handle
+ * @retval None
+ */
 __weak void HAL_CRC_MspInit(CRC_HandleTypeDef *hcrc)
 {
   /* Prevent unused argument(s) compilation warning */
@@ -237,10 +236,10 @@ __weak void HAL_CRC_MspInit(CRC_HandleTypeDef *hcrc)
 }
 
 /**
-  * @brief  DeInitialize the CRC MSP.
-  * @param  hcrc CRC handle
-  * @retval None
-  */
+ * @brief  DeInitialize the CRC MSP.
+ * @param  hcrc CRC handle
+ * @retval None
+ */
 __weak void HAL_CRC_MspDeInit(CRC_HandleTypeDef *hcrc)
 {
   /* Prevent unused argument(s) compilation warning */
@@ -252,8 +251,8 @@ __weak void HAL_CRC_MspDeInit(CRC_HandleTypeDef *hcrc)
 }
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /** @defgroup CRC_Exported_Functions_Group2 Peripheral Control functions
   *  @brief    management functions.
@@ -276,48 +275,48 @@ __weak void HAL_CRC_MspDeInit(CRC_HandleTypeDef *hcrc)
   */
 
 /**
-  * @brief  Compute the 7, 8, 16 or 32-bit CRC value of an 8, 16 or 32-bit data buffer
-  *         starting with the previously computed CRC as initialization value.
-  * @param  hcrc CRC handle
-  * @param  pBuffer pointer to the input data buffer, exact input data format is
-  *         provided by hcrc->InputDataFormat.
-  * @param  BufferLength input data buffer length (number of bytes if pBuffer
-  *         type is * uint8_t, number of half-words if pBuffer type is * uint16_t,
-  *         number of words if pBuffer type is * uint32_t).
-  * @note  By default, the API expects a uint32_t pointer as input buffer parameter.
-  *        Input buffer pointers with other types simply need to be cast in uint32_t
-  *        and the API will internally adjust its input data processing based on the
-  *        handle field hcrc->InputDataFormat.
-  * @retval uint32_t CRC (returned value LSBs for CRC shorter than 32 bits)
-  */
+ * @brief  Compute the 7, 8, 16 or 32-bit CRC value of an 8, 16 or 32-bit data buffer
+ *         starting with the previously computed CRC as initialization value.
+ * @param  hcrc CRC handle
+ * @param  pBuffer pointer to the input data buffer, exact input data format is
+ *         provided by hcrc->InputDataFormat.
+ * @param  BufferLength input data buffer length (number of bytes if pBuffer
+ *         type is * uint8_t, number of half-words if pBuffer type is * uint16_t,
+ *         number of words if pBuffer type is * uint32_t).
+ * @note  By default, the API expects a uint32_t pointer as input buffer parameter.
+ *        Input buffer pointers with other types simply need to be cast in uint32_t
+ *        and the API will internally adjust its input data processing based on the
+ *        handle field hcrc->InputDataFormat.
+ * @retval uint32_t CRC (returned value LSBs for CRC shorter than 32 bits)
+ */
 uint32_t HAL_CRC_Accumulate(CRC_HandleTypeDef *hcrc, uint32_t pBuffer[], uint32_t BufferLength)
 {
-  uint32_t index;      /* CRC input data buffer index */
-  uint32_t temp = 0U;  /* CRC output (read from hcrc->Instance->DR register) */
+  uint32_t index;     /* CRC input data buffer index */
+  uint32_t temp = 0U; /* CRC output (read from hcrc->Instance->DR register) */
 
   /* Change CRC peripheral state */
   hcrc->State = HAL_CRC_STATE_BUSY;
 
   switch (hcrc->InputDataFormat)
   {
-    case CRC_INPUTDATA_FORMAT_WORDS:
-      /* Enter Data to the CRC calculator */
-      for (index = 0U; index < BufferLength; index++)
-      {
-        hcrc->Instance->DR = pBuffer[index];
-      }
-      temp = hcrc->Instance->DR;
-      break;
+  case CRC_INPUTDATA_FORMAT_WORDS:
+    /* Enter Data to the CRC calculator */
+    for (index = 0U; index < BufferLength; index++)
+    {
+      hcrc->Instance->DR = pBuffer[index];
+    }
+    temp = hcrc->Instance->DR;
+    break;
 
-    case CRC_INPUTDATA_FORMAT_BYTES:
-      temp = CRC_Handle_8(hcrc, (uint8_t *)pBuffer, BufferLength);
-      break;
+  case CRC_INPUTDATA_FORMAT_BYTES:
+    temp = CRC_Handle_8(hcrc, (uint8_t *)pBuffer, BufferLength);
+    break;
 
-    case CRC_INPUTDATA_FORMAT_HALFWORDS:
-      temp = CRC_Handle_16(hcrc, (uint16_t *)(void *)pBuffer, BufferLength);    /* Derogation MisraC2012 R.11.5 */
-      break;
-    default:
-      break;
+  case CRC_INPUTDATA_FORMAT_HALFWORDS:
+    temp = CRC_Handle_16(hcrc, (uint16_t *)(void *)pBuffer, BufferLength); /* Derogation MisraC2012 R.11.5 */
+    break;
+  default:
+    break;
   }
 
   /* Change CRC peripheral state */
@@ -328,55 +327,55 @@ uint32_t HAL_CRC_Accumulate(CRC_HandleTypeDef *hcrc, uint32_t pBuffer[], uint32_
 }
 
 /**
-  * @brief  Compute the 7, 8, 16 or 32-bit CRC value of an 8, 16 or 32-bit data buffer
-  *         starting with hcrc->Instance->INIT as initialization value.
-  * @param  hcrc CRC handle
-  * @param  pBuffer pointer to the input data buffer, exact input data format is
-  *         provided by hcrc->InputDataFormat.
-  * @param  BufferLength input data buffer length (number of bytes if pBuffer
-  *         type is * uint8_t, number of half-words if pBuffer type is * uint16_t,
-  *         number of words if pBuffer type is * uint32_t).
-  * @note  By default, the API expects a uint32_t pointer as input buffer parameter.
-  *        Input buffer pointers with other types simply need to be cast in uint32_t
-  *        and the API will internally adjust its input data processing based on the
-  *        handle field hcrc->InputDataFormat.
-  * @retval uint32_t CRC (returned value LSBs for CRC shorter than 32 bits)
-  */
+ * @brief  Compute the 7, 8, 16 or 32-bit CRC value of an 8, 16 or 32-bit data buffer
+ *         starting with hcrc->Instance->INIT as initialization value.
+ * @param  hcrc CRC handle
+ * @param  pBuffer pointer to the input data buffer, exact input data format is
+ *         provided by hcrc->InputDataFormat.
+ * @param  BufferLength input data buffer length (number of bytes if pBuffer
+ *         type is * uint8_t, number of half-words if pBuffer type is * uint16_t,
+ *         number of words if pBuffer type is * uint32_t).
+ * @note  By default, the API expects a uint32_t pointer as input buffer parameter.
+ *        Input buffer pointers with other types simply need to be cast in uint32_t
+ *        and the API will internally adjust its input data processing based on the
+ *        handle field hcrc->InputDataFormat.
+ * @retval uint32_t CRC (returned value LSBs for CRC shorter than 32 bits)
+ */
 uint32_t HAL_CRC_Calculate(CRC_HandleTypeDef *hcrc, uint32_t pBuffer[], uint32_t BufferLength)
 {
-  uint32_t index;      /* CRC input data buffer index */
-  uint32_t temp = 0U;  /* CRC output (read from hcrc->Instance->DR register) */
+  uint32_t index;     /* CRC input data buffer index */
+  uint32_t temp = 0U; /* CRC output (read from hcrc->Instance->DR register) */
 
   /* Change CRC peripheral state */
   hcrc->State = HAL_CRC_STATE_BUSY;
 
   /* Reset CRC Calculation Unit (hcrc->Instance->INIT is
-  *  written in hcrc->Instance->DR) */
+   *  written in hcrc->Instance->DR) */
   __HAL_CRC_DR_RESET(hcrc);
 
   switch (hcrc->InputDataFormat)
   {
-    case CRC_INPUTDATA_FORMAT_WORDS:
-      /* Enter 32-bit input data to the CRC calculator */
-      for (index = 0U; index < BufferLength; index++)
-      {
-        hcrc->Instance->DR = pBuffer[index];
-      }
-      temp = hcrc->Instance->DR;
-      break;
+  case CRC_INPUTDATA_FORMAT_WORDS:
+    /* Enter 32-bit input data to the CRC calculator */
+    for (index = 0U; index < BufferLength; index++)
+    {
+      hcrc->Instance->DR = pBuffer[index];
+    }
+    temp = hcrc->Instance->DR;
+    break;
 
-    case CRC_INPUTDATA_FORMAT_BYTES:
-      /* Specific 8-bit input data handling  */
-      temp = CRC_Handle_8(hcrc, (uint8_t *)pBuffer, BufferLength);
-      break;
+  case CRC_INPUTDATA_FORMAT_BYTES:
+    /* Specific 8-bit input data handling  */
+    temp = CRC_Handle_8(hcrc, (uint8_t *)pBuffer, BufferLength);
+    break;
 
-    case CRC_INPUTDATA_FORMAT_HALFWORDS:
-      /* Specific 16-bit input data handling  */
-      temp = CRC_Handle_16(hcrc, (uint16_t *)(void *)pBuffer, BufferLength);    /* Derogation MisraC2012 R.11.5 */
-      break;
+  case CRC_INPUTDATA_FORMAT_HALFWORDS:
+    /* Specific 16-bit input data handling  */
+    temp = CRC_Handle_16(hcrc, (uint16_t *)(void *)pBuffer, BufferLength); /* Derogation MisraC2012 R.11.5 */
+    break;
 
-    default:
-      break;
+  default:
+    break;
   }
 
   /* Change CRC peripheral state */
@@ -387,8 +386,8 @@ uint32_t HAL_CRC_Calculate(CRC_HandleTypeDef *hcrc, uint32_t pBuffer[], uint32_t
 }
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /** @defgroup CRC_Exported_Functions_Group3 Peripheral State functions
   *  @brief    Peripheral State functions.
@@ -405,10 +404,10 @@ uint32_t HAL_CRC_Calculate(CRC_HandleTypeDef *hcrc, uint32_t pBuffer[], uint32_t
   */
 
 /**
-  * @brief  Return the CRC handle state.
-  * @param  hcrc CRC handle
-  * @retval HAL state
-  */
+ * @brief  Return the CRC handle state.
+ * @param  hcrc CRC handle
+ * @retval HAL state
+ */
 HAL_CRC_StateTypeDef HAL_CRC_GetState(const CRC_HandleTypeDef *hcrc)
 {
   /* Return CRC handle state */
@@ -416,25 +415,25 @@ HAL_CRC_StateTypeDef HAL_CRC_GetState(const CRC_HandleTypeDef *hcrc)
 }
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /** @addtogroup CRC_Private_Functions
-  * @{
-  */
+ * @{
+ */
 
 /**
-  * @brief  Enter 8-bit input data to the CRC calculator.
-  *         Specific data handling to optimize processing time.
-  * @param  hcrc CRC handle
-  * @param  pBuffer pointer to the input data buffer
-  * @param  BufferLength input data buffer length
-  * @retval uint32_t CRC (returned value LSBs for CRC shorter than 32 bits)
-  */
+ * @brief  Enter 8-bit input data to the CRC calculator.
+ *         Specific data handling to optimize processing time.
+ * @param  hcrc CRC handle
+ * @param  pBuffer pointer to the input data buffer
+ * @param  BufferLength input data buffer length
+ * @retval uint32_t CRC (returned value LSBs for CRC shorter than 32 bits)
+ */
 static uint32_t CRC_Handle_8(CRC_HandleTypeDef *hcrc, uint8_t pBuffer[], uint32_t BufferLength)
 {
   uint32_t i; /* input data buffer index */
@@ -446,9 +445,9 @@ static uint32_t CRC_Handle_8(CRC_HandleTypeDef *hcrc, uint8_t pBuffer[], uint32_
    * handling by the peripheral */
   for (i = 0U; i < (BufferLength / 4U); i++)
   {
-    hcrc->Instance->DR = ((uint32_t)pBuffer[4U * i] << 24U) | \
-                         ((uint32_t)pBuffer[(4U * i) + 1U] << 16U) | \
-                         ((uint32_t)pBuffer[(4U * i) + 2U] << 8U)  | \
+    hcrc->Instance->DR = ((uint32_t)pBuffer[4U * i] << 24U) |
+                         ((uint32_t)pBuffer[(4U * i) + 1U] << 16U) |
+                         ((uint32_t)pBuffer[(4U * i) + 2U] << 8U) |
                          (uint32_t)pBuffer[(4U * i) + 3U];
   }
   /* last bytes specific handling */
@@ -456,21 +455,21 @@ static uint32_t CRC_Handle_8(CRC_HandleTypeDef *hcrc, uint8_t pBuffer[], uint32_
   {
     if ((BufferLength % 4U) == 1U)
     {
-      *(__IO uint8_t *)(__IO void *)(&hcrc->Instance->DR) = pBuffer[4U * i];         /* Derogation MisraC2012 R.11.5 */
+      *(__IO uint8_t *)(__IO void *)(&hcrc->Instance->DR) = pBuffer[4U * i]; /* Derogation MisraC2012 R.11.5 */
     }
     if ((BufferLength % 4U) == 2U)
     {
       data = ((uint16_t)(pBuffer[4U * i]) << 8U) | (uint16_t)pBuffer[(4U * i) + 1U];
-      pReg = (__IO uint16_t *)(__IO void *)(&hcrc->Instance->DR);                    /* Derogation MisraC2012 R.11.5 */
+      pReg = (__IO uint16_t *)(__IO void *)(&hcrc->Instance->DR); /* Derogation MisraC2012 R.11.5 */
       *pReg = data;
     }
     if ((BufferLength % 4U) == 3U)
     {
       data = ((uint16_t)(pBuffer[4U * i]) << 8U) | (uint16_t)pBuffer[(4U * i) + 1U];
-      pReg = (__IO uint16_t *)(__IO void *)(&hcrc->Instance->DR);                    /* Derogation MisraC2012 R.11.5 */
+      pReg = (__IO uint16_t *)(__IO void *)(&hcrc->Instance->DR); /* Derogation MisraC2012 R.11.5 */
       *pReg = data;
 
-      *(__IO uint8_t *)(__IO void *)(&hcrc->Instance->DR) = pBuffer[(4U * i) + 2U];  /* Derogation MisraC2012 R.11.5 */
+      *(__IO uint8_t *)(__IO void *)(&hcrc->Instance->DR) = pBuffer[(4U * i) + 2U]; /* Derogation MisraC2012 R.11.5 */
     }
   }
 
@@ -479,16 +478,16 @@ static uint32_t CRC_Handle_8(CRC_HandleTypeDef *hcrc, uint8_t pBuffer[], uint32_
 }
 
 /**
-  * @brief  Enter 16-bit input data to the CRC calculator.
-  *         Specific data handling to optimize processing time.
-  * @param  hcrc CRC handle
-  * @param  pBuffer pointer to the input data buffer
-  * @param  BufferLength input data buffer length
-  * @retval uint32_t CRC (returned value LSBs for CRC shorter than 32 bits)
-  */
+ * @brief  Enter 16-bit input data to the CRC calculator.
+ *         Specific data handling to optimize processing time.
+ * @param  hcrc CRC handle
+ * @param  pBuffer pointer to the input data buffer
+ * @param  BufferLength input data buffer length
+ * @retval uint32_t CRC (returned value LSBs for CRC shorter than 32 bits)
+ */
 static uint32_t CRC_Handle_16(CRC_HandleTypeDef *hcrc, uint16_t pBuffer[], uint32_t BufferLength)
 {
-  uint32_t i;  /* input data buffer index */
+  uint32_t i; /* input data buffer index */
   __IO uint16_t *pReg;
 
   /* Processing time optimization: 2 HalfWords are entered in a row with a single word write,
@@ -500,7 +499,7 @@ static uint32_t CRC_Handle_16(CRC_HandleTypeDef *hcrc, uint16_t pBuffer[], uint3
   }
   if ((BufferLength % 2U) != 0U)
   {
-    pReg = (__IO uint16_t *)(__IO void *)(&hcrc->Instance->DR);                 /* Derogation MisraC2012 R.11.5 */
+    pReg = (__IO uint16_t *)(__IO void *)(&hcrc->Instance->DR); /* Derogation MisraC2012 R.11.5 */
     *pReg = pBuffer[2U * i];
   }
 
@@ -509,14 +508,14 @@ static uint32_t CRC_Handle_16(CRC_HandleTypeDef *hcrc, uint16_t pBuffer[], uint3
 }
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 #endif /* HAL_CRC_MODULE_ENABLED */
 /**
-  * @}
-  */
+ * @}
+ */
 
 /**
-  * @}
-  */
+ * @}
+ */

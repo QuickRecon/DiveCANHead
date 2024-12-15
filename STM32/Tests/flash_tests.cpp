@@ -211,7 +211,7 @@ TEST(flash, SetCalibrationFlashUnlockFail)
         mock().expectNCalls(3, "HAL_FLASH_Unlock");
         mock().expectNCalls(3, "HAL_FLASH_Lock");
         mock().expectOneCall("NonFatalError").withParameter("error", FLASH_LOCK_ERROR);
-        
+
         UnlockReturnCode = HAL_ERROR;
         mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
         mock().expectNCalls(3, "__HAL_FLASH_CLEAR_FLAG");

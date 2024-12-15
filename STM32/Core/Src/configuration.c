@@ -3,16 +3,17 @@
 #include "Hardware/flash.h"
 #include "assert.h"
 
-uint32_t getConfigBytes(const Configuration_t *const config){
+uint32_t getConfigBytes(const Configuration_t *const config)
+{
     (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
-    return *((const uint32_t* const)config);
+    return *((const uint32_t *const)config);
 }
 
-
-Configuration_t setConfigBytes(uint32_t configBits) {
+Configuration_t setConfigBytes(uint32_t configBits)
+{
     (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
     Configuration_t config = {0};
-    config = *((Configuration_t*)&configBits);
+    config = *((Configuration_t *)&configBits);
     return config;
 }
 
@@ -71,9 +72,12 @@ bool ConfigurationValid(Configuration_t config)
 Configuration_t loadConfiguration(void)
 {
     Configuration_t config = {0};
-    if(GetConfiguration(&config) && ConfigurationValid(config)){
+    if (GetConfiguration(&config) && ConfigurationValid(config))
+    {
         /* Everything is fine */
-    } else {
+    }
+    else
+    {
         NON_FATAL_ERROR_ISR(CONFIG_ERROR); /* We need to use the isr call because that is blocking */
         config = DEFAULT_CONFIGURATION;
     }
@@ -83,7 +87,8 @@ Configuration_t loadConfiguration(void)
 bool saveConfiguration(const Configuration_t *const config)
 {
     bool valid = ConfigurationValid(*config);
-    if(valid){
+    if (valid)
+    {
         valid = SetConfiguration(config);
 
         Configuration_t readbackConfig = {0};

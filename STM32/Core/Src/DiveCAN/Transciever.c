@@ -218,8 +218,9 @@ void txName(const DiveCANType_t deviceType, const char *const name)
  */
 void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error, bool showBattery)
 {
-    uint8_t errByte = (uint8_t) error;
-    if(showBattery && error == DIVECAN_ERR_NONE){ // Only send the battery info if there aren't error
+    uint8_t errByte = (uint8_t)error;
+    if (showBattery && error == DIVECAN_ERR_NONE)
+    {                  // Only send the battery info if there aren't error
         errByte = 0xA; // This for some reason doesn't compose well with other errors, TODO: work out a clean way to handle having an error and sending battery info
     }
     const DiveCANMessage_t message = {
@@ -234,15 +235,17 @@ void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, c
  * @param deviceType the device type of this device
  * @param error Current error state (we only check if its DIVECAN_ERR_LOW_BATTERY or not)
  */
-void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error){
+void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error)
+{
     uint8_t batByte = 0x1;
-    if(error == DIVECAN_ERR_LOW_BATTERY){
+    if (error == DIVECAN_ERR_LOW_BATTERY)
+    {
         batByte = 0x0;
     }
 
     const DiveCANMessage_t message = {
         .id = HUD_STAT_ID | deviceType,
-        .data = {batByte,0x23,0x0,0x0,0x1e},
+        .data = {batByte, 0x23, 0x0, 0x0, 0x1e},
         .length = 5};
     sendCANMessage(message);
 }

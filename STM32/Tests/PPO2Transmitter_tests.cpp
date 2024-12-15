@@ -34,7 +34,7 @@ extern "C"
     BaseType_t xQueuePeek(QueueHandle_t xQueue, void *const pvBuffer, TickType_t xTicksToWait)
     {
         mock().actualCall("xQueuePeek");
-        *((OxygenCell_t*)pvBuffer) = xQueue->cellData;
+        *((OxygenCell_t *)pvBuffer) = xQueue->cellData;
         return true;
     }
 
@@ -205,8 +205,8 @@ TEST(PPO2Transmitter, setFailedCellsValues_FFsFailedCells)
     {
         Consensus_t consensus = {
             .statusArray = {(FailedPermutations[i][0] == 0) ? CELL_OK : CELL_FAIL,
-                         (FailedPermutations[i][1] == 0) ? CELL_OK : CELL_FAIL,
-                         (FailedPermutations[i][2] == 0) ? CELL_OK : CELL_FAIL},
+                            (FailedPermutations[i][1] == 0) ? CELL_OK : CELL_FAIL,
+                            (FailedPermutations[i][2] == 0) ? CELL_OK : CELL_FAIL},
             .ppo2Array = {referencePPO2Vals[0], referencePPO2Vals[1], referencePPO2Vals[2]},
             .milliArray = {0, 0, 0},
             .consensus = 0,
@@ -247,8 +247,8 @@ TEST(PPO2Transmitter, setFailedCellsValues_FFsCalNeededCells)
     {
         Consensus_t consensus = {
             .statusArray = {(FailedPermutations[i][0] == 0) ? CELL_OK : CELL_NEED_CAL,
-                         (FailedPermutations[i][1] == 0) ? CELL_OK : CELL_NEED_CAL,
-                         (FailedPermutations[i][2] == 0) ? CELL_OK : CELL_NEED_CAL},
+                            (FailedPermutations[i][1] == 0) ? CELL_OK : CELL_NEED_CAL,
+                            (FailedPermutations[i][2] == 0) ? CELL_OK : CELL_NEED_CAL},
             .ppo2Array = {referencePPO2Vals[0], referencePPO2Vals[1], referencePPO2Vals[2]},
             .milliArray = {0, 0, 0},
             .consensus = 0,

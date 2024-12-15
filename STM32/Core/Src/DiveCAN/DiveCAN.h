@@ -5,24 +5,25 @@
 #include "../configuration.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-/**
- * @struct DiveCANDevice
- * @brief Contains information about a DiveCAN device.
- *
- * A `DiveCANDevice_t` struct contains information about a device that uses the DiveCAN protocol.
- */
-typedef struct
-{
-    char name[9];
-    DiveCANType_t type;
-    DiveCANManufacturer_t manufacturerID;
-    uint8_t firmwareVersion;
-} DiveCANDevice_t;
+    /**
+     * @struct DiveCANDevice
+     * @brief Contains information about a DiveCAN device.
+     *
+     * A `DiveCANDevice_t` struct contains information about a device that uses the DiveCAN protocol.
+     */
+    typedef struct
+    {
+        char name[9];
+        DiveCANType_t type;
+        DiveCANManufacturer_t manufacturerID;
+        uint8_t firmwareVersion;
+    } DiveCANDevice_t;
 
-void InitDiveCAN(const DiveCANDevice_t * const deviceSpec, const Configuration_t * const configuration);
+    void InitDiveCAN(const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration);
 
 #ifdef __cplusplus
 }

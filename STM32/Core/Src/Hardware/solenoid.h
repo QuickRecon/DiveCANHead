@@ -1,11 +1,12 @@
 #pragma once
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-void setSolenoidOn();
-void setSolenoidOff();
+    void setSolenoidOn();
+    void setSolenoidOff();
 
 #ifdef __cplusplus
 }

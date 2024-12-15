@@ -91,13 +91,13 @@ extern "C"
 
 /* Define the stack sizes for all the tasks */
 #define PPO2CONTROLTASK_STACK_SIZE 500 /* TODO: Static analyse*/
-#define CANTASK_STACK_SIZE 1200    /* 1120 by static analysis */
-#define PPO2TXTASK_STACK_SIZE 1000 /* 928 bytes by static analysis */
-#define ADCTASK_STACK_SIZE 600    /* 504 by static analysis */
-#define CELL_PROCESSOR_STACK_SIZE 800 /* 680 by static analysis*/
-#define CALTASK_STACK_SIZE 900 /* Static analysis 856 */
-#define PRINTER_STACK_SIZE 650 /* Static analysis 608 */
-#define LOG_STACK_SIZE 1700    /* Static analysis 1592 */
+#define CANTASK_STACK_SIZE 1200        /* 1120 by static analysis */
+#define PPO2TXTASK_STACK_SIZE 1000     /* 928 bytes by static analysis */
+#define ADCTASK_STACK_SIZE 600         /* 504 by static analysis */
+#define CELL_PROCESSOR_STACK_SIZE 800  /* 680 by static analysis*/
+#define CALTASK_STACK_SIZE 900         /* Static analysis 856 */
+#define PRINTER_STACK_SIZE 650         /* Static analysis 608 */
+#define LOG_STACK_SIZE 1700            /* Static analysis 1592 */
 
 /* conditional compilation for RTOS loop breaking is pretty */
 /* shit as a testing method */

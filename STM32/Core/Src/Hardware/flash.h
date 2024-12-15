@@ -18,8 +18,8 @@ extern "C"
     bool GetNonFatalError(NonFatalError_t err, uint32_t *errCount);
     bool SetNonFatalError(NonFatalError_t err, uint32_t errCount);
 
-    bool GetConfiguration(Configuration_t* const config);
-    bool SetConfiguration(const Configuration_t* const config);
+    bool GetConfiguration(Configuration_t *const config);
+    bool SetConfiguration(const Configuration_t *const config);
 #ifdef __cplusplus
 }
 #endif

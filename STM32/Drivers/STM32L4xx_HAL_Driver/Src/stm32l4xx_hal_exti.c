@@ -86,32 +86,32 @@
 #include "stm32l4xx_hal.h"
 
 /** @addtogroup STM32L4xx_HAL_Driver
-  * @{
-  */
+ * @{
+ */
 
 /** @addtogroup EXTI
-  * @{
-  */
+ * @{
+ */
 /** MISRA C:2012 deviation rule has been granted for following rule:
-  * Rule-18.1_b - Medium: Array `EXTICR' 1st subscript interval [0,7] may be out
-  * of bounds [0,3] in following API :
-  * HAL_EXTI_SetConfigLine
-  * HAL_EXTI_GetConfigLine
-  * HAL_EXTI_ClearConfigLine
-  */
+ * Rule-18.1_b - Medium: Array `EXTICR' 1st subscript interval [0,7] may be out
+ * of bounds [0,3] in following API :
+ * HAL_EXTI_SetConfigLine
+ * HAL_EXTI_GetConfigLine
+ * HAL_EXTI_ClearConfigLine
+ */
 
 #ifdef HAL_EXTI_MODULE_ENABLED
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private defines ------------------------------------------------------------*/
 /** @defgroup EXTI_Private_Constants EXTI Private Constants
-  * @{
-  */
-#define EXTI_MODE_OFFSET                    0x08u   /* 0x20: offset between MCU IMR/EMR registers */
-#define EXTI_CONFIG_OFFSET                  0x08u   /* 0x20: offset between MCU Rising/Falling configuration registers */
+ * @{
+ */
+#define EXTI_MODE_OFFSET 0x08u   /* 0x20: offset between MCU IMR/EMR registers */
+#define EXTI_CONFIG_OFFSET 0x08u /* 0x20: offset between MCU Rising/Falling configuration registers */
 /**
-  * @}
-  */
+ * @}
+ */
 
 /* Private macros ------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
@@ -119,8 +119,8 @@
 /* Exported functions --------------------------------------------------------*/
 
 /** @addtogroup EXTI_Exported_Functions
-  * @{
-  */
+ * @{
+ */
 
 /** @addtogroup EXTI_Exported_Functions_Group1
  *  @brief    Configuration functions
@@ -135,11 +135,11 @@
   */
 
 /**
-  * @brief  Set configuration of a dedicated Exti line.
-  * @param  hexti Exti handle.
-  * @param  pExtiConfig Pointer on EXTI configuration to be set.
-  * @retval HAL Status.
-  */
+ * @brief  Set configuration of a dedicated Exti line.
+ * @param  hexti Exti handle.
+ * @param  pExtiConfig Pointer on EXTI configuration to be set.
+ * @retval HAL Status.
+ */
 HAL_StatusTypeDef HAL_EXTI_SetConfigLine(EXTI_HandleTypeDef *hexti, EXTI_ConfigTypeDef *pExtiConfig)
 {
   __IO uint32_t *regaddr;
@@ -258,13 +258,12 @@ HAL_StatusTypeDef HAL_EXTI_SetConfigLine(EXTI_HandleTypeDef *hexti, EXTI_ConfigT
   return HAL_OK;
 }
 
-
 /**
-  * @brief  Get configuration of a dedicated Exti line.
-  * @param  hexti Exti handle.
-  * @param  pExtiConfig Pointer on structure to store Exti configuration.
-  * @retval HAL Status.
-  */
+ * @brief  Get configuration of a dedicated Exti line.
+ * @param  hexti Exti handle.
+ * @param  pExtiConfig Pointer on structure to store Exti configuration.
+ * @retval HAL Status.
+ */
 HAL_StatusTypeDef HAL_EXTI_GetConfigLine(EXTI_HandleTypeDef *hexti, EXTI_ConfigTypeDef *pExtiConfig)
 {
   __IO uint32_t *regaddr;
@@ -353,12 +352,11 @@ HAL_StatusTypeDef HAL_EXTI_GetConfigLine(EXTI_HandleTypeDef *hexti, EXTI_ConfigT
   return HAL_OK;
 }
 
-
 /**
-  * @brief  Clear whole configuration of a dedicated Exti line.
-  * @param  hexti Exti handle.
-  * @retval HAL Status.
-  */
+ * @brief  Clear whole configuration of a dedicated Exti line.
+ * @param  hexti Exti handle.
+ * @retval HAL Status.
+ */
 HAL_StatusTypeDef HAL_EXTI_ClearConfigLine(EXTI_HandleTypeDef *hexti)
 {
   __IO uint32_t *regaddr;
@@ -416,41 +414,39 @@ HAL_StatusTypeDef HAL_EXTI_ClearConfigLine(EXTI_HandleTypeDef *hexti)
   return HAL_OK;
 }
 
-
 /**
-  * @brief  Register callback for a dedicated Exti line.
-  * @param  hexti Exti handle.
-  * @param  CallbackID User callback identifier.
-  *         This parameter can be one of @arg @ref EXTI_CallbackIDTypeDef values.
-  * @param  pPendingCbfn function pointer to be stored as callback.
-  * @retval HAL Status.
-  */
+ * @brief  Register callback for a dedicated Exti line.
+ * @param  hexti Exti handle.
+ * @param  CallbackID User callback identifier.
+ *         This parameter can be one of @arg @ref EXTI_CallbackIDTypeDef values.
+ * @param  pPendingCbfn function pointer to be stored as callback.
+ * @retval HAL Status.
+ */
 HAL_StatusTypeDef HAL_EXTI_RegisterCallback(EXTI_HandleTypeDef *hexti, EXTI_CallbackIDTypeDef CallbackID, void (*pPendingCbfn)(void))
 {
   HAL_StatusTypeDef status = HAL_OK;
 
   switch (CallbackID)
   {
-    case  HAL_EXTI_COMMON_CB_ID:
-      hexti->PendingCallback = pPendingCbfn;
-      break;
+  case HAL_EXTI_COMMON_CB_ID:
+    hexti->PendingCallback = pPendingCbfn;
+    break;
 
-    default:
-      status = HAL_ERROR;
-      break;
+  default:
+    status = HAL_ERROR;
+    break;
   }
 
   return status;
 }
 
-
 /**
-  * @brief  Store line number as handle private field.
-  * @param  hexti Exti handle.
-  * @param  ExtiLine Exti line number.
-  *         This parameter can be from 0 to @ref EXTI_LINE_NB.
-  * @retval HAL Status.
-  */
+ * @brief  Store line number as handle private field.
+ * @param  hexti Exti handle.
+ * @param  ExtiLine Exti line number.
+ *         This parameter can be from 0 to @ref EXTI_LINE_NB.
+ * @retval HAL Status.
+ */
 HAL_StatusTypeDef HAL_EXTI_GetHandle(EXTI_HandleTypeDef *hexti, uint32_t ExtiLine)
 {
   /* Check the parameters */
@@ -470,10 +466,9 @@ HAL_StatusTypeDef HAL_EXTI_GetHandle(EXTI_HandleTypeDef *hexti, uint32_t ExtiLin
   }
 }
 
-
 /**
-  * @}
-  */
+ * @}
+ */
 
 /** @addtogroup EXTI_Exported_Functions_Group2
  *  @brief EXTI IO functions.
@@ -488,10 +483,10 @@ HAL_StatusTypeDef HAL_EXTI_GetHandle(EXTI_HandleTypeDef *hexti, uint32_t ExtiLin
   */
 
 /**
-  * @brief  Handle EXTI interrupt request.
-  * @param  hexti Exti handle.
-  * @retval none.
-  */
+ * @brief  Handle EXTI interrupt request.
+ * @param  hexti Exti handle.
+ * @retval none.
+ */
 void HAL_EXTI_IRQHandler(EXTI_HandleTypeDef *hexti)
 {
   __IO uint32_t *regaddr;
@@ -520,16 +515,15 @@ void HAL_EXTI_IRQHandler(EXTI_HandleTypeDef *hexti)
   }
 }
 
-
 /**
-  * @brief  Get interrupt pending bit of a dedicated line.
-  * @param  hexti Exti handle.
-  * @param  Edge Specify which pending edge as to be checked.
-  *         This parameter can be one of the following values:
-  *           @arg @ref EXTI_TRIGGER_RISING_FALLING
-  *         This parameter is kept for compatibility with other series.
-  * @retval 1 if interrupt is pending else 0.
-  */
+ * @brief  Get interrupt pending bit of a dedicated line.
+ * @param  hexti Exti handle.
+ * @param  Edge Specify which pending edge as to be checked.
+ *         This parameter can be one of the following values:
+ *           @arg @ref EXTI_TRIGGER_RISING_FALLING
+ *         This parameter is kept for compatibility with other series.
+ * @retval 1 if interrupt is pending else 0.
+ */
 uint32_t HAL_EXTI_GetPending(EXTI_HandleTypeDef *hexti, uint32_t Edge)
 {
   __IO uint32_t *regaddr;
@@ -559,16 +553,15 @@ uint32_t HAL_EXTI_GetPending(EXTI_HandleTypeDef *hexti, uint32_t Edge)
   return regval;
 }
 
-
 /**
-  * @brief  Clear interrupt pending bit of a dedicated line.
-  * @param  hexti Exti handle.
-  * @param  Edge Specify which pending edge as to be clear.
-  *         This parameter can be one of the following values:
-  *           @arg @ref EXTI_TRIGGER_RISING_FALLING
-  *         This parameter is kept for compatibility with other series.
-  * @retval None.
-  */
+ * @brief  Clear interrupt pending bit of a dedicated line.
+ * @param  hexti Exti handle.
+ * @param  Edge Specify which pending edge as to be clear.
+ *         This parameter can be one of the following values:
+ *           @arg @ref EXTI_TRIGGER_RISING_FALLING
+ *         This parameter is kept for compatibility with other series.
+ * @retval None.
+ */
 void HAL_EXTI_ClearPending(EXTI_HandleTypeDef *hexti, uint32_t Edge)
 {
   __IO uint32_t *regaddr;
@@ -591,15 +584,14 @@ void HAL_EXTI_ClearPending(EXTI_HandleTypeDef *hexti, uint32_t Edge)
   regaddr = (&EXTI->PR1 + (EXTI_CONFIG_OFFSET * offset));
 
   /* Clear Pending bit */
-  *regaddr =  maskline;
+  *regaddr = maskline;
 }
 
-
 /**
-  * @brief  Generate a software interrupt for a dedicated line.
-  * @param  hexti Exti handle.
-  * @retval None.
-  */
+ * @brief  Generate a software interrupt for a dedicated line.
+ * @param  hexti Exti handle.
+ * @retval None.
+ */
 void HAL_EXTI_GenerateSWI(EXTI_HandleTypeDef *hexti)
 {
   __IO uint32_t *regaddr;
@@ -618,21 +610,19 @@ void HAL_EXTI_GenerateSWI(EXTI_HandleTypeDef *hexti)
   *regaddr = maskline;
 }
 
+/**
+ * @}
+ */
 
 /**
-  * @}
-  */
-
-/**
-  * @}
-  */
+ * @}
+ */
 
 #endif /* HAL_EXTI_MODULE_ENABLED */
 /**
-  * @}
-  */
+ * @}
+ */
 
 /**
-  * @}
-  */
-
+ * @}
+ */

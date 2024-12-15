@@ -37,7 +37,6 @@ TEST(PPO2Control, SetpointGlobalStateTracks)
     }
 }
 
-
 TEST(PPO2Control, AtmosGlobalStateTracks)
 {
     for (uint16_t i = 0; i < 25000; i++)
@@ -46,5 +45,3 @@ TEST(PPO2Control, AtmosGlobalStateTracks)
         CHECK(getAtmoPressure() == i);
     }
 }
-
-

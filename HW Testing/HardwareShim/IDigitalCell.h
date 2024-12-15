@@ -3,13 +3,14 @@
 
 #include "Arduino.h"
 
-class IDigitalCell {
-  public:
-    IDigitalCell() = default;
-    ~IDigitalCell() = default;
+class IDigitalCell
+{
+public:
+  IDigitalCell() = default;
+  ~IDigitalCell() = default;
 
-    virtual void SetPPO2(float inPPO2);
-    virtual void Poll();
+  virtual void SetPPO2(float inPPO2);
+  virtual void Poll();
 };
 
 #endif

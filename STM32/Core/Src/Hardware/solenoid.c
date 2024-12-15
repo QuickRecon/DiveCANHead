@@ -6,7 +6,6 @@
 #include "solenoid.h"
 #include "main.h"
 
-
 /**
  * @brief Set the GPIO pins to enable and fire the solenoid, pulling from Battery then CAN power.
  * @param none

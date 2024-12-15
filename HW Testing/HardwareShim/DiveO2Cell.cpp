@@ -1,17 +1,21 @@
 #include "DiveO2Cell.h"
 
-const unsigned long temperature = 2250; //22.5C
+const unsigned long temperature = 2250; // 22.5C
 
-void DiveO2Cell::SetPPO2(float inPPO2){
+void DiveO2Cell::SetPPO2(float inPPO2)
+{
   PPO2 = inPPO2;
 }
 
-void DiveO2Cell::Poll(){
-  if(serialPort->available()){
-    while(serialPort->read() != -1){
+void DiveO2Cell::Poll()
+{
+  if (serialPort->available())
+  {
+    while (serialPort->read() != -1)
+    {
       // Clear the register contents
-    } 
-    unsigned long intPPO2 = PPO2*10000;
+    }
+    unsigned long intPPO2 = PPO2 * 10000;
     String respStr = "#DRAW ";
     respStr += String(intPPO2);
     respStr += String(" ");

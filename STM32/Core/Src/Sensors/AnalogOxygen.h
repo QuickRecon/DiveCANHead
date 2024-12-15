@@ -6,32 +6,33 @@
 #include "OxygenCell.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-typedef int16_t ADCCount_t;
+    typedef int16_t ADCCount_t;
 
-typedef struct
-{
-    /* Configuration*/
-    uint8_t cellNumber;
+    typedef struct
+    {
+        /* Configuration*/
+        uint8_t cellNumber;
 
-    /* Dynamic variables*/
-    CalCoeff_t calibrationCoefficient;
-    CellStatus_t status;
-    uint8_t adcInputIndex;
+        /* Dynamic variables*/
+        CalCoeff_t calibrationCoefficient;
+        CellStatus_t status;
+        uint8_t adcInputIndex;
 
-    int16_t lastCounts;
+        int16_t lastCounts;
 
-    osThreadId_t processor;
+        osThreadId_t processor;
 
-    QueueHandle_t outQueue;
-} AnalogOxygenState_t;
+        QueueHandle_t outQueue;
+    } AnalogOxygenState_t;
 
-/* Analog Cell*/
-AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t* cell, QueueHandle_t outQueue);
-void ReadCalibration(AnalogOxygenState_t *handle);
-ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);
+    /* Analog Cell*/
+    AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue);
+    void ReadCalibration(AnalogOxygenState_t *handle);
+    ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);
 
 #ifdef __cplusplus
 }

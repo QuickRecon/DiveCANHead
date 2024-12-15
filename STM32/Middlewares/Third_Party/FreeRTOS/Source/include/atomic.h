@@ -38,14 +38,15 @@
 #define ATOMIC_H
 
 #ifndef INC_FREERTOS_H
-	#error "include FreeRTOS.h must appear in source files before include atomic.h"
+#error "include FreeRTOS.h must appear in source files before include atomic.h"
 #endif
 
 /* Standard includes. */
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 /*
@@ -56,20 +57,20 @@ extern "C" {
  * ATOMIC_ENTER_CRITICAL().
  *
  */
-#if defined( portSET_INTERRUPT_MASK_FROM_ISR )
+#if defined(portSET_INTERRUPT_MASK_FROM_ISR)
 
-	/* Nested interrupt scheme is supported in this port. */
-	#define ATOMIC_ENTER_CRITICAL()	 \
-		UBaseType_t uxCriticalSectionType = portSET_INTERRUPT_MASK_FROM_ISR()
+/* Nested interrupt scheme is supported in this port. */
+#define ATOMIC_ENTER_CRITICAL() \
+	UBaseType_t uxCriticalSectionType = portSET_INTERRUPT_MASK_FROM_ISR()
 
-	#define ATOMIC_EXIT_CRITICAL()	  \
-		portCLEAR_INTERRUPT_MASK_FROM_ISR( uxCriticalSectionType )
+#define ATOMIC_EXIT_CRITICAL() \
+	portCLEAR_INTERRUPT_MASK_FROM_ISR(uxCriticalSectionType)
 
 #else
 
-	/* Nested interrupt scheme is NOT supported in this port. */
-	#define ATOMIC_ENTER_CRITICAL()	 portENTER_CRITICAL()
-	#define ATOMIC_EXIT_CRITICAL()	  portEXIT_CRITICAL()
+/* Nested interrupt scheme is NOT supported in this port. */
+#define ATOMIC_ENTER_CRITICAL() portENTER_CRITICAL()
+#define ATOMIC_EXIT_CRITICAL() portEXIT_CRITICAL()
 
 #endif /* portSET_INTERRUPT_MASK_FROM_ISR() */
 
@@ -81,331 +82,330 @@ extern "C" {
  * instead of resulting error, simply define it away.
  */
 #ifndef portFORCE_INLINE
-	#define portFORCE_INLINE
+#define portFORCE_INLINE
 #endif
 
-#define ATOMIC_COMPARE_AND_SWAP_SUCCESS	 0x1U		/**< Compare and swap succeeded, swapped. */
-#define ATOMIC_COMPARE_AND_SWAP_FAILURE	 0x0U		/**< Compare and swap failed, did not swap. */
+#define ATOMIC_COMPARE_AND_SWAP_SUCCESS 0x1U /**< Compare and swap succeeded, swapped. */
+#define ATOMIC_COMPARE_AND_SWAP_FAILURE 0x0U /**< Compare and swap failed, did not swap. */
 
-/*----------------------------- Swap && CAS ------------------------------*/
+	/*----------------------------- Swap && CAS ------------------------------*/
 
-/**
- * Atomic compare-and-swap
- *
- * @brief Performs an atomic compare-and-swap operation on the specified values.
- *
- * @param[in, out] pulDestination  Pointer to memory location from where value is
- *                               to be loaded and checked.
- * @param[in] ulExchange         If condition meets, write this value to memory.
- * @param[in] ulComparand        Swap condition.
- *
- * @return Unsigned integer of value 1 or 0. 1 for swapped, 0 for not swapped.
- *
- * @note This function only swaps *pulDestination with ulExchange, if previous
- *       *pulDestination value equals ulComparand.
- */
-static portFORCE_INLINE uint32_t Atomic_CompareAndSwap_u32( uint32_t volatile * pulDestination,
-															uint32_t ulExchange,
-															uint32_t ulComparand )
-{
-uint32_t ulReturnValue;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic compare-and-swap
+	 *
+	 * @brief Performs an atomic compare-and-swap operation on the specified values.
+	 *
+	 * @param[in, out] pulDestination  Pointer to memory location from where value is
+	 *                               to be loaded and checked.
+	 * @param[in] ulExchange         If condition meets, write this value to memory.
+	 * @param[in] ulComparand        Swap condition.
+	 *
+	 * @return Unsigned integer of value 1 or 0. 1 for swapped, 0 for not swapped.
+	 *
+	 * @note This function only swaps *pulDestination with ulExchange, if previous
+	 *       *pulDestination value equals ulComparand.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_CompareAndSwap_u32(uint32_t volatile *pulDestination,
+															   uint32_t ulExchange,
+															   uint32_t ulComparand)
 	{
-		if( *pulDestination == ulComparand )
+		uint32_t ulReturnValue;
+
+		ATOMIC_ENTER_CRITICAL();
 		{
-			*pulDestination = ulExchange;
-			ulReturnValue = ATOMIC_COMPARE_AND_SWAP_SUCCESS;
+			if (*pulDestination == ulComparand)
+			{
+				*pulDestination = ulExchange;
+				ulReturnValue = ATOMIC_COMPARE_AND_SWAP_SUCCESS;
+			}
+			else
+			{
+				ulReturnValue = ATOMIC_COMPARE_AND_SWAP_FAILURE;
+			}
 		}
-		else
-		{
-			ulReturnValue = ATOMIC_COMPARE_AND_SWAP_FAILURE;
-		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulReturnValue;
 	}
-	ATOMIC_EXIT_CRITICAL();
+	/*-----------------------------------------------------------*/
 
-	return ulReturnValue;
-}
-/*-----------------------------------------------------------*/
-
-/**
- * Atomic swap (pointers)
- *
- * @brief Atomically sets the address pointed to by *ppvDestination to the value
- *        of *pvExchange.
- *
- * @param[in, out] ppvDestination  Pointer to memory location from where a pointer
- *                                 value is to be loaded and written back to.
- * @param[in] pvExchange           Pointer value to be written to *ppvDestination.
- *
- * @return The initial value of *ppvDestination.
- */
-static portFORCE_INLINE void * Atomic_SwapPointers_p32( void * volatile * ppvDestination,
-														void * pvExchange )
-{
-void * pReturnValue;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic swap (pointers)
+	 *
+	 * @brief Atomically sets the address pointed to by *ppvDestination to the value
+	 *        of *pvExchange.
+	 *
+	 * @param[in, out] ppvDestination  Pointer to memory location from where a pointer
+	 *                                 value is to be loaded and written back to.
+	 * @param[in] pvExchange           Pointer value to be written to *ppvDestination.
+	 *
+	 * @return The initial value of *ppvDestination.
+	 */
+	static portFORCE_INLINE void *Atomic_SwapPointers_p32(void *volatile *ppvDestination,
+														  void *pvExchange)
 	{
-		pReturnValue = *ppvDestination;
-		*ppvDestination = pvExchange;
-	}
-	ATOMIC_EXIT_CRITICAL();
+		void *pReturnValue;
 
-	return pReturnValue;
-}
-/*-----------------------------------------------------------*/
-
-/**
- * Atomic compare-and-swap (pointers)
- *
- * @brief Performs an atomic compare-and-swap operation on the specified pointer
- *        values.
- *
- * @param[in, out] ppvDestination  Pointer to memory location from where a pointer
- *                                 value is to be loaded and checked.
- * @param[in] pvExchange           If condition meets, write this value to memory.
- * @param[in] pvComparand          Swap condition.
- *
- * @return Unsigned integer of value 1 or 0. 1 for swapped, 0 for not swapped.
- *
- * @note This function only swaps *ppvDestination with pvExchange, if previous
- *       *ppvDestination value equals pvComparand.
- */
-static portFORCE_INLINE uint32_t Atomic_CompareAndSwapPointers_p32( void * volatile * ppvDestination,
-																	void * pvExchange,
-																	void * pvComparand )
-{
-uint32_t ulReturnValue = ATOMIC_COMPARE_AND_SWAP_FAILURE;
-
-	ATOMIC_ENTER_CRITICAL();
-	{
-		if( *ppvDestination == pvComparand )
+		ATOMIC_ENTER_CRITICAL();
 		{
+			pReturnValue = *ppvDestination;
 			*ppvDestination = pvExchange;
-			ulReturnValue = ATOMIC_COMPARE_AND_SWAP_SUCCESS;
 		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return pReturnValue;
 	}
-	ATOMIC_EXIT_CRITICAL();
+	/*-----------------------------------------------------------*/
 
-	return ulReturnValue;
-}
-
-
-/*----------------------------- Arithmetic ------------------------------*/
-
-/**
- * Atomic add
- *
- * @brief Atomically adds count to the value of the specified pointer points to.
- *
- * @param[in,out] pulAddend  Pointer to memory location from where value is to be
- *                         loaded and written back to.
- * @param[in] ulCount      Value to be added to *pulAddend.
- *
- * @return previous *pulAddend value.
- */
-static portFORCE_INLINE uint32_t Atomic_Add_u32( uint32_t volatile * pulAddend,
-												 uint32_t ulCount )
-{
-	uint32_t ulCurrent;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic compare-and-swap (pointers)
+	 *
+	 * @brief Performs an atomic compare-and-swap operation on the specified pointer
+	 *        values.
+	 *
+	 * @param[in, out] ppvDestination  Pointer to memory location from where a pointer
+	 *                                 value is to be loaded and checked.
+	 * @param[in] pvExchange           If condition meets, write this value to memory.
+	 * @param[in] pvComparand          Swap condition.
+	 *
+	 * @return Unsigned integer of value 1 or 0. 1 for swapped, 0 for not swapped.
+	 *
+	 * @note This function only swaps *ppvDestination with pvExchange, if previous
+	 *       *ppvDestination value equals pvComparand.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_CompareAndSwapPointers_p32(void *volatile *ppvDestination,
+																	   void *pvExchange,
+																	   void *pvComparand)
 	{
-		ulCurrent = *pulAddend;
-		*pulAddend += ulCount;
+		uint32_t ulReturnValue = ATOMIC_COMPARE_AND_SWAP_FAILURE;
+
+		ATOMIC_ENTER_CRITICAL();
+		{
+			if (*ppvDestination == pvComparand)
+			{
+				*ppvDestination = pvExchange;
+				ulReturnValue = ATOMIC_COMPARE_AND_SWAP_SUCCESS;
+			}
+		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulReturnValue;
 	}
-	ATOMIC_EXIT_CRITICAL();
 
-	return ulCurrent;
-}
-/*-----------------------------------------------------------*/
+	/*----------------------------- Arithmetic ------------------------------*/
 
-/**
- * Atomic subtract
- *
- * @brief Atomically subtracts count from the value of the specified pointer
- *        pointers to.
- *
- * @param[in,out] pulAddend  Pointer to memory location from where value is to be
- *                         loaded and written back to.
- * @param[in] ulCount      Value to be subtract from *pulAddend.
- *
- * @return previous *pulAddend value.
- */
-static portFORCE_INLINE uint32_t Atomic_Subtract_u32( uint32_t volatile * pulAddend,
-													  uint32_t ulCount )
-{
-	uint32_t ulCurrent;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic add
+	 *
+	 * @brief Atomically adds count to the value of the specified pointer points to.
+	 *
+	 * @param[in,out] pulAddend  Pointer to memory location from where value is to be
+	 *                         loaded and written back to.
+	 * @param[in] ulCount      Value to be added to *pulAddend.
+	 *
+	 * @return previous *pulAddend value.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_Add_u32(uint32_t volatile *pulAddend,
+													uint32_t ulCount)
 	{
-		ulCurrent = *pulAddend;
-		*pulAddend -= ulCount;
+		uint32_t ulCurrent;
+
+		ATOMIC_ENTER_CRITICAL();
+		{
+			ulCurrent = *pulAddend;
+			*pulAddend += ulCount;
+		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulCurrent;
 	}
-	ATOMIC_EXIT_CRITICAL();
+	/*-----------------------------------------------------------*/
 
-	return ulCurrent;
-}
-/*-----------------------------------------------------------*/
-
-/**
- * Atomic increment
- *
- * @brief Atomically increments the value of the specified pointer points to.
- *
- * @param[in,out] pulAddend  Pointer to memory location from where value is to be
- *                         loaded and written back to.
- *
- * @return *pulAddend value before increment.
- */
-static portFORCE_INLINE uint32_t Atomic_Increment_u32( uint32_t volatile * pulAddend )
-{
-uint32_t ulCurrent;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic subtract
+	 *
+	 * @brief Atomically subtracts count from the value of the specified pointer
+	 *        pointers to.
+	 *
+	 * @param[in,out] pulAddend  Pointer to memory location from where value is to be
+	 *                         loaded and written back to.
+	 * @param[in] ulCount      Value to be subtract from *pulAddend.
+	 *
+	 * @return previous *pulAddend value.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_Subtract_u32(uint32_t volatile *pulAddend,
+														 uint32_t ulCount)
 	{
-		ulCurrent = *pulAddend;
-		*pulAddend += 1;
+		uint32_t ulCurrent;
+
+		ATOMIC_ENTER_CRITICAL();
+		{
+			ulCurrent = *pulAddend;
+			*pulAddend -= ulCount;
+		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulCurrent;
 	}
-	ATOMIC_EXIT_CRITICAL();
+	/*-----------------------------------------------------------*/
 
-	return ulCurrent;
-}
-/*-----------------------------------------------------------*/
-
-/**
- * Atomic decrement
- *
- * @brief Atomically decrements the value of the specified pointer points to
- *
- * @param[in,out] pulAddend  Pointer to memory location from where value is to be
- *                         loaded and written back to.
- *
- * @return *pulAddend value before decrement.
- */
-static portFORCE_INLINE uint32_t Atomic_Decrement_u32( uint32_t volatile * pulAddend )
-{
-uint32_t ulCurrent;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic increment
+	 *
+	 * @brief Atomically increments the value of the specified pointer points to.
+	 *
+	 * @param[in,out] pulAddend  Pointer to memory location from where value is to be
+	 *                         loaded and written back to.
+	 *
+	 * @return *pulAddend value before increment.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_Increment_u32(uint32_t volatile *pulAddend)
 	{
-		ulCurrent = *pulAddend;
-		*pulAddend -= 1;
+		uint32_t ulCurrent;
+
+		ATOMIC_ENTER_CRITICAL();
+		{
+			ulCurrent = *pulAddend;
+			*pulAddend += 1;
+		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulCurrent;
 	}
-	ATOMIC_EXIT_CRITICAL();
+	/*-----------------------------------------------------------*/
 
-	return ulCurrent;
-}
-
-/*----------------------------- Bitwise Logical ------------------------------*/
-
-/**
- * Atomic OR
- *
- * @brief Performs an atomic OR operation on the specified values.
- *
- * @param [in, out] pulDestination  Pointer to memory location from where value is
- *                                to be loaded and written back to.
- * @param [in] ulValue            Value to be ORed with *pulDestination.
- *
- * @return The original value of *pulDestination.
- */
-static portFORCE_INLINE uint32_t Atomic_OR_u32( uint32_t volatile * pulDestination,
-												uint32_t ulValue )
-{
-uint32_t ulCurrent;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic decrement
+	 *
+	 * @brief Atomically decrements the value of the specified pointer points to
+	 *
+	 * @param[in,out] pulAddend  Pointer to memory location from where value is to be
+	 *                         loaded and written back to.
+	 *
+	 * @return *pulAddend value before decrement.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_Decrement_u32(uint32_t volatile *pulAddend)
 	{
-		ulCurrent = *pulDestination;
-		*pulDestination |= ulValue;
+		uint32_t ulCurrent;
+
+		ATOMIC_ENTER_CRITICAL();
+		{
+			ulCurrent = *pulAddend;
+			*pulAddend -= 1;
+		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulCurrent;
 	}
-	ATOMIC_EXIT_CRITICAL();
 
-	return ulCurrent;
-}
-/*-----------------------------------------------------------*/
+	/*----------------------------- Bitwise Logical ------------------------------*/
 
-/**
- * Atomic AND
- *
- * @brief Performs an atomic AND operation on the specified values.
- *
- * @param [in, out] pulDestination  Pointer to memory location from where value is
- *                                to be loaded and written back to.
- * @param [in] ulValue            Value to be ANDed with *pulDestination.
- *
- * @return The original value of *pulDestination.
- */
-static portFORCE_INLINE uint32_t Atomic_AND_u32( uint32_t volatile * pulDestination,
-												 uint32_t ulValue )
-{
-uint32_t ulCurrent;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic OR
+	 *
+	 * @brief Performs an atomic OR operation on the specified values.
+	 *
+	 * @param [in, out] pulDestination  Pointer to memory location from where value is
+	 *                                to be loaded and written back to.
+	 * @param [in] ulValue            Value to be ORed with *pulDestination.
+	 *
+	 * @return The original value of *pulDestination.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_OR_u32(uint32_t volatile *pulDestination,
+												   uint32_t ulValue)
 	{
-		ulCurrent = *pulDestination;
-		*pulDestination &= ulValue;
+		uint32_t ulCurrent;
+
+		ATOMIC_ENTER_CRITICAL();
+		{
+			ulCurrent = *pulDestination;
+			*pulDestination |= ulValue;
+		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulCurrent;
 	}
-	ATOMIC_EXIT_CRITICAL();
+	/*-----------------------------------------------------------*/
 
-	return ulCurrent;
-}
-/*-----------------------------------------------------------*/
-
-/**
- * Atomic NAND
- *
- * @brief Performs an atomic NAND operation on the specified values.
- *
- * @param [in, out] pulDestination  Pointer to memory location from where value is
- *                                to be loaded and written back to.
- * @param [in] ulValue            Value to be NANDed with *pulDestination.
- *
- * @return The original value of *pulDestination.
- */
-static portFORCE_INLINE uint32_t Atomic_NAND_u32( uint32_t volatile * pulDestination,
-												  uint32_t ulValue )
-{
-uint32_t ulCurrent;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic AND
+	 *
+	 * @brief Performs an atomic AND operation on the specified values.
+	 *
+	 * @param [in, out] pulDestination  Pointer to memory location from where value is
+	 *                                to be loaded and written back to.
+	 * @param [in] ulValue            Value to be ANDed with *pulDestination.
+	 *
+	 * @return The original value of *pulDestination.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_AND_u32(uint32_t volatile *pulDestination,
+													uint32_t ulValue)
 	{
-		ulCurrent = *pulDestination;
-		*pulDestination = ~( ulCurrent & ulValue );
+		uint32_t ulCurrent;
+
+		ATOMIC_ENTER_CRITICAL();
+		{
+			ulCurrent = *pulDestination;
+			*pulDestination &= ulValue;
+		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulCurrent;
 	}
-	ATOMIC_EXIT_CRITICAL();
+	/*-----------------------------------------------------------*/
 
-	return ulCurrent;
-}
-/*-----------------------------------------------------------*/
-
-/**
- * Atomic XOR
- *
- * @brief Performs an atomic XOR operation on the specified values.
- *
- * @param [in, out] pulDestination  Pointer to memory location from where value is
- *                                to be loaded and written back to.
- * @param [in] ulValue            Value to be XORed with *pulDestination.
- *
- * @return The original value of *pulDestination.
- */
-static portFORCE_INLINE uint32_t Atomic_XOR_u32( uint32_t volatile * pulDestination,
-												 uint32_t ulValue )
-{
-uint32_t ulCurrent;
-
-	ATOMIC_ENTER_CRITICAL();
+	/**
+	 * Atomic NAND
+	 *
+	 * @brief Performs an atomic NAND operation on the specified values.
+	 *
+	 * @param [in, out] pulDestination  Pointer to memory location from where value is
+	 *                                to be loaded and written back to.
+	 * @param [in] ulValue            Value to be NANDed with *pulDestination.
+	 *
+	 * @return The original value of *pulDestination.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_NAND_u32(uint32_t volatile *pulDestination,
+													 uint32_t ulValue)
 	{
-		ulCurrent = *pulDestination;
-		*pulDestination ^= ulValue;
-	}
-	ATOMIC_EXIT_CRITICAL();
+		uint32_t ulCurrent;
 
-	return ulCurrent;
-}
+		ATOMIC_ENTER_CRITICAL();
+		{
+			ulCurrent = *pulDestination;
+			*pulDestination = ~(ulCurrent & ulValue);
+		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulCurrent;
+	}
+	/*-----------------------------------------------------------*/
+
+	/**
+	 * Atomic XOR
+	 *
+	 * @brief Performs an atomic XOR operation on the specified values.
+	 *
+	 * @param [in, out] pulDestination  Pointer to memory location from where value is
+	 *                                to be loaded and written back to.
+	 * @param [in] ulValue            Value to be XORed with *pulDestination.
+	 *
+	 * @return The original value of *pulDestination.
+	 */
+	static portFORCE_INLINE uint32_t Atomic_XOR_u32(uint32_t volatile *pulDestination,
+													uint32_t ulValue)
+	{
+		uint32_t ulCurrent;
+
+		ATOMIC_ENTER_CRITICAL();
+		{
+			ulCurrent = *pulDestination;
+			*pulDestination ^= ulValue;
+		}
+		ATOMIC_EXIT_CRITICAL();
+
+		return ulCurrent;
+	}
 
 #ifdef __cplusplus
 }

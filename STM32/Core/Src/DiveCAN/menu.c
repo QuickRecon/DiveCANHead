@@ -185,9 +185,12 @@ void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const con
     *configuration = setConfigBytes(newBytes);
     serial_printf("Saving config %lu -> \r\n", newBytes, getConfigBytes(configuration));
     bool valid = saveConfiguration(configuration);
-    if (valid){
+    if (valid)
+    {
         serial_printf("Config accepted\r\n");
-    } else {
+    }
+    else
+    {
         serial_printf("Config rejected\r\n");
     }
 }

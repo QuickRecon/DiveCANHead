@@ -3,15 +3,17 @@
 
 #include "Arduino.h"
 
-class AnalogCell {
-  public:
-    explicit AnalogCell(int inCellNum);
-    ~AnalogCell() = default;
+class AnalogCell
+{
+public:
+  explicit AnalogCell(int inCellNum);
+  ~AnalogCell() = default;
 
-    void SetMillis(float inMillis);
-  private:
-    float millis;
-    int cellNum;
+  void SetMillis(float inMillis);
+
+private:
+  float millis;
+  int cellNum;
 };
 
 #endif

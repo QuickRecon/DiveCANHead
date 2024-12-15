@@ -205,7 +205,7 @@ void PPO2ControlTask(void *arg)
 
     do
     {
-        Consensus_t consensus = peekCellConsensus(params->c1,params->c2,params->c3);
+        Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
 
         /* It feels like we ought to do something with the cell confidence (go to SP low?) but that implementation is hard so avoid for now
                 uint8_t confidence = cellConfidence(consensus);

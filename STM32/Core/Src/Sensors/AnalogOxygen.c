@@ -38,7 +38,7 @@ const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before 
 
 void analogProcessor(void *arg);
 
-AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t* cell, QueueHandle_t outQueue)
+AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
     AnalogOxygenState_t *handle = NULL;
     if (cell->cellNumber > CELL_3)

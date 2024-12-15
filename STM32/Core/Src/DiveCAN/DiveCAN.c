@@ -9,7 +9,7 @@
 #include "../Hardware/log.h"
 
 void CANTask(void *arg);
-void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration/*  */);
+void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration /*  */);
 void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration);
 void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration);
 void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration);
@@ -64,7 +64,7 @@ void InitDiveCAN(const DiveCANDevice_t *const deviceSpec, const Configuration_t 
 void CANTask(void *arg)
 {
     const DiveCANDevice_t *const deviceSpec = &(((DiveCANTask_params_t *)arg)->deviceSpec);
-    Configuration_t * const configuration = &(((DiveCANTask_params_t *)arg)->configuration);
+    Configuration_t *const configuration = &(((DiveCANTask_params_t *)arg)->configuration);
 
     while (true)
     {
@@ -135,11 +135,12 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
 
         ADCV_t busVoltage = getVoltage(SOURCE_DEFAULT);
         DiveCANError_t err = DIVECAN_ERR_NONE;
-        if(busVoltage < getThresholdVoltage(configuration->dischargeThresholdMode)){
+        if (busVoltage < getThresholdVoltage(configuration->dischargeThresholdMode))
+        {
             err = DIVECAN_ERR_LOW_BATTERY;
         }
 
-        txStatus(devType, (BatteryV_t)(getVoltage(SOURCE_DEFAULT)*10), getSetpoint(), err, true);
+        txStatus(devType, (BatteryV_t)(getVoltage(SOURCE_DEFAULT) * 10), getSetpoint(), err, true);
         txName(devType, deviceSpec->name);
         txOBOEStat(devType, err);
     }
@@ -162,7 +163,7 @@ void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
     ProcessMenu(message, deviceSpec, configuration);
 }
 
-void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t * )
+void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *)
 {
     setSetpoint(message->data[0]);
 }
@@ -175,8 +176,10 @@ void RespAtmos(const DiveCANMessage_t *, const DiveCANDevice_t *)
 void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *)
 {
     const uint8_t SHUTDOWN_ATTEMPTS = 20;
-    for(uint8_t i = 0; i < SHUTDOWN_ATTEMPTS; ++i){
-        if(!getBusStatus()){
+    for (uint8_t i = 0; i < SHUTDOWN_ATTEMPTS; ++i)
+    {
+        if (!getBusStatus())
+        {
             Shutdown();
         }
         (void)osDelay(TIMEOUT_100MS_TICKS);
