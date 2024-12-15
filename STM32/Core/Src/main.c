@@ -1178,10 +1178,8 @@ void JumpToBootloader(void)
   BootloaderJumpFunc_t SysMemBootJump = (void (*)(void))(*((uint32_t *)0x1FFF0004));
   SysMemBootJump();
 
-  while (1)
-  {
-    /* We should have landed in the bootloader and never arrived here */
-  }
+  /* We should have landed in the bootloader and never arrived here */
+  NVIC_SystemReset();
 }
 /* USER CODE END 4 */
 

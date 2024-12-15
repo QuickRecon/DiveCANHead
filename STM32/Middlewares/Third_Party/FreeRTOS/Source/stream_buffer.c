@@ -921,8 +921,8 @@ static size_t prvReadMessageFromBuffer( StreamBuffer_t *pxStreamBuffer,
 										size_t xBytesAvailable,
 										size_t xBytesToStoreMessageLength )
 {
-size_t xOriginalTail, xReceivedLength, xNextMessageLength;
-configMESSAGE_BUFFER_LENGTH_TYPE xTempNextMessageLength;
+size_t xOriginalTail, xReceivedLength, xNextMessageLength = 0;
+configMESSAGE_BUFFER_LENGTH_TYPE xTempNextMessageLength = 0;
 
 	if( xBytesToStoreMessageLength != ( size_t ) 0 )
 	{

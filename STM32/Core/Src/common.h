@@ -74,7 +74,8 @@ extern "C"
      *
      * We have safeguards around expired data, and the WDT should save us if things are getting really
      * starved. The consumers use queues to access other tasks data, so they'll block while we go and get
-     * the fresh data
+     * the fresh data. This prevents the higher priority tasks from dominating the runtime, they only
+     * execute opportunistically
      */
     /* The watchdog task should be just above idle, so that we reset on runtime starvation */
     /* CAN RX priority less critical than data consumers but more than sensor fetching, we want to

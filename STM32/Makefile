@@ -198,7 +198,7 @@ WARN_FLAGS = -Wall -Wwrite-strings -Wextra \
 
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) $(WARN_FLAGS) -fdata-sections -ffunction-sections -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish
 
-CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) $(WARN_FLAGS) -fdata-sections -ffunction-sections -Werror -std=gnu17 -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish
+CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) $(WARN_FLAGS) -fdata-sections -ffunction-sections -Werror -std=gnu17 -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish -fanalyzer
 
 ifeq ($(DEBUG), 1)
 CFLAGS += -g -gdwarf-2

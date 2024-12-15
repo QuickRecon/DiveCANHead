@@ -651,7 +651,9 @@ __NO_RETURN void osThreadExit (void) {
 #ifndef USE_FreeRTOS_HEAP_1
   vTaskDelete (NULL);
 #endif
-  for (;;);
+#pragma GCC diagnostic ignored "-Wanalyzer-infinite-loop"
+for(;;);
+#pragma GCC diagnostic pop
 }
 
 osStatus_t osThreadTerminate (osThreadId_t thread_id) {

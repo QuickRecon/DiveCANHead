@@ -27,6 +27,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "../../../../Core/Src/errors.h"
 
 /* Defining MPU_WRAPPERS_INCLUDED_FROM_API_FILE prevents task.h from redefining
 all the API functions to use the MPU wrappers.  That should only be done when
@@ -2097,7 +2098,7 @@ UBaseType_t uxMessagesWaiting;
 		}
 		#endif /* configUSE_MUTEXES */
 	}
-	else if( xPosition == queueSEND_TO_BACK )
+	else if( xPosition == queueSEND_TO_BACK && pvItemToQueue != NULL) 
 	{
 		( void ) memcpy( ( void * ) pxQueue->pcWriteTo, pvItemToQueue, ( size_t ) pxQueue->uxItemSize ); /*lint !e961 !e418 !e9087 MISRA exception as the casts are only redundant for some ports, plus previous logic ensures a null pointer can only be passed to memcpy() if the copy size is 0.  Cast to void required by function signature and safe as no alignment requirement and copy length specified in bytes. */
 		pxQueue->pcWriteTo += pxQueue->uxItemSize; /*lint !e9016 Pointer arithmetic on char types ok, especially in this use case where it is the clearest way of conveying intent. */
@@ -2110,7 +2111,7 @@ UBaseType_t uxMessagesWaiting;
 			mtCOVERAGE_TEST_MARKER();
 		}
 	}
-	else
+	else if (pvItemToQueue != NULL)
 	{
 		( void ) memcpy( ( void * ) pxQueue->u.xQueue.pcReadFrom, pvItemToQueue, ( size_t ) pxQueue->uxItemSize ); /*lint !e961 !e9087 !e418 MISRA exception as the casts are only redundant for some ports.  Cast to void required by function signature and safe as no alignment requirement and copy length specified in bytes.  Assert checks null pointer only used when length is 0. */
 		pxQueue->u.xQueue.pcReadFrom -= pxQueue->uxItemSize;
@@ -2143,7 +2144,9 @@ UBaseType_t uxMessagesWaiting;
 			mtCOVERAGE_TEST_MARKER();
 		}
 	}
-
+	else {
+		FATAL_ERROR(UNDEFINED_STATE);
+	}
 	pxQueue->uxMessagesWaiting = uxMessagesWaiting + ( UBaseType_t ) 1;
 
 	return xReturn;

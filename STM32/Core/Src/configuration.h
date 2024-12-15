@@ -19,6 +19,7 @@ extern "C"
         bool enableUartPrinting : 1;
         VoltageThreshold_t dischargeThresholdMode : 2;
         PPO2ControlScheme_t ppo2controlMode : 2;
+        uint8_t reserved;
     } Configuration_t;
 
     uint32_t getConfigBytes(const Configuration_t *const config);

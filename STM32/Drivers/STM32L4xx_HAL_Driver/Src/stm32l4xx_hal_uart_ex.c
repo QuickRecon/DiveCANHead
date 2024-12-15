@@ -42,6 +42,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32l4xx_hal.h"
+#include "../../../Core/Src/errors.h"
 
 /** @addtogroup STM32L4xx_HAL_Driver
   * @{
@@ -833,15 +834,17 @@ HAL_StatusTypeDef HAL_UARTEx_ReceiveToIdle(UART_HandleTypeDef *huart, uint8_t *p
       /* Check if RXNE flag is set */
       if (__HAL_UART_GET_FLAG(huart, UART_FLAG_RXNE))
       {
-        if (pdata8bits == NULL)
+        if (pdata8bits == NULL && pdata16bits != NULL)
         {
           *pdata16bits = (uint16_t)(huart->Instance->RDR & uhMask);
           pdata16bits++;
         }
-        else
+        else if (pdata16bits == NULL && pdata8bits != NULL)
         {
           *pdata8bits = (uint8_t)(huart->Instance->RDR & (uint8_t)uhMask);
           pdata8bits++;
+        } else {
+          FATAL_ERROR(UNDEFINED_STATE);
         }
         /* Increment number of received elements */
         *RxLen += 1U;
