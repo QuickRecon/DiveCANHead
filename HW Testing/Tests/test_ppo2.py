@@ -103,14 +103,15 @@ def test_concensus_excludes_outlier(config_and_cal_divecan_client: tuple[DiveCAN
 
 # Regression test for ADC2 not coming online when power is first applied
 def test_power_on_adc_function(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim):
-    config = configuration.Configuration(6,
+    config = configuration.Configuration(configuration.FIRMWARE_VERSION,
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.PowerSelectMode.MODE_BATTERY_THEN_CAN,
                                          configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE,
                                          True, 
-                                         0)
+                                         configuration.VoltageThreshold.V_THRESHOLD_9V,
+                                         configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
     psu.setDefaultPower()
     utils.configureBoard(divecan_client, config)
 

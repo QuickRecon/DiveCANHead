@@ -106,15 +106,23 @@ def test_indicated_voltage_tracks_source(config_and_power_divecan_client: tuple[
     message = divecan_client.listen_for_status()
     assert abs(message.data[0] - voltage) < max(0.02*voltage,5) # The battery PSU is a bit shit so have some bonus margins
 
-@pytest.mark.parametrize("cutoffVoltage", range(50,110,5))
-def test_low_battery_notification(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU], cutoffVoltage: int):
+@pytest.mark.parametrize("threshold", configuration.VoltageThreshold)
+def test_low_battery_notification(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU], threshold: configuration.VoltageThreshold):
     divecan_client, shim_host, config, pwr = config_and_power_divecan_client
-    config.alarmVoltage = int((cutoffVoltage/10)*2)
+
+    V_THRESHOLD_MAP = [
+        7.7,
+        3.0
+    ]
+
+    cutoffVoltage = V_THRESHOLD_MAP[threshold]
+
+    config.alarmVoltageThreshold = threshold
     utils.configureBoard(divecan_client, config)
     divecan_client.flush_rx()
     divecan_client.send_id(1)
 
-    pwr.SetCANPwrVoltage((cutoffVoltage/10)+0.5)
+    pwr.SetCANPwrVoltage(cutoffVoltage+0.1)
     time.sleep(0.5) # We need to give the PSU time to slew, prior line returns when the cmd is acked
     divecan_client.flush_rx()
     divecan_client.send_id(1)
@@ -125,7 +133,7 @@ def test_low_battery_notification(config_and_power_divecan_client: tuple[DiveCAN
     assert message.data[0] == 1 # First byte is one if battery is fine
 
 
-    pwr.SetCANPwrVoltage((cutoffVoltage/10)-0.5)
+    pwr.SetCANPwrVoltage(cutoffVoltage-0.1)
     time.sleep(0.5) # We need to give the PSU time to slew, prior line returns when the cmd is acked
     divecan_client.flush_rx()
     divecan_client.send_id(1)
