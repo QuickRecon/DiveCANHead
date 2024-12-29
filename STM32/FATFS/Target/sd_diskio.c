@@ -275,7 +275,10 @@ DRESULT SD_read(BYTE lun, BYTE *buff, DWORD sector, UINT count)
   {
 #endif
     /* Fast path cause destination buffer is correctly aligned */
+
+#pragma GCC diagnostic ignored "-Wcast-align"
     ret = BSP_SD_ReadBlocks_DMA((uint32_t *)buff, (uint32_t)(sector), count);
+#pragma GCC diagnostic pop
 
     if (ret == MSD_OK)
     {
@@ -445,12 +448,16 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
       adjust the address and the D-Cache size to clean accordingly.
     */
     alignedAddr = (uint32_t)buff & ~0x1F;
+
     SCB_CleanDCache_by_Addr((uint32_t *)alignedAddr, count * BLOCKSIZE + ((uint32_t)buff - alignedAddr));
 #endif
-
+#pragma GCC diagnostic ignored "-Wcast-align"
+#pragma GCC diagnostic ignored "-Wcast-qual"
     if (BSP_SD_WriteBlocks_DMA((uint32_t *)buff,
                                (uint32_t)(sector),
                                count) == MSD_OK)
+#pragma GCC diagnostic pop
+#pragma GCC diagnostic pop
     {
 #if (osCMSIS < 0x20000U)
       /* Get the message from the queue */

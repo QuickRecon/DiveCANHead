@@ -20,6 +20,7 @@
 
 #include "ff.h"			/* Declarations of FatFs API */
 #include "diskio.h"		/* Declarations of device I/O functions */
+#include "../../../../Core/Src/errors.h"
 
 
 /*--------------------------------------------------------------------------
@@ -1123,6 +1124,8 @@ FRESULT put_fat (	/* FR_OK(0):succeeded, !=0:error */
 			st_dword(fs->win + clst * 4 % SS(fs), val);
 			fs->wflag = 1;
 			break;
+		default:
+			FATAL_ERROR(UNDEFINED_STATE);
 		}
 	}
 	return res;

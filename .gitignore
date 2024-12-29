@@ -12,3 +12,5 @@ fp-info-cache
 .venv
 prof
 .idea
+cov-int
+STM32-cov-int.tgz

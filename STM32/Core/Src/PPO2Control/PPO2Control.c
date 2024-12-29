@@ -216,8 +216,8 @@ void PPO2ControlTask(void *arg)
         {
         }
         */
-        PIDNumeric_t d_setpoint = setpoint / 100.0f;
-        PIDNumeric_t measurement = consensus.consensus / 100;
+        PIDNumeric_t d_setpoint = (PIDNumeric_t)setpoint / 100.0f;
+        PIDNumeric_t measurement = (PIDNumeric_t)consensus.consensus / 100.0f;
 
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
         *dutyCycle = updatePID(d_setpoint, measurement, &pidState);

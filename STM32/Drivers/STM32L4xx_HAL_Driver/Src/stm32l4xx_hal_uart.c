@@ -1177,7 +1177,9 @@ HAL_StatusTypeDef HAL_UART_Transmit(UART_HandleTypeDef *huart, const uint8_t *pD
     if ((huart->Init.WordLength == UART_WORDLENGTH_9B) && (huart->Init.Parity == UART_PARITY_NONE))
     {
       pdata8bits = NULL;
+#pragma GCC diagnostic ignored "-Wcast-align"
       pdata16bits = (const uint16_t *)pData;
+#pragma GCC diagnostic pop
     }
     else
     {
@@ -1273,7 +1275,9 @@ HAL_StatusTypeDef HAL_UART_Receive(UART_HandleTypeDef *huart, uint8_t *pData, ui
     if ((huart->Init.WordLength == UART_WORDLENGTH_9B) && (huart->Init.Parity == UART_PARITY_NONE))
     {
       pdata8bits = NULL;
+#pragma GCC diagnostic ignored "-Wcast-align"
       pdata16bits = (uint16_t *)pData;
+#pragma GCC diagnostic pop
     }
     else
     {
@@ -4225,7 +4229,9 @@ static void UART_TxISR_16BIT(UART_HandleTypeDef *huart)
     }
     else
     {
+#pragma GCC diagnostic ignored "-Wcast-align"
       tmp = (const uint16_t *)huart->pTxBuffPtr;
+#pragma GCC diagnostic pop
       huart->Instance->TDR = (((uint32_t)(*tmp)) & 0x01FFUL);
       huart->pTxBuffPtr += 2U;
       huart->TxXferCount--;
@@ -4453,7 +4459,9 @@ static void UART_RxISR_16BIT(UART_HandleTypeDef *huart)
   if (huart->RxState == HAL_UART_STATE_BUSY_RX)
   {
     uhdata = (uint16_t)READ_REG(huart->Instance->RDR);
+#pragma GCC diagnostic ignored "-Wcast-align"
     tmp = (uint16_t *)huart->pRxBuffPtr;
+#pragma GCC diagnostic pop
     *tmp = (uint16_t)(uhdata & uhMask);
     huart->pRxBuffPtr += 2U;
     huart->RxXferCount--;

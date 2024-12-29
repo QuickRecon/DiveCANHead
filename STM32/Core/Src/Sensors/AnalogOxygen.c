@@ -1,12 +1,11 @@
 #include "AnalogOxygen.h"
-
+#include <stdbool.h>
+#include <math.h>
 #include "../Hardware/ext_adc.h"
 #include "eeprom_emul.h"
 #include "string.h"
 #include "main.h"
-#include <stdbool.h>
 #include "OxygenCell.h"
-#include <math.h>
 #include "../Hardware/flash.h"
 #include "../Hardware/printer.h"
 #include "../Hardware/log.h"
@@ -54,7 +53,7 @@ AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueu
         ReadCalibration(handle);
 
         osThreadAttr_t processor_attributes = {
-            .name = "AnalogCellTask",
+            .name = "AnlgCellTask",
             .attr_bits = osThreadDetached,
             .cb_mem = &(cell->processorControlblock),
             .cb_size = sizeof(cell->processorControlblock),

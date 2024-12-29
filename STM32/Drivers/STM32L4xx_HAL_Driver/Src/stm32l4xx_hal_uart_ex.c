@@ -800,7 +800,9 @@ HAL_StatusTypeDef HAL_UARTEx_ReceiveToIdle(UART_HandleTypeDef *huart, uint8_t *p
     if ((huart->Init.WordLength == UART_WORDLENGTH_9B) && (huart->Init.Parity == UART_PARITY_NONE))
     {
       pdata8bits = NULL;
+      #pragma GCC diagnostic ignored "-Wcast-align"
       pdata16bits = (uint16_t *)pData;
+      #pragma GCC diagnostic pop
     }
     else
     {

@@ -1308,7 +1308,7 @@ void Error_Handler(void)
  * @param  line: assert_param error line source number
  * @retval None
  */
-void assert_failed(uint8_t *file, uint32_t line)
+void assert_failed(const uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   blocking_serial_printf("ASSERT failed %s: %d", file, line);

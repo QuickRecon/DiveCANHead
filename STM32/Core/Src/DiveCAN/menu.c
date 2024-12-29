@@ -154,7 +154,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
                 NON_FATAL_ERROR(MENU_ERR);
             }
         }
-        else if (((reqByte & REQ_MASK) >> HALF_BYTE_WIDTH) > MIN_VALUES_VAL)
+        else if ((((reqByte & REQ_MASK) >> HALF_BYTE_WIDTH) > MIN_VALUES_VAL) && (itemNumber < MENU_ITEMS) && (itemNumber > 0) && (menuItemNumber > 0))
         {
             serial_printf("Field %u, %u\r\n", menuItemNumber, itemNumber);
 
@@ -183,7 +183,7 @@ void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const con
 
     uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
     *configuration = setConfigBytes(newBytes);
-    serial_printf("Saving config %lu -> \r\n", newBytes, getConfigBytes(configuration));
+    serial_printf("Saving config %lu -> %d\r\n", newBytes, getConfigBytes(configuration));
     bool valid = saveConfiguration(configuration);
     if (valid)
     {

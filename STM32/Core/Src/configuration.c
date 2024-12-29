@@ -2,7 +2,9 @@
 #include "configuration.h"
 #include "Hardware/flash.h"
 #include "assert.h"
+#include <string.h>
 
+#pragma GCC diagnostic ignored "-Wcast-align"
 uint32_t getConfigBytes(const Configuration_t *const config)
 {
     (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
@@ -16,6 +18,23 @@ Configuration_t setConfigBytes(uint32_t configBits)
     config = *((Configuration_t *)&configBits);
     return config;
 }
+#pragma GCC diagnostic pop
+
+// uint32_t getConfigBytes(const Configuration_t *const config)
+// {
+//     (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
+//     uint32_t configBits = 0;
+//     (void)memcpy(&configBits, &config, sizeof(Configuration_t));
+//     return configBits;
+// }
+
+// Configuration_t setConfigBytes(uint32_t configBits)
+// {
+//     (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
+//     Configuration_t config = {0};
+//     (void)memcpy(&config, &configBits, sizeof(Configuration_t));
+//     return config;
+// }
 
 bool CellValid(Configuration_t config, uint8_t cellNumber)
 {

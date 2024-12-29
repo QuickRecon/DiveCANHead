@@ -5,8 +5,8 @@ extern "C"
 {
 #endif
 
-    void setSolenoidOn();
-    void setSolenoidOff();
+    void setSolenoidOn(void);
+    void setSolenoidOff(void);
 
 #ifdef __cplusplus
 }

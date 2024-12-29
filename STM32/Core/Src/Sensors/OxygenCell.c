@@ -5,11 +5,11 @@
  */
 
 #include "OxygenCell.h"
+#include <math.h>
 #include "AnalogOxygen.h"
 #include "DigitalOxygen.h"
 #include "eeprom_emul.h"
 #include "../errors.h"
-#include <math.h>
 #include "../Hardware/printer.h"
 #include "assert.h"
 
@@ -458,7 +458,9 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
         {
             /* We want to make sure the cell is actually included before we start checking it */
-            if (consensus.includeArray[cellIdx] && (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.ppo2Array[cellIdx]) > MAX_DEVIATION))
+            if ((includedCellCount > 0) &&
+                consensus.includeArray[cellIdx] &&
+                (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.ppo2Array[cellIdx]) > MAX_DEVIATION))
             {
                 /* Removing cells in this way can result in a change in the outcome depending on
                  * cell position, depending on exactly how split-brained the cells are, but
