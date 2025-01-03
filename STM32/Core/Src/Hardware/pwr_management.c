@@ -39,11 +39,11 @@ void Shutdown(void)
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_14);
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_15);
 
-    /* Persist VBUS */
+    /* Shut Down VBUS */
     /* BUS_SEL1: GPIO A Pin 6*/
     /* BUS_SEL2: GPIO A Pin 5*/
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_6);
-    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_5);
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_5);
 
     /* Disable solenoid */
     /* SOL_DIS_BATT: GPIO B Pin 3*/
