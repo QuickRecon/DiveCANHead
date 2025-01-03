@@ -236,7 +236,7 @@ TEST(configuration, GetIDOfDefaultConfig)
         .calibrationMode = CAL_DIGITAL_REFERENCE,
         .enableUartPrinting = true,
         .dischargeThresholdMode = V_THRESHOLD_9V,
-        .ppo2controlMode = PPO2CONTROL_OFF};
+        .ppo2controlMode = PPO2CONTROL_SOLENOID_PID};
     printf("%08x", getConfigBytes(&DefaultConfiguration));
 }
 
