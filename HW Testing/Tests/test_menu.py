@@ -3,12 +3,16 @@ import DiveCAN
 import HWShim
 import pytest
 import configuration
+import subprocess
 
 expectedMenuCount = 5
 
 expectedFieldNames = ["FW Commit\x00", "Config 1\x00\x00", "Config 2\x00\x00", "Config 3\x00\x00", "Config 4\x00\x00"]
 expectedEditableBit = [False, True, True, True, True]
 expectedTextFieldBit = [True, False, False, False, False]
+
+def get_version() -> str:
+    return subprocess.check_output(['git', 'describe', '--always', '--dirty']).decode('ascii').strip()
 
 @pytest.mark.parametrize("our_id", range(0,9))
 def test_menu_req_receives_ack(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], our_id: int):
@@ -37,6 +41,21 @@ def test_menu_item_gets_name(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShi
     assert bytes(itemName).decode("utf-8") == expectedFieldNames[itemIndex]
     assert message3.data[2] == expectedTextFieldBit[itemIndex]
     assert message3.data[3] == expectedEditableBit[itemIndex]
+
+
+def test_menu_commit_data(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]):
+    our_id = 1
+    divecan_client, shim_host, config = config_divecan_client
+
+    divecan_client.send_menu_field(DiveCAN.DUT_ID, our_id, 1, 1)
+    message1 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
+    divecan_client.send_menu_ack(DiveCAN.DUT_ID, our_id)
+    message2 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
+    message3 = divecan_client.listen_for_menu(our_id, DiveCAN.DUT_ID)
+
+    versionString = bytes([message1.data[6], message1.data[7], message2.data[1], message2.data[2], message2.data[3], message2.data[4], message2.data[5], message2.data[6], message2.data[7],  message3.data[1]]).decode()
+    assert versionString == get_version()[0:10]
+
 
 def test_menu_commit_flags(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]):
     """ Test the commit item has just its row"""

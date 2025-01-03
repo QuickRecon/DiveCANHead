@@ -154,7 +154,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
                 NON_FATAL_ERROR(MENU_ERR);
             }
         }
-        else if ((((reqByte & REQ_MASK) >> HALF_BYTE_WIDTH) > MIN_VALUES_VAL) && (itemNumber < MENU_ITEMS) && (itemNumber > 0) && (menuItemNumber > 0))
+        else if ((((reqByte & REQ_MASK) >> HALF_BYTE_WIDTH) >= MIN_VALUES_VAL) && (itemNumber < (MENU_ITEMS+1)) && (itemNumber > 0) && (menuItemNumber > 0))
         {
             serial_printf("Field %u, %u\r\n", menuItemNumber, itemNumber);
 

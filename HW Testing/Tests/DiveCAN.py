@@ -71,6 +71,12 @@ class DiveCAN(object):
         tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, 0x0, 0x0, 0x0, 0x0])
         self._bus.send(tx_msg)
 
+    def send_menu_field(self, target_id: int, src_id: int, menuItem: int, itemNumber: int) -> None:
+        id = 0xd0a0000 | src_id | (target_id << 8)
+        req = itemNumber | ((menuItem +1)<<5)
+        tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, req, 0x0, 0x0, 0x0])
+        self._bus.send(tx_msg)
+
     def send_menu_item(self, target_id: int, src_id: int, item_idx: int) -> None:
         id = 0xd0a0000 | src_id | (target_id << 8)
         idx = 0x10 | item_idx
