@@ -34,8 +34,8 @@ def setDefaultPower():
     try:
         can_pwr = Riden(CAN_PWR_PORT, 115200, address = 1) # type: ignore
         can_pwr.set_v_set(5.0)
-        can_pwr.set_i_set(0.1)
-        can_pwr.set_i_set(0.1)
+        can_pwr.set_i_set(0.5)
+        can_pwr.set_i_set(0.5)
         can_pwr.set_output(True)
     except Exception:
         # We don't really care if this fails
@@ -52,11 +52,11 @@ class PSU(object):
             self._can_pwr.set_v_set(5.0)
 
             # At no point should we need more than 100mA
-            self._battery.set_i_set(0.1)
-            self._can_pwr.set_i_set(0.1)
+            self._battery.set_i_set(0.5)
+            self._can_pwr.set_i_set(0.5)
 
             self._battery.set_output(False)
-            self._can_pwr.set_i_set(0.1)
+            self._can_pwr.set_i_set(0.5)
 
         except Exception:
             pytest.skip("Cannot open PSU")

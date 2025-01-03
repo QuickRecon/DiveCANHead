@@ -2,6 +2,7 @@
 
 #include "../common.h"
 #include <stdbool.h>
+#include "queue.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -13,6 +14,8 @@ extern "C"
         PPO2CONTROL_OFF = 0,
         PPO2CONTROL_SOLENOID_PID = 1,
     } PPO2ControlScheme_t;
+
+    void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3);
 
     void setSetpoint(PPO2_t ppo2);
     PPO2_t getSetpoint(void);

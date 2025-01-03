@@ -35,6 +35,7 @@
 #include "DiveCAN/PPO2Transmitter.h"
 #include "Hardware/log.h"
 #include "configuration.h"
+#include "PPO2Control/PPO2Control.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -367,6 +368,11 @@ int main(void)
   InitDiveCAN(&defaultDeviceSpec, &deviceConfig);
   InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
+
+  if (PPO2CONTROL_SOLENOID_PID == deviceConfig.ppo2controlMode)
+  {
+    InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3]);
+  }
   /* USER CODE END 2 */
 
   /* Init scheduler */
