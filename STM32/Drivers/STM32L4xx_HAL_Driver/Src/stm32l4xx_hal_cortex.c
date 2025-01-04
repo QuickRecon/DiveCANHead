@@ -234,7 +234,7 @@ void HAL_NVIC_DisableIRQ(IRQn_Type IRQn)
 void HAL_NVIC_SystemReset(void)
 {
   /* System Reset */
-  NVIC_SystemReset();
+  (void)NVIC_SystemReset();
 }
 
 /**

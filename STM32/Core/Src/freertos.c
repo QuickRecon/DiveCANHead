@@ -21,6 +21,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "main.h"
+#include "common.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -30,7 +31,6 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -55,8 +55,8 @@ extern TIM_HandleTypeDef htim7;
 
 /* Hook prototypes */
 void configureTimerForRunTimeStats(void);
-unsigned long getRunTimeCounterValue(void);
-void vApplicationStackOverflowHook(TaskHandle_t, signed char *pcTaskName);
+RuntimeCounter_t getRunTimeCounterValue(void);
+void vApplicationStackOverflowHook(TaskHandle_t overflowedTask, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
 
 /* USER CODE BEGIN 1 */
@@ -66,7 +66,7 @@ __weak void configureTimerForRunTimeStats(void)
   (void)HAL_TIM_Base_Start_IT(&htim7);
 }
 extern volatile uint32_t ulHighFrequencyTimerTicks;
-__weak uint32_t getRunTimeCounterValue(void)
+__weak RuntimeCounter_t getRunTimeCounterValue(void)
 {
   return ulHighFrequencyTimerTicks;
 }

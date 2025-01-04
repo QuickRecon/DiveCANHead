@@ -46,7 +46,7 @@ typedef StaticTask_t osStaticThreadDef_t;
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+const uint8_t IRQ_PRIORITY_DEFAULT = 5;
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -144,11 +144,11 @@ typedef enum
 {
   RESET_CAUSE_UNKNOWN = 0,
   RESET_CAUSE_LOW_POWER_RESET,
-  RESET_CAUSE_WINDOW_WATCHDOG_RESET,
-  RESET_CAUSE_INDEPENDENT_WATCHDOG_RESET,
+  RESET_CAUSE_WNDW_WTCHDOG_RESET,
+  RESET_CAUSE_I_WTCHDOG_RESET,
   RESET_CAUSE_SOFTWARE_RESET,
   RESET_CAUSE_FIREWALL_RESET,
-  RESET_CAUSE_EXTERNAL_RESET_PIN_RESET,
+  RESET_CAUSE_EXT_PIN_RESET,
   RESET_CAUSE_BROWNOUT_RESET,
 } reset_cause_t;
 
@@ -166,11 +166,11 @@ reset_cause_t reset_cause_get(void)
   }
   else if (__HAL_RCC_GET_FLAG(RCC_FLAG_WWDGRST) != 0)
   {
-    reset_cause = RESET_CAUSE_WINDOW_WATCHDOG_RESET;
+    reset_cause = RESET_CAUSE_WNDW_WTCHDOG_RESET;
   }
   else if (__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST) != 0)
   {
-    reset_cause = RESET_CAUSE_INDEPENDENT_WATCHDOG_RESET;
+    reset_cause = RESET_CAUSE_I_WTCHDOG_RESET;
   }
   else if (__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST) != 0)
   {
@@ -184,7 +184,7 @@ reset_cause_t reset_cause_get(void)
   }
   else if (__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST) != 0)
   {
-    reset_cause = RESET_CAUSE_EXTERNAL_RESET_PIN_RESET;
+    reset_cause = RESET_CAUSE_EXT_PIN_RESET;
   }
   /* Needs to come *after* checking the `RCC_FLAG_PORRST` flag in order to */
   /* ensure first that the reset cause is NOT a POR/PDR reset. See note */
@@ -238,10 +238,10 @@ const char *reset_cause_get_name(reset_cause_t reset_cause)
   case RESET_CAUSE_LOW_POWER_RESET:
     reset_cause_name = "LOW_POWER_RESET";
     break;
-  case RESET_CAUSE_WINDOW_WATCHDOG_RESET:
+  case RESET_CAUSE_WNDW_WTCHDOG_RESET:
     reset_cause_name = "WINDOW_WATCHDOG_RESET";
     break;
-  case RESET_CAUSE_INDEPENDENT_WATCHDOG_RESET:
+  case RESET_CAUSE_I_WTCHDOG_RESET:
     reset_cause_name = "INDEPENDENT_WATCHDOG_RESET";
     break;
   case RESET_CAUSE_SOFTWARE_RESET:
@@ -250,7 +250,7 @@ const char *reset_cause_get_name(reset_cause_t reset_cause)
   case RESET_CAUSE_FIREWALL_RESET:
     reset_cause_name = "FIREWALL_RESET";
     break;
-  case RESET_CAUSE_EXTERNAL_RESET_PIN_RESET:
+  case RESET_CAUSE_EXT_PIN_RESET:
     reset_cause_name = "EXTERNAL_RESET_PIN_RESET";
     break;
   case RESET_CAUSE_BROWNOUT_RESET:
@@ -492,28 +492,28 @@ void SystemClock_Config(void)
 static void MX_NVIC_Init(void)
 {
   /* SDMMC1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(SDMMC1_IRQn, IRQ_PRIORITY_DEFAULT, 0);
   HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
   /* I2C1_EV_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(I2C1_EV_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(I2C1_EV_IRQn, IRQ_PRIORITY_DEFAULT, 0);
   HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
   /* EXTI15_10_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, IRQ_PRIORITY_DEFAULT, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
   /* CAN1_RX0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(CAN1_RX0_IRQn, IRQ_PRIORITY_DEFAULT, 0);
   HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
   /* CAN1_RX1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(CAN1_RX1_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(CAN1_RX1_IRQn, IRQ_PRIORITY_DEFAULT, 0);
   HAL_NVIC_EnableIRQ(CAN1_RX1_IRQn);
   /* USART2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(USART2_IRQn, IRQ_PRIORITY_DEFAULT, 0);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
   /* USART3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART3_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(USART3_IRQn, IRQ_PRIORITY_DEFAULT, 0);
   HAL_NVIC_EnableIRQ(USART3_IRQn);
   /* USART1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART1_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(USART1_IRQn, IRQ_PRIORITY_DEFAULT, 0);
   HAL_NVIC_EnableIRQ(USART1_IRQn);
 }
 
@@ -1185,7 +1185,7 @@ void JumpToBootloader(void)
   SysMemBootJump();
 
   /* We should have landed in the bootloader and never arrived here */
-  NVIC_SystemReset();
+  (void)NVIC_SystemReset();
 }
 /* USER CODE END 4 */
 
@@ -1231,8 +1231,8 @@ void SDInitTask(void *)
 void PerfMonitor(void *)
 {
   /* USER CODE BEGIN PerfMonitor */
-  unsigned long ulTotalRunTime = 0;
-  float runtime_percent = 0;
+  RuntimeCounter_t ulTotalRunTime = 0;
+  Percent_t runtime_percent = 0;
 
   /* Infinite loop */
   for (;;)
@@ -1253,7 +1253,7 @@ void PerfMonitor(void *)
       for (UBaseType_t x = 0; x < uxArraySize; ++x)
       {
 
-        runtime_percent = 100.0f * (float)pxTaskStatusArray[x].ulRunTimeCounter / (float)ulTotalRunTime;
+        runtime_percent = 100.0f * ((Percent_t)pxTaskStatusArray[x].ulRunTimeCounter / (Percent_t)ulTotalRunTime);
 
         blocking_serial_printf("Task %.2lu: %-17s %2d %7.4f %4i\r\n", x,
                                pxTaskStatusArray[x].pcTaskName,
@@ -1287,7 +1287,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE END Callback 0 */
   if (htim->Instance == TIM6)
   {
-    HAL_IncTick();
+    (void)HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
 

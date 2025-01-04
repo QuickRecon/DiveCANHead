@@ -141,7 +141,7 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
 
 void SolenoidFireTask(void *)
 {
-    /* TODO: Adjust the max and min fire times based on depth to ensure a constant flow */
+    /* TODO(Aren): Adjust the max and min fire times based on depth to ensure a constant flow */
     uint32_t totalFireTime = 5000;   /* Fire for 1000ms */
     uint32_t minimumFireTime = 200;  /* Fire for no less than 100ms */
     uint32_t maximumFireTime = 2500; /* Fire for no longer than 900ms */

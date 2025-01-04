@@ -236,7 +236,7 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
         /* Wait until there is an item in the queue, if there is then Log it*/
         if (osOK == osMessageQueueGet(*logQueue, &logItem, NULL, TIMEOUT_4s_TICKS))
         {
-            uint32_t expectedLength = strnlen((char *)logItem.string, LOG_LINE_LENGTH);
+            uint32_t expectedLength = (uint32_t)strnlen((char *)logItem.string, LOG_LINE_LENGTH);
             uint32_t byteswritten = 0;
 
             res = f_write(&(LOG_FILES[logItem.eventType]), logItem.string, expectedLength, (void *)&byteswritten);
@@ -426,13 +426,13 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
             timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
 
             /* Set RX vs TX*/
-            char *dir_str = "tx";
+            const char *dir_str = "tx";
             if (rx)
             {
                 dir_str = "rx";
             }
 
-            uint32_t strLen = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,%s,%u,%#010lx,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x\r\n", timestamp, logMsgIndex, dir_str, message->length, message->id,
+            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,%s,%u,%#010lx,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x\r\n", timestamp, logMsgIndex, dir_str, message->length, message->id,
                                        message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
             if (strLen > 0)
             {
