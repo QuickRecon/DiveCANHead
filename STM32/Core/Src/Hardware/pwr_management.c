@@ -46,10 +46,10 @@ void Shutdown(void)
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_5);
 
     /* Disable solenoid */
-    /* SOL_DIS_BATT: GPIO B Pin 3*/
+    /* SOL_DIS_BATT: GPIO C Pin 11*/
     /* SOL_DIS_CAN: GPIO B Pin 4*/
     /* SOLENOID: GPIO C Pin 1*/
-    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_3);
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_11);
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_4);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_1);
 
@@ -73,6 +73,7 @@ void Shutdown(void)
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_0);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_1);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_2);
+    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_3);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_5);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_6);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_7);
@@ -95,7 +96,6 @@ void Shutdown(void)
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_8);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_9);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_10);
-    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_11);
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_12);
 
     /* Disable IRQs */
@@ -263,7 +263,7 @@ ADCV_t getVoltage(PowerSource_t powerSource)
     }
     else
     { /* SOURCE_DEFAULT */
-        PowerSource_t currSource = GetVCCSource();
+        PowerSource_t currSource = GetVBusSource(); /* In normal operation VCC is always of CAN, so we care what VBUS is drawing for the "active" battery */
         /* This could be recursion but recursion means that stack tooling breaks, so just nested if */
         if (currSource == SOURCE_BATTERY)
         {
