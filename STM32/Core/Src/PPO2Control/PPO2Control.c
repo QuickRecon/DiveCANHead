@@ -146,8 +146,8 @@ void SolenoidFireTask(void *)
     uint32_t minimumFireTime = 200;  /* Fire for no less than 100ms */
     uint32_t maximumFireTime = 2500; /* Fire for no longer than 900ms */
 
-    volatile PIDNumeric_t maximumDutyCycle = ((PIDNumeric_t)maximumFireTime) / ((PIDNumeric_t)totalFireTime);
-    volatile PIDNumeric_t minimumDutyCycle = ((PIDNumeric_t)minimumFireTime) / ((PIDNumeric_t)totalFireTime);
+    PIDNumeric_t maximumDutyCycle = ((PIDNumeric_t)maximumFireTime) / ((PIDNumeric_t)totalFireTime);
+    PIDNumeric_t minimumDutyCycle = ((PIDNumeric_t)minimumFireTime) / ((PIDNumeric_t)totalFireTime);
 
     do
     {
@@ -176,10 +176,10 @@ void SolenoidFireTask(void *)
 PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state)
 {
     /* Step PID */
-    volatile PIDNumeric_t pTerm = 0;
-    volatile PIDNumeric_t iTerm = 0;
-    volatile PIDNumeric_t dTerm = 0;
-    volatile PIDNumeric_t error = d_setpoint - measurement;
+    PIDNumeric_t pTerm = 0;
+    PIDNumeric_t iTerm = 0;
+    PIDNumeric_t dTerm = 0;
+    PIDNumeric_t error = d_setpoint - measurement;
 
     /* proportional term*/
     pTerm = state->proportionalGain * error;
@@ -188,7 +188,8 @@ PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDSta
     state->integralState += state->integralGain * error;
 
     /* As soon as we are above the setpoint reset the integral so we don't have to wind down*/
-    if(error < 0){ 
+    if (error < 0)
+    {
         state->integralState = 0;
     }
 

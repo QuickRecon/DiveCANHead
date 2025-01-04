@@ -18,6 +18,7 @@ void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *con
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 
 static const uint8_t DIVECAN_TYPE_MASK = 0xF;
+static const uint8_t BATTERY_FLOAT_TO_INT_SCALER = 10;
 
 /* FreeRTOS tasks */
 
@@ -63,8 +64,9 @@ void InitDiveCAN(const DiveCANDevice_t *const deviceSpec, const Configuration_t 
  */
 void CANTask(void *arg)
 {
-    const DiveCANDevice_t *const deviceSpec = &(((DiveCANTask_params_t *)arg)->deviceSpec);
-    Configuration_t *const configuration = &(((DiveCANTask_params_t *)arg)->configuration);
+    DiveCANTask_params_t* task_params = (DiveCANTask_params_t *)arg;
+    const DiveCANDevice_t *const deviceSpec = &(task_params->deviceSpec);
+    Configuration_t * configuration = &(task_params->configuration);
 
     while (true)
     {
@@ -139,8 +141,8 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
         {
             err = DIVECAN_ERR_LOW_BATTERY;
         }
-
-        txStatus(devType, (BatteryV_t)(getVoltage(SOURCE_DEFAULT) * 10), getSetpoint(), err, true);
+        ADCV_t batteryV = busVoltage * BATTERY_FLOAT_TO_INT_SCALER; /* Multiply by the scaler so we're the correct "digit" to send over the wire*/
+        txStatus(devType, (BatteryV_t)(batteryV), getSetpoint(), err, true);
         txName(devType, deviceSpec->name);
         txOBOEStat(devType, err);
     }
@@ -168,9 +170,10 @@ void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *
     setSetpoint(message->data[0]);
 }
 
-void RespAtmos(const DiveCANMessage_t *, const DiveCANDevice_t *)
+void RespAtmos(const DiveCANMessage_t * const message, const DiveCANDevice_t *)
 {
-    setAtmoPressure(1024); /* TODO: Decode message*/
+    uint16_t pressure = (uint16_t)(((uint16_t)((uint16_t)message->data[2] << BYTE_WIDTH)) | (message->data[3]));
+    setAtmoPressure(pressure);
 }
 
 void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *)

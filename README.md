@@ -46,9 +46,8 @@ The long thin aspect ratio was driven by the ease of manufacturing of housings, 
 # Roadmap
 ### Current software jobs
 These are required before the firmware can be considered ready for any kind of test diving:
-- Menu logic for displaying any error states, as well as firmware commit
-- Work out why the brightness goes down when the CAN bus connects (protocol issue?)
-- ADC intermittently doesn't come online after shutdown logic added, board reset required to fix.
+- Fix composition of errors with battery value (currently battery voltage stops updating on other errors)
+- Only sample battery voltage while solenoid firing if solenoid enabled
 
 ### Additional testing needs
 - More automated testing of each module, regression testing and behavior verification.

@@ -1,8 +1,8 @@
 #include "ext_adc.h"
+#include <stdbool.h>
 #include "main.h"
 #include "cmsis_os.h"
 #include "../errors.h"
-#include <stdbool.h>
 #include "../Hardware/printer.h"
 
 const uint8_t ADC1_ADDR = 0x48;

@@ -1,7 +1,6 @@
 #include "flash.h"
-
-#include "eeprom_emul.h"
 #include <math.h>
+#include "eeprom_emul.h"
 #include "stm32l4xx_hal.h"
 #include "log.h"
 

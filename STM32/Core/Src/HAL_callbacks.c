@@ -32,7 +32,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     if ((hi2c->Devaddress == ((uint32_t)ADC1_ADDR << 1)) || (hi2c->Devaddress == ((uint32_t)ADC2_ADDR << 1)))
-    {   
+    {
         ADC_I2C_Transmit_Complete();
     }
 }

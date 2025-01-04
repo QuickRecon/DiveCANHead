@@ -41,7 +41,6 @@ void InitRXQueue(void)
 
     if ((NULL == *inbound) && (NULL == *dataAvail))
     {
-
         static StaticQueue_t QInboundCAN_QueueStruct = {0};
         static uint8_t QInboundCAN_Storage[CAN_QUEUE_LEN * sizeof(DiveCANMessage_t)];
 
@@ -89,7 +88,6 @@ BaseType_t GetLatestCAN(const Timestamp_t blockTime, DiveCANMessage_t *message)
  */
 void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const data)
 {
-
     DiveCANMessage_t message = {
         .id = id,
         .length = length,
@@ -165,7 +163,7 @@ void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
 {
     const DiveCANMessage_t message = {
         .id = BUS_INIT_ID | (deviceType << 8) | targetDeviceType,
-        .data = {0x8a, 0xf3, 0x00},
+        .data = {0x8a, 0xf3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
         .length = 3};
     sendCANMessage(message);
 }
@@ -179,7 +177,7 @@ void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufactur
 {
     const DiveCANMessage_t message = {
         .id = BUS_ID_ID | deviceType,
-        .data = {(uint8_t)manufacturerID, 0x00, firmwareVersion},
+        .data = {(uint8_t)manufacturerID, 0x00, firmwareVersion, 0x00, 0x00, 0x00, 0x00, 0x00},
         .length = 3};
     sendCANMessage(message);
 }
@@ -190,7 +188,6 @@ void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufactur
  */
 void txName(const DiveCANType_t deviceType, const char *const name)
 {
-
     uint8_t data[BUS_NAME_LEN + 1] = {0};
     if (NULL == name)
     {
@@ -219,9 +216,11 @@ void txName(const DiveCANType_t deviceType, const char *const name)
 void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error, bool showBattery)
 {
     uint8_t errByte = (uint8_t)error;
-    if (showBattery && error == DIVECAN_ERR_NONE)
-    {                  // Only send the battery info if there aren't error
-        errByte = 0xA; // This for some reason doesn't compose well with other errors, TODO: work out a clean way to handle having an error and sending battery info
+    /* Only send the battery info if there aren't error */
+    if (showBattery && (error == DIVECAN_ERR_NONE))
+    {
+        /* This for some reason doesn't compose well with other errors, TODO(Aren): work out a clean way to handle having an error and sending battery info */
+        errByte = DIVECAN_ERR_NONE_SHOW_BATT;
     }
     const DiveCANMessage_t message = {
         .id = BUS_STATUS_ID | deviceType,
@@ -245,7 +244,7 @@ void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error)
 
     const DiveCANMessage_t message = {
         .id = HUD_STAT_ID | deviceType,
-        .data = {batByte, 0x23, 0x0, 0x0, 0x1e},
+        .data = {batByte, 0x23, 0x0, 0x0, 0x1e, 0x00, 0x00, 0x00},
         .length = 5};
     sendCANMessage(message);
 }
@@ -262,7 +261,7 @@ void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cel
 {
     const DiveCANMessage_t message = {
         .id = PPO2_PPO2_ID | deviceType,
-        .data = {0x00, cell1, cell2, cell3},
+        .data = {0x00, cell1, cell2, cell3, 0x00, 0x00, 0x00, 0x00},
         .length = 4};
     sendCANMessage(message);
 }
@@ -282,7 +281,7 @@ void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, cons
 
     const DiveCANMessage_t message = {
         .id = PPO2_MILLIS_ID | deviceType,
-        .data = {cell1bytes[0], cell1bytes[1], cell2bytes[0], cell2bytes[1], cell3bytes[0], cell3bytes[1], 0x00},
+        .data = {cell1bytes[0], cell1bytes[1], cell2bytes[0], cell2bytes[1], cell3bytes[0], cell3bytes[1], 0x00, 0x00},
         .length = 7};
 
     sendCANMessage(message);
@@ -301,7 +300,7 @@ void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool ce
 
     const DiveCANMessage_t message = {
         .id = PPO2_STATUS_ID | deviceType,
-        .data = {cellMask, PPO2},
+        .data = {cellMask, PPO2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
         .length = 2};
 
     sendCANMessage(message);
@@ -347,7 +346,7 @@ void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceT
 {
     const DiveCANMessage_t message = {
         .id = MENU_ID | deviceType | (targetDeviceType << 8),
-        .data = {0x05, 0x00, 0x62, 0x91, 0x00, itemCount},
+        .data = {0x05, 0x00, 0x62, 0x91, 0x00, itemCount, 0x00, 0x00},
         .length = 6};
 
     sendCANMessage(message);
@@ -376,7 +375,7 @@ void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t device
 
         const DiveCANMessage_t message3 = {
             .id = MENU_ID | deviceType | (targetDeviceType << 8),
-            .data = {0x22, strData[9], textField, editable},
+            .data = {0x22, strData[9], textField, editable, 0x00, 0x00, 0x00, 0x00},
             .length = 4};
 
         sendCANMessage(message1);
@@ -424,12 +423,12 @@ void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
 {
     const DiveCANMessage_t message1 = {
         .id = MENU_ID | deviceType | (targetDeviceType << 8),
-        .data = {0x30, 0x23, 0x00},
+        .data = {0x30, 0x23, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
         .length = 3};
 
     const DiveCANMessage_t message2 = {
         .id = MENU_ID | deviceType | (targetDeviceType << 8),
-        .data = {0x04, 0x00, 0x6e, 0x93, fieldId},
+        .data = {0x04, 0x00, 0x6e, 0x93, fieldId, 0x00, 0x00, 0x00},
         .length = 5};
 
     sendCANMessage(message1);
@@ -461,7 +460,7 @@ void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t devic
 
         const DiveCANMessage_t message3 = {
             .id = MENU_ID | deviceType | (targetDeviceType << 8),
-            .data = {0x22, strData[9], 0x00, 0x00},
+            .data = {0x22, strData[9], 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
             .length = 4};
 
         sendCANMessage(message1);

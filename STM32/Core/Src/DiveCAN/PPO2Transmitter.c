@@ -86,7 +86,6 @@ void PPO2TXTask(void *arg)
         txPPO2(dev->type, consensus.ppo2Array[CELL_1], consensus.ppo2Array[CELL_2], consensus.ppo2Array[CELL_3]);
         txMillivolts(dev->type, consensus.milliArray[CELL_1], consensus.milliArray[CELL_2], consensus.milliArray[CELL_3]);
         txCellState(dev->type, consensus.includeArray[CELL_1], consensus.includeArray[CELL_2], consensus.includeArray[CELL_3], consensus.consensus);
-
     } while (RTOS_LOOP_FOREVER);
 }
 

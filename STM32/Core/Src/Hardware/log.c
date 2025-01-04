@@ -1,8 +1,8 @@
 #include "log.h"
-#include "fatfs.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include "fatfs.h"
 #include "cmsis_os.h"
 #include "queue.h"
 #include "main.h"
@@ -421,18 +421,30 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
     if (message != NULL)
     {
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
-        if (logRunning() &&
-            (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,%s,%u,%#010lx,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, rx ? "rx" : "tx", message->length, message->id,
-                          message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7])))
+        if (logRunning())
         {
-            /* High priority, clear old items to make room */
-            if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
+            timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
+
+            /* Set RX vs TX*/
+            char *dir_str = "tx";
+            if (rx)
             {
-                LogQueue_t logItem = {0};
-                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+                dir_str = "rx";
             }
-            (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
-            ++logMsgIndex;
+
+            uint32_t strLen = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,%s,%u,%#010lx,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x\r\n", timestamp, logMsgIndex, dir_str, message->length, message->id,
+                                       message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
+            if (strLen > 0)
+            {
+                /* High priority, clear old items to make room */
+                if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
+                {
+                    LogQueue_t logItem = {0};
+                    (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+                }
+                (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+                ++logMsgIndex;
+            }
         }
     }
     else
