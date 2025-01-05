@@ -26,7 +26,7 @@ def config_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, conf
    #psu.setDefaultPower()
    divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
-   utils.configureBoard(divecan_client, request.param)
+   configuration.configureBoard(divecan_client, request.param)
    return (divecan_client, shim_host, request.param)
 
 @pytest.fixture(params=configuration.AnalogConfigurations())
@@ -35,7 +35,7 @@ def config_divecan_client_millis(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShi
    #psu.setDefaultPower()
    divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
-   utils.configureBoard(divecan_client, request.param)
+   configuration.configureBoard(divecan_client, request.param)
    return (divecan_client, shim_host, request.param)
 
 @pytest.fixture(params=configuration.SupportedConfigurations())
@@ -44,7 +44,7 @@ def config_and_cal_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWSh
    #psu.setDefaultPower()
    divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
-   utils.configureBoard(divecan_client, request.param)
+   configuration.configureBoard(divecan_client, request.param)
    utils.ensureCalibrated(divecan_client, shim_host)
    return (divecan_client, shim_host, request.param)
 
@@ -56,7 +56,7 @@ def config_and_power_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HW
    divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
    pwr = psu.PSU()
-   utils.configureBoard(divecan_client, request.param)
+   configuration.configureBoard(divecan_client, request.param)
    return (divecan_client, shim_host, request.param, pwr)
 
 @pytest.fixture(params=configuration.SupportedConfigurations())
@@ -66,6 +66,6 @@ def config_and_cal_and_power_divecan_client(request) -> tuple[DiveCAN.DiveCAN, H
    divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
    pwr = psu.PSU()
-   utils.configureBoard(divecan_client, request.param)
+   configuration.configureBoard(divecan_client, request.param)
    utils.ensureCalibrated(divecan_client, shim_host)
    return (divecan_client, shim_host, request.param, pwr)

@@ -31,7 +31,7 @@ def config_divecan_client_millivolts(request: pytest.FixtureRequest) -> tuple[Di
    """ Test fixture for a DiveCAN interface, configure and calibrate the board """
    divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
-   utils.configureBoard(divecan_client, request.param[0])
+   configuration.configureBoard(divecan_client, request.param[0])
    return (divecan_client, shim_host, request.param[0], request.param[1],request.param[2],request.param[3])
 
 def test_millivolts(config_divecan_client_millivolts: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, int, int, int]) -> None:
@@ -113,7 +113,7 @@ def test_power_on_adc_function(divecan_client: DiveCAN.DiveCAN, shim_host: HWShi
                                          configuration.VoltageThreshold.V_THRESHOLD_9V,
                                          configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
     psu.setDefaultPower()
-    utils.configureBoard(divecan_client, config)
+    configuration.configureBoard(divecan_client, config)
 
     c1Val = 10
     c2Val = 30

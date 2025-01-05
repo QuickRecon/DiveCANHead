@@ -20,7 +20,7 @@ pwr.SetBattery(True)
 config = configuration.Configuration(7, configuration.CellType.CELL_ANALOG,configuration.CellType.CELL_ANALOG,configuration.CellType.CELL_ANALOG,configuration.PowerSelectMode.MODE_BATTERY_THEN_CAN, configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE, True, configuration.VoltageThreshold.V_THRESHOLD_9V, configuration.PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID)
 
 time.sleep(2)
-utils.configureBoard(divecan_client, config)
+configuration.configureBoard(divecan_client, config)
 utils.ensureCalibrated(divecan_client, shim_host)
 
 utils.configureCell(shim_host, 1, config.cell1, ppo2)

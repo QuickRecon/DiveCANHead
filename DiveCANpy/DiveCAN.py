@@ -147,3 +147,9 @@ class DiveCAN(object):
     def listen_for_menu(self, target_id: int, src_id: int) -> can.Message:
         msg_id = 0xD0A0000 | src_id | (target_id << 8)
         return self._rx_msg(msg_id)
+
+def resetBoard(divecan_client: DiveCAN):
+    divecan_client.send_bootloader()
+    # This should kick us out of the bootloader
+    divecan_client.send_id(1)
+    divecan_client.listen_for_ppo2() # Acts as a wait until the board is up and running   

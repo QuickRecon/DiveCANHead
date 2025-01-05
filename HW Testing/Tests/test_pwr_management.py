@@ -118,7 +118,7 @@ def test_low_battery_notification(config_and_power_divecan_client: tuple[DiveCAN
     cutoffVoltage = V_THRESHOLD_MAP[threshold]
 
     config.alarmVoltageThreshold = threshold
-    utils.configureBoard(divecan_client, config)
+    configuration.configureBoard(divecan_client, config)
     divecan_client.flush_rx()
     divecan_client.send_id(1)
 

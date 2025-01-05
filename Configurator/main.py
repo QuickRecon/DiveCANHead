@@ -10,6 +10,8 @@ dpg.create_viewport(title='DiveCAN Configurator', resizable=True)
 divecan_client = DiveCAN.DiveCAN("/dev/ttyACM0")
 
 diveCANRun = True
+loadConfig = False
+configToWrite = None
 
 index = [0]
 consensus_PPO2 = [0]
@@ -20,6 +22,9 @@ setpoint = [0]
 
 
 def DiveCANListen():
+    global loadConfig
+    global configToWrite
+    minimum_battery_voltage = 100
     while diveCANRun:
         if(dpg.get_value("realtime_sample_checkbox")):
             consensus_msg = divecan_client.listen_for_cell_state()
@@ -47,41 +52,84 @@ def DiveCANListen():
             dpg.set_value('c2_series', [index, c2_PPO2])
             dpg.set_value('c3_series', [index, c3_PPO2])
             dpg.set_value('setpoint_series', [index, setpoint])
+
+            battery_voltage = status_msg.data[0]/10
+            minimum_battery_voltage = min(battery_voltage, minimum_battery_voltage)
+            dpg.set_value('battery_indicator', "Battery Voltage: " + str(battery_voltage) + "(" + str(minimum_battery_voltage) + ")")
             dpg.set_axis_limits("x_axis", max(index)-200, max(index))
             dpg.set_axis_limits("y_axis", 0, max(consensus_PPO2)+0.1)
 
+        if loadConfig :
+            config = configuration.read_board_config(divecan_client)
+            dpg.set_value("c1_config", config.cell1.name)
+            dpg.set_value("c2_config", config.cell2.name)
+            dpg.set_value("c3_config", config.cell3.name)
+            dpg.set_value("power_mode_config", config.powerMode.name)
+            dpg.set_value("calibration_mode_config", config.calMethod.name)
+            dpg.set_value("printing_config", config.enableUartPrinting)
+            dpg.set_value("battery_alarm_config", config.alarmVoltageThreshold.name)
+            dpg.set_value("ppo2_control_config", config.PPO2ControlMode.name)
+            loadConfig = False
+
+        if configToWrite is not None:
+            try:
+                configuration.configureBoard(divecan_client, configToWrite)
+                configToWrite = None
+            except:
+                print("Configuration rejected by board")
 
 def send_setpoint(sender, appdata):
     setpoint = dpg.get_value("setpoint_slider")
     divecan_client.send_setpoint(1, (int)(setpoint*100))
 
-with dpg.window(label="main", autosize=True) as primary_window:
-    with dpg.tab_bar():
-        with dpg.tab(label="Configuration"):
-            dpg.add_text("Firmware Version: 7")
-            dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 1")
-            dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 2")
-            dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 3")
-            dpg.add_combo(items=([name for name, member in configuration.PowerSelectMode.__members__.items()]), label="Power Mode")
-            dpg.add_combo(items=([name for name, member in configuration.OxygenCalMethod.__members__.items()]), label="Calibration Method")
-            dpg.add_checkbox(label="Enable Debug Printing (UART2)")
-            dpg.add_combo(items=([name for name, member in configuration.VoltageThreshold.__members__.items()]), label="Battery Alarm Threshold")
-            dpg.add_combo(items=([name for name, member in configuration.PPO2ControlScheme.__members__.items()]), label="PPO2 Control Mode")
-        
-            dpg.add_button(label="Load")
-            dpg.add_button(label="Save")
-            dpg.add_button(label="Reset Board")
+def reset_board(sender, appdata):
+    DiveCAN.resetBoard(divecan_client)
 
-        with dpg.tab(label="PID"):
+def load_config(sender, appdata):
+    global loadConfig
+    loadConfig = True
+
+def save_config(sender, appdata):
+    global configToWrite
+    configToWrite = configuration.Configuration(
+        7,
+        configuration.CellType[dpg.get_value("c1_config")],
+        configuration.CellType[dpg.get_value("c2_config")],
+        configuration.CellType[dpg.get_value("c3_config")],
+        configuration.PowerSelectMode[dpg.get_value("power_mode_config")],
+        configuration.OxygenCalMethod[dpg.get_value("calibration_mode_config")],
+        bool(dpg.get_value("printing_config")),
+        configuration.VoltageThreshold[dpg.get_value("battery_alarm_config")],
+        configuration.PPO2ControlScheme[dpg.get_value("ppo2_control_config")]
+    )
+
+with dpg.window(label="main", autosize=True) as primary_window:
+        with dpg.collapsing_header(label="Configuration"):
+            dpg.add_text("Firmware Version: 7")
+            dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 1", tag="c1_config")
+            dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 2", tag="c2_config")
+            dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 3", tag="c3_config")
+            dpg.add_combo(items=([name for name, member in configuration.PowerSelectMode.__members__.items()]), label="Power Mode", tag="power_mode_config")
+            dpg.add_combo(items=([name for name, member in configuration.OxygenCalMethod.__members__.items()]), label="Calibration Method", tag="calibration_mode_config")
+            dpg.add_checkbox(label="Enable Debug Printing (UART2)", tag="printing_config")
+            dpg.add_combo(items=([name for name, member in configuration.VoltageThreshold.__members__.items()]), label="Battery Alarm Threshold", tag="battery_alarm_config")
+            dpg.add_combo(items=([name for name, member in configuration.PPO2ControlScheme.__members__.items()]), label="PPO2 Control Mode", tag="ppo2_control_config")
+        
+            dpg.add_button(label="Load", callback=load_config)
+            dpg.add_button(label="Save", callback=save_config)
+            dpg.add_button(label="Reset Board", callback=reset_board)
+
+        with dpg.collapsing_header(label="PID"):
             dpg.add_slider_float(min_value=-10, max_value=10, label="Proportional")
             dpg.add_slider_float(min_value=-10, max_value=10, label="Integral")
             dpg.add_slider_float(min_value=-10, max_value=10, label="Derivative")
             dpg.add_button(label="Write")
             dpg.add_button(label="Read")
 
-
-        with dpg.tab(label="PPO2"):
+        with dpg.group(height=-1):
+            dpg.add_table
             dpg.add_slider_float(min_value=0, max_value=1, label="Setpoint", default_value=0.7, tag="setpoint_slider", clamped=True)
+            dpg.add_text(default_value="Battery Voltage: ?", tag="battery_indicator")
             dpg.add_checkbox(label="Realtime Sample", tag="realtime_sample_checkbox")
             # create plot
             with dpg.plot(label="PPO2", height=-1, width=-1):
@@ -100,9 +148,12 @@ with dpg.window(label="main", autosize=True) as primary_window:
                 dpg.add_line_series(index, consensus_PPO2, label="Consensus", parent="y_axis", tag="consensus_series")
 
 
+
 with dpg.item_handler_registry(tag="setpoint_slider_handler") as handler:
     dpg.add_item_deactivated_after_edit_handler(callback=send_setpoint)
 dpg.bind_item_handler_registry("setpoint_slider","setpoint_slider_handler")
+
+load_config(None, None)
 
 diveCANthread = threading.Thread(target=DiveCANListen)
 diveCANthread.start()

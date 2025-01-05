@@ -1,4 +1,5 @@
 from enum import IntEnum
+from DiveCANpy import DiveCAN
 import pytest
 import itertools
 
@@ -38,6 +39,19 @@ class Configuration():
         self.enableUartPrinting = enableUartPrinting
         self.alarmVoltageThreshold = alarmVoltageThreshold
         self.PPO2ControlMode = PPO2ControlMode
+    
+    @classmethod
+    def from_bits(cls, bits):
+         firmwareVersion = bits & 0xFF
+         cell1 = CellType((bits >> 8) & 0b11)
+         cell2 = CellType((bits >> 10) & 0b11)
+         cell3 = CellType((bits >> 12) & 0b11)
+         powerMode = PowerSelectMode((bits >> 14) & 0b11)
+         calMethod = OxygenCalMethod((bits >> 16) & 0b111)
+         enableUartPrinting = bool((bits >> 19) & 0b1)
+         alarmVoltageThreshold = VoltageThreshold((bits >> 20) & 0b11)
+         PPO2ControlMode = PPO2ControlScheme((bits >> 22) & 0b11)
+         return cls(firmwareVersion, cell1, cell2, cell3, powerMode, calMethod, enableUartPrinting, alarmVoltageThreshold, PPO2ControlMode)
 
     def getBits(self):
         bits = 0
@@ -51,11 +65,59 @@ class Configuration():
         bits |= (int(self.alarmVoltageThreshold)& 0b11) << 20
         bits |= (int(self.PPO2ControlMode)& 0b11) << 22 
         return bits
-
+    
     def getByte(self, byteIndex: int):
         bits = self.getBits()
         return (bits >> (8*byteIndex)) & 0xFF
     
+
+def ReadConfigByte(divecan_client: DiveCAN.DiveCAN, index: int):
+    divecan_client.flush_rx()
+    divecan_client.send_menu_flag(DiveCAN.DUT_ID, 1, index)
+
+    divecan_client.listen_for_menu(1, DiveCAN.DUT_ID)
+    divecan_client.send_menu_ack(DiveCAN.DUT_ID, 1)
+    message2 = divecan_client.listen_for_menu(1, DiveCAN.DUT_ID)
+    message3 = divecan_client.listen_for_menu(1, DiveCAN.DUT_ID)
+    actualVal = (message2.data[7] << 56) | (message3.data[1] << 48) | (message3.data[2] << 40) | (message3.data[3] << 32) | (message3.data[4] << 24) | (message3.data[5] << 16) | (message3.data[6] << 8) | message3.data[7]
+    return actualVal
+
+def WriteConfigByte(divecan_client: DiveCAN.DiveCAN, index: int, conf_byte: int):
+    divecan_client.flush_rx()
+    divecan_client.send_menu_value(DiveCAN.DUT_ID, 1, index, conf_byte)
+    divecan_client.listen_for_menu(1, DiveCAN.DUT_ID) # Wait for the ack
+    divecan_client.send_menu_ack(DiveCAN.DUT_ID, 1)
+    divecan_client.listen_for_menu(1, DiveCAN.DUT_ID) # Wait for the ack pt 2
+
+def read_board_config(divecan_client: DiveCAN.DiveCAN) -> Configuration:
+    bits = 0
+    for i in range(0,4):
+        bits |= ReadConfigByte(divecan_client, i+1) << (i*8)
+    return Configuration.from_bits(bits)
+      
+
+def configureBoard(divecan_client: DiveCAN.DiveCAN, configuration: Configuration):
+    config_changed = False
+    for i in range(0,4):
+        expected_byte = configuration.getByte(i)
+        currentByte = ReadConfigByte(divecan_client, i+1)
+        if expected_byte != currentByte:
+            WriteConfigByte(divecan_client, i+1, expected_byte)
+            currentByte = ReadConfigByte(divecan_client, i+1)
+
+            # Ensure that the byte took
+            assert currentByte == expected_byte
+            config_changed = True
+    
+    if config_changed:
+        DiveCAN.resetBoard(divecan_client)
+        # Assert the bytes post reset, ensures the config wasn't rejected
+        for i in range(0,4):
+            expected_byte = configuration.getByte(i)
+            currentByte = ReadConfigByte(divecan_client, i+1)
+            assert currentByte == expected_byte 
+
+
 # Configs which are explicitly not supported
 def UnsupportedConfigurations():    
     configurations = []
