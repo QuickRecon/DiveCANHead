@@ -3,6 +3,7 @@ import can
 import time
 import pytest
 from enum import IntEnum
+import struct
 
 DUT_ID = 4
 
@@ -120,6 +121,18 @@ class DiveCAN(object):
         tx_msg = can.Message(arbitration_id = 0xD030004, data=[0x64,0x03,0xf6])
         self._bus.send(tx_msg)
 
+    def send_proportional_gain(self, gain:float) -> None:
+        tx_msg = can.Message(arbitration_id = 0xF100000, data=bytearray(struct.pack("d", gain)) )
+        self._bus.send(tx_msg)
+
+    def send_integral_gain(self, gain:float) -> None:
+        tx_msg = can.Message(arbitration_id = 0xF110000, data=bytearray(struct.pack("d", gain)) )
+        self._bus.send(tx_msg)
+
+    def send_derivative_gain(self, gain:float) -> None:
+        tx_msg = can.Message(arbitration_id = 0xF120000, data=bytearray(struct.pack("d", gain)) )
+        self._bus.send(tx_msg)
+
     def listen_for_id(self) -> can.Message:
         return self._rx_msg(0xD000004)
 
@@ -147,6 +160,31 @@ class DiveCAN(object):
     def listen_for_menu(self, target_id: int, src_id: int) -> can.Message:
         msg_id = 0xD0A0000 | src_id | (target_id << 8)
         return self._rx_msg(msg_id)
+    
+    def listen_for_proportional_gain(self) -> float:
+        msg = self._rx_msg(0xF100004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+    
+    def listen_for_integral_gain(self) -> float:
+        msg = self._rx_msg(0xF110004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+    
+    def listen_for_derivative_gain(self) -> float:
+        msg = self._rx_msg(0xF120004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+
+    def listen_for_integral_state(self) -> float:
+        msg = self._rx_msg(0xF130004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+    
+    def listen_for_derivative_state(self) -> float:
+        msg = self._rx_msg(0xF140004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+    
+    def listen_for_solenoid_duty_cycle(self) -> float:
+        msg = self._rx_msg(0xF150004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+    
 
 def resetBoard(divecan_client: DiveCAN):
     divecan_client.send_bootloader()

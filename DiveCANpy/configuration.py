@@ -138,7 +138,7 @@ def UnsupportedConfigurations():
 def UnableConfigurations():    
     configurations = []
     powerParameterSet = itertools.product(CellType,CellType,CellType,[PowerSelectMode.MODE_BATTERY, PowerSelectMode.MODE_CAN, PowerSelectMode.MODE_OFF], OxygenCalMethod,[True, False],VoltageThreshold,PPO2ControlScheme) # No battery power
-    noPrinting = itertools.product(CellType,CellType,CellType,PowerSelectMode, OxygenCalMethod,[False],VoltageThreshold,PPO2ControlScheme) # Too scary
+    noPrinting = itertools.product(CellType,CellType,CellType,PowerSelectMode, OxygenCalMethod,[True],VoltageThreshold,PPO2ControlScheme) # Interference
     unsupportedParameterSet = list(powerParameterSet) + list(noPrinting)
 
     for parameterTuple in unsupportedParameterSet:
@@ -166,6 +166,11 @@ def SupportedConfigurations():
 
 def AnalogConfigurations():
      tests =  [conf.values[0] for conf in SupportedConfigurations() if (conf.values[0].cell1 is CellType.CELL_ANALOG or conf.values[0].cell2 is CellType.CELL_ANALOG or conf.values[0].cell3 is CellType.CELL_ANALOG) and conf.values[0].calMethod is OxygenCalMethod.CAL_ANALOG_ABSOLUTE]
+     testCases = [pytest.param(case,id=f'{hex(case.getBits())}') for case in tests]
+     return testCases
+
+def PIDConfigurations():
+     tests =  [conf.values[0] for conf in SupportedConfigurations() if conf.values[0].PPO2ControlMode is PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID]
      testCases = [pytest.param(case,id=f'{hex(case.getBits())}') for case in tests]
      return testCases
 

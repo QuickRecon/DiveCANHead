@@ -4,16 +4,16 @@ from  DiveCANpy import configuration
 import HWShim
 import utils
 
-@pytest.mark.parametrize("configuration", configuration.SupportedConfigurations())
-def test_change_configuration_valid(divecan_client: DiveCAN.DiveCAN, configuration: configuration.Configuration):
-    configuration.configureBoard(divecan_client, configuration) # This fully validates the config switch
+@pytest.mark.parametrize("config", configuration.SupportedConfigurations())
+def test_change_configuration_valid(divecan_client: DiveCAN.DiveCAN, config: configuration.Configuration):
+    configuration.configureBoard(divecan_client, config) # This fully validates the config switch
 
 
-@pytest.mark.parametrize("configuration", configuration.UnsupportedConfigurations())
-def test_change_configuration_invalid(divecan_client: DiveCAN.DiveCAN, configuration: configuration.Configuration):
+@pytest.mark.parametrize("config", configuration.UnsupportedConfigurations())
+def test_change_configuration_invalid(divecan_client: DiveCAN.DiveCAN, config: configuration.Configuration):
     # Expect this to bounce
     with pytest.raises(Exception):
-        configuration.configureBoard(divecan_client, configuration) # This fully validates the config switch
+        configuration.configureBoard(divecan_client, config) # This fully validates the config switch
 
 def test_change_configuration_resets_calibration(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim):
     allAnalogConfig = configuration.Configuration(configuration.FIRMWARE_VERSION, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.PowerSelectMode.MODE_CAN, configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE, True, configuration.VoltageThreshold.V_THRESHOLD_9V, configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
