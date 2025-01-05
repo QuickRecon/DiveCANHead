@@ -80,7 +80,7 @@ void PrinterTask(void *arg)
         {
             if (taskParams->printEnable)
             {
-                txLogText(DIVECAN_CONTROLLER, printItem.string, (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH));
+                txLogText(DIVECAN_SOLO, printItem.string, (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH));
             }
             LogMsg(printItem.string);
         }

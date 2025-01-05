@@ -270,7 +270,7 @@ void PPO2ControlTask(void *arg)
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
         *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
 
-        txPIDState(DIVECAN_CONTROLLER,
+        txPIDState(DIVECAN_SOLO,
                    (params->pidState).proportionalGain,
                    (params->pidState).integralGain,
                    (params->pidState).derivativeGain,
