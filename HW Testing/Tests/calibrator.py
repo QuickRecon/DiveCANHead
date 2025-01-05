@@ -5,7 +5,7 @@ from  DiveCANpy import configuration
 import psu
 import time
 
-divecan_client = DiveCAN.DiveCAN()
+divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
 shim_host = HWShim.HWShim()
 pwr = psu.PSU()
 

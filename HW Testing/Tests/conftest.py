@@ -9,7 +9,7 @@ import psu
 @pytest.fixture()
 def divecan_client() -> DiveCAN.DiveCAN:
    """ Test fixture for a simple DiveCAN interface """
-   return DiveCAN.DiveCAN()
+   return DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
 
 
 @pytest.fixture()
@@ -24,7 +24,7 @@ def shim_host() -> HWShim.HWShim:
 def config_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]:
    """ Test fixture for a DiveCAN interface, configure and calibrate the board """
    #psu.setDefaultPower()
-   divecan_client = DiveCAN.DiveCAN()
+   divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
    utils.configureBoard(divecan_client, request.param)
    return (divecan_client, shim_host, request.param)
@@ -33,7 +33,7 @@ def config_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, conf
 def config_divecan_client_millis(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]:
    """ Test fixture for a DiveCAN interface, configure and calibrate the board """
    #psu.setDefaultPower()
-   divecan_client = DiveCAN.DiveCAN()
+   divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
    utils.configureBoard(divecan_client, request.param)
    return (divecan_client, shim_host, request.param)
@@ -42,7 +42,7 @@ def config_divecan_client_millis(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShi
 def config_and_cal_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]:
    """ Test fixture for a DiveCAN interface, configure and calibrate the board """
    #psu.setDefaultPower()
-   divecan_client = DiveCAN.DiveCAN()
+   divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
    utils.configureBoard(divecan_client, request.param)
    utils.ensureCalibrated(divecan_client, shim_host)
@@ -53,7 +53,7 @@ def config_and_cal_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWSh
 def config_and_power_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]:
    """ Test fixture for a DiveCAN interface, configure and calibrate the board """
    psu.setDefaultPower()
-   divecan_client = DiveCAN.DiveCAN()
+   divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
    pwr = psu.PSU()
    utils.configureBoard(divecan_client, request.param)
@@ -63,7 +63,7 @@ def config_and_power_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HW
 def config_and_cal_and_power_divecan_client(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]:
    """ Test fixture for a DiveCAN interface, configure and calibrate the board """
    psu.setDefaultPower()
-   divecan_client = DiveCAN.DiveCAN()
+   divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
    shim_host = HWShim.HWShim()
    pwr = psu.PSU()
    utils.configureBoard(divecan_client, request.param)

@@ -1,9 +1,11 @@
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import HWShim
 from  DiveCANpy import configuration
 import time
 
 PPO2_TEST_SPAN = [0,18,20,70,100,130,160,250]
+
+DIVECAN_ADAPTOR_PATH = '/dev/ttyACM1'
 
 def resetBoard(divecan_client: DiveCAN.DiveCAN):
     divecan_client.send_bootloader()

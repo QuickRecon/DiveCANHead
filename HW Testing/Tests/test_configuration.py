@@ -1,4 +1,4 @@
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import pytest
 from  DiveCANpy import configuration
 import HWShim

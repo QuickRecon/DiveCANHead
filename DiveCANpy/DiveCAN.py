@@ -18,9 +18,9 @@ class DiveCANNoMessageException(Exception):
 
 class DiveCAN(object):
     """ Class to send and receive DiveCAN messages to the DUT """
-    def __init__(self) -> None:
+    def __init__(self, device: str) -> None:
         try:
-            self._bus = can.interface.Bus(interface='slcan', channel='/dev/ttyACM1', bitrate=125000)
+            self._bus = can.interface.Bus(interface='slcan', channel=device, bitrate=125000)
 
             # Half a second for stuff we request
             self._timeout = 0.1
@@ -62,45 +62,50 @@ class DiveCAN(object):
         tx_msg = can.Message(arbitration_id = 0x79, data=[], is_extended_id = False)
         self._bus.send(tx_msg)
 
+    def send_setpoint(self, src_id: int, setpoint: int):
+        msg_id = 0xDC90000 | src_id
+        tx_msg = can.Message(arbitration_id = msg_id, data=[setpoint])
+        self._bus.send(tx_msg)
+
     def send_bootloader_go(self) -> None:
         tx_msg = can.Message(arbitration_id = 0x21, data=[0x08, 0x00, 0x00, 0x00], is_extended_id = False)
         self._bus.send(tx_msg)
 
     def send_menu_req(self, target_id: int, src_id: int) -> None:
-        id = 0xd0a0000 | src_id | (target_id << 8)
-        tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, 0x0, 0x0, 0x0, 0x0])
+        msg_id = 0xd0a0000 | src_id | (target_id << 8)
+        tx_msg = can.Message(arbitration_id = msg_id, data=[0x4, 0x0, 0x22, 0x91, 0x0, 0x0, 0x0, 0x0])
         self._bus.send(tx_msg)
 
-    def send_menu_field(self, target_id: int, src_id: int, menuItem: int, itemNumber: int) -> None:
-        id = 0xd0a0000 | src_id | (target_id << 8)
-        req = itemNumber | ((menuItem +1)<<5)
-        tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, req, 0x0, 0x0, 0x0])
+    def send_menu_field(self, target_id: int, src_id: int, menu_item: int, item_number: int) -> None:
+        msg_id = 0xd0a0000 | src_id | (target_id << 8)
+        req = item_number | ((menu_item +1)<<5)
+        tx_msg = can.Message(arbitration_id = msg_id, data=[0x4, 0x0, 0x22, 0x91, req, 0x0, 0x0, 0x0])
         self._bus.send(tx_msg)
 
     def send_menu_item(self, target_id: int, src_id: int, item_idx: int) -> None:
-        id = 0xd0a0000 | src_id | (target_id << 8)
+        msg_id = 0xd0a0000 | src_id | (target_id << 8)
         idx = 0x10 | item_idx
-        tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, idx, 0x0, 0x0, 0x0])
+        tx_msg = can.Message(arbitration_id = msg_id, data=[0x4, 0x0, 0x22, 0x91, idx, 0x0, 0x0, 0x0])
         self._bus.send(tx_msg)
 
     def send_menu_flag(self, target_id: int, src_id: int, item_idx: int) -> None:
-        id = 0xd0a0000 | src_id | (target_id << 8)
+        msg_id = 0xd0a0000 | src_id | (target_id << 8)
         idx = 0x30 | item_idx
-        tx_msg = can.Message(arbitration_id = id, data=[0x4, 0x0, 0x22, 0x91, idx, 0x0, 0x0, 0x0])
+        tx_msg = can.Message(arbitration_id = msg_id, data=[0x4, 0x0, 0x22, 0x91, idx, 0x0, 0x0, 0x0])
         self._bus.send(tx_msg)
 
     def send_menu_value(self, target_id: int, src_id: int, item_idx: int, value: int) -> None:
-        id = 0xd0a0000 | src_id | (target_id << 8)
+        msg_id = 0xd0a0000 | src_id | (target_id << 8)
         idx = 0x50 | item_idx
-        tx_msg = can.Message(arbitration_id = id, data=[0x10, 0x8, 0x0, 0x2e, 0x93, idx, 0x0, 0x0])
+        tx_msg = can.Message(arbitration_id = msg_id, data=[0x10, 0x8, 0x0, 0x2e, 0x93, idx, 0x0, 0x0])
         self._bus.send(tx_msg)
 
-        tx_msg = can.Message(arbitration_id = id, data=[0x21, 0x0, value, 0x0, 0x0, 0x0, 0x0, 0x0])
+        tx_msg = can.Message(arbitration_id = msg_id, data=[0x21, 0x0, value, 0x0, 0x0, 0x0, 0x0, 0x0])
         self._bus.send(tx_msg)
 
     def send_menu_ack(self, target_id: int, src_id: int):
-        id = 0xd0a0000 | src_id | (target_id << 8)
-        tx_msg = can.Message(arbitration_id = id, data=[0x30, 0x23, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0])
+        msg_id = 0xd0a0000 | src_id | (target_id << 8)
+        tx_msg = can.Message(arbitration_id = msg_id, data=[0x30, 0x23, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0])
         self._bus.send(tx_msg)
 
     def send_id(self, id: int) -> None:
@@ -140,5 +145,5 @@ class DiveCAN(object):
         return self._rx_msg_timed(0xD120004, 5)
     
     def listen_for_menu(self, target_id: int, src_id: int) -> can.Message:
-        id = 0xD0A0000 | src_id | (target_id << 8)
-        return self._rx_msg(id)
+        msg_id = 0xD0A0000 | src_id | (target_id << 8)
+        return self._rx_msg(msg_id)
