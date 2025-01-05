@@ -1,8 +1,8 @@
 """ Ensure that the board responds to calibration requests """
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import time
 import HWShim
-import configuration
+from  DiveCANpy import configuration
 import utils
 
 def test_calibrate(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:

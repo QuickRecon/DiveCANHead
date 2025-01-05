@@ -1,7 +1,7 @@
 import HWShim
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import utils
-import configuration
+from  DiveCANpy import configuration
 import psu
 import time
 

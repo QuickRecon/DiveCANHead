@@ -1,6 +1,6 @@
 import DiveCAN
 import HWShim
-import configuration
+from  DiveCANpy import configuration
 import time
 
 PPO2_TEST_SPAN = [0,18,20,70,100,130,160,250]

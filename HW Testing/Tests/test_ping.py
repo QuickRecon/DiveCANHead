@@ -1,9 +1,9 @@
 """ Assert that when we send an ID message onto the bus, we get the correct messages back from the board """
 """ indicating a response to the ping """
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import HWShim
 import pytest
-import configuration
+from  DiveCANpy import configuration
 
 @pytest.mark.parametrize("device_id", [1,3])
 def test_ping_response_id(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], device_id: int) -> None:

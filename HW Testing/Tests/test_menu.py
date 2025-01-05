@@ -1,8 +1,8 @@
 """ Assert that the menu interface works as expected and we can rx and tx configs as needed """
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import HWShim
 import pytest
-import configuration
+from  DiveCANpy import configuration
 import subprocess
 
 expectedMenuCount = 5

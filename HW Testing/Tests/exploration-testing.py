@@ -1,9 +1,9 @@
 # IMPORTANT: CONTENTS OF THIS FILE IS NOT PART OF THE STANDARD TEST SUITE, THIS IS FOR PROTOTYPING NEW TEST CASES OR UNDERTAKE LONG RUNNING ENDURANCE TESTING
 
 import HWShim
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import utils
-import configuration
+from  DiveCANpy import configuration
 import psu
 import time
 

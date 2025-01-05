@@ -1,10 +1,10 @@
 """ Ensure that the PPO2 reported by the board matches the PPO2 signals sent to the board  """
 import psu
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import HWShim
 import time
 import pytest
-import configuration
+from  DiveCANpy import configuration
 import utils
 
 @pytest.mark.parametrize("c1Val", range(0, 250, 36))

@@ -1,5 +1,5 @@
 """ Ensure that we can get into the bootloader, and pinging drops us back out """
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import HWShim
 import time
 import pytest

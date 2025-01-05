@@ -1,6 +1,6 @@
 import DiveCAN
 import pytest
-import configuration
+from  DiveCANpy import configuration
 import HWShim
 import utils
 

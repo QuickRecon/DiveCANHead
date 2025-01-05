@@ -1,9 +1,9 @@
 """ pytest configuration, contains definitions for all the fixtures """
 import pytest
 import HWShim
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import utils
-import configuration
+from  DiveCANpy import configuration
 import psu
 
 @pytest.fixture()

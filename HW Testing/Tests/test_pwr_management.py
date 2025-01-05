@@ -1,9 +1,9 @@
 """ Ensure we can power cycle the board """
-import DiveCAN
+from  DiveCANpy import DiveCAN
 import HWShim
 import time
 import pytest
-import configuration
+from  DiveCANpy import configuration
 import psu
 import utils
 
