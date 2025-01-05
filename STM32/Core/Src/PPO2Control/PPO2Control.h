@@ -24,6 +24,10 @@ extern "C"
     void setAtmoPressure(uint16_t pressure);
     uint16_t getAtmoPressure(void);
 
+    void setProportionalGain(PIDNumeric_t gain);
+    void setIntegralGain(PIDNumeric_t gain);
+    void setDerivativeGain(PIDNumeric_t gain);
+
 #ifdef __cplusplus
 }
 #endif

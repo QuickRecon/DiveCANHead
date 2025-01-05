@@ -8,18 +8,10 @@
 #include "../errors.h"
 
 static PPO2_t setpoint = 70;
-
-typedef struct
-{
-    QueueHandle_t c1;
-    QueueHandle_t c2;
-    QueueHandle_t c3;
-} PPO2ControlTask_params_t;
-
 typedef struct
 {
     /* PID State parameters */
-    PIDNumeric_t derState;
+    PIDNumeric_t derivativeState;
     PIDNumeric_t integralState;
 
     /* Integral Maximum Limits, set to the maximum and minium of the drive range */
@@ -34,6 +26,13 @@ typedef struct
     /* Track how many PID cycles we remain in integral saturation, used to detect solenoid failure */
     uint16_t saturationCount;
 } PIDState_t;
+typedef struct
+{
+    QueueHandle_t c1;
+    QueueHandle_t c2;
+    QueueHandle_t c3;
+    PIDState_t pidState;
+} PPO2ControlTask_params_t;
 
 void setSetpoint(PPO2_t ppo2)
 {
@@ -90,18 +89,47 @@ bool getSolenoidEnable(void)
     return *getSolenoidEnablePtr();
 }
 
+static PPO2ControlTask_params_t *getControlParams(void)
+{
+    static PPO2ControlTask_params_t params = {
+        .c1 = NULL,
+        .c2 = NULL,
+        .c3 = NULL,
+        .pidState = {
+            .derivativeState = 0.0f,
+            .integralState = 0.0f,
+            .integralMax = 1.0f,
+            .integralMin = 0.0f,
+            .integralGain = 0.01f,
+            .proportionalGain = 1.0f,
+            .derivativeGain = 0.0f,
+            .saturationCount = 0,
+        }};
+    return &params;
+}
+
+void setProportionalGain(PIDNumeric_t gain)
+{
+    getControlParams()->pidState.proportionalGain = gain;
+}
+void setIntegralGain(PIDNumeric_t gain)
+{
+    getControlParams()->pidState.integralGain = gain;
+}
+void setDerivativeGain(PIDNumeric_t gain)
+{
+    getControlParams()->pidState.derivativeGain = gain;
+}
+
 void PPO2ControlTask(void *arg);
 void SolenoidFireTask(void *arg);
 
 void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
 {
-    static PPO2ControlTask_params_t taskParams;
-    PPO2ControlTask_params_t params = {
-        .c1 = c1,
-        .c2 = c2,
-        .c3 = c3};
-
-    taskParams = params;
+    PPO2ControlTask_params_t *params = getControlParams();
+    params->c1 = c1;
+    params->c2 = c2;
+    params->c3 = c3;
 
     PIDNumeric_t *dutyCycle = getDutyCyclePtr();
     *dutyCycle = 0;
@@ -120,7 +148,7 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
         .reserved = 0};
 
     osThreadId_t *PPO2ControllerTaskHandle = getPPO2_OSThreadId();
-    *PPO2ControllerTaskHandle = osThreadNew(PPO2ControlTask, &taskParams, &PPO2ControlTask_attributes);
+    *PPO2ControllerTaskHandle = osThreadNew(PPO2ControlTask, params, &PPO2ControlTask_attributes);
 
     static uint32_t SolenoidFireTask_buffer[SOLENOIDFIRETASK_STACK_SIZE];
     static StaticTask_t SolenoidFireTask_ControlBlock;
@@ -136,7 +164,7 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
         .reserved = 0};
 
     osThreadId_t *SolenoidFireTaskHandle = getSolenoid_OSThreadId();
-    *SolenoidFireTaskHandle = osThreadNew(SolenoidFireTask, &taskParams, &SolenoidFireTask_attributes);
+    *SolenoidFireTaskHandle = osThreadNew(SolenoidFireTask, params, &SolenoidFireTask_attributes);
 }
 
 void SolenoidFireTask(void *)
@@ -211,8 +239,8 @@ PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDSta
     iTerm = state->integralState;
 
     /* derivative term */
-    dTerm = state->derivativeGain * (state->derState - measurement);
-    state->derState = measurement;
+    dTerm = state->derivativeGain * (state->derivativeState - measurement);
+    state->derivativeState = measurement;
 
     return pTerm + dTerm + iTerm;
 }
@@ -222,17 +250,6 @@ void PPO2ControlTask(void *arg)
     PPO2ControlTask_params_t *params = (PPO2ControlTask_params_t *)arg;
 
     uint32_t PIDPeriod = 100; /* 100ms period */
-
-    PIDState_t pidState = {
-        .derState = 0.0f,
-        .integralState = 0.0f,
-        .integralMax = 1.0f,
-        .integralMin = 0.0f,
-        .integralGain = 0.01f,
-        .proportionalGain = 1.0f,
-        .derivativeGain = 0.0f,
-        .saturationCount = 0,
-    };
 
     do
     {
@@ -251,7 +268,15 @@ void PPO2ControlTask(void *arg)
         PIDNumeric_t measurement = (PIDNumeric_t)consensus.consensus / 100.0f;
 
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
-        *dutyCycle = updatePID(d_setpoint, measurement, &pidState);
+        *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
+
+        txPIDState(DIVECAN_CONTROLLER,
+                   (params->pidState).proportionalGain,
+                   (params->pidState).integralGain,
+                   (params->pidState).derivativeGain,
+                   (params->pidState).integralState,
+                   (params->pidState).derivativeState,
+                   *dutyCycle);
 
         (void)osDelay(pdMS_TO_TICKS(PIDPeriod));
     } while (RTOS_LOOP_FOREVER);

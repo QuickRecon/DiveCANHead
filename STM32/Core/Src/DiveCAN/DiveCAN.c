@@ -1,4 +1,5 @@
 #include "DiveCAN.h"
+#include <string.h>
 #include "cmsis_os.h"
 #include "../Sensors/OxygenCell.h"
 #include "menu.h"
@@ -16,6 +17,9 @@ void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
 void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void updatePIDPGain(const DiveCANMessage_t *const message);
+void updatePIDIGain(const DiveCANMessage_t *const message);
+void updatePIDDGain(const DiveCANMessage_t *const message);
 
 static const uint8_t DIVECAN_TYPE_MASK = 0xF;
 static const uint8_t BATTERY_FLOAT_TO_INT_SCALER = 10;
@@ -109,6 +113,15 @@ void CANTask(void *arg)
             case BUS_MENU_OPEN_ID:
                 /* Ignore messages */
                 break;
+            case PID_P_GAIN_ID:
+                updatePIDPGain(&message);
+                break;
+            case PID_I_GAIN_ID:
+                updatePIDIGain(&message);
+                break;
+            case PID_D_GAIN_ID:
+                updatePIDDGain(&message);
+                break;
             default:
                 serial_printf("Unknown message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message_id,
                               message.data[0], message.data[1], message.data[2], message.data[3], message.data[4], message.data[5], message.data[6], message.data[7]);
@@ -188,4 +201,20 @@ void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *)
         (void)osDelay(TIMEOUT_100MS_TICKS);
     }
     serial_printf("Shutdown attempted but timed out due to missing en signal");
+}
+
+void updatePIDPGain(const DiveCANMessage_t *const message){
+    PIDNumeric_t gain = 0;
+    (void)memcpy(&gain, message->data, sizeof(PIDNumeric_t));
+    setProportionalGain(gain);
+}
+void updatePIDIGain(const DiveCANMessage_t *const message){
+    PIDNumeric_t gain = 0;
+    (void)memcpy(&gain, message->data, sizeof(PIDNumeric_t));
+    setIntegralGain(gain);
+}
+void updatePIDDGain(const DiveCANMessage_t *const message){
+    PIDNumeric_t gain = 0;
+    (void)memcpy(&gain, message->data, sizeof(PIDNumeric_t));
+    setDerivativeGain(gain);
 }

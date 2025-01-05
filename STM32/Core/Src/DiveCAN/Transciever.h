@@ -34,6 +34,18 @@ extern "C"
   static const uint32_t PPO2_STATUS_ID = 0xDCA0000;
   static const uint32_t BUS_STATUS_ID = 0xDCB0000;
 
+  /* Extensions, these are not part of the standard but we use it for debugging, and adv features the shearwater doesn't natively support */
+  /* We're using higher IDs here so they get arbitrated away if other things are happening */
+  static const uint32_t LOG_TEXT_ID = 0xF000000;
+
+  /* PID internal state */
+  static const uint32_t PID_P_GAIN_ID = 0xF100000;
+  static const uint32_t PID_I_GAIN_ID = 0xF110000;
+  static const uint32_t PID_D_GAIN_ID = 0xF120000;
+  static const uint32_t PID_I_STATE_ID = 0xF130000;
+  static const uint32_t PID_D_STATE_ID = 0xF140000;
+  static const uint32_t SOLENOID_DUTY_ID = 0xF150000;
+
 #define MAX_CAN_RX_LENGTH 8
 
   /**
@@ -215,6 +227,8 @@ extern "C"
   void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t fieldId);
   void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, uint64_t maxVal, uint64_t currentVal);
   void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText);
+  void txLogText(const DiveCANType_t deviceType, const char *msg, uint16_t length);
+  void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, PIDNumeric_t integral_gain, PIDNumeric_t derivative_gain, PIDNumeric_t integral_state, PIDNumeric_t derivative_state, PIDNumeric_t duty_cycle);
 #ifdef __cplusplus
 }
 #endif

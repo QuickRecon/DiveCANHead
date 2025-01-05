@@ -35,13 +35,13 @@ static QueueHandle_t *getQueueHandle(void)
 
 typedef struct
 {
-    bool uartEnable;
+    bool printEnable;
 } PrinterTask_params_t;
 
-void InitPrinter(bool uartOut)
+void InitPrinter(bool printToCanbus)
 {
     static PrinterTask_params_t params = {0};
-    params.uartEnable = uartOut;
+    params.printEnable = printToCanbus;
 
     /* Setup task */
     static uint32_t PrinterTask_buffer[PRINTER_STACK_SIZE];
@@ -75,20 +75,12 @@ void PrinterTask(void *arg)
     {
         PrintQueue_t printItem = {0};
 
-        /* Wait until there is an item in the queue, if there is then print it over the uart */
+        /* Wait until there is an item in the queue, if there is then print it over the canbus */
         if (pdTRUE == xQueueReceive(*printQueue, &printItem, TIMEOUT_4s_TICKS))
         {
-            /* Printing is non-critical so shout our data at the peripheral and if it doesn't make it then we don't really care
-             * Better to be fast here and get back to keeping the diver alive rather than printing to a console that may or may not exist
-             * TODO(Aren): this is a blocking call, this is bad
-             */
-            if (taskParams->uartEnable)
+            if (taskParams->printEnable)
             {
-                while (huart2.gState != HAL_UART_STATE_READY)
-                {
-                    (void)osDelay(TIMEOUT_5MS);
-                }
-                (void)HAL_UART_Transmit(&huart2, (uint8_t *)(printItem.string), (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH), TIMEOUT_4s_TICKS);
+                txLogText(DIVECAN_CONTROLLER, printItem.string, (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH));
             }
             LogMsg(printItem.string);
         }
@@ -105,7 +97,7 @@ void vprint(const char *fmt, va_list argp)
     }
 }
 
-/** @brief Print string to UART2
+/** @brief Print string to canbus and log
  *  @param fmt printf-style format string
  *  @param  parameters
  */
@@ -117,6 +109,7 @@ void serial_printf(const char *fmt, ...)
     va_end(argp);
 }
 
+/* TODO(Aren), find a way to shoot this out over the canbus*/
 void blocking_serial_printf(const char *fmt, ...)
 {
     va_list argp = {0};
