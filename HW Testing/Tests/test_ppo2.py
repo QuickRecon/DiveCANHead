@@ -26,14 +26,6 @@ def test_ppo2(config_and_cal_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShi
     utils.assertCell(config.cell2, message.data[2], c2Val)
     utils.assertCell(config.cell3, message.data[3], c3Val)
 
-@pytest.fixture(params=configuration.MillivoltConfigurations())
-def config_divecan_client_millivolts(request: pytest.FixtureRequest) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, int, int, int]:
-   """ Test fixture for a DiveCAN interface, configure and calibrate the board """
-   divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
-   shim_host = HWShim.HWShim()
-   configuration.configureBoard(divecan_client, request.param[0])
-   return (divecan_client, shim_host, request.param[0], request.param[1],request.param[2],request.param[3])
-
 def test_millivolts(config_divecan_client_millivolts: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, int, int, int]) -> None:
     divecan_client, shim_host, config, c1Val, c2Val, c3Val= config_divecan_client_millivolts
 
@@ -102,7 +94,7 @@ def test_concensus_excludes_outlier(config_and_cal_divecan_client: tuple[DiveCAN
 
 
 # Regression test for ADC2 not coming online when power is first applied
-def test_power_on_adc_function(divecan_client: DiveCAN.DiveCAN, shim_host: HWShim.HWShim):
+def test_power_on_adc_function(divecan_client_fixture: DiveCAN.DiveCAN, shim_host: HWShim.HWShim):
     config = configuration.Configuration(configuration.FIRMWARE_VERSION,
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.CellType.CELL_ANALOG,
@@ -113,7 +105,7 @@ def test_power_on_adc_function(divecan_client: DiveCAN.DiveCAN, shim_host: HWShi
                                          configuration.VoltageThreshold.V_THRESHOLD_9V,
                                          configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
     psu.setDefaultPower()
-    configuration.configureBoard(divecan_client, config)
+    configuration.configureBoard(divecan_client_fixture, config)
 
     c1Val = 10
     c2Val = 30
@@ -125,12 +117,12 @@ def test_power_on_adc_function(divecan_client: DiveCAN.DiveCAN, shim_host: HWShi
 
     psu.setOff()
     psu.setDefaultPower()
-    divecan_client.flush_rx()
-    message = divecan_client.listen_for_millis()
+    divecan_client_fixture.flush_rx()
+    message = divecan_client_fixture.listen_for_millis()
     time.sleep(3)
 
-    divecan_client.flush_rx()
-    message = divecan_client.listen_for_millis()
+    divecan_client_fixture.flush_rx()
+    message = divecan_client_fixture.listen_for_millis()
 
     assert message.arbitration_id == 0xD110004
 

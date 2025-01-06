@@ -20,22 +20,19 @@ class DiveCANNoMessageException(Exception):
 class DiveCAN(object):
     """ Class to send and receive DiveCAN messages to the DUT """
     def __init__(self, device: str) -> None:
-        try:
-            self._bus = can.interface.Bus(interface='slcan', channel=device, bitrate=125000)
+        self._bus = can.interface.Bus(interface='slcan', channel=device, bitrate=125000)
 
-            # Half a second for stuff we request
-            self._timeout = 0.1
+        # Half a second for stuff we request
+        self._timeout = 0.1
 
-            # 2 Seconds for listening for periodic receives
-            self._poll_timeout = 2
+        # 2 Seconds for listening for periodic receives
+        self._poll_timeout = 2
 
-            # Make a listener, consume the socket
-            self.reader = can.BufferedReader()
-            self.notifier = can.Notifier(self._bus, [self.reader])
-            while self.reader.get_message(0) is not None:
-                self.reader.get_message(0)
-        except Exception: 
-            pytest.skip("Cannot open CANBus")
+        # Make a listener, consume the socket
+        self.reader = can.BufferedReader()
+        self.notifier = can.Notifier(self._bus, [self.reader])
+        while self.reader.get_message(0) is not None:
+            self.reader.get_message(0)
 
     def __del__(self)-> None:
         if hasattr(self, 'notifier'):

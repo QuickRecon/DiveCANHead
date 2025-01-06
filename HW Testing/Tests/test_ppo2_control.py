@@ -9,25 +9,6 @@ import utils
 
 eps = 0.0001
 
-@pytest.fixture(params=configuration.PIDConfigurations())
-def config_divecan_client_solenoid(request: pytest.FixtureRequest) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]:
-   """ Test fixture for a DiveCAN interface, configure and calibrate the board """
-   divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
-   shim_host = HWShim.HWShim()
-   configuration.configureBoard(divecan_client, request.param)
-   return (divecan_client, shim_host, request.param)
-
-@pytest.fixture(params=configuration.PIDConfigurations())
-def config_and_cal_divecan_client_solenoid(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]:
-   """ Test fixture for a DiveCAN interface, configure and calibrate the board """
-   #psu.setDefaultPower()
-   divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
-   shim_host = HWShim.HWShim()
-   configuration.configureBoard(divecan_client, request.param)
-   utils.ensureCalibrated(divecan_client, shim_host)
-   return (divecan_client, shim_host, request.param)
-
-
 def test_PID_values_update(config_divecan_client_solenoid: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]):
    divecan_client, shim_host, config = config_divecan_client_solenoid
    p_gain = 2
