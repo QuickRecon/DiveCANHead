@@ -17,6 +17,16 @@ def config_divecan_client_solenoid(request: pytest.FixtureRequest) -> tuple[Dive
    configuration.configureBoard(divecan_client, request.param)
    return (divecan_client, shim_host, request.param)
 
+@pytest.fixture(params=configuration.PIDConfigurations())
+def config_and_cal_divecan_client_solenoid(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]:
+   """ Test fixture for a DiveCAN interface, configure and calibrate the board """
+   #psu.setDefaultPower()
+   divecan_client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
+   shim_host = HWShim.HWShim()
+   configuration.configureBoard(divecan_client, request.param)
+   utils.ensureCalibrated(divecan_client, shim_host)
+   return (divecan_client, shim_host, request.param)
+
 
 def test_PID_values_update(config_divecan_client_solenoid: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]):
    divecan_client, shim_host, config = config_divecan_client_solenoid
@@ -66,9 +76,9 @@ def test_PID_values_update(config_divecan_client_solenoid: tuple[DiveCAN.DiveCAN
 @pytest.mark.parametrize("c1Val", range(0, 250, 36))
 @pytest.mark.parametrize("c2Val", range(0, 250, 36))
 @pytest.mark.parametrize("c3Val", range(0, 250, 36))
-def test_ppo2_precision_matches_OEM(config_divecan_client_solenoid: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], c1Val: int, c2Val: int, c3Val: int) -> None:
+def test_ppo2_precision_matches_OEM(config_and_cal_divecan_client_solenoid: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], c1Val: int, c2Val: int, c3Val: int) -> None:
     """ Test that digital cell reports PPO2 correctly """
-    divecan_client, shim_host, config = config_divecan_client_solenoid
+    divecan_client, shim_host, config = config_and_cal_divecan_client_solenoid
 
     utils.configureCell(shim_host, 1, config.cell1, c1Val)
     utils.configureCell(shim_host, 2, config.cell2, c2Val)
