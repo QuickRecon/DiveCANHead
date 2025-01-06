@@ -214,7 +214,7 @@ CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
 # LDFLAGS
 #######################################
 # link script
-LDSCRIPT = STM32L431RCTx_FLASH.ld
+LDSCRIPT = stm32l431rctx_flash.ld
 
 # libraries
 LIBS = -lc -lm -lnosys 
