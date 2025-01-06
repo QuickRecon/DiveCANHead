@@ -132,7 +132,7 @@ void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
     }
 
     PPO2 = (PPO2_t)(handle->cellSample / HPA_PER_BAR);
-    PIDNumeric_t precision_PPO2 = ((PIDNumeric_t)handle->cellSample / (PIDNumeric_t)HPA_PER_BAR)/100.0f;
+    PIDNumeric_t precision_PPO2 = ((PIDNumeric_t)handle->cellSample / (PIDNumeric_t)HPA_PER_BAR) / 100.0f;
     /* Lodge the cell data*/
     OxygenCell_t cellData = {
         .cellNumber = handle->cellNumber,

@@ -117,7 +117,7 @@ __PACKED_STRUCT T_UINT32_READ { uint32_t v; };
 #define __RESTRICT __restrict
 #endif
 #ifndef __COMPILER_BARRIER
-#define __COMPILER_BARRIER() __ASM volatile("" :: : "memory")
+#define __COMPILER_BARRIER() __ASM volatile("" ::: "memory")
 #endif
 
 /* #########################  Startup and Lowlevel Init  ######################## */
@@ -894,7 +894,7 @@ __STATIC_FORCEINLINE void __set_FPSCR(uint32_t fpscr)
  */
 __STATIC_FORCEINLINE void __ISB(void)
 {
-  __ASM volatile("isb 0xF" :: : "memory");
+  __ASM volatile("isb 0xF" ::: "memory");
 }
 
 /**
@@ -904,7 +904,7 @@ __STATIC_FORCEINLINE void __ISB(void)
  */
 __STATIC_FORCEINLINE void __DSB(void)
 {
-  __ASM volatile("dsb 0xF" :: : "memory");
+  __ASM volatile("dsb 0xF" ::: "memory");
 }
 
 /**
@@ -914,7 +914,7 @@ __STATIC_FORCEINLINE void __DSB(void)
  */
 __STATIC_FORCEINLINE void __DMB(void)
 {
-  __ASM volatile("dmb 0xF" :: : "memory");
+  __ASM volatile("dmb 0xF" ::: "memory");
 }
 
 /**
@@ -1160,7 +1160,7 @@ __STATIC_FORCEINLINE uint32_t __STREXW(uint32_t value, volatile uint32_t *addr)
  */
 __STATIC_FORCEINLINE void __CLREX(void)
 {
-  __ASM volatile("clrex" :: : "memory");
+  __ASM volatile("clrex" ::: "memory");
 }
 
 #endif /* ((defined (__ARM_ARCH_7M__      ) && (__ARM_ARCH_7M__      == 1)) || \

@@ -49,7 +49,7 @@ correct privileged Vs unprivileged linkage and placement. */
 #undef MPU_WRAPPERS_INCLUDED_FROM_API_FILE /*lint !e961 !e750 !e9021. */
 
 /* Constants used with the cRxLock and cTxLock structure members. */
-#define queueUNLOCKED ((int8_t)-1)
+#define queueUNLOCKED ((int8_t) - 1)
 #define queueLOCKED_UNMODIFIED ((int8_t)0)
 
 /* When the Queue_t structure is used to represent a base queue its pcHead and

@@ -262,7 +262,7 @@ ADCV_t getVoltage(PowerSource_t powerSource)
         voltage = getCANVoltage();
     }
     else
-    { /* SOURCE_DEFAULT */
+    {                                               /* SOURCE_DEFAULT */
         PowerSource_t currSource = GetVBusSource(); /* In normal operation VCC is always of CAN, so we care what VBUS is drawing for the "active" battery */
         /* This could be recursion but recursion means that stack tooling breaks, so just nested if */
         if (currSource == SOURCE_BATTERY)

@@ -433,7 +433,7 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
             }
 
             uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,%s,%u,%#010lx,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x\r\n", timestamp, logMsgIndex, dir_str, message->length, message->id,
-                                       message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
+                                               message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
             if (strLen > 0)
             {
                 /* High priority, clear old items to make room */

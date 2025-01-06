@@ -624,12 +624,12 @@ extern "C"
     if (Direction == LL_I2C_DMA_REG_DATA_TRANSMIT)
     {
       /* return address of TXDR register */
-      data_reg_addr = (uint32_t)&(I2Cx->TXDR);
+      data_reg_addr = (uint32_t) & (I2Cx->TXDR);
     }
     else
     {
       /* return address of RXDR register */
-      data_reg_addr = (uint32_t)&(I2Cx->RXDR);
+      data_reg_addr = (uint32_t) & (I2Cx->RXDR);
     }
 
     return data_reg_addr;

@@ -6,11 +6,13 @@
 // All the C stuff has to be externed
 extern "C"
 {
-    typedef enum {
+    typedef enum
+    {
         TEST
     } DiveCANType_t;
 
-    typedef struct OxygenCell_s{
+    typedef struct OxygenCell_s
+    {
         int test;
     } OxygenCell_t;
 

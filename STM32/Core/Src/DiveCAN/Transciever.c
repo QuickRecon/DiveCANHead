@@ -523,12 +523,10 @@ void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, 
         .data = {pBuf[0], pBuf[1], pBuf[2], pBuf[3], pBuf[4], pBuf[5], pBuf[6], pBuf[7]},
         .length = sizeof(PIDNumeric_t)};
 
-
     const DiveCANMessage_t iMessage = {
         .id = PID_I_GAIN_ID | deviceType,
         .data = {iBuf[0], iBuf[1], iBuf[2], iBuf[3], iBuf[4], iBuf[5], iBuf[6], iBuf[7]},
         .length = sizeof(PIDNumeric_t)};
-
 
     const DiveCANMessage_t dMessage = {
         .id = PID_D_GAIN_ID | deviceType,
@@ -546,12 +544,10 @@ void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, 
     (void)memcpy(isBuf, &integral_state, sizeof(PIDNumeric_t));
     (void)memcpy(dsBuf, &derivative_state, sizeof(PIDNumeric_t));
 
-
     const DiveCANMessage_t isMessage = {
         .id = PID_I_STATE_ID | deviceType,
         .data = {isBuf[0], isBuf[1], isBuf[2], isBuf[3], isBuf[4], isBuf[5], isBuf[6], isBuf[7]},
         .length = sizeof(PIDNumeric_t)};
-
 
     const DiveCANMessage_t dsMessage = {
         .id = PID_D_STATE_ID | deviceType,
@@ -582,7 +578,8 @@ void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, 
     sendCANMessage(consensusMessage);
 }
 
-void txPrecisionCells(const DiveCANType_t deviceType, OxygenCell_t c1, OxygenCell_t c2, OxygenCell_t c3){
+void txPrecisionCells(const DiveCANType_t deviceType, OxygenCell_t c1, OxygenCell_t c2, OxygenCell_t c3)
+{
     uint8_t c1buf[8] = {0};
     uint8_t c2buf[8] = {0};
     uint8_t c3buf[8] = {0};
@@ -595,12 +592,10 @@ void txPrecisionCells(const DiveCANType_t deviceType, OxygenCell_t c1, OxygenCel
         .data = {c1buf[0], c1buf[1], c1buf[2], c1buf[3], c1buf[4], c1buf[5], c1buf[6], c1buf[7]},
         .length = sizeof(PIDNumeric_t)};
 
-
     const DiveCANMessage_t c2msg = {
         .id = PRECISION_CELL_2_ID | deviceType,
         .data = {c2buf[0], c2buf[1], c2buf[2], c2buf[3], c2buf[4], c2buf[5], c2buf[6], c2buf[7]},
         .length = sizeof(PIDNumeric_t)};
-
 
     const DiveCANMessage_t c3msg = {
         .id = PRECISION_CELL_3_ID | deviceType,

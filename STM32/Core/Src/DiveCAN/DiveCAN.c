@@ -68,9 +68,9 @@ void InitDiveCAN(const DiveCANDevice_t *const deviceSpec, const Configuration_t 
  */
 void CANTask(void *arg)
 {
-    DiveCANTask_params_t* task_params = (DiveCANTask_params_t *)arg;
+    DiveCANTask_params_t *task_params = (DiveCANTask_params_t *)arg;
     const DiveCANDevice_t *const deviceSpec = &(task_params->deviceSpec);
-    Configuration_t * configuration = &(task_params->configuration);
+    Configuration_t *configuration = &(task_params->configuration);
 
     while (true)
     {
@@ -183,7 +183,7 @@ void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *
     setSetpoint(message->data[0]);
 }
 
-void RespAtmos(const DiveCANMessage_t * const message, const DiveCANDevice_t *)
+void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *)
 {
     uint16_t pressure = (uint16_t)(((uint16_t)((uint16_t)message->data[2] << BYTE_WIDTH)) | (message->data[3]));
     setAtmoPressure(pressure);
@@ -203,17 +203,20 @@ void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *)
     serial_printf("Shutdown attempted but timed out due to missing en signal");
 }
 
-void updatePIDPGain(const DiveCANMessage_t *const message){
+void updatePIDPGain(const DiveCANMessage_t *const message)
+{
     PIDNumeric_t gain = 0;
     (void)memcpy(&gain, message->data, sizeof(PIDNumeric_t));
     setProportionalGain(gain);
 }
-void updatePIDIGain(const DiveCANMessage_t *const message){
+void updatePIDIGain(const DiveCANMessage_t *const message)
+{
     PIDNumeric_t gain = 0;
     (void)memcpy(&gain, message->data, sizeof(PIDNumeric_t));
     setIntegralGain(gain);
 }
-void updatePIDDGain(const DiveCANMessage_t *const message){
+void updatePIDDGain(const DiveCANMessage_t *const message)
+{
     PIDNumeric_t gain = 0;
     (void)memcpy(&gain, message->data, sizeof(PIDNumeric_t));
     setDerivativeGain(gain);

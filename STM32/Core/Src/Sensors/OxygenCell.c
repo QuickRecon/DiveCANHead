@@ -465,7 +465,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
             /* We want to make sure the cell is actually included before we start checking it */
             if ((includedCellCount > 0) &&
                 consensus.includeArray[cellIdx] != false &&
-                ((fabs((PPO2_acc / (PIDNumeric_t)includedCellCount) - consensus.precisionPPO2Array[cellIdx])*100.0f) > MAX_DEVIATION))
+                ((fabs((PPO2_acc / (PIDNumeric_t)includedCellCount) - consensus.precisionPPO2Array[cellIdx]) * 100.0f) > MAX_DEVIATION))
             {
                 /* Removing cells in this way can result in a change in the outcome depending on
                  * cell position, depending on exactly how split-brained the cells are, but
@@ -481,7 +481,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
     if (includedCellCount > 0)
     {
         consensus.precisionConsensus = (PPO2_acc / (PIDNumeric_t)includedCellCount);
-        consensus.consensus = (PPO2_t)(consensus.precisionConsensus*100);
+        consensus.consensus = (PPO2_t)(consensus.precisionConsensus * 100);
     }
 
     return consensus;
@@ -492,7 +492,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
  * @param consensus Consensus struct calculated from `calculateConsensus`
  * @return Cell confidence out of 3
  */
-uint8_t cellConfidence(const Consensus_t* const consensus)
+uint8_t cellConfidence(const Consensus_t *const consensus)
 {
     uint8_t confidence = 0;
     for (uint8_t i = 0; i < CELL_COUNT; ++i)
