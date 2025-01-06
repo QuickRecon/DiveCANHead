@@ -97,11 +97,11 @@ def dive_can_tick(divecan_client: DiveCAN.DiveCAN):
         dpg.set_value("c1_config", config.cell1.name)
         dpg.set_value("c2_config", config.cell2.name)
         dpg.set_value("c3_config", config.cell3.name)
-        dpg.set_value("power_mode_config", config.powerMode.name)
-        dpg.set_value("calibration_mode_config", config.calMethod.name)
-        dpg.set_value("printing_config", config.enableUartPrinting)
-        dpg.set_value("battery_alarm_config", config.alarmVoltageThreshold.name)
-        dpg.set_value("ppo2_control_config", config.PPO2ControlMode.name)
+        dpg.set_value("power_mode_config", config.power_mode.name)
+        dpg.set_value("calibration_mode_config", config.cal_method.name)
+        dpg.set_value("printing_config", config.enable_printing)
+        dpg.set_value("battery_alarm_config", config.battery_voltage_threshold.name)
+        dpg.set_value("ppo2_control_config", config.ppo2_control_mode.name)
         loadConfig = False
 
     if load_PID:
@@ -121,12 +121,12 @@ def dive_can_tick(divecan_client: DiveCAN.DiveCAN):
         setpointToSend = None
 
     if sendreset:
-        DiveCAN.resetBoard(divecan_client)
+        DiveCAN.reset_board(divecan_client)
         sendreset = False
 
     if configToWrite is not None:
         try:
-            configuration.configureBoard(divecan_client, configToWrite)
+            configuration.configure_board(divecan_client, configToWrite)
             configToWrite = None
         except AssertionError:
             print("Configuration rejected by board")
@@ -201,7 +201,7 @@ def update_config_text():
         configuration.VoltageThreshold[dpg.get_value("battery_alarm_config")],
         configuration.PPO2ControlScheme[dpg.get_value("ppo2_control_config")]
     )
-    config_bytes = [config_to_print.getByte(3), config_to_print.getByte(2), config_to_print.getByte(1), config_to_print.getByte(0)]
+    config_bytes = [config_to_print.get_byte(3), config_to_print.get_byte(2), config_to_print.get_byte(1), config_to_print.get_byte(0)]
     dpg.set_value("config_bits_text", "Config Bytes: 0x" + bytes(config_bytes).hex())
 
 def load_pid_vals():

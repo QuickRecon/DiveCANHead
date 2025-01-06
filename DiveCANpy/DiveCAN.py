@@ -199,7 +199,7 @@ class DiveCAN(object):
         return (struct.unpack('<d', msg.data[0:8]))[0]
     
 
-def resetBoard(divecan_client: DiveCAN):
+def reset_board(divecan_client: DiveCAN):
     divecan_client.send_bootloader()
     # This should kick us out of the bootloader
     divecan_client.send_id(1)

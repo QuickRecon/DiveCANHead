@@ -105,7 +105,7 @@ def test_power_on_adc_function(divecan_client_fixture: DiveCAN.DiveCAN, shim_hos
                                          configuration.VoltageThreshold.V_THRESHOLD_9V,
                                          configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
     psu.setDefaultPower()
-    configuration.configureBoard(divecan_client_fixture, config)
+    configuration.configure_board(divecan_client_fixture, config)
 
     c1Val = 10
     c2Val = 30
