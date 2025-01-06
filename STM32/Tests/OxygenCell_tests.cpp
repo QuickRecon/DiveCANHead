@@ -110,6 +110,7 @@ TEST(OxygenCell, calculateConsensus_AveragesCells)
         .cellNumber = 0,
         .type = CELL_ANALOG,
         .ppo2 = 110,
+        .precision_PPO2 = 1.1f,
         .millivolts = 12,
         .status = CELL_OK,
         .dataTime = 0};
@@ -117,6 +118,7 @@ TEST(OxygenCell, calculateConsensus_AveragesCells)
         .cellNumber = 1,
         .type = CELL_ANALOG,
         .ppo2 = 120,
+        .precision_PPO2 = 1.2f,
         .millivolts = 13,
         .status = CELL_OK,
         .dataTime = 0};
@@ -124,6 +126,7 @@ TEST(OxygenCell, calculateConsensus_AveragesCells)
         .cellNumber = 2,
         .type = CELL_ANALOG,
         .ppo2 = 100,
+        .precision_PPO2 = 1.0f,
         .millivolts = 14,
         .status = CELL_OK,
         .dataTime = 0};
@@ -144,6 +147,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesHigh)
         .cellNumber = 0,
         .type = CELL_ANALOG,
         .ppo2 = 110,
+        .precision_PPO2 = 1.1f,
         .millivolts = 0,
         .status = CELL_OK,
         .dataTime = 0};
@@ -153,6 +157,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesHigh)
         .cellNumber = 1,
         .type = CELL_ANALOG,
         .ppo2 = 130,
+        .precision_PPO2 = 1.3f,
         .millivolts = 0,
         .status = CELL_OK,
         .dataTime = 0};
@@ -160,6 +165,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesHigh)
         .cellNumber = 2,
         .type = CELL_ANALOG,
         .ppo2 = 100,
+        .precision_PPO2 = 1.0f,
         .millivolts = 0,
         .status = CELL_OK,
         .dataTime = 0};
@@ -180,6 +186,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesLow)
         .cellNumber = 0,
         .type = CELL_ANALOG,
         .ppo2 = 120,
+        .precision_PPO2 = 1.2f,
         .millivolts = 0,
         .status = CELL_OK,
         .dataTime = 0};
@@ -187,6 +194,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesLow)
         .cellNumber = 1,
         .type = CELL_ANALOG,
         .ppo2 = 130,
+        .precision_PPO2 = 1.3f,
         .millivolts = 0,
         .status = CELL_OK,
         .dataTime = 0};
@@ -194,6 +202,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesLow)
         .cellNumber = 2,
         .type = CELL_ANALOG,
         .ppo2 = 100,
+        .precision_PPO2 = 1.0f,
         .millivolts = 0,
         .status = CELL_OK,
         .dataTime = 0};
@@ -217,6 +226,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesTimedOutCell)
             .cellNumber = 0,
             .type = CELL_ANALOG,
             .ppo2 = 120,
+            .precision_PPO2 = 1.2f,
             .millivolts = 0,
             .status = CELL_OK,
             .dataTime = (i == 0) ? (Timestamp_t)1500 : (Timestamp_t)0};
@@ -224,6 +234,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesTimedOutCell)
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
+            .precision_PPO2 = 1.1f,
             .millivolts = 0,
             .status = CELL_OK,
             .dataTime = (i == 1) ? (Timestamp_t)1500 : (Timestamp_t)0};
@@ -231,6 +242,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesTimedOutCell)
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
+            .precision_PPO2 = 1.0f,
             .millivolts = 0,
             .status = CELL_OK,
             .dataTime = (i == 2) ? (Timestamp_t)1500 : (Timestamp_t)0};
@@ -257,6 +269,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesFailedCell)
             .cellNumber = 0,
             .type = CELL_ANALOG,
             .ppo2 = 120,
+            .precision_PPO2 = 1.2f,
             .millivolts = 0,
             .status = (i == 0) ? CELL_FAIL : CELL_OK,
             .dataTime = 0};
@@ -264,6 +277,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesFailedCell)
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
+            .precision_PPO2 = 1.1f,
             .millivolts = 0,
             .status = (i == 1) ? CELL_FAIL : CELL_OK,
             .dataTime = 0};
@@ -271,6 +285,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesFailedCell)
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
+            .precision_PPO2 = 1.0f,
             .millivolts = 0,
             .status = (i == 2) ? CELL_FAIL : CELL_OK,
             .dataTime = 0};
@@ -299,6 +314,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesCalCell)
             .cellNumber = 0,
             .type = CELL_ANALOG,
             .ppo2 = 120,
+            .precision_PPO2 = 1.2f,
             .millivolts = 0,
             .status = (i == 0) ? CELL_NEED_CAL : CELL_OK,
             .dataTime = 0};
@@ -306,6 +322,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesCalCell)
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
+            .precision_PPO2 = 1.1f,
             .millivolts = 0,
             .status = (i == 1) ? CELL_NEED_CAL : CELL_OK,
             .dataTime = 0};
@@ -313,6 +330,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesCalCell)
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
+            .precision_PPO2 = 1.0f,
             .millivolts = 0,
             .status = (i == 2) ? CELL_NEED_CAL : CELL_OK,
             .dataTime = 0};
@@ -341,6 +359,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesDegradedCell)
             .cellNumber = 0,
             .type = CELL_ANALOG,
             .ppo2 = 120,
+            .precision_PPO2 = 1.2f,
             .millivolts = 0,
             .status = (i == 0) ? CELL_DEGRADED : CELL_OK,
             .dataTime = 0};
@@ -348,6 +367,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesDegradedCell)
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
+            .precision_PPO2 = 1.1f,
             .millivolts = 0,
             .status = (i == 1) ? CELL_DEGRADED : CELL_OK,
             .dataTime = 0};
@@ -355,6 +375,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesDegradedCell)
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
+            .precision_PPO2 = 1.0f,
             .millivolts = 0,
             .status = (i == 2) ? CELL_DEGRADED : CELL_OK,
             .dataTime = 0};
@@ -383,6 +404,7 @@ TEST(OxygenCell, calculateConsensus_DualCellFailure)
             .cellNumber = 0,
             .type = CELL_ANALOG,
             .ppo2 = 120,
+            .precision_PPO2 = 1.2f,
             .millivolts = 0,
             .status = (i == 0) ? CELL_OK : CELL_FAIL,
             .dataTime = 0};
@@ -390,6 +412,7 @@ TEST(OxygenCell, calculateConsensus_DualCellFailure)
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 110,
+            .precision_PPO2 = 1.1f,
             .millivolts = 0,
             .status = (i == 1) ? CELL_OK : CELL_FAIL,
             .dataTime = 0};
@@ -397,6 +420,7 @@ TEST(OxygenCell, calculateConsensus_DualCellFailure)
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 100,
+            .precision_PPO2 = 1.0f,
             .millivolts = 0,
             .status = (i == 2) ? CELL_OK : CELL_FAIL,
             .dataTime = 0};
@@ -425,6 +449,7 @@ TEST(OxygenCell, calculateConsensus_DivergedDualCellFailure)
             .cellNumber = 0,
             .type = CELL_ANALOG,
             .ppo2 = 200,
+            .precision_PPO2 = 2.0f,
             .millivolts = 0,
             .status = (i == 0) ? CELL_OK : CELL_FAIL,
             .dataTime = 0};
@@ -432,6 +457,7 @@ TEST(OxygenCell, calculateConsensus_DivergedDualCellFailure)
             .cellNumber = 1,
             .type = CELL_ANALOG,
             .ppo2 = 100,
+            .precision_PPO2 = 1.0f,
             .millivolts = 0,
             .status = (i == 1) ? CELL_OK : CELL_FAIL,
             .dataTime = 0};
@@ -439,6 +465,7 @@ TEST(OxygenCell, calculateConsensus_DivergedDualCellFailure)
             .cellNumber = 2,
             .type = CELL_ANALOG,
             .ppo2 = 20,
+            .precision_PPO2 = 0.20f,
             .millivolts = 0,
             .status = (i == 2) ? CELL_OK : CELL_FAIL,
             .dataTime = 0};

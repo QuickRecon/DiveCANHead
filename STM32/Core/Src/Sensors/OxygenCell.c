@@ -421,6 +421,11 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
             c2->ppo2,
             c3->ppo2,
         },
+        .precisionPPO2Array = {
+            c1->precision_PPO2,
+            c2->precision_PPO2,
+            c3->precision_PPO2,
+        },
         .milliArray = {
             c1->millivolts,
             c2->millivolts,
@@ -432,7 +437,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
     /* Do a two pass check, loop through the cells and average the "good" cells
      * Then afterwards we check each cells value against the average, and exclude deviations
      */
-    uint16_t PPO2_acc = 0; /* Start an accumulator to take an average, include the median cell always */
+    PIDNumeric_t PPO2_acc = 0; /* Start an accumulator to take an average, include the median cell always */
     uint8_t includedCellCount = 0;
 
     for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
@@ -446,7 +451,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         }
         else
         {
-            PPO2_acc += consensus.ppo2Array[cellIdx];
+            PPO2_acc += consensus.precisionPPO2Array[cellIdx];
             ++includedCellCount;
         }
     }
@@ -459,14 +464,14 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         {
             /* We want to make sure the cell is actually included before we start checking it */
             if ((includedCellCount > 0) &&
-                consensus.includeArray[cellIdx] &&
-                (abs((PPO2_t)(PPO2_acc / includedCellCount) - consensus.ppo2Array[cellIdx]) > MAX_DEVIATION))
+                consensus.includeArray[cellIdx] != false &&
+                ((fabs((PPO2_acc / (PIDNumeric_t)includedCellCount) - consensus.precisionPPO2Array[cellIdx])*100.0f) > MAX_DEVIATION))
             {
                 /* Removing cells in this way can result in a change in the outcome depending on
                  * cell position, depending on exactly how split-brained the cells are, but
                  * frankly if things are that cooked then we're borderline guessing anyway
                  */
-                PPO2_acc -= consensus.ppo2Array[cellIdx];
+                PPO2_acc -= consensus.precisionPPO2Array[cellIdx];
                 --includedCellCount;
                 consensus.includeArray[cellIdx] = false;
             }
@@ -475,7 +480,8 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
 
     if (includedCellCount > 0)
     {
-        consensus.consensus = (PPO2_t)(PPO2_acc / includedCellCount);
+        consensus.precisionConsensus = (PPO2_acc / (PIDNumeric_t)includedCellCount);
+        consensus.consensus = (PPO2_t)(consensus.precisionConsensus*100);
     }
 
     return consensus;

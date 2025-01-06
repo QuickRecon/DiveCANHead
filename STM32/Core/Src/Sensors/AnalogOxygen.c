@@ -165,6 +165,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
         .cellNumber = handle->cellNumber,
         .type = CELL_ANALOG,
         .ppo2 = PPO2,
+        .precision_PPO2 = calPPO2/100.0f,
         .millivolts = getMillivolts(handle),
         .status = handle->status,
         .dataTime = HAL_GetTick()};

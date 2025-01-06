@@ -6,6 +6,7 @@
 #include "../errors.h"
 #include "../Hardware/printer.h"
 #include "../Hardware/log.h"
+#include "../Sensors/OxygenCell.h"
 
 #define BUS_NAME_LEN 8
 
@@ -507,7 +508,7 @@ void txLogText(const DiveCANType_t deviceType, const char *msg, uint16_t length)
     }
 }
 
-void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, PIDNumeric_t integral_gain, PIDNumeric_t derivative_gain, PIDNumeric_t integral_state, PIDNumeric_t derivative_state, PIDNumeric_t duty_cycle)
+void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, PIDNumeric_t integral_gain, PIDNumeric_t derivative_gain, PIDNumeric_t integral_state, PIDNumeric_t derivative_state, PIDNumeric_t duty_cycle, PIDNumeric_t precisionConsensus)
 {
     /* First send off all of the gains */
     uint8_t pBuf[8] = {0};
@@ -569,4 +570,44 @@ void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, 
         .length = sizeof(PIDNumeric_t)};
 
     sendCANMessage(dutyMessage);
+
+    /* Also send the solenoid duty */
+    uint8_t consensusBuf[8] = {0};
+    (void)memcpy(consensusBuf, &precisionConsensus, sizeof(PIDNumeric_t));
+    const DiveCANMessage_t consensusMessage = {
+        .id = PRECISION_CONSENSUS_ID | deviceType,
+        .data = {consensusBuf[0], consensusBuf[1], consensusBuf[2], consensusBuf[3], consensusBuf[4], consensusBuf[5], consensusBuf[6], consensusBuf[7]},
+        .length = sizeof(PIDNumeric_t)};
+
+    sendCANMessage(consensusMessage);
+}
+
+void txPrecisionCells(const DiveCANType_t deviceType, OxygenCell_t c1, OxygenCell_t c2, OxygenCell_t c3){
+    uint8_t c1buf[8] = {0};
+    uint8_t c2buf[8] = {0};
+    uint8_t c3buf[8] = {0};
+    (void)memcpy(c1buf, &(c1.precision_PPO2), sizeof(PIDNumeric_t));
+    (void)memcpy(c2buf, &(c2.precision_PPO2), sizeof(PIDNumeric_t));
+    (void)memcpy(c3buf, &(c3.precision_PPO2), sizeof(PIDNumeric_t));
+
+    const DiveCANMessage_t c1msg = {
+        .id = PRECISION_CELL_1_ID | deviceType,
+        .data = {c1buf[0], c1buf[1], c1buf[2], c1buf[3], c1buf[4], c1buf[5], c1buf[6], c1buf[7]},
+        .length = sizeof(PIDNumeric_t)};
+
+
+    const DiveCANMessage_t c2msg = {
+        .id = PRECISION_CELL_2_ID | deviceType,
+        .data = {c2buf[0], c2buf[1], c2buf[2], c2buf[3], c2buf[4], c2buf[5], c2buf[6], c2buf[7]},
+        .length = sizeof(PIDNumeric_t)};
+
+
+    const DiveCANMessage_t c3msg = {
+        .id = PRECISION_CELL_3_ID | deviceType,
+        .data = {c3buf[0], c3buf[1], c3buf[2], c3buf[3], c3buf[4], c3buf[5], c3buf[6], c3buf[7]},
+        .length = sizeof(PIDNumeric_t)};
+
+    sendCANMessage(c1msg);
+    sendCANMessage(c2msg);
+    sendCANMessage(c3msg);
 }

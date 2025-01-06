@@ -45,6 +45,12 @@ extern "C"
   static const uint32_t PID_I_STATE_ID = 0xF130000;
   static const uint32_t PID_D_STATE_ID = 0xF140000;
   static const uint32_t SOLENOID_DUTY_ID = 0xF150000;
+  static const uint32_t PRECISION_CONSENSUS_ID = 0xF160000;
+
+  /* Precision cell values */
+  static const uint32_t PRECISION_CELL_1_ID = 0xF200000;
+  static const uint32_t PRECISION_CELL_2_ID = 0xF210000;
+  static const uint32_t PRECISION_CELL_3_ID = 0xF220000;
 
 #define MAX_CAN_RX_LENGTH 8
 
@@ -218,6 +224,8 @@ extern "C"
     DYNAMIC_TEXT = 0,
   } DiveCANMenuItemType_t;
 
+  typedef struct OxygenCell_s OxygenCell_t;
+
   void txCalAck(const DiveCANType_t deviceType);
   void txCalResponse(const DiveCANType_t deviceType, DiveCANCalResponse_t response, const ShortMillivolts_t cell1, const ShortMillivolts_t cell2, const ShortMillivolts_t cell3, const FO2_t FO2, const uint16_t atmosphericPressure);
 
@@ -228,7 +236,8 @@ extern "C"
   void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, uint64_t maxVal, uint64_t currentVal);
   void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText);
   void txLogText(const DiveCANType_t deviceType, const char *msg, uint16_t length);
-  void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, PIDNumeric_t integral_gain, PIDNumeric_t derivative_gain, PIDNumeric_t integral_state, PIDNumeric_t derivative_state, PIDNumeric_t duty_cycle);
+  void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, PIDNumeric_t integral_gain, PIDNumeric_t derivative_gain, PIDNumeric_t integral_state, PIDNumeric_t derivative_state, PIDNumeric_t duty_cycle, PIDNumeric_t precisionConsensus);
+  void txPrecisionCells(const DiveCANType_t deviceType, OxygenCell_t c1, OxygenCell_t c2, OxygenCell_t c3);
 #ifdef __cplusplus
 }
 #endif

@@ -255,6 +255,19 @@ void PPO2ControlTask(void *arg)
     {
         Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
 
+        /* Transmit Precision PPO2*/
+        OxygenCell_t c1 = {0};
+        bool c1pick = xQueuePeek(params->c1, &c1, TIMEOUT_100MS_TICKS);
+        OxygenCell_t c2 = {0};
+        bool c2pick = xQueuePeek(params->c2, &c2, TIMEOUT_100MS_TICKS);
+        OxygenCell_t c3 = {0};
+        bool c3pick = xQueuePeek(params->c3, &c3, TIMEOUT_100MS_TICKS);
+
+        if (c1pick && c2pick && c3pick)
+        {
+            txPrecisionCells(DIVECAN_SOLO, c1, c2, c3);
+        }
+
         /* It feels like we ought to do something with the cell confidence (go to SP low?) but that implementation is hard so avoid for now
                 uint8_t confidence = cellConfidence(consensus);
         if (confidence =< 1)
@@ -265,7 +278,7 @@ void PPO2ControlTask(void *arg)
         }
         */
         PIDNumeric_t d_setpoint = (PIDNumeric_t)setpoint / 100.0f;
-        PIDNumeric_t measurement = (PIDNumeric_t)consensus.consensus / 100.0f;
+        PIDNumeric_t measurement = (PIDNumeric_t)consensus.precisionConsensus;
 
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
         *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
@@ -276,7 +289,8 @@ void PPO2ControlTask(void *arg)
                    (params->pidState).derivativeGain,
                    (params->pidState).integralState,
                    (params->pidState).derivativeState,
-                   *dutyCycle);
+                   *dutyCycle,
+                   consensus.precisionConsensus);
 
         (void)osDelay(pdMS_TO_TICKS(PIDPeriod));
     } while (RTOS_LOOP_FOREVER);

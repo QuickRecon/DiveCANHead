@@ -82,10 +82,10 @@ extern "C"
     /* The watchdog task should be just above idle, so that we reset on runtime starvation */
     /* CAN RX priority less critical than data consumers but more than sensor fetching, we want to
      * respond to messages in a timely manner, waiting on sensors can push us into timeout */
-    static const osPriority_t PPO2_CONTROL_PRIORITY = osPriorityHigh2;
+    static const osPriority_t PPO2_CONTROL_PRIORITY = osPriorityNormal;
     static const osPriority_t CAN_PPO2_TX_PRIORITY = osPriorityHigh1;
     static const osPriority_t CAN_RX_PRIORITY = osPriorityNormal1;
-    static const osPriority_t PPO2_SENSOR_PRIORITY = osPriorityNormal;
+    static const osPriority_t PPO2_SENSOR_PRIORITY = osPriorityHigh2;
     static const osPriority_t ADC_PRIORITY = osPriorityLow3;
     static const osPriority_t LOG_PRIORITY = osPriorityLow2;
     static const osPriority_t PRINTER_PRIORITY = osPriorityLow;

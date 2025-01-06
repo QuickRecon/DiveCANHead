@@ -185,6 +185,22 @@ class DiveCAN(object):
         msg = self._rx_msg(0xF150004)
         return (struct.unpack('<d', msg.data[0:8]))[0]
     
+    def listen_for_precision_consensus(self) -> float:
+        msg = self._rx_msg(0xF160004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+    
+    def listen_for_precision_c1(self) -> float:
+        msg = self._rx_msg(0xF200004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+    
+    def listen_for_precision_c2(self) -> float:
+        msg = self._rx_msg(0xF210004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+    
+    def listen_for_precision_c3(self) -> float:
+        msg = self._rx_msg(0xF220004)
+        return (struct.unpack('<d', msg.data[0:8]))[0]
+    
 
 def resetBoard(divecan_client: DiveCAN):
     divecan_client.send_bootloader()
