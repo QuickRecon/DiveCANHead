@@ -12,6 +12,8 @@ loadConfig = False
 configToWrite = None
 setpointToSend = None
 sendreset = False
+load_PID = False
+send_PID = False
 
 index = [0]
 consensus_PPO2 = [0]
@@ -20,12 +22,21 @@ c2_PPO2 = [0]
 c3_PPO2 = [0]
 setpoint = [0]
 
+integral_state_data = [0]
+derivative_state_data = [0]
+duty_cycle_data = [0]
+
+PLOT_LENGTH = 200
+
+DATA_LENGTH = 2000
 
 def dive_can_tick(divecan_client: DiveCAN.DiveCAN):
     global loadConfig
     global configToWrite
     global setpointToSend
     global sendreset
+    global load_PID
+    global send_PID
 
     divecan_client.send_id(1)
     stat_msg = divecan_client.listen_for_status()
@@ -34,19 +45,15 @@ def dive_can_tick(divecan_client: DiveCAN.DiveCAN):
 
     minimum_battery_voltage = 100
     if(dpg.get_value("realtime_sample_checkbox")):
-        #consensus_msg = divecan_client.listen_for_cell_state()
-        #ppo2_msg = divecan_client.listen_for_ppo2()
         divecan_client.send_id(1)
         status_msg = divecan_client.listen_for_status()
-        #print(consensus_msg)
-        #print(ppo2_msg)
 
         c1_val = divecan_client.listen_for_precision_c1()
         c2_val = divecan_client.listen_for_precision_c2()
         c3_val = divecan_client.listen_for_precision_c3()
         concensus_val = divecan_client.listen_for_precision_consensus()
 
-        if len(index) > 200:
+        if len(index) > DATA_LENGTH:
             consensus_PPO2.pop(0)
             c1_PPO2.pop(0)
             c2_PPO2.pop(0)
@@ -69,8 +76,21 @@ def dive_can_tick(divecan_client: DiveCAN.DiveCAN):
         battery_voltage = status_msg.data[0]/10
         minimum_battery_voltage = min(battery_voltage, minimum_battery_voltage)
         dpg.set_value('battery_indicator', "Battery Voltage: " + str(battery_voltage) + "(" + str(minimum_battery_voltage) + ")")
-        dpg.set_axis_limits("x_axis", max(index)-200, max(index))
+        dpg.set_axis_limits("x_axis", max(index)-PLOT_LENGTH, max(index))
         dpg.set_axis_limits("y_axis", 0, max(max(setpoint), max(consensus_PPO2))+0.1)
+
+        # Interogate PID state
+        if len(integral_state_data) > PLOT_LENGTH:
+            integral_state_data.pop(0)
+            derivative_state_data.pop(0)
+            duty_cycle_data.pop(0)
+        integral_state_data.append(divecan_client.listen_for_integral_state())
+        derivative_state_data.append(divecan_client.listen_for_derivative_state())
+        duty_cycle_data.append(divecan_client.listen_for_solenoid_duty_cycle())
+
+        dpg.set_value("integral_state_plot", integral_state_data)
+        dpg.set_value("derivative_state_plot", derivative_state_data)
+        dpg.set_value("duty_cycle_plot", duty_cycle_data)
 
     if loadConfig :
         config = configuration.read_board_config(divecan_client)
@@ -84,6 +104,18 @@ def dive_can_tick(divecan_client: DiveCAN.DiveCAN):
         dpg.set_value("ppo2_control_config", config.PPO2ControlMode.name)
         loadConfig = False
 
+    if load_PID:
+        dpg.set_value("prop_gain_slider", divecan_client.listen_for_proportional_gain())
+        dpg.set_value("int_gain_slider", divecan_client.listen_for_integral_gain())
+        dpg.set_value("der_gain_slider", divecan_client.listen_for_derivative_gain())
+        load_PID = False
+
+    if send_PID:
+        divecan_client.send_proportional_gain(dpg.get_value("prop_gain_slider"))
+        divecan_client.send_integral_gain(dpg.get_value("int_gain_slider"))
+        divecan_client.send_derivative_gain(dpg.get_value("der_gain_slider"))
+        send_PID = False
+        
     if setpointToSend is not None:
         divecan_client.send_setpoint(1, (int)(setpointToSend*100))
         setpointToSend = None
@@ -108,7 +140,7 @@ def dive_can_listen():
     try:
         divecan_client = DiveCAN.DiveCAN(dpg.get_value("divecan_adaptor_path"))
         diveCANRun = True
-        dpg.set_value("connection_status", "Status: Connecting")
+        dpg.set_value("connection_status", "Status: Listening")
     except DiveCAN.can.CanInitializationError:
         dpg.set_value("connection_status", "Status: Error, cannot open adaptor")
 
@@ -146,6 +178,7 @@ def save_config(sender, appdata):
     )
 
 def connect_to_board(sender, appdata):
+    dpg.set_value("connection_status", "Status: Connecting")
     diveCANthread.start()
 
 
@@ -168,14 +201,27 @@ def update_config_text():
         configuration.VoltageThreshold[dpg.get_value("battery_alarm_config")],
         configuration.PPO2ControlScheme[dpg.get_value("ppo2_control_config")]
     )
-    config_bytes = [config_to_print.getByte(3), config_to_print.getByte(2), config_to_print.getByte(1), config_to_print.getByte(0), ]
+    config_bytes = [config_to_print.getByte(3), config_to_print.getByte(2), config_to_print.getByte(1), config_to_print.getByte(0)]
     dpg.set_value("config_bits_text", "Config Bytes: 0x" + bytes(config_bytes).hex())
 
+def load_pid_vals():
+    global load_PID
+    load_PID = True
 
+def send_pid_vals():
+    global send_PID
+    send_PID = True
+
+def on_realtime_sample_toggle(sender):
+    if dpg.get_value(sender):
+        print("Starting sampling")
+    else:
+        dpg.set_axis_limits_auto("x_axis")
+        dpg.set_axis_limits_auto("y_axis")
 
 with dpg.window(label="main", autosize=True) as primary_window:
         dpg.add_text(default_value="Status: Disconnected", tag="connection_status")
-        with dpg.collapsing_header(label="Connection"):
+        with dpg.collapsing_header(label="Connection", default_open=True):
             dpg.add_input_text(label="Adaptor Path", default_value="/dev/ttyACM0", tag="divecan_adaptor_path")
             dpg.add_button(label="Connect", callback=connect_to_board)
             dpg.add_button(label="Disconnect", callback=disconnect_from_board)
@@ -198,19 +244,23 @@ with dpg.window(label="main", autosize=True) as primary_window:
             dpg.add_button(label="Reset Board", callback=reset_board)
 
         with dpg.collapsing_header(label="PID"):
-            dpg.add_slider_float(min_value=-10, max_value=10, label="Proportional")
-            dpg.add_slider_float(min_value=-10, max_value=10, label="Integral")
-            dpg.add_slider_float(min_value=-10, max_value=10, label="Derivative")
-            dpg.add_button(label="Write")
-            dpg.add_button(label="Read")
+            dpg.add_simple_plot(label="Integral State", min_scale=0, max_scale=1.0, height=100, tag="integral_state_plot")
+            dpg.add_simple_plot(label="Derivative State", height=100, tag="derivative_state_plot")
+            dpg.add_simple_plot(label="Duty Cycle", min_scale=0, max_scale=1.0, height=100, tag="duty_cycle_plot")
+            
+            dpg.add_slider_float(min_value=-10, max_value=10, label="Proportional", tag="prop_gain_slider")
+            dpg.add_slider_float(min_value=-10, max_value=10, label="Integral", tag="int_gain_slider")
+            dpg.add_slider_float(min_value=-10, max_value=10, label="Derivative", tag="der_gain_slider")
+            dpg.add_button(label="Write", callback=send_pid_vals)
+            dpg.add_button(label="Read", callback=load_pid_vals)
 
-        with dpg.group(height=-1):
+        with dpg.group(label="PPO2", height=-1):
             dpg.add_table
             dpg.add_slider_float(min_value=0, max_value=1, label="Setpoint", default_value=0.7, tag="setpoint_slider", clamped=True)
             dpg.add_text(default_value="Battery Voltage: ?", tag="battery_indicator")
-            dpg.add_checkbox(label="Realtime Sample", tag="realtime_sample_checkbox")
+            dpg.add_checkbox(label="Realtime Sample", tag="realtime_sample_checkbox", callback=on_realtime_sample_toggle)
             # create plot
-            with dpg.plot(label="PPO2", height=-1, width=-1):
+            with dpg.plot(label="PPO2 Tracking", height=-1, width=-1):
                 # optionally create legend
                 dpg.add_plot_legend()
 
