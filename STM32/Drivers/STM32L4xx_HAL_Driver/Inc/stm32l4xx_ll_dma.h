@@ -70,7 +70,7 @@ extern "C"
 #define DMA_CSELR_OFFSET (uint32_t)(DMA1_CSELR_BASE - DMA1_BASE)
 
 /* Defines used for the bit position in the register and perform offsets */
-#define DMA_POSITION_CSELR_CXS POSITION_VAL(DMA_CSELR_C1S << (Channel * 4U))
+#define DMA_POSITION_CSELR_CXS(Channel) POSITION_VAL(DMA_CSELR_C1S << (((Channel) * 4U) & 0x1FU))
 /**
  * @}
  */
@@ -1508,7 +1508,7 @@ extern "C"
   __STATIC_INLINE void LL_DMA_SetPeriphRequest(DMA_TypeDef *DMAx, uint32_t Channel, uint32_t PeriphRequest)
   {
     MODIFY_REG(((DMA_Request_TypeDef *)((uint32_t)((uint32_t)DMAx + DMA_CSELR_OFFSET)))->CSELR,
-               DMA_CSELR_C1S << ((Channel) * 4U), PeriphRequest << DMA_POSITION_CSELR_CXS);
+               DMA_CSELR_C1S << (((Channel) * 4U) & 0x1FU), PeriphRequest << DMA_POSITION_CSELR_CXS(Channel));
   }
 
   /**
@@ -1543,7 +1543,7 @@ extern "C"
   {
     return (READ_BIT(((DMA_Request_TypeDef *)((uint32_t)((uint32_t)DMAx + DMA_CSELR_OFFSET)))->CSELR,
                      DMA_CSELR_C1S << ((Channel) * 4U)) >>
-            DMA_POSITION_CSELR_CXS);
+            DMA_POSITION_CSELR_CXS(Channel));
   }
 
 #endif /* DMAMUX1 */

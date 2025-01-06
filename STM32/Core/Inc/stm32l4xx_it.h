@@ -26,49 +26,49 @@ extern "C"
 {
 #endif
 
-  /* Private includes ----------------------------------------------------------*/
-  /* USER CODE BEGIN Includes */
+    /* Private includes ----------------------------------------------------------*/
+    /* USER CODE BEGIN Includes */
 
-  /* USER CODE END Includes */
+    /* USER CODE END Includes */
 
-  /* Exported types ------------------------------------------------------------*/
-  /* USER CODE BEGIN ET */
+    /* Exported types ------------------------------------------------------------*/
+    /* USER CODE BEGIN ET */
 
-  /* USER CODE END ET */
+    /* USER CODE END ET */
 
-  /* Exported constants --------------------------------------------------------*/
-  /* USER CODE BEGIN EC */
+    /* Exported constants --------------------------------------------------------*/
+    /* USER CODE BEGIN EC */
 
-  /* USER CODE END EC */
+    /* USER CODE END EC */
 
-  /* Exported macro ------------------------------------------------------------*/
-  /* USER CODE BEGIN EM */
+    /* Exported macro ------------------------------------------------------------*/
+    /* USER CODE BEGIN EM */
 
-  /* USER CODE END EM */
+    /* USER CODE END EM */
 
-  /* Exported functions prototypes ---------------------------------------------*/
-  void NMI_Handler(void);
-  void HardFault_Handler(void);
-  void MemManage_Handler(void);
-  void BusFault_Handler(void);
-  void UsageFault_Handler(void);
-  void DebugMon_Handler(void);
-  void PVD_PVM_IRQHandler(void);
-  void CAN1_RX0_IRQHandler(void);
-  void CAN1_RX1_IRQHandler(void);
-  void I2C1_EV_IRQHandler(void);
-  void I2C1_ER_IRQHandler(void);
-  void USART1_IRQHandler(void);
-  void USART2_IRQHandler(void);
-  void USART3_IRQHandler(void);
-  void EXTI15_10_IRQHandler(void);
-  void SDMMC1_IRQHandler(void);
-  void TIM6_DAC_IRQHandler(void);
-  void TIM7_IRQHandler(void);
-  void DMA2_Channel4_IRQHandler(void);
-  /* USER CODE BEGIN EFP */
+    /* Exported functions prototypes ---------------------------------------------*/
+    void NMI_Handler(void);
+    void HardFault_Handler(void);
+    void MemManage_Handler(void);
+    void BusFault_Handler(void);
+    void UsageFault_Handler(void);
+    void DebugMon_Handler(void);
+    void PVD_PVM_IRQHandler(void);
+    void CAN1_RX0_IRQHandler(void);
+    void CAN1_RX1_IRQHandler(void);
+    void I2C1_EV_IRQHandler(void);
+    void I2C1_ER_IRQHandler(void);
+    void USART1_IRQHandler(void);
+    void USART2_IRQHandler(void);
+    void USART3_IRQHandler(void);
+    void EXTI15_10_IRQHandler(void);
+    void SDMMC1_IRQHandler(void);
+    void TIM6_DAC_IRQHandler(void);
+    void TIM7_IRQHandler(void);
+    void DMA2_Channel4_IRQHandler(void);
+    /* USER CODE BEGIN EFP */
 
-  /* USER CODE END EFP */
+    /* USER CODE END EFP */
 
 #ifdef __cplusplus
 }

@@ -587,7 +587,7 @@ extern "C"
     /* Set base address */
     WRITE_REG(MPU->RBAR, (Address & 0xFFFFFFE0U));
     /* Configure MPU */
-    WRITE_REG(MPU->RASR, (MPU_RASR_ENABLE_Msk | Attributes | SubRegionDisable << MPU_RASR_SRD_Pos));
+    WRITE_REG(MPU->RASR, (MPU_RASR_ENABLE_Msk | Attributes | (SubRegionDisable << MPU_RASR_SRD_Pos)));
   }
 
   /**

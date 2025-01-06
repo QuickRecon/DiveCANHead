@@ -1256,7 +1256,7 @@ extern "C"
  * @{
  */
 #if defined(USART_PRESC_PRESCALER)
-/** @brief  Get UART clok division factor from clock prescaler value.
+/** @brief  Get UART clock division factor from clock prescaler value.
  * @param  __CLOCKPRESCALER__ UART prescaler value.
  * @retval UART clock division factor
  */
@@ -1271,8 +1271,7 @@ extern "C"
                                                     : ((__CLOCKPRESCALER__) == UART_PRESCALER_DIV32)  ? 32U  \
                                                     : ((__CLOCKPRESCALER__) == UART_PRESCALER_DIV64)  ? 64U  \
                                                     : ((__CLOCKPRESCALER__) == UART_PRESCALER_DIV128) ? 128U \
-                                                    : ((__CLOCKPRESCALER__) == UART_PRESCALER_DIV256) ? 256U \
-                                                                                                      : 1U)
+                                                                                                      : 256U)
 
 /** @brief  BRR division operation to set BRR register with LPUART.
  * @param  __PCLK__ LPUART clock.

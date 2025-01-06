@@ -194,9 +194,9 @@ HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef *hdma)
   tmp = hdma->Instance->CCR;
 
   /* Clear PL, MSIZE, PSIZE, MINC, PINC, CIRC, DIR and MEM2MEM bits */
-  tmp &= ((uint32_t)~(DMA_CCR_PL | DMA_CCR_MSIZE | DMA_CCR_PSIZE |
-                      DMA_CCR_MINC | DMA_CCR_PINC | DMA_CCR_CIRC |
-                      DMA_CCR_DIR | DMA_CCR_MEM2MEM));
+  tmp &= ((uint32_t) ~(DMA_CCR_PL | DMA_CCR_MSIZE | DMA_CCR_PSIZE |
+                       DMA_CCR_MINC | DMA_CCR_PINC | DMA_CCR_CIRC |
+                       DMA_CCR_DIR | DMA_CCR_MEM2MEM));
 
   /* Prepare the DMA Channel configuration */
   tmp |= hdma->Init.Direction |
@@ -895,7 +895,7 @@ void HAL_DMA_IRQHandler(DMA_HandleTypeDef *hdma)
  *                               the configuration information for the specified DMA Channel.
  * @param  CallbackID           User Callback identifier
  *                               a HAL_DMA_CallbackIDTypeDef ENUM as parameter.
- * @param  pCallback            pointer to private callbacsk function which has pointer to
+ * @param  pCallback            pointer to private callback function which has pointer to
  *                               a DMA_HandleTypeDef structure as parameter.
  * @retval HAL status
  */

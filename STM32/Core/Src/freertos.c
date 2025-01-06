@@ -21,12 +21,12 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "main.h"
-#include "common.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "Hardware/printer.h"
 #include "errors.h"
+#include "common.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,7 +56,7 @@ extern TIM_HandleTypeDef htim7;
 /* Hook prototypes */
 void configureTimerForRunTimeStats(void);
 RuntimeCounter_t getRunTimeCounterValue(void);
-void vApplicationStackOverflowHook(TaskHandle_t overflowedTask, signed char *pcTaskName);
+void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
 
 /* USER CODE BEGIN 1 */
