@@ -7,11 +7,12 @@ import threading
 dpg.create_context()
 dpg.create_viewport(title='DiveCAN Configurator', resizable=True)
 
-divecan_client = DiveCAN.DiveCAN("/dev/ttyACM0")
 
 diveCANRun = True
 loadConfig = False
 configToWrite = None
+setpointToSend = None
+sendreset = False
 
 index = [0]
 consensus_PPO2 = [0]
@@ -21,69 +22,98 @@ c3_PPO2 = [0]
 setpoint = [0]
 
 
-def DiveCANListen():
+def DiveCANTick(divecan_client):
     global loadConfig
     global configToWrite
+    global setpointToSend
+    global sendreset
+
+    divecan_client.send_id(1)
+    stat_msg = divecan_client.listen_for_status()
+    dpg.set_value("connection_status", "Status: Connected")
+    dpg.set_value("setpoint_slider", stat_msg.data[5]/100)
+
     minimum_battery_voltage = 100
+    if(dpg.get_value("realtime_sample_checkbox")):
+        consensus_msg = divecan_client.listen_for_cell_state()
+        ppo2_msg = divecan_client.listen_for_ppo2()
+        divecan_client.send_id(1)
+        status_msg = divecan_client.listen_for_status()
+        print(consensus_msg)
+        print(ppo2_msg)
+        if len(index) > 200:
+            consensus_PPO2.pop(0)
+            c1_PPO2.pop(0)
+            c2_PPO2.pop(0)
+            c3_PPO2.pop(0)
+            setpoint.pop(0)
+            index.pop(0)
+
+        index.append(max(index)+1)
+        consensus_PPO2.append(consensus_msg.data[1]/100)
+        c1_PPO2.append(ppo2_msg.data[1]/100)
+        c2_PPO2.append(ppo2_msg.data[2]/100)
+        c3_PPO2.append(ppo2_msg.data[3]/100)
+        setpoint.append(status_msg.data[5]/100)
+        dpg.set_value('consensus_series', [index, consensus_PPO2])
+        dpg.set_value('c1_series', [index, c1_PPO2])
+        dpg.set_value('c2_series', [index, c2_PPO2])
+        dpg.set_value('c3_series', [index, c3_PPO2])
+        dpg.set_value('setpoint_series', [index, setpoint])
+
+        battery_voltage = status_msg.data[0]/10
+        minimum_battery_voltage = min(battery_voltage, minimum_battery_voltage)
+        dpg.set_value('battery_indicator', "Battery Voltage: " + str(battery_voltage) + "(" + str(minimum_battery_voltage) + ")")
+        dpg.set_axis_limits("x_axis", max(index)-200, max(index))
+        dpg.set_axis_limits("y_axis", 0, max(consensus_PPO2)+0.1)
+
+    if loadConfig :
+        config = configuration.read_board_config(divecan_client)
+        dpg.set_value("c1_config", config.cell1.name)
+        dpg.set_value("c2_config", config.cell2.name)
+        dpg.set_value("c3_config", config.cell3.name)
+        dpg.set_value("power_mode_config", config.powerMode.name)
+        dpg.set_value("calibration_mode_config", config.calMethod.name)
+        dpg.set_value("printing_config", config.enableUartPrinting)
+        dpg.set_value("battery_alarm_config", config.alarmVoltageThreshold.name)
+        dpg.set_value("ppo2_control_config", config.PPO2ControlMode.name)
+        loadConfig = False
+
+    if setpointToSend is not None:
+        divecan_client.send_setpoint(1, (int)(setpointToSend*100))
+        setpointToSend = None
+
+    if sendreset:
+        DiveCAN.resetBoard(divecan_client)
+        sendreset = False
+
+    if configToWrite is not None:
+        try:
+            configuration.configureBoard(divecan_client, configToWrite)
+            configToWrite = None
+        except:
+            print("Configuration rejected by board")
+
+def DiveCANListen():
+    global diveCANRun
+    diveCANRun = False
+    try:
+        divecan_client = DiveCAN.DiveCAN(dpg.get_value("divecan_adaptor_path"))
+        diveCANRun = True
+        dpg.set_value("connection_status", "Status: Connecting")
+    except:
+        dpg.set_value("connection_status", "Status: Error, cannot open adaptor")
+
     while diveCANRun:
-        if(dpg.get_value("realtime_sample_checkbox")):
-            consensus_msg = divecan_client.listen_for_cell_state()
-            ppo2_msg = divecan_client.listen_for_ppo2()
-            divecan_client.send_id(1)
-            status_msg = divecan_client.listen_for_status()
-            print(consensus_msg)
-            print(ppo2_msg)
-            if len(index) > 200:
-                consensus_PPO2.pop(0)
-                c1_PPO2.pop(0)
-                c2_PPO2.pop(0)
-                c3_PPO2.pop(0)
-                setpoint.pop(0)
-                index.pop(0)
-
-            index.append(max(index)+1)
-            consensus_PPO2.append(consensus_msg.data[1]/100)
-            c1_PPO2.append(ppo2_msg.data[1]/100)
-            c2_PPO2.append(ppo2_msg.data[2]/100)
-            c3_PPO2.append(ppo2_msg.data[3]/100)
-            setpoint.append(status_msg.data[5]/100)
-            dpg.set_value('consensus_series', [index, consensus_PPO2])
-            dpg.set_value('c1_series', [index, c1_PPO2])
-            dpg.set_value('c2_series', [index, c2_PPO2])
-            dpg.set_value('c3_series', [index, c3_PPO2])
-            dpg.set_value('setpoint_series', [index, setpoint])
-
-            battery_voltage = status_msg.data[0]/10
-            minimum_battery_voltage = min(battery_voltage, minimum_battery_voltage)
-            dpg.set_value('battery_indicator', "Battery Voltage: " + str(battery_voltage) + "(" + str(minimum_battery_voltage) + ")")
-            dpg.set_axis_limits("x_axis", max(index)-200, max(index))
-            dpg.set_axis_limits("y_axis", 0, max(consensus_PPO2)+0.1)
-
-        if loadConfig :
-            config = configuration.read_board_config(divecan_client)
-            dpg.set_value("c1_config", config.cell1.name)
-            dpg.set_value("c2_config", config.cell2.name)
-            dpg.set_value("c3_config", config.cell3.name)
-            dpg.set_value("power_mode_config", config.powerMode.name)
-            dpg.set_value("calibration_mode_config", config.calMethod.name)
-            dpg.set_value("printing_config", config.enableUartPrinting)
-            dpg.set_value("battery_alarm_config", config.alarmVoltageThreshold.name)
-            dpg.set_value("ppo2_control_config", config.PPO2ControlMode.name)
-            loadConfig = False
-
-        if configToWrite is not None:
-            try:
-                configuration.configureBoard(divecan_client, configToWrite)
-                configToWrite = None
-            except:
-                print("Configuration rejected by board")
+        DiveCANTick(divecan_client)
 
 def send_setpoint(sender, appdata):
-    setpoint = dpg.get_value("setpoint_slider")
-    divecan_client.send_setpoint(1, (int)(setpoint*100))
+    global setpointToSend
+    setpointToSend = dpg.get_value("setpoint_slider")
 
 def reset_board(sender, appdata):
-    DiveCAN.resetBoard(divecan_client)
+    global sendreset
+    sendreset = True
 
 def load_config(sender, appdata):
     global loadConfig
@@ -103,7 +133,27 @@ def save_config(sender, appdata):
         configuration.PPO2ControlScheme[dpg.get_value("ppo2_control_config")]
     )
 
+diveCANthread = threading.Thread(target=DiveCANListen)
+
+def connect_to_board(sender, appdata):
+    diveCANthread.start()
+
+
+def disconnect_from_board(sender, appdata):
+    global diveCANRun
+    diveCANRun = False
+    diveCANthread.join()
+    dpg.set_value("connection_status", "Status: Disconnected")
+
 with dpg.window(label="main", autosize=True) as primary_window:
+        dpg.add_text(default_value="Status: Disconnected", tag="connection_status")
+        with dpg.collapsing_header(label="Connection"):
+            dpg.add_input_text(label="Adaptor Path", default_value="/dev/ttyACM0", tag="divecan_adaptor_path")
+            dpg.add_button(label="Connect", callback=connect_to_board)
+            dpg.add_button(label="Disconnect", callback=disconnect_from_board)
+            
+
+
         with dpg.collapsing_header(label="Configuration"):
             dpg.add_text("Firmware Version: 7")
             dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 1", tag="c1_config")
@@ -155,12 +205,8 @@ dpg.bind_item_handler_registry("setpoint_slider","setpoint_slider_handler")
 
 load_config(None, None)
 
-diveCANthread = threading.Thread(target=DiveCANListen)
-diveCANthread.start()
 dpg.set_primary_window(primary_window, True)
 dpg.setup_dearpygui()
 dpg.show_viewport()
 dpg.start_dearpygui()
 dpg.destroy_context()
-diveCANRun = False
-diveCANthread.join()
