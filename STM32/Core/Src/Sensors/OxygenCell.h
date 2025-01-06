@@ -70,7 +70,7 @@ extern "C"
 
     Consensus_t peekCellConsensus(QueueHandle_t cell1, QueueHandle_t cell2, QueueHandle_t cell3);
     Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3);
-    uint8_t cellConfidence(Consensus_t consensus);
+    uint8_t cellConfidence(const Consensus_t* const consensus);
 #ifdef __cplusplus
 }
 #endif
