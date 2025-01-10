@@ -6,26 +6,10 @@
 #include "../Hardware/solenoid.h"
 #include "../Sensors/OxygenCell.h"
 #include "../errors.h"
+#include "../Hardware/log.h"
 
 static PPO2_t setpoint = 70;
-typedef struct
-{
-    /* PID State parameters */
-    PIDNumeric_t derivativeState;
-    PIDNumeric_t integralState;
 
-    /* Integral Maximum Limits, set to the maximum and minium of the drive range */
-    PIDNumeric_t integralMax;
-    PIDNumeric_t integralMin;
-
-    /* PID Gains */
-    PIDNumeric_t integralGain;
-    PIDNumeric_t proportionalGain;
-    PIDNumeric_t derivativeGain;
-
-    /* Track how many PID cycles we remain in integral saturation, used to detect solenoid failure */
-    uint16_t saturationCount;
-} PIDState_t;
 typedef struct
 {
     QueueHandle_t c1;
@@ -291,6 +275,8 @@ void PPO2ControlTask(void *arg)
                    (params->pidState).derivativeState,
                    *dutyCycle,
                    consensus.precisionConsensus);
+
+        LogPIDState(&(params->pidState), *dutyCycle, d_setpoint);
 
         (void)osDelay(pdMS_TO_TICKS(PIDPeriod));
     } while (RTOS_LOOP_FOREVER);

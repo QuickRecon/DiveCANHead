@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include "../DiveCAN/Transciever.h"
+#include "../PPO2Control/PPO2Control.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -18,7 +19,8 @@ extern "C"
         LOG_I2C = 2,
         LOG_PPO2 = 3,
         LOG_ANALOG_SENSOR = 4,
-        LOG_DIVE_O2_SENSOR = 5
+        LOG_DIVE_O2_SENSOR = 5,
+        LOG_PID = 6
     } LogType_t;
 
     void InitLog(void);
@@ -28,6 +30,7 @@ extern "C"
     void AnalogCellSample(uint8_t cellNumber, int16_t sample);
     void LogRXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogTXDiveCANMessage(const DiveCANMessage_t *const message);
+    void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDNumeric_t setpoint);
 
 #ifdef __cplusplus
 }

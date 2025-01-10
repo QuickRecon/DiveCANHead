@@ -5,6 +5,7 @@
 
 #include "solenoid.h"
 #include "main.h"
+#include "printer.h"
 
 /**
  * @brief Set the GPIO pins to enable and fire the solenoid, pulling from Battery then CAN power.
@@ -18,6 +19,7 @@ void setSolenoidOn(void)
     HAL_GPIO_WritePin(SOLENOID_GPIO_Port, SOLENOID_Pin, GPIO_PIN_SET);
 
     HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
+    serial_printf("Solenoid ON");
 }
 
 /**
@@ -32,4 +34,5 @@ void setSolenoidOff(void)
     HAL_GPIO_WritePin(SOLENOID_GPIO_Port, SOLENOID_Pin, GPIO_PIN_RESET);
 
     HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
+    serial_printf("Solenoid OFF");
 }

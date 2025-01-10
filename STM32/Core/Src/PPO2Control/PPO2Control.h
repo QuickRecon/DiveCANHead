@@ -9,6 +9,25 @@ extern "C"
 {
 #endif
 
+    typedef struct
+    {
+        /* PID State parameters */
+        PIDNumeric_t derivativeState;
+        PIDNumeric_t integralState;
+
+        /* Integral Maximum Limits, set to the maximum and minium of the drive range */
+        PIDNumeric_t integralMax;
+        PIDNumeric_t integralMin;
+
+        /* PID Gains */
+        PIDNumeric_t integralGain;
+        PIDNumeric_t proportionalGain;
+        PIDNumeric_t derivativeGain;
+
+        /* Track how many PID cycles we remain in integral saturation, used to detect solenoid failure */
+        uint16_t saturationCount;
+    } PIDState_t;
+    
     typedef enum
     {
         PPO2CONTROL_OFF = 0,

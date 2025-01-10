@@ -9,6 +9,7 @@
 #include "../common.h"
 #include "./printer.h"
 #include "../errors.h"
+#include "../PPO2Control/PPO2Control.h"
 
 extern SD_HandleTypeDef hsd1;
 
@@ -18,7 +19,7 @@ extern SD_HandleTypeDef hsd1;
 
 typedef float timestamp_t;
 
-#define LOGFILE_COUNT 6
+#define LOGFILE_COUNT 7
 
 const char LOG_FILENAMES[LOGFILE_COUNT][FILENAME_LENGTH] = {
     "LOG.TXT",
@@ -26,7 +27,8 @@ const char LOG_FILENAMES[LOGFILE_COUNT][FILENAME_LENGTH] = {
     "I2C.CSV",
     "PPO2.CSV",
     "ANALOG.CSV",
-    "DIVEO2.CSV"};
+    "DIVEO2.CSV",
+    "PID.CSV"};
 
 /* SD card driver overrides to make the DMA work properly */
 uint8_t BSP_SD_WriteBlocks_DMA(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBlocks)
@@ -450,6 +452,39 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
     else
     {
         NON_FATAL_ERROR(NULL_PTR);
+    }
+}
+
+void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDNumeric_t setpoint)
+{
+    /* Single CPU with cooperative multitasking means that this is
+     * valid until we've enqueued (and hence no longer care)
+     * This is necessary to save literal kilobytes of ram*/
+    static LogQueue_t enQueueItem = {0};
+    static uint32_t logMsgIndex = 0;
+    (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
+    enQueueItem.eventType = LOG_PID;
+
+    if (pid_state != NULL)
+    {
+        /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+        if (logRunning())
+        {
+            timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
+
+            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,is: %f, sc: %d, %%: %f, sp: %f\r\n", timestamp, logMsgIndex, pid_state->integralState, pid_state->saturationCount, dutyCycle, setpoint);
+            if (strLen > 0)
+            {
+                /* High priority, clear old items to make room */
+                if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
+                {
+                    LogQueue_t logItem = {0};
+                    (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+                }
+                (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+                ++logMsgIndex;
+            }
+        }
     }
 }
 
