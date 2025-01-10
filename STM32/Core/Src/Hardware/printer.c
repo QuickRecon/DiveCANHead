@@ -33,6 +33,19 @@ static QueueHandle_t *getQueueHandle(void)
     return &PrintQueue;
 }
 
+static bool* getQueueStatus(void){
+    static bool queueReady = false;
+    return &queueReady;
+}
+
+static void markQueueReady(void){
+    *getQueueStatus() = true;
+}
+
+static bool isQueueReady(void){
+    return *getQueueStatus();
+}
+
 typedef struct
 {
     bool printEnable;
@@ -62,6 +75,7 @@ void InitPrinter(bool printToCanbus)
     static uint8_t PrintQueue_Storage[PRINTQUEUE_LENGTH * sizeof(PrintQueue_t)];
     QueueHandle_t *printQueue = getQueueHandle();
     *printQueue = xQueueCreateStatic(PRINTQUEUE_LENGTH, sizeof(PrintQueue_t), PrintQueue_Storage, &PrintQueue_QueueStruct);
+    markQueueReady();
 
     osThreadId_t *PrinterTaskHandle = getOSThreadId();
     *PrinterTaskHandle = osThreadNew(PrinterTask, &params, &PrinterTask_attributes);
@@ -91,7 +105,7 @@ void vprint(const char *fmt, va_list argp)
 {
     static PrintQueue_t enQueueItem = {0};
     /* Build the string and queue it if its legal */
-    if (0 < vsprintf(enQueueItem.string, fmt, argp))
+    if (0 < vsprintf(enQueueItem.string, fmt, argp) && isQueueReady())
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }

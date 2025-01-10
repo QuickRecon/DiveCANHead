@@ -32,6 +32,11 @@ extern "C"
     {
         mock().actualCall("txPrecisionCells");
     }
+
+    void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDNumeric_t setpoint)
+    {
+        mock().actualCall("LogPIDState");
+    }
 }
 
 TEST_GROUP(PPO2Control){

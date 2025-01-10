@@ -31,6 +31,7 @@ extern "C"
     void LogRXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogTXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDNumeric_t setpoint);
+    void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus);
 
 #ifdef __cplusplus
 }

@@ -255,7 +255,7 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
             }
         }
 
-        if ((HAL_GetTick() - lastSynced) > TIMEOUT_4s)
+        if ((HAL_GetTick() - lastSynced) > TIMEOUT_2S)
         {
             res = f_sync(&(LOG_FILES[currSyncFile]));
             currSyncFile = (currSyncFile + 1) % LOGFILE_COUNT;
@@ -484,6 +484,35 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
                 (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
                 ++logMsgIndex;
             }
+        }
+    }
+}
+
+void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus)
+{
+    /* Single CPU with cooperative multitasking means that this is
+     * valid until we've enqueued (and hence no longer care)
+     * This is necessary to save literal kilobytes of ram*/
+    static LogQueue_t enQueueItem = {0};
+    static uint32_t logMsgIndex = 0;
+    (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
+    enQueueItem.eventType = LOG_PID;
+    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+    if (logRunning())
+    {
+        timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
+
+        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu, c1:%d:%f, c2:%d:%f, c3:%d:%f, consensus: \r\n", timestamp, logMsgIndex, c1_included, c1, c2_included, c2, c3_included, c3, consensus);
+        if (strLen > 0)
+        {
+            /* High priority, clear old items to make room */
+            if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
+            {
+                LogQueue_t logItem = {0};
+                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+            }
+            (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+            ++logMsgIndex;
         }
     }
 }
