@@ -13,7 +13,7 @@
 
 extern SD_HandleTypeDef hsd1;
 
-#define LOGQUEUE_LENGTH 20
+#define LOGQUEUE_LENGTH 10
 #define FILENAME_LENGTH 13
 #define MAXPATH_LENGTH 255
 
