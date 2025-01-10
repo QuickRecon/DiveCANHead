@@ -3,7 +3,7 @@
 #include "cmsis_os.h"
 
 /* Log Line length used in printer and sd card logging*/
-#define LOG_LINE_LENGTH 200
+#define LOG_LINE_LENGTH 150
 
 #ifdef __cplusplus
 extern "C"
@@ -92,15 +92,15 @@ extern "C"
     static const osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
 
 /* Define the stack sizes for all the tasks */
-#define PPO2CONTROLTASK_STACK_SIZE 800  /* 584 by stack analysis*/
+#define PPO2CONTROLTASK_STACK_SIZE 1300  /* 1240 by stack analysis*/
 #define SOLENOIDFIRETASK_STACK_SIZE 500 /* 440 by stack analysis*/
-#define CANTASK_STACK_SIZE 1200         /* 1120 by static analysis */
-#define PPO2TXTASK_STACK_SIZE 1000      /* 928 bytes by static analysis */
+#define CANTASK_STACK_SIZE 1200         /* 1104 by static analysis */
+#define PPO2TXTASK_STACK_SIZE 1000      /* 896 bytes by static analysis */
 #define ADCTASK_STACK_SIZE 600          /* 504 by static analysis */
-#define CELL_PROCESSOR_STACK_SIZE 800   /* 680 by static analysis*/
-#define CALTASK_STACK_SIZE 900          /* Static analysis 856 */
-#define PRINTER_STACK_SIZE 650          /* Static analysis 608 */
-#define LOG_STACK_SIZE 1700             /* Static analysis 1592 */
+#define CELL_PROCESSOR_STACK_SIZE 700   /* 696 by static analysis*/
+#define CALTASK_STACK_SIZE 900          /* Static analysis 840 */
+#define PRINTER_STACK_SIZE 1100          /* Static analysis 1048 */
+#define LOG_STACK_SIZE 1600             /* Static analysis 1536 */
 
 /* conditional compilation for RTOS loop breaking is pretty */
 /* shit as a testing method */

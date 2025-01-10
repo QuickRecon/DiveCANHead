@@ -90,7 +90,7 @@ const osThreadAttr_t watchdogTask_attributes = {
 };
 /* Definitions for sDInitTask */
 osThreadId_t sDInitTaskHandle;
-uint32_t SDInitTaskBuffer[512];
+uint32_t SDInitTaskBuffer[256];
 osStaticThreadDef_t SDInitTaskControlBlock;
 const osThreadAttr_t sDInitTask_attributes = {
     .name = "sDInitTask",
@@ -101,17 +101,17 @@ const osThreadAttr_t sDInitTask_attributes = {
     .priority = (osPriority_t)osPriorityRealtime,
 };
 /* Definitions for perfMonitor */
-osThreadId_t perfMonitorHandle;
-uint32_t perfMonitorBuffer[2048];
-osStaticThreadDef_t perfMonitorControlBlock;
-const osThreadAttr_t perfMonitor_attributes = {
-    .name = "perfMonitor",
-    .cb_mem = &perfMonitorControlBlock,
-    .cb_size = sizeof(perfMonitorControlBlock),
-    .stack_mem = &perfMonitorBuffer[0],
-    .stack_size = sizeof(perfMonitorBuffer),
-    .priority = (osPriority_t)osPriorityLow1,
-};
+// osThreadId_t perfMonitorHandle;
+// uint32_t perfMonitorBuffer[2048];
+// osStaticThreadDef_t perfMonitorControlBlock;
+// const osThreadAttr_t perfMonitor_attributes = {
+//     .name = "perfMonitor",
+//     .cb_mem = &perfMonitorControlBlock,
+//     .cb_size = sizeof(perfMonitorControlBlock),
+//     .stack_mem = &perfMonitorBuffer[0],
+//     .stack_size = sizeof(perfMonitorBuffer),
+//     .priority = (osPriority_t)osPriorityLow1,
+// };
 /* USER CODE BEGIN PV */
 /* USER CODE END PV */
 
