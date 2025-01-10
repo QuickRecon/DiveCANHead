@@ -92,15 +92,15 @@ extern "C"
     static const osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
 
 /* Define the stack sizes for all the tasks */
-#define PPO2CONTROLTASK_STACK_SIZE 1300  /* 1240 by stack analysis*/
-#define SOLENOIDFIRETASK_STACK_SIZE 500 /* 440 by stack analysis*/
-#define CANTASK_STACK_SIZE 1200         /* 1104 by static analysis */
-#define PPO2TXTASK_STACK_SIZE 1000      /* 896 bytes by static analysis */
-#define ADCTASK_STACK_SIZE 600          /* 504 by static analysis */
+#define PPO2CONTROLTASK_STACK_SIZE 1200  /* 1128 by stack analysis*/
+#define SOLENOIDFIRETASK_STACK_SIZE 400 /* 360 by stack analysis*/
+#define CANTASK_STACK_SIZE 1100         /* 992 by static analysis */
+#define PPO2TXTASK_STACK_SIZE 850      /* 784 bytes by static analysis */
+#define ADCTASK_STACK_SIZE 500          /* 424 by static analysis */
 #define CELL_PROCESSOR_STACK_SIZE 700   /* 696 by static analysis*/
-#define CALTASK_STACK_SIZE 900          /* Static analysis 840 */
+#define CALTASK_STACK_SIZE 800          /* Static analysis 696 */
 #define PRINTER_STACK_SIZE 1100          /* Static analysis 1048 */
-#define LOG_STACK_SIZE 1600             /* Static analysis 1536 */
+#define LOG_STACK_SIZE 1600             /* Static analysis 1480 */
 
 /* conditional compilation for RTOS loop breaking is pretty */
 /* shit as a testing method */

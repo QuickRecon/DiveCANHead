@@ -4,6 +4,7 @@
 #include "../errors.h"
 #include "../Hardware/printer.h"
 #include "../PPO2Control/PPO2Control.h"
+#include "../Hardware/log.h"
 
 typedef struct
 {
@@ -78,6 +79,14 @@ void PPO2TXTask(void *arg)
         (void)osDelay(TIMEOUT_100MS);
 
         Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
+
+        LogPPO2State(consensus.statusArray[0],
+                     consensus.statusArray[1],
+                     consensus.statusArray[2],
+                     consensus.precisionPPO2Array[0],
+                     consensus.precisionPPO2Array[1],
+                     consensus.precisionPPO2Array[2],
+                     consensus.precisionConsensus);
 
         /* Go through each cell and if any need cal, flag cal
          Also check for fail and mark the cell value as fail */

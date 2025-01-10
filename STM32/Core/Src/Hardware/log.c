@@ -13,7 +13,7 @@
 
 extern SD_HandleTypeDef hsd1;
 
-#define LOGQUEUE_LENGTH 10
+#define LOGQUEUE_LENGTH 15
 #define FILENAME_LENGTH 13
 #define MAXPATH_LENGTH 255
 
@@ -333,6 +333,14 @@ bool logRunning(void)
              (osThreadGetState(*logTask) == osThreadTerminated));
 }
 
+void checkQueueStarvation(LogType_t eventType){
+    char buff[LOG_LINE_LENGTH] = "";
+    if(0 == osMessageQueueGetSpace(*(getQueueHandle())) &&
+    0 < snprintf(buff, LOG_LINE_LENGTH, "Queue Starvation in log %d", eventType)){
+        LogMsg(buff);
+    }
+}
+
 void LogMsg(const char *msg)
 {
     /* Single CPU with cooperative multitasking means that this is
@@ -382,7 +390,7 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
     static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
-
+    checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
         (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)) &&
@@ -400,7 +408,7 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
-
+checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
         (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)) &&
@@ -419,7 +427,7 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
     static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_CAN;
-
+checkQueueStarvation(enQueueItem.eventType);
     if (message != NULL)
     {
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
@@ -464,7 +472,7 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
     static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_PID;
-
+checkQueueStarvation(enQueueItem.eventType);
     if (pid_state != NULL)
     {
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
@@ -472,7 +480,7 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
         {
             timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
 
-            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,is: %f, sc: %d, %%: %f, sp: %f\r\n", timestamp, logMsgIndex, pid_state->integralState, pid_state->saturationCount, dutyCycle, setpoint);
+            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,is: %f, sc: %d, %%: %f, sp: %f\r\n", timestamp, logMsgIndex, (float)pid_state->integralState, pid_state->saturationCount, (float)dutyCycle, (float)setpoint);
             if (strLen > 0)
             {
                 /* High priority, clear old items to make room */
@@ -496,13 +504,14 @@ void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumer
     static LogQueue_t enQueueItem = {0};
     static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
-    enQueueItem.eventType = LOG_PID;
+    enQueueItem.eventType = LOG_PPO2;
+    checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning())
     {
         timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
 
-        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu, c1:%d:%f, c2:%d:%f, c3:%d:%f, consensus: \r\n", timestamp, logMsgIndex, c1_included, c1, c2_included, c2, c3_included, c3, consensus);
+        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu, c1:%d:%f, c2:%d:%f, c3:%d:%f, consensus: %f \r\n", timestamp, logMsgIndex, c1_included, (float)c1, c2_included, (float)c2, c3_included, (float)c3, consensus);
         if (strLen > 0)
         {
             /* High priority, clear old items to make room */
@@ -524,5 +533,5 @@ void LogRXDiveCANMessage(const DiveCANMessage_t *const message)
 
 void LogTXDiveCANMessage(const DiveCANMessage_t *const message)
 {
-    LogDiveCANMessage(message, false);
+    //LogDiveCANMessage(message, false);
 }
