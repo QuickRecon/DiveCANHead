@@ -80,9 +80,9 @@ void PPO2TXTask(void *arg)
 
         Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
 
-        LogPPO2State(consensus.statusArray[0],
-                     consensus.statusArray[1],
-                     consensus.statusArray[2],
+        LogPPO2State(consensus.includeArray[0],
+                     consensus.includeArray[1],
+                     consensus.includeArray[2],
                      consensus.precisionPPO2Array[0],
                      consensus.precisionPPO2Array[1],
                      consensus.precisionPPO2Array[2],

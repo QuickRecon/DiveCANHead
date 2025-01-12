@@ -65,6 +65,11 @@ extern "C"
         mock().actualCall("osDelay");
         return osOK;
     }
+
+    void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus)
+    {
+        mock().actualCall("LogPPO2State").withParameter("c1_included", c1_included).withParameter("c2_included", c2_included).withParameter("c3_included", c3_included).withParameter("c1", c1).withParameter("c2", c2).withParameter("c3", c3).withParameter("consensus", consensus);
+    }
 }
 
 class PPO2TXTask_paramsComparator : public MockNamedValueComparator
@@ -187,6 +192,7 @@ TEST(PPO2Transmitter, TaskTXsValues)
     mock().expectOneCall("txPPO2").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", 90).withParameter("cell2", 110).withParameter("cell3", 100);
     mock().expectOneCall("txMillivolts").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", 11).withParameter("cell2", 12).withParameter("cell3", 13);
     mock().expectOneCall("txCellState").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", true).withParameter("cell2", true).withParameter("cell3", true).withParameter("PPO2", 100);
+    mock().expectOneCall("LogPPO2State").withParameter("c1_included", true).withParameter("c2_included", true).withParameter("c3_included", true).withParameter("c1", 0.9f).withParameter("c2", 1.1f).withParameter("c3", 1.0f).withParameter("consensus", 1.0f);
     PPO2TXTask(&expectedParams);
 }
 
