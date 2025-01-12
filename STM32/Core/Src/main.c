@@ -1202,7 +1202,7 @@ void WatchdogTask(void *)
   for (;;)
   {
     (void)HAL_IWDG_Refresh(&hiwdg);
-    (void)osDelay(1);
+    (void)osDelay(pdMS_TO_TICKS(100));
   }
   /* USER CODE END 5 */
 }
