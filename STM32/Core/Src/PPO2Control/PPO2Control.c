@@ -249,7 +249,8 @@ void PPO2ControlTask(void *arg)
 
         if (c1pick && c2pick && c3pick)
         {
-            txPrecisionCells(DIVECAN_SOLO, c1, c2, c3);
+            /* TODO: add config param for dumping extended info */
+            // txPrecisionCells(DIVECAN_SOLO, c1, c2, c3);
         }
 
         /* It feels like we ought to do something with the cell confidence (go to SP low?) but that implementation is hard so avoid for now
@@ -266,15 +267,15 @@ void PPO2ControlTask(void *arg)
 
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
         *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
-
-        txPIDState(DIVECAN_SOLO,
-                   (params->pidState).proportionalGain,
-                   (params->pidState).integralGain,
-                   (params->pidState).derivativeGain,
-                   (params->pidState).integralState,
-                   (params->pidState).derivativeState,
-                   *dutyCycle,
-                   consensus.precisionConsensus);
+/* TODO: add config param for dumping extended info */
+        // txPIDState(DIVECAN_SOLO,
+        //            (params->pidState).proportionalGain,
+        //            (params->pidState).integralGain,
+        //            (params->pidState).derivativeGain,
+        //            (params->pidState).integralState,
+        //            (params->pidState).derivativeState,
+        //            *dutyCycle,
+        //            consensus.precisionConsensus);
 
         LogPIDState(&(params->pidState), *dutyCycle, d_setpoint);
 

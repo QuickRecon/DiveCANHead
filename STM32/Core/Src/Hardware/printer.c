@@ -33,16 +33,19 @@ static QueueHandle_t *getQueueHandle(void)
     return &PrintQueue;
 }
 
-static bool* getQueueStatus(void){
+static bool *getQueueStatus(void)
+{
     static bool queueReady = false;
     return &queueReady;
 }
 
-static void markQueueReady(void){
+static void markQueueReady(void)
+{
     *getQueueStatus() = true;
 }
 
-static bool isQueueReady(void){
+static bool isQueueReady(void)
+{
     return *getQueueStatus();
 }
 
@@ -94,7 +97,8 @@ void PrinterTask(void *arg)
         {
             if (taskParams->printEnable)
             {
-                txLogText(DIVECAN_SOLO, printItem.string, (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH));
+                /* TODO: add config param for dumping extended info */
+                // txLogText(DIVECAN_SOLO, printItem.string, (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH));
             }
             LogMsg(printItem.string);
         }

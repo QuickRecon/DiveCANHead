@@ -333,10 +333,12 @@ bool logRunning(void)
              (osThreadGetState(*logTask) == osThreadTerminated));
 }
 
-void checkQueueStarvation(LogType_t eventType){
+void checkQueueStarvation(LogType_t eventType)
+{
     char buff[LOG_LINE_LENGTH] = "";
-    if(0 == osMessageQueueGetSpace(*(getQueueHandle())) &&
-    0 < snprintf(buff, LOG_LINE_LENGTH, "Queue Starvation in log %d", eventType)){
+    if (0 == osMessageQueueGetSpace(*(getQueueHandle())) &&
+        0 < snprintf(buff, LOG_LINE_LENGTH, "Queue Starvation in log %d", eventType))
+    {
         LogMsg(buff);
     }
 }
@@ -408,7 +410,7 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_ANALOG_SENSOR;
-checkQueueStarvation(enQueueItem.eventType);
+    checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
         (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)) &&
@@ -427,7 +429,7 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
     static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_CAN;
-checkQueueStarvation(enQueueItem.eventType);
+    checkQueueStarvation(enQueueItem.eventType);
     if (message != NULL)
     {
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
@@ -472,7 +474,7 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
     static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_PID;
-checkQueueStarvation(enQueueItem.eventType);
+    checkQueueStarvation(enQueueItem.eventType);
     if (pid_state != NULL)
     {
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
@@ -533,5 +535,5 @@ void LogRXDiveCANMessage(const DiveCANMessage_t *const message)
 
 void LogTXDiveCANMessage(const DiveCANMessage_t *const message)
 {
-    //LogDiveCANMessage(message, false);
+    // LogDiveCANMessage(message, false);
 }
