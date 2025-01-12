@@ -100,18 +100,6 @@ const osThreadAttr_t sDInitTask_attributes = {
     .stack_size = sizeof(SDInitTaskBuffer),
     .priority = (osPriority_t)osPriorityRealtime,
 };
-/* Definitions for perfMonitor */
-// osThreadId_t perfMonitorHandle;
-// uint32_t perfMonitorBuffer[2048];
-// osStaticThreadDef_t perfMonitorControlBlock;
-// const osThreadAttr_t perfMonitor_attributes = {
-//     .name = "perfMonitor",
-//     .cb_mem = &perfMonitorControlBlock,
-//     .cb_size = sizeof(perfMonitorControlBlock),
-//     .stack_mem = &perfMonitorBuffer[0],
-//     .stack_size = sizeof(perfMonitorBuffer),
-//     .priority = (osPriority_t)osPriorityLow1,
-// };
 /* USER CODE BEGIN PV */
 /* USER CODE END PV */
 
@@ -133,7 +121,6 @@ static void MX_TIM1_Init(void);
 static void MX_TIM15_Init(void);
 void WatchdogTask(void *argument);
 void SDInitTask(void *argument);
-void PerfMonitor(void *argument);
 
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
@@ -401,9 +388,6 @@ int main(void)
   /* creation of sDInitTask */
   sDInitTaskHandle = osThreadNew(SDInitTask, NULL, &sDInitTask_attributes);
 
-  /* creation of perfMonitor */
-  /* perfMonitorHandle = osThreadNew(PerfMonitor, NULL, &perfMonitor_attributes); */
-
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -460,7 +444,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 1;
   RCC_OscInitStruct.PLL.PLLN = 12;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV7;
-  RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV4;
   RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -717,11 +701,11 @@ static void MX_I2C1_Init(void)
 static void MX_IWDG_Init(void)
 {
 
-  /* USER CODE BEGIN IWDG_Init 0 */
+  // /* USER CODE BEGIN IWDG_Init 0 */
 
-  /* USER CODE END IWDG_Init 0 */
+  // /* USER CODE END IWDG_Init 0 */
 
-  /* USER CODE BEGIN IWDG_Init 1 */
+  // /* USER CODE BEGIN IWDG_Init 1 */
 
   /* USER CODE END IWDG_Init 1 */
   hiwdg.Instance = IWDG;
@@ -1220,56 +1204,6 @@ void SDInitTask(void *)
   StartLogTask();
   (void)vTaskDelete(NULL);
   /* USER CODE END SDInitTask */
-}
-
-/* USER CODE BEGIN Header_PerfMonitor */
-/**
- * @brief Function implementing the perfMonitor thread.
- * @retval None
- */
-/* USER CODE END Header_PerfMonitor */
-void PerfMonitor(void *)
-{
-  /* USER CODE BEGIN PerfMonitor */
-  RuntimeCounter_t ulTotalRunTime = 0;
-  Percent_t runtime_percent = 0;
-
-  /* Infinite loop */
-  for (;;)
-  {
-    (void)osDelay(TIMEOUT_5s);
-
-    UBaseType_t uxArraySize = uxTaskGetNumberOfTasks();
-    TaskStatus_t *pxTaskStatusArray = pvPortMalloc(uxArraySize * sizeof(TaskStatus_t)); /* a little bit scary! */
-
-    if (pxTaskStatusArray != NULL)
-    {
-      uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize,
-                                         &ulTotalRunTime);
-
-      blocking_serial_printf("Task count = %lu\r\n", uxArraySize);
-      blocking_serial_printf("No      Name              S Usage   HW\r\n");
-
-      for (UBaseType_t x = 0; x < uxArraySize; ++x)
-      {
-
-        runtime_percent = 100.0f * ((Percent_t)pxTaskStatusArray[x].ulRunTimeCounter / (Percent_t)ulTotalRunTime);
-
-        blocking_serial_printf("Task %.2lu: %-17s %2d %7.4f %4i\r\n", x,
-                               pxTaskStatusArray[x].pcTaskName,
-                               pxTaskStatusArray[x].eCurrentState, runtime_percent,
-                               pxTaskStatusArray[x].usStackHighWaterMark);
-      }
-
-      vPortFree(pxTaskStatusArray);
-    }
-    else
-    {
-      blocking_serial_printf("Unable to allocate stack space");
-    }
-  }
-
-  /* USER CODE END PerfMonitor */
 }
 
 /**

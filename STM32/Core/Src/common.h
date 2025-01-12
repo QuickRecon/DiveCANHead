@@ -30,8 +30,8 @@ extern "C"
     static const uint32_t TIMEOUT_500MS = 500;
     static const uint32_t TIMEOUT_1S = 1000;
     static const uint32_t TIMEOUT_2S = 2000;
-    static const uint32_t TIMEOUT_4s = 4000;
-    static const uint32_t TIMEOUT_5s = 5000;
+    static const uint32_t TIMEOUT_4S = 4000;
+    static const uint32_t TIMEOUT_5S = 5000;
 
     static const TickType_t TIMEOUT_5MS_TICKS = pdMS_TO_TICKS(TIMEOUT_5MS);
     static const TickType_t TIMEOUT_10MS_TICKS = pdMS_TO_TICKS(TIMEOUT_10MS);
@@ -39,8 +39,8 @@ extern "C"
     static const TickType_t TIMEOUT_500MS_TICKS = pdMS_TO_TICKS(TIMEOUT_500MS);
     static const TickType_t TIMEOUT_1S_TICKS = pdMS_TO_TICKS(TIMEOUT_1S);
     static const TickType_t TIMEOUT_2S_TICKS = pdMS_TO_TICKS(TIMEOUT_2S);
-    static const TickType_t TIMEOUT_4s_TICKS = pdMS_TO_TICKS(TIMEOUT_4s);
-    static const TickType_t TIMEOUT_5s_TICKS = pdMS_TO_TICKS(TIMEOUT_5s);
+    static const TickType_t TIMEOUT_4s_TICKS = pdMS_TO_TICKS(TIMEOUT_4S);
+    static const TickType_t TIMEOUT_5s_TICKS = pdMS_TO_TICKS(TIMEOUT_5S);
 
     /* Handy consts */
     static const uint32_t BYTE_WIDTH = 8;      /* Bitshift operations */

@@ -255,7 +255,7 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
             }
         }
 
-        if ((HAL_GetTick() - lastSynced) > TIMEOUT_2S)
+        if ((HAL_GetTick() - lastSynced) > TIMEOUT_4S)
         {
             res = f_sync(&(LOG_FILES[currSyncFile]));
             currSyncFile = (currSyncFile + 1) % LOGFILE_COUNT;
