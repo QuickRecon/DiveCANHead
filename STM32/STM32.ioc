@@ -1,5 +1,5 @@
 #MicroXplorer Configuration settings - do not modify
-ADC1.Channel-0\#ChannelRegularConversion=ADC_CHANNEL_VBAT
+ADC1.Channel-0\#ChannelRegularConversion=ADC_CHANNEL_VREFINT
 ADC1.CommonPathInternal=ADC_CHANNEL_VREFINT|null|ADC_CHANNEL_VBAT|null
 ADC1.IPParameters=Rank-0\#ChannelRegularConversion,Channel-0\#ChannelRegularConversion,SamplingTime-0\#ChannelRegularConversion,OffsetNumber-0\#ChannelRegularConversion,NbrOfConversionFlag,Resolution,NbrOfConversion,master,CommonPathInternal
 ADC1.NbrOfConversion=1
@@ -39,7 +39,7 @@ FATFS._CODE_PAGE=1
 FATFS._FS_LOCK=8
 FATFS._FS_NORTC=1
 FATFS._FS_REENTRANT=1
-FATFS._FS_TINY=1
+FATFS._FS_TINY=0
 FATFS._MAX_SS=512
 FATFS._NORTC_MDAY=6
 FATFS._NORTC_MON=3

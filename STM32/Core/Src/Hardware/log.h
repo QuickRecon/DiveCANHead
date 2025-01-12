@@ -14,13 +14,8 @@ extern "C"
      */
     typedef enum
     {
-        LOG_EVENT = 0,
-        LOG_CAN = 1,
-        LOG_I2C = 2,
-        LOG_PPO2 = 3,
-        LOG_ANALOG_SENSOR = 4,
-        LOG_DIVE_O2_SENSOR = 5,
-        LOG_PID = 6
+        LOG_TEXT = 0,
+        LOG_EVENT = 1
     } LogType_t;
 
     void InitLog(void);

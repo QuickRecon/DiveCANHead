@@ -100,7 +100,7 @@ extern "C"
 #define CELL_PROCESSOR_STACK_SIZE 700   /* 696 by static analysis*/
 #define CALTASK_STACK_SIZE 800          /* Static analysis 696 */
 #define PRINTER_STACK_SIZE 1100         /* Static analysis 1048 */
-#define LOG_STACK_SIZE 1600             /* Static analysis 1480 */
+#define LOG_STACK_SIZE 2300             /* Static analysis 2264 */
 
 /* conditional compilation for RTOS loop breaking is pretty */
 /* shit as a testing method */

@@ -19,16 +19,11 @@ extern SD_HandleTypeDef hsd1;
 
 typedef float timestamp_t;
 
-#define LOGFILE_COUNT 7
+#define LOGFILE_COUNT 2
 
 const char LOG_FILENAMES[LOGFILE_COUNT][FILENAME_LENGTH] = {
     "LOG.TXT",
-    "DIVECAN.CSV",
-    "I2C.CSV",
-    "PPO2.CSV",
-    "ANALOG.CSV",
-    "DIVEO2.CSV",
-    "PID.CSV"};
+    "EVENTS.CSV"};
 
 /* SD card driver overrides to make the DMA work properly */
 uint8_t BSP_SD_WriteBlocks_DMA(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBlocks)
@@ -351,7 +346,7 @@ void LogMsg(const char *msg)
     static LogQueue_t enQueueItem = {0};
     static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
-    enQueueItem.eventType = LOG_EVENT;
+    enQueueItem.eventType = LOG_TEXT;
 
     if (msg != NULL)
     {
@@ -391,11 +386,11 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
      * This is necessary to save literal kilobytes of ram*/
     static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
-    enQueueItem.eventType = LOG_DIVE_O2_SENSOR;
+    enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
-        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)) &&
+        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,DIVEO2,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)) &&
         (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
     {
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
@@ -409,11 +404,11 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
      * This is necessary to save literal kilobytes of ram*/
     static LogQueue_t enQueueItem = {0};
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
-    enQueueItem.eventType = LOG_ANALOG_SENSOR;
+    enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
-        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)) &&
+        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,ANALOGCELL,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)) &&
         (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
     {
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
@@ -428,7 +423,7 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
     static LogQueue_t enQueueItem = {0};
     static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
-    enQueueItem.eventType = LOG_CAN;
+    enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
     if (message != NULL)
     {
@@ -444,7 +439,7 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
                 dir_str = "rx";
             }
 
-            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,%s,%u,%#010lx,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x\r\n", timestamp, logMsgIndex, dir_str, message->length, message->id,
+            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,CAN,%s,%u,%#010lx,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x,%#010x\r\n", timestamp, logMsgIndex, dir_str, message->length, message->id,
                                                message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
             if (strLen > 0)
             {
@@ -473,7 +468,7 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
     static LogQueue_t enQueueItem = {0};
     static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
-    enQueueItem.eventType = LOG_PID;
+    enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
     if (pid_state != NULL)
     {
@@ -482,7 +477,7 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
         {
             timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
 
-            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,is: %f, sc: %d, %%: %f, sp: %f\r\n", timestamp, logMsgIndex, (float)pid_state->integralState, pid_state->saturationCount, (float)dutyCycle, (float)setpoint);
+            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PID,%f,%d,%f,%f\r\n", timestamp, logMsgIndex, (float)pid_state->integralState, pid_state->saturationCount, (float)dutyCycle, (float)setpoint);
             if (strLen > 0)
             {
                 /* High priority, clear old items to make room */
@@ -506,14 +501,14 @@ void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumer
     static LogQueue_t enQueueItem = {0};
     static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
-    enQueueItem.eventType = LOG_PPO2;
+    enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning())
     {
         timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
 
-        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu, c1:%d:%f, c2:%d:%f, c3:%d:%f, consensus: %f \r\n", timestamp, logMsgIndex, c1_included, (float)c1, c2_included, (float)c2, c3_included, (float)c3, consensus);
+        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2,%d,%f,%d,%f,%d,%f,%f \r\n", timestamp, logMsgIndex, c1_included, (float)c1, c2_included, (float)c2, c3_included, (float)c3, consensus);
         if (strLen > 0)
         {
             /* High priority, clear old items to make room */
