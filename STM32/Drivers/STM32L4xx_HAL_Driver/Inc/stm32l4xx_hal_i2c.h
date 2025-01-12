@@ -782,10 +782,10 @@ extern "C"
 #define IS_I2C_TRANSFER_OTHER_OPTIONS_REQUEST(REQUEST) (((REQUEST) == I2C_OTHER_FRAME) || \
                                                         ((REQUEST) == I2C_OTHER_AND_LAST_FRAME))
 
-#define I2C_RESET_CR2(__HANDLE__) ((__HANDLE__)->Instance->CR2 &=                            \
-                                   (uint32_t) ~((uint32_t)(I2C_CR2_SADD | I2C_CR2_HEAD10R |  \
-                                                           I2C_CR2_NBYTES | I2C_CR2_RELOAD | \
-                                                           I2C_CR2_RD_WRN)))
+#define I2C_RESET_CR2(__HANDLE__) ((__HANDLE__)->Instance->CR2 &=                           \
+                                   (uint32_t)~((uint32_t)(I2C_CR2_SADD | I2C_CR2_HEAD10R |  \
+                                                          I2C_CR2_NBYTES | I2C_CR2_RELOAD | \
+                                                          I2C_CR2_RD_WRN)))
 
 #define I2C_GET_ADDR_MATCH(__HANDLE__) ((uint16_t)(((__HANDLE__)->Instance->ISR & I2C_ISR_ADDCODE) >> 16U))
 #define I2C_GET_DIR(__HANDLE__) ((uint8_t)(((__HANDLE__)->Instance->ISR & I2C_ISR_DIR) >> 16U))

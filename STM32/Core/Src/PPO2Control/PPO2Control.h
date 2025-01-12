@@ -27,7 +27,7 @@ extern "C"
         /* Track how many PID cycles we remain in integral saturation, used to detect solenoid failure */
         uint16_t saturationCount;
     } PIDState_t;
-    
+
     typedef enum
     {
         PPO2CONTROL_OFF = 0,

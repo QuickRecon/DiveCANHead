@@ -267,7 +267,7 @@ void PPO2ControlTask(void *arg)
 
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
         *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
-/* TODO: add config param for dumping extended info */
+        /* TODO: add config param for dumping extended info */
         // txPIDState(DIVECAN_SOLO,
         //            (params->pidState).proportionalGain,
         //            (params->pidState).integralGain,
