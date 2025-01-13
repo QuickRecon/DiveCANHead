@@ -269,11 +269,11 @@ void CalibrationTask(void *arg)
     switch (calParams.calMethod)
     {
     case CAL_DIGITAL_REFERENCE:    /* Calibrate using the solid state cell as a reference */
-        (void)osDelay(TIMEOUT_4S); /* Give the shearwater time to catch up */
+        (void)osDelay(TIMEOUT_4s_TICKS); /* Give the shearwater time to catch up */
         calResult = DigitalReferenceCalibrate(&calParams);
         break;
     case CAL_ANALOG_ABSOLUTE:
-        (void)osDelay(TIMEOUT_4S);
+        (void)osDelay(TIMEOUT_4s_TICKS);
         calResult = AnalogReferenceCalibrate(&calParams);
         break;
     case CAL_TOTAL_ABSOLUTE:

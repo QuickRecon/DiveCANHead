@@ -1200,7 +1200,7 @@ void WatchdogTask(void *)
 void SDInitTask(void *)
 {
   /* USER CODE BEGIN SDInitTask */
-  (void)osDelay(TIMEOUT_1S);
+  (void)osDelay(TIMEOUT_1S_TICKS);
   StartLogTask();
   (void)vTaskDelete(NULL);
   /* USER CODE END SDInitTask */

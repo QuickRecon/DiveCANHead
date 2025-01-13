@@ -24,23 +24,14 @@ extern "C"
     typedef unsigned long RuntimeCounter_t;
 
     /* Static timouts */
-    static const uint32_t TIMEOUT_5MS = 5;
-    static const uint32_t TIMEOUT_10MS = 10;
-    static const uint32_t TIMEOUT_100MS = 100;
-    static const uint32_t TIMEOUT_500MS = 500;
-    static const uint32_t TIMEOUT_1S = 1000;
-    static const uint32_t TIMEOUT_2S = 2000;
-    static const uint32_t TIMEOUT_4S = 4000;
-    static const uint32_t TIMEOUT_5S = 5000;
-
-    static const TickType_t TIMEOUT_5MS_TICKS = pdMS_TO_TICKS(TIMEOUT_5MS);
-    static const TickType_t TIMEOUT_10MS_TICKS = pdMS_TO_TICKS(TIMEOUT_10MS);
-    static const TickType_t TIMEOUT_100MS_TICKS = pdMS_TO_TICKS(TIMEOUT_100MS);
-    static const TickType_t TIMEOUT_500MS_TICKS = pdMS_TO_TICKS(TIMEOUT_500MS);
-    static const TickType_t TIMEOUT_1S_TICKS = pdMS_TO_TICKS(TIMEOUT_1S);
-    static const TickType_t TIMEOUT_2S_TICKS = pdMS_TO_TICKS(TIMEOUT_2S);
-    static const TickType_t TIMEOUT_4s_TICKS = pdMS_TO_TICKS(TIMEOUT_4S);
-    static const TickType_t TIMEOUT_5s_TICKS = pdMS_TO_TICKS(TIMEOUT_5S);
+    static const TickType_t TIMEOUT_5MS_TICKS = pdMS_TO_TICKS(5);
+    static const TickType_t TIMEOUT_10MS_TICKS = pdMS_TO_TICKS(10);
+    static const TickType_t TIMEOUT_100MS_TICKS = pdMS_TO_TICKS(100);
+    static const TickType_t TIMEOUT_500MS_TICKS = pdMS_TO_TICKS(500);
+    static const TickType_t TIMEOUT_1S_TICKS = pdMS_TO_TICKS(1000);
+    static const TickType_t TIMEOUT_2S_TICKS = pdMS_TO_TICKS(2000);
+    static const TickType_t TIMEOUT_4s_TICKS = pdMS_TO_TICKS(4000);
+    static const TickType_t TIMEOUT_5s_TICKS = pdMS_TO_TICKS(5000);
 
     /* Handy consts */
     static const uint32_t BYTE_WIDTH = 8;      /* Bitshift operations */

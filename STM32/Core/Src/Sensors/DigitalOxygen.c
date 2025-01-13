@@ -197,7 +197,7 @@ void decodeCellMessage(void *arg)
     }
 
     /* Do the wait for cell startup*/
-    (void)osDelay(TIMEOUT_1S);
+    (void)osDelay(TIMEOUT_1S_TICKS);
 
     while (true)
     {
@@ -271,7 +271,7 @@ void decodeCellMessage(void *arg)
             {
 
                 serial_printf("UNKNOWN CELL MESSSAGE: %s\r\n", msgBuf);
-                (void)osDelay(TIMEOUT_500MS);
+                (void)osDelay(TIMEOUT_500MS_TICKS);
                 /* Not a command we care about*/
             }
         }
@@ -285,7 +285,7 @@ void decodeCellMessage(void *arg)
          */
         while ((HAL_GetTick() - lastTicks) < TIMEOUT_100MS_TICKS)
         {
-            (void)osDelay(TIMEOUT_100MS);
+            (void)osDelay(TIMEOUT_100MS_TICKS);
         }
     }
 }

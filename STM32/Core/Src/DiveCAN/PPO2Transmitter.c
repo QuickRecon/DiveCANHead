@@ -76,7 +76,7 @@ void PPO2TXTask(void *arg)
     const DiveCANDevice_t *const dev = params->device;
     do
     {
-        (void)osDelay(TIMEOUT_500MS);
+        (void)osDelay(TIMEOUT_500MS_TICKS);
 
         Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
 
