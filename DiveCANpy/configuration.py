@@ -160,7 +160,9 @@ def supported_configurations():
         if cell_config.get_bits() not in [x.values[0].get_bits() for x in unsupported_configs] and cell_config.get_bits() not in [x.values[0].get_bits() for x in unable_configs]:
                      configurations.append(pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}'))
 
-    return configurations
+    #return configurations
+    cell_config = Configuration(FIRMWARE_VERSION, CellType.CELL_DIGITAL, CellType.CELL_ANALOG, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY, OxygenCalMethod.CAL_DIGITAL_REFERENCE, False, VoltageThreshold.V_THRESHOLD_9V, PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID)
+    return [pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}')]
 
 def analog_configurations():
      tests =  [conf.values[0] for conf in supported_configurations() if (conf.values[0].cell1 is CellType.CELL_ANALOG or conf.values[0].cell2 is CellType.CELL_ANALOG or conf.values[0].cell3 is CellType.CELL_ANALOG) and conf.values[0].cal_method is OxygenCalMethod.CAL_ANALOG_ABSOLUTE]

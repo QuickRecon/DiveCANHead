@@ -8,10 +8,11 @@ modbus_tk==1.1.4
 msgpack==1.1.0
 packaging==24.2
 pluggy==1.5.0
+-e git+https://github.com/IRNAS/ppk2-api-python.git@a686f1c8f47f91450890d4e69a91190103526d8d#egg=ppk2_api
 pyserial==3.5
 pytest==8.3.4
 python-can==4.5.0
 -e git+https://github.com/shaybox/riden.git@ecbda543cf566346dd28558d957b4aa7fe116a83#egg=Riden
-setuptools==75.6.0
+setuptools==75.8.0
 typing_extensions==4.12.2
-wrapt==1.17.0
+wrapt==1.17.1
