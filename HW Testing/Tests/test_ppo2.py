@@ -10,9 +10,9 @@ import utils
 @pytest.mark.parametrize("c1Val", range(0, 250, 36))
 @pytest.mark.parametrize("c2Val", range(0, 250, 36))
 @pytest.mark.parametrize("c3Val", range(0, 250, 36))
-def test_ppo2(config_and_cal_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], c1Val: int, c2Val: int, c3Val: int) -> None:
+def test_ppo2(config_and_cal_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU], c1Val: int, c2Val: int, c3Val: int) -> None:
     """ Test that digital cell reports PPO2 correctly """
-    divecan_client, shim_host, config = config_and_cal_divecan_client
+    divecan_client, shim_host, config, pwr = config_and_cal_and_power_divecan_client
 
     utils.configureCell(shim_host, 1, config.cell1, c1Val)
     utils.configureCell(shim_host, 2, config.cell2, c2Val)
@@ -26,8 +26,8 @@ def test_ppo2(config_and_cal_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShi
     utils.assertCell(config.cell2, message.data[2], c2Val)
     utils.assertCell(config.cell3, message.data[3], c3Val)
 
-def test_millivolts(config_divecan_client_millivolts: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, int, int, int]) -> None:
-    divecan_client, shim_host, config, c1Val, c2Val, c3Val= config_divecan_client_millivolts
+def test_millivolts(config_divecan_client_millivolts: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU, int, int, int]) -> None:
+    divecan_client, shim_host, config, pwr, c1Val, c2Val, c3Val= config_divecan_client_millivolts
 
     shim_host.set_analog_millis(1, c1Val)
     shim_host.set_analog_millis(2, c2Val)
@@ -50,8 +50,8 @@ def test_millivolts(config_divecan_client_millivolts: tuple[DiveCAN.DiveCAN, HWS
 @pytest.mark.parametrize("averageVal", range(15, 240, 36))
 @pytest.mark.parametrize("offset", range(-10, 10, 5))
 @pytest.mark.parametrize("outlierCell", [1,2,3])
-def test_concensus_averages_cells(config_and_cal_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], averageVal: int, offset: int, outlierCell):    
-    divecan_client, shim_host, config = config_and_cal_divecan_client
+def test_concensus_averages_cells(config_and_cal_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU], averageVal: int, offset: int, outlierCell):    
+    divecan_client, shim_host, config, pwr = config_and_cal_and_power_divecan_client
     offsetCell = averageVal + offset
     nomCells = (averageVal * 3 - offsetCell) / (3 - 1)
 
@@ -73,8 +73,8 @@ def test_concensus_averages_cells(config_and_cal_divecan_client: tuple[DiveCAN.D
 @pytest.mark.parametrize("averageVal", range(50, 229, 36))
 @pytest.mark.parametrize("offset", list(range(-40, -25, 5)) + list(range(40, 25, 5)))
 @pytest.mark.parametrize("outlierCell", [1,2,3])
-def test_concensus_excludes_outlier(config_and_cal_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration], averageVal: int, offset: int, outlierCell):    
-    divecan_client, shim_host, config = config_and_cal_divecan_client
+def test_concensus_excludes_outlier(config_and_cal_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU], averageVal: int, offset: int, outlierCell):    
+    divecan_client, shim_host, config, pwr = config_and_cal_and_power_divecan_client
     offsetCell = averageVal + offset
 
     cellConfigs = [config.cell1, config.cell2, config.cell3]
@@ -94,7 +94,7 @@ def test_concensus_excludes_outlier(config_and_cal_divecan_client: tuple[DiveCAN
 
 
 # Regression test for ADC2 not coming online when power is first applied
-def test_power_on_adc_function(divecan_client_fixture: DiveCAN.DiveCAN, shim_host: HWShim.HWShim):
+def test_power_on_adc_function(power_shim_divecan_fixture:tuple[DiveCAN.DiveCAN, HWShim.HWShim, psu.PSU]):
     config = configuration.Configuration(configuration.FIRMWARE_VERSION,
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.CellType.CELL_ANALOG,
@@ -104,8 +104,8 @@ def test_power_on_adc_function(divecan_client_fixture: DiveCAN.DiveCAN, shim_hos
                                          True, 
                                          configuration.VoltageThreshold.V_THRESHOLD_9V,
                                          configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
-    psu.setDefaultPower()
-    configuration.configure_board(divecan_client_fixture, config)
+    divecan_client, shim_host, pwr = power_shim_divecan_fixture
+    configuration.configure_board(divecan_client, config)
 
     c1Val = 10
     c2Val = 30
@@ -115,14 +115,14 @@ def test_power_on_adc_function(divecan_client_fixture: DiveCAN.DiveCAN, shim_hos
     shim_host.set_analog_millis(2, c2Val)
     shim_host.set_analog_millis(3, c3Val)
 
-    psu.setOff()
-    psu.setDefaultPower()
-    divecan_client_fixture.flush_rx()
-    message = divecan_client_fixture.listen_for_millis()
+    pwr.SetCANPwr(False)
+    pwr.SetCANPwr(True)
+    divecan_client.flush_rx()
+    message = divecan_client.listen_for_millis()
     time.sleep(3)
 
-    divecan_client_fixture.flush_rx()
-    message = divecan_client_fixture.listen_for_millis()
+    divecan_client.flush_rx()
+    message = divecan_client.listen_for_millis()
 
     assert message.arbitration_id == 0xD110004
 

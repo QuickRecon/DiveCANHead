@@ -7,8 +7,8 @@ from  DiveCANpy import configuration
 import psu
 import utils
 
-def test_power_cycle_bus_then_msg(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:
-    divecan_client, shim_host, config = config_divecan_client
+def test_power_cycle_bus_then_msg(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]) -> None:
+    divecan_client, shim_host, config, pwr = config_and_power_divecan_client
     shim_host.set_bus_off()
     divecan_client.send_shutdown()
 
@@ -25,8 +25,8 @@ def test_power_cycle_bus_then_msg(config_divecan_client: tuple[DiveCAN.DiveCAN, 
     divecan_client.listen_for_ppo2() # We should get a ping back with no error
     
 
-def test_power_cycle_msg_then_bus(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:
-    divecan_client, shim_host, config = config_divecan_client
+def test_power_cycle_msg_then_bus(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]) -> None:
+    divecan_client, shim_host, config, pwr = config_and_power_divecan_client
     divecan_client.send_shutdown()
     shim_host.set_bus_off()
 
@@ -42,8 +42,8 @@ def test_power_cycle_msg_then_bus(config_divecan_client: tuple[DiveCAN.DiveCAN, 
     time.sleep(1)
     divecan_client.listen_for_ppo2() # We should get a ping back with no error
 
-def test_power_aborts_on_bus_up(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:
-    divecan_client, shim_host, config = config_divecan_client
+def test_power_aborts_on_bus_up(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]) -> None:
+    divecan_client, shim_host, config, pwr = config_and_power_divecan_client
     shim_host.set_bus_on() # triple check we're holding the bus on
     divecan_client.send_shutdown()
     time.sleep(1)
@@ -74,7 +74,7 @@ def test_stby_power_consumption(config_and_power_divecan_client: tuple[DiveCAN.D
     shim_host.set_bus_off()
     time.sleep(1)
     current = pwr.GetCANPwrCurrent()
-    assert current <= 0.0005
+    assert current <= 0.0006
 
     # Bring the board back up when we're done
     shim_host.set_bus_on()

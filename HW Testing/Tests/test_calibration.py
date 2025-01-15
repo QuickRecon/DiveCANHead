@@ -4,11 +4,11 @@ import time
 import HWShim
 from  DiveCANpy import configuration
 import utils
+import psu
 
-def test_calibrate(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:
+def test_calibrate(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]) -> None:
+    divecan_client, shim_host, config, pwr = config_and_power_divecan_client
     """ Run the calibration happy path """
-    divecan_client, shim_host, config = config_divecan_client
-
     # Init the shim to 0
     shim_host.set_digital_ppo2(1, 0)
     shim_host.set_digital_ppo2(2, 0)
@@ -35,9 +35,9 @@ def test_calibrate(config_divecan_client: tuple[DiveCAN.DiveCAN, HWShim.HWShim, 
     # Check for success message
     assert message.data[0] == 0x01
 
-def test_calibrate_undervolt(config_divecan_client_millis: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:
+def test_calibrate_undervolt(config_divecan_client_millis: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]) -> None:
+    divecan_client, shim_host, config, pwr = config_divecan_client_millis
     """ Run the calibration happy path """
-    divecan_client, shim_host, config = config_divecan_client_millis
 
     if config.cell1 == configuration.CellType.CELL_ANALOG:
         shim_host.set_analog_millis(1,10)
@@ -67,9 +67,9 @@ def test_calibrate_undervolt(config_divecan_client_millis: tuple[DiveCAN.DiveCAN
     # Check for error message
     assert message.data[0] == 32 # FO2 range error
 
-def test_calibrate_overvolt(config_divecan_client_millis: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration]) -> None:
+def test_calibrate_overvolt(config_divecan_client_millis: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]) -> None:
+    divecan_client, shim_host, config, pwr = config_divecan_client_millis
     """ Run the calibration happy path """
-    divecan_client, shim_host, config = config_divecan_client_millis
     if config.cell1 == configuration.CellType.CELL_ANALOG:
         shim_host.set_analog_millis(1,100)
     elif config.cell1 == configuration.CellType.CELL_DIGITAL:
