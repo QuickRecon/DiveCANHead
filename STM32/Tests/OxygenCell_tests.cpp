@@ -3,7 +3,7 @@
 
 #include "OxygenCell.h"
 #include "AnalogOxygen.h"
-#include "DigitalOxygen.h"
+#include "DiveO2.h"
 
 // All the C stuff has to be externed
 extern "C"
@@ -18,7 +18,7 @@ extern "C"
         mock().actualCall("txCalResponse");
         return NULL;
     }
-    DigitalOxygenState_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
+    DiveO2State_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
     {
         mock().actualCall("txCalResponse");
         return NULL;

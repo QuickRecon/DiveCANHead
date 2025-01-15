@@ -1,6 +1,6 @@
 #include "main.h"
 #include "Sensors/AnalogOxygen.h"
-#include "Sensors/DigitalOxygen.h"
+#include "Sensors/DiveO2.h"
 #include "Hardware/ext_adc.h"
 #include "DiveCAN/Transciever.h"
 #include "DiveCAN/DiveCAN.h"

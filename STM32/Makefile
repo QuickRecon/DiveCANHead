@@ -41,7 +41,7 @@ Core/Src/HAL_callbacks.c \
 Core/Src/errors.c \
 Core/Src/configuration.c \
 Core/Src/Sensors/AnalogOxygen.c \
-Core/Src/Sensors/DigitalOxygen.c \
+Core/Src/Sensors/DiveO2.c \
 Core/Src/Sensors/OxygenCell.c \
 Core/Src/Hardware/pwr_management.c \
 Core/Src/Hardware/flash.c \

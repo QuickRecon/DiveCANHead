@@ -33,9 +33,9 @@ extern "C"
         osThreadId_t processor;
 
         QueueHandle_t outQueue;
-    } DigitalOxygenState_t;
+    } DiveO2State_t;
 
-    DigitalOxygenState_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue);
+    DiveO2State_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue);
 
     void Cell_TX_Complete(const UART_HandleTypeDef *huart);
     void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size);

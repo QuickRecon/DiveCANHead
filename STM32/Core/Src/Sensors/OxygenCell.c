@@ -7,7 +7,7 @@
 #include "OxygenCell.h"
 #include <math.h>
 #include "AnalogOxygen.h"
-#include "DigitalOxygen.h"
+#include "DiveO2.h"
 #include "eeprom_emul.h"
 #include "../errors.h"
 #include "../Hardware/printer.h"
@@ -194,12 +194,12 @@ DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
  *
  * @param calParams Pointer to the CalParameters struct where the calibration results will be stored.
  * @return DiveCANCalResponse_t - Indicates the success or failure of the calibration process.
- * @see CalParameters_t, DigitalOxygenState_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, ERR_NONE, Numeric_t, FO2_t, CELL_DIGITAL, CELL_ANALOG
+ * @see CalParameters_t, DiveO2State_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, ERR_NONE, Numeric_t, FO2_t, CELL_DIGITAL, CELL_ANALOG
  */
 DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
 {
     DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
-    const DigitalOxygenState_t *refCell = NULL;
+    const DiveO2State_t *refCell = NULL;
     uint8_t refCellIndex = 0;
     /* Select the first digital cell */
     for (uint8_t i = 0; i < CELL_COUNT; ++i)
@@ -207,7 +207,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
         const OxygenHandle_t *const cell = getCell(i);
         if ((CELL_DIGITAL == cell->type) && (NULL == refCell))
         {
-            refCell = (const DigitalOxygenState_t *)cell->cellHandle;
+            refCell = (const DiveO2State_t *)cell->cellHandle;
             refCellIndex = i;
         }
     }

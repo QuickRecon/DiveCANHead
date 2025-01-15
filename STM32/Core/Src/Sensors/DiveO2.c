@@ -1,4 +1,4 @@
-#include "DigitalOxygen.h"
+#include "DiveO2.h"
 
 #include "OxygenCell.h"
 #include <stdbool.h>
@@ -37,10 +37,10 @@ extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
 
-static DigitalOxygenState_t *getCellState(uint8_t cellNum)
+static DiveO2State_t *getCellState(uint8_t cellNum)
 {
-    static DigitalOxygenState_t digital_cellStates[3] = {0};
-    DigitalOxygenState_t *cellState = NULL;
+    static DiveO2State_t digital_cellStates[3] = {0};
+    DiveO2State_t *cellState = NULL;
     if (cellNum >= CELL_COUNT)
     {
         NON_FATAL_ERROR(INVALID_CELL_NUMBER);
@@ -54,11 +54,11 @@ static DigitalOxygenState_t *getCellState(uint8_t cellNum)
 }
 
 void decodeCellMessage(void *arg);
-void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell);
+void sendCellCommand(const char *const commandStr, DiveO2State_t *cell);
 
-DigitalOxygenState_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
+DiveO2State_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
-    DigitalOxygenState_t *handle = NULL;
+    DiveO2State_t *handle = NULL;
     if (cell->cellNumber > CELL_3)
     {
         NON_FATAL_ERROR(INVALID_CELL_NUMBER);
@@ -104,7 +104,7 @@ DigitalOxygenState_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQu
     return handle;
 }
 
-void Digital_broadcastPPO2(DigitalOxygenState_t *handle)
+void Digital_broadcastPPO2(DiveO2State_t *handle)
 {
     PPO2_t PPO2 = 0;
 
@@ -178,7 +178,7 @@ CellStatus_t cellErrorCheck(const char *err_str)
 
 void decodeCellMessage(void *arg)
 {
-    DigitalOxygenState_t *cell = (DigitalOxygenState_t *)arg;
+    DiveO2State_t *cell = (DiveO2State_t *)arg;
 
     /* The cell needs 1 second to power up before its ready to deal with commands*/
     /* So we lodge an failure datapoint while we spool up*/
@@ -290,12 +290,12 @@ void decodeCellMessage(void *arg)
     }
 }
 
-DigitalOxygenState_t *uartToCell(const UART_HandleTypeDef *huart)
+DiveO2State_t *uartToCell(const UART_HandleTypeDef *huart)
 {
-    DigitalOxygenState_t *ptr = NULL;
+    DiveO2State_t *ptr = NULL;
     for (uint8_t i = 0; i < CELL_COUNT; ++i)
     {
-        DigitalOxygenState_t *provisionalPtr = getCellState(i);
+        DiveO2State_t *provisionalPtr = getCellState(i);
         if (huart == provisionalPtr->huart)
         {
             ptr = provisionalPtr;
@@ -306,7 +306,7 @@ DigitalOxygenState_t *uartToCell(const UART_HandleTypeDef *huart)
 
 void Cell_TX_Complete(const UART_HandleTypeDef *huart)
 {
-    DigitalOxygenState_t *cell = uartToCell(huart);
+    DiveO2State_t *cell = uartToCell(huart);
     if (cell != NULL)
     {
         cell->ticksOfTX = HAL_GetTick();
@@ -315,7 +315,7 @@ void Cell_TX_Complete(const UART_HandleTypeDef *huart)
 
 void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 {
-    DigitalOxygenState_t *cell = uartToCell(huart);
+    DiveO2State_t *cell = uartToCell(huart);
 
     if (size > RX_BUFFER_LENGTH)
     {
@@ -338,7 +338,7 @@ void Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
     }
 }
 
-void sendCellCommand(const char *const commandStr, DigitalOxygenState_t *cell)
+void sendCellCommand(const char *const commandStr, DiveO2State_t *cell)
 {
     if ((NULL == cell) || (NULL == commandStr))
     {
