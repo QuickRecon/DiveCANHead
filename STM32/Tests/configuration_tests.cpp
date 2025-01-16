@@ -68,7 +68,7 @@ TEST(configuration, TestCellValidator)
             Configuration_t testConfig = setConfigBytes(i << (8u + (cellNum * 2)));
 
             bool valid = CellValid(testConfig, cellNum);
-            if (i > CELL_ANALOG)
+            if (i > CELL_O2S)
             {
                 CHECK(!valid);
             }
@@ -93,7 +93,7 @@ TEST(configuration, TestCellValidation)
             testConfig = setConfigBytes(configBytes);
 
             bool valid = ConfigurationValid(testConfig);
-            if (i > CELL_ANALOG)
+            if (i > CELL_O2S)
             {
                 CHECK(!valid);
             }
@@ -210,14 +210,6 @@ TEST(configuration, TestAlarmVoltageValidation)
     }
 }
 
-TEST(configuration, TestUARTContentionValidation)
-{
-    Configuration_t testConfig = {.firmwareVersion = FIRMWARE_VERSION};
-    testConfig.enableUartPrinting = true;
-    testConfig.cell2 = CELL_DIGITAL;
-    CHECK(!ConfigurationValid(testConfig));
-}
-
 TEST(configuration, TestUARTContentionPosition)
 {
     Configuration_t testConfig = {0};
@@ -229,7 +221,7 @@ TEST(configuration, GetIDOfDefaultConfig)
 {
     static const Configuration_t DefaultConfiguration = {
         .firmwareVersion = FIRMWARE_VERSION,
-        .cell1 = CELL_DIGITAL,
+        .cell1 = CELL_DIVEO2,
         .cell2 = CELL_ANALOG,
         .cell3 = CELL_ANALOG,
         .powerMode = MODE_BATTERY_THEN_CAN,

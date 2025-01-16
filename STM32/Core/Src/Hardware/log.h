@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "../DiveCAN/Transciever.h"
 #include "../PPO2Control/PPO2Control.h"
+#include "../Sensors/OxygenScientific.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -22,6 +23,7 @@ extern "C"
     void StartLogTask(void);
     void LogMsg(const char *msg);
     void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity);
+    void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2);
     void AnalogCellSample(uint8_t cellNumber, int16_t sample);
     void LogRXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogTXDiveCANMessage(const DiveCANMessage_t *const message);

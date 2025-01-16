@@ -13,7 +13,7 @@
 
 extern SD_HandleTypeDef hsd1;
 
-#define LOGQUEUE_LENGTH 15
+#define LOGQUEUE_LENGTH 12
 #define FILENAME_LENGTH 13
 #define MAXPATH_LENGTH 255
 
@@ -391,6 +391,24 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
         (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,DIVEO2,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)) &&
+        (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
+    {
+        (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+    }
+}
+
+void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
+{
+    /* Single CPU with cooperative multitasking means that this is
+     * valid until we've enqueued (and hence no longer care)
+     * This is necessary to save literal kilobytes of ram*/
+    static LogQueue_t enQueueItem = {0};
+    (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
+    enQueueItem.eventType = LOG_EVENT;
+    checkQueueStarvation(enQueueItem.eventType);
+    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+    if (logRunning() &&
+        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,O2S,%u,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2)) &&
         (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
     {
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);

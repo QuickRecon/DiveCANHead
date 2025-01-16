@@ -6,8 +6,9 @@ import itertools
 FIRMWARE_VERSION = 7
 
 class CellType(IntEnum):
-    CELL_DIGITAL = 0
+    CELL_DIVEO2 = 0
     CELL_ANALOG = 1
+    CELL_O2S = 2
 
 class PowerSelectMode(IntEnum):
     MODE_BATTERY=0,
@@ -161,7 +162,7 @@ def supported_configurations():
                      configurations.append(pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}'))
 
     #return configurations
-    cell_config = Configuration(FIRMWARE_VERSION, CellType.CELL_DIGITAL, CellType.CELL_ANALOG, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY, OxygenCalMethod.CAL_DIGITAL_REFERENCE, False, VoltageThreshold.V_THRESHOLD_9V, PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID)
+    cell_config = Configuration(FIRMWARE_VERSION, CellType.CELL_DIVEO2, CellType.CELL_O2S, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY, OxygenCalMethod.CAL_DIGITAL_REFERENCE, False, VoltageThreshold.V_THRESHOLD_9V, PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID)
     return [pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}')]
 
 def analog_configurations():

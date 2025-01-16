@@ -94,8 +94,14 @@ extern "C"
         /** @brief Error occured when trying to read the internal ADC */
         INT_ADC_ERROR = 24,
 
+        /** @brief We encountered an error we don't know how to handle */
+        UNKNOWN_ERROR_ERROR = 25,
+
+        /** @brief A cell has reported a value that we can't display */
+        CELL_OVERRANGE_ERR = 26,
+
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        NONFATAL_ERR_MAX = INT_ADC_ERROR
+        NONFATAL_ERR_MAX = CELL_OVERRANGE_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

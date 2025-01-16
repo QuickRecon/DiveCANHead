@@ -39,21 +39,16 @@ def test_calibrate_undervolt(config_divecan_client_millis: tuple[DiveCAN.DiveCAN
     divecan_client, shim_host, config, pwr = config_divecan_client_millis
     """ Run the calibration happy path """
 
+    utils.configureCell(shim_host, 1, config.cell1, 100)
+    utils.configureCell(shim_host, 2, config.cell2, 100)
+    utils.configureCell(shim_host, 3, config.cell3, 100)
+    
     if config.cell1 == configuration.CellType.CELL_ANALOG:
         shim_host.set_analog_millis(1,10)
-    elif config.cell1 == configuration.CellType.CELL_DIGITAL:
-        shim_host.set_digital_ppo2(1, 100)
-
     if config.cell2 == configuration.CellType.CELL_ANALOG:
         shim_host.set_analog_millis(2,10)
-    elif config.cell2 == configuration.CellType.CELL_DIGITAL:
-        shim_host.set_digital_ppo2(2, 100)
-
     if config.cell3 == configuration.CellType.CELL_ANALOG:
         shim_host.set_analog_millis(3,10)
-    elif config.cell3 == configuration.CellType.CELL_DIGITAL:
-        shim_host.set_digital_ppo2(3, 100)
-
     divecan_client.flush_rx()
     divecan_client.send_calibrate()
 
@@ -70,20 +65,17 @@ def test_calibrate_undervolt(config_divecan_client_millis: tuple[DiveCAN.DiveCAN
 def test_calibrate_overvolt(config_divecan_client_millis: tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]) -> None:
     divecan_client, shim_host, config, pwr = config_divecan_client_millis
     """ Run the calibration happy path """
+    
+    utils.configureCell(shim_host, 1, config.cell1, 100)
+    utils.configureCell(shim_host, 2, config.cell2, 100)
+    utils.configureCell(shim_host, 3, config.cell3, 100)
+
     if config.cell1 == configuration.CellType.CELL_ANALOG:
         shim_host.set_analog_millis(1,100)
-    elif config.cell1 == configuration.CellType.CELL_DIGITAL:
-        shim_host.set_digital_ppo2(1, 100)
-
     if config.cell2 == configuration.CellType.CELL_ANALOG:
         shim_host.set_analog_millis(2,100)
-    elif config.cell2 == configuration.CellType.CELL_DIGITAL:
-        shim_host.set_digital_ppo2(2, 100)
-
     if config.cell3 == configuration.CellType.CELL_ANALOG:
         shim_host.set_analog_millis(3,100)
-    elif config.cell3 == configuration.CellType.CELL_DIGITAL:
-        shim_host.set_digital_ppo2(3, 100)
 
     divecan_client.flush_rx()
     divecan_client.send_calibrate()

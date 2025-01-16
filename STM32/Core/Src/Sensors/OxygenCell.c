@@ -8,6 +8,7 @@
 #include <math.h>
 #include "AnalogOxygen.h"
 #include "DiveO2.h"
+#include "OxygenScientific.h"
 #include "eeprom_emul.h"
 #include "../errors.h"
 #include "../Hardware/printer.h"
@@ -86,6 +87,7 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
     return cellHandle;
 }
 
+#pragma region Initialisation
 /**
  * @brief Initializes and creates a new cell with the given cell number and cell type.
  *
@@ -111,14 +113,19 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
     case CELL_ANALOG:
         cell->cellHandle = Analog_InitCell(cell, *queueHandle);
         break;
-    case CELL_DIGITAL:
-        cell->cellHandle = Digital_InitCell(cell, *queueHandle);
+    case CELL_DIVEO2:
+        cell->cellHandle = DiveO2_InitCell(cell, *queueHandle);
+        break;
+    case CELL_O2S:
+        cell->cellHandle = O2S_InitCell(cell, *queueHandle);
         break;
     default:
         NON_FATAL_ERROR(UNREACHABLE_ERROR);
     }
     return *queueHandle;
 }
+#pragma endregion
+#pragma region Calibration
 
 /**
  * @brief Calibrate a given analog cell
@@ -194,7 +201,7 @@ DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
  *
  * @param calParams Pointer to the CalParameters struct where the calibration results will be stored.
  * @return DiveCANCalResponse_t - Indicates the success or failure of the calibration process.
- * @see CalParameters_t, DiveO2State_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, ERR_NONE, Numeric_t, FO2_t, CELL_DIGITAL, CELL_ANALOG
+ * @see CalParameters_t, DiveO2State_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, ERR_NONE, Numeric_t, FO2_t, CELL_DIVEO2, CELL_ANALOG
  */
 DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
 {
@@ -205,7 +212,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
     for (uint8_t i = 0; i < CELL_COUNT; ++i)
     {
         const OxygenHandle_t *const cell = getCell(i);
-        if ((CELL_DIGITAL == cell->type) && (NULL == refCell))
+        if ((CELL_DIVEO2 == cell->type) && (NULL == refCell))
         {
             refCell = (const DiveO2State_t *)cell->cellHandle;
             refCellIndex = i;
@@ -348,6 +355,10 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
     }
 }
 
+#pragma endregion
+
+#pragma region Consensus
+
 /**
  * @brief Peek the given cell queue handles and calculate the consensus, cells that do not respond within 100ms are marked as failed.
  * @param cell1 Cell 1 queue handle
@@ -432,6 +443,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
             c3->millivolts,
         },
         .consensus = 0,
+        .precisionConsensus = 0,
         .includeArray = {true, true, true}};
 
     /* Do a two pass check, loop through the cells and average the "good" cells
@@ -464,7 +476,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         {
             /* We want to make sure the cell is actually included before we start checking it */
             if ((includedCellCount > 0) &&
-                consensus.includeArray[cellIdx] != false &&
+                (consensus.includeArray[cellIdx] != false) &&
                 ((fabs((PPO2_acc / (PIDNumeric_t)includedCellCount) - consensus.precisionPPO2Array[cellIdx]) * 100.0f) > MAX_DEVIATION))
             {
                 /* Removing cells in this way can result in a change in the outcome depending on
@@ -481,7 +493,9 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
     if (includedCellCount > 0)
     {
         consensus.precisionConsensus = (PPO2_acc / (PIDNumeric_t)includedCellCount);
-        consensus.consensus = (PPO2_t)(consensus.precisionConsensus * 100);
+        PIDNumeric_t tempConsensus = consensus.precisionConsensus * 100.0f;
+        assert(tempConsensus < 255.0f);
+        consensus.consensus = (PPO2_t)(tempConsensus);
     }
 
     return consensus;
@@ -504,3 +518,4 @@ uint8_t cellConfidence(const Consensus_t *const consensus)
     }
     return confidence;
 }
+#pragma endregion 

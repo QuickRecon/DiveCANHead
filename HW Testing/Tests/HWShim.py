@@ -2,7 +2,11 @@
 import serial
 import threading
 import pytest
+from enum import IntEnum
 
+class ShimDigitalCellType(IntEnum): 
+    DIVEO2 = 0
+    O2S = 1
 
 class HWShim(object):
     """ Class for interacting with the hardware shim over serial """
@@ -21,6 +25,14 @@ class HWShim(object):
         self._serial_port.write(msg.encode())
         rx_str = ""
         expected_str = "sdc"+str(cell_num)+"\r\n"
+        while rx_str != expected_str:
+            rx_str = self._serial_port.readline().decode("utf-8")
+
+    def set_digital_mode(self, cell_num: int, mode: ShimDigitalCellType):
+        msg = "scm,"+str(cell_num)+","+str(int(mode))+","
+        self._serial_port.write(msg.encode())
+        rx_str = ""
+        expected_str = "scm"+str(cell_num)+"\r\n"
         while rx_str != expected_str:
             rx_str = self._serial_port.readline().decode("utf-8")
         

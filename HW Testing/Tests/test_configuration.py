@@ -24,7 +24,7 @@ def test_change_configuration_resets_calibration(power_shim_divecan_fixture: tup
     configuration.configure_board(divecan_client, allAnalogConfig)
     utils.calibrateBoard(divecan_client, shim_host)
 
-    altConfig= configuration.Configuration(configuration.FIRMWARE_VERSION, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_DIGITAL, configuration.PowerSelectMode.MODE_CAN, configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE, True, configuration.VoltageThreshold.V_THRESHOLD_9V, configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
+    altConfig= configuration.Configuration(configuration.FIRMWARE_VERSION, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_DIVEO2, configuration.PowerSelectMode.MODE_CAN, configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE, True, configuration.VoltageThreshold.V_THRESHOLD_9V, configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
     configuration.configure_board(divecan_client, altConfig)
     divecan_client.flush_rx()
     message = divecan_client.listen_for_ppo2()

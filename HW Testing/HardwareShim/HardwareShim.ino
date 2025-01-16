@@ -24,6 +24,7 @@
 
 #include "DiveO2Cell.h"
 #include "AnalogCell.h"
+#include "O2SCell.h"
 #include <Adafruit_ADS1X15.h>
 
 // Arcane SAM BS yanked shamelessly from https://forum.arduino.cc/t/due-software-reset/332764/6
@@ -95,6 +96,7 @@ void setup()
 // sio,n,i: Set io n to either 1 or 0
 // gio,n: Get state of GPIO, puts pin in highZ state
 // rst: Reset the shim
+// scm: Set Cell Mode, change between DiveO2 Cell (0, default) and O2S cell (1)
 
 void loop()
 {
@@ -130,18 +132,18 @@ void loop()
       float PPO2 = String(strings[2]).toFloat();
       switch (cellNum)
       {
-      case 1:
-        dCell1->SetPPO2(PPO2);
-        Serial.println("sdc1");
-        break;
-      case 2:
-        dCell2->SetPPO2(PPO2);
-        Serial.println("sdc2");
-        break;
-      case 3:
-        dCell3->SetPPO2(PPO2);
-        Serial.println("sdc3");
-        break;
+        case 1:
+          dCell1->SetPPO2(PPO2);
+          Serial.println("sdc1");
+          break;
+        case 2:
+          dCell2->SetPPO2(PPO2);
+          Serial.println("sdc2");
+          break;
+        case 3:
+          dCell3->SetPPO2(PPO2);
+          Serial.println("sdc3");
+          break;
       }
     }
     else if (strcmp(strings[0], "sac") == 0)
@@ -150,18 +152,18 @@ void loop()
       float millis = String(strings[2]).toFloat();
       switch (cellNum)
       {
-      case 1:
-        aCell1->SetMillis(millis);
-        Serial.println("sac1");
-        break;
-      case 2:
-        aCell2->SetMillis(millis);
-        Serial.println("sac2");
-        break;
-      case 3:
-        aCell3->SetMillis(millis);
-        Serial.println("sac3");
-        break;
+        case 1:
+          aCell1->SetMillis(millis);
+          Serial.println("sac1");
+          break;
+        case 2:
+          aCell2->SetMillis(millis);
+          Serial.println("sac2");
+          break;
+        case 3:
+          aCell3->SetMillis(millis);
+          Serial.println("sac3");
+          break;
       }
     }
     else if (strcmp(strings[0], "sdcen") == 0)
@@ -191,6 +193,49 @@ void loop()
     else if (strcmp(strings[0], "rst") == 0)
     {
       REQUEST_EXTERNAL_RESET;
+    }
+    else if (strcmp(strings[0], "scm") == 0) {
+      int cellNum = String(strings[1]).toInt();
+      int mode = String(strings[2]).toInt();
+      if (mode == 0) {
+        switch (cellNum)
+        {
+          case 1:
+            delete dCell1;
+            dCell1 = new DiveO2Cell(&Serial1);
+            Serial.println("scm1");
+            break;
+          case 2:
+            delete dCell2;
+            dCell2 = new DiveO2Cell(&Serial2);
+            Serial.println("scm2");
+            break;
+          case 3:
+            delete dCell3;
+            dCell3 = new DiveO2Cell(&Serial3);
+            Serial.println("scm3");
+            break;
+        }
+      } else if (mode == 1) {
+        switch (cellNum)
+        {
+          case 1:
+            delete dCell1;
+            dCell1 = new O2SCell(&Serial1);
+            Serial.println("scm1");
+            break;
+          case 2:
+            delete dCell2;
+            dCell2 = new O2SCell(&Serial2);
+            Serial.println("scm2");
+            break;
+          case 3:
+            delete dCell3;
+            dCell3 = new O2SCell(&Serial3);
+            Serial.println("scm3");
+            break;
+        }
+      }
     }
     else
     {

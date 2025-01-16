@@ -1,6 +1,7 @@
 #include "main.h"
 #include "Sensors/AnalogOxygen.h"
 #include "Sensors/DiveO2.h"
+#include "Sensors/OxygenScientific.h"
 #include "Hardware/ext_adc.h"
 #include "DiveCAN/Transciever.h"
 #include "DiveCAN/DiveCAN.h"
@@ -47,12 +48,30 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
 {
-    Cell_RX_Complete(huart, size);
+    if (NULL != DiveO2_uartToCell(huart))
+    {
+        DiveO2_Cell_RX_Complete(huart, size);
+    }
+    else if (NULL != O2S_uartToCell(huart))
+    {
+        O2S_Cell_RX_Complete(huart, size);
+    } else {
+        /* Do nothing, this UART isn't "wired" to a sensor*/
+    }
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
-    Cell_TX_Complete(huart);
+    if (NULL != DiveO2_uartToCell(huart))
+    {
+        DiveO2_Cell_TX_Complete(huart);
+    }
+    else if (NULL != O2S_uartToCell(huart))
+    {
+        O2S_Cell_TX_Complete(huart);
+    } else {
+        /* Do nothing, this UART isn't "wired" to a sensor*/
+    }
 }
 
 void HAL_CAN_RxMsgPendingCallback(CAN_HandleTypeDef *hcan)

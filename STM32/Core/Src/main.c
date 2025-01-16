@@ -967,7 +967,11 @@ static void MX_USART1_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART1_Init 2 */
-
+  /* Deinit the peripheral, gets inited by the cells */
+  if (HAL_UART_DeInit(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE END USART1_Init 2 */
 }
 
@@ -1002,7 +1006,11 @@ static void MX_USART2_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
-
+  /* Deinit the peripheral, gets inited by the cells */
+  if (HAL_UART_DeInit(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE END USART2_Init 2 */
 }
 
@@ -1037,7 +1045,11 @@ static void MX_USART3_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART3_Init 2 */
-
+  /* Deinit the peripheral, gets inited by the cells */
+  if (HAL_UART_DeInit(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE END USART3_Init 2 */
 }
 

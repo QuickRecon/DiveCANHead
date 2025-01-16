@@ -1,18 +1,18 @@
-#ifndef DiveO2Cell_h
-#define DiveO2Cell_h
+#ifndef O2SCell_h
+#define O2SCell_h
 
 #include "Arduino.h"
 #include "IDigitalCell.h"
 
-class DiveO2Cell : public IDigitalCell
+class O2SCell : public IDigitalCell
 {
 public:
-  explicit DiveO2Cell(HardwareSerial *inSerialPort) : serialPort(inSerialPort)
+  explicit O2SCell(HardwareSerial *inSerialPort) : serialPort(inSerialPort)
   {
     serialPort->begin(baudRate);
   };
 
-  ~DiveO2Cell() {
+  ~O2SCell() {
     serialPort->end();
   };
 
@@ -20,7 +20,7 @@ public:
   void Poll() override;
 
 private:
-  const unsigned long baudRate = 19200;
+  const unsigned long baudRate = 115200;
   HardwareSerial *serialPort;
   float PPO2 = 0.2;
 };

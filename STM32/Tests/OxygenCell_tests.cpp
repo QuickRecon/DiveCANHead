@@ -4,6 +4,7 @@
 #include "OxygenCell.h"
 #include "AnalogOxygen.h"
 #include "DiveO2.h"
+#include "OxygenScientific.h"
 
 // All the C stuff has to be externed
 extern "C"
@@ -15,12 +16,17 @@ extern "C"
 
     AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
     {
-        mock().actualCall("txCalResponse");
+        mock().actualCall("Analog_InitCell");
         return NULL;
     }
-    DiveO2State_t *Digital_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
+    DiveO2State_t *DiveO2_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
     {
-        mock().actualCall("txCalResponse");
+        mock().actualCall("DiveO2_InitCell");
+        return NULL;
+    }
+    OxygenScientificState_t *O2S_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
+    {
+        mock().actualCall("O2S_InitCell");
         return NULL;
     }
     ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)

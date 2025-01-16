@@ -30,8 +30,8 @@ extern "C"
 
     static const Configuration_t DEFAULT_CONFIGURATION = {
         .firmwareVersion = FIRMWARE_VERSION,
-        .cell1 = CELL_DIGITAL,
-        .cell2 = CELL_ANALOG,
+        .cell1 = CELL_DIVEO2,
+        .cell2 = CELL_O2S,
         .cell3 = CELL_ANALOG,
         .powerMode = MODE_BATTERY_THEN_CAN,
         .calibrationMode = CAL_DIGITAL_REFERENCE,

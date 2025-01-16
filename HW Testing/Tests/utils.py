@@ -37,7 +37,11 @@ def ensureCalibrated(divecan_client: DiveCAN.DiveCAN,  shim_host: HWShim.HWShim)
 def configureCell(shim_host: HWShim.HWShim, cellNum: int, cellType: configuration.CellType, cellVal:float):
     if cellType == configuration.CellType.CELL_ANALOG:
         shim_host.set_analog_millis(cellNum, cellVal/2)
-    elif cellType == configuration.CellType.CELL_DIGITAL:
+    elif cellType == configuration.CellType.CELL_DIVEO2:
+        shim_host.set_digital_mode(cellNum, HWShim.ShimDigitalCellType.DIVEO2)
+        shim_host.set_digital_ppo2(cellNum, cellVal/100)
+    elif cellType == configuration.CellType.CELL_O2S:
+        shim_host.set_digital_mode(cellNum, HWShim.ShimDigitalCellType.O2S)
         shim_host.set_digital_ppo2(cellNum, cellVal/100)
 
 def assertCell(cellType: configuration.CellType, cellVal:float, expectedCellVal: float):
@@ -45,5 +49,5 @@ def assertCell(cellType: configuration.CellType, cellVal:float, expectedCellVal:
         # Check within 0.01 PPO2 or 1%
         # TODO: this spec is hot garbage and is likely a problem with the test stand, but need to be sure
         assert abs((cellVal) - expectedCellVal) <= max(0.02*expectedCellVal,2)
-    elif cellType == configuration.CellType.CELL_DIGITAL:
+    elif cellType == configuration.CellType.CELL_DIVEO2 or cellType == configuration.CellType.CELL_O2S:
         assert cellVal == expectedCellVal

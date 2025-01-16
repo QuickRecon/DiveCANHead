@@ -24,7 +24,9 @@ bool CellValid(Configuration_t config, uint8_t cellNumber)
 {
     /* Check that the enum */
     uint8_t cellVal = (getConfigBytes(&config) >> (8u + (cellNumber * 2))) & 0b11u;
-    return (cellVal == (uint8_t)CELL_ANALOG) || (cellVal == (uint8_t)CELL_DIGITAL);
+    return (cellVal == (uint8_t)CELL_ANALOG) ||
+           (cellVal == (uint8_t)CELL_DIVEO2) ||
+           (cellVal == (uint8_t)CELL_O2S);
 }
 
 bool ConfigurationValid(Configuration_t config)
@@ -61,9 +63,6 @@ bool ConfigurationValid(Configuration_t config)
     valid = valid && (FIRMWARE_VERSION == firmwareVersion);
 
     /* We've checked our enums, using fields is allowed*/
-
-    /* Check for incompatible states */
-    valid = valid && ((!config.enableUartPrinting) || (config.cell2 == CELL_ANALOG)); /* If uart printing is on, cell2 MUST be analog */
 
     /* Can't have digital cal if no digital cells */
     const bool configDigitalCellValid = !((config.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.cell1 == CELL_ANALOG) && (config.cell2 == CELL_ANALOG) && (config.cell3 == CELL_ANALOG));
