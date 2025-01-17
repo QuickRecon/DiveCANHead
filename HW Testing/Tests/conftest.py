@@ -8,7 +8,12 @@ import psu
 
 def make_divecan():
    try: 
+      # Create and delete the object to ensure there has been a clean teardown on the CAN adaptor
       client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
+      client.__del__()
+
+      client = DiveCAN.DiveCAN(utils.DIVECAN_ADAPTOR_PATH)
+      client.listen_for_ppo2() # This waits until we know the device is responding
    except Exception: 
       pytest.skip("Cannot open CANBus")
    return client
