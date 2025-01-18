@@ -4,7 +4,7 @@ const unsigned long temperature = 2250; // 22.5C
 
 void O2SCell::SetPPO2(float inPPO2)
 {
-  PPO2 = inPPO2/100;
+  PPO2 = inPPO2 / 100;
 }
 
 void O2SCell::Poll()
@@ -17,10 +17,17 @@ void O2SCell::Poll()
     }
     char buff[10] = {0};
     snprintf(buff, sizeof(buff), "%5.3f", PPO2);
-    String respStr = "Mm: ";
+    String respStr = "Mn:";
     respStr += String(buff);
     respStr += String((char)0x0D);
     serialPort->print(respStr);
     serialPort->flush();
+    timeOfLastSend = millis();
+  } else if (millis() - timeOfLastSend > 2000) {
+    String respStr = "X";
+    respStr += String((char)0x0D);
+    serialPort->print(respStr);
+    serialPort->flush();
+    timeOfLastSend = millis();
   }
 }

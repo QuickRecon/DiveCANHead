@@ -135,7 +135,7 @@ void blocking_serial_printf(const char *fmt, ...)
     static char outStr[LOG_LINE_LENGTH] = {0};
     if (0 < vsprintf(outStr, fmt, argp))
     {
-        (void)HAL_UART_Transmit(&huart2, (uint8_t *)(outStr), (uint16_t)strnlen(outStr, LOG_LINE_LENGTH), TIMEOUT_4s_TICKS);
+        // (void)HAL_UART_Transmit(&huart2, (uint8_t *)(outStr), (uint16_t)strnlen(outStr, LOG_LINE_LENGTH), TIMEOUT_4s_TICKS);
     }
     va_end(argp);
 }

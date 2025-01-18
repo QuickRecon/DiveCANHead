@@ -7,14 +7,16 @@
 #include "../Hardware/printer.h"
 #include "../Hardware/log.h"
 #include "assert.h"
+#include "stm32l4xx_hal_gpio.h"
 
 /* Newline for terminating uart message*/
-const uint8_t NEWLINE = 0x0D;
+const uint8_t NEWLINE = 0x0A;
 
 static const uint32_t BAUD_RATE = 115200;
 
 /* Cell Commands*/
 const char *const GET_OXY_COMMAND = "Mm";
+const char *const GET_OXY_RESPONSE = "Mn";
 
 /* Time to wait on the cell to do things*/
 const uint16_t DIGITAL_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before the cell *definitely* isn't coming back to us*/
@@ -73,10 +75,9 @@ OxygenScientificState_t *O2S_InitCell(OxygenHandle_t *cell, QueueHandle_t outQue
         }
 
         assert(NULL != handle->huart);
-
         /* Set the baud rate and init the peripheral */
         handle->huart->Init.BaudRate = BAUD_RATE;
-        if (HAL_UART_Init(handle->huart) != HAL_OK)
+        if (HAL_HalfDuplex_Init(handle->huart) != HAL_OK)
         {
             NON_FATAL_ERROR(UART_ERROR);
         }
@@ -121,12 +122,11 @@ static void O2S_broadcastPPO2(OxygenScientificState_t *handle)
         { /* Abort so that we don't get stuck waiting for uart*/
             NON_FATAL_ERROR(UART_ERROR);
         }
-
-        sendCellCommand(GET_OXY_COMMAND, handle);
     }
 
-    O2SNumeric_t tempPPO2 = handle->cellSample *100.0f;
-    if(tempPPO2 > 255.0f){
+    O2SNumeric_t tempPPO2 = handle->cellSample * 100.0f;
+    if (tempPPO2 > 255.0f)
+    {
         handle->status = CELL_FAIL;
         NON_FATAL_ERROR(CELL_OVERRANGE_ERR);
     }
@@ -160,7 +160,7 @@ static void decodeCellMessage(void *arg)
         .cellNumber = cell->cellNumber,
         .type = CELL_O2S,
         .ppo2 = 0,
-        .precision_PPO2 =0,
+        .precision_PPO2 = 0,
         .millivolts = 0,
         .status = cell->status,
         .dataTime = HAL_GetTick()};
@@ -173,9 +173,9 @@ static void decodeCellMessage(void *arg)
     /* Do the wait for cell startup*/
     (void)osDelay(TIMEOUT_1S_TICKS);
 
+    sendCellCommand(GET_OXY_COMMAND, cell);
     while (true)
     {
-        sendCellCommand(GET_OXY_COMMAND, cell);
         uint32_t lastTicks = cell->ticksOfLastPPO2;
         if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, TIMEOUT_2S_TICKS))
         {
@@ -197,12 +197,12 @@ static void decodeCellMessage(void *arg)
             /* Null terminate the end newline, interferes with logging */
             msgBuf[strcspn(msgBuf, "\r\n")] = 0;
 
-            const char *const sep = ": ";
+            const char *const sep = ":";
             char *saveptr = NULL;
             const char *const CMD_Name = strtok_r(msgBuf, sep, &saveptr);
 
             /* Decode either a #DRAW or a #DOXY, we don't care about anything else yet*/
-            if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
+            if (0 == strcmp(CMD_Name, GET_OXY_RESPONSE))
             {
                 const char *const PPO2_str = strtok_r(NULL, sep, &saveptr);
 
@@ -212,10 +212,21 @@ static void decodeCellMessage(void *arg)
 
                 cell->status = CELL_OK;
                 cell->ticksOfLastPPO2 = HAL_GetTick();
+                O2S_broadcastPPO2(cell);
+                /* Sampling more than 2x per second causes weird reading drifts
+                 */
+                while ((HAL_GetTick() - lastTicks) < TIMEOUT_1S_TICKS)
+                {
+                    (void)osDelay(TIMEOUT_500MS_TICKS);
+                }
+                sendCellCommand(GET_OXY_COMMAND, cell);
+            }
+            else if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
+            {
+                /* Do nothing, we just got our own echo */
             }
             else
             {
-
                 serial_printf("UNKNOWN CELL MESSSAGE: %s\r\n", msgBuf);
                 (void)osDelay(TIMEOUT_500MS_TICKS);
                 /* Not a command we care about*/
@@ -224,14 +235,7 @@ static void decodeCellMessage(void *arg)
         else
         {
             NON_FATAL_ERROR(TIMEOUT_ERROR);
-        }
-        O2S_broadcastPPO2(cell);
-        /* Sampling more than 10x per second is a bit excessive,
-         * if the cell is getting back to us that quick we can take a break
-         */
-        while ((HAL_GetTick() - lastTicks) < TIMEOUT_100MS_TICKS)
-        {
-            (void)osDelay(TIMEOUT_100MS_TICKS);
+            sendCellCommand(GET_OXY_COMMAND, cell);
         }
     }
 }
@@ -262,6 +266,11 @@ void O2S_Cell_TX_Complete(const UART_HandleTypeDef *huart)
 void O2S_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 {
     OxygenScientificState_t *cell = O2S_uartToCell(huart);
+
+    if(size == 3 && NULL != cell){
+        HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, O2S_RX_BUFFER_LENGTH);
+        return;
+    }
 
     if (size > O2S_RX_BUFFER_LENGTH)
     {
