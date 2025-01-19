@@ -3,7 +3,7 @@
 #include "cmsis_os.h"
 
 /* Log Line length used in printer and sd card logging*/
-#define LOG_LINE_LENGTH 120
+#define LOG_LINE_LENGTH 70
 
 #ifdef __cplusplus
 extern "C"
