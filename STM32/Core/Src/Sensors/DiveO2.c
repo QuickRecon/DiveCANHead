@@ -295,8 +295,8 @@ static void decodeCellMessage(void *arg)
             }
             else
             {
-
-                serial_printf("UNKNOWN CELL MESSAGE: %s\r\n", msgBuf);
+                /* Print the last cell message before we tokenised it post copy */
+                serial_printf("UNKNOWN CELL MESSAGE: %s\r\n", cell->lastMessage);
                 (void)osDelay(TIMEOUT_500MS_TICKS);
                 /* Not a command we care about*/
             }
