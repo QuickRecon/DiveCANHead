@@ -18,7 +18,7 @@ static inline uint32_t set_bit(uint32_t number, uint32_t n, bool x) {
     return (number & ~((uint32_t)1 << n)) | ((uint32_t)x << n);
 }
 
-void initFlash()
+void initFlash(void)
 {
     /* Set up flash erase */
     if (HAL_OK != HAL_FLASH_Unlock())
@@ -53,8 +53,10 @@ void initFlash()
         optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nBOOT1_Pos, true);
 
         /* These flags are undocumented so don't touch them */
-        // set_bit(optionBytes.USERConfig, FLASH_OB_DUALBANK, true);
-        // set_bit(optionBytes.USERConfig, FLASH_OB_BFB2, true);
+        /*
+        FLASH_OB_DUALBANK
+        FLASH_OB_BFB2
+        */
 
         /* Window watch dog software controlled */
         optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_WWDG_SW_Pos, true);
@@ -80,12 +82,10 @@ void initFlash()
         /* Reset at 2.8V, implies we're loosing regulation */
         optionBytes.USERConfig |= FLASH_OPTR_BOR_LEV_4;
 
-        if (optionBytes.USERConfig != original_opt)
+        /* Short circuit eval of conditions, only true if we try writing and fail*/
+        if ((optionBytes.USERConfig != original_opt) && (HAL_OK != HAL_FLASHEx_OBProgram(&optionBytes)))
         {
-            if (HAL_OK != HAL_FLASHEx_OBProgram(&optionBytes))
-            {
-                NON_FATAL_ERROR(EEPROM_ERROR);
-            }
+            NON_FATAL_ERROR(EEPROM_ERROR);
         }
 
         if (HAL_OK != HAL_FLASH_Lock())

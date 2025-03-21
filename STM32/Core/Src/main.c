@@ -716,7 +716,7 @@ static void MX_IWDG_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN IWDG_Init 2 */
-  // Freeze the IWDG on debug so we don't need to disable it as a matter of routine
+  /* Freeze the IWDG on debug so we don't need to disable it as a matter of routine */
   __HAL_DBGMCU_FREEZE_IWDG();
   /* USER CODE END IWDG_Init 2 */
 }
