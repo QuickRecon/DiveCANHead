@@ -526,7 +526,7 @@ void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumer
     {
         timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
 
-        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2,%d,%f,%d,%f,%d,%f,%f \r\n", timestamp, logMsgIndex, c1_included, (float)c1, c2_included, (float)c2, c3_included, (float)c3, consensus);
+        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2,%d,%f,%d,%f,%d,%f,%f\r\n", timestamp, logMsgIndex, c1_included, (float)c1, c2_included, (float)c2, c3_included, (float)c3, consensus);
         if (strLen > 0)
         {
             /* High priority, clear old items to make room */
