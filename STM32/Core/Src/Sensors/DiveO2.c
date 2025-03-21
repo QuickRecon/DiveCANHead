@@ -143,7 +143,8 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
 
     PIDNumeric_t precision_PPO2 = ((PIDNumeric_t)handle->cellSample / (PIDNumeric_t)HPA_PER_BAR) / 100.0f;
     PIDNumeric_t tempPPO2 = (PIDNumeric_t)handle->cellSample / (PIDNumeric_t)HPA_PER_BAR;
-    if(tempPPO2 > 255.0f){
+    if (tempPPO2 > 255.0f)
+    {
         handle->status = CELL_FAIL;
         NON_FATAL_ERROR(CELL_OVERRANGE_ERR);
     }

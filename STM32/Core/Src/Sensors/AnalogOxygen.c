@@ -158,7 +158,8 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     }
 
     CalCoeff_t calPPO2 = (CalCoeff_t)abs(handle->lastCounts) * COUNTS_TO_MILLIS * handle->calibrationCoefficient;
-    if(calPPO2 > 255.0f){
+    if (calPPO2 > 255.0f)
+    {
         handle->status = CELL_FAIL;
         NON_FATAL_ERROR(CELL_OVERRANGE_ERR);
     }

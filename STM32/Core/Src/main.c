@@ -1191,7 +1191,7 @@ void JumpToBootloader(void)
  * @retval None
  */
 /* USER CODE END Header_WatchdogTask */
-void WatchdogTask(void *)
+void WatchdogTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
@@ -1209,7 +1209,7 @@ void WatchdogTask(void *)
  * @retval None
  */
 /* USER CODE END Header_SDInitTask */
-void SDInitTask(void *)
+void SDInitTask(void *argument)
 {
   /* USER CODE BEGIN SDInitTask */
   (void)osDelay(TIMEOUT_1S_TICKS);

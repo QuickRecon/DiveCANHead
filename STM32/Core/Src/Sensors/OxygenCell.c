@@ -275,7 +275,7 @@ void CalibrationTask(void *arg)
     serial_printf("Starting calibrate with method %u\r\n", calParams.calMethod);
     switch (calParams.calMethod)
     {
-    case CAL_DIGITAL_REFERENCE:    /* Calibrate using the solid state cell as a reference */
+    case CAL_DIGITAL_REFERENCE:          /* Calibrate using the solid state cell as a reference */
         (void)osDelay(TIMEOUT_4s_TICKS); /* Give the shearwater time to catch up */
         calResult = DigitalReferenceCalibrate(&calParams);
         break;
@@ -518,4 +518,4 @@ uint8_t cellConfidence(const Consensus_t *const consensus)
     }
     return confidence;
 }
-#pragma endregion 
+#pragma endregion

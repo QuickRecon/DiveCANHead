@@ -11,7 +11,7 @@ extern "C"
 {
 #endif
 
-typedef float O2SNumeric_t;
+    typedef float O2SNumeric_t;
 
 /* Implementation consts*/
 #define O2S_RX_BUFFER_LENGTH 10

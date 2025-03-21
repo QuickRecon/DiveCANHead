@@ -241,8 +241,8 @@
 
 #define _FS_REENTRANT 1 /* 0:Disable or 1:Enable */
 
-#define _USE_MUTEX 1     /* 0:Disable or 1:Enable */
-#define _FS_TIMEOUT 1000 /* Timeout period in unit of time ticks */
+#define _USE_MUTEX 1   /* 0:Disable or 1:Enable */
+#define _FS_TIMEOUT 10 /* Timeout period in unit of time ticks */
 #define _SYNC_t osMutexId_t
 /* The option _FS_REENTRANT switches the re-entrancy (thread safe) of the FatFs
 /  module itself. Note that regardless of this option, file access to different

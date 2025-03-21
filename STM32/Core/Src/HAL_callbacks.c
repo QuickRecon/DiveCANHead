@@ -55,7 +55,9 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
     else if (NULL != O2S_uartToCell(huart))
     {
         O2S_Cell_RX_Complete(huart, size);
-    } else {
+    }
+    else
+    {
         /* Do nothing, this UART isn't "wired" to a sensor*/
     }
 }
@@ -69,7 +71,9 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     else if (NULL != O2S_uartToCell(huart))
     {
         O2S_Cell_TX_Complete(huart);
-    } else {
+    }
+    else
+    {
         /* Do nothing, this UART isn't "wired" to a sensor*/
     }
 }

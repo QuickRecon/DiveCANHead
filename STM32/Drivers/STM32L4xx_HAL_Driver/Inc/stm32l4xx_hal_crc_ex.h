@@ -110,39 +110,39 @@ extern "C"
 #define IS_CRC_OUTPUTDATA_INVERSION_MODE(MODE) (((MODE) == CRC_OUTPUTDATA_INVERSION_DISABLE) || \
                                                 ((MODE) == CRC_OUTPUTDATA_INVERSION_ENABLE))
 
-    /**
-     * @}
-     */
+  /**
+   * @}
+   */
 
-    /* Exported functions --------------------------------------------------------*/
+  /* Exported functions --------------------------------------------------------*/
 
-    /** @addtogroup CRCEx_Exported_Functions
-     * @{
-     */
+  /** @addtogroup CRCEx_Exported_Functions
+   * @{
+   */
 
-    /** @addtogroup CRCEx_Exported_Functions_Group1
-     * @{
-     */
-    /* Initialization and de-initialization functions  ****************************/
-    HAL_StatusTypeDef HAL_CRCEx_Polynomial_Set(CRC_HandleTypeDef *hcrc, uint32_t Pol, uint32_t PolyLength);
-    HAL_StatusTypeDef HAL_CRCEx_Input_Data_Reverse(CRC_HandleTypeDef *hcrc, uint32_t InputReverseMode);
-    HAL_StatusTypeDef HAL_CRCEx_Output_Data_Reverse(CRC_HandleTypeDef *hcrc, uint32_t OutputReverseMode);
+  /** @addtogroup CRCEx_Exported_Functions_Group1
+   * @{
+   */
+  /* Initialization and de-initialization functions  ****************************/
+  HAL_StatusTypeDef HAL_CRCEx_Polynomial_Set(CRC_HandleTypeDef *hcrc, uint32_t Pol, uint32_t PolyLength);
+  HAL_StatusTypeDef HAL_CRCEx_Input_Data_Reverse(CRC_HandleTypeDef *hcrc, uint32_t InputReverseMode);
+  HAL_StatusTypeDef HAL_CRCEx_Output_Data_Reverse(CRC_HandleTypeDef *hcrc, uint32_t OutputReverseMode);
 
-    /**
-     * @}
-     */
+  /**
+   * @}
+   */
 
-    /**
-     * @}
-     */
+  /**
+   * @}
+   */
 
-    /**
-     * @}
-     */
+  /**
+   * @}
+   */
 
-    /**
-     * @}
-     */
+  /**
+   * @}
+   */
 
 #ifdef __cplusplus
 }

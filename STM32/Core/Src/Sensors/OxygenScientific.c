@@ -267,7 +267,8 @@ void O2S_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 {
     OxygenScientificState_t *cell = O2S_uartToCell(huart);
 
-    if(size == 3 && NULL != cell){
+    if (size == 3 && NULL != cell)
+    {
         HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, O2S_RX_BUFFER_LENGTH);
         return;
     }
