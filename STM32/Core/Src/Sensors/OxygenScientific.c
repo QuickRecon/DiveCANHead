@@ -10,16 +10,18 @@
 #include "stm32l4xx_hal_gpio.h"
 
 /* Newline for terminating uart message*/
-const uint8_t NEWLINE = 0x0A;
+static const uint8_t NEWLINE = 0x0A;
 
 static const uint32_t BAUD_RATE = 115200;
 
+static const uint8_t ACK_LEN = 3;
+
 /* Cell Commands*/
-const char *const GET_OXY_COMMAND = "Mm";
-const char *const GET_OXY_RESPONSE = "Mn";
+static const char *const GET_OXY_COMMAND = "Mm";
+static const char *const GET_OXY_RESPONSE = "Mn";
 
 /* Time to wait on the cell to do things*/
-const uint16_t DIGITAL_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before the cell *definitely* isn't coming back to us*/
+static const uint16_t DIGITAL_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before the cell *definitely* isn't coming back to us*/
 
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
@@ -267,29 +269,33 @@ void O2S_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 {
     OxygenScientificState_t *cell = O2S_uartToCell(huart);
 
-    if (size == 3 && NULL != cell)
+    if ((size == ACK_LEN) && (NULL != cell))
     {
-        HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, O2S_RX_BUFFER_LENGTH);
-        return;
-    }
-
-    if (size > O2S_RX_BUFFER_LENGTH)
-    {
-        FATAL_ERROR(BUFFER_OVERRUN);
+        if(HAL_OK != HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, O2S_RX_BUFFER_LENGTH)){
+            NON_FATAL_ERROR(UART_ERROR);
+        }
     }
     else
     {
-        if (cell != NULL)
+
+        if (size > O2S_RX_BUFFER_LENGTH)
         {
-            cell->ticksOfLastMessage = HAL_GetTick();
-            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsSet(cell->processor, 0x0001U)))
-            {
-                NON_FATAL_ERROR_ISR(FLAG_ERROR);
-            }
+            FATAL_ERROR(BUFFER_OVERRUN);
         }
         else
         {
-            NON_FATAL_ERROR_ISR(INVALID_CELL_NUMBER); /* We couldn't find the cell to alert the thread*/
+            if (cell != NULL)
+            {
+                cell->ticksOfLastMessage = HAL_GetTick();
+                if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsSet(cell->processor, 0x0001U)))
+                {
+                    NON_FATAL_ERROR_ISR(FLAG_ERROR);
+                }
+            }
+            else
+            {
+                NON_FATAL_ERROR_ISR(INVALID_CELL_NUMBER); /* We couldn't find the cell to alert the thread*/
+            }
         }
     }
 }

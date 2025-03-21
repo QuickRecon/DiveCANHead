@@ -156,7 +156,7 @@ void SolenoidFireTask(void *)
     /* TODO(Aren): Adjust the max and min fire times based on depth to ensure a constant flow */
     uint32_t totalFireTime = 5000;   /* Fire for 1000ms */
     uint32_t minimumFireTime = 200;  /* Fire for no less than 100ms */
-    uint32_t maximumFireTime = 2500; /* Fire for no longer than 900ms */
+    uint32_t maximumFireTime = 4900; /* Fire for no longer than 900ms */
 
     PIDNumeric_t maximumDutyCycle = ((PIDNumeric_t)maximumFireTime) / ((PIDNumeric_t)totalFireTime);
     PIDNumeric_t minimumDutyCycle = ((PIDNumeric_t)minimumFireTime) / ((PIDNumeric_t)totalFireTime);

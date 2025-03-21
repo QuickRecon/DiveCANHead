@@ -117,7 +117,7 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonF
         NON_FATAL_ERROR(*calError);
     }
     const CalCoeff_t TO_SHORT_MILLIS = (CalCoeff_t)(1e-2);
-    return (ShortMillivolts_t)round(((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS * TO_SHORT_MILLIS));
+    return (ShortMillivolts_t)round((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS * TO_SHORT_MILLIS);
 }
 
 Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
@@ -196,6 +196,7 @@ void analogProcessor(void *arg)
         .cellNumber = cell->cellNumber,
         .type = CELL_ANALOG,
         .ppo2 = 0,
+        .precision_PPO2 = 0,
         .millivolts = 0,
         .status = cell->status,
         .dataTime = HAL_GetTick()};

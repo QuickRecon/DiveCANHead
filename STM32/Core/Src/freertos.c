@@ -56,7 +56,7 @@ extern TIM_HandleTypeDef htim7;
 
 /* Hook prototypes */
 void configureTimerForRunTimeStats(void);
-unsigned long getRunTimeCounterValue(void);
+RuntimeCounter_t getRunTimeCounterValue(void);
 void vApplicationIdleHook(void);
 void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
@@ -120,6 +120,7 @@ void vApplicationMallocFailedHook(void)
 /* USER CODE BEGIN PREPOSTSLEEP */
 __weak void PreSleepProcessing(uint32_t ulExpectedIdleTime)
 {
+  (void)ulExpectedIdleTime;
   /* place for user code */
   (void)HAL_TIM_Base_Stop_IT(&htim7);
   HAL_NVIC_ClearPendingIRQ(TIM7_IRQn);
@@ -128,6 +129,7 @@ __weak void PreSleepProcessing(uint32_t ulExpectedIdleTime)
 
 __weak void PostSleepProcessing(uint32_t ulExpectedIdleTime)
 {
+  (void)ulExpectedIdleTime;
   /* place for user code */
   (void)HAL_TIM_Base_Start_IT(&htim7);
 }

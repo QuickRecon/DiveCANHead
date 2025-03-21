@@ -476,7 +476,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         {
             /* We want to make sure the cell is actually included before we start checking it */
             if ((includedCellCount > 0) &&
-                (consensus.includeArray[cellIdx] != false) &&
+                (consensus.includeArray[cellIdx]) &&
                 ((fabs((PPO2_acc / (PIDNumeric_t)includedCellCount) - consensus.precisionPPO2Array[cellIdx]) * 100.0f) > MAX_DEVIATION))
             {
                 /* Removing cells in this way can result in a change in the outcome depending on

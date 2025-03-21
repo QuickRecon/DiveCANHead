@@ -80,12 +80,12 @@ void PPO2TXTask(void *arg)
 
         Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
 
-        LogPPO2State(consensus.includeArray[0],
-                     consensus.includeArray[1],
-                     consensus.includeArray[2],
-                     consensus.precisionPPO2Array[0],
-                     consensus.precisionPPO2Array[1],
-                     consensus.precisionPPO2Array[2],
+        LogPPO2State(consensus.includeArray[CELL_1],
+                     consensus.includeArray[CELL_2],
+                     consensus.includeArray[CELL_3],
+                     consensus.precisionPPO2Array[CELL_1],
+                     consensus.precisionPPO2Array[CELL_2],
+                     consensus.precisionPPO2Array[CELL_3],
                      consensus.precisionConsensus);
 
         /* Go through each cell and if any need cal, flag cal

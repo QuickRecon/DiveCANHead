@@ -477,17 +477,16 @@ void txLogText(const DiveCANType_t deviceType, const char *msg, uint16_t length)
     uint16_t remainingLength = length;
     uint8_t bytesToWrite = 0;
 
-    if (remainingLength < MAX_MSG_FRAGMENT)
+    for (uint8_t i = 0; i < length; i += MAX_MSG_FRAGMENT)
     {
-        bytesToWrite = (uint8_t)remainingLength;
-    }
-    else
-    {
-        bytesToWrite = MAX_MSG_FRAGMENT;
-    }
-
-    for (uint8_t i = 0; i < length; i += bytesToWrite)
-    {
+        if (remainingLength < MAX_MSG_FRAGMENT)
+        {
+            bytesToWrite = (uint8_t)remainingLength;
+        }
+        else
+        {
+            bytesToWrite = MAX_MSG_FRAGMENT;
+        }
         uint8_t msgBuf[8] = {0};
         (void)memcpy(msgBuf, msg + i, bytesToWrite);
         const DiveCANMessage_t message = {
@@ -497,14 +496,6 @@ void txLogText(const DiveCANType_t deviceType, const char *msg, uint16_t length)
 
         sendCANMessage(message);
         remainingLength -= bytesToWrite;
-        if (remainingLength < MAX_MSG_FRAGMENT)
-        {
-            bytesToWrite = (uint8_t)remainingLength;
-        }
-        else
-        {
-            bytesToWrite = MAX_MSG_FRAGMENT;
-        }
     }
 }
 

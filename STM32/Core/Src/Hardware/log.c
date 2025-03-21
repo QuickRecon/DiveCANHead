@@ -331,8 +331,8 @@ bool logRunning(void)
 void checkQueueStarvation(LogType_t eventType)
 {
     char buff[LOG_LINE_LENGTH] = "";
-    if (0 == osMessageQueueGetSpace(*(getQueueHandle())) &&
-        0 < snprintf(buff, LOG_LINE_LENGTH, "Queue Starvation in log %d", eventType))
+    if ((0 == osMessageQueueGetSpace(*(getQueueHandle()))) &&
+        (0 < snprintf(buff, LOG_LINE_LENGTH, "Queue Starvation in log %d", eventType)))
     {
         LogMsg(buff);
     }
@@ -488,25 +488,23 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    if (pid_state != NULL)
+    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+    if ((pid_state != NULL) && logRunning())
     {
-        /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
-        if (logRunning())
-        {
-            timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
 
-            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PID,%f,%d,%f,%f\r\n", timestamp, logMsgIndex, (float)pid_state->integralState, pid_state->saturationCount, (float)dutyCycle, (float)setpoint);
-            if (strLen > 0)
+        timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
+        /* Cast doubles to floats for printing */
+        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PID,%f,%d,%f,%f\r\n", timestamp, logMsgIndex, (Numeric_t)pid_state->integralState, pid_state->saturationCount, (Numeric_t)dutyCycle, (Numeric_t)setpoint);
+        if (strLen > 0)
+        {
+            /* High priority, clear old items to make room */
+            if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
             {
-                /* High priority, clear old items to make room */
-                if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
-                {
-                    LogQueue_t logItem = {0};
-                    (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
-                }
-                (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
-                ++logMsgIndex;
+                LogQueue_t logItem = {0};
+                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
             }
+            (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+            ++logMsgIndex;
         }
     }
 }
@@ -525,8 +523,8 @@ void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumer
     if (logRunning())
     {
         timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
-
-        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2,%d,%f,%d,%f,%d,%f,%f\r\n", timestamp, logMsgIndex, c1_included, (float)c1, c2_included, (float)c2, c3_included, (float)c3, consensus);
+        /* Cast doubles to floats for printing */
+        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2,%d,%f,%d,%f,%d,%f,%f\r\n", timestamp, logMsgIndex, c1_included, (Numeric_t)c1, c2_included, (Numeric_t)c2, c3_included, (Numeric_t)c3, consensus);
         if (strLen > 0)
         {
             /* High priority, clear old items to make room */
@@ -548,5 +546,7 @@ void LogRXDiveCANMessage(const DiveCANMessage_t *const message)
 
 void LogTXDiveCANMessage(const DiveCANMessage_t *const message)
 {
-    // LogDiveCANMessage(message, false);
+    (void)message;
+    /* Don't because its very very expensive*/
+    /* LogDiveCANMessage(message, false) */
 }

@@ -1179,9 +1179,6 @@ void JumpToBootloader(void)
   /* Ref rm0394 page 75/76 */
   BootloaderJumpFunc_t SysMemBootJump = (void (*)(void))(*((uint32_t *)0x1FFF0004));
   SysMemBootJump();
-
-  /* We should have landed in the bootloader and never arrived here */
-  (void)NVIC_SystemReset();
 }
 /* USER CODE END 4 */
 
@@ -1194,6 +1191,7 @@ void JumpToBootloader(void)
 void WatchdogTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
+  (void)argument;
   /* Infinite loop */
   for (;;)
   {
@@ -1212,6 +1210,7 @@ void WatchdogTask(void *argument)
 void SDInitTask(void *argument)
 {
   /* USER CODE BEGIN SDInitTask */
+  (void)argument;
   (void)osDelay(TIMEOUT_1S_TICKS);
   StartLogTask();
   (void)vTaskDelete(NULL);
@@ -1229,7 +1228,7 @@ void SDInitTask(void *argument)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
-
+  (void)htim;
   /* USER CODE END Callback 0 */
   if (htim->Instance == TIM6)
   {
