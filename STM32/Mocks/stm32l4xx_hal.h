@@ -2,6 +2,7 @@
 
 #include "stm32l4xx_hal_def.h"
 #include "stm32l4xx_ll_tim.h"
+#include "stm32l4xx_hal_flash.h"
 
 #define FLASH_FLAG_EOP (1 << 1)
 #define FLASH_FLAG_OPERR (1 << 2)

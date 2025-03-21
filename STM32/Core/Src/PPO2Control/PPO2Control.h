@@ -34,7 +34,7 @@ extern "C"
         PPO2CONTROL_SOLENOID_PID = 1,
     } PPO2ControlScheme_t;
 
-    void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3);
+    void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, bool depthCompensation, bool useExtendedMessages);
 
     void setSetpoint(PPO2_t ppo2);
     PPO2_t getSetpoint(void);

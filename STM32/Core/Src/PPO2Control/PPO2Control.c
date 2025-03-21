@@ -16,6 +16,8 @@ typedef struct
     QueueHandle_t c2;
     QueueHandle_t c3;
     PIDState_t pidState;
+    bool useExtendedMessages;
+    bool depthCompensation;
 } PPO2ControlTask_params_t;
 
 void setSetpoint(PPO2_t ppo2)
@@ -88,7 +90,8 @@ static PPO2ControlTask_params_t *getControlParams(void)
             .proportionalGain = 1.0f,
             .derivativeGain = 0.0f,
             .saturationCount = 0,
-        }};
+        },
+        .useExtendedMessages = false};
     return &params;
 }
 
@@ -108,12 +111,15 @@ void setDerivativeGain(PIDNumeric_t gain)
 void PPO2ControlTask(void *arg);
 void SolenoidFireTask(void *arg);
 
-void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
+void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, bool depthCompensation, bool useExtendedMessages)
 {
     PPO2ControlTask_params_t *params = getControlParams();
     params->c1 = c1;
     params->c2 = c2;
     params->c3 = c3;
+
+    params->useExtendedMessages = useExtendedMessages;
+    params->depthCompensation = depthCompensation;
 
     PIDNumeric_t *dutyCycle = getDutyCyclePtr();
     *dutyCycle = 0;
@@ -151,18 +157,18 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3)
     *SolenoidFireTaskHandle = osThreadNew(SolenoidFireTask, params, &SolenoidFireTask_attributes);
 }
 
-void SolenoidFireTask(void *)
+void SolenoidFireTask(void *arg)
 {
-    /* TODO(Aren): Adjust the max and min fire times based on depth to ensure a constant flow */
-    uint32_t totalFireTime = 5000;   /* Fire for 1000ms */
-    uint32_t minimumFireTime = 200;  /* Fire for no less than 100ms */
-    uint32_t maximumFireTime = 4900; /* Fire for no longer than 900ms */
-
-    PIDNumeric_t maximumDutyCycle = ((PIDNumeric_t)maximumFireTime) / ((PIDNumeric_t)totalFireTime);
-    PIDNumeric_t minimumDutyCycle = ((PIDNumeric_t)minimumFireTime) / ((PIDNumeric_t)totalFireTime);
-
+    PPO2ControlTask_params_t *params = (PPO2ControlTask_params_t *)arg;
     do
     {
+        uint32_t totalFireTime = 5000;   /* Fire for 1000ms */
+        uint32_t minimumFireTime = 200;  /* Fire for no less than 100ms */
+        uint32_t maximumFireTime = 4900; /* Fire for no longer than 900ms */
+
+        PIDNumeric_t maximumDutyCycle = ((PIDNumeric_t)maximumFireTime) / ((PIDNumeric_t)totalFireTime);
+        PIDNumeric_t minimumDutyCycle = ((PIDNumeric_t)minimumFireTime) / ((PIDNumeric_t)totalFireTime);
+
         PIDNumeric_t dutyCycle = *getDutyCyclePtr();
 
         /* Establish upper bound on solenoid duty*/
@@ -171,8 +177,21 @@ void SolenoidFireTask(void *)
             dutyCycle = maximumDutyCycle;
         }
         /* Establish the lower bound on the solenoid duty, and ensure solenoid is active */
-        if ((dutyCycle > minimumDutyCycle) && getSolenoidEnable())
+        if ((dutyCycle >= minimumDutyCycle) && getSolenoidEnable())
         {
+            /* Do depth compensation by dividing the calculated duty time by the depth in bar*/
+            if (params->depthCompensation)
+            {
+                PIDNumeric_t depthCompCoeff = ((PIDNumeric_t)getAtmoPressure()) / 1000.0f;
+                dutyCycle /= depthCompCoeff;
+
+                /* Ensure at deep depths that we don't go smaller than our minimum, which is determined by our solenoid*/
+                if (dutyCycle < minimumDutyCycle)
+                {
+                    dutyCycle = minimumDutyCycle;
+                }
+            }
+
             setSolenoidOn();
             (void)osDelay(pdMS_TO_TICKS((PIDNumeric_t)totalFireTime * dutyCycle));
             setSolenoidOff();
@@ -247,36 +266,31 @@ void PPO2ControlTask(void *arg)
         OxygenCell_t c3 = {0};
         bool c3pick = xQueuePeek(params->c3, &c3, TIMEOUT_100MS_TICKS);
 
-        if (c1pick && c2pick && c3pick)
+        if (c1pick && c2pick && c3pick & params->useExtendedMessages)
         {
-            /* TODO: add config param for dumping extended info */
-            // txPrecisionCells(DIVECAN_SOLO, c1, c2, c3);
+            txPrecisionCells(DIVECAN_SOLO, c1, c2, c3);
         }
 
         /* It feels like we ought to do something with the cell confidence (go to SP low?) but that implementation is hard so avoid for now
                 uint8_t confidence = cellConfidence(consensus);
-        if (confidence =< 1)
-        {
-        }
-        else
-        {
-        }
         */
         PIDNumeric_t d_setpoint = (PIDNumeric_t)setpoint / 100.0f;
         PIDNumeric_t measurement = (PIDNumeric_t)consensus.precisionConsensus;
 
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
         *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
-        /* TODO: add config param for dumping extended info */
-        // txPIDState(DIVECAN_SOLO,
-        //            (params->pidState).proportionalGain,
-        //            (params->pidState).integralGain,
-        //            (params->pidState).derivativeGain,
-        //            (params->pidState).integralState,
-        //            (params->pidState).derivativeState,
-        //            *dutyCycle,
-        //            consensus.precisionConsensus);
 
+        if (params->useExtendedMessages)
+        {
+            txPIDState(DIVECAN_SOLO,
+                       (params->pidState).proportionalGain,
+                       (params->pidState).integralGain,
+                       (params->pidState).derivativeGain,
+                       (params->pidState).integralState,
+                       (params->pidState).derivativeState,
+                       *dutyCycle,
+                       consensus.precisionConsensus);
+        }
         LogPIDState(&(params->pidState), *dutyCycle, d_setpoint);
 
         (void)osDelay(pdMS_TO_TICKS(PIDPeriod));

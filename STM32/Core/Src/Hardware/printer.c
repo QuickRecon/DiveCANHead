@@ -97,8 +97,7 @@ void PrinterTask(void *arg)
         {
             if (taskParams->printEnable)
             {
-                /* TODO: add config param for dumping extended info */
-                // txLogText(DIVECAN_SOLO, printItem.string, (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH));
+                txLogText(DIVECAN_SOLO, printItem.string, (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH));
             }
             LogMsg(printItem.string);
         }
@@ -109,7 +108,7 @@ void vprint(const char *fmt, va_list argp)
 {
     static PrintQueue_t enQueueItem = {0};
     /* Build the string and queue it if its legal */
-    if (0 < vsprintf(enQueueItem.string, fmt, argp) && isQueueReady())
+    if ((0 < vsprintf(enQueueItem.string, fmt, argp)) && isQueueReady())
     {
         xQueueSend(*(getQueueHandle()), &enQueueItem, 0);
     }
@@ -127,7 +126,6 @@ void serial_printf(const char *fmt, ...)
     va_end(argp);
 }
 
-/* TODO(Aren), find a way to shoot this out over the canbus*/
 void blocking_serial_printf(const char *fmt, ...)
 {
     va_list argp = {0};
@@ -135,7 +133,7 @@ void blocking_serial_printf(const char *fmt, ...)
     static char outStr[LOG_LINE_LENGTH] = {0};
     if (0 < vsprintf(outStr, fmt, argp))
     {
-        // (void)HAL_UART_Transmit(&huart2, (uint8_t *)(outStr), (uint16_t)strnlen(outStr, LOG_LINE_LENGTH), TIMEOUT_4s_TICKS);
+        /* TODO(Aren), find a way to shoot this out over the canbus*/
     }
     va_end(argp);
 }

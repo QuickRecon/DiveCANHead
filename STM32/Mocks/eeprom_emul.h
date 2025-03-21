@@ -45,6 +45,13 @@ extern "C"
 
     } EE_Status;
 
+    typedef enum
+    {
+        EE_FORCED_ERASE,
+        EE_CONDITIONAL_ERASE
+    } EE_Erase_type;
+
+    EE_Status EE_Init(EE_Erase_type EraseType);
     EE_Status EE_ReadVariable32bits(uint16_t VirtAddress, uint32_t *pData);
 
     EE_Status EE_WriteVariable32bits(uint16_t VirtAddress, uint32_t Data);

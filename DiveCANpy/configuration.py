@@ -1,9 +1,11 @@
 from enum import IntEnum
 from DiveCANpy import DiveCAN
 import pytest
+import _pytest.mark.structures
+import typing
 import itertools
 
-FIRMWARE_VERSION = 7
+FIRMWARE_VERSION = 8
 
 class CellType(IntEnum):
     CELL_DIVEO2 = 0
@@ -11,25 +13,25 @@ class CellType(IntEnum):
     CELL_O2S = 2
 
 class PowerSelectMode(IntEnum):
-    MODE_BATTERY=0,
-    MODE_BATTERY_THEN_CAN=1,
-    MODE_CAN=2,
+    MODE_BATTERY=0
+    MODE_BATTERY_THEN_CAN=1
+    MODE_CAN=2
     MODE_OFF=3
 
 class OxygenCalMethod(IntEnum):
-    CAL_DIGITAL_REFERENCE = 0,
+    CAL_DIGITAL_REFERENCE = 0
     CAL_ANALOG_ABSOLUTE = 1
 
 class VoltageThreshold(IntEnum):
-    V_THRESHOLD_9V = 0,
+    V_THRESHOLD_9V = 0
     V_THRESHOLD_LI1S = 1
 
 class PPO2ControlScheme(IntEnum):
-    PPO2CONTROL_OFF = 0,
-    PPO2CONTROL_SOLENOID_PID = 1,
+    PPO2CONTROL_OFF = 0
+    PPO2CONTROL_SOLENOID_PID = 1
 
 class Configuration():
-    def __init__(self, firmware_version: int, cell1: CellType, cell2: CellType, cell3: CellType, power_mode: PowerSelectMode, cal_method: OxygenCalMethod, enable_printing: bool, battery_voltage_threshold: VoltageThreshold, ppo2_control_mode: PPO2ControlScheme ):
+    def __init__(self, firmware_version: int, cell1: CellType, cell2: CellType, cell3: CellType, power_mode: PowerSelectMode, cal_method: OxygenCalMethod, enable_printing: bool, battery_voltage_threshold: VoltageThreshold, ppo2_control_mode: PPO2ControlScheme, extended_messages: bool, ppo2_depth_compensation: bool):
         self.firmware_version = firmware_version
         self.cell1 = cell1
         self.cell2 = cell2
@@ -39,6 +41,8 @@ class Configuration():
         self.enable_printing = enable_printing
         self.battery_voltage_threshold = battery_voltage_threshold
         self.ppo2_control_mode = ppo2_control_mode
+        self.extended_messages = extended_messages
+        self.ppo2_depth_compensation = ppo2_depth_compensation
     
     @classmethod
     def from_bits(cls, bits):
@@ -51,7 +55,9 @@ class Configuration():
          enable_printing = bool((bits >> 19) & 0b1)
          battery_voltage_threshold = VoltageThreshold((bits >> 20) & 0b11)
          ppo2_control_mode = PPO2ControlScheme((bits >> 22) & 0b11)
-         return cls(firmware_version, cell1, cell2, cell3, power_mode, cal_method, enable_printing, battery_voltage_threshold, ppo2_control_mode)
+         extended_messages = bool((bits >> 24) & 0b1)
+         ppo2_depth_compensation = bool((bits >> 25) & 0b1)
+         return cls(firmware_version, cell1, cell2, cell3, power_mode, cal_method, enable_printing, battery_voltage_threshold, ppo2_control_mode, extended_messages, ppo2_depth_compensation)
 
     def get_bits(self):
         bits = 0
@@ -64,6 +70,8 @@ class Configuration():
         bits |= (int(self.enable_printing) & 0b1) << 19
         bits |= (int(self.battery_voltage_threshold)& 0b11) << 20
         bits |= (int(self.ppo2_control_mode)& 0b11) << 22 
+        bits |= (int(self.extended_messages) & 0b1) << 24
+        bits |= (int(self.ppo2_depth_compensation) & 0b1) << 25
         return bits
     
     def get_byte(self, byte_index: int):
@@ -119,59 +127,63 @@ def configure_board(divecan_client: DiveCAN.DiveCAN, configuration: Configuratio
 
 
 # Configs which are explicitly not supported
-def unsupported_configurations():    
+def unsupported_configurations() -> list[_pytest.mark.structures.ParameterSet]:   
     configurations = []
-    analog_digital_cal_param_set = itertools.product([CellType.CELL_ANALOG],[CellType.CELL_ANALOG],[CellType.CELL_ANALOG],PowerSelectMode,[OxygenCalMethod.CAL_DIGITAL_REFERENCE],[True, False],VoltageThreshold,PPO2ControlScheme)
+    analog_digital_cal_param_set = itertools.product([CellType.CELL_ANALOG],[CellType.CELL_ANALOG],[CellType.CELL_ANALOG],PowerSelectMode,[OxygenCalMethod.CAL_DIGITAL_REFERENCE],[True, False],VoltageThreshold,PPO2ControlScheme,[True, False],[True, False])
 
     unsupported_param_set = list(analog_digital_cal_param_set)
 
     unable_configs = unable_configurations()
     for parameter_tuple in unsupported_param_set:
-        cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control = parameter_tuple
-        cell_config = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control)
-        if  cell_config.get_bits() not in [x.values[0].get_bits() for x in unable_configs]:
+        cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation = parameter_tuple
+        cell_config = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation)
+        if  cell_config.get_bits() not in [typing.cast(Configuration, x.values[0]).get_bits() for x in unable_configs]:
                      configurations.append(pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}'))
     return configurations
 
 # Configs which we can't test
-def unable_configurations():    
+def unable_configurations() -> list[_pytest.mark.structures.ParameterSet]:    
     configurations = []
-    power_parameter_set = itertools.product(CellType,CellType,CellType,[PowerSelectMode.MODE_BATTERY, PowerSelectMode.MODE_CAN, PowerSelectMode.MODE_OFF], OxygenCalMethod,[True, False],VoltageThreshold,PPO2ControlScheme) # No battery power
-    no_printing = itertools.product(CellType,CellType,CellType,PowerSelectMode, OxygenCalMethod,[True],VoltageThreshold,PPO2ControlScheme) # Interference
+    power_parameter_set = itertools.product(CellType,CellType,CellType,[PowerSelectMode.MODE_BATTERY, PowerSelectMode.MODE_CAN, PowerSelectMode.MODE_OFF], OxygenCalMethod,[True, False],VoltageThreshold,PPO2ControlScheme,[True, False],[True, False]) # No battery power
+    no_printing = itertools.product(CellType,CellType,CellType,PowerSelectMode, OxygenCalMethod,[True],VoltageThreshold,PPO2ControlScheme,[True, False],[True, False]) # Interference
     unsupported_parameter_set = list(power_parameter_set) + list(no_printing)
 
     for parameter_tuple in unsupported_parameter_set:
-        cell1, cell2, cell3, power_select_mode, cal_method, enable_printing, voltage_threshold, ppo2_control = parameter_tuple
-        cell_config = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, power_select_mode, cal_method, enable_printing, voltage_threshold, ppo2_control)
+        cell1, cell2, cell3, power_select_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation = parameter_tuple
+        cell_config = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, power_select_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation)
         configurations.append(pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}'))
     return configurations
 
 # Configs we support, which is the configuration space minus unsupported and unable configs
-def supported_configurations():
+def supported_configurations() -> list[_pytest.mark.structures.ParameterSet]: 
     configurations = []
 
-    parameter_tuples = itertools.product(CellType,CellType,CellType,PowerSelectMode,OxygenCalMethod,[True, False], VoltageThreshold,PPO2ControlScheme)
+    parameter_tuples = itertools.product(CellType,CellType,CellType,PowerSelectMode,OxygenCalMethod,[True, False], VoltageThreshold,PPO2ControlScheme,[True, False],[True, False])
 
     unsupported_configs = unsupported_configurations()
     unable_configs = unable_configurations()
 
     for parameter_tuple in parameter_tuples:
-        cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control = parameter_tuple
-        cell_config = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control)
-        if cell_config.get_bits() not in [x.values[0].get_bits() for x in unsupported_configs] and cell_config.get_bits() not in [x.values[0].get_bits() for x in unable_configs]:
+        cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation = parameter_tuple
+        cell_config = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation)
+        if cell_config.get_bits() not in [typing.cast(Configuration, x.values[0]).get_bits() for x in unsupported_configs] and cell_config.get_bits() not in [typing.cast(Configuration, x.values[0]).get_bits() for x in unable_configs]:
                      configurations.append(pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}'))
 
     #return configurations
-    cell_config = Configuration(FIRMWARE_VERSION, CellType.CELL_DIVEO2, CellType.CELL_O2S, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY, OxygenCalMethod.CAL_DIGITAL_REFERENCE, False, VoltageThreshold.V_THRESHOLD_9V, PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID)
+    cell_config = Configuration(FIRMWARE_VERSION, CellType.CELL_DIVEO2, CellType.CELL_O2S, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY, OxygenCalMethod.CAL_DIGITAL_REFERENCE, False, VoltageThreshold.V_THRESHOLD_9V, PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID, True, True)
     return [pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}')]
 
 def analog_configurations():
-     tests =  [conf.values[0] for conf in supported_configurations() if (conf.values[0].cell1 is CellType.CELL_ANALOG or conf.values[0].cell2 is CellType.CELL_ANALOG or conf.values[0].cell3 is CellType.CELL_ANALOG) and conf.values[0].cal_method is OxygenCalMethod.CAL_ANALOG_ABSOLUTE]
+     
+     tests =  [typing.cast(Configuration, conf.values[0]) for conf in supported_configurations() if (typing.cast(Configuration, conf.values[0]).cell1 is CellType.CELL_ANALOG or 
+                                                                                                     typing.cast(Configuration, conf.values[0]).cell2 is CellType.CELL_ANALOG or 
+                                                                                                     typing.cast(Configuration, conf.values[0]).cell3 is CellType.CELL_ANALOG) and 
+                                                                                                     typing.cast(Configuration, conf.values[0]).cal_method is OxygenCalMethod.CAL_ANALOG_ABSOLUTE]
      test_cases = [pytest.param(case,id=f'{hex(case.get_bits())}') for case in tests]
      return test_cases
 
 def pid_configurations():
-     tests =  [conf.values[0] for conf in supported_configurations() if conf.values[0].ppo2_control_mode is PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID]
+     tests =  [typing.cast(Configuration, conf.values[0]) for conf in supported_configurations() if typing.cast(Configuration, conf.values[0]).ppo2_control_mode is PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID]
      test_cases = [pytest.param(case,id=f'{hex(case.get_bits())}') for case in tests]
      return test_cases
 
@@ -179,7 +191,7 @@ def millivolt_configurations():
     test_cases = []
     test_millis_set = range(0, 125, 24)
     zero_set = [0]
-    for config in [x.values[0] for x in supported_configurations()]:
+    for config in [typing.cast(Configuration, x.values[0]) for x in supported_configurations()]:
         config_set = [config]
 
         c1_set = []

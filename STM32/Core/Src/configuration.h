@@ -20,7 +20,8 @@ extern "C"
         bool enableUartPrinting : 1;
         VoltageThreshold_t dischargeThresholdMode : 2;
         PPO2ControlScheme_t ppo2controlMode : 2;
-        uint8_t reserved;
+        bool extendedMessages : 1;
+        bool ppo2DepthCompensation: 1;
     } Configuration_t;
 
     uint32_t getConfigBytes(const Configuration_t *const config);
@@ -37,7 +38,9 @@ extern "C"
         .calibrationMode = CAL_DIGITAL_REFERENCE,
         .enableUartPrinting = true,
         .dischargeThresholdMode = V_THRESHOLD_9V,
-        .ppo2controlMode = PPO2CONTROL_SOLENOID_PID};
+        .ppo2controlMode = PPO2CONTROL_SOLENOID_PID,
+        .extendedMessages = false,
+        .ppo2DepthCompensation = true};
 #ifdef __cplusplus
 }
 #endif

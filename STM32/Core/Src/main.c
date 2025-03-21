@@ -334,7 +334,7 @@ int main(void)
   const Configuration_t deviceConfig = loadConfiguration();
   HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET);
 
-  InitPrinter(deviceConfig.enableUartPrinting);
+  InitPrinter(deviceConfig.enableUartPrinting && deviceConfig.extendedMessages);
   serial_printf("Booting, Last Reset Reason (%s)\r\n", reset_cause_get_name(reset_cause));
   serial_printf("Configuration: 0x%lx\r\n", getConfigBytes(&deviceConfig));
 
@@ -357,7 +357,7 @@ int main(void)
 
   if (PPO2CONTROL_SOLENOID_PID == deviceConfig.ppo2controlMode)
   {
-    InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3]);
+    InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3], deviceConfig.ppo2DepthCompensation, deviceConfig.extendedMessages);
   }
   /* USER CODE END 2 */
 

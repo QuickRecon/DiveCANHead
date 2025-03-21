@@ -1,8 +1,8 @@
 #include "CppUTest/TestHarness.h"
 #include "CppUTestExt/MockSupport.h"
-
+#include "eeprom_emul.h"
+#include "stm32l4xx_hal_flash.h"
 #include "configuration.h"
-
 // Config tests are designed to be brittle, if you have to change these tests you need
 // to update the version as this checks the expected behaviors
 const size_t expectedStructSize = 4;
@@ -10,6 +10,23 @@ const size_t expectedStructSize = 4;
 // All the C stuff has to be externed
 extern "C"
 {
+    EE_Status EE_Init(EE_Erase_type EraseType)
+    {
+        mock().actualCall("EE_Init");
+        return EE_OK;
+    }
+
+    void HAL_FLASHEx_OBGetConfig(FLASH_OBProgramInitTypeDef *pOBInit)
+    {
+        mock().actualCall("HAL_FLASHEx_OBGetConfig");
+    }
+
+    HAL_StatusTypeDef HAL_FLASHEx_OBProgram(FLASH_OBProgramInitTypeDef *pOBInit)
+    {
+        mock().actualCall("HAL_FLASHEx_OBProgram");
+        return HAL_OK;
+    }
+
     extern bool CellValid(Configuration_t config, uint8_t cellNumber);
     extern bool ConfigurationValid(Configuration_t config);
 }
@@ -215,6 +232,20 @@ TEST(configuration, TestUARTContentionPosition)
     Configuration_t testConfig = {0};
     testConfig.enableUartPrinting = true;
     CHECK(((getConfigBytes(&testConfig) >> 19) & 0b1u) == 1);
+}
+
+TEST(configuration, TestExtendedMessages)
+{
+    Configuration_t testConfig = {0};
+    testConfig.extendedMessages = true;
+    CHECK(((getConfigBytes(&testConfig) >> 24) & 0b1u) == 1);
+}
+
+TEST(configuration, TestPPO2DepthCompensationPosition)
+{
+    Configuration_t testConfig = {0};
+    testConfig.ppo2DepthCompensation = true;
+    CHECK(((getConfigBytes(&testConfig) >> 25) & 0b1u) == 1);
 }
 
 TEST(configuration, GetIDOfDefaultConfig)

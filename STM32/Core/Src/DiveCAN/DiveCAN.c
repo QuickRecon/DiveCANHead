@@ -78,7 +78,7 @@ void CANTask(void *arg)
         if (pdTRUE == GetLatestCAN(TIMEOUT_1S_TICKS, &message))
         {
             LogRXDiveCANMessage(&message);
-            uint32_t message_id = message.id & 0x1FFFF000; /* Drop the source/dest stuff, we're listening for anything from anyone */
+            uint32_t message_id = message.id & ID_MASK; /* Drop the source/dest stuff, we're listening for anything from anyone */
             switch (message_id)
             {
             case BUS_INIT_ID:

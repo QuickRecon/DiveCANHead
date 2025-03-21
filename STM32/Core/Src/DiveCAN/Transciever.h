@@ -9,6 +9,8 @@ extern "C"
 {
 #endif
 
+  static const uint32_t ID_MASK = 0x1FFFF000;
+
   static const uint32_t BUS_ID_ID = 0xD000000;
   static const uint32_t BUS_NAME_ID = 0xD010000;
   static const uint32_t BUS_OFF_ID = 0xD030000;

@@ -135,7 +135,11 @@ void sendCANMessage(const DiveCANMessage_t message)
         (void)osDelay(TX_WAIT_DELAY);
     }
 
-    LogTXDiveCANMessage(&message);
+    /* Don't log messages that would cause a recursion*/
+    if ((message.id & ID_MASK) != LOG_TEXT_ID)
+    {
+        LogTXDiveCANMessage(&message);
+    }
 
     CAN_TxHeaderTypeDef header = {0};
     header.StdId = 0x0;
