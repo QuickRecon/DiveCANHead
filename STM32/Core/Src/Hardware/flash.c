@@ -14,6 +14,87 @@ static const uint32_t CAL_TO_INT32 = 10000000;
 
 static const uint8_t MAX_WRITE_ATTEMPTS = 3;
 
+static inline uint32_t set_bit(uint32_t number, uint32_t n, bool x) {
+    return (number & ~((uint32_t)1 << n)) | ((uint32_t)x << n);
+}
+
+void initFlash()
+{
+    /* Set up flash erase */
+    if (HAL_OK != HAL_FLASH_Unlock())
+    {
+        NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+    }
+    else
+    {
+        if (EE_OK != EE_Init(EE_FORCED_ERASE))
+        {
+            NON_FATAL_ERROR(EEPROM_ERROR);
+        }
+
+        /* Set up the option bytes */
+        FLASH_OBProgramInitTypeDef optionBytes = {0};
+        HAL_FLASHEx_OBGetConfig(&optionBytes);
+        uint32_t original_opt = optionBytes.USERConfig;
+
+        /* nBoot0 irrelevant, leave as true*/
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nBOOT0_Pos, true);
+
+        /* nSWBOOT0 true to take boot mode from pin */
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nSWBOOT0_Pos, true);
+
+        /* Reset SRAM2 on reset */
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_SRAM2_RST_Pos, false);
+
+        /* Don't do SRAM parity check */
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_SRAM2_PE_Pos, true);
+
+        /* nBoot1 irrelevant, leave as true*/
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nBOOT1_Pos, true);
+
+        /* These flags are undocumented so don't touch them */
+        // set_bit(optionBytes.USERConfig, FLASH_OB_DUALBANK, true);
+        // set_bit(optionBytes.USERConfig, FLASH_OB_BFB2, true);
+
+        /* Window watch dog software controlled */
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_WWDG_SW_Pos, true);
+
+        /* Don't freeze IWDG in standby mode */
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_IWDG_STDBY_Pos, true);
+
+        /* Don't freeze IWDG in stop mode*/
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_IWDG_STOP_Pos, true);
+
+        /* Start the IWDG on power up */
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_IWDG_SW_Pos, false);
+
+        /* Do reset on shutdown */
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nRST_SHDW_Pos, true);
+
+        /* Do reset on standby */
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nRST_STDBY_Pos, true);
+
+        /* Do reset on stop */
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nRST_STOP_Pos, true);
+
+        /* Reset at 2.8V, implies we're loosing regulation */
+        optionBytes.USERConfig |= FLASH_OPTR_BOR_LEV_4;
+
+        if (optionBytes.USERConfig != original_opt)
+        {
+            if (HAL_OK != HAL_FLASHEx_OBProgram(&optionBytes))
+            {
+                NON_FATAL_ERROR(EEPROM_ERROR);
+            }
+        }
+
+        if (HAL_OK != HAL_FLASH_Lock())
+        {
+            NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+        }
+    }
+}
+
 static bool WriteInt32(uint16_t addr, uint32_t value)
 {
     bool writeOk = true; /*  Presume that we're doing ok, if we hit a fail state then false it */

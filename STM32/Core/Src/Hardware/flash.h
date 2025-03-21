@@ -8,6 +8,7 @@
 extern "C"
 {
 #endif
+    void initFlash(void);
 
     bool GetCalibration(uint8_t cellNumber, CalCoeff_t *calCoeff);
     bool SetCalibration(uint8_t cellNumber, CalCoeff_t calCoeff);

@@ -31,6 +31,7 @@
 #include "Hardware/solenoid.h"
 #include "Hardware/ext_adc.h"
 #include "Hardware/printer.h"
+#include "Hardware/flash.h"
 #include "DiveCAN/DiveCAN.h"
 #include "DiveCAN/PPO2Transmitter.h"
 #include "Hardware/log.h"
@@ -326,10 +327,8 @@ int main(void)
   InitLog();
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET);
 
-  /* Set up flash erase */
-  (void)HAL_FLASH_Unlock();
-  (void)EE_Init(EE_FORCED_ERASE);
-  (void)HAL_FLASH_Lock();
+  /* Set up our eeprom emulation and assert our option bytes */
+  initFlash();
 
   /* Load Config */
   const Configuration_t deviceConfig = loadConfiguration();
@@ -717,7 +716,8 @@ static void MX_IWDG_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN IWDG_Init 2 */
-
+  // Freeze the IWDG on debug so we don't need to disable it as a matter of routine
+  __HAL_DBGMCU_FREEZE_IWDG();
   /* USER CODE END IWDG_Init 2 */
 }
 
