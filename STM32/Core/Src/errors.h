@@ -100,8 +100,11 @@ extern "C"
         /** @brief A cell has reported a value that we can't display */
         CELL_OVERRANGE_ERR = 26,
 
+        /** @brief Filesystem error has occured */
+        FS_ERROR = 27,
+
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        NONFATAL_ERR_MAX = CELL_OVERRANGE_ERR
+        NONFATAL_ERR_MAX = FS_ERROR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

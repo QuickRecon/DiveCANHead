@@ -8,10 +8,12 @@
 #include "main.h"
 #include "../common.h"
 #include "log.h"
+#include "fatfs.h"
+
 
 #define PRINTQUEUE_LENGTH 10
 
-extern UART_HandleTypeDef huart2;
+extern CAN_HandleTypeDef hcan1;
 
 void PrinterTask(void *arg);
 
@@ -126,14 +128,89 @@ void serial_printf(const char *fmt, ...)
     va_end(argp);
 }
 
+static const char *const BlockingLogPath = "BLOCKLOG.TXT";
+
+void blocking_fs_log(const char *msg, uint32_t len)
+{
+    static FIL LogFile = {0};
+    FRESULT res = FR_OK; /* FatFs function common result code */
+    res = f_open(&LogFile, BlockingLogPath, FA_OPEN_APPEND | FA_WRITE);
+    if (res != FR_OK)
+    {
+        NON_FATAL_ERROR(FS_ERROR);
+    }
+    uint32_t byteswritten = 0;
+    res = f_write(&LogFile, msg, len, (void *)&byteswritten);
+    if (res != FR_OK)
+    {
+        NON_FATAL_ERROR(FS_ERROR);
+    }
+    res = f_close(&LogFile);
+    if (res != FR_OK)
+    {
+        NON_FATAL_ERROR(FS_ERROR);
+    }
+}
+
+
+static const uint8_t MAX_MSG_FRAGMENT = 8;
+static const uint8_t TX_WAIT_DELAY = 10;
+void blocking_can_log(const char *msg, uint32_t len)
+{
+    uint16_t remainingLength = (uint16_t)len;
+    uint8_t bytesToWrite = 0;
+
+    for (uint8_t i = 0; i < len; i += MAX_MSG_FRAGMENT)
+    {
+        if (remainingLength < MAX_MSG_FRAGMENT)
+        {
+            bytesToWrite = (uint8_t)remainingLength;
+        }
+        else
+        {
+            bytesToWrite = MAX_MSG_FRAGMENT;
+        }
+        uint8_t msgBuf[8] = {0};
+        (void)memcpy(msgBuf, msg + i, bytesToWrite);
+        const DiveCANMessage_t message = {
+            .id = LOG_TEXT_ID,
+            .data = {msgBuf[0], msgBuf[1], msgBuf[2], msgBuf[3], msgBuf[4], msgBuf[5], msgBuf[6], msgBuf[7]},
+            .length = bytesToWrite};
+
+        /* This isn't super time critical so if we're still waiting on stuff to tx then we can quite happily just wait */
+        while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))
+        {
+            (void)osDelay(TX_WAIT_DELAY);
+        }
+
+        CAN_TxHeaderTypeDef header = {0};
+        header.StdId = 0x0;
+        header.ExtId = message.id;
+        header.RTR = CAN_RTR_DATA;
+        header.IDE = CAN_ID_EXT;
+        header.DLC = message.length;
+        header.TransmitGlobalTime = DISABLE;
+
+        uint32_t mailboxNumber = 0;
+
+        HAL_StatusTypeDef err = HAL_CAN_AddTxMessage(&hcan1, &header, message.data, &mailboxNumber);
+        if (HAL_OK != err)
+        {
+            NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, err);
+        }
+        remainingLength -= bytesToWrite;
+    }
+}
+
 void blocking_serial_printf(const char *fmt, ...)
 {
     va_list argp = {0};
     va_start(argp, fmt);
     static char outStr[LOG_LINE_LENGTH] = {0};
-    if (0 < vsprintf(outStr, fmt, argp))
+    int32_t len = vsprintf(outStr, fmt, argp);
+    if (0 < len)
     {
-        /* TODO(Aren), find a way to shoot this out over the canbus*/
+        blocking_fs_log(outStr, (uint32_t)len);
     }
     va_end(argp);
 }
