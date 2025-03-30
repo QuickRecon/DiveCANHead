@@ -5,12 +5,12 @@ import time
 
 PPO2_TEST_SPAN = [0,18,20,70,100,130,160,250]
 
-DIVECAN_ADAPTOR_PATH = '/dev/ttyACM1'
+DIVECAN_ADAPTOR_PATH = '/dev/ttyCAN0'
 
 def calibrateBoard(divecan_client: DiveCAN.DiveCAN,  shim_host: HWShim.HWShim):
     """ Run the calibration happy path """
     shim_host.set_digital_ppo2(1, 1.0)
-    #shim_host.set_digital_ppo2(2, 1.0)
+    shim_host.set_digital_ppo2(2, 1.0)
     shim_host.set_digital_ppo2(3, 1.0)
     shim_host.set_analog_millis(1, 50)
     shim_host.set_analog_millis(2, 50)
