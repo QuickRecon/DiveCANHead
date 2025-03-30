@@ -57,6 +57,16 @@ void setup()
   Serial.begin(115200);
   Serial.println("HW Shim Active");
 
+  // Assert the uart bridge transistors low
+  pinMode(33, OUTPUT);
+  pinMode(35, OUTPUT);
+  pinMode(37, OUTPUT);
+
+  digitalWrite(33, LOW);
+  digitalWrite(35, LOW);
+  digitalWrite(37, LOW);
+
+
   // Init SS Cell
   dCell1 = new DiveO2Cell(&Serial1);
   dCell2 = new DiveO2Cell(&Serial2);
