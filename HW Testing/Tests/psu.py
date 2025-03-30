@@ -8,6 +8,12 @@ BATTERY_PORT = '/dev/ttyPSU2'
 
 def init_ppk2() -> PPK2_API:
     ppk2s_connected = PPK2_API.list_devices()
+    retries = 0
+    while len(ppk2s_connected) == 0 and retries < 10:
+        ppk2s_connected = PPK2_API.list_devices()
+        retries += 1
+        time.sleep(1)
+    
     if len(ppk2s_connected) == 1:
         ppk2_port = ppk2s_connected[0][0]
         ppk2_serial = ppk2s_connected[0][1]
