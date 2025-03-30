@@ -323,9 +323,11 @@ int main(void)
   /* Ensure solenoid is fully off */
   setSolenoidOff();
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
-
+  (void)HAL_IWDG_Refresh(&hiwdg);
+  
   InitLog();
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET);
+  (void)HAL_IWDG_Refresh(&hiwdg);
 
   /* Set up our eeprom emulation and assert our option bytes */
   initFlash();
@@ -333,6 +335,7 @@ int main(void)
   /* Load Config */
   const Configuration_t deviceConfig = loadConfiguration();
   HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET);
+  (void)HAL_IWDG_Refresh(&hiwdg);
 
   InitPrinter(deviceConfig.enableUartPrinting && deviceConfig.extendedMessages);
   serial_printf("Booting, Last Reset Reason (%s)\r\n", reset_cause_get_name(reset_cause));
@@ -341,6 +344,7 @@ int main(void)
   /* Set our power bus */
   SetVBusMode(deviceConfig.powerMode);
   HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
+  (void)HAL_IWDG_Refresh(&hiwdg);
 
   /* Kick off our threads */
   InitADCs();
@@ -350,10 +354,12 @@ int main(void)
   cells[CELL_2] = CreateCell(CELL_2, deviceConfig.cell2);
   cells[CELL_3] = CreateCell(CELL_3, deviceConfig.cell3);
   HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
+  (void)HAL_IWDG_Refresh(&hiwdg);
 
   InitDiveCAN(&defaultDeviceSpec, &deviceConfig);
   InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
+  (void)HAL_IWDG_Refresh(&hiwdg);
 
   if (PPO2CONTROL_SOLENOID_PID == deviceConfig.ppo2controlMode)
   {
@@ -396,6 +402,7 @@ int main(void)
 
   HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+  (void)HAL_IWDG_Refresh(&hiwdg);
 
   /* USER CODE END RTOS_EVENTS */
 
