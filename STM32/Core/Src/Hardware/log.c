@@ -268,14 +268,6 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
 
 void InitLog(void)
 {
-    FRESULT res = FR_OK; /* FatFs function common result code */
-
-    res = f_mount(&SDFatFS, (TCHAR const *)SDPath, 1);
-    if (res != FR_OK)
-    {
-        blocking_serial_printf("Cannot mount SD card, is one installed?\r\nLogging disabled\r\n");
-    }
-
     /* Setup print queue */
     osMessageQueueId_t *LogQueue = getQueueHandle();
     static uint8_t LogQueue_Storage[LOGQUEUE_LENGTH * sizeof(LogQueue_t)];
@@ -291,10 +283,14 @@ void InitLog(void)
 
 void StartLogTask(void)
 {
-    uint32_t freeBytes = 0;
     FRESULT res = FR_OK; /* FatFs function common result code */
-    FATFS* ret = &SDFatFS;
-    if(FR_OK == f_getfree((TCHAR const *)SDPath, &freeBytes, &ret))
+
+    res = f_mount(&SDFatFS, (TCHAR const *)SDPath, 1);
+    if (res != FR_OK)
+    {
+        /* Don't do anything, causes an infinite loop */
+    }
+    else
     {
         res = RotateLogfiles();
 

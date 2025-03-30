@@ -10,7 +10,6 @@
 #include "log.h"
 #include "fatfs.h"
 
-
 #define PRINTQUEUE_LENGTH 10
 
 extern CAN_HandleTypeDef hcan1;
@@ -132,26 +131,30 @@ static const char *const BlockingLogPath = "BLOCKLOG.TXT";
 
 void blocking_fs_log(const char *msg, uint32_t len)
 {
-    static FIL LogFile = {0};
+    uint32_t freeBytes = 0;
     FRESULT res = FR_OK; /* FatFs function common result code */
-    res = f_open(&LogFile, BlockingLogPath, FA_OPEN_APPEND | FA_WRITE);
-    if (res != FR_OK)
+    FATFS* ret = &SDFatFS;
+    if (FR_OK == f_getfree((TCHAR const *)SDPath, &freeBytes, &ret))
     {
-        NON_FATAL_ERROR(FS_ERROR);
-    }
-    uint32_t byteswritten = 0;
-    res = f_write(&LogFile, msg, len, (void *)&byteswritten);
-    if (res != FR_OK)
-    {
-        NON_FATAL_ERROR(FS_ERROR);
-    }
-    res = f_close(&LogFile);
-    if (res != FR_OK)
-    {
-        NON_FATAL_ERROR(FS_ERROR);
+        static FIL LogFile = {0};
+        res = f_open(&LogFile, BlockingLogPath, FA_OPEN_APPEND | FA_WRITE);
+        if (res != FR_OK)
+        {
+            NON_FATAL_ERROR(FS_ERROR);
+        }
+        uint32_t byteswritten = 0;
+        res = f_write(&LogFile, msg, len, (void *)&byteswritten);
+        if (res != FR_OK)
+        {
+            NON_FATAL_ERROR(FS_ERROR);
+        }
+        res = f_close(&LogFile);
+        if (res != FR_OK)
+        {
+            NON_FATAL_ERROR(FS_ERROR);
+        }
     }
 }
-
 
 static const uint8_t MAX_MSG_FRAGMENT = 8;
 static const uint8_t TX_WAIT_DELAY = 10;
