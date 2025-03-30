@@ -155,23 +155,28 @@ def unable_configurations() -> list[_pytest.mark.structures.ParameterSet]:
     return configurations
 
 # Configs we support, which is the configuration space minus unsupported and unable configs
-def supported_configurations() -> list[_pytest.mark.structures.ParameterSet]: 
-    configurations = []
+def supported_configurations_dynamic() -> list[_pytest.mark.structures.ParameterSet]: 
+    # configurations = []
 
-    parameter_tuples = itertools.product(CellType,CellType,CellType,PowerSelectMode,OxygenCalMethod,[True, False], VoltageThreshold,PPO2ControlScheme,[True, False],[True, False])
+    # parameter_tuples = itertools.product(CellType,CellType,CellType,PowerSelectMode,OxygenCalMethod,[True, False], VoltageThreshold,PPO2ControlScheme,[True, False],[True, False])
 
-    unsupported_configs = unsupported_configurations()
-    unable_configs = unable_configurations()
+    # unsupported_configs = unsupported_configurations()
+    # unable_configs = unable_configurations()
 
-    for parameter_tuple in parameter_tuples:
-        cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation = parameter_tuple
-        cell_config = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation)
-        if cell_config.get_bits() not in [typing.cast(Configuration, x.values[0]).get_bits() for x in unsupported_configs] and cell_config.get_bits() not in [typing.cast(Configuration, x.values[0]).get_bits() for x in unable_configs]:
-                     configurations.append(pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}'))
+    # for parameter_tuple in parameter_tuples:
+    #     cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation = parameter_tuple
+    #     cell_config = Configuration(FIRMWARE_VERSION, cell1, cell2, cell3, power_mode, cal_method, enable_printing, voltage_threshold, ppo2_control, extended_messages, ppo2_depth_compensation)
+    #     if cell_config.get_bits() not in [typing.cast(Configuration, x.values[0]).get_bits() for x in unsupported_configs] and cell_config.get_bits() not in [typing.cast(Configuration, x.values[0]).get_bits() for x in unable_configs]:
+    #                  configurations.append(pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}'))
 
     #return configurations
-    cell_config = Configuration(FIRMWARE_VERSION, CellType.CELL_DIVEO2, CellType.CELL_O2S, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY, OxygenCalMethod.CAL_DIGITAL_REFERENCE, False, VoltageThreshold.V_THRESHOLD_9V, PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID, True, True)
+    cell_config = Configuration(FIRMWARE_VERSION, CellType.CELL_DIVEO2, CellType.CELL_DIVEO2, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY, OxygenCalMethod.CAL_DIGITAL_REFERENCE, False, VoltageThreshold.V_THRESHOLD_9V, PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID, True, True)
     return [pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}')]
+
+supported_confs = supported_configurations_dynamic()
+
+def supported_configurations():
+     return supported_confs
 
 def analog_configurations():
      
