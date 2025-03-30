@@ -14,7 +14,8 @@ static const uint32_t CAL_TO_INT32 = 10000000;
 
 static const uint8_t MAX_WRITE_ATTEMPTS = 3;
 
-static inline uint32_t set_bit(uint32_t number, uint32_t n, bool x) {
+static inline uint32_t set_bit(uint32_t number, uint32_t n, bool x)
+{
     return (number & ~((uint32_t)1 << n)) | ((uint32_t)x << n);
 }
 
@@ -82,8 +83,18 @@ void initFlash(void)
         /* Reset at 2.8V, implies we're loosing regulation */
         optionBytes.USERConfig |= FLASH_OPTR_BOR_LEV_4;
 
-        optionBytes.USERType = OB_USER_nBOOT0 | OB_USER_nSWBOOT0 | OB_USER_nRST_SHDW | OB_USER_SRAM2_PE | OB_USER_nBOOT1 | OB_USER_WWDG_SW | 
-        OB_USER_IWDG_STDBY | OB_USER_IWDG_STOP | OB_USER_IWDG_SW | OB_USER_nRST_STDBY | OB_USER_nRST_STOP | OB_USER_BOR_LEV;
+        optionBytes.USERType = OB_USER_nBOOT0 |
+                               OB_USER_nSWBOOT0 |
+                               OB_USER_nRST_SHDW |
+                               OB_USER_SRAM2_PE |
+                               OB_USER_nBOOT1 |
+                               OB_USER_WWDG_SW |
+                               OB_USER_IWDG_STDBY |
+                               OB_USER_IWDG_STOP |
+                               OB_USER_IWDG_SW |
+                               OB_USER_nRST_STDBY |
+                               OB_USER_nRST_STOP |
+                               OB_USER_BOR_LEV;
 
         /* Short circuit eval of conditions, only true if we try writing and fail*/
         if ((optionBytes.USERConfig != original_opt) && (HAL_OK != HAL_FLASHEx_OBProgram(&optionBytes)))
