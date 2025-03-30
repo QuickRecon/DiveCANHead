@@ -8,7 +8,7 @@ modbus_tk==1.1.4
 msgpack==1.1.0
 packaging==24.2
 pluggy==1.5.0
--e git+https://github.com/QuickRecon/ppk2-api-python.git@a7f4aad8071b2a968161939b46eac934b562d055#egg=ppk2_api
+-e git+https://github.com/QuickRecon/ppk2-api-python.git@9f41f72efd09e59b0aae97cd919e468129388dbd#egg=ppk2_api
 pyserial==3.5
 pytest==8.3.4
 python-can==4.5.0
