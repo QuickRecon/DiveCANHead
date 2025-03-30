@@ -20,11 +20,11 @@ def test_change_configuration_invalid(power_divecan_client_fixture: tuple[DiveCA
 
 def test_change_configuration_resets_calibration(power_shim_divecan_fixture: tuple[DiveCAN.DiveCAN, HWShim.HWShim, psu.PSU]) -> None:
     divecan_client, shim_host, pwr = power_shim_divecan_fixture
-    allAnalogConfig = configuration.Configuration(configuration.FIRMWARE_VERSION, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.PowerSelectMode.MODE_CAN, configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE, True, configuration.VoltageThreshold.V_THRESHOLD_9V, configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
+    allAnalogConfig = configuration.Configuration(configuration.FIRMWARE_VERSION, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.PowerSelectMode.MODE_CAN, configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE, True, configuration.VoltageThreshold.V_THRESHOLD_9V, configuration.PPO2ControlScheme.PPO2CONTROL_OFF, False, False)
     configuration.configure_board(divecan_client, allAnalogConfig)
     utils.calibrateBoard(divecan_client, shim_host)
 
-    altConfig= configuration.Configuration(configuration.FIRMWARE_VERSION, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_DIVEO2, configuration.PowerSelectMode.MODE_CAN, configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE, True, configuration.VoltageThreshold.V_THRESHOLD_9V, configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
+    altConfig= configuration.Configuration(configuration.FIRMWARE_VERSION, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_ANALOG, configuration.CellType.CELL_DIVEO2, configuration.PowerSelectMode.MODE_CAN, configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE, True, configuration.VoltageThreshold.V_THRESHOLD_9V, configuration.PPO2ControlScheme.PPO2CONTROL_OFF, False, False)
     configuration.configure_board(divecan_client, altConfig)
     divecan_client.flush_rx()
     message = divecan_client.listen_for_ppo2()
