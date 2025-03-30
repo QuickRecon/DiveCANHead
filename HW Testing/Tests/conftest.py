@@ -21,13 +21,15 @@ def make_divecan():
 
 @pytest.fixture()
 def power_shim_divecan_fixture() -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, psu.PSU]:
-   return (make_divecan(), HWShim.HWShim(), psu.PSU())
+   power = psu.PSU() # Need to init the PSU first
+   return (make_divecan(), HWShim.HWShim(), power)
 
 
 @pytest.fixture()
 def power_divecan_client_fixture() -> tuple[DiveCAN.DiveCAN, psu.PSU]:
    """ Test fixture for a simple DiveCAN interface """
-   return (make_divecan(), psu.PSU())
+   power = psu.PSU() # Need to init the PSU first
+   return (make_divecan(), power)
 
 @pytest.fixture(params=configuration.analog_configurations())
 def config_divecan_client_millis(request) -> tuple[DiveCAN.DiveCAN, HWShim.HWShim, configuration.Configuration, psu.PSU]:
