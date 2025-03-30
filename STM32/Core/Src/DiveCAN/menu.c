@@ -171,7 +171,7 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
     }
 }
 
-void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const configuration)
+void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const configuration, const DiveCANDevice_t *const deviceSpec)
 {
     uint32_t configBits = getConfigBytes(configuration);
     uint8_t configBytes[4] = {(uint8_t)(configBits),
@@ -184,7 +184,7 @@ void updateConfig(uint8_t itemNumber, uint8_t newVal, Configuration_t *const con
     uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
     *configuration = setConfigBytes(newBytes);
     serial_printf("Saving config %lu -> %d\r\n", newBytes, getConfigBytes(configuration));
-    bool valid = saveConfiguration(configuration);
+    bool valid = saveConfiguration(configuration, deviceSpec->hardwareVersion);
     if (valid)
     {
         serial_printf("Config accepted\r\n");
@@ -234,7 +234,7 @@ void HandleMenuSave(const DiveCANMessage_t *const message, const DiveCANDevice_t
         case CONFIG_VALUE_2:
         case CONFIG_VALUE_3:
         case CONFIG_VALUE_4:
-            updateConfig(itemNumber, message->data[MENU_SAVE_MSG_ITEM_INDEX], configuration);
+            updateConfig(itemNumber, message->data[MENU_SAVE_MSG_ITEM_INDEX], configuration, deviceSpec);
             break;
         default:
         }

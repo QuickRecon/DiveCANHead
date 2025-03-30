@@ -3,6 +3,7 @@
 #include "eeprom_emul.h"
 #include "stm32l4xx_hal_flash.h"
 #include "configuration.h"
+
 // Config tests are designed to be brittle, if you have to change these tests you need
 // to update the version as this checks the expected behaviors
 const size_t expectedStructSize = 4;
@@ -28,7 +29,6 @@ extern "C"
     }
 
     extern bool CellValid(Configuration_t config, uint8_t cellNumber);
-    extern bool ConfigurationValid(Configuration_t config);
 }
 
 TEST_GROUP(configuration){
@@ -109,7 +109,7 @@ TEST(configuration, TestCellValidation)
             configBytes |= i << (8u + (cellNum * 2));
             testConfig = setConfigBytes(configBytes);
 
-            bool valid = ConfigurationValid(testConfig);
+            bool valid = ConfigurationValid(testConfig, HW_REV_2_2);
             if (i > CELL_O2S)
             {
                 CHECK(!valid);
@@ -154,7 +154,7 @@ TEST(configuration, TestCalModeValidation)
         configBytes |= i << (16);
         testConfig = setConfigBytes(configBytes);
 
-        bool valid = ConfigurationValid(testConfig);
+        bool valid = ConfigurationValid(testConfig, HW_REV_2_2);
         if (i > CAL_TOTAL_ABSOLUTE)
         {
             CHECK(!valid);
@@ -171,7 +171,7 @@ TEST(configuration, TestFirmwareVersionValidation)
     for (uint8_t i = 0; i < 0xFFu; ++i)
     {
         Configuration_t testConfig = {.firmwareVersion = i};
-        bool valid = ConfigurationValid(testConfig);
+        bool valid = ConfigurationValid(testConfig, HW_REV_2_2);
         if (i == FIRMWARE_VERSION)
         {
             CHECK(valid);
@@ -201,7 +201,7 @@ TEST(configuration, PPO2ControlModeValidation)
     {
         Configuration_t testConfig = {.firmwareVersion = FIRMWARE_VERSION};
         testConfig.ppo2controlMode = (PPO2ControlScheme_t)i;
-        CHECK(ConfigurationValid(testConfig));
+        CHECK(ConfigurationValid(testConfig, HW_REV_2_2));
     }
 }
 
@@ -223,7 +223,7 @@ TEST(configuration, TestAlarmVoltageValidation)
     {
         Configuration_t testConfig = {.firmwareVersion = FIRMWARE_VERSION};
         testConfig.dischargeThresholdMode = (VoltageThreshold_t)i;
-        CHECK(ConfigurationValid(testConfig));
+        CHECK(ConfigurationValid(testConfig, HW_REV_2_2));
     }
 }
 
@@ -270,5 +270,5 @@ TEST(configuration, TestDigitalCalAnalogCellsValidation)
     testConfig.cell1 = CELL_ANALOG;
     testConfig.cell2 = CELL_ANALOG;
     testConfig.cell3 = CELL_ANALOG;
-    CHECK(!ConfigurationValid(testConfig));
+    CHECK(!ConfigurationValid(testConfig, HW_REV_2_2));
 }

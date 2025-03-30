@@ -20,6 +20,24 @@ Configuration_t setConfigBytes(uint32_t configBits)
     return config;
 }
 
+bool HWValid(Configuration_t config, HW_Version_t hw_version){
+    bool valid = true;
+    if (HW_JR == hw_version)
+    {
+        /* Jr only supports analog cells */
+        valid = valid && (CELL_ANALOG == config.cell1);
+        valid = valid && (CELL_ANALOG == config.cell2);
+        valid = valid && (CELL_ANALOG == config.cell3);
+
+        /* Only runs in battery mode */
+        valid = valid && (MODE_BATTERY == config.powerMode);
+
+        /* Only runs with 9v battery*/
+        valid = valid && (V_THRESHOLD_9V == config.dischargeThresholdMode);
+    }
+    return valid;
+}
+
 bool CellValid(Configuration_t config, uint8_t cellNumber)
 {
     /* Check that the enum */
@@ -29,7 +47,13 @@ bool CellValid(Configuration_t config, uint8_t cellNumber)
            (cellVal == (uint8_t)CELL_O2S);
 }
 
-bool ConfigurationValid(Configuration_t config)
+/**
+ * @brief Validate that the configuration is valid, self consistent, and suitable for the running hardware
+ * @param config configuration structure to validate
+ * @param hw_version currently running hardware version
+ * @return true if configuration is valid and suitable for current hardware, otherwise false
+ */
+bool ConfigurationValid(Configuration_t config, HW_Version_t hw_version)
 {
     bool valid = true;
 
@@ -68,13 +92,20 @@ bool ConfigurationValid(Configuration_t config)
     const bool configDigitalCellValid = !((config.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.cell1 == CELL_ANALOG) && (config.cell2 == CELL_ANALOG) && (config.cell3 == CELL_ANALOG));
     valid = valid && configDigitalCellValid;
 
+    valid = valid && HWValid(config, hw_version);
+
     return valid;
 }
 
-Configuration_t loadConfiguration(void)
+/**
+ * @brief Load the configuration from flash, validating it is correct for the hardware
+ * @param hw_version currently running hardware (to validate compatibility)
+ * @return Valid configuration struct loaded from flash
+ */
+Configuration_t loadConfiguration(HW_Version_t hw_version)
 {
     Configuration_t config = {0};
-    if (GetConfiguration(&config) && ConfigurationValid(config))
+    if (GetConfiguration(&config) && ConfigurationValid(config, hw_version))
     {
         /* Everything is fine */
     }
@@ -86,9 +117,15 @@ Configuration_t loadConfiguration(void)
     return config;
 }
 
-bool saveConfiguration(const Configuration_t *const config)
+/**
+ * @brief Validate and save configuration to flash
+ * @param config configuration struct to save
+ * @param hw_version currently running hardware (to validate compatibility)
+ * @return true if successful otherwise false
+ */
+bool saveConfiguration(const Configuration_t *const config, HW_Version_t hw_version)
 {
-    bool valid = ConfigurationValid(*config);
+    bool valid = ConfigurationValid(*config, hw_version);
     if (valid)
     {
         valid = SetConfiguration(config);

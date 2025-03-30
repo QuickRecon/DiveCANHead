@@ -81,7 +81,7 @@ public:
         PPO2TXTask_params_t *struct1 = (PPO2TXTask_params_t *)object1;
         PPO2TXTask_params_t *struct2 = (PPO2TXTask_params_t *)object2;
 
-        equal &= strncmp(struct1->device->name, struct2->device->name, sizeof(struct1->device->name)) == 0;
+        equal &= strncmp(struct1->device->name, struct2->device->name, MAX_NAME_SIZE) == 0;
         equal &= struct1->device->type == struct2->device->type;
         equal &= struct1->device->manufacturerID == struct2->device->manufacturerID;
         equal &= struct1->device->firmwareVersion == struct2->device->firmwareVersion;

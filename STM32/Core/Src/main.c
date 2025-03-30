@@ -37,6 +37,7 @@
 #include "Hardware/log.h"
 #include "configuration.h"
 #include "PPO2Control/PPO2Control.h"
+#include "Hardware/hw_version.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -256,11 +257,49 @@ const char *reset_cause_get_name(reset_cause_t reset_cause)
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-static const DiveCANDevice_t defaultDeviceSpec = {
-    .name = "DC_HEAD",
-    .type = DIVECAN_SOLO,
-    .manufacturerID = DIVECAN_MANUFACTURER_SRI,
-    .firmwareVersion = FIRMWARE_VERSION};
+/**
+ * @brief Toggle pin if enabled is GPIO_PIN_SET
+ * @param enabled Whether this pin should be toggled
+ * @param GPIOx Port to toggle
+ * @param GPIO_Pin Pin on port to toggle
+ */
+inline static void toggle_blink_pin(GPIO_PinState enabled, GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin)
+{
+  if (GPIO_PIN_SET == enabled)
+  {
+    HAL_GPIO_WritePin(GPIOx, GPIO_Pin, !(bool)HAL_GPIO_ReadPin(GPIOx, GPIO_Pin));
+  }
+}
+
+/**
+ * @brief Blink the current boot sequence LEDs, determined from the output state so can be triggered in any context
+ */
+
+[[noreturn]] static void boot_fail_blink(void)
+{
+
+  GPIO_PinState LED0_GPIO_State = HAL_GPIO_ReadPin(LED0_GPIO_Port, LED0_Pin);
+  GPIO_PinState LED1_GPIO_State = HAL_GPIO_ReadPin(LED1_GPIO_Port, LED1_Pin);
+  GPIO_PinState LED2_GPIO_State = HAL_GPIO_ReadPin(LED2_GPIO_Port, LED2_Pin);
+  GPIO_PinState LED3_GPIO_State = HAL_GPIO_ReadPin(LED3_GPIO_Port, LED3_Pin);
+  GPIO_PinState LED4_GPIO_State = HAL_GPIO_ReadPin(LED4_GPIO_Port, LED4_Pin);
+  GPIO_PinState LED5_GPIO_State = HAL_GPIO_ReadPin(LED5_GPIO_Port, LED5_Pin);
+  GPIO_PinState LED6_GPIO_State = HAL_GPIO_ReadPin(LED6_GPIO_Port, LED6_Pin);
+  GPIO_PinState LED7_GPIO_State = HAL_GPIO_ReadPin(LED7_GPIO_Port, LED7_Pin);
+
+  /* We DO NOT reset the watchdog in this loop so that we can attempt to blink for a while before we get reset*/
+  while (true)
+  {
+    toggle_blink_pin(LED0_GPIO_State, LED0_GPIO_Port, LED0_Pin);
+    toggle_blink_pin(LED1_GPIO_State, LED1_GPIO_Port, LED1_Pin);
+    toggle_blink_pin(LED2_GPIO_State, LED2_GPIO_Port, LED2_Pin);
+    toggle_blink_pin(LED3_GPIO_State, LED3_GPIO_Port, LED3_Pin);
+    toggle_blink_pin(LED4_GPIO_State, LED4_GPIO_Port, LED4_Pin);
+    toggle_blink_pin(LED5_GPIO_State, LED5_GPIO_Port, LED5_Pin);
+    toggle_blink_pin(LED6_GPIO_State, LED6_GPIO_Port, LED6_Pin);
+    toggle_blink_pin(LED7_GPIO_State, LED7_GPIO_Port, LED7_Pin);
+  }
+}
 
 /* USER CODE END 0 */
 
@@ -320,11 +359,18 @@ int main(void)
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
 
+  /* Detect our hardware version */
+  const HW_Version_t HARDWARE_VERSION = get_hardware_version();
+  if (HW_INVALID == HARDWARE_VERSION)
+  {
+    boot_fail_blink();
+  }
+
   /* Ensure solenoid is fully off */
   setSolenoidOff();
   HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
   (void)HAL_IWDG_Refresh(&hiwdg);
-  
+
   InitLog();
   HAL_GPIO_WritePin(LED6_GPIO_Port, LED6_Pin, GPIO_PIN_RESET);
   (void)HAL_IWDG_Refresh(&hiwdg);
@@ -333,7 +379,7 @@ int main(void)
   initFlash();
 
   /* Load Config */
-  const Configuration_t deviceConfig = loadConfiguration();
+  const Configuration_t deviceConfig = loadConfiguration(HARDWARE_VERSION);
   HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET);
   (void)HAL_IWDG_Refresh(&hiwdg);
 
@@ -355,6 +401,30 @@ int main(void)
   cells[CELL_3] = CreateCell(CELL_3, deviceConfig.cell3);
   HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
   (void)HAL_IWDG_Refresh(&hiwdg);
+
+  /* Set up our CAN BUS*/
+  const char* device_name = "";
+  switch (HARDWARE_VERSION)
+  {
+  case HW_REV_2_2:
+    device_name = "REV2.2";
+    break;
+  case HW_REV_2_3:
+    device_name = "REV2.3";
+    break;
+  case HW_JR:
+    device_name = "DC_JR";
+    break;
+  default:
+    device_name = "UNKNOWN";
+  }
+
+  const DiveCANDevice_t defaultDeviceSpec = {
+      .name = device_name,
+      .type = DIVECAN_SOLO,
+      .manufacturerID = DIVECAN_MANUFACTURER_SRI,
+      .firmwareVersion = FIRMWARE_VERSION,
+      .hardwareVersion = HARDWARE_VERSION};
 
   InitDiveCAN(&defaultDeviceSpec, &deviceConfig);
   InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
