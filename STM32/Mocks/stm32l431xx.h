@@ -147,7 +147,6 @@ extern "C"
    */
 
 #include <stdint.h>
-
   /** @addtogroup Peripheral_registers_structures
    * @{
    */

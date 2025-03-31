@@ -27,6 +27,7 @@ SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/PPO2Control/PPO2Control.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Sensors/OxygenCell.c 
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/flash.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/hw_version.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/configuration.c
 
 # --- TEST_SRC_FILES and TEST_SRC_DIRS ---
@@ -128,7 +129,7 @@ CPPUTEST_CFLAGS += -pedantic
 CPPUTEST_CFLAGS += -Wno-missing-prototypes
 CPPUTEST_CFLAGS += -Wno-strict-prototypes
 CPPUTEST_CXXFLAGS += -Wno-c++14-compat
-CPPUTEST_CXXFLAGS += --std=c++20
+CPPUTEST_CXXFLAGS += --std=c++23
 CPPUTEST_CXXFLAGS += -Wno-c++98-compat-pedantic
 CPPUTEST_CXXFLAGS += -Wno-c++98-compat
 CPPUTEST_CXXFLAGS += -DFIRMWARE_VERSION=$(FIRMWARE_VERSION)
