@@ -70,21 +70,21 @@ DiveO2State_t *DiveO2_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
         handle = getCellState(cell->cellNumber);
         handle->cellNumber = cell->cellNumber;
         handle->outQueue = outQueue;
-        switch (cell->cellNumber)
+
+        if (CELL_1 == cell->cellNumber)
         {
-        case CELL_1:
             handle->huart = &huart1;
-            break;
-
-        case CELL_2:
+        }
+        else if (CELL_2 == cell->cellNumber)
+        {
             handle->huart = &huart2;
-            break;
-
-        case CELL_3:
+        }
+        else if (CELL_3 == cell->cellNumber)
+        {
             handle->huart = &huart3;
-            break;
-
-        default:
+        }
+        else
+        {
             NON_FATAL_ERROR(UNREACHABLE_ERROR);
         }
 

@@ -1,21 +1,7 @@
 #include "hw_version.h"
+#include "../errors.h"
 
 /* TODO: This is highly testable it just needs doing*/
-
-typedef enum
-{
-    HW_PIN_INVAL = 0,
-    HW_PIN_LOW = 1,
-    HW_PIN_HIGH = 2,
-    HW_PIN_HI_Z = 3
-} HW_PinState_t;
-
-typedef enum
-{
-    HW_VERSION_PIN_1 = VER_DET_1_Pin,
-    HW_VERSION_PIN_2 = VER_DET_2_Pin,
-    HW_VERSION_PIN_3 = VER_DET_3_Pin
-} HW_DetectionPin_t;
 
 /* Known Versions */
 const uint16_t REV_2_2 = (uint16_t)(HW_PIN_HI_Z | (HW_PIN_HI_Z << 2) | (HW_PIN_HI_Z << 4));
@@ -92,18 +78,21 @@ HW_Version_t get_hardware_version(void)
     uint16_t detected_version = (uint16_t)(pin1_val | (pin2_val << 2) | (pin3_val << 4));
 
     HW_Version_t ret = HW_INVALID;
-    switch(detected_version){
-        case REV_2_2:
-            ret = HW_REV_2_2;
-            break;
-        case REV_2_3:
-            ret = HW_REV_2_3;
-            break;
-        case JR:
-            ret = HW_JR;
-            break;
-        default:
-            ret = HW_INVALID;
+    if (REV_2_2 == detected_version)
+    {
+        ret = HW_REV_2_2;
+    }
+    else if (REV_2_3 == detected_version)
+    {
+        ret = HW_REV_2_3;
+    }
+    else if (JR == detected_version)
+    {
+        ret = HW_JR;
+    }
+    else
+    {
+        ret = HW_INVALID;
     }
     return ret;
 }

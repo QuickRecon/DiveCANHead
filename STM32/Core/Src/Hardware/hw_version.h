@@ -1,5 +1,7 @@
 #pragma once
 #include "../common.h"
+#include "main.h"
+
 
 #ifdef __cplusplus
 extern "C"
@@ -25,6 +27,22 @@ typedef enum
      */
     HW_JR = 3
 } HW_Version_t;
+
+typedef enum
+{
+    HW_PIN_INVAL = 0,
+    HW_PIN_LOW = 1,
+    HW_PIN_HIGH = 2,
+    HW_PIN_HI_Z = 3
+} HW_PinState_t;
+
+typedef enum
+{
+    HW_VERSION_PIN_1 = VER_DET_1_Pin,
+    HW_VERSION_PIN_2 = VER_DET_2_Pin,
+    HW_VERSION_PIN_3 = VER_DET_3_Pin
+} HW_DetectionPin_t;
+
 
 HW_Version_t get_hardware_version(void);
 
