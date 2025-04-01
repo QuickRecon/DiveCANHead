@@ -3,6 +3,8 @@
 
 #include "Arduino.h"
 
+#include "SAMDUE_PWM.h"
+
 class AnalogCell
 {
 public:
@@ -13,6 +15,7 @@ public:
 
 private:
   float millis;
+  SAMDUE_PWM* PWM_Instance;
   int cellNum;
 };
 
