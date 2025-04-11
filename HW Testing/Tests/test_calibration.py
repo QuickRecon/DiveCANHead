@@ -22,6 +22,8 @@ def test_calibrate(config_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HWShi
     utils.configureCell(shim_host, 2, config.cell2, 100)
     utils.configureCell(shim_host, 3, config.cell3, 100)
 
+    time.sleep(1)
+
     divecan_client.flush_rx()
     divecan_client.send_calibrate()
 

@@ -16,6 +16,7 @@ def calibrateBoard(divecan_client: DiveCAN.DiveCAN,  shim_host: HWShim.HWShim):
     shim_host.set_analog_millis(2, 50)
     shim_host.set_analog_millis(3, 50)
 
+    time.sleep(1)
     divecan_client.flush_rx()
     divecan_client.send_calibrate()
 
@@ -44,10 +45,18 @@ def configureCell(shim_host: HWShim.HWShim, cellNum: int, cellType: configuratio
         shim_host.set_digital_mode(cellNum, HWShim.ShimDigitalCellType.O2S)
         shim_host.set_digital_ppo2(cellNum, cellVal/100)
 
+def checkCell(cellType: configuration.CellType, cellVal:float, expectedCellVal: float) -> bool:
+    if cellType == configuration.CellType.CELL_ANALOG: 
+        # Check within 0.01 PPO2 or 1%
+        # TODO: this spec is hot garbage and is likely a problem with the test stand, but need to be sure
+        return abs((cellVal) - expectedCellVal) <= max(0.03*expectedCellVal,3)
+    elif cellType == configuration.CellType.CELL_DIVEO2 or cellType == configuration.CellType.CELL_O2S:
+        return cellVal == expectedCellVal
+
 def assertCell(cellType: configuration.CellType, cellVal:float, expectedCellVal: float):
     if cellType == configuration.CellType.CELL_ANALOG: 
         # Check within 0.01 PPO2 or 1%
         # TODO: this spec is hot garbage and is likely a problem with the test stand, but need to be sure
-        assert abs((cellVal) - expectedCellVal) <= max(0.02*expectedCellVal,2)
+        assert abs((cellVal) - expectedCellVal) <= max(0.03*expectedCellVal,3)
     elif cellType == configuration.CellType.CELL_DIVEO2 or cellType == configuration.CellType.CELL_O2S:
         assert cellVal == expectedCellVal

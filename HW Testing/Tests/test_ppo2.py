@@ -18,7 +18,6 @@ def test_ppo2(config_and_cal_and_power_divecan_client: tuple[DiveCAN.DiveCAN, HW
     utils.configureCell(shim_host, 2, config.cell2, c2Val)
     utils.configureCell(shim_host, 3, config.cell3, c3Val)
 
-    time.sleep(1)
     divecan_client.flush_rx()
     message = divecan_client.listen_for_ppo2()
     assert message.arbitration_id == 0xD040004
@@ -32,7 +31,7 @@ def test_millivolts(config_divecan_client_millivolts: tuple[DiveCAN.DiveCAN, HWS
     shim_host.set_analog_millis(1, c1Val)
     shim_host.set_analog_millis(2, c2Val)
     shim_host.set_analog_millis(3, c3Val)
-    time.sleep(1)
+
     divecan_client.flush_rx()
     message = divecan_client.listen_for_millis()
     assert message.arbitration_id == 0xD110004
@@ -63,7 +62,6 @@ def test_concensus_averages_cells(config_and_cal_and_power_divecan_client: tuple
         else:
             utils.configureCell(shim_host, i+1, cellConfigs[i], nomCells)
 
-    time.sleep(1)
     divecan_client.flush_rx()
     message = divecan_client.listen_for_cell_state()
 
@@ -85,7 +83,6 @@ def test_concensus_excludes_outlier(config_and_cal_and_power_divecan_client: tup
         else:
             utils.configureCell(shim_host, i+1, cellConfigs[i], averageVal)
 
-    time.sleep(1)
     divecan_client.flush_rx()
     message = divecan_client.listen_for_cell_state()
 
@@ -99,11 +96,11 @@ def test_power_on_adc_function(power_shim_divecan_fixture:tuple[DiveCAN.DiveCAN,
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.CellType.CELL_ANALOG,
                                          configuration.CellType.CELL_ANALOG,
-                                         configuration.PowerSelectMode.MODE_BATTERY_THEN_CAN,
+                                         configuration.PowerSelectMode.MODE_BATTERY,
                                          configuration.OxygenCalMethod.CAL_ANALOG_ABSOLUTE,
                                          True, 
                                          configuration.VoltageThreshold.V_THRESHOLD_9V,
-                                         configuration.PPO2ControlScheme.PPO2CONTROL_OFF)
+                                         configuration.PPO2ControlScheme.PPO2CONTROL_OFF, False, False)
     divecan_client, shim_host, pwr = power_shim_divecan_fixture
     configuration.configure_board(divecan_client, config)
 
@@ -116,7 +113,9 @@ def test_power_on_adc_function(power_shim_divecan_fixture:tuple[DiveCAN.DiveCAN,
     shim_host.set_analog_millis(3, c3Val)
 
     pwr.SetCANPwr(False)
+    pwr.SetBattery(False)
     pwr.SetCANPwr(True)
+    pwr.SetBattery(True)
     divecan_client.flush_rx()
     message = divecan_client.listen_for_millis()
     time.sleep(3)

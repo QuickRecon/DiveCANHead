@@ -170,7 +170,7 @@ def supported_configurations_dynamic() -> list[_pytest.mark.structures.Parameter
     #                  configurations.append(pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}'))
 
     #return configurations
-    cell_config = Configuration(FIRMWARE_VERSION, CellType.CELL_DIVEO2, CellType.CELL_DIVEO2, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY, OxygenCalMethod.CAL_DIGITAL_REFERENCE, False, VoltageThreshold.V_THRESHOLD_9V, PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID, True, True)
+    cell_config = Configuration(FIRMWARE_VERSION, CellType.CELL_ANALOG, CellType.CELL_ANALOG, CellType.CELL_ANALOG, PowerSelectMode.MODE_BATTERY, OxygenCalMethod.CAL_ANALOG_ABSOLUTE, False, VoltageThreshold.V_THRESHOLD_9V, PPO2ControlScheme.PPO2CONTROL_SOLENOID_PID, False, False)
     return [pytest.param(cell_config, id=f'{hex(cell_config.get_bits())}')]
 
 supported_confs = supported_configurations_dynamic()

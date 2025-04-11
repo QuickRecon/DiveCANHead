@@ -43,6 +43,7 @@ def test_bootloader_stuck(power_divecan_client_fixture: tuple[DiveCAN.DiveCAN, p
     pwr.SetBattery(False)
     pwr.SetCANPwr(False)
     pwr.SetCANPwr(True)
+    pwr.SetBattery(True)
 
     time.sleep(5)
     # We should be back to normal now

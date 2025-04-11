@@ -38,7 +38,7 @@ extern "C"
         .cell3 = CELL_ANALOG,
         .powerMode = MODE_BATTERY,
         .calibrationMode = CAL_ANALOG_ABSOLUTE,
-        .enableUartPrinting = true,
+        .enableUartPrinting = false,
         .dischargeThresholdMode = V_THRESHOLD_9V,
         .ppo2controlMode = PPO2CONTROL_SOLENOID_PID,
         .extendedMessages = false,

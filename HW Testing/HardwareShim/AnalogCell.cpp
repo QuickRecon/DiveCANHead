@@ -7,7 +7,7 @@ const float R2 = 100.0f;
 
 const float frequency = 10000.0f;
 
-const float calMap[4] =  {1.0f, (100.0f/96.0f), 100.0f/97.2f, 100.0f/97.2f};
+const float calMap[4] =  {1.0f, (100.0f/95.4f), (100.0f/97.2f)*(48.0f/47.5f), (100.0f/97.2f)*(96.0f/94.7f)};
 
 const unsigned int pinMap[4] = {0, 2, 3, 4};
 

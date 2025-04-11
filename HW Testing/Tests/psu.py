@@ -6,13 +6,16 @@ from ppk2_api.ppk2_api import PPK2_API
 
 BATTERY_PORT = '/dev/ttyPSU2'
 
+
+my_riden = Riden(BATTERY_PORT, 115200, address = 1) # type: ignore
+
 def init_ppk2() -> PPK2_API:
     ppk2s_connected = PPK2_API.list_devices()
     retries = 0
     while len(ppk2s_connected) == 0 and retries < 10:
         ppk2s_connected = PPK2_API.list_devices()
         retries += 1
-        time.sleep(1)
+        time.sleep(0.01)
     
     if len(ppk2s_connected) == 1:
         ppk2_port = ppk2s_connected[0][0]
@@ -29,16 +32,16 @@ class PSU(object):
     """ Class for interacting with 2 RIDEN PSUs for simulating various power scenarios """
     def __init__(self) -> None:
  #       try:
-        self._battery = Riden(BATTERY_PORT, 115200, address = 1) # type: ignore
         self._can_pwr = init_ppk2()
-
-        self._battery.set_v_set(5.0)
+        self._battery = my_riden
+        
+        self._battery.set_v_set(9.0)
         self._can_pwr.set_source_voltage(5000)
 
         # At no point should we need more than 500mA
         self._battery.set_i_set(0.5)
 
-        self._battery.set_output(False)
+        self._battery.set_output(True)
         self._can_pwr.toggle_DUT_power(True)
         self._can_pwr.get_modifiers() # Force a read to ensure the PSU is caught up
 
