@@ -159,7 +159,7 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, b
 
 void SolenoidFireTask(void *arg)
 {
-    PPO2ControlTask_params_t *params = (PPO2ControlTask_params_t *)arg;
+    const PPO2ControlTask_params_t *const params = (PPO2ControlTask_params_t *)arg;
     do
     {
         uint32_t totalFireTime = 5000;   /* Fire for 1000ms */
@@ -266,7 +266,7 @@ void PPO2ControlTask(void *arg)
         OxygenCell_t c3 = {0};
         bool c3pick = xQueuePeek(params->c3, &c3, TIMEOUT_100MS_TICKS);
 
-        if (c1pick && c2pick && c3pick & params->useExtendedMessages)
+        if (c1pick && c2pick && c3pick && params->useExtendedMessages)
         {
             txPrecisionCells(DIVECAN_SOLO, c1, c2, c3);
         }
@@ -275,7 +275,7 @@ void PPO2ControlTask(void *arg)
                 uint8_t confidence = cellConfidence(consensus);
         */
         PIDNumeric_t d_setpoint = (PIDNumeric_t)setpoint / 100.0f;
-        PIDNumeric_t measurement = (PIDNumeric_t)consensus.precisionConsensus;
+        PIDNumeric_t measurement = consensus.precisionConsensus;
 
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
         *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
