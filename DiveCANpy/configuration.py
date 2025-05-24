@@ -25,6 +25,8 @@ class OxygenCalMethod(IntEnum):
 class VoltageThreshold(IntEnum):
     V_THRESHOLD_9V = 0
     V_THRESHOLD_LI1S = 1
+    V_THRESHOLD_LI2S = 2
+    V_THRESHOLD_LI3S = 3
 
 class PPO2ControlScheme(IntEnum):
     PPO2CONTROL_OFF = 0

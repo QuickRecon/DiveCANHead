@@ -18,9 +18,11 @@ extern CAN_HandleTypeDef hcan1;
 
 ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode)
 {
-    const ADCV_t V_THRESHOLD_MAP[2] = {
+    const ADCV_t V_THRESHOLD_MAP[4] = {
         7.7f, /* 9V battery */
-        3.0f  /* 1S Lithium Ion */
+        3.0f,  /* 1S Lithium Ion */
+        6.0f,  /* 2S Lithium Ion */
+        9.0f,  /* 3S Lithium Ion */
     };
 
     return V_THRESHOLD_MAP[thresholdMode];

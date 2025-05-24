@@ -116,8 +116,10 @@ def test_low_battery_notification(config_and_power_divecan_client: tuple[DiveCAN
     divecan_client, shim_host, config, pwr = config_and_power_divecan_client
 
     V_THRESHOLD_MAP = [
-        7.7,
-        3.0
+        7.7, # 9V
+        3.0, # 1S lithium
+        6.0, # 2S lithium
+        9.0  # 3S lithium
     ]
 
     cutoffVoltage = V_THRESHOLD_MAP[threshold]

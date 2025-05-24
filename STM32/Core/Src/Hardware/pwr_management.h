@@ -25,7 +25,9 @@ extern "C"
     typedef enum
     {
         V_THRESHOLD_9V = 0,
-        V_THRESHOLD_LI1S = 1
+        V_THRESHOLD_LI1S = 1,
+        V_THRESHOLD_LI2S = 2,
+        V_THRESHOLD_LI3S = 3,
     } VoltageThreshold_t;
 
     void Shutdown(void);
