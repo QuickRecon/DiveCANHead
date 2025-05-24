@@ -91,7 +91,8 @@ static PPO2ControlTask_params_t *getControlParams(void)
             .derivativeGain = 0.0f,
             .saturationCount = 0,
         },
-        .useExtendedMessages = false};
+        .useExtendedMessages = false,
+        .depthCompensation = true};
     return &params;
 }
 
