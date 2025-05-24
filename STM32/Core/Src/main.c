@@ -403,7 +403,7 @@ int main(void)
   (void)HAL_IWDG_Refresh(&hiwdg);
 
   /* Set up our CAN BUS*/
-  const char* device_name = "";
+  const char *device_name = "";
   switch (HARDWARE_VERSION)
   {
   case HW_REV_2_2:
@@ -431,10 +431,8 @@ int main(void)
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
   (void)HAL_IWDG_Refresh(&hiwdg);
 
-  if (PPO2CONTROL_SOLENOID_PID == deviceConfig.ppo2controlMode)
-  {
-    InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3], deviceConfig.ppo2DepthCompensation, deviceConfig.extendedMessages);
-  }
+  InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3], deviceConfig.ppo2DepthCompensation, deviceConfig.extendedMessages, deviceConfig.ppo2controlMode);
+
   /* USER CODE END 2 */
 
   /* Init scheduler */

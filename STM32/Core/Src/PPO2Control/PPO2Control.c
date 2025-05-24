@@ -109,10 +109,11 @@ void setDerivativeGain(PIDNumeric_t gain)
     getControlParams()->pidState.derivativeGain = gain;
 }
 
-void PPO2ControlTask(void *arg);
-void SolenoidFireTask(void *arg);
+static void PPO2_PIDControlTask(void *arg);
+static void PIDSolenoidFireTask(void *arg);
+static void MK15SolenoidFireTask(void *arg);
 
-void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, bool depthCompensation, bool useExtendedMessages)
+void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, bool depthCompensation, bool useExtendedMessages, PPO2ControlScheme_t controlScheme)
 {
     PPO2ControlTask_params_t *params = getControlParams();
     params->c1 = c1;
@@ -122,43 +123,96 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, b
     params->useExtendedMessages = useExtendedMessages;
     params->depthCompensation = depthCompensation;
 
-    PIDNumeric_t *dutyCycle = getDutyCyclePtr();
-    *dutyCycle = 0;
-
-    static uint32_t PPO2ControlTask_buffer[PPO2CONTROLTASK_STACK_SIZE];
-    static StaticTask_t PPO2ControlTask_ControlBlock;
-    static const osThreadAttr_t PPO2ControlTask_attributes = {
-        .name = "PPO2ControlTask",
-        .attr_bits = osThreadDetached,
-        .cb_mem = &PPO2ControlTask_ControlBlock,
-        .cb_size = sizeof(PPO2ControlTask_ControlBlock),
-        .stack_mem = &PPO2ControlTask_buffer[0],
-        .stack_size = sizeof(PPO2ControlTask_buffer),
-        .priority = CAN_PPO2_TX_PRIORITY,
-        .tz_module = 0,
-        .reserved = 0};
-
-    osThreadId_t *PPO2ControllerTaskHandle = getPPO2_OSThreadId();
-    *PPO2ControllerTaskHandle = osThreadNew(PPO2ControlTask, params, &PPO2ControlTask_attributes);
-
+    /* Declare this stack externally so we can use it across the different control schemes without impacting our footprint */
     static uint32_t SolenoidFireTask_buffer[SOLENOIDFIRETASK_STACK_SIZE];
     static StaticTask_t SolenoidFireTask_ControlBlock;
-    static const osThreadAttr_t SolenoidFireTask_attributes = {
-        .name = "SolenoidFireTask",
-        .attr_bits = osThreadDetached,
-        .cb_mem = &SolenoidFireTask_ControlBlock,
-        .cb_size = sizeof(SolenoidFireTask_ControlBlock),
-        .stack_mem = &SolenoidFireTask_buffer[0],
-        .stack_size = sizeof(SolenoidFireTask_buffer),
-        .priority = CAN_PPO2_TX_PRIORITY,
-        .tz_module = 0,
-        .reserved = 0};
 
-    osThreadId_t *SolenoidFireTaskHandle = getSolenoid_OSThreadId();
-    *SolenoidFireTaskHandle = osThreadNew(SolenoidFireTask, params, &SolenoidFireTask_attributes);
+    if (controlScheme == PPO2CONTROL_SOLENOID_PID)
+    {
+        PIDNumeric_t *dutyCycle = getDutyCyclePtr();
+        *dutyCycle = 0;
+
+        static uint32_t PPO2_PIDControlTask_buffer[PPO2CONTROLTASK_STACK_SIZE];
+        static StaticTask_t PPO2_PIDControlTask_ControlBlock;
+        static const osThreadAttr_t PPO2_PIDControlTask_attributes = {
+            .name = "PPO2_PIDControlTask",
+            .attr_bits = osThreadDetached,
+            .cb_mem = &PPO2_PIDControlTask_ControlBlock,
+            .cb_size = sizeof(PPO2_PIDControlTask_ControlBlock),
+            .stack_mem = &PPO2_PIDControlTask_buffer[0],
+            .stack_size = sizeof(PPO2_PIDControlTask_buffer),
+            .priority = CAN_PPO2_TX_PRIORITY,
+            .tz_module = 0,
+            .reserved = 0};
+
+        osThreadId_t *PPO2ControllerTaskHandle = getPPO2_OSThreadId();
+        *PPO2ControllerTaskHandle = osThreadNew(PPO2_PIDControlTask, params, &PPO2_PIDControlTask_attributes);
+
+        static const osThreadAttr_t PIDSolenoidFireTask_attributes = {
+            .name = "PIDSolenoidFireTask",
+            .attr_bits = osThreadDetached,
+            .cb_mem = &SolenoidFireTask_ControlBlock,
+            .cb_size = sizeof(SolenoidFireTask_ControlBlock),
+            .stack_mem = &SolenoidFireTask_buffer[0],
+            .stack_size = sizeof(SolenoidFireTask_buffer),
+            .priority = CAN_PPO2_TX_PRIORITY,
+            .tz_module = 0,
+            .reserved = 0};
+
+        osThreadId_t *SolenoidFireTaskHandle = getSolenoid_OSThreadId();
+        *SolenoidFireTaskHandle = osThreadNew(PIDSolenoidFireTask, params, &PIDSolenoidFireTask_attributes);
+    } else if (controlScheme == PPO2CONTROL_MK15)
+    {
+        static const osThreadAttr_t PIDSolenoidFireTask_attributes = {
+            .name = "PIDSolenoidFireTask",
+            .attr_bits = osThreadDetached,
+            .cb_mem = &SolenoidFireTask_ControlBlock,
+            .cb_size = sizeof(SolenoidFireTask_ControlBlock),
+            .stack_mem = &SolenoidFireTask_buffer[0],
+            .stack_size = sizeof(SolenoidFireTask_buffer),
+            .priority = CAN_PPO2_TX_PRIORITY,
+            .tz_module = 0,
+            .reserved = 0};
+
+        osThreadId_t *SolenoidFireTaskHandle = getSolenoid_OSThreadId();
+        *SolenoidFireTaskHandle = osThreadNew(MK15SolenoidFireTask, params, &PIDSolenoidFireTask_attributes);
+    }
+    else if(controlScheme == PPO2CONTROL_OFF)
+    {
+        /* Don't do anything, no PPO2 control requested */
+    } else {
+        NON_FATAL_ERROR(UNREACHABLE_ERROR);
+    }
 }
 
-void SolenoidFireTask(void *arg)
+static void MK15SolenoidFireTask(void *arg)
+{
+    const PPO2ControlTask_params_t *const params = (PPO2ControlTask_params_t *)arg;
+    do
+    {
+        const uint32_t off_time = 6000;   /* Wait for 6 seconds before checking again */
+        const uint32_t on_time = 1500;  /* Fire 1.5 seconds to empty the accumulator */
+
+        /* Work out the current PPO2 and the setpoint */
+        Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
+        PIDNumeric_t d_setpoint = (PIDNumeric_t)setpoint / 100.0f;
+        PIDNumeric_t measurement = consensus.precisionConsensus;
+
+        /* Check if now is a time when we fire the solenoid */
+        if (getSolenoidEnable() && (d_setpoint > measurement))
+        {
+            setSolenoidOn();
+            (void)osDelay(pdMS_TO_TICKS(on_time));
+            setSolenoidOff();
+        }
+
+        /* Do our off time before waiting again */
+        (void)osDelay(pdMS_TO_TICKS(off_time));
+
+    } while (RTOS_LOOP_FOREVER);
+}
+
+static void PIDSolenoidFireTask(void *arg)
 {
     const PPO2ControlTask_params_t *const params = (PPO2ControlTask_params_t *)arg;
     do
@@ -205,7 +259,7 @@ void SolenoidFireTask(void *arg)
     } while (RTOS_LOOP_FOREVER);
 }
 
-PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state)
+static PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state)
 {
     /* Step PID */
     PIDNumeric_t pTerm = 0;
@@ -249,7 +303,7 @@ PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDSta
     return pTerm + dTerm + iTerm;
 }
 
-void PPO2ControlTask(void *arg)
+static void PPO2_PIDControlTask(void *arg)
 {
     PPO2ControlTask_params_t *params = (PPO2ControlTask_params_t *)arg;
 
