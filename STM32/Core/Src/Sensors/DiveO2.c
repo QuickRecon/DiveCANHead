@@ -141,7 +141,7 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
         sendCellCommand(GET_DETAIL_COMMAND, handle);
     }
 
-    PIDNumeric_t precision_PPO2 = ((PIDNumeric_t)handle->cellSample / (PIDNumeric_t)HPA_PER_BAR) / 100.0f;
+    PIDNumeric_t precisionPPO2 = ((PIDNumeric_t)handle->cellSample / (PIDNumeric_t)HPA_PER_BAR) / 100.0f;
     PIDNumeric_t tempPPO2 = (PIDNumeric_t)handle->cellSample / (PIDNumeric_t)HPA_PER_BAR;
     if (tempPPO2 > 255.0f)
     {
@@ -154,7 +154,7 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
         .cellNumber = handle->cellNumber,
         .type = CELL_DIVEO2,
         .ppo2 = PPO2,
-        .precision_PPO2 = precision_PPO2,
+        .precisionPPO2 = precisionPPO2,
         .millivolts = 0,
         .status = handle->status,
         .dataTime = HAL_GetTick()};
@@ -213,7 +213,7 @@ static void decodeCellMessage(void *arg)
         .cellNumber = cell->cellNumber,
         .type = CELL_DIVEO2,
         .ppo2 = 0,
-        .precision_PPO2 = 0,
+        .precisionPPO2 = 0,
         .millivolts = 0,
         .status = cell->status,
         .dataTime = HAL_GetTick()};

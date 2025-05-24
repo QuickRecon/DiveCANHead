@@ -147,7 +147,7 @@ TEST(PPO2Transmitter, TaskTXsValues)
                                      .cellNumber = 0,
                                      .type = CELL_ANALOG,
                                      .ppo2 = 90,
-                                     .precision_PPO2 = 0.9f,
+                                     .precisionPPO2 = 0.9f,
                                      .millivolts = 11,
                                      .status = CELL_OK,
                                      .dataTime = 0}};
@@ -155,7 +155,7 @@ TEST(PPO2Transmitter, TaskTXsValues)
                                      .cellNumber = 1,
                                      .type = CELL_ANALOG,
                                      .ppo2 = 110,
-                                     .precision_PPO2 = 1.1f,
+                                     .precisionPPO2 = 1.1f,
                                      .millivolts = 12,
                                      .status = CELL_OK,
                                      .dataTime = 0}};
@@ -163,7 +163,7 @@ TEST(PPO2Transmitter, TaskTXsValues)
                                      .cellNumber = 2,
                                      .type = CELL_ANALOG,
                                      .ppo2 = 100,
-                                     .precision_PPO2 = 1.0f,
+                                     .precisionPPO2 = 1.0f,
                                      .millivolts = 13,
                                      .status = CELL_OK,
                                      .dataTime = 0}};

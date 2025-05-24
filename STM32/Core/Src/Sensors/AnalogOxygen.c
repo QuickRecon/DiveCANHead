@@ -170,7 +170,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
         .cellNumber = handle->cellNumber,
         .type = CELL_ANALOG,
         .ppo2 = PPO2,
-        .precision_PPO2 = calPPO2 / 100.0f,
+        .precisionPPO2 = calPPO2 / 100.0f,
         .millivolts = getMillivolts(handle),
         .status = handle->status,
         .dataTime = HAL_GetTick()};
@@ -196,7 +196,7 @@ void analogProcessor(void *arg)
         .cellNumber = cell->cellNumber,
         .type = CELL_ANALOG,
         .ppo2 = 0,
-        .precision_PPO2 = 0,
+        .precisionPPO2 = 0,
         .millivolts = 0,
         .status = cell->status,
         .dataTime = HAL_GetTick()};

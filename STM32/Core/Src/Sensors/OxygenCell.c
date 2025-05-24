@@ -433,9 +433,9 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
             c3->ppo2,
         },
         .precisionPPO2Array = {
-            c1->precision_PPO2,
-            c2->precision_PPO2,
-            c3->precision_PPO2,
+            c1->precisionPPO2,
+            c2->precisionPPO2,
+            c3->precisionPPO2,
         },
         .milliArray = {
             c1->millivolts,

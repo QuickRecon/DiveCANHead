@@ -133,13 +133,13 @@ static void O2S_broadcastPPO2(OxygenScientificState_t *handle)
     }
     PPO2 = (PPO2_t)(tempPPO2);
 
-    PIDNumeric_t precision_PPO2 = (PIDNumeric_t)handle->cellSample;
+    PIDNumeric_t precisionPPO2 = (PIDNumeric_t)handle->cellSample;
     /* Lodge the cell data*/
     OxygenCell_t cellData = {
         .cellNumber = handle->cellNumber,
         .type = CELL_O2S,
         .ppo2 = PPO2,
-        .precision_PPO2 = precision_PPO2,
+        .precisionPPO2 = precisionPPO2,
         .millivolts = 0,
         .status = handle->status,
         .dataTime = HAL_GetTick()};
@@ -161,7 +161,7 @@ static void decodeCellMessage(void *arg)
         .cellNumber = cell->cellNumber,
         .type = CELL_O2S,
         .ppo2 = 0,
-        .precision_PPO2 = 0,
+        .precisionPPO2 = 0,
         .millivolts = 0,
         .status = cell->status,
         .dataTime = HAL_GetTick()};

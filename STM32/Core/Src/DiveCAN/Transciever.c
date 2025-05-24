@@ -578,9 +578,9 @@ void txPrecisionCells(const DiveCANType_t deviceType, OxygenCell_t c1, OxygenCel
     uint8_t c1buf[8] = {0};
     uint8_t c2buf[8] = {0};
     uint8_t c3buf[8] = {0};
-    (void)memcpy(c1buf, &(c1.precision_PPO2), sizeof(PIDNumeric_t));
-    (void)memcpy(c2buf, &(c2.precision_PPO2), sizeof(PIDNumeric_t));
-    (void)memcpy(c3buf, &(c3.precision_PPO2), sizeof(PIDNumeric_t));
+    (void)memcpy(c1buf, &(c1.precisionPPO2), sizeof(PIDNumeric_t));
+    (void)memcpy(c2buf, &(c2.precisionPPO2), sizeof(PIDNumeric_t));
+    (void)memcpy(c3buf, &(c3.precisionPPO2), sizeof(PIDNumeric_t));
 
     const DiveCANMessage_t c1msg = {
         .id = PRECISION_CELL_1_ID | deviceType,

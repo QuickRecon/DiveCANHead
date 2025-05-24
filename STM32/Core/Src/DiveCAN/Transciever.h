@@ -226,7 +226,7 @@ extern "C"
     DYNAMIC_TEXT = 0,
   } DiveCANMenuItemType_t;
 
-  typedef struct OxygenCell_s OxygenCell_t;
+  typedef struct OxygenCellStruct OxygenCell_t;
 
   void txCalAck(const DiveCANType_t deviceType);
   void txCalResponse(const DiveCANType_t deviceType, DiveCANCalResponse_t response, const ShortMillivolts_t cell1, const ShortMillivolts_t cell2, const ShortMillivolts_t cell3, const FO2_t FO2, const uint16_t atmosphericPressure);
@@ -237,6 +237,8 @@ extern "C"
   void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t fieldId);
   void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, uint64_t maxVal, uint64_t currentVal);
   void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType, const uint8_t reqId, const char *fieldText);
+
+  /* Non-standard messages for diagnoses and debug */
   void txLogText(const DiveCANType_t deviceType, const char *msg, uint16_t length);
   void txPIDState(const DiveCANType_t deviceType, PIDNumeric_t proportional_gain, PIDNumeric_t integral_gain, PIDNumeric_t derivative_gain, PIDNumeric_t integral_state, PIDNumeric_t derivative_state, PIDNumeric_t duty_cycle, PIDNumeric_t precisionConsensus);
   void txPrecisionCells(const DiveCANType_t deviceType, OxygenCell_t c1, OxygenCell_t c2, OxygenCell_t c3);

@@ -11,7 +11,7 @@ extern "C"
         TEST
     } DiveCANType_t;
 
-    typedef struct OxygenCell_s
+    typedef struct OxygenCellStruct
     {
         int test;
     } OxygenCell_t;

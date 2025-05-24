@@ -4,7 +4,7 @@
 #include "cmsis_os.h"
 #include "queue.h"
 
-typedef struct OxygenCell_s OxygenCell_t;
+typedef struct OxygenCellStruct OxygenCell_t;
 #include "../DiveCAN/Transciever.h"
 
 #define CELL_COUNT 3
@@ -14,7 +14,7 @@ extern "C"
 {
 #endif
 
-    typedef struct OxygenCell_s
+    typedef struct OxygenCellStruct
     {
         /* Configuration*/
         uint8_t cellNumber;
@@ -22,7 +22,7 @@ extern "C"
         CellType_t type;
 
         PPO2_t ppo2;
-        PIDNumeric_t precision_PPO2;
+        PIDNumeric_t precisionPPO2;
         Millivolts_t millivolts;
         CellStatus_t status;
         Timestamp_t dataTime;
