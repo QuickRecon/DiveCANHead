@@ -848,7 +848,7 @@ HAL_StatusTypeDef HAL_UARTEx_ReceiveToIdle(UART_HandleTypeDef *huart, uint8_t *p
         }
         else
         {
-          FATAL_ERROR(UNDEFINED_STATE);
+          FATAL_ERROR(UNDEFINED_STATE_FERR);
         }
         /* Increment number of received elements */
         *RxLen += 1U;

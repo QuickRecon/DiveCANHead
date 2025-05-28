@@ -358,7 +358,7 @@ void DiveO2_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 
     if (size > DIVEO2_RX_BUFFER_LENGTH)
     {
-        FATAL_ERROR(BUFFER_OVERRUN);
+        FATAL_ERROR(BUFFER_OVERRUN_FERR);
     }
     else
     {

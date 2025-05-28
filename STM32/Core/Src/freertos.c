@@ -93,7 +93,7 @@ void vApplicationIdleHook(void)
 void vApplicationStackOverflowHook(TaskHandle_t, signed char *pcTaskName)
 {
   blocking_serial_printf("STACK OVERFLOW: %s", pcTaskName);
-  FATAL_ERROR(STACK_OVERFLOW);
+  FATAL_ERROR(STACK_OVERFLOW_FERR);
   /* Run time stack overflow checking is performed if
   configCHECK_FOR_STACK_OVERFLOW is defined to 1 or 2. This hook function is
   called if a stack overflow is detected. */
@@ -103,7 +103,7 @@ void vApplicationStackOverflowHook(TaskHandle_t, signed char *pcTaskName)
 /* USER CODE BEGIN 5 */
 void vApplicationMallocFailedHook(void)
 {
-  FATAL_ERROR(MALLOC_FAIL);
+  FATAL_ERROR(MALLOC_FAIL_FERR);
   /* vApplicationMallocFailedHook() will only be called if
   configUSE_MALLOC_FAILED_HOOK is set to 1 in FreeRTOSConfig.h. It is a hook
   function that will get called if a call to pvPortMalloc() fails.

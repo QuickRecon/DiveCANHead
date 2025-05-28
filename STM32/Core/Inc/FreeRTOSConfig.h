@@ -172,7 +172,7 @@ header file. */
   if ((x) == 0)               \
   {                           \
     taskDISABLE_INTERRUPTS(); \
-    FATAL_ERROR(ASSERT_FAIL); \
+    FATAL_ERROR(ASSERT_FAIL_FERR); \
     NVIC_SystemReset();       \
   }
 /* USER CODE END 1 */

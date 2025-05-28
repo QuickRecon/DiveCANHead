@@ -111,9 +111,9 @@ TEST(flash, SetCalibration)
 
 TEST(flash, GetFatalError)
 {
-    for (int i = 0; i < FATAL_ERR_MAX; ++i)
+    for (int i = 0; i < MAX_FERR; ++i)
     {
-        FatalError_t err = FATAL_ERR_NONE;
+        FatalError_t err = NONE_FERR;
 
         ReadData = i;
         mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x04);
@@ -127,7 +127,7 @@ TEST(flash, GetFatalError)
 
 TEST(flash, SetFatalError)
 {
-    for (int i = 0; i < FATAL_ERR_MAX; ++i)
+    for (int i = 0; i < MAX_FERR; ++i)
     {
         FatalError_t err = (FatalError_t)i;
 
@@ -144,7 +144,7 @@ TEST(flash, SetFatalError)
 
 TEST(flash, GetNonFatalError)
 {
-    for (int i = 0; i < NONFATAL_ERR_MAX; ++i)
+    for (int i = 0; i < MAX_ERR; ++i)
     {
         NonFatalError_t err = (NonFatalError_t)i;
 
@@ -160,7 +160,7 @@ TEST(flash, GetNonFatalError)
 
 TEST(flash, SetNonFatalError)
 {
-    for (int i = 0; i < NONFATAL_ERR_MAX; ++i)
+    for (int i = 0; i < MAX_ERR; ++i)
     {
         NonFatalError_t err = (NonFatalError_t)i;
 
@@ -344,9 +344,9 @@ TEST(flash, GetFatalErrInvalidPtr)
 
 TEST(flash, GetFatalErrNoData)
 {
-    for (int i = 0; i < FATAL_ERR_MAX; ++i)
+    for (int i = 0; i < MAX_FERR; ++i)
     {
-        FatalError_t err = FATAL_ERR_NONE;
+        FatalError_t err = NONE_FERR;
 
         ReadData = i;
         mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x04);
@@ -367,9 +367,9 @@ TEST(flash, GetFatalErrNoData)
 
 TEST(flash, GetFatalErrUnknownErr)
 {
-    for (int i = 0; i < FATAL_ERR_MAX; ++i)
+    for (int i = 0; i < MAX_FERR; ++i)
     {
-        FatalError_t err = FATAL_ERR_NONE;
+        FatalError_t err = NONE_FERR;
 
         ReadData = i;
         mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x04);
@@ -394,7 +394,7 @@ TEST(flash, GetNonFatalErrInvalidPtr)
 
 TEST(flash, GetNonFatalErrNoData)
 {
-    for (int i = 0; i < NONFATAL_ERR_MAX; ++i)
+    for (int i = 0; i < MAX_ERR; ++i)
     {
         NonFatalError_t err = (NonFatalError_t)i;
 
@@ -418,7 +418,7 @@ TEST(flash, GetNonFatalErrNoData)
 
 TEST(flash, GetNonFatalErrUnknownErr)
 {
-    for (int i = 0; i < NONFATAL_ERR_MAX; ++i)
+    for (int i = 0; i < MAX_ERR; ++i)
     {
         NonFatalError_t err = (NonFatalError_t)i;
 

@@ -7,21 +7,21 @@ extern "C"
     static const uint32_t FLAG_ERR_MASK = 0xFFFFFFF0u;
     typedef enum
     {
-        FATAL_ERR_NONE = 0,
-        STACK_OVERFLOW = 1,
-        MALLOC_FAIL = 2,
-        HARD_FAULT = 3,
-        NMI_TRIGGERED = 4,
-        MEM_FAULT = 5,
-        BUS_FAULT = 6,
-        USAGE_FAULT = 7,
-        ASSERT_FAIL = 8,
+        NONE_FERR = 0,
+        STACK_OVERFLOW_FERR = 1,
+        MALLOC_FAIL_FERR = 2,
+        HARD_FAULT_FERR = 3,
+        NMI_TRIGGERED_FERR = 4,
+        MEM_FAULT_FERR = 5,
+        BUS_FAULT_FERR = 6,
+        USAGE_FAULT_FERR = 7,
+        ASSERT_FAIL_FERR = 8,
         /** @brief We ran past the end of a buffer, even if it didn't trip a hard fault we've clobbered unknown memory in an unknown way, better just to reset **/
-        BUFFER_OVERRUN = 9,
-        UNDEFINED_STATE = 10,
-
+        BUFFER_OVERRUN_FERR = 9,
+        /** @brief This is like a super-duper version of UNREACHABLE_ERR that we call when we don't know if its safe to continue */
+        UNDEFINED_STATE_FERR = 10,
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        FATAL_ERR_MAX = UNDEFINED_STATE
+        MAX_FERR = UNDEFINED_STATE_FERR
     } FatalError_t;
 
     typedef enum
@@ -107,7 +107,7 @@ extern "C"
         VBUS_UNDER_VOLTAGE_ERR = 28,
 
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        NONFATAL_ERR_MAX = VBUS_UNDER_VOLTAGE_ERR
+        MAX_ERR = VBUS_UNDER_VOLTAGE_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

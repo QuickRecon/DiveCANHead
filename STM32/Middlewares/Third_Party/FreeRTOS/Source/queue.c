@@ -2141,7 +2141,7 @@ static BaseType_t prvCopyDataToQueue(Queue_t *const pxQueue, const void *pvItemT
 	}
 	else
 	{
-		FATAL_ERROR(UNDEFINED_STATE);
+		FATAL_ERROR(UNDEFINED_STATE_FERR);
 	}
 	pxQueue->uxMessagesWaiting = uxMessagesWaiting + (UBaseType_t)1;
 

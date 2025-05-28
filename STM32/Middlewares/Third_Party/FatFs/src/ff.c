@@ -1125,7 +1125,7 @@ FRESULT put_fat (	/* FR_OK(0):succeeded, !=0:error */
 			fs->wflag = 1;
 			break;
 		default:
-			FATAL_ERROR(UNDEFINED_STATE);
+			FATAL_ERROR(UNDEFINED_STATE_FERR);
 		}
 	}
 	return res;

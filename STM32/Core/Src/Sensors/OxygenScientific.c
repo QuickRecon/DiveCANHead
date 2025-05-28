@@ -287,7 +287,7 @@ void O2S_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
 
         if (size > O2S_RX_BUFFER_LENGTH)
         {
-            FATAL_ERROR(BUFFER_OVERRUN);
+            FATAL_ERROR(BUFFER_OVERRUN_FERR);
         }
         else
         {

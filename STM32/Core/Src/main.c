@@ -1338,7 +1338,7 @@ void assert_failed(const uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   blocking_serial_printf("ASSERT failed %s: %d", file, line);
-  FATAL_ERROR(ASSERT_FAIL);
+  FATAL_ERROR(ASSERT_FAIL_FERR);
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */

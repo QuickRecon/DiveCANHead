@@ -244,7 +244,7 @@ bool GetFatalError(FatalError_t *err)
         }
         else if (result == EE_NO_DATA) /*  If this is a fresh EEPROM then we need to init it */
         {
-            FatalError_t defaultVal = FATAL_ERR_NONE;
+            FatalError_t defaultVal = NONE_FERR;
             (void)SetFatalError(defaultVal); /*  We don't really care about the return val, either way its a fail to read */
         }
         else
