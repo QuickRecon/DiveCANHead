@@ -70,19 +70,19 @@ void Shutdown(const Configuration_t *const config)
     (void)HAL_UART_DeInit(&huart2);
     (void)HAL_UART_DeInit(&huart3);
 
-    /* USART 2 TX*/
-    (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_2);
-    (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_2);
-    /* USART 2 RX*/
-    (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_3);
-    (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_3);
-
     /* USART 1 TX */
     (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_6);
     (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_6);
     /* USART 1 RX*/
     (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_7);
     (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_7);
+
+    /* USART 2 TX*/
+    (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_2);
+    (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_2);
+    /* USART 2 RX*/
+    (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_3);
+    (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_3);
 
     /* USART 3 TX */
     (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_4);
@@ -91,13 +91,14 @@ void Shutdown(const Configuration_t *const config)
     (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_5);
     (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_5);
 
+    /* O2S cells need to be pulled up to prevent them going into analog mode */
     if(CELL_O2S == config->cell1){
-        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_2);
-        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_3);
-    }
-    if(CELL_O2S == config->cell2){
         (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_6);
         (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_7);
+    }
+    if(CELL_O2S == config->cell2){
+        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_2);
+        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_3);
     }
     if(CELL_O2S == config->cell3){
         (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_4);
