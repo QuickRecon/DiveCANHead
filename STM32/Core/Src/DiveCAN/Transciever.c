@@ -92,7 +92,8 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
     DiveCANMessage_t message = {
         .id = id,
         .length = length,
-        .data = {0, 0, 0, 0, 0, 0, 0, 0}};
+        .data = {0, 0, 0, 0, 0, 0, 0, 0},
+        .type = NULL};
 
     if (length > MAX_CAN_RX_LENGTH)
     {
@@ -169,7 +170,8 @@ void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
     const DiveCANMessage_t message = {
         .id = BUS_INIT_ID | (deviceType << 8) | targetDeviceType,
         .data = {0x8a, 0xf3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        .length = 3};
+        .length = 3,
+        .type = "BUS_INIT"};
     sendCANMessage(message);
 }
 
@@ -183,7 +185,8 @@ void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufactur
     const DiveCANMessage_t message = {
         .id = BUS_ID_ID | deviceType,
         .data = {(uint8_t)manufacturerID, 0x00, firmwareVersion, 0x00, 0x00, 0x00, 0x00, 0x00},
-        .length = 3};
+        .length = 3,
+        .type = "BUS_ID"};
     sendCANMessage(message);
 }
 
@@ -205,6 +208,7 @@ void txName(const DiveCANType_t deviceType, const char *const name)
             .id = BUS_NAME_ID | deviceType,
             .data = {0},
             .length = 8,
+            .type = "BUS_NAME"
         };
         (void)memcpy(message.data, data, BUS_NAME_LEN);
         sendCANMessage(message);
@@ -231,7 +235,8 @@ void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, c
     const DiveCANMessage_t message = {
         .id = BUS_STATUS_ID | deviceType,
         .data = {batteryVoltage, 0x00, 0x00, 0x00, 0x00, setpoint, 0xFF, errByte},
-        .length = 8};
+        .length = 8,
+        .type = "BUS_STATUS"};
     sendCANMessage(message);
 }
 
@@ -251,7 +256,8 @@ void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error)
     const DiveCANMessage_t message = {
         .id = HUD_STAT_ID | deviceType,
         .data = {batByte, 0x23, 0x0, 0x0, 0x1e, 0x00, 0x00, 0x00},
-        .length = 5};
+        .length = 5,
+        .type = "OBOE_STAT"};
     sendCANMessage(message);
 }
 
@@ -268,7 +274,8 @@ void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cel
     const DiveCANMessage_t message = {
         .id = PPO2_PPO2_ID | deviceType,
         .data = {0x00, cell1, cell2, cell3, 0x00, 0x00, 0x00, 0x00},
-        .length = 4};
+        .length = 4,
+        .type = "PPO2_PPO2"};
     sendCANMessage(message);
 }
 
@@ -288,7 +295,8 @@ void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, cons
     const DiveCANMessage_t message = {
         .id = PPO2_MILLIS_ID | deviceType,
         .data = {cell1bytes[0], cell1bytes[1], cell2bytes[0], cell2bytes[1], cell3bytes[0], cell3bytes[1], 0x00, 0x00},
-        .length = 7};
+        .length = 7,
+        .type = "PPO2_MILLIS"};
 
     sendCANMessage(message);
 }
@@ -307,7 +315,8 @@ void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool ce
     const DiveCANMessage_t message = {
         .id = PPO2_STATUS_ID | deviceType,
         .data = {cellMask, PPO2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        .length = 2};
+        .length = 2,
+        .type = "PPO2_STATUS"};
 
     sendCANMessage(message);
 }
@@ -322,7 +331,8 @@ void txCalAck(DiveCANType_t deviceType)
     const DiveCANMessage_t message = {
         .id = CAL_ID | deviceType,
         .data = {(uint8_t)DIVECAN_CAL_ACK, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00},
-        .length = 8};
+        .length = 8,
+        .type = "CAL_ACK"};
 
     sendCANMessage(message);
 }
@@ -342,7 +352,8 @@ void txCalResponse(DiveCANType_t deviceType, DiveCANCalResponse_t response, Shor
     const DiveCANMessage_t message = {
         .id = CAL_ID | deviceType,
         .data = {(uint8_t)response, cell1, cell2, cell3, FO2, atmosBytes[0], atmosBytes[1], 0x07},
-        .length = 8};
+        .length = 8,
+        .type = "CAL_RESP"};
 
     sendCANMessage(message);
 }
@@ -353,7 +364,8 @@ void txMenuAck(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceT
     const DiveCANMessage_t message = {
         .id = MENU_ID | deviceType | (targetDeviceType << 8),
         .data = {0x05, 0x00, 0x62, 0x91, 0x00, itemCount, 0x00, 0x00},
-        .length = 6};
+        .length = 6,
+        .type = "MENU_ACK"};
 
     sendCANMessage(message);
 }
@@ -372,17 +384,20 @@ void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t device
         const DiveCANMessage_t message1 = {
             .id = MENU_ID | deviceType | (targetDeviceType << 8),
             .data = {0x10, 0x10, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]},
-            .length = 8};
+            .length = 8,
+            .type = "MENU_ITEM"};
 
         const DiveCANMessage_t message2 = {
             .id = MENU_ID | deviceType | (targetDeviceType << 8),
             .data = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]},
-            .length = 8};
+            .length = 8,
+            .type = "MENU_ITEM"};
 
         const DiveCANMessage_t message3 = {
             .id = MENU_ID | deviceType | (targetDeviceType << 8),
             .data = {0x22, strData[9], textField, editable, 0x00, 0x00, 0x00, 0x00},
-            .length = 4};
+            .length = 4,
+            .type = "MENU_ITEM"};
 
         sendCANMessage(message1);
 
@@ -406,17 +421,20 @@ void txMenuFlags(const DiveCANType_t targetDeviceType, const DiveCANType_t devic
     const DiveCANMessage_t message1 = {
         .id = MENU_ID | deviceType | (targetDeviceType << 8),
         .data = {0x10, 0x14, 0x00, 0x62, 0x91, reqId, maxBytes[0], maxBytes[1]},
-        .length = 8};
+        .length = 8,
+        .type = "MENU_FLAGS"};
 
     const DiveCANMessage_t message2 = {
         .id = MENU_ID | deviceType | (targetDeviceType << 8),
         .data = {0x21, maxBytes[2], maxBytes[3], maxBytes[4], maxBytes[5], maxBytes[6], maxBytes[7], currBytes[0]},
-        .length = 8};
+        .length = 8,
+        .type = "MENU_FLAGS"};
 
     const DiveCANMessage_t message3 = {
         .id = MENU_ID | deviceType | (targetDeviceType << 8),
         .data = {0x22, currBytes[1], currBytes[2], currBytes[3], currBytes[4], currBytes[5], currBytes[6], currBytes[7]},
-        .length = 8};
+        .length = 8,
+        .type = "MENU_FLAGS"};
 
     sendCANMessage(message1);
 
@@ -430,12 +448,14 @@ void txMenuSaveAck(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
     const DiveCANMessage_t message1 = {
         .id = MENU_ID | deviceType | (targetDeviceType << 8),
         .data = {0x30, 0x23, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        .length = 3};
+        .length = 3,
+        .type = "MENU_SAVE_ACK"};
 
     const DiveCANMessage_t message2 = {
         .id = MENU_ID | deviceType | (targetDeviceType << 8),
         .data = {0x04, 0x00, 0x6e, 0x93, fieldId, 0x00, 0x00, 0x00},
-        .length = 5};
+        .length = 5,
+        .type = "MENU_SAVE_ACK"};
 
     sendCANMessage(message1);
 
@@ -457,17 +477,20 @@ void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t devic
         const DiveCANMessage_t message1 = {
             .id = MENU_ID | deviceType | (targetDeviceType << 8),
             .data = {0x10, 0x0c, 0x00, 0x62, 0x91, reqId, strData[0], strData[1]},
-            .length = 8};
+            .length = 8,
+            .type = "MENU_FIELD"};
 
         const DiveCANMessage_t message2 = {
             .id = MENU_ID | deviceType | (targetDeviceType << 8),
             .data = {0x21, strData[2], strData[3], strData[4], strData[5], strData[6], strData[7], strData[8]},
-            .length = 8};
+            .length = 8,
+            .type = "MENU_FIELD"};
 
         const DiveCANMessage_t message3 = {
             .id = MENU_ID | deviceType | (targetDeviceType << 8),
             .data = {0x22, strData[9], 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-            .length = 4};
+            .length = 4,
+            .type = "MENU_FIELD"};
 
         sendCANMessage(message1);
 

@@ -77,55 +77,68 @@ void CANTask(void *arg)
         DiveCANMessage_t message = {0};
         if (pdTRUE == GetLatestCAN(TIMEOUT_1S_TICKS, &message))
         {
-            LogRXDiveCANMessage(&message);
             uint32_t message_id = message.id & ID_MASK; /* Drop the source/dest stuff, we're listening for anything from anyone */
             switch (message_id)
             {
             case BUS_INIT_ID:
                 /* Bus Init */
+                message.type = "BUS_INIT";
                 RespBusInit(&message, deviceSpec, configuration);
                 break;
             case BUS_ID_ID:
+                message.type = "BUS_ID";
                 /* Respond to pings */
                 RespPing(&message, deviceSpec, configuration);
                 break;
             case CAL_REQ_ID:
+                message.type = "CAL_REQ";
                 /* Respond to calibration request */
                 RespCal(&message, deviceSpec, configuration);
                 break;
             case MENU_ID:
+                message.type = "MENU";
                 /* Send Menu stuff */
                 RespMenu(&message, deviceSpec, configuration);
                 break;
             case PPO2_SETPOINT_ID:
+                message.type = "PPO2_SETPOINT";
                 /* Deal with setpoint being set */
                 RespSetpoint(&message, deviceSpec);
                 break;
             case PPO2_ATMOS_ID:
+                message.type = "PPO2_ATMOS";
                 /* Error response */
                 RespAtmos(&message, deviceSpec);
                 break;
             case BUS_OFF_ID:
+                message.type = "BUS_OFF";
                 /* Turn off bus */
                 RespShutdown(&message, deviceSpec, configuration);
                 break;
             case BUS_NAME_ID:
+                message.type = "BUS_NAME";
+                break;
             case BUS_MENU_OPEN_ID:
-                /* Ignore messages */
+                message.type = "BUS_MENU_OPEN";
                 break;
             case PID_P_GAIN_ID:
+                message.type = "PID_P_GAIN";
                 updatePIDPGain(&message);
                 break;
             case PID_I_GAIN_ID:
+                message.type = "PID_I_GAIN";
                 updatePIDIGain(&message);
                 break;
             case PID_D_GAIN_ID:
+                message.type = "PID_D_GAIN";
                 updatePIDDGain(&message);
                 break;
             default:
+                message.type = "UNKNOWN";
                 serial_printf("Unknown message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message_id,
                               message.data[0], message.data[1], message.data[2], message.data[3], message.data[4], message.data[5], message.data[6], message.data[7]);
             }
+            LogRXDiveCANMessage(&message);
         }
         else
         {
