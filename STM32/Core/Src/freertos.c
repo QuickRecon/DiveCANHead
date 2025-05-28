@@ -92,7 +92,8 @@ void vApplicationIdleHook(void)
 /* USER CODE BEGIN 4 */
 void vApplicationStackOverflowHook(TaskHandle_t, signed char *pcTaskName)
 {
-  blocking_serial_printf("STACK OVERFLOW: %s", pcTaskName);
+  volatile signed char* taskName = pcTaskName;
+  blocking_serial_printf("STACK OVERFLOW: %s", taskName);
   FATAL_ERROR(STACK_OVERFLOW_FERR);
   /* Run time stack overflow checking is performed if
   configCHECK_FOR_STACK_OVERFLOW is defined to 1 or 2. This hook function is
