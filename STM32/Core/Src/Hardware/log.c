@@ -385,15 +385,17 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
     static LogQueue_t enQueueItem = {0};
+    static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
-        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,DIVEO2,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)) &&
+        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,DIVEO2,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)) &&
         (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
     {
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+        ++logMsgIndex;
     }
 }
 
@@ -403,15 +405,17 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
     static LogQueue_t enQueueItem = {0};
+    static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
-        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,O2S,%u,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, PPO2)) &&
+        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,O2S,%u,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2)) &&
         (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
     {
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+        ++logMsgIndex;
     }
 }
 
@@ -421,15 +425,17 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
     static LogQueue_t enQueueItem = {0};
+    static uint32_t logMsgIndex = 0;
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
     /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
     if (logRunning() &&
-        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,ANALOGCELL,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), cellNumber, sample)) &&
+        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,ANALOGCELL,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, sample)) &&
         (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
     {
         (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+        ++logMsgIndex;
     }
 }
 
