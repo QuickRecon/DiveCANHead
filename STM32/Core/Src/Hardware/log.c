@@ -297,7 +297,7 @@ void StartLogTask(void)
         if (FR_OK == res)
         {
             /* Setup task */
-            static uint32_t LogTask_buffer[LOG_STACK_SIZE];
+            static uint8_t LogTask_buffer[LOG_STACK_SIZE];
             static StaticTask_t LogTask_ControlBlock;
             static const osThreadAttr_t LogTask_attributes = {
                 .name = "LogTask",

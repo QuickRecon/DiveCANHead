@@ -337,7 +337,7 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
      Don't start the thread if we're already calibrating, shearwater double shots us sometimes */
     if (!isCalibrating())
     {
-        static uint32_t CalTask_buffer[CALTASK_STACK_SIZE];
+        static uint8_t CalTask_buffer[CALTASK_STACK_SIZE];
         static StaticTask_t CalTask_ControlBlock;
         static const osThreadAttr_t CalTask_attributes = {
             .name = "CalTask",

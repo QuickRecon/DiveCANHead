@@ -48,7 +48,7 @@ void InitPPO2TX(const DiveCANDevice_t *const device, QueueHandle_t c1, QueueHand
 
     taskParams = params;
 
-    static uint32_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
+    static uint8_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
     static StaticTask_t PPO2TXTask_ControlBlock;
     static const osThreadAttr_t PPO2TXTask_attributes = {
         .name = "PPO2TXTask",

@@ -41,7 +41,7 @@ extern "C"
         void *cellHandle;
 
         uint8_t cellNumber;
-        uint32_t processorBuffer[CELL_PROCESSOR_STACK_SIZE];
+        uint8_t processorBuffer[CELL_PROCESSOR_STACK_SIZE];
         StaticTask_t processorControlblock;
     } OxygenHandle_t;
 

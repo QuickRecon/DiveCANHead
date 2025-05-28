@@ -124,7 +124,7 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, b
     params->depthCompensation = depthCompensation;
 
     /* Declare this stack externally so we can use it across the different control schemes without impacting our footprint */
-    static uint32_t SolenoidFireTask_buffer[SOLENOIDFIRETASK_STACK_SIZE];
+    static uint8_t SolenoidFireTask_buffer[SOLENOIDFIRETASK_STACK_SIZE];
     static StaticTask_t SolenoidFireTask_ControlBlock;
 
     if (controlScheme == PPO2CONTROL_SOLENOID_PID)
@@ -132,7 +132,7 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, b
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
         *dutyCycle = 0;
 
-        static uint32_t PPO2_PIDControlTask_buffer[PPO2CONTROLTASK_STACK_SIZE];
+        static uint8_t PPO2_PIDControlTask_buffer[PPO2CONTROLTASK_STACK_SIZE];
         static StaticTask_t PPO2_PIDControlTask_ControlBlock;
         static const osThreadAttr_t PPO2_PIDControlTask_attributes = {
             .name = "PPO2_PIDControlTask",

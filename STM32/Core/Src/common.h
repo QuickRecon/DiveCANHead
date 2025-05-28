@@ -3,7 +3,7 @@
 #include "cmsis_os.h"
 
 /* Log Line length used in printer and sd card logging*/
-#define LOG_LINE_LENGTH 70
+#define LOG_LINE_LENGTH 140
 
 #ifdef __cplusplus
 extern "C"
@@ -84,15 +84,15 @@ extern "C"
     static const osPriority_t WATCHDOG_TASK_PRIORITY = osPriorityLow;
 
 /* Define the stack sizes for all the tasks */
-#define PPO2CONTROLTASK_STACK_SIZE 1200 /* 1128 by stack analysis*/
-#define SOLENOIDFIRETASK_STACK_SIZE 400 /* 360 by stack analysis*/
-#define CANTASK_STACK_SIZE 1100         /* 992 by static analysis */
-#define PPO2TXTASK_STACK_SIZE 850       /* 784 bytes by static analysis */
-#define ADCTASK_STACK_SIZE 500          /* 424 by static analysis */
-#define CELL_PROCESSOR_STACK_SIZE 700   /* 696 by static analysis*/
-#define CALTASK_STACK_SIZE 800          /* Static analysis 696 */
-#define PRINTER_STACK_SIZE 1100         /* Static analysis 1048 */
-#define LOG_STACK_SIZE 2300             /* Static analysis 2264 */
+#define PPO2CONTROLTASK_STACK_SIZE 1300 /* 1128 by stack analysis, 1128 peak observed*/
+#define SOLENOIDFIRETASK_STACK_SIZE 1000 /* 360 by stack analysis, 500 peak observed*/
+#define CANTASK_STACK_SIZE 1500         /* 992 by static analysis, 976 peak observed */
+#define PPO2TXTASK_STACK_SIZE 1300       /* 784 bytes by static analysis, 1016 peak observed */
+#define ADCTASK_STACK_SIZE 500          /* 424 by static analysis, 220 peak observed */
+#define CELL_PROCESSOR_STACK_SIZE 1300   /* 696 by static analysis, 1048 peak observed*/
+#define CALTASK_STACK_SIZE 1300          /* Static analysis 696, 904 peak observed */
+#define PRINTER_STACK_SIZE 1300         /* Static analysis 1048, 980 peak observed */
+#define LOG_STACK_SIZE 2300             /* Static analysis 2264, 1584 peak observed*/
 
 /* conditional compilation for RTOS loop breaking is pretty */
 /* shit as a testing method */

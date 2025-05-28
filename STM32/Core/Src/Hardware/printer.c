@@ -61,7 +61,7 @@ void InitPrinter(bool printToCanbus)
     params.printEnable = printToCanbus;
 
     /* Setup task */
-    static uint32_t PrinterTask_buffer[PRINTER_STACK_SIZE];
+    static uint8_t PrinterTask_buffer[PRINTER_STACK_SIZE];
     static StaticTask_t PrinterTask_ControlBlock;
     static const osThreadAttr_t PrinterTask_attributes = {
         .name = "PrinterTask",

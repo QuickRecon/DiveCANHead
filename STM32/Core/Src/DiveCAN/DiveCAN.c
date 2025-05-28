@@ -42,7 +42,7 @@ void InitDiveCAN(const DiveCANDevice_t *const deviceSpec, const Configuration_t 
 {
     InitRXQueue();
 
-    static uint32_t CANTask_buffer[CANTASK_STACK_SIZE];
+    static uint8_t CANTask_buffer[CANTASK_STACK_SIZE];
     static StaticTask_t CANTask_ControlBlock;
     static DiveCANTask_params_t task_params;
     static const osThreadAttr_t CANTask_attributes = {

@@ -120,7 +120,7 @@ void InitADCs(void)
         *ticksQueue = adcInput->qInputTick;
     }
 
-    static uint32_t ADCTask_buffer[ADCTASK_STACK_SIZE];
+    static uint8_t ADCTask_buffer[ADCTASK_STACK_SIZE];
     static StaticTask_t ADCTask_ControlBlock;
     static const osThreadAttr_t ADCTask_attributes = {
         .name = "ADCTask",
