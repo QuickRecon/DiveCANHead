@@ -631,15 +631,15 @@ static void MX_ADC1_Init(void)
 
   if (HAL_ADC_Stop(&hadc1) != HAL_OK)
   {
-    NON_FATAL_ERROR(CRITICAL_ERR);
+    NON_FATAL_ERROR(INT_ADC_ERR);
   }
   if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK)
   {
-    NON_FATAL_ERROR(CRITICAL_ERR);
+    NON_FATAL_ERROR(INT_ADC_ERR);
   }
   if (HAL_ADC_Start(&hadc1) != HAL_OK)
   {
-    NON_FATAL_ERROR(CRITICAL_ERR);
+    NON_FATAL_ERROR(INT_ADC_ERR);
   }
   /* USER CODE END ADC1_Init 2 */
 }
