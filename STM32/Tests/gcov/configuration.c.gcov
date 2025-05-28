@@ -2,103 +2,147 @@
         -:    0:Graph:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/configuration.gcno
         -:    0:Data:test-obj///home/aren/DiveCANHeadRev2/STM32/Core/Src/configuration.gcda
         -:    0:Runs:1
-        -:    1:#include "common.h"
-        -:    2:#include "configuration.h"
+        -:    1:#include "configuration.h"
+        -:    2:#include <string.h>
         -:    3:#include "Hardware/flash.h"
-        -:    4:#include "assert.h"
-        -:    5:
-     1191:    6:uint32_t getConfigBytes(const Configuration_t *const config){
-        -:    7:    (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
-     1191:    8:    return *((const uint32_t* const)config);
-        -:    9:}
-        -:   10:
-        -:   11:
-       32:   12:Configuration_t setConfigBytes(uint32_t configBits) {
-        -:   13:    (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
-       32:   14:    Configuration_t config = {0};
-       32:   15:    config = *((Configuration_t*)&configBits);
-       32:   16:    return config;
-        -:   17:}
-        -:   18:
-      861:   19:bool CellValid(Configuration_t config, uint8_t cellNumber)
-        -:   20:{
-        -:   21:    /* Check that the enum */
-      861:   22:    uint8_t cellVal = (getConfigBytes(&config) >> (8u + (cellNumber * 2))) & 0b11u;
-      861:   23:    return (cellVal == (uint8_t)CELL_ANALOG) || (cellVal == (uint8_t)CELL_DIGITAL);
-        -:   24:}
-        -:   25:
-      285:   26:bool ConfigurationValid(Configuration_t config)
-        -:   27:{
-      285:   28:    bool valid = true;
-        -:   29:
-        -:   30:    /* Casting from an integer type to enums results in undefined values if outside the enum ranges
-        -:   31:     * so we first need to do bit manipulation to ensure the provided value lands in the expected range
-        -:   32:     */
-        -:   33:
-        -:   34:    /* Check cells are valid */
-     1140:   35:    for (uint8_t i = 0; i < CELL_COUNT; ++i)
-        -:   36:    {
-      855:   37:        valid = valid && CellValid(config, i);
-        -:   38:    }
-        -:   39:
-      285:   40:    uint32_t configBits = getConfigBytes(&config);
-        -:   41:
-        -:   42:    /* Check power mode*/
-      285:   43:    uint8_t powerMode = (configBits >> 14) & 0b11u;
-     285*:   44:    valid = valid && ((powerMode == MODE_BATTERY) ||
-    #####:   45:                      (powerMode == MODE_BATTERY_THEN_CAN) ||
-    #####:   46:                      (powerMode == MODE_CAN) ||
-        -:   47:                      (powerMode == MODE_OFF));
-        -:   48:
-        -:   49:    /* Check cal mode */
-      285:   50:    uint8_t calMode = (configBits >> 16) & 0b111u;
-      291:   51:    valid = valid && ((calMode == CAL_DIGITAL_REFERENCE) ||
-        6:   52:                      (calMode == CAL_ANALOG_ABSOLUTE) ||
-        -:   53:                      (calMode == CAL_TOTAL_ABSOLUTE));
-        -:   54:
-        -:   55:    /* Check that the firmware version matches*/
-      285:   56:    uint8_t firmwareVersion = configBits & 0xFFu;
-      285:   57:    valid = valid && (FIRMWARE_VERSION == firmwareVersion);
-        -:   58:
-        -:   59:    /* We've checked our enums, using fields is allowed*/
-        -:   60:
-        -:   61:    /* Check for incompatible states */
-      285:   62:    valid = valid && ((!config.enableUartPrinting) || (config.cell2 == CELL_ANALOG)); /* If uart printing is on, cell2 MUST be analog */
+        -:    4:#include "common.h"
+        -:    5:#include "assert.h"
+        -:    6:
+     1192:    7:uint32_t getConfigBytes(const Configuration_t *const config)
+        -:    8:{
+        -:    9:    (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
+     1192:   10:    uint32_t configBits = 0;
+     1192:   11:    (void)memcpy(&configBits, config, sizeof(uint32_t));
+     1192:   12:    return configBits;
+        -:   13:}
+        -:   14:
+       32:   15:Configuration_t setConfigBytes(uint32_t configBits)
+        -:   16:{
+        -:   17:    (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
+       32:   18:    Configuration_t config = {0};
+       32:   19:    (void)memcpy(&config, &configBits, sizeof(uint32_t));
+       32:   20:    return config;
+        -:   21:}
+        -:   22:
+       21:   23:bool HWValid(Configuration_t config, HW_Version_t hw_version){
+       21:   24:    bool valid = true;
+       21:   25:    if (HW_JR == hw_version)
+        -:   26:    {
+        -:   27:        /* Jr only supports analog cells */
+    #####:   28:        valid = valid && (CELL_ANALOG == config.cell1);
+    #####:   29:        valid = valid && (CELL_ANALOG == config.cell2);
+    #####:   30:        valid = valid && (CELL_ANALOG == config.cell3);
+        -:   31:
+        -:   32:        /* Only runs in battery mode */
+    #####:   33:        valid = valid && (MODE_BATTERY == config.powerMode);
+        -:   34:
+        -:   35:        /* Only runs with 9v battery*/
+    #####:   36:        valid = valid && (V_THRESHOLD_9V == config.dischargeThresholdMode);
+        -:   37:    }
+       21:   38:    return valid;
+        -:   39:}
+        -:   40:
+      861:   41:bool CellValid(Configuration_t config, uint8_t cellNumber)
+        -:   42:{
+        -:   43:    /* Check that the enum */
+      861:   44:    uint8_t cellVal = (getConfigBytes(&config) >> (8u + (cellNumber * 2))) & 0b11u;
+      852:   45:    return (cellVal == (uint8_t)CELL_ANALOG) ||
+     1713:   46:           (cellVal == (uint8_t)CELL_DIVEO2) ||
+        -:   47:           (cellVal == (uint8_t)CELL_O2S);
+        -:   48:}
+        -:   49:
+        -:   50:/**
+        -:   51: * @brief Validate that the configuration is valid, self consistent, and suitable for the running hardware
+        -:   52: * @param config configuration structure to validate
+        -:   53: * @param hw_version currently running hardware version
+        -:   54: * @return true if configuration is valid and suitable for current hardware, otherwise false
+        -:   55: */
+      284:   56:bool ConfigurationValid(Configuration_t config, HW_Version_t hw_version)
+        -:   57:{
+      284:   58:    bool valid = true;
+        -:   59:
+        -:   60:    /* Casting from an integer type to enums results in undefined values if outside the enum ranges
+        -:   61:     * so we first need to do bit manipulation to ensure the provided value lands in the expected range
+        -:   62:     */
         -:   63:
-        -:   64:    /* Can't have digital cal if no digital cells */
-      285:   65:    const bool configDigitalCellValid = !((config.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.cell1 == CELL_ANALOG) && (config.cell2 == CELL_ANALOG) && (config.cell3 == CELL_ANALOG));
-      285:   66:    valid = valid && configDigitalCellValid; 
-        -:   67:
-      285:   68:    return valid;
-        -:   69:}
-        -:   70:
-    #####:   71:Configuration_t loadConfiguration(void)
-        -:   72:{
-    #####:   73:    Configuration_t config = {0};
-    #####:   74:    if(GetConfiguration(&config) && ConfigurationValid(config)){
-        -:   75:        /* Everything is fine */
-        -:   76:    } else {
-    #####:   77:        NON_FATAL_ERROR_ISR(CONFIG_ERROR); /* We need to use the isr call because that is blocking */
-    #####:   78:        config = DEFAULT_CONFIGURATION;
-        -:   79:    }
-    #####:   80:    return config;
-        -:   81:}
-        -:   82:
-    #####:   83:bool saveConfiguration(const Configuration_t *const config)
-        -:   84:{
-    #####:   85:    bool valid = ConfigurationValid(*config);
-    #####:   86:    if(valid){
-    #####:   87:        valid = SetConfiguration(config);
+        -:   64:    /* Check cells are valid */
+     1136:   65:    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        -:   66:    {
+      852:   67:        valid = valid && CellValid(config, i);
+        -:   68:    }
+        -:   69:
+      284:   70:    uint32_t configBits = getConfigBytes(&config);
+        -:   71:
+        -:   72:    /* Check power mode*/
+      284:   73:    uint8_t powerMode = (configBits >> 14) & 0b11u;
+     284*:   74:    valid = valid && ((powerMode == MODE_BATTERY) ||
+    #####:   75:                      (powerMode == MODE_BATTERY_THEN_CAN) ||
+    #####:   76:                      (powerMode == MODE_CAN) ||
+        -:   77:                      (powerMode == MODE_OFF));
+        -:   78:
+        -:   79:    /* Check cal mode */
+      284:   80:    uint8_t calMode = (configBits >> 16) & 0b111u;
+      290:   81:    valid = valid && ((calMode == CAL_DIGITAL_REFERENCE) ||
+        6:   82:                      (calMode == CAL_ANALOG_ABSOLUTE) ||
+        -:   83:                      (calMode == CAL_TOTAL_ABSOLUTE));
+        -:   84:
+        -:   85:    /* Check that the firmware version matches*/
+      284:   86:    uint8_t firmwareVersion = configBits & 0xFFu;
+      284:   87:    valid = valid && (FIRMWARE_VERSION == firmwareVersion);
         -:   88:
-    #####:   89:        Configuration_t readbackConfig = {0};
-    #####:   90:        bool readbackOk = GetConfiguration(&readbackConfig);
-        -:   91:
-    #####:   92:        valid = (readbackOk && valid) && (getConfigBytes(&readbackConfig) == getConfigBytes(config));
-        -:   93:
-        -:   94:        /* Clear the calibration on config change */
-    #####:   95:        valid = valid && SetCalibration(CELL_1, 0);
-    #####:   96:        valid = valid && SetCalibration(CELL_2, 0);
-    #####:   97:        valid = valid && SetCalibration(CELL_3, 0);
-        -:   98:    }
-    #####:   99:    return valid;
-        -:  100:}
+        -:   89:    /* We've checked our enums, using fields is allowed*/
+        -:   90:
+        -:   91:    /* Can't have digital cal if no digital cells */
+      284:   92:    const bool configDigitalCellValid = !((config.calibrationMode == CAL_DIGITAL_REFERENCE) && (config.cell1 == CELL_ANALOG) && (config.cell2 == CELL_ANALOG) && (config.cell3 == CELL_ANALOG));
+      284:   93:    valid = valid && configDigitalCellValid;
+        -:   94:
+      284:   95:    valid = valid && HWValid(config, hw_version);
+        -:   96:
+      284:   97:    return valid;
+        -:   98:}
+        -:   99:
+        -:  100:/**
+        -:  101: * @brief Load the configuration from flash, validating it is correct for the hardware
+        -:  102: * @param hw_version currently running hardware (to validate compatibility)
+        -:  103: * @return Valid configuration struct loaded from flash
+        -:  104: */
+    #####:  105:Configuration_t loadConfiguration(HW_Version_t hw_version)
+        -:  106:{
+    #####:  107:    Configuration_t config = {0};
+    #####:  108:    if (GetConfiguration(&config) && ConfigurationValid(config, hw_version))
+        -:  109:    {
+        -:  110:        /* Everything is fine */
+        -:  111:    }
+        -:  112:    else
+        -:  113:    {
+    #####:  114:        NON_FATAL_ERROR_ISR(CONFIG_ERR); /* We need to use the isr call because that is blocking */
+    #####:  115:        config = DEFAULT_CONFIGURATION;
+        -:  116:    }
+    #####:  117:    return config;
+        -:  118:}
+        -:  119:
+        -:  120:/**
+        -:  121: * @brief Validate and save configuration to flash
+        -:  122: * @param config configuration struct to save
+        -:  123: * @param hw_version currently running hardware (to validate compatibility)
+        -:  124: * @return true if successful otherwise false
+        -:  125: */
+    #####:  126:bool saveConfiguration(const Configuration_t *const config, HW_Version_t hw_version)
+        -:  127:{
+    #####:  128:    bool valid = ConfigurationValid(*config, hw_version);
+    #####:  129:    if (valid)
+        -:  130:    {
+    #####:  131:        valid = SetConfiguration(config);
+        -:  132:
+    #####:  133:        Configuration_t readbackConfig = {0};
+    #####:  134:        bool readbackOk = GetConfiguration(&readbackConfig);
+        -:  135:
+    #####:  136:        valid = (readbackOk && valid) && (getConfigBytes(&readbackConfig) == getConfigBytes(config));
+        -:  137:
+        -:  138:        /* Clear the calibration on config change */
+    #####:  139:        valid = valid && SetCalibration(CELL_1, 0);
+    #####:  140:        valid = valid && SetCalibration(CELL_2, 0);
+    #####:  141:        valid = valid && SetCalibration(CELL_3, 0);
+        -:  142:    }
+    #####:  143:    return valid;
+        -:  144:}

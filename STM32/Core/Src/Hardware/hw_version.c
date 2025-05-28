@@ -1,8 +1,6 @@
 #include "hw_version.h"
 #include "../errors.h"
 
-/* TODO: This is highly testable it just needs doing*/
-
 /* Known Versions */
 const uint16_t REV_2_2 = (uint16_t)(HW_PIN_HI_Z | (HW_PIN_HI_Z << 2) | (HW_PIN_HI_Z << 4));
 const uint16_t REV_2_3 = (uint16_t)(HW_PIN_LOW | (HW_PIN_HI_Z << 2) | (HW_PIN_HI_Z << 4));
