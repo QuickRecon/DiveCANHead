@@ -119,11 +119,7 @@ extern "C"
     /**
      * @brief Indicates there are no errors in the system.
      */
-    DIVECAN_ERR_NONE = 1 << 3,
-
-    /** @brief Indicates there are no errors in the system, display battery DOES NOT COMPOSE WITH OTHER ERRORS*/
-    DIVECAN_ERR_NONE_SHOW_BATT = 0xA,
-
+    DIVECAN_ERR_BATT_UNAVAIL = 1 << 3,
     /**
      * @brief Battery information is valid and should be shown.
      */

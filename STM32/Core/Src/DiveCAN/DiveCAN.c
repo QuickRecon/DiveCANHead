@@ -148,13 +148,13 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
     {
         txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
 
-        ADCV_t busVoltage = getVoltage(SOURCE_DEFAULT);
-        DiveCANError_t err = DIVECAN_ERR_NONE;
-        if (busVoltage < getThresholdVoltage(configuration->dischargeThresholdMode))
+        ADCV_t supplyVoltage = getVoltage(SOURCE_DEFAULT);
+        DiveCANError_t err = DIVECAN_ERR_BATT_UNAVAIL; /* Default to no battery status */
+        if (supplyVoltage < getThresholdVoltage(configuration->dischargeThresholdMode))
         {
             err = DIVECAN_ERR_LOW_BATTERY;
         }
-        ADCV_t batteryV = busVoltage * BATTERY_FLOAT_TO_INT_SCALER; /* Multiply by the scaler so we're the correct "digit" to send over the wire*/
+        ADCV_t batteryV = supplyVoltage * BATTERY_FLOAT_TO_INT_SCALER; /* Multiply by the scaler so we're the correct "digit" to send over the wire*/
         txStatus(devType, (BatteryV_t)(batteryV), getSetpoint(), err, true);
         txName(devType, deviceSpec->name);
         txOBOEStat(devType, err);
