@@ -128,7 +128,7 @@
     #####:  124:    params->depthCompensation = depthCompensation;
         -:  125:
         -:  126:    /* Declare this stack externally so we can use it across the different control schemes without impacting our footprint */
-        -:  127:    static uint32_t SolenoidFireTask_buffer[SOLENOIDFIRETASK_STACK_SIZE];
+        -:  127:    static uint8_t SolenoidFireTask_buffer[SOLENOIDFIRETASK_STACK_SIZE];
         -:  128:    static StaticTask_t SolenoidFireTask_ControlBlock;
         -:  129:
     #####:  130:    if (controlScheme == PPO2CONTROL_SOLENOID_PID)
@@ -136,7 +136,7 @@
     #####:  132:        PIDNumeric_t *dutyCycle = getDutyCyclePtr();
     #####:  133:        *dutyCycle = 0;
         -:  134:
-        -:  135:        static uint32_t PPO2_PIDControlTask_buffer[PPO2CONTROLTASK_STACK_SIZE];
+        -:  135:        static uint8_t PPO2_PIDControlTask_buffer[PPO2CONTROLTASK_STACK_SIZE];
         -:  136:        static StaticTask_t PPO2_PIDControlTask_ControlBlock;
         -:  137:        static const osThreadAttr_t PPO2_PIDControlTask_attributes = {
         -:  138:            .name = "PPO2_PIDControlTask",
@@ -263,95 +263,99 @@
         -:  259:    } while (RTOS_LOOP_FOREVER);
     #####:  260:}
         -:  261:
-    #####:  262:static PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state)
-        -:  263:{
-        -:  264:    /* Step PID */
-    #####:  265:    PIDNumeric_t pTerm = 0;
-    #####:  266:    PIDNumeric_t iTerm = 0;
-    #####:  267:    PIDNumeric_t dTerm = 0;
-    #####:  268:    PIDNumeric_t error = d_setpoint - measurement;
-        -:  269:
-        -:  270:    /* proportional term*/
-    #####:  271:    pTerm = state->proportionalGain * error;
-        -:  272:
-        -:  273:    /* integral term*/
-    #####:  274:    state->integralState += state->integralGain * error;
-        -:  275:
-        -:  276:    /* As soon as we are above the setpoint reset the integral so we don't have to wind down*/
-    #####:  277:    if (error < 0)
-        -:  278:    {
-    #####:  279:        state->integralState = 0;
-        -:  280:    }
-        -:  281:
-    #####:  282:    if (state->integralState > state->integralMax)
-        -:  283:    {
-    #####:  284:        state->integralState = state->integralMax;
-    #####:  285:        ++state->saturationCount;
-        -:  286:    }
-    #####:  287:    else if (state->integralState < state->integralMin)
-        -:  288:    {
-    #####:  289:        state->integralState = state->integralMin;
-    #####:  290:        ++state->saturationCount;
-        -:  291:    }
-        -:  292:    else
-        -:  293:    {
-    #####:  294:        state->saturationCount = 0; /* We've come out of saturation so reset it */
+        -:  262:#ifdef TESTING
+       40:  263:PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state)
+        -:  264:#else
+        -:  265:static PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state)
+        -:  266:#endif
+        -:  267:{
+        -:  268:    /* Step PID */
+       40:  269:    PIDNumeric_t pTerm = 0;
+       40:  270:    PIDNumeric_t iTerm = 0;
+       40:  271:    PIDNumeric_t dTerm = 0;
+       40:  272:    PIDNumeric_t error = d_setpoint - measurement;
+        -:  273:
+        -:  274:    /* proportional term*/
+       40:  275:    pTerm = state->proportionalGain * error;
+        -:  276:
+        -:  277:    /* integral term*/
+       40:  278:    state->integralState += state->integralGain * error;
+        -:  279:
+        -:  280:    /* As soon as we are above the setpoint reset the integral so we don't have to wind down*/
+       40:  281:    if (error < 0)
+        -:  282:    {
+        4:  283:        state->integralState = 0;
+        -:  284:    }
+        -:  285:
+       40:  286:    if (state->integralState > state->integralMax)
+        -:  287:    {
+       20:  288:        state->integralState = state->integralMax;
+       20:  289:        ++state->saturationCount;
+        -:  290:    }
+       20:  291:    else if (state->integralState < state->integralMin)
+        -:  292:    {
+    #####:  293:        state->integralState = state->integralMin;
+    #####:  294:        ++state->saturationCount;
         -:  295:    }
-        -:  296:
-    #####:  297:    iTerm = state->integralState;
-        -:  298:
-        -:  299:    /* derivative term */
-    #####:  300:    dTerm = state->derivativeGain * (state->derivativeState - measurement);
-    #####:  301:    state->derivativeState = measurement;
+        -:  296:    else
+        -:  297:    {
+       20:  298:        state->saturationCount = 0; /* We've come out of saturation so reset it */
+        -:  299:    }
+        -:  300:
+       40:  301:    iTerm = state->integralState;
         -:  302:
-    #####:  303:    return pTerm + dTerm + iTerm;
-        -:  304:}
-        -:  305:
-    #####:  306:static void PPO2_PIDControlTask(void *arg)
-        -:  307:{
-    #####:  308:    PPO2ControlTask_params_t *params = (PPO2ControlTask_params_t *)arg;
+        -:  303:    /* derivative term */
+       40:  304:    dTerm = state->derivativeGain * (state->derivativeState - measurement);
+       40:  305:    state->derivativeState = measurement;
+        -:  306:
+       40:  307:    return pTerm + dTerm + iTerm;
+        -:  308:}
         -:  309:
-    #####:  310:    uint32_t PIDPeriod = 100; /* 100ms period */
-        -:  311:
-        -:  312:    do
-        -:  313:    {
-    #####:  314:        Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
+    #####:  310:static void PPO2_PIDControlTask(void *arg)
+        -:  311:{
+    #####:  312:    PPO2ControlTask_params_t *params = (PPO2ControlTask_params_t *)arg;
+        -:  313:
+    #####:  314:    uint32_t PIDPeriod = 100; /* 100ms period */
         -:  315:
-        -:  316:        /* Transmit Precision PPO2*/
-    #####:  317:        OxygenCell_t c1 = {0};
-    #####:  318:        bool c1pick = xQueuePeek(params->c1, &c1, TIMEOUT_100MS_TICKS);
-    #####:  319:        OxygenCell_t c2 = {0};
-    #####:  320:        bool c2pick = xQueuePeek(params->c2, &c2, TIMEOUT_100MS_TICKS);
-    #####:  321:        OxygenCell_t c3 = {0};
-    #####:  322:        bool c3pick = xQueuePeek(params->c3, &c3, TIMEOUT_100MS_TICKS);
-        -:  323:
-    #####:  324:        if (c1pick && c2pick && c3pick && params->useExtendedMessages)
-        -:  325:        {
-    #####:  326:            txPrecisionCells(DIVECAN_SOLO, c1, c2, c3);
-        -:  327:        }
-        -:  328:
-        -:  329:        /* It feels like we ought to do something with the cell confidence (go to SP low?) but that implementation is hard so avoid for now
-        -:  330:                uint8_t confidence = cellConfidence(consensus);
-        -:  331:        */
-    #####:  332:        PIDNumeric_t d_setpoint = (PIDNumeric_t)setpoint / 100.0f;
-    #####:  333:        PIDNumeric_t measurement = consensus.precisionConsensus;
-        -:  334:
-    #####:  335:        PIDNumeric_t *dutyCycle = getDutyCyclePtr();
-    #####:  336:        *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
-        -:  337:
-    #####:  338:        if (params->useExtendedMessages)
-        -:  339:        {
-    #####:  340:            txPIDState(DIVECAN_SOLO,
-        -:  341:                       (params->pidState).proportionalGain,
-        -:  342:                       (params->pidState).integralGain,
-        -:  343:                       (params->pidState).derivativeGain,
-        -:  344:                       (params->pidState).integralState,
-        -:  345:                       (params->pidState).derivativeState,
-        -:  346:                       *dutyCycle,
-        -:  347:                       consensus.precisionConsensus);
-        -:  348:        }
-    #####:  349:        LogPIDState(&(params->pidState), *dutyCycle, d_setpoint);
-        -:  350:
-    #####:  351:        (void)osDelay(pdMS_TO_TICKS(PIDPeriod));
-        -:  352:    } while (RTOS_LOOP_FOREVER);
-    #####:  353:}
+        -:  316:    do
+        -:  317:    {
+    #####:  318:        Consensus_t consensus = peekCellConsensus(params->c1, params->c2, params->c3);
+        -:  319:
+        -:  320:        /* Transmit Precision PPO2*/
+    #####:  321:        OxygenCell_t c1 = {0};
+    #####:  322:        bool c1pick = xQueuePeek(params->c1, &c1, TIMEOUT_100MS_TICKS);
+    #####:  323:        OxygenCell_t c2 = {0};
+    #####:  324:        bool c2pick = xQueuePeek(params->c2, &c2, TIMEOUT_100MS_TICKS);
+    #####:  325:        OxygenCell_t c3 = {0};
+    #####:  326:        bool c3pick = xQueuePeek(params->c3, &c3, TIMEOUT_100MS_TICKS);
+        -:  327:
+    #####:  328:        if (c1pick && c2pick && c3pick && params->useExtendedMessages)
+        -:  329:        {
+    #####:  330:            txPrecisionCells(DIVECAN_SOLO, c1, c2, c3);
+        -:  331:        }
+        -:  332:
+        -:  333:        /* It feels like we ought to do something with the cell confidence (go to SP low?) but that implementation is hard so avoid for now
+        -:  334:                uint8_t confidence = cellConfidence(consensus);
+        -:  335:        */
+    #####:  336:        PIDNumeric_t d_setpoint = (PIDNumeric_t)setpoint / 100.0f;
+    #####:  337:        PIDNumeric_t measurement = consensus.precisionConsensus;
+        -:  338:
+    #####:  339:        PIDNumeric_t *dutyCycle = getDutyCyclePtr();
+    #####:  340:        *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
+        -:  341:
+    #####:  342:        if (params->useExtendedMessages)
+        -:  343:        {
+    #####:  344:            txPIDState(DIVECAN_SOLO,
+        -:  345:                       (params->pidState).proportionalGain,
+        -:  346:                       (params->pidState).integralGain,
+        -:  347:                       (params->pidState).derivativeGain,
+        -:  348:                       (params->pidState).integralState,
+        -:  349:                       (params->pidState).derivativeState,
+        -:  350:                       *dutyCycle,
+        -:  351:                       consensus.precisionConsensus);
+        -:  352:        }
+    #####:  353:        LogPIDState(&(params->pidState), *dutyCycle, d_setpoint);
+        -:  354:
+    #####:  355:        (void)osDelay(pdMS_TO_TICKS(PIDPeriod));
+        -:  356:    } while (RTOS_LOOP_FOREVER);
+    #####:  357:}

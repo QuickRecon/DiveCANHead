@@ -259,7 +259,11 @@ static void PIDSolenoidFireTask(void *arg)
     } while (RTOS_LOOP_FOREVER);
 }
 
+#ifdef TESTING
+PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state)
+#else
 static PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state)
+#endif
 {
     /* Step PID */
     PIDNumeric_t pTerm = 0;

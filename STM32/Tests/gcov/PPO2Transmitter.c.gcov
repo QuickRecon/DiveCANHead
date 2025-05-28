@@ -52,7 +52,7 @@
         -:   48:
         1:   49:    taskParams = params;
         -:   50:
-        -:   51:    static uint32_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
+        -:   51:    static uint8_t PPO2TXTask_buffer[PPO2TXTASK_STACK_SIZE];
         -:   52:    static StaticTask_t PPO2TXTask_ControlBlock;
         -:   53:    static const osThreadAttr_t PPO2TXTask_attributes = {
         -:   54:        .name = "PPO2TXTask",

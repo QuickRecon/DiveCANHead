@@ -1,18 +1,18 @@
 File '/home/aren/DiveCANHeadRev2/STM32/Core/Src/PPO2Control/PPO2Control.c'
-Lines executed:9.30% of 129
+Lines executed:23.26% of 129
 Creating 'PPO2Control.c.gcov'
 
-Lines executed:9.30% of 129
+Lines executed:23.26% of 129
 File '/home/aren/DiveCANHeadRev2/STM32/Core/Src/DiveCAN/PPO2Transmitter.c'
 Lines executed:100.00% of 33
 Creating 'PPO2Transmitter.c.gcov'
 
 Lines executed:100.00% of 33
 File '/home/aren/DiveCANHeadRev2/STM32/Core/Src/Sensors/OxygenCell.c'
-Lines executed:30.50% of 200
+Lines executed:30.35% of 201
 Creating 'OxygenCell.c.gcov'
 
-Lines executed:30.50% of 200
+Lines executed:30.35% of 201
 File '/home/aren/DiveCANHeadRev2/STM32/Core/Src/Hardware/flash.c'
 Lines executed:61.60% of 125
 Creating 'flash.c.gcov'

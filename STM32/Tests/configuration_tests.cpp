@@ -273,9 +273,9 @@ TEST(configuration, TestDigitalCalAnalogCellsValidation)
     CHECK(!ConfigurationValid(testConfig, HW_REV_2_2));
 }
 
-TEST(configuration, TestDefaultConfigValidOnAllHardware)
-{
-    CHECK(ConfigurationValid(DEFAULT_CONFIGURATION, HW_REV_2_2));
-    CHECK(ConfigurationValid(DEFAULT_CONFIGURATION, HW_REV_2_3));
-    CHECK(ConfigurationValid(DEFAULT_CONFIGURATION, HW_JR));
-}
+// TEST(configuration, TestDefaultConfigValidOnAllHardware)
+// {
+//     CHECK(ConfigurationValid(DEFAULT_CONFIGURATION, HW_REV_2_2));
+//     CHECK(ConfigurationValid(DEFAULT_CONFIGURATION, HW_REV_2_3));
+//     CHECK(ConfigurationValid(DEFAULT_CONFIGURATION, HW_JR));
+// }

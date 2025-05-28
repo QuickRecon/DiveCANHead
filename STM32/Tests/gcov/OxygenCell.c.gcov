@@ -296,230 +296,231 @@
     #####:  292:        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD_ERR);
         -:  293:    }
         -:  294:
-    #####:  295:    txCalResponse(calParams.deviceType, calResult, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressureVal);
-        -:  296:
-    #####:  297:    osThreadExit();
-    #####:  298:}
-        -:  299:
-        7:  300:static osThreadId_t *getOSThreadId(void)
-        -:  301:{
-        -:  302:    static osThreadId_t calTask;
-        7:  303:    return &calTask;
-        -:  304:}
-        -:  305:
-        7:  306:bool isCalibrating(void)
-        -:  307:{
-        7:  308:    osThreadId_t *calTask = getOSThreadId();
-      14*:  309:    return !((osThreadGetState(*calTask) == osThreadError) ||
-        7:  310:             (osThreadGetState(*calTask) == osThreadInactive) ||
-    #####:  311:             (osThreadGetState(*calTask) == osThreadTerminated));
-        -:  312:}
-        -:  313:
-        -:  314:/**
-        -:  315: * @brief Start a new task (one off) to execute a calibration, this will silently fail if a calibration is already being done (why are you trying to calibrate while you calibrate?)
-        -:  316: * @param deviceType DiveCAN device to send responses from
-        -:  317: * @param in_fO2 FO2 reported to us to use in the calibration
-        -:  318: * @param in_pressure_val ambient pressure to use in the calibration (millibar)
-        -:  319: * @param calMethod Calibration method to use for calibration
-        -:  320: */
-    #####:  321:void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod)
-        -:  322:{
-        -:  323:    static CalParameters_t calParams;
-        -:  324:
-    #####:  325:    calParams.fO2 = in_fO2;
-    #####:  326:    calParams.pressureVal = in_pressure_val;
-    #####:  327:    calParams.deviceType = deviceType;
-    #####:  328:    calParams.cell1 = 0;
-    #####:  329:    calParams.cell2 = 0;
-    #####:  330:    calParams.cell3 = 0;
-        -:  331:
-    #####:  332:    calParams.calMethod = calMethod;
-        -:  333:
-    #####:  334:    txCalAck(deviceType);
-        -:  335:
-        -:  336:    /*
-        -:  337:     Don't start the thread if we're already calibrating, shearwater double shots us sometimes */
-    #####:  338:    if (!isCalibrating())
-        -:  339:    {
-        -:  340:        static uint32_t CalTask_buffer[CALTASK_STACK_SIZE];
-        -:  341:        static StaticTask_t CalTask_ControlBlock;
-        -:  342:        static const osThreadAttr_t CalTask_attributes = {
-        -:  343:            .name = "CalTask",
-        -:  344:            .attr_bits = osThreadDetached,
-        -:  345:            .cb_mem = &CalTask_ControlBlock,
-        -:  346:            .cb_size = sizeof(CalTask_ControlBlock),
-        -:  347:            .stack_mem = &CalTask_buffer[0],
-        -:  348:            .stack_size = sizeof(CalTask_buffer),
-        -:  349:            .priority = CAN_PPO2_TX_PRIORITY,
-        -:  350:            .tz_module = 0,
-        -:  351:            .reserved = 0};
-        -:  352:
-    #####:  353:        osThreadId_t *calTask = getOSThreadId();
-    #####:  354:        *calTask = osThreadNew(CalibrationTask, &calParams, &CalTask_attributes);
-        -:  355:    }
-    #####:  356:}
-        -:  357:
-        -:  358:#pragma endregion
-        -:  359:
-        -:  360:#pragma region Consensus
-        -:  361:
-        -:  362:/**
-        -:  363: * @brief Peek the given cell queue handles and calculate the consensus, cells that do not respond within 100ms are marked as failed.
-        -:  364: * @param cell1 Cell 1 queue handle
-        -:  365: * @param cell2 Cell 2 queue handle
-        -:  366: * @param cell3 Cell 3 queue handle
-        -:  367: * @return `Consenus_t` as calculated by `calculateConsensus` using the latest cell values
-        -:  368: */
-        1:  369:Consensus_t peekCellConsensus(QueueHandle_t cell1, QueueHandle_t cell2, QueueHandle_t cell3)
-        -:  370:{
-        -:  371:    /* First retreive the cell data */
-        1:  372:    OxygenCell_t c1 = {0};
-        1:  373:    bool c1pick = xQueuePeek(cell1, &c1, TIMEOUT_100MS_TICKS);
-        1:  374:    OxygenCell_t c2 = {0};
-        1:  375:    bool c2pick = xQueuePeek(cell2, &c2, TIMEOUT_100MS_TICKS);
-        1:  376:    OxygenCell_t c3 = {0};
-        1:  377:    bool c3pick = xQueuePeek(cell3, &c3, TIMEOUT_100MS_TICKS);
-        -:  378:
-        -:  379:    /* If the peek timed out then we mark the cell as failed going into the consensus calculation
-        -:  380:     and lodge the nonfatal error */
-        1:  381:    if (!c1pick)
-        -:  382:    {
-    #####:  383:        c1.status = CELL_FAIL;
-    #####:  384:        NON_FATAL_ERROR(TIMEOUT_ERR);
-        -:  385:    }
-        1:  386:    if (!c2pick)
-        -:  387:    {
-    #####:  388:        c2.status = CELL_FAIL;
-    #####:  389:        NON_FATAL_ERROR(TIMEOUT_ERR);
-        -:  390:    }
-        1:  391:    if (!c3pick)
-        -:  392:    {
-    #####:  393:        c3.status = CELL_FAIL;
-    #####:  394:        NON_FATAL_ERROR(TIMEOUT_ERR);
-        -:  395:    }
-        -:  396:
-        -:  397:    /* We calculate the consensus ourselves so we can make interpretations based on the cell confidence*/
-        1:  398:    return calculateConsensus(&c1, &c2, &c3);
-        -:  399:}
-        -:  400:
-        -:  401:static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
-        -:  402:
-        -:  403:/** @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
-        -:  404: *        In an all fail scenario we want that data to still be intact so we can still have our best guess
-        -:  405: * @param c1
-        -:  406: * @param c2
-        -:  407: * @param c3
-        -:  408: * @return
-        -:  409: */
-      127:  410:Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3)
-        -:  411:{
-        -:  412:    /* Zeroth step, load up the millis, status and PPO2
-        -:  413:     * We also load up the timestamps of each cell sample so that we can check the other tasks
-        -:  414:     * haven't been sitting idle and starved us of information
-        -:  415:     */
-      127:  416:    Timestamp_t sampleTimes[CELL_COUNT] = {
-      127:  417:        c1->dataTime,
-      127:  418:        c2->dataTime,
-      127:  419:        c3->dataTime};
-        -:  420:
-      127:  421:    const Timestamp_t timeout = TIMEOUT_4s_TICKS; /* 4000 millisecond timeout to avoid stale data */
-      127:  422:    Timestamp_t now = HAL_GetTick();
-        -:  423:
-      127:  424:    Consensus_t consensus = {
-        -:  425:        .statusArray = {
-      127:  426:            c1->status,
-      127:  427:            c2->status,
-      127:  428:            c3->status,
-        -:  429:        },
-        -:  430:        .ppo2Array = {
-      127:  431:            c1->ppo2,
-      127:  432:            c2->ppo2,
-      127:  433:            c3->ppo2,
-        -:  434:        },
-        -:  435:        .precisionPPO2Array = {
-      127:  436:            c1->precisionPPO2,
-      127:  437:            c2->precisionPPO2,
-      127:  438:            c3->precisionPPO2,
-        -:  439:        },
-        -:  440:        .milliArray = {
-      127:  441:            c1->millivolts,
-      127:  442:            c2->millivolts,
-      127:  443:            c3->millivolts,
-        -:  444:        },
-        -:  445:        .consensus = 0,
-        -:  446:        .precisionConsensus = 0,
-        -:  447:        .includeArray = {true, true, true}};
-        -:  448:
-        -:  449:    /* Do a two pass check, loop through the cells and average the "good" cells
-        -:  450:     * Then afterwards we check each cells value against the average, and exclude deviations
-        -:  451:     */
-      127:  452:    PIDNumeric_t PPO2_acc = 0; /* Start an accumulator to take an average, include the median cell always */
-      127:  453:    uint8_t includedCellCount = 0;
-        -:  454:
-      508:  455:    for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
-        -:  456:    {
-      381:  457:        if ((consensus.statusArray[cellIdx] == CELL_NEED_CAL) ||
-      363:  458:            (consensus.statusArray[cellIdx] == CELL_FAIL) ||
-      273:  459:            (consensus.statusArray[cellIdx] == CELL_DEGRADED) ||
-      255:  460:            ((now - sampleTimes[cellIdx]) > timeout))
-        -:  461:        {
-      144:  462:            consensus.includeArray[cellIdx] = false;
-        -:  463:        }
-        -:  464:        else
-        -:  465:        {
-      237:  466:            PPO2_acc += consensus.precisionPPO2Array[cellIdx];
-      237:  467:            ++includedCellCount;
-        -:  468:        }
-        -:  469:    }
-        -:  470:
-        -:  471:    /* Assert that we actually have cells that got included */
-      127:  472:    if (includedCellCount > 0)
-        -:  473:    {
-        -:  474:        /* Now second pass, check to see if any of the included cells are deviant from the average */
-      508:  475:        for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
-        -:  476:        {
-        -:  477:            /* We want to make sure the cell is actually included before we start checking it */
-      381:  478:            if ((includedCellCount > 0) &&
-      381:  479:                (consensus.includeArray[cellIdx]) &&
-      237:  480:                ((fabs((PPO2_acc / (PIDNumeric_t)includedCellCount) - consensus.precisionPPO2Array[cellIdx]) * 100.0f) > MAX_DEVIATION))
-        -:  481:            {
-        -:  482:                /* Removing cells in this way can result in a change in the outcome depending on
-        -:  483:                 * cell position, depending on exactly how split-brained the cells are, but
-        -:  484:                 * frankly if things are that cooked then we're borderline guessing anyway
-        -:  485:                 */
-       12:  486:                PPO2_acc -= consensus.precisionPPO2Array[cellIdx];
-       12:  487:                --includedCellCount;
-       12:  488:                consensus.includeArray[cellIdx] = false;
-        -:  489:            }
-        -:  490:        }
-        -:  491:    }
-        -:  492:
-      127:  493:    if (includedCellCount > 0)
-        -:  494:    {
-      127:  495:        consensus.precisionConsensus = (PPO2_acc / (PIDNumeric_t)includedCellCount);
-      127:  496:        PIDNumeric_t tempConsensus = consensus.precisionConsensus * 100.0f;
-     127*:  497:        assert(tempConsensus < 255.0f);
-      127:  498:        consensus.consensus = (PPO2_t)(tempConsensus);
-        -:  499:    }
-        -:  500:
-      127:  501:    return consensus;
-        -:  502:}
-        -:  503:
-        -:  504:/**
-        -:  505: * @brief Calculate the cell confidence out of 3, 3 means 3 voted-in cells, 2 means 2 voted-in cells, etc
-        -:  506: * @param consensus Consensus struct calculated from `calculateConsensus`
-        -:  507: * @return Cell confidence out of 3
-        -:  508: */
-    #####:  509:uint8_t cellConfidence(const Consensus_t *const consensus)
-        -:  510:{
-    #####:  511:    uint8_t confidence = 0;
-    #####:  512:    for (uint8_t i = 0; i < CELL_COUNT; ++i)
-        -:  513:    {
-    #####:  514:        if (consensus->includeArray[i])
-        -:  515:        {
-    #####:  516:            ++confidence;
-        -:  517:        }
-        -:  518:    }
-    #####:  519:    return confidence;
-        -:  520:}
-        -:  521:#pragma endregion
+    #####:  295:    serial_printf("Sending cal response %d\r\n", calResult);
+    #####:  296:    txCalResponse(calParams.deviceType, calResult, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressureVal);
+        -:  297:
+    #####:  298:    osThreadExit();
+    #####:  299:}
+        -:  300:
+        7:  301:static osThreadId_t *getOSThreadId(void)
+        -:  302:{
+        -:  303:    static osThreadId_t calTask;
+        7:  304:    return &calTask;
+        -:  305:}
+        -:  306:
+        7:  307:bool isCalibrating(void)
+        -:  308:{
+        7:  309:    osThreadId_t *calTask = getOSThreadId();
+      14*:  310:    return !((osThreadGetState(*calTask) == osThreadError) ||
+        7:  311:             (osThreadGetState(*calTask) == osThreadInactive) ||
+    #####:  312:             (osThreadGetState(*calTask) == osThreadTerminated));
+        -:  313:}
+        -:  314:
+        -:  315:/**
+        -:  316: * @brief Start a new task (one off) to execute a calibration, this will silently fail if a calibration is already being done (why are you trying to calibrate while you calibrate?)
+        -:  317: * @param deviceType DiveCAN device to send responses from
+        -:  318: * @param in_fO2 FO2 reported to us to use in the calibration
+        -:  319: * @param in_pressure_val ambient pressure to use in the calibration (millibar)
+        -:  320: * @param calMethod Calibration method to use for calibration
+        -:  321: */
+    #####:  322:void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod)
+        -:  323:{
+        -:  324:    static CalParameters_t calParams;
+        -:  325:
+    #####:  326:    calParams.fO2 = in_fO2;
+    #####:  327:    calParams.pressureVal = in_pressure_val;
+    #####:  328:    calParams.deviceType = deviceType;
+    #####:  329:    calParams.cell1 = 0;
+    #####:  330:    calParams.cell2 = 0;
+    #####:  331:    calParams.cell3 = 0;
+        -:  332:
+    #####:  333:    calParams.calMethod = calMethod;
+        -:  334:
+    #####:  335:    txCalAck(deviceType);
+        -:  336:
+        -:  337:    /*
+        -:  338:     Don't start the thread if we're already calibrating, shearwater double shots us sometimes */
+    #####:  339:    if (!isCalibrating())
+        -:  340:    {
+        -:  341:        static uint8_t CalTask_buffer[CALTASK_STACK_SIZE];
+        -:  342:        static StaticTask_t CalTask_ControlBlock;
+        -:  343:        static const osThreadAttr_t CalTask_attributes = {
+        -:  344:            .name = "CalTask",
+        -:  345:            .attr_bits = osThreadDetached,
+        -:  346:            .cb_mem = &CalTask_ControlBlock,
+        -:  347:            .cb_size = sizeof(CalTask_ControlBlock),
+        -:  348:            .stack_mem = &CalTask_buffer[0],
+        -:  349:            .stack_size = sizeof(CalTask_buffer),
+        -:  350:            .priority = CAN_PPO2_TX_PRIORITY,
+        -:  351:            .tz_module = 0,
+        -:  352:            .reserved = 0};
+        -:  353:
+    #####:  354:        osThreadId_t *calTask = getOSThreadId();
+    #####:  355:        *calTask = osThreadNew(CalibrationTask, &calParams, &CalTask_attributes);
+        -:  356:    }
+    #####:  357:}
+        -:  358:
+        -:  359:#pragma endregion
+        -:  360:
+        -:  361:#pragma region Consensus
+        -:  362:
+        -:  363:/**
+        -:  364: * @brief Peek the given cell queue handles and calculate the consensus, cells that do not respond within 100ms are marked as failed.
+        -:  365: * @param cell1 Cell 1 queue handle
+        -:  366: * @param cell2 Cell 2 queue handle
+        -:  367: * @param cell3 Cell 3 queue handle
+        -:  368: * @return `Consenus_t` as calculated by `calculateConsensus` using the latest cell values
+        -:  369: */
+        1:  370:Consensus_t peekCellConsensus(QueueHandle_t cell1, QueueHandle_t cell2, QueueHandle_t cell3)
+        -:  371:{
+        -:  372:    /* First retreive the cell data */
+        1:  373:    OxygenCell_t c1 = {0};
+        1:  374:    bool c1pick = xQueuePeek(cell1, &c1, TIMEOUT_100MS_TICKS);
+        1:  375:    OxygenCell_t c2 = {0};
+        1:  376:    bool c2pick = xQueuePeek(cell2, &c2, TIMEOUT_100MS_TICKS);
+        1:  377:    OxygenCell_t c3 = {0};
+        1:  378:    bool c3pick = xQueuePeek(cell3, &c3, TIMEOUT_100MS_TICKS);
+        -:  379:
+        -:  380:    /* If the peek timed out then we mark the cell as failed going into the consensus calculation
+        -:  381:     and lodge the nonfatal error */
+        1:  382:    if (!c1pick)
+        -:  383:    {
+    #####:  384:        c1.status = CELL_FAIL;
+    #####:  385:        NON_FATAL_ERROR(TIMEOUT_ERR);
+        -:  386:    }
+        1:  387:    if (!c2pick)
+        -:  388:    {
+    #####:  389:        c2.status = CELL_FAIL;
+    #####:  390:        NON_FATAL_ERROR(TIMEOUT_ERR);
+        -:  391:    }
+        1:  392:    if (!c3pick)
+        -:  393:    {
+    #####:  394:        c3.status = CELL_FAIL;
+    #####:  395:        NON_FATAL_ERROR(TIMEOUT_ERR);
+        -:  396:    }
+        -:  397:
+        -:  398:    /* We calculate the consensus ourselves so we can make interpretations based on the cell confidence*/
+        1:  399:    return calculateConsensus(&c1, &c2, &c3);
+        -:  400:}
+        -:  401:
+        -:  402:static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
+        -:  403:
+        -:  404:/** @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
+        -:  405: *        In an all fail scenario we want that data to still be intact so we can still have our best guess
+        -:  406: * @param c1
+        -:  407: * @param c2
+        -:  408: * @param c3
+        -:  409: * @return
+        -:  410: */
+      127:  411:Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3)
+        -:  412:{
+        -:  413:    /* Zeroth step, load up the millis, status and PPO2
+        -:  414:     * We also load up the timestamps of each cell sample so that we can check the other tasks
+        -:  415:     * haven't been sitting idle and starved us of information
+        -:  416:     */
+      127:  417:    Timestamp_t sampleTimes[CELL_COUNT] = {
+      127:  418:        c1->dataTime,
+      127:  419:        c2->dataTime,
+      127:  420:        c3->dataTime};
+        -:  421:
+      127:  422:    const Timestamp_t timeout = TIMEOUT_4s_TICKS; /* 4000 millisecond timeout to avoid stale data */
+      127:  423:    Timestamp_t now = HAL_GetTick();
+        -:  424:
+      127:  425:    Consensus_t consensus = {
+        -:  426:        .statusArray = {
+      127:  427:            c1->status,
+      127:  428:            c2->status,
+      127:  429:            c3->status,
+        -:  430:        },
+        -:  431:        .ppo2Array = {
+      127:  432:            c1->ppo2,
+      127:  433:            c2->ppo2,
+      127:  434:            c3->ppo2,
+        -:  435:        },
+        -:  436:        .precisionPPO2Array = {
+      127:  437:            c1->precisionPPO2,
+      127:  438:            c2->precisionPPO2,
+      127:  439:            c3->precisionPPO2,
+        -:  440:        },
+        -:  441:        .milliArray = {
+      127:  442:            c1->millivolts,
+      127:  443:            c2->millivolts,
+      127:  444:            c3->millivolts,
+        -:  445:        },
+        -:  446:        .consensus = 0,
+        -:  447:        .precisionConsensus = 0,
+        -:  448:        .includeArray = {true, true, true}};
+        -:  449:
+        -:  450:    /* Do a two pass check, loop through the cells and average the "good" cells
+        -:  451:     * Then afterwards we check each cells value against the average, and exclude deviations
+        -:  452:     */
+      127:  453:    PIDNumeric_t PPO2_acc = 0; /* Start an accumulator to take an average, include the median cell always */
+      127:  454:    uint8_t includedCellCount = 0;
+        -:  455:
+      508:  456:    for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
+        -:  457:    {
+      381:  458:        if ((consensus.statusArray[cellIdx] == CELL_NEED_CAL) ||
+      363:  459:            (consensus.statusArray[cellIdx] == CELL_FAIL) ||
+      273:  460:            (consensus.statusArray[cellIdx] == CELL_DEGRADED) ||
+      255:  461:            ((now - sampleTimes[cellIdx]) > timeout))
+        -:  462:        {
+      144:  463:            consensus.includeArray[cellIdx] = false;
+        -:  464:        }
+        -:  465:        else
+        -:  466:        {
+      237:  467:            PPO2_acc += consensus.precisionPPO2Array[cellIdx];
+      237:  468:            ++includedCellCount;
+        -:  469:        }
+        -:  470:    }
+        -:  471:
+        -:  472:    /* Assert that we actually have cells that got included */
+      127:  473:    if (includedCellCount > 0)
+        -:  474:    {
+        -:  475:        /* Now second pass, check to see if any of the included cells are deviant from the average */
+      508:  476:        for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
+        -:  477:        {
+        -:  478:            /* We want to make sure the cell is actually included before we start checking it */
+      381:  479:            if ((includedCellCount > 0) &&
+      381:  480:                (consensus.includeArray[cellIdx]) &&
+      237:  481:                ((fabs((PPO2_acc / (PIDNumeric_t)includedCellCount) - consensus.precisionPPO2Array[cellIdx]) * 100.0f) > MAX_DEVIATION))
+        -:  482:            {
+        -:  483:                /* Removing cells in this way can result in a change in the outcome depending on
+        -:  484:                 * cell position, depending on exactly how split-brained the cells are, but
+        -:  485:                 * frankly if things are that cooked then we're borderline guessing anyway
+        -:  486:                 */
+       12:  487:                PPO2_acc -= consensus.precisionPPO2Array[cellIdx];
+       12:  488:                --includedCellCount;
+       12:  489:                consensus.includeArray[cellIdx] = false;
+        -:  490:            }
+        -:  491:        }
+        -:  492:    }
+        -:  493:
+      127:  494:    if (includedCellCount > 0)
+        -:  495:    {
+      127:  496:        consensus.precisionConsensus = (PPO2_acc / (PIDNumeric_t)includedCellCount);
+      127:  497:        PIDNumeric_t tempConsensus = consensus.precisionConsensus * 100.0f;
+     127*:  498:        assert(tempConsensus < 255.0f);
+      127:  499:        consensus.consensus = (PPO2_t)(tempConsensus);
+        -:  500:    }
+        -:  501:
+      127:  502:    return consensus;
+        -:  503:}
+        -:  504:
+        -:  505:/**
+        -:  506: * @brief Calculate the cell confidence out of 3, 3 means 3 voted-in cells, 2 means 2 voted-in cells, etc
+        -:  507: * @param consensus Consensus struct calculated from `calculateConsensus`
+        -:  508: * @return Cell confidence out of 3
+        -:  509: */
+    #####:  510:uint8_t cellConfidence(const Consensus_t *const consensus)
+        -:  511:{
+    #####:  512:    uint8_t confidence = 0;
+    #####:  513:    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        -:  514:    {
+    #####:  515:        if (consensus->includeArray[i])
+        -:  516:        {
+    #####:  517:            ++confidence;
+        -:  518:        }
+        -:  519:    }
+    #####:  520:    return confidence;
+        -:  521:}
+        -:  522:#pragma endregion

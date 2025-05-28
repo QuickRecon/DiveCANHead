@@ -5,98 +5,96 @@
         -:    1:#include "hw_version.h"
         -:    2:#include "../errors.h"
         -:    3:
-        -:    4:/* TODO: This is highly testable it just needs doing*/
-        -:    5:
-        -:    6:/* Known Versions */
-        -:    7:const uint16_t REV_2_2 = (uint16_t)(HW_PIN_HI_Z | (HW_PIN_HI_Z << 2) | (HW_PIN_HI_Z << 4));
-        -:    8:const uint16_t REV_2_3 = (uint16_t)(HW_PIN_LOW | (HW_PIN_HI_Z << 2) | (HW_PIN_HI_Z << 4));
-        -:    9:const uint16_t JR = (uint16_t)(HW_PIN_LOW | (HW_PIN_LOW << 2) | (HW_PIN_HI_Z << 4));
-        -:   10:
-        -:   11:/* All the version detection pins lie on the same port (port C) so we can check just using the 32 bit pin number*/
-        -:   12:GPIO_TypeDef *const VERSION_DETECT_GPIO = GPIOC;
-        -:   13:
-        -:   14:/**
-        -:   15: * @brief Take a uin32t pin number (for GPIO port C), determine if the pin is pulled low, high, or high Z
-        -:   16: * @param pin Pin to detect
-        -:   17: * @return HW_PinState_t enum determining the state of the pin
-        -:   18: */
-       15:   19:HW_PinState_t getPinState(HW_DetectionPin_t pin)
-        -:   20:{
-        -:   21:    /* First pull the pin low and read it*/
-       15:   22:    GPIO_InitTypeDef GPIO_InitStruct = {0};
-       15:   23:    GPIO_InitStruct.Pin = pin;
-       15:   24:    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-       15:   25:    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-       15:   26:    HAL_GPIO_Init(VERSION_DETECT_GPIO, &GPIO_InitStruct);
+        -:    4:/* Known Versions */
+        -:    5:const uint16_t REV_2_2 = (uint16_t)(HW_PIN_HI_Z | (HW_PIN_HI_Z << 2) | (HW_PIN_HI_Z << 4));
+        -:    6:const uint16_t REV_2_3 = (uint16_t)(HW_PIN_LOW | (HW_PIN_HI_Z << 2) | (HW_PIN_HI_Z << 4));
+        -:    7:const uint16_t JR = (uint16_t)(HW_PIN_LOW | (HW_PIN_LOW << 2) | (HW_PIN_HI_Z << 4));
+        -:    8:
+        -:    9:/* All the version detection pins lie on the same port (port C) so we can check just using the 32 bit pin number*/
+        -:   10:GPIO_TypeDef *const VERSION_DETECT_GPIO = GPIOC;
+        -:   11:
+        -:   12:/**
+        -:   13: * @brief Take a uin32t pin number (for GPIO port C), determine if the pin is pulled low, high, or high Z
+        -:   14: * @param pin Pin to detect
+        -:   15: * @return HW_PinState_t enum determining the state of the pin
+        -:   16: */
+       15:   17:HW_PinState_t getPinState(HW_DetectionPin_t pin)
+        -:   18:{
+        -:   19:    /* First pull the pin low and read it*/
+       15:   20:    GPIO_InitTypeDef GPIO_InitStruct = {0};
+       15:   21:    GPIO_InitStruct.Pin = pin;
+       15:   22:    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+       15:   23:    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+       15:   24:    HAL_GPIO_Init(VERSION_DETECT_GPIO, &GPIO_InitStruct);
+        -:   25:
+       15:   26:    GPIO_PinState lowState = HAL_GPIO_ReadPin(VERSION_DETECT_GPIO, (uint16_t)pin);
         -:   27:
-       15:   28:    GPIO_PinState lowState = HAL_GPIO_ReadPin(VERSION_DETECT_GPIO, (uint16_t)pin);
-        -:   29:
-        -:   30:    /* Now pull high and and read it*/
-       15:   31:    GPIO_InitStruct.Pin = pin;
-       15:   32:    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-       15:   33:    GPIO_InitStruct.Pull = GPIO_PULLUP;
-       15:   34:    HAL_GPIO_Init(VERSION_DETECT_GPIO, &GPIO_InitStruct);
+        -:   28:    /* Now pull high and and read it*/
+       15:   29:    GPIO_InitStruct.Pin = pin;
+       15:   30:    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+       15:   31:    GPIO_InitStruct.Pull = GPIO_PULLUP;
+       15:   32:    HAL_GPIO_Init(VERSION_DETECT_GPIO, &GPIO_InitStruct);
+        -:   33:
+       15:   34:    GPIO_PinState highState = HAL_GPIO_ReadPin(VERSION_DETECT_GPIO, (uint16_t)pin);
         -:   35:
-       15:   36:    GPIO_PinState highState = HAL_GPIO_ReadPin(VERSION_DETECT_GPIO, (uint16_t)pin);
-        -:   37:
-        -:   38:    /* Return the pin to no-pull, not strictly necessary but its the init value and so minimizes stateful side effects*/
-       15:   39:    GPIO_InitStruct.Pin = pin;
-       15:   40:    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-       15:   41:    GPIO_InitStruct.Pull = GPIO_NOPULL;
-       15:   42:    HAL_GPIO_Init(VERSION_DETECT_GPIO, &GPIO_InitStruct);
-        -:   43:
-        -:   44:    /* If they're equal, then we're asserted either low or high, if its different then we know we're high impedance*/
-       15:   45:    HW_PinState_t ret = HW_PIN_INVAL;
-       15:   46:    if (lowState != highState)
-        -:   47:    {
-        7:   48:        ret = HW_PIN_HI_Z;
-        -:   49:    }
-        8:   50:    else if ((GPIO_PIN_RESET == lowState) && (GPIO_PIN_RESET == highState))
-        -:   51:    {
-        7:   52:        ret = HW_PIN_LOW;
-        -:   53:    }
-        1:   54:    else if ((GPIO_PIN_SET == lowState) && (GPIO_PIN_SET == highState))
-        -:   55:    {
-        1:   56:        ret = HW_PIN_HIGH;
-        -:   57:    }
-        -:   58:    else
-        -:   59:    {
-        -:   60:        /* Theoretically unreachable*/
-    #####:   61:        NON_FATAL_ERROR(UNREACHABLE_ERR);
-        -:   62:    }
-        -:   63:
-       15:   64:    return ret;
-        -:   65:}
-        -:   66:
-        -:   67:/**
-        -:   68: * @brief Determine the hardware version that we are running on, based on the values of the version resistor
-        -:   69: * @return the hardware version detected, HW_INVALID if the detection failed.
-        -:   70: */
-        4:   71:HW_Version_t get_hardware_version(void)
-        -:   72:{
-        -:   73:    /* Read the hardware pins */
-        4:   74:    HW_PinState_t pin1_val = getPinState(HW_VERSION_PIN_1);
-        4:   75:    HW_PinState_t pin2_val = getPinState(HW_VERSION_PIN_2);
-        4:   76:    HW_PinState_t pin3_val = getPinState(HW_VERSION_PIN_3);
+        -:   36:    /* Return the pin to no-pull, not strictly necessary but its the init value and so minimizes stateful side effects*/
+       15:   37:    GPIO_InitStruct.Pin = pin;
+       15:   38:    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+       15:   39:    GPIO_InitStruct.Pull = GPIO_NOPULL;
+       15:   40:    HAL_GPIO_Init(VERSION_DETECT_GPIO, &GPIO_InitStruct);
+        -:   41:
+        -:   42:    /* If they're equal, then we're asserted either low or high, if its different then we know we're high impedance*/
+       15:   43:    HW_PinState_t ret = HW_PIN_INVAL;
+       15:   44:    if (lowState != highState)
+        -:   45:    {
+        7:   46:        ret = HW_PIN_HI_Z;
+        -:   47:    }
+        8:   48:    else if ((GPIO_PIN_RESET == lowState) && (GPIO_PIN_RESET == highState))
+        -:   49:    {
+        7:   50:        ret = HW_PIN_LOW;
+        -:   51:    }
+        1:   52:    else if ((GPIO_PIN_SET == lowState) && (GPIO_PIN_SET == highState))
+        -:   53:    {
+        1:   54:        ret = HW_PIN_HIGH;
+        -:   55:    }
+        -:   56:    else
+        -:   57:    {
+        -:   58:        /* Theoretically unreachable*/
+    #####:   59:        NON_FATAL_ERROR(UNREACHABLE_ERR);
+        -:   60:    }
+        -:   61:
+       15:   62:    return ret;
+        -:   63:}
+        -:   64:
+        -:   65:/**
+        -:   66: * @brief Determine the hardware version that we are running on, based on the values of the version resistor
+        -:   67: * @return the hardware version detected, HW_INVALID if the detection failed.
+        -:   68: */
+        4:   69:HW_Version_t get_hardware_version(void)
+        -:   70:{
+        -:   71:    /* Read the hardware pins */
+        4:   72:    HW_PinState_t pin1_val = getPinState(HW_VERSION_PIN_1);
+        4:   73:    HW_PinState_t pin2_val = getPinState(HW_VERSION_PIN_2);
+        4:   74:    HW_PinState_t pin3_val = getPinState(HW_VERSION_PIN_3);
+        -:   75:
+        4:   76:    uint16_t detected_version = (uint16_t)(pin1_val | (pin2_val << 2) | (pin3_val << 4));
         -:   77:
-        4:   78:    uint16_t detected_version = (uint16_t)(pin1_val | (pin2_val << 2) | (pin3_val << 4));
-        -:   79:
-        4:   80:    HW_Version_t ret = HW_INVALID;
-        4:   81:    if (REV_2_2 == detected_version)
-        -:   82:    {
-        1:   83:        ret = HW_REV_2_2;
-        -:   84:    }
-        3:   85:    else if (REV_2_3 == detected_version)
-        -:   86:    {
-        1:   87:        ret = HW_REV_2_3;
-        -:   88:    }
-        2:   89:    else if (JR == detected_version)
-        -:   90:    {
-        1:   91:        ret = HW_JR;
-        -:   92:    }
-        -:   93:    else
-        -:   94:    {
-        1:   95:        ret = HW_INVALID;
-        -:   96:    }
-        4:   97:    return ret;
-        -:   98:}
+        4:   78:    HW_Version_t ret = HW_INVALID;
+        4:   79:    if (REV_2_2 == detected_version)
+        -:   80:    {
+        1:   81:        ret = HW_REV_2_2;
+        -:   82:    }
+        3:   83:    else if (REV_2_3 == detected_version)
+        -:   84:    {
+        1:   85:        ret = HW_REV_2_3;
+        -:   86:    }
+        2:   87:    else if (JR == detected_version)
+        -:   88:    {
+        1:   89:        ret = HW_JR;
+        -:   90:    }
+        -:   91:    else
+        -:   92:    {
+        1:   93:        ret = HW_INVALID;
+        -:   94:    }
+        4:   95:    return ret;
+        -:   96:}
