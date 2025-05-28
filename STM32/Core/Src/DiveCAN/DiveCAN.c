@@ -162,7 +162,7 @@ void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
         txID(devType, deviceSpec->manufacturerID, deviceSpec->firmwareVersion);
 
         ADCV_t supplyVoltage = getVoltage(SOURCE_DEFAULT);
-        DiveCANError_t err = DIVECAN_ERR_BATT_UNAVAIL; /* Default to no battery status */
+        DiveCANError_t err = DIVECAN_ERR_NONE;
         if (supplyVoltage < getThresholdVoltage(configuration->dischargeThresholdMode))
         {
             err = DIVECAN_ERR_LOW_BATTERY;

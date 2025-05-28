@@ -228,9 +228,7 @@ void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, c
     /* Only send the battery info if there aren't error */
     if (showBattery)
     {
-        errByte &= DIVECAN_ERR_BAT_AVAIL;
-    } else {
-        errByte &= DIVECAN_ERR_BATT_UNAVAIL;
+        errByte |= DIVECAN_ERR_BAT_AVAIL;
     }
     const DiveCANMessage_t message = {
         .id = BUS_STATUS_ID | deviceType,

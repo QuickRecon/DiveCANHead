@@ -108,9 +108,9 @@ extern "C"
     DIVECAN_ERR_LOW_BATTERY = 1 << 0,
 
     /**
-     * @brief An unknown error 2.
+     * @brief Battery information is valid and should be shown.
      */
-    DIVECAN_ERR_UNKNOWN2 = 1 << 1,
+    DIVECAN_ERR_BAT_AVAIL = 1 << 1,
 
     /**
      * @brief Error indicating a problem with the solenoid.
@@ -120,11 +120,7 @@ extern "C"
     /**
      * @brief Indicates there are no errors in the system.
      */
-    DIVECAN_ERR_BATT_UNAVAIL = 1 << 3,
-    /**
-     * @brief Battery information is valid and should be shown.
-     */
-    DIVECAN_ERR_BAT_AVAIL = 1 << 4,
+    DIVECAN_ERR_NONE = 1 << 3,
 
     /**
      * @brief An unknown error 4.
