@@ -236,21 +236,21 @@ ADCV_t sampleADC(uint32_t adcChannel, ADCV_t divider_ratio)
     sConfig.Offset = 0;
     if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
     {
-        NON_FATAL_ERROR(INT_ADC_ERROR);
+        NON_FATAL_ERROR(INT_ADC_ERR);
     }
 
     if (HAL_ADC_Start(&hadc1) != HAL_OK)
     {
-        NON_FATAL_ERROR(INT_ADC_ERROR);
+        NON_FATAL_ERROR(INT_ADC_ERR);
     }
     if (HAL_ADC_PollForConversion(&hadc1, TIMEOUT_1S_TICKS) != HAL_OK)
     {
-        NON_FATAL_ERROR(INT_ADC_ERROR);
+        NON_FATAL_ERROR(INT_ADC_ERR);
     }
     uint32_t ref = HAL_ADC_GetValue(&hadc1);
     if (HAL_ADC_Stop(&hadc1) != HAL_OK)
     {
-        NON_FATAL_ERROR(INT_ADC_ERROR);
+        NON_FATAL_ERROR(INT_ADC_ERR);
     }
 
     sConfig.Channel = adcChannel;
@@ -261,20 +261,20 @@ ADCV_t sampleADC(uint32_t adcChannel, ADCV_t divider_ratio)
     sConfig.Offset = 0;
     if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
     {
-        NON_FATAL_ERROR(INT_ADC_ERROR);
+        NON_FATAL_ERROR(INT_ADC_ERR);
     }
     if (HAL_ADC_Start(&hadc1) != HAL_OK)
     {
-        NON_FATAL_ERROR(INT_ADC_ERROR);
+        NON_FATAL_ERROR(INT_ADC_ERR);
     }
     if (HAL_ADC_PollForConversion(&hadc1, TIMEOUT_1S_TICKS) != HAL_OK)
     {
-        NON_FATAL_ERROR(INT_ADC_ERROR);
+        NON_FATAL_ERROR(INT_ADC_ERR);
     }
     uint32_t ADCSample = HAL_ADC_GetValue(&hadc1);
     if (HAL_ADC_Stop(&hadc1) != HAL_OK)
     {
-        NON_FATAL_ERROR(INT_ADC_ERROR);
+        NON_FATAL_ERROR(INT_ADC_ERR);
     }
 
     ADCV_t sourceVoltage = ((ADCV_t)ADCSample / ((ADCV_t)ref)) * 1.212f * divider_ratio * adc_correction_factor;

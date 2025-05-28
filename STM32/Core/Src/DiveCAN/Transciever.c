@@ -67,12 +67,12 @@ void BlockForCAN(void)
             /** Data is not available, but the later code is able to handle that,
              * This method mainly exists to rest for a convenient, event-based amount
              */
-            NON_FATAL_ERROR(TIMEOUT_ERROR);
+            NON_FATAL_ERROR(TIMEOUT_ERR);
         }
     }
     else
     {
-        NON_FATAL_ERROR(UNREACHABLE_ERROR);
+        NON_FATAL_ERROR(UNREACHABLE_ERR);
     }
 }
 
@@ -96,7 +96,7 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
 
     if (length > MAX_CAN_RX_LENGTH)
     {
-        NON_FATAL_ERROR_ISR(CAN_OVERFLOW);
+        NON_FATAL_ERROR_ISR(CAN_OVERFLOW_ERR);
     }
     else
     {
@@ -111,14 +111,14 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
         BaseType_t err = xQueueOverwriteFromISR(*dataAvail, &dataReady, NULL);
         if (pdPASS != err)
         {
-            NON_FATAL_ERROR_ISR(QUEUEING_ERROR);
+            NON_FATAL_ERROR_ISR(QUEUEING_ERR);
         }
 
         err = xQueueSendToBackFromISR(*inbound, &message, NULL);
         if (pdPASS != err)
         {
             /* err can only ever be 0 if we get here, means we couldn't enqueue*/
-            NON_FATAL_ERROR_ISR(QUEUEING_ERROR);
+            NON_FATAL_ERROR_ISR(QUEUEING_ERR);
         }
     }
 }
@@ -196,7 +196,7 @@ void txName(const DiveCANType_t deviceType, const char *const name)
     uint8_t data[BUS_NAME_LEN + 1] = {0};
     if (NULL == name)
     {
-        NON_FATAL_ERROR(NULL_PTR);
+        NON_FATAL_ERROR(NULL_PTR_ERR);
     }
     else
     {
@@ -362,7 +362,7 @@ void txMenuItem(const DiveCANType_t targetDeviceType, const DiveCANType_t device
     uint8_t strData[MENU_FIELD_LEN + 1] = {0};
     if (NULL == fieldText)
     {
-        NON_FATAL_ERROR(NULL_PTR);
+        NON_FATAL_ERROR(NULL_PTR_ERR);
     }
     else
     {
@@ -447,7 +447,7 @@ void txMenuField(const DiveCANType_t targetDeviceType, const DiveCANType_t devic
     uint8_t strData[MENU_FIELD_LEN + 1] = {0};
     if (NULL == fieldText)
     {
-        NON_FATAL_ERROR(NULL_PTR);
+        NON_FATAL_ERROR(NULL_PTR_ERR);
     }
     else
     {

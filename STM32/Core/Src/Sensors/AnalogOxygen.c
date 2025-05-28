@@ -16,7 +16,7 @@ static AnalogOxygenState_t *getCellState(uint8_t cellNum)
     AnalogOxygenState_t *cellState = NULL;
     if (cellNum >= CELL_COUNT)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
         cellState = &(analog_cellStates[0]); /* A safe fallback*/
     }
     else
@@ -42,7 +42,7 @@ AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueu
     AnalogOxygenState_t *handle = NULL;
     if (cell->cellNumber > CELL_3)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
     }
     else
     {
@@ -95,7 +95,7 @@ void ReadCalibration(AnalogOxygenState_t *handle)
 /* Calculate and write the eeprom*/
 ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
 {
-    *calError = ERR_NONE;
+    *calError = NONE_ERR;
     int16_t adcCounts = handle->lastCounts;
     /* Our coefficient is simply the float needed to make the current sample the current PPO2*/
     CalCoeff_t newCal = (CalCoeff_t)(PPO2) / ((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS);
@@ -146,7 +146,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     if ((ticks - ticksOfLastPPO2) > ANALOG_RESPONSE_TIMEOUT)
     { /* If we've taken longer than timeout, fail the cell*/
         handle->status = CELL_FAIL;
-        NON_FATAL_ERROR_DETAIL(TIMEOUT_ERROR, handle->cellNumber);
+        NON_FATAL_ERROR_DETAIL(TIMEOUT_ERR, handle->cellNumber);
     }
     else if (CELL_NEED_CAL != handle->status)
     {
@@ -177,7 +177,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
 
     if (pdFALSE == xQueueOverwrite(handle->outQueue, &cellData))
     {
-        NON_FATAL_ERROR(QUEUEING_ERROR);
+        NON_FATAL_ERROR(QUEUEING_ERR);
     }
 }
 
@@ -203,7 +203,7 @@ void analogProcessor(void *arg)
 
     if (pdFALSE == xQueueOverwrite(cell->outQueue, &cellData))
     {
-        NON_FATAL_ERROR(QUEUEING_ERROR);
+        NON_FATAL_ERROR(QUEUEING_ERR);
     }
 
     while (true)

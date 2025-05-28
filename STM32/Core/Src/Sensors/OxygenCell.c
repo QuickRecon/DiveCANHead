@@ -51,7 +51,7 @@ static QueueHandle_t *getQueueHandle(uint8_t cellNum)
     QueueHandle_t *queueHandle = NULL;
     if (cellNum >= CELL_COUNT)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
         queueHandle = &(cellQueues[0]); /* A safe fallback */
     }
     else
@@ -77,7 +77,7 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
     OxygenHandle_t *cellHandle = NULL;
     if (cellNum >= CELL_COUNT)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
         cellHandle = &(cells[0]); /* A safe fallback */
     }
     else
@@ -120,7 +120,7 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
         cell->cellHandle = O2S_InitCell(cell, *queueHandle);
         break;
     default:
-        NON_FATAL_ERROR(UNREACHABLE_ERROR);
+        NON_FATAL_ERROR(UNREACHABLE_ERR);
     }
     return *queueHandle;
 }
@@ -167,7 +167,7 @@ DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
     /* Now that we have the PPO2 we cal all the analog cells
      */
     ShortMillivolts_t cellVals[CELL_COUNT] = {0};
-    NonFatalError_t calErrors[CELL_COUNT] = {ERR_NONE, ERR_NONE, ERR_NONE};
+    NonFatalError_t calErrors[CELL_COUNT] = {NONE_ERR, NONE_ERR, NONE_ERR};
 
     serial_printf("Using PPO2 %u for cal\r\n", ppO2);
 
@@ -179,7 +179,7 @@ DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
             calibrateAnalogCell(&calPass, i, cell, ppO2, cellVals, calErrors);
         }
 
-        if (calErrors[i] != ERR_NONE)
+        if (calErrors[i] != NONE_ERR)
         {
             calPass = DIVECAN_CAL_FAIL_GEN;
         }
@@ -201,7 +201,7 @@ DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
  *
  * @param calParams Pointer to the CalParameters struct where the calibration results will be stored.
  * @return DiveCANCalResponse_t - Indicates the success or failure of the calibration process.
- * @see CalParameters_t, DiveO2State_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, ERR_NONE, Numeric_t, FO2_t, CELL_DIVEO2, CELL_ANALOG
+ * @see CalParameters_t, DiveO2State_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, NONE_ERR, Numeric_t, FO2_t, CELL_DIVEO2, CELL_ANALOG
  */
 DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
 {
@@ -231,7 +231,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
         /* Now that we have the PPO2 we cal all the analog cells
          */
         ShortMillivolts_t cellVals[CELL_COUNT] = {0};
-        NonFatalError_t calErrors[CELL_COUNT] = {ERR_NONE, ERR_NONE, ERR_NONE};
+        NonFatalError_t calErrors[CELL_COUNT] = {NONE_ERR, NONE_ERR, NONE_ERR};
 
         for (uint8_t i = 0; i < CELL_COUNT; ++i)
         {
@@ -241,7 +241,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
                 calibrateAnalogCell(&calPass, i, cell, ppO2, cellVals, calErrors);
             }
 
-            if (calErrors[i] != ERR_NONE)
+            if (calErrors[i] != NONE_ERR)
             {
                 calPass = DIVECAN_CAL_FAIL_GEN;
             }
@@ -258,7 +258,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
     else
     {
         /* We can't find a digital cell to cal with */
-        NON_FATAL_ERROR(CAL_METHOD_ERROR);
+        NON_FATAL_ERROR(CAL_METHOD_ERR);
         calPass = DIVECAN_CAL_FAIL_REJECTED;
     }
     return calPass;
@@ -285,11 +285,11 @@ void CalibrationTask(void *arg)
         break;
     case CAL_TOTAL_ABSOLUTE:
         calResult = DIVECAN_CAL_FAIL_REJECTED;
-        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
+        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD_ERR);
         break;
     default:
         calResult = DIVECAN_CAL_FAIL_REJECTED;
-        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD);
+        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD_ERR);
     }
 
     txCalResponse(calParams.deviceType, calResult, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressureVal);
@@ -381,17 +381,17 @@ Consensus_t peekCellConsensus(QueueHandle_t cell1, QueueHandle_t cell2, QueueHan
     if (!c1pick)
     {
         c1.status = CELL_FAIL;
-        NON_FATAL_ERROR(TIMEOUT_ERROR);
+        NON_FATAL_ERROR(TIMEOUT_ERR);
     }
     if (!c2pick)
     {
         c2.status = CELL_FAIL;
-        NON_FATAL_ERROR(TIMEOUT_ERROR);
+        NON_FATAL_ERROR(TIMEOUT_ERR);
     }
     if (!c3pick)
     {
         c3.status = CELL_FAIL;
-        NON_FATAL_ERROR(TIMEOUT_ERROR);
+        NON_FATAL_ERROR(TIMEOUT_ERR);
     }
 
     /* We calculate the consensus ourselves so we can make interpretations based on the cell confidence*/

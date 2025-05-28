@@ -49,7 +49,7 @@ static DiveO2State_t *getCellState(uint8_t cellNum)
     DiveO2State_t *cellState = NULL;
     if (cellNum >= CELL_COUNT)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
         cellState = &(digital_cellStates[0]); /* A safe fallback*/
     }
     else
@@ -67,7 +67,7 @@ DiveO2State_t *DiveO2_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
     DiveO2State_t *handle = NULL;
     if (cell->cellNumber > CELL_3)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER);
+        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
     }
     else
     {
@@ -89,7 +89,7 @@ DiveO2State_t *DiveO2_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
         }
         else
         {
-            NON_FATAL_ERROR(UNREACHABLE_ERROR);
+            NON_FATAL_ERROR(UNREACHABLE_ERR);
         }
 
         assert(NULL != handle->huart);
@@ -98,7 +98,7 @@ DiveO2State_t *DiveO2_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
         handle->huart->Init.BaudRate = BAUD_RATE;
         if (HAL_UART_Init(handle->huart) != HAL_OK)
         {
-            NON_FATAL_ERROR(UART_ERROR);
+            NON_FATAL_ERROR(UART_ERR);
         }
 
         /* Create a task for the decoder*/
@@ -135,11 +135,11 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
     { /* If we've taken longer than timeout, fail the cell, no lies here*/
         handle->status = CELL_FAIL;
 
-        NON_FATAL_ERROR(OUT_OF_DATE_ERROR);
+        NON_FATAL_ERROR(OUT_OF_DATE_ERR);
 
         if (HAL_OK != HAL_UART_Abort(handle->huart))
         { /* Abort so that we don't get stuck waiting for uart*/
-            NON_FATAL_ERROR(UART_ERROR);
+            NON_FATAL_ERROR(UART_ERR);
         }
 
         sendCellCommand(GET_DETAIL_COMMAND, handle);
@@ -173,7 +173,7 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
 
     if (pdFALSE == xQueueOverwrite(handle->outQueue, &cellData))
     {
-        NON_FATAL_ERROR(QUEUEING_ERROR);
+        NON_FATAL_ERROR(QUEUEING_ERR);
     }
 }
 
@@ -204,7 +204,7 @@ static CellStatus_t cellErrorCheck(const char *err_str)
     else if (errCode > 0)
     {
         /* Unknown error*/
-        NON_FATAL_ERROR_DETAIL(UNKNOWN_ERROR_ERROR, errCode);
+        NON_FATAL_ERROR_DETAIL(UNKNOWN_ERROR_ERR, errCode);
         status = CELL_FAIL;
     }
     else
@@ -232,7 +232,7 @@ static void decodeCellMessage(void *arg)
 
     if (pdFALSE == xQueueOverwrite(cell->outQueue, &cellData))
     {
-        NON_FATAL_ERROR(QUEUEING_ERROR);
+        NON_FATAL_ERROR(QUEUEING_ERR);
     }
 
     /* Do the wait for cell startup*/
@@ -316,7 +316,7 @@ static void decodeCellMessage(void *arg)
         }
         else
         {
-            NON_FATAL_ERROR(TIMEOUT_ERROR);
+            NON_FATAL_ERROR(TIMEOUT_ERR);
         }
         Digital_broadcastPPO2(cell);
         /* Sampling more than 10x per second is a bit excessive,
@@ -367,12 +367,12 @@ void DiveO2_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
             cell->ticksOfLastMessage = HAL_GetTick();
             if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsSet(cell->processor, 0x0001U)))
             {
-                NON_FATAL_ERROR_ISR(FLAG_ERROR);
+                NON_FATAL_ERROR_ISR(FLAG_ERR);
             }
         }
         else
         {
-            NON_FATAL_ERROR_ISR(INVALID_CELL_NUMBER); /* We couldn't find the cell to alert the thread*/
+            NON_FATAL_ERROR_ISR(INVALID_CELL_NUMBER_ERR); /* We couldn't find the cell to alert the thread*/
         }
     }
 }
@@ -381,7 +381,7 @@ static void sendCellCommand(const char *const commandStr, DiveO2State_t *cell)
 {
     if ((NULL == cell) || (NULL == commandStr))
     {
-        NON_FATAL_ERROR(NULL_PTR);
+        NON_FATAL_ERROR(NULL_PTR_ERR);
     }
     else
     {
@@ -401,12 +401,12 @@ static void sendCellCommand(const char *const commandStr, DiveO2State_t *cell)
             txStatus = HAL_UARTEx_ReceiveToIdle_IT(cell->huart, (uint8_t *)cell->lastMessage, DIVEO2_RX_BUFFER_LENGTH);
             if (HAL_OK != txStatus)
             {
-                NON_FATAL_ERROR_DETAIL(UART_ERROR, txStatus);
+                NON_FATAL_ERROR_DETAIL(UART_ERR, txStatus);
             }
         }
         else
         {
-            NON_FATAL_ERROR_DETAIL(UART_ERROR, txStatus);
+            NON_FATAL_ERROR_DETAIL(UART_ERR, txStatus);
         }
     }
 }

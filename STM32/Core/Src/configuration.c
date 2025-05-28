@@ -111,7 +111,7 @@ Configuration_t loadConfiguration(HW_Version_t hw_version)
     }
     else
     {
-        NON_FATAL_ERROR_ISR(CONFIG_ERROR); /* We need to use the isr call because that is blocking */
+        NON_FATAL_ERROR_ISR(CONFIG_ERR); /* We need to use the isr call because that is blocking */
         config = DEFAULT_CONFIGURATION;
     }
     return config;

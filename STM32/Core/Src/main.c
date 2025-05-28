@@ -631,15 +631,15 @@ static void MX_ADC1_Init(void)
 
   if (HAL_ADC_Stop(&hadc1) != HAL_OK)
   {
-    NON_FATAL_ERROR(CRITICAL_ERROR);
+    NON_FATAL_ERROR(CRITICAL_ERR);
   }
   if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK)
   {
-    NON_FATAL_ERROR(CRITICAL_ERROR);
+    NON_FATAL_ERROR(CRITICAL_ERR);
   }
   if (HAL_ADC_Start(&hadc1) != HAL_OK)
   {
-    NON_FATAL_ERROR(CRITICAL_ERROR);
+    NON_FATAL_ERROR(CRITICAL_ERR);
   }
   /* USER CODE END ADC1_Init 2 */
 }
@@ -1322,7 +1322,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  NON_FATAL_ERROR(CRITICAL_ERROR);
+  NON_FATAL_ERROR(CRITICAL_ERR);
   /* USER CODE END Error_Handler_Debug */
 }
 

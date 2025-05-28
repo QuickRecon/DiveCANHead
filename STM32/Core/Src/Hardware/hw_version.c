@@ -58,7 +58,7 @@ HW_PinState_t getPinState(HW_DetectionPin_t pin)
     else
     {
         /* Theoretically unreachable*/
-        NON_FATAL_ERROR(UNREACHABLE_ERROR);
+        NON_FATAL_ERROR(UNREACHABLE_ERR);
     }
 
     return ret;

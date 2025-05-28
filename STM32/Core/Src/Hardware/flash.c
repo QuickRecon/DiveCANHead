@@ -24,13 +24,13 @@ void initFlash(void)
     /* Set up flash erase */
     if (HAL_OK != HAL_FLASH_Unlock())
     {
-        NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+        NON_FATAL_ERROR(FLASH_LOCK_ERR);
     }
     else
     {
         if (EE_OK != EE_Init(EE_FORCED_ERASE))
         {
-            NON_FATAL_ERROR(EEPROM_ERROR);
+            NON_FATAL_ERROR(EEPROM_ERR);
         }
 
         /* Set up the option bytes */
@@ -99,12 +99,12 @@ void initFlash(void)
         /* Short circuit eval of conditions, only true if we try writing and fail*/
         if ((optionBytes.USERConfig != original_opt) && (HAL_OK != HAL_FLASHEx_OBProgram(&optionBytes)))
         {
-            NON_FATAL_ERROR(EEPROM_ERROR);
+            NON_FATAL_ERROR(EEPROM_ERR);
         }
 
         if (HAL_OK != HAL_FLASH_Lock())
         {
-            NON_FATAL_ERROR(FLASH_LOCK_ERROR);
+            NON_FATAL_ERROR(FLASH_LOCK_ERR);
         }
     }
 }

@@ -26,61 +26,61 @@ extern "C"
 
     typedef enum
     {
-        ERR_NONE = 0,
+        NONE_ERR = 0,
 
         /** @brief We weren't able to lock/unlock the flash **/
-        FLASH_LOCK_ERROR = 1,
+        FLASH_LOCK_ERR = 1,
 
         /** @brief We weren't able to read from our eeprom emulation **/
-        EEPROM_ERROR = 2,
+        EEPROM_ERR = 2,
 
         /** @brief The data we are looking at is out of date, subtly different to timeout **/
-        OUT_OF_DATE_ERROR = 3,
+        OUT_OF_DATE_ERR = 3,
 
         /** @brief We failed to undertake an I2C operation **/
-        I2C_BUS_ERROR = 4,
+        I2C_BUS_ERR = 4,
 
         /** @brief We failed to undertake an UART operation **/
-        UART_ERROR = 5,
+        UART_ERR = 5,
 
         /** @brief Check code that should be unreachable, if we got triggered here then something strange happened **/
-        UNREACHABLE_ERROR = 6,
+        UNREACHABLE_ERR = 6,
 
         /** @brief We had an error with the os flags, can be a timeout if the flag wasn't set in time **/
-        FLAG_ERROR = 7,
+        FLAG_ERR = 7,
 
         /** @brief Generic error, RTOS error handler got triggered **/
-        CRITICAL_ERROR = 8,
+        CRITICAL_ERR = 8,
 
         /** @brief What we were waiting for never came :( **/
-        TIMEOUT_ERROR = 9,
+        TIMEOUT_ERR = 9,
 
         /** @brief We weren't able to successfully lodge an element in the queue **/
-        QUEUEING_ERROR = 10,
+        QUEUEING_ERR = 10,
 
         /** @brief Inbound CAN message is longer than 8 bytes long **/
-        CAN_OVERFLOW = 11,
+        CAN_OVERFLOW_ERR = 11,
 
         /** @brief We couldn't add the can message to the outbound buffer **/
         CAN_TX_ERR = 12,
 
         /** @brief The configured calibration method is not defined (config corrupt?) **/
-        UNDEFINED_CAL_METHOD = 13,
+        UNDEFINED_CAL_METHOD_ERR = 13,
 
         /** @brief The configured calibration method cannot complete **/
-        CAL_METHOD_ERROR = 14,
+        CAL_METHOD_ERR = 14,
 
         /** @brief The calibration info we stored is not the calibration info that we got **/
         CAL_MISMATCH_ERR = 15,
 
         /** @brief The cell number can't be mapped to an input (too high?) **/
-        INVALID_CELL_NUMBER = 17,
+        INVALID_CELL_NUMBER_ERR = 17,
 
         /** @brief The adc input number can't be mapped to an input **/
-        INVALID_ADC_NUMBER = 19,
+        INVALID_ADC_NUMBER_ERR = 19,
 
         /** @brief A null pointer was passed to a function not designed to handle it **/
-        NULL_PTR = 20,
+        NULL_PTR_ERR = 20,
 
         /** @brief Logging quit due to an error in FATFS **/
         LOGGING_ERR = 21,
@@ -89,19 +89,19 @@ extern "C"
         MENU_ERR = 22,
 
         /** @brief Error occurred when trying to load the config **/
-        CONFIG_ERROR = 23,
+        CONFIG_ERR = 23,
 
         /** @brief Error occured when trying to read the internal ADC */
-        INT_ADC_ERROR = 24,
+        INT_ADC_ERR = 24,
 
         /** @brief We encountered an error we don't know how to handle */
-        UNKNOWN_ERROR_ERROR = 25,
+        UNKNOWN_ERROR_ERR = 25,
 
         /** @brief A cell has reported a value that we can't display */
         CELL_OVERRANGE_ERR = 26,
 
         /** @brief Filesystem error has occured */
-        FS_ERROR = 27,
+        FS_ERR = 27,
 
         /** @brief VBus is undervolted, cell readings are unreliable */
         VBUS_UNDER_VOLTAGE_ERR = 28,

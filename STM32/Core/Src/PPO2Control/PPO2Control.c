@@ -181,7 +181,7 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, b
     {
         /* Don't do anything, no PPO2 control requested */
     } else {
-        NON_FATAL_ERROR(UNREACHABLE_ERROR);
+        NON_FATAL_ERROR(UNREACHABLE_ERR);
     }
 }
 

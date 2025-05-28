@@ -140,18 +140,18 @@ void blocking_fs_log(const char *msg, uint32_t len)
         res = f_open(&LogFile, BlockingLogPath, FA_OPEN_APPEND | FA_WRITE);
         if (res != FR_OK)
         {
-            NON_FATAL_ERROR(FS_ERROR);
+            NON_FATAL_ERROR(FS_ERR);
         }
         uint32_t byteswritten = 0;
         res = f_write(&LogFile, msg, len, (void *)&byteswritten);
         if (res != FR_OK)
         {
-            NON_FATAL_ERROR(FS_ERROR);
+            NON_FATAL_ERROR(FS_ERR);
         }
         res = f_close(&LogFile);
         if (res != FR_OK)
         {
-            NON_FATAL_ERROR(FS_ERROR);
+            NON_FATAL_ERROR(FS_ERR);
         }
     }
 }

@@ -474,7 +474,7 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
     }
     else
     {
-        NON_FATAL_ERROR(NULL_PTR);
+        NON_FATAL_ERROR(NULL_PTR_ERR);
     }
 }
 

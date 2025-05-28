@@ -190,7 +190,7 @@ TEST(flash, SetCalibrationFlashLockFail)
         mock().expectNCalls(3, "HAL_FLASH_Lock");
         LockReturnCode = HAL_ERROR;
 
-        mock().expectNCalls(3, "NonFatalError").withParameter("error", FLASH_LOCK_ERROR);
+        mock().expectNCalls(3, "NonFatalError").withParameter("error", FLASH_LOCK_ERR);
         mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
         mock().expectNCalls(3, "__HAL_FLASH_CLEAR_FLAG");
         bool calOk = SetCalibration(i, calVal);
@@ -210,7 +210,7 @@ TEST(flash, SetCalibrationFlashUnlockFail)
 
         mock().expectNCalls(3, "HAL_FLASH_Unlock");
         mock().expectNCalls(3, "HAL_FLASH_Lock");
-        mock().expectOneCall("NonFatalError").withParameter("error", FLASH_LOCK_ERROR);
+        mock().expectOneCall("NonFatalError").withParameter("error", FLASH_LOCK_ERR);
 
         UnlockReturnCode = HAL_ERROR;
         mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
@@ -232,7 +232,7 @@ TEST(flash, SetCalibrationEEPROMFail)
 
         mock().expectNCalls(3, "HAL_FLASH_Unlock");
         mock().expectNCalls(3, "HAL_FLASH_Lock");
-        mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERROR);
+        mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERR);
 
         WriteReturnCode = EE_NO_DATA;
         mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
@@ -254,7 +254,7 @@ TEST(flash, SetCalibrationCleanupRequired)
 
         mock().expectNCalls(3, "HAL_FLASH_Unlock");
         mock().expectNCalls(3, "HAL_FLASH_Lock");
-        mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERROR);
+        mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERR);
 
         WriteReturnCode = EE_CLEANUP_REQUIRED;
         mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
@@ -270,14 +270,14 @@ TEST(flash, SetCalibrationCleanupRequired)
 TEST(flash, GetCalibrationInvalidCell)
 {
     CalCoeff_t calVal = 0;
-    mock().expectOneCall("NonFatalError").withParameter("error", INVALID_CELL_NUMBER);
+    mock().expectOneCall("NonFatalError").withParameter("error", INVALID_CELL_NUMBER_ERR);
     bool calOk = GetCalibration(3, &calVal);
     CHECK(calOk == false);
 }
 
 TEST(flash, GetCalibrationInvalidPtr)
 {
-    mock().expectOneCall("NonFatalError").withParameter("error", NULL_PTR);
+    mock().expectOneCall("NonFatalError").withParameter("error", NULL_PTR_ERR);
     bool calOk = GetCalibration(0, NULL);
     CHECK(calOk == false);
 }
@@ -316,7 +316,7 @@ TEST(flash, GetCalibrationUnknownErr)
         ReadData = 123 * 10000000;
 
         mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", cellAddresses[i]);
-        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERROR);
+        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
         ReadReturnCode = EE_NO_PAGE_FOUND; // An error we don't handle explictly
 
         bool calOk = GetCalibration(i, &calVal);
@@ -329,7 +329,7 @@ TEST(flash, GetCalibrationUnknownErr)
 TEST(flash, SetCalibrationInvalidCell)
 {
     CalCoeff_t calVal = 0;
-    mock().expectOneCall("NonFatalError").withParameter("error", INVALID_CELL_NUMBER);
+    mock().expectOneCall("NonFatalError").withParameter("error", INVALID_CELL_NUMBER_ERR);
     bool calOk = SetCalibration(3, calVal);
     CHECK(calOk == false);
 }
@@ -337,7 +337,7 @@ TEST(flash, SetCalibrationInvalidCell)
 // GetFatal
 TEST(flash, GetFatalErrInvalidPtr)
 {
-    mock().expectOneCall("NonFatalError").withParameter("error", NULL_PTR);
+    mock().expectOneCall("NonFatalError").withParameter("error", NULL_PTR_ERR);
     bool calOk = GetFatalError(NULL);
     CHECK(calOk == false);
 }
@@ -373,7 +373,7 @@ TEST(flash, GetFatalErrUnknownErr)
 
         ReadData = i;
         mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x04);
-        mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERROR);
+        mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERR);
         ReadReturnCode = EE_NO_PAGE_FOUND; // An error we don't handle explictly
 
         bool calOk = GetFatalError(&err);
@@ -385,9 +385,9 @@ TEST(flash, GetFatalErrUnknownErr)
 // GetNonFatal
 TEST(flash, GetNonFatalErrInvalidPtr)
 {
-    NonFatalError_t err = ERR_NONE;
+    NonFatalError_t err = NONE_ERR;
 
-    mock().expectOneCall("NonFatalError").withParameter("error", NULL_PTR);
+    mock().expectOneCall("NonFatalError").withParameter("error", NULL_PTR_ERR);
     bool calOk = GetNonFatalError(err, NULL);
     CHECK(calOk == false);
 }
@@ -424,7 +424,7 @@ TEST(flash, GetNonFatalErrUnknownErr)
 
         ReadData = 20;
         mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x05 + i);
-        mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERROR);
+        mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERR);
         ReadReturnCode = EE_NO_PAGE_FOUND; // An error we don't handle explictly
 
         uint32_t count = 0;
