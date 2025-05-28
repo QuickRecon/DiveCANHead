@@ -16,7 +16,7 @@ void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const
 void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration);
 void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
-void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration);
 void updatePIDPGain(const DiveCANMessage_t *const message);
 void updatePIDIGain(const DiveCANMessage_t *const message);
 void updatePIDDGain(const DiveCANMessage_t *const message);
@@ -107,7 +107,7 @@ void CANTask(void *arg)
                 break;
             case BUS_OFF_ID:
                 /* Turn off bus */
-                RespShutdown(&message, deviceSpec);
+                RespShutdown(&message, deviceSpec, configuration);
                 break;
             case BUS_NAME_ID:
             case BUS_MENU_OPEN_ID:
@@ -189,14 +189,14 @@ void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *)
     setAtmoPressure(pressure);
 }
 
-void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *)
+void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *, const Configuration_t *const configuration)
 {
     const uint8_t SHUTDOWN_ATTEMPTS = 20;
     for (uint8_t i = 0; i < SHUTDOWN_ATTEMPTS; ++i)
     {
         if (!getBusStatus())
         {
-            Shutdown();
+            Shutdown(configuration);
         }
         (void)osDelay(TIMEOUT_100MS_TICKS);
     }

@@ -1,6 +1,5 @@
 #pragma once
-
-#include "Hardware/pwr_management.h"
+#include "Hardware/power_modes.h"
 #include "Sensors/OxygenCell.h"
 #include "PPO2Control/PPO2Control.h"
 #include "Hardware/hw_version.h"

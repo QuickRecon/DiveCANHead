@@ -28,9 +28,11 @@ ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode)
     return V_THRESHOLD_MAP[thresholdMode];
 }
 
-/** @brief Go to our lowest power mode that we can be woken from by the DiveCAN bus
+/**
+ * @brief Go to our lowest power mode that we can be woken from by the DiveCAN bus
+ * @param config The device config, needed to ensure that we don't let the O2S cells go into analog standby mode, we can't get the input impedence above ~118kOhm and we need it above 150kOhm to get it to stay out of analog mode
  */
-void Shutdown(void)
+void Shutdown(const Configuration_t *const config)
 {
     /* Pull what we can high to try and get the current consumption down */
     HAL_PWREx_EnablePullUpPullDownConfig();
@@ -59,7 +61,12 @@ void Shutdown(void)
     /* CAN_EN: GPIO C Pin 13*/
     (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_13);
 
-    /* Float the UART pins (to stop O2S cells from going into analog mode) */
+    /* Float the UART pins to minimise loss to connected devices */
+    /* Deinit the UART to give control back to the GPIO registers */
+    (void)HAL_UART_DeInit(&huart1);
+    (void)HAL_UART_DeInit(&huart2);
+    (void)HAL_UART_DeInit(&huart3);
+
     /* USART 2 TX*/
     (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_2);
     (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_2);
@@ -80,6 +87,19 @@ void Shutdown(void)
     /* USART 3 RX*/
     (void)HAL_PWREx_DisableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_5);
     (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_5);
+
+    if(CELL_O2S == config->cell1){
+        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_2);
+        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_3);
+    }
+    if(CELL_O2S == config->cell2){
+        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_6);
+        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_7);
+    }
+    if(CELL_O2S == config->cell3){
+        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_4);
+        (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_5);
+    }
 
     /* Pull everything else down */
     (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_1);

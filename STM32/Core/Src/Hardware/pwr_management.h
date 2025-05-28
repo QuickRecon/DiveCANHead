@@ -2,6 +2,8 @@
 #include "main.h"
 #include "stdbool.h"
 #include "../common.h"
+#include "power_modes.h"
+#include "../configuration.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -14,23 +16,7 @@ extern "C"
         SOURCE_CAN
     } PowerSource_t;
 
-    typedef enum
-    {
-        MODE_BATTERY = 0,
-        MODE_BATTERY_THEN_CAN = 1,
-        MODE_CAN = 2,
-        MODE_OFF = 3
-    } PowerSelectMode_t;
-
-    typedef enum
-    {
-        V_THRESHOLD_9V = 0,
-        V_THRESHOLD_LI1S = 1,
-        V_THRESHOLD_LI2S = 2,
-        V_THRESHOLD_LI3S = 3,
-    } VoltageThreshold_t;
-
-    void Shutdown(void);
+    void Shutdown(const Configuration_t *const config);
     void SetVBusMode(PowerSelectMode_t powerMode);
     PowerSource_t GetVCCSource(void);
     PowerSource_t GetVBusSource(void);
