@@ -20,6 +20,7 @@ extern "C"
     } LogType_t;
 
     void InitLog(void);
+    void DeInitLog(void);
     void StartLogTask(void);
     void LogMsg(const char *msg);
     void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity);

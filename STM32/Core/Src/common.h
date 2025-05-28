@@ -87,9 +87,9 @@ extern "C"
 #define PPO2CONTROLTASK_STACK_SIZE 1300 /* 1128 by stack analysis, 1128 peak observed*/
 #define SOLENOIDFIRETASK_STACK_SIZE 1000 /* 360 by stack analysis, 500 peak observed*/
 #define CANTASK_STACK_SIZE 1500         /* 992 by static analysis, 976 peak observed */
-#define PPO2TXTASK_STACK_SIZE 1300       /* 784 bytes by static analysis, 1016 peak observed */
+#define PPO2TXTASK_STACK_SIZE 1500       /* 784 bytes by static analysis, 1016 peak observed */
 #define ADCTASK_STACK_SIZE 500          /* 424 by static analysis, 220 peak observed */
-#define CELL_PROCESSOR_STACK_SIZE 1300   /* 696 by static analysis, 1048 peak observed*/
+#define CELL_PROCESSOR_STACK_SIZE 1500   /* 696 by static analysis, 1048 peak observed*/
 #define CALTASK_STACK_SIZE 1300          /* Static analysis 696, 904 peak observed */
 #define PRINTER_STACK_SIZE 1300         /* Static analysis 1048, 980 peak observed */
 #define LOG_STACK_SIZE 2300             /* Static analysis 2264, 1584 peak observed*/

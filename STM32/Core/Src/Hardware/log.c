@@ -205,6 +205,7 @@ FRESULT RotateLogfiles(void)
     return res;
 }
 
+static bool shutdownLogTask = false;
 extern UART_HandleTypeDef huart2;
 void LogTask(void *) /* Yes this warns but it needs to be that way for matching the caller */
 {
@@ -227,7 +228,7 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
     }
 
     uint32_t lastSynced = HAL_GetTick();
-    while (FR_OK == res)
+    while ((FR_OK == res) && (!(shutdownLogTask && (osMessageQueueGetCount(*logQueue) == 0))))
     {
         LogQueue_t logItem = {0};
         /* Wait until there is an item in the queue, if there is then Log it*/
@@ -261,8 +262,20 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
             }
         }
     }
-
-    NON_FATAL_ERROR_DETAIL(LOGGING_ERR, res);
+    if (FR_OK != res)
+    {
+        NON_FATAL_ERROR_DETAIL(LOGGING_ERR, res);
+    }
+    else
+    {
+        for (size_t i = 0; i < LOGFILE_COUNT; ++i)
+        {
+            if (FR_OK != f_close(&(LOG_FILES[i])))
+            {
+                blocking_serial_printf("Failed to close %s", LOG_FILENAMES[i]);
+            }
+        }
+    }
     (void)vTaskDelete(NULL); /* Cleanly exit*/
 }
 
@@ -326,6 +339,16 @@ bool logRunning(void)
     return !((osThreadGetState(*logTask) == osThreadError) ||
              (osThreadGetState(*logTask) == osThreadInactive) ||
              (osThreadGetState(*logTask) == osThreadTerminated));
+}
+
+/* Flush the log to disk before powering down */
+void DeInitLog(void)
+{
+    shutdownLogTask = true; /* Stop the log task */
+    while (logRunning())
+    {
+        vTaskDelay(TIMEOUT_100MS_TICKS); /* Wait for the log task to finish */
+    }
 }
 
 void checkQueueStarvation(LogType_t eventType)
@@ -463,7 +486,13 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
                 dir_str = "rx";
             }
 
-            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,CAN,%s,%u,%#010lx,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x\r\n", timestamp, logMsgIndex, dir_str, message->length, message->id,
+            /* Get msg string */
+            const char* msg_str = "";
+            if(message->type != NULL){
+                msg_str = message->type;
+            }
+
+            uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,CAN,%s,%s,%u,%#010lx,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x,%#02x\r\n", timestamp, logMsgIndex, dir_str, msg_str, message->length, message->id,
                                                message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
             if (strLen > 0)
             {

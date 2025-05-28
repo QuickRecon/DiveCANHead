@@ -209,6 +209,8 @@ void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *, const Confi
     {
         if (!getBusStatus())
         {
+            serial_printf("Performing requested shutdown");
+            DeInitLog();
             Shutdown(configuration);
         }
         (void)osDelay(TIMEOUT_100MS_TICKS);

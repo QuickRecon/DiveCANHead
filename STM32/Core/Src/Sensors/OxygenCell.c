@@ -292,6 +292,7 @@ void CalibrationTask(void *arg)
         NON_FATAL_ERROR(UNDEFINED_CAL_METHOD_ERR);
     }
 
+    serial_printf("Sending cal response %d\r\n", calResult);
     txCalResponse(calParams.deviceType, calResult, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressureVal);
 
     osThreadExit();
