@@ -16,6 +16,9 @@ extern ADC_HandleTypeDef hadc1;
 
 extern CAN_HandleTypeDef hcan1;
 
+static const ADCV_t POWER_RESISTOR_DIVIDER = ((12.0f + 75.0f) / 12.0f);
+static const ADCV_t VBUS_RESISTOR_DIVIDER = ((10.0f + 100.0f) / 10.0f);
+
 ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode)
 {
     const ADCV_t V_THRESHOLD_MAP[4] = {
@@ -219,7 +222,7 @@ void SetBattery(bool enable)
     HAL_GPIO_WritePin(BATTERY_EN_GPIO_Port, BATTERY_EN_Pin, Pin);
 }
 
-ADCV_t sampleADC(uint32_t adcChannel)
+ADCV_t sampleADC(uint32_t adcChannel, ADCV_t divider_ratio)
 {
     const ADCV_t adc_correction_factor = 7.00f / 6.9257431f; /* This may vary board-to-board, but its like 1% so no worries */
 
@@ -274,18 +277,23 @@ ADCV_t sampleADC(uint32_t adcChannel)
         NON_FATAL_ERROR(INT_ADC_ERROR);
     }
 
-    ADCV_t sourceVoltage = ((ADCV_t)ADCSample / ((ADCV_t)ref)) * 1.212f * ((12.0f + 75.0f) / 12.0f) * adc_correction_factor;
+    ADCV_t sourceVoltage = ((ADCV_t)ADCSample / ((ADCV_t)ref)) * 1.212f * divider_ratio * adc_correction_factor;
     return sourceVoltage;
 }
 
 ADCV_t getCANVoltage(void)
 {
-    return sampleADC(ADC_CHANNEL_3);
+    return sampleADC(ADC_CHANNEL_3, POWER_RESISTOR_DIVIDER);
 }
 
 ADCV_t getBatteryVoltage(void)
 {
-    return sampleADC(ADC_CHANNEL_4);
+    return sampleADC(ADC_CHANNEL_4, POWER_RESISTOR_DIVIDER);
+}
+
+ADCV_t getVBusVoltage(void)
+{
+    return sampleADC(ADC_CHANNEL_5, VBUS_RESISTOR_DIVIDER);
 }
 
 ADCV_t getVoltage(PowerSource_t powerSource)

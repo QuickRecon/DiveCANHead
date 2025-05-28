@@ -24,6 +24,7 @@ extern "C"
     bool getBusStatus(void);
 
     ADCV_t getVoltage(PowerSource_t powerSource);
+    ADCV_t getVBusVoltage(void);
 
     ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode);
 

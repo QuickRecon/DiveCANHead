@@ -103,8 +103,11 @@ extern "C"
         /** @brief Filesystem error has occured */
         FS_ERROR = 27,
 
+        /** @brief VBus is undervolted, cell readings are unreliable */
+        VBUS_UNDER_VOLTAGE_ERR = 28,
+
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        NONFATAL_ERR_MAX = FS_ERROR
+        NONFATAL_ERR_MAX = VBUS_UNDER_VOLTAGE_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);
