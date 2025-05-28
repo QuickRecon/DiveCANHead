@@ -37,7 +37,7 @@ static const uint8_t PPO2_BASE = 10;
 static const uint16_t DIGITAL_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before the cell *definitely* isn't coming back to us*/
 
 /* Minimum allowed VBus voltage */
-static const ADCV_t VBUS_MIN_VOLTAGE = 3.29f; /* Volts, the minimum voltage we can run the cell at, below this we fail the cell*/
+static const ADCV_t VBUS_MIN_VOLTAGE = 3.25f; /* Volts, the minimum voltage we can run the cell at, below this we fail the cell*/
 
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
@@ -145,7 +145,7 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
         sendCellCommand(GET_DETAIL_COMMAND, handle);
     }
 
-    /* Check our vbus voltage to ensure we're above 3.29V*/
+    /* Check our vbus voltage to ensure we're above 3.25V*/
     ADCV_t vbusVoltage = getVBusVoltage();
     if(vbusVoltage < VBUS_MIN_VOLTAGE)
     {
