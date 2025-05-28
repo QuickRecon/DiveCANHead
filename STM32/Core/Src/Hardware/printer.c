@@ -133,7 +133,7 @@ void blocking_fs_log(const char *msg, uint32_t len)
 {
     uint32_t freeBytes = 0;
     FRESULT res = FR_OK; /* FatFs function common result code */
-    FATFS* ret = &SDFatFS;
+    FATFS *ret = &SDFatFS;
     if (FR_OK == f_getfree((TCHAR const *)SDPath, &freeBytes, &ret))
     {
         static FIL LogFile = {0};
@@ -178,7 +178,8 @@ void blocking_can_log(const char *msg, uint32_t len)
         const DiveCANMessage_t message = {
             .id = LOG_TEXT_ID,
             .data = {msgBuf[0], msgBuf[1], msgBuf[2], msgBuf[3], msgBuf[4], msgBuf[5], msgBuf[6], msgBuf[7]},
-            .length = bytesToWrite};
+            .length = bytesToWrite,
+            .type = "LOG_TEXT"};
 
         /* This isn't super time critical so if we're still waiting on stuff to tx then we can quite happily just wait */
         while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))

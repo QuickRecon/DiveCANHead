@@ -205,6 +205,37 @@ FRESULT RotateLogfiles(void)
     return res;
 }
 
+FRESULT openLogFiles(FIL *logFiles)
+{
+    FRESULT res = FR_OK; /* FatFs function common result code */
+    for (uint32_t i = 0; i < LOGFILE_COUNT; ++i)
+    {
+        if (FR_OK == res)
+        {
+            res = f_open(&(logFiles[i]), LOG_FILENAMES[i], FA_OPEN_APPEND | FA_WRITE);
+            if (res != FR_OK)
+            {
+                blocking_serial_printf("Failed to open %s", LOG_FILENAMES[i]);
+            }
+        }
+    }
+    return res;
+}
+
+FRESULT closeLogFiles(FIL *logFiles)
+{
+    FRESULT res = FR_OK; /* FatFs function common result code */
+    for (size_t i = 0; i < LOGFILE_COUNT; ++i)
+    {
+        res = f_close(&(logFiles[i]));
+        if (FR_OK != res)
+        {
+            blocking_serial_printf("Failed to close %s", LOG_FILENAMES[i]);
+        }
+    }
+    return res;
+}
+
 static bool shutdownLogTask = false;
 extern UART_HandleTypeDef huart2;
 void LogTask(void *) /* Yes this warns but it needs to be that way for matching the caller */
@@ -214,18 +245,7 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
     FRESULT res = FR_OK; /* FatFs function common result code */
 
     uint8_t currSyncFile = 0;
-
-    for (uint32_t i = 0; i < LOGFILE_COUNT; ++i)
-    {
-        if (FR_OK == res)
-        {
-            res = f_open(&(LOG_FILES[i]), LOG_FILENAMES[i], FA_OPEN_APPEND | FA_WRITE);
-            if (res != FR_OK)
-            {
-                blocking_serial_printf("Failed to open %s", LOG_FILENAMES[i]);
-            }
-        }
-    }
+    res = openLogFiles(LOG_FILES);
 
     uint32_t lastSynced = HAL_GetTick();
     while ((FR_OK == res) && (!(shutdownLogTask && (osMessageQueueGetCount(*logQueue) == 0))))
@@ -268,13 +288,7 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
     }
     else
     {
-        for (size_t i = 0; i < LOGFILE_COUNT; ++i)
-        {
-            if (FR_OK != f_close(&(LOG_FILES[i])))
-            {
-                blocking_serial_printf("Failed to close %s", LOG_FILENAMES[i]);
-            }
-        }
+        (void)closeLogFiles(LOG_FILES);
     }
     (void)vTaskDelete(NULL); /* Cleanly exit*/
 }
@@ -347,7 +361,7 @@ void DeInitLog(void)
     shutdownLogTask = true; /* Stop the log task */
     while (logRunning())
     {
-        vTaskDelay(TIMEOUT_100MS_TICKS); /* Wait for the log task to finish */
+        (void)vTaskDelay(TIMEOUT_100MS_TICKS); /* Wait for the log task to finish */
     }
 }
 
@@ -487,8 +501,9 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
             }
 
             /* Get msg string */
-            const char* msg_str = "";
-            if(message->type != NULL){
+            const char *msg_str = "";
+            if (message->type != NULL)
+            {
                 msg_str = message->type;
             }
 
