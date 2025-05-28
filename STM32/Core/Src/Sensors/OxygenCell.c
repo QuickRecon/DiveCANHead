@@ -418,7 +418,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         c2->dataTime,
         c3->dataTime};
 
-    const Timestamp_t timeout = 1000; /* 1000 millisecond timeout to avoid stale data */
+    const Timestamp_t timeout = TIMEOUT_4s_TICKS; /* 4000 millisecond timeout to avoid stale data */
     Timestamp_t now = HAL_GetTick();
 
     Consensus_t consensus = {
