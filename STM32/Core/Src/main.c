@@ -252,6 +252,16 @@ const char *reset_cause_get_name(reset_cause_t reset_cause)
   return reset_cause_name;
 }
 
+uint32_t getLastFatalError(void)
+{
+  FatalError_t err = NONE_FERR;
+  if (!GetFatalError(&err))
+  {
+    NON_FATAL_ERROR(EEPROM_ERR);
+  }
+  return (uint32_t)err;
+}
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -385,6 +395,7 @@ int main(void)
 
   InitPrinter(deviceConfig.enableUartPrinting && deviceConfig.extendedMessages);
   serial_printf("Booting, Last Reset Reason (%s)\r\n", reset_cause_get_name(reset_cause));
+  serial_printf("Last fatal error: %d\r\n", getLastFatalError());
   serial_printf("Configuration: 0x%lx\r\n", getConfigBytes(&deviceConfig));
 
   /* Set our power bus */
