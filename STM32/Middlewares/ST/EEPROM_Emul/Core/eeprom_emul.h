@@ -40,9 +40,6 @@
  * @{
  */
 
-#define XSTR(x) STR(x)
-#define STR(x) #x
-
 /* Page definitions */
 #define PAGE_SIZE FLASH_PAGE_SIZE                                                  /*!< Page size */
 #define PAGE_HEADER_SIZE EE_ELEMENT_SIZE * 4U                                      /*!< Page Header is 4 elements to save page state */
@@ -55,7 +52,6 @@
 
 /* No page define */
 #define EE_NO_PAGE_FOUND ((uint32_t)0xFFFFFFFFU)
-#pragma message "The value of ENDEEPROMADDRESS: " XSTR(END_EEPROM_ADDRESS)
 /**
  * @}
  */
