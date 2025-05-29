@@ -97,7 +97,7 @@ extern "C"
     void CalibrationTask(void *arg);
     DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams);
     DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams);
-#endif // TESTING
+#endif
 
 #ifdef __cplusplus
 }

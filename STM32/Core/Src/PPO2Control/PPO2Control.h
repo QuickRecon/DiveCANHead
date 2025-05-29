@@ -48,7 +48,6 @@ extern "C"
     void setIntegralGain(PIDNumeric_t gain);
     void setDerivativeGain(PIDNumeric_t gain);
 
-    // Expose for testing only
 #ifdef TESTING
     PIDNumeric_t updatePID(PIDNumeric_t d_setpoint, PIDNumeric_t measurement, PIDState_t *state);
 #endif
