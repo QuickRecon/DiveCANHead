@@ -319,6 +319,7 @@ bool GetConfiguration(Configuration_t *const config)
     if (NULL == config)
     {
         LogMsg("GetCalibration: EEPROM Null config");
+        configOK = false;
     }
     else
     {
@@ -349,6 +350,7 @@ bool SetConfiguration(const Configuration_t *const config)
     if (NULL == config)
     {
         LogMsg("SetCalibration: EEPROM Null config");
+        writeOk = false;
     }
     else
     {

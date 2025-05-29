@@ -434,3 +434,99 @@ TEST(flash, GetNonFatalErrUnknownErr)
         CHECK(count == 20);
     }
 }
+
+TEST(flash, GetConfiguration)
+{
+    Configuration_t config = {0};
+    uint32_t expectedConfigBits = 0x12345678;
+
+    ReadData = expectedConfigBits;
+    mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x06);
+
+    bool configOk = GetConfiguration(&config);
+
+    CHECK(configOk == true);
+    CHECK(getConfigBytes(&config) == expectedConfigBits);
+}
+
+TEST(flash, GetConfigurationNullPtr)
+{
+    mock().expectOneCall("NonFatalError").withParameter("error", NULL_PTR_ERR);
+    bool configOk = GetConfiguration(NULL);
+    CHECK(configOk == false);
+}
+
+TEST(flash, GetConfigurationNoData)
+{
+    Configuration_t config = {0};
+    ReadData = 0;
+    ReadReturnCode = EE_NO_DATA;
+
+    // If no data, we'll try to write the default configuration
+    mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x06);
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("HAL_FLASH_Lock");
+    mock().expectOneCall("EE_WriteVariable32bits")
+        .withParameter("VirtAddress", 0x06)
+        .withParameter("Data", getConfigBytes(&DEFAULT_CONFIGURATION));
+    mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
+
+    bool configOk = GetConfiguration(&config);
+    CHECK(configOk == false);
+}
+
+TEST(flash, GetConfigurationError)
+{
+    Configuration_t config = {0};
+    ReadData = 0;
+    ReadReturnCode = EE_NO_PAGE_FOUND;
+
+    mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x06);
+    mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERR);
+
+    bool configOk = GetConfiguration(&config);
+    CHECK(configOk == false);
+}
+
+TEST(flash, SetConfiguration)
+{
+    Configuration_t testConfig = {0};
+    uint32_t expectedConfigBits = 0x12345678;
+    testConfig = setConfigBytes(expectedConfigBits);
+
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("HAL_FLASH_Lock");
+    mock().expectOneCall("EE_WriteVariable32bits")
+        .withParameter("VirtAddress", 0x06)
+        .withParameter("Data", expectedConfigBits);
+    mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
+
+    bool writeOk = SetConfiguration(&testConfig);
+    CHECK(writeOk == true);
+}
+
+TEST(flash, SetConfigurationNullPtr)
+{
+    mock().expectOneCall("NonFatalError").withParameter("error", NULL_PTR_ERR);
+    bool writeOk = SetConfiguration(NULL);
+    CHECK(writeOk == false);
+}
+
+TEST(flash, SetConfigurationWriteError)
+{
+    Configuration_t testConfig = {0};
+    uint32_t expectedConfigBits = 0x12345678;
+    testConfig = setConfigBytes(expectedConfigBits);
+    WriteReturnCode = EE_NO_PAGE_FOUND;
+
+    mock().expectNCalls(3, "HAL_FLASH_Unlock");
+    mock().expectNCalls(3,"HAL_FLASH_Lock");
+    mock().expectNCalls(3,"EE_WriteVariable32bits")
+        .withParameter("VirtAddress", 0x06)
+        .withParameter("Data", expectedConfigBits);
+    mock().expectNCalls(3,"__HAL_FLASH_CLEAR_FLAG");
+    mock().expectNCalls(3,"NonFatalError").withParameter("error", EEPROM_ERR);
+
+    bool writeOk = SetConfiguration(&testConfig);
+    CHECK(writeOk == false);
+}
