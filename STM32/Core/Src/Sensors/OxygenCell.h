@@ -63,6 +63,27 @@ extern "C"
         bool includeArray[3];
     } Consensus_t;
 
+    /** @struct CalParameters_s
+     *  @brief Contains calibration parameters for an oxygen sensor.
+     *
+     *  The `deviceType` field specifies the type of device being used, while the
+     *  `fO2`, `pressureVal`, and `calMethod` fields specify the FO2 value,
+     *  pressure value, and calibration method to be used. The remaining fields
+     *  are for individual cell parameters.
+     */
+    typedef struct
+    {
+        DiveCANType_t deviceType;
+        FO2_t fO2;
+        uint16_t pressureVal;
+
+        ShortMillivolts_t cell1;
+        ShortMillivolts_t cell2;
+        ShortMillivolts_t cell3;
+
+        OxygenCalMethod_t calMethod;
+    } CalParameters_t;
+
     QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);
 
     bool isCalibrating(void);
@@ -71,6 +92,13 @@ extern "C"
     Consensus_t peekCellConsensus(QueueHandle_t cell1, QueueHandle_t cell2, QueueHandle_t cell3);
     Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3);
     uint8_t cellConfidence(const Consensus_t *const consensus);
+
+#ifdef TESTING
+    void CalibrationTask(void *arg);
+    DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams);
+    DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams);
+#endif // TESTING
+
 #ifdef __cplusplus
 }
 #endif

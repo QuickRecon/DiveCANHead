@@ -116,9 +116,31 @@ void initFlash(void)
     }
     else
     {
-        if (EE_OK != EE_Init(EE_FORCED_ERASE))
+        __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_PROGERR | FLASH_FLAG_WRPERR |
+                               FLASH_FLAG_PGAERR | FLASH_FLAG_SIZERR | FLASH_FLAG_PGSERR | FLASH_FLAG_MISERR | FLASH_FLAG_FASTERR |
+                               FLASH_FLAG_RDERR | FLASH_FLAG_OPTVERR);
+        volatile EE_Status eePromStatus = EE_Init(EE_FORCED_ERASE);
+        if (EE_WRITE_ERROR == eePromStatus)
         {
-            NON_FATAL_ERROR(EEPROM_ERR);
+            NON_FATAL_ERROR_DETAIL(EEPROM_ERR, eePromStatus);
+            LogMsg("EEPROM Corrupt, erasing");
+            __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_PROGERR | FLASH_FLAG_WRPERR |
+                                   FLASH_FLAG_PGAERR | FLASH_FLAG_SIZERR | FLASH_FLAG_PGSERR | FLASH_FLAG_MISERR | FLASH_FLAG_FASTERR |
+                                   FLASH_FLAG_RDERR | FLASH_FLAG_OPTVERR);
+            eePromStatus = EE_Format(EE_FORCED_ERASE);
+            if (EE_OK != eePromStatus)
+            {
+                NON_FATAL_ERROR_DETAIL(EEPROM_ERR, eePromStatus);
+            }
+            else
+            {
+                eePromStatus = EE_Init(EE_FORCED_ERASE);
+            }
+        }
+
+        if (EE_OK != eePromStatus)
+        {
+            NON_FATAL_ERROR_DETAIL(EEPROM_ERR, eePromStatus);
         }
 
         if (HAL_OK != HAL_FLASH_Lock())

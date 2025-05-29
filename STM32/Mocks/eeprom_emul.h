@@ -53,7 +53,7 @@ extern "C"
 
     EE_Status EE_Init(EE_Erase_type EraseType);
     EE_Status EE_ReadVariable32bits(uint16_t VirtAddress, uint32_t *pData);
-
+    EE_Status EE_Format(EE_Erase_type EraseType);
     EE_Status EE_WriteVariable32bits(uint16_t VirtAddress, uint32_t Data);
 
     EE_Status EE_CleanUp(void);

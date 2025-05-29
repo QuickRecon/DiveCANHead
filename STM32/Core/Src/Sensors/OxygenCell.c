@@ -14,27 +14,6 @@
 #include "../Hardware/printer.h"
 #include "assert.h"
 
-/** @struct CalParameters_s
- *  @brief Contains calibration parameters for an oxygen sensor.
- *
- *  The `deviceType` field specifies the type of device being used, while the
- *  `fO2`, `pressureVal`, and `calMethod` fields specify the FO2 value,
- *  pressure value, and calibration method to be used. The remaining fields
- *  are for individual cell parameters.
- */
-typedef struct
-{
-    DiveCANType_t deviceType;
-    FO2_t fO2;
-    uint16_t pressureVal;
-
-    ShortMillivolts_t cell1;
-    ShortMillivolts_t cell2;
-    ShortMillivolts_t cell3;
-
-    OxygenCalMethod_t calMethod;
-} CalParameters_t;
-
 /** @fn getQueueHandle
  *  @brief Returns a pointer to the queue handle for a given oxygen cell.
  *

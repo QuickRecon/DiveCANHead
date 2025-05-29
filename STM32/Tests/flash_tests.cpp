@@ -74,6 +74,13 @@ extern "C"
         mock().actualCall("HAL_FLASHEx_OBProgram");
         return OBProgramReturnCode;
     }
+
+    EE_Status eeFormatReturnCode = EE_OK;
+    EE_Status EE_Format(EE_Erase_type EraseType)
+    {
+        mock().actualCall("EE_Format");
+        return eeInitReturnCode;
+    }
 }
 
 TEST_GROUP(flash){
@@ -627,6 +634,7 @@ TEST(flash, InitFlash_Success)
     MockOptionBytes = 0; // Force option bytes update
 
     // Initial unlock for EE_Init
+    mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("EE_Init");
     mock().expectOneCall("HAL_FLASH_Lock");
@@ -655,9 +663,10 @@ TEST(flash, InitFlash_EEInitFail)
     UnlockReturnCode = HAL_OK;
     eeInitReturnCode = EE_NO_PAGE_FOUND;
 
+    mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("EE_Init");
-    mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
     mock().expectOneCall("HAL_FLASH_Lock");
 
     // Still try to set option bytes
@@ -674,6 +683,7 @@ TEST(flash, InitFlash_LockFailAfterInit)
     UnlockReturnCode = HAL_OK;
     LockReturnCode = HAL_ERROR;
 
+    mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("EE_Init");
     mock().expectOneCall("HAL_FLASH_Lock");
