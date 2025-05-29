@@ -14,10 +14,10 @@ Creating 'OxygenCell.c.gcov'
 
 Lines executed:30.35% of 201
 File '/home/aren/DiveCANHeadRev2/STM32/Core/Src/Hardware/flash.c'
-Lines executed:61.60% of 125
+Lines executed:100.00% of 134
 Creating 'flash.c.gcov'
 
-Lines executed:61.60% of 125
+Lines executed:100.00% of 134
 File '/home/aren/DiveCANHeadRev2/STM32/Core/Src/Hardware/hw_version.c'
 Lines executed:97.44% of 39
 Creating 'hw_version.c.gcov'

@@ -9,6 +9,10 @@ extern "C"
 {
 #endif
     void initFlash(void);
+#ifdef TESTING
+    void setOptionBytes(void);
+    uint32_t set_bit(uint32_t number, uint32_t n, bool x);
+#endif
 
     bool GetCalibration(uint8_t cellNumber, CalCoeff_t *calCoeff);
     bool SetCalibration(uint8_t cellNumber, CalCoeff_t calCoeff);

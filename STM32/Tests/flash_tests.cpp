@@ -53,15 +53,39 @@ extern "C"
     {
         // Do Nothing
     }
+
+    EE_Status eeInitReturnCode = EE_OK;
+    EE_Status EE_Init(EE_Erase_type EraseType)
+    {
+        mock().actualCall("EE_Init");
+        return eeInitReturnCode;
+    }
+
+    uint32_t MockOptionBytes = 0;
+    void HAL_FLASHEx_OBGetConfig(FLASH_OBProgramInitTypeDef *pOBInit)
+    {
+        mock().actualCall("HAL_FLASHEx_OBGetConfig");
+        pOBInit->USERConfig = MockOptionBytes;
+    }
+
+    static HAL_StatusTypeDef OBProgramReturnCode = HAL_OK;
+    HAL_StatusTypeDef HAL_FLASHEx_OBProgram(FLASH_OBProgramInitTypeDef *pOBInit)
+    {
+        mock().actualCall("HAL_FLASHEx_OBProgram");
+        return OBProgramReturnCode;
+    }
 }
 
 TEST_GROUP(flash){
     void setup(){
         ReadReturnCode = EE_OK;
-UnlockReturnCode = HAL_OK;
-LockReturnCode = HAL_OK;
-WriteReturnCode = EE_OK;
-ReadData = 0;
+        UnlockReturnCode = HAL_OK;
+        LockReturnCode = HAL_OK;
+        WriteReturnCode = EE_OK;
+        OBProgramReturnCode = HAL_OK;
+        MockOptionBytes = 0;
+        eeInitReturnCode = EE_OK;
+        ReadData = 0;
 // Init stuff
 }
 
@@ -466,9 +490,7 @@ TEST(flash, GetConfigurationNoData)
     mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x06);
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("HAL_FLASH_Lock");
-    mock().expectOneCall("EE_WriteVariable32bits")
-        .withParameter("VirtAddress", 0x06)
-        .withParameter("Data", getConfigBytes(&DEFAULT_CONFIGURATION));
+    mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", 0x06).withParameter("Data", getConfigBytes(&DEFAULT_CONFIGURATION));
     mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
 
     bool configOk = GetConfiguration(&config);
@@ -496,9 +518,7 @@ TEST(flash, SetConfiguration)
 
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("HAL_FLASH_Lock");
-    mock().expectOneCall("EE_WriteVariable32bits")
-        .withParameter("VirtAddress", 0x06)
-        .withParameter("Data", expectedConfigBits);
+    mock().expectOneCall("EE_WriteVariable32bits").withParameter("VirtAddress", 0x06).withParameter("Data", expectedConfigBits);
     mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
 
     bool writeOk = SetConfiguration(&testConfig);
@@ -520,13 +540,224 @@ TEST(flash, SetConfigurationWriteError)
     WriteReturnCode = EE_NO_PAGE_FOUND;
 
     mock().expectNCalls(3, "HAL_FLASH_Unlock");
-    mock().expectNCalls(3,"HAL_FLASH_Lock");
-    mock().expectNCalls(3,"EE_WriteVariable32bits")
-        .withParameter("VirtAddress", 0x06)
-        .withParameter("Data", expectedConfigBits);
-    mock().expectNCalls(3,"__HAL_FLASH_CLEAR_FLAG");
-    mock().expectNCalls(3,"NonFatalError").withParameter("error", EEPROM_ERR);
+    mock().expectNCalls(3, "HAL_FLASH_Lock");
+    mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", 0x06).withParameter("Data", expectedConfigBits);
+    mock().expectNCalls(3, "__HAL_FLASH_CLEAR_FLAG");
+    mock().expectNCalls(3, "NonFatalError").withParameter("error", EEPROM_ERR);
 
     bool writeOk = SetConfiguration(&testConfig);
     CHECK(writeOk == false);
+}
+
+TEST(flash, SetOptionBytes_UnlockFail)
+{
+    UnlockReturnCode = HAL_ERROR;
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("NonFatalError").withParameter("error", FLASH_LOCK_ERR);
+
+    setOptionBytes();
+}
+
+TEST(flash, SetOptionBytes_NoChange)
+{
+    UnlockReturnCode = HAL_OK;
+
+    // Set mock option bytes to match what setOptionBytes will configure
+    MockOptionBytes = 227440255;
+
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
+    mock().expectOneCall("HAL_FLASH_Lock");
+
+    setOptionBytes();
+}
+
+TEST(flash, SetOptionBytes_WithChanges)
+{
+    UnlockReturnCode = HAL_OK;
+    LockReturnCode = HAL_OK;
+    // Set mock option bytes to something different than what setOptionBytes will configure
+    MockOptionBytes = 0;
+
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
+    mock().expectOneCall("HAL_FLASHEx_OBProgram");
+    mock().expectOneCall("HAL_FLASH_Lock");
+
+    setOptionBytes();
+}
+
+TEST(flash, SetOptionBytes_ProgramFail)
+{
+    UnlockReturnCode = HAL_OK;
+    LockReturnCode = HAL_OK;
+    MockOptionBytes = 0;
+    OBProgramReturnCode = HAL_ERROR;
+
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
+    mock().expectOneCall("HAL_FLASHEx_OBProgram");
+    mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERR);
+    mock().expectOneCall("HAL_FLASH_Lock");
+
+    setOptionBytes();
+}
+
+TEST(flash, SetOptionBytes_LockFail)
+{
+    UnlockReturnCode = HAL_OK;
+    LockReturnCode = HAL_ERROR;
+
+    // Set mock option bytes to match what setOptionBytes will configure
+    MockOptionBytes = 227440255;
+    
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
+    mock().expectOneCall("HAL_FLASH_Lock");
+    mock().expectOneCall("NonFatalError").withParameter("error", FLASH_LOCK_ERR);
+
+    setOptionBytes();
+}
+
+TEST(flash, InitFlash_Success)
+{
+    // Should successfully initialize flash and set option bytes
+    UnlockReturnCode = HAL_OK;
+    LockReturnCode = HAL_OK;
+    MockOptionBytes = 0; // Force option bytes update
+
+    // Initial unlock for EE_Init
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("EE_Init");
+    mock().expectOneCall("HAL_FLASH_Lock");
+
+    // setOptionBytes sequence
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
+    mock().expectOneCall("HAL_FLASHEx_OBProgram");
+    mock().expectOneCall("HAL_FLASH_Lock");
+
+    initFlash();
+}
+
+TEST(flash, InitFlash_UnlockFail)
+{
+    UnlockReturnCode = HAL_ERROR;
+
+    mock().expectNCalls(2,"HAL_FLASH_Unlock");
+    mock().expectNCalls(2,"NonFatalError").withParameter("error", FLASH_LOCK_ERR);
+
+    initFlash();
+}
+
+TEST(flash, InitFlash_EEInitFail)
+{
+    UnlockReturnCode = HAL_OK;
+    eeInitReturnCode = EE_NO_PAGE_FOUND;
+
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("EE_Init");
+    mock().expectOneCall("NonFatalError").withParameter("error", EEPROM_ERR);
+    mock().expectOneCall("HAL_FLASH_Lock");
+
+    // Still try to set option bytes
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
+    mock().expectOneCall("HAL_FLASHEx_OBProgram");
+    mock().expectOneCall("HAL_FLASH_Lock");
+
+    initFlash();
+}
+
+TEST(flash, InitFlash_LockFailAfterInit)
+{
+    UnlockReturnCode = HAL_OK;
+    LockReturnCode = HAL_ERROR;
+
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("EE_Init");
+    mock().expectOneCall("HAL_FLASH_Lock");
+    mock().expectOneCall("NonFatalError").withParameter("error", FLASH_LOCK_ERR);
+
+    // Still try to set option bytes
+    mock().expectOneCall("HAL_FLASH_Unlock");
+    mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
+    mock().expectOneCall("HAL_FLASHEx_OBProgram");
+    mock().expectOneCall("HAL_FLASH_Lock");
+    mock().expectOneCall("NonFatalError").withParameter("error", FLASH_LOCK_ERR);
+
+    initFlash();
+}
+
+TEST(flash, SetBit_SetAndClear)
+{
+    uint32_t value = 0;
+
+    // Set bits from position 0 to 31
+    for (uint32_t pos = 0; pos < 32; pos++) {
+        value = set_bit(value, pos, true);
+        CHECK((value & (1U << pos)) == (1U << pos));
+        
+        // Verify other bits remain unchanged
+        for (uint32_t checkPos = 0; checkPos < 32; checkPos++) {
+            if (checkPos != pos) {
+                CHECK((value & (1U << checkPos)) == 0);
+            }
+        }
+
+        // Clear the bit
+        value = set_bit(value, pos, false);
+        CHECK((value & (1U << pos)) == 0);
+    }
+}
+
+TEST(flash, SetBit_MultipleOperations)
+{
+    uint32_t value = 0;
+    
+    // Set alternating bits
+    for (uint32_t pos = 0; pos < 32; pos += 2) {
+        value = set_bit(value, pos, true);
+    }
+
+    // Verify pattern
+    for (uint32_t pos = 0; pos < 32; pos++) {
+        bool expected = (pos % 2) == 0;
+        CHECK(((value & (1U << pos)) != 0) == expected);
+    }
+
+    // Invert all bits
+    for (uint32_t pos = 0; pos < 32; pos++) {
+        value = set_bit(value, pos, (pos % 2) != 0);
+    }
+
+    // Verify inverted pattern
+    for (uint32_t pos = 0; pos < 32; pos++) {
+        bool expected = (pos % 2) != 0;
+        CHECK(((value & (1U << pos)) != 0) == expected);
+    }
+}
+
+TEST(flash, SetBit_PreserveOtherBits)
+{
+    uint32_t value = 0xAAAAAAAA;  // Pattern of alternating 1s and 0s
+    uint32_t original = value;
+    
+    // Set each bit to its current value - should not change
+    for (uint32_t pos = 0; pos < 32; pos++) {
+        bool currentBit = (value & (1U << pos)) != 0;
+        value = set_bit(value, pos, currentBit);
+        CHECK(value == original);
+    }
+
+    // Toggle each bit and verify only that bit changes
+    for (uint32_t pos = 0; pos < 32; pos++) {
+        bool currentBit = (value & (1U << pos)) != 0;
+        uint32_t beforeToggle = value;
+        value = set_bit(value, pos, !currentBit);
+        
+        // Only the target bit should be different
+        uint32_t diff = value ^ beforeToggle;
+        CHECK(diff == (1U << pos));
+    }
 }

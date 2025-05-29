@@ -11,23 +11,6 @@ const size_t expectedStructSize = 4;
 // All the C stuff has to be externed
 extern "C"
 {
-    EE_Status EE_Init(EE_Erase_type EraseType)
-    {
-        mock().actualCall("EE_Init");
-        return EE_OK;
-    }
-
-    void HAL_FLASHEx_OBGetConfig(FLASH_OBProgramInitTypeDef *pOBInit)
-    {
-        mock().actualCall("HAL_FLASHEx_OBGetConfig");
-    }
-
-    HAL_StatusTypeDef HAL_FLASHEx_OBProgram(FLASH_OBProgramInitTypeDef *pOBInit)
-    {
-        mock().actualCall("HAL_FLASHEx_OBProgram");
-        return HAL_OK;
-    }
-
     extern bool CellValid(Configuration_t config, uint8_t cellNumber);
 }
 

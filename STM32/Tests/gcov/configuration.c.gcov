@@ -8,20 +8,20 @@
         -:    4:#include "common.h"
         -:    5:#include "assert.h"
         -:    6:
-     1192:    7:uint32_t getConfigBytes(const Configuration_t *const config)
+     1197:    7:uint32_t getConfigBytes(const Configuration_t *const config)
         -:    8:{
         -:    9:    (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
-     1192:   10:    uint32_t configBits = 0;
-     1192:   11:    (void)memcpy(&configBits, config, sizeof(uint32_t));
-     1192:   12:    return configBits;
+     1197:   10:    uint32_t configBits = 0;
+     1197:   11:    (void)memcpy(&configBits, config, sizeof(uint32_t));
+     1197:   12:    return configBits;
         -:   13:}
         -:   14:
-       32:   15:Configuration_t setConfigBytes(uint32_t configBits)
+       35:   15:Configuration_t setConfigBytes(uint32_t configBits)
         -:   16:{
         -:   17:    (void)assert(sizeof(Configuration_t) <= sizeof(uint32_t));
-       32:   18:    Configuration_t config = {0};
-       32:   19:    (void)memcpy(&config, &configBits, sizeof(uint32_t));
-       32:   20:    return config;
+       35:   18:    Configuration_t config = {0};
+       35:   19:    (void)memcpy(&config, &configBits, sizeof(uint32_t));
+       35:   20:    return config;
         -:   21:}
         -:   22:
        21:   23:bool HWValid(Configuration_t config, HW_Version_t hw_version){

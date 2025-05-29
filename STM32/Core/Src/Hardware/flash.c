@@ -14,25 +14,23 @@ static const uint32_t CAL_TO_INT32 = 10000000;
 
 static const uint8_t MAX_WRITE_ATTEMPTS = 3;
 
+#ifdef TESTING
+uint32_t set_bit(uint32_t number, uint32_t n, bool x)
+#else
 static inline uint32_t set_bit(uint32_t number, uint32_t n, bool x)
+#endif
 {
     return (number & ~((uint32_t)1 << n)) | ((uint32_t)x << n);
 }
 
-void initFlash(void)
+void setOptionBytes(void)
 {
-    /* Set up flash erase */
     if (HAL_OK != HAL_FLASH_Unlock())
     {
         NON_FATAL_ERROR(FLASH_LOCK_ERR);
     }
     else
     {
-        if (EE_OK != EE_Init(EE_FORCED_ERASE))
-        {
-            NON_FATAL_ERROR(EEPROM_ERR);
-        }
-
         /* Set up the option bytes */
         FLASH_OBProgramInitTypeDef optionBytes = {0};
         HAL_FLASHEx_OBGetConfig(&optionBytes);
@@ -107,6 +105,29 @@ void initFlash(void)
             NON_FATAL_ERROR(FLASH_LOCK_ERR);
         }
     }
+}
+
+void initFlash(void)
+{
+    /* Set up flash erase */
+    if (HAL_OK != HAL_FLASH_Unlock())
+    {
+        NON_FATAL_ERROR(FLASH_LOCK_ERR);
+    }
+    else
+    {
+        if (EE_OK != EE_Init(EE_FORCED_ERASE))
+        {
+            NON_FATAL_ERROR(EEPROM_ERR);
+        }
+
+        if (HAL_OK != HAL_FLASH_Lock())
+        {
+            NON_FATAL_ERROR(FLASH_LOCK_ERR);
+        }
+    }
+
+    setOptionBytes();
 }
 
 static bool WriteInt32(uint16_t addr, uint32_t value)
