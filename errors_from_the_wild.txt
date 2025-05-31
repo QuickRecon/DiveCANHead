@@ -1,0 +1,26 @@
+[5.0100, 7]: ERR CODE 9(0x0) AT Core/Src/Sensors/OxygenScientific.c:238
+[9.0100, 8]: ERR CODE 9(0x0) AT Core/Src/Sensors/OxygenScientific.c:238
+[13.0200, 9]: ERR CODE 9(0x0) AT Core/Src/Sensors/OxygenScientific.c:238
+[17.0100, 10]: ERR CODE 9(0x0) AT Core/Src/Sensors/OxygenScientific.c:238
+
+[453.5500, 16]: ERR CODE 24(0x0) AT Core/Src/Hardware/pwr_management.c:240
+[453.5500, 17]: ERR CODE 24(0x0) AT Core/Src/Hardware/pwr_management.c:245
+[453.5600, 18]: ERR CODE 24(0x0) AT Core/Src/Hardware/pwr_management.c:249
+[1000.0200, 19]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[1032.7200, 20]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[1059.1899, 21]: ERR CODE 9(0x0) AT Core/Src/Sensors/OxygenScientific.c:238
+[1538.7500, 22]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[1580.3500, 23]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[1644.0900, 24]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[2109.1101, 25]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[2539.6699, 26]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[2575.3601, 27]: ERR CODE 9(0x0) AT Core/Src/Sensors/OxygenScientific.c:238
+
+
+
+[2.4000, 7]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[42.2700, 8]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[70.3500, 9]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[282.8900, 10]: ERR CODE 24(0x0) AT Core/Src/Hardware/pwr_management.c:273
+[392.2300, 11]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
+[565.2500, 12]: ERR CODE 7(0x0) AT Core/Src/Hardware/ext_adc.c:365
