@@ -4480,7 +4480,8 @@ void vTaskGetRunTimeStats(char *pcWriteBuffer)
 {
 	TaskStatus_t *pxTaskStatusArray;
 	UBaseType_t uxArraySize, x;
-	uint32_t ulTotalTime, ulStatsAsPercentage;
+	uint32_t ulTotalTime = 0UL;
+	uint32_t ulStatsAsPercentage = 0UL;
 
 #if (configUSE_TRACE_FACILITY != 1)
 	{

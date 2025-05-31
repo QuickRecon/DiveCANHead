@@ -20,8 +20,10 @@ extern "C"
         BUFFER_OVERRUN_FERR = 9,
         /** @brief This is like a super-duper version of UNREACHABLE_ERR that we call when we don't know if its safe to continue */
         UNDEFINED_STATE_FERR = 10,
+        /** @brief The stack smashing protection has triggered, no longer safe to continue */
+        STACK_GUARD_FERR = 11,
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        MAX_FERR = UNDEFINED_STATE_FERR
+        MAX_FERR = STACK_GUARD_FERR
     } FatalError_t;
 
     typedef enum

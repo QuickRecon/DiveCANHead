@@ -821,7 +821,7 @@ size_t xStreamBufferNextMessageLengthBytes(StreamBufferHandle_t xStreamBuffer)
 {
 	StreamBuffer_t *const pxStreamBuffer = xStreamBuffer;
 	size_t xReturn, xBytesAvailable, xOriginalTail;
-	configMESSAGE_BUFFER_LENGTH_TYPE xTempReturn;
+	configMESSAGE_BUFFER_LENGTH_TYPE xTempReturn = 0;
 
 	configASSERT(pxStreamBuffer);
 
