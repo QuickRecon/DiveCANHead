@@ -35,6 +35,9 @@ extern "C"
 #define PPO2_SETPOINT_ID 0xDC90000
 #define PPO2_STATUS_ID 0xDCA0000
 #define BUS_STATUS_ID 0xDCB0000
+#define CAN_UNKNOWN_4 0xDCC0000
+
+#define CAN_SERIAL_NUMBER 0xdd20000
 
 /* Extensions, these are not part of the standard but we use it for debugging, and adv features the shearwater doesn't natively support */
 /* We're using higher IDs here so they get arbitrated away if other things are happening */

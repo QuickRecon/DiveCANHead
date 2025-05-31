@@ -17,6 +17,7 @@ void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *cons
 void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration);
+void RespSerialNumber(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void updatePIDPGain(const DiveCANMessage_t *const message);
 void updatePIDIGain(const DiveCANMessage_t *const message);
 void updatePIDDGain(const DiveCANMessage_t *const message);
@@ -121,6 +122,10 @@ void CANTask(void *arg)
             case BUS_MENU_OPEN_ID:
                 message.type = "BUS_MENU_OPEN";
                 break;
+            case CAN_SERIAL_NUMBER:
+                message.type = "CAN_SERIAL_NUMBER";
+                RespSerialNumber(&message, deviceSpec);
+                break;
             case PID_P_GAIN_ID:
                 message.type = "PID_P_GAIN";
                 updatePIDPGain(&message);
@@ -216,6 +221,15 @@ void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *, const Confi
         (void)osDelay(TIMEOUT_100MS_TICKS);
     }
     serial_printf("Shutdown attempted but timed out due to missing en signal");
+}
+
+void RespSerialNumber(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)
+{
+    (void)deviceSpec; /* Unused, but we need to match the function signature */
+    DiveCANType_t origin = (DiveCANType_t)(0xF & (message->id));
+    char serial_number[sizeof(message->data) + 1] = {0};
+    (void)memcpy(serial_number, message->data, sizeof(message->data));
+    serial_printf("Received Serial Number of device %d: %s", origin, serial_number);
 }
 
 void updatePIDPGain(const DiveCANMessage_t *const message)
