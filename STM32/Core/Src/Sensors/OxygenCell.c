@@ -30,7 +30,7 @@ static QueueHandle_t *getQueueHandle(uint8_t cellNum)
     QueueHandle_t *queueHandle = NULL;
     if (cellNum >= CELL_COUNT)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
+        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
         queueHandle = &(cellQueues[0]); /* A safe fallback */
     }
     else
@@ -56,7 +56,7 @@ static OxygenHandle_t *getCell(uint8_t cellNum)
     OxygenHandle_t *cellHandle = NULL;
     if (cellNum >= CELL_COUNT)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
+        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
         cellHandle = &(cells[0]); /* A safe fallback */
     }
     else

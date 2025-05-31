@@ -145,13 +145,13 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
                     serial_printf("Cnf4: 0x%x\r\n", (uint8_t)currVal);
                     break;
                 default:
-                    NON_FATAL_ERROR(MENU_ERR);
+                    NON_FATAL_ERROR_DETAIL(MENU_ERR, menu[itemNumber].dataVal);
                 }
                 txMenuFlags(target, source, reqByte, maxVal, currVal);
             }
             else
             {
-                NON_FATAL_ERROR(MENU_ERR);
+                NON_FATAL_ERROR_DETAIL(MENU_ERR, menu[itemNumber].itemType);
             }
         }
         else if ((((reqByte & REQ_MASK) >> HALF_BYTE_WIDTH) >= MIN_VALUES_VAL) && (itemNumber < (MENU_ITEMS + 1)) && (itemNumber > 0) && (menuItemNumber > 0))
@@ -162,12 +162,12 @@ void HandleMenuReq(const DiveCANMessage_t *const message, const DiveCANDevice_t 
         }
         else
         {
-            NON_FATAL_ERROR(MENU_ERR);
+            NON_FATAL_ERROR_DETAIL(MENU_ERR, reqByte);
         }
     }
     else
     {
-        NON_FATAL_ERROR(MENU_ERR);
+        NON_FATAL_ERROR_DETAIL(MENU_ERR, itemNumber);
     }
 }
 

@@ -235,23 +235,28 @@ ADCV_t sampleADC(uint32_t adcChannel, ADCV_t divider_ratio)
     sConfig.SingleDiff = ADC_SINGLE_ENDED;
     sConfig.OffsetNumber = ADC_OFFSET_NONE;
     sConfig.Offset = 0;
-    if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+    HAL_StatusTypeDef status = HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+    if (HAL_OK != status)
     {
-        NON_FATAL_ERROR(INT_ADC_ERR);
+        NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
     }
 
-    if (HAL_ADC_Start(&hadc1) != HAL_OK)
+    status = HAL_ADC_Start(&hadc1);
+    if (HAL_OK != status)
     {
-        NON_FATAL_ERROR(INT_ADC_ERR);
+        NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
     }
-    if (HAL_ADC_PollForConversion(&hadc1, TIMEOUT_1S_TICKS) != HAL_OK)
+
+    status = HAL_ADC_PollForConversion(&hadc1, TIMEOUT_1S_TICKS);
+    if (HAL_OK != status)
     {
-        NON_FATAL_ERROR(INT_ADC_ERR);
+        NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
     }
     uint32_t ref = HAL_ADC_GetValue(&hadc1);
-    if (HAL_ADC_Stop(&hadc1) != HAL_OK)
+    status = HAL_ADC_Stop(&hadc1);
+    if (HAL_OK != status)
     {
-        NON_FATAL_ERROR(INT_ADC_ERR);
+        NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
     }
 
     sConfig.Channel = adcChannel;
@@ -260,22 +265,26 @@ ADCV_t sampleADC(uint32_t adcChannel, ADCV_t divider_ratio)
     sConfig.SingleDiff = ADC_SINGLE_ENDED;
     sConfig.OffsetNumber = ADC_OFFSET_NONE;
     sConfig.Offset = 0;
-    if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+    status = HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+    if (HAL_OK != status)
     {
-        NON_FATAL_ERROR(INT_ADC_ERR);
+        NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
     }
-    if (HAL_ADC_Start(&hadc1) != HAL_OK)
+    status = HAL_ADC_Start(&hadc1);
+    if (HAL_OK != status)
     {
-        NON_FATAL_ERROR(INT_ADC_ERR);
+        NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
     }
-    if (HAL_ADC_PollForConversion(&hadc1, TIMEOUT_1S_TICKS) != HAL_OK)
+    status = HAL_ADC_PollForConversion(&hadc1, TIMEOUT_1S_TICKS);
+    if (HAL_OK != status)
     {
-        NON_FATAL_ERROR(INT_ADC_ERR);
+        NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
     }
     uint32_t ADCSample = HAL_ADC_GetValue(&hadc1);
-    if (HAL_ADC_Stop(&hadc1) != HAL_OK)
+    status = HAL_ADC_Stop(&hadc1);
+    if (HAL_OK != status)
     {
-        NON_FATAL_ERROR(INT_ADC_ERR);
+        NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
     }
 
     ADCV_t sourceVoltage = ((ADCV_t)ADCSample / ((ADCV_t)ref)) * 1.212f * divider_ratio * adc_correction_factor;

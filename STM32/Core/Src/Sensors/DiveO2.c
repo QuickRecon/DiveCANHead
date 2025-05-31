@@ -49,7 +49,7 @@ static DiveO2State_t *getCellState(uint8_t cellNum)
     DiveO2State_t *cellState = NULL;
     if (cellNum >= CELL_COUNT)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
+        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
         cellState = &(digital_cellStates[0]); /* A safe fallback*/
     }
     else
@@ -67,7 +67,7 @@ DiveO2State_t *DiveO2_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
     DiveO2State_t *handle = NULL;
     if (cell->cellNumber > CELL_3)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
+        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cell->cellNumber);
     }
     else
     {
@@ -96,9 +96,10 @@ DiveO2State_t *DiveO2_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 
         /* Set the baud rate and init the peripheral */
         handle->huart->Init.BaudRate = BAUD_RATE;
-        if (HAL_UART_Init(handle->huart) != HAL_OK)
+        HAL_StatusTypeDef status = HAL_UART_Init(handle->huart);
+        if (HAL_OK != status)
         {
-            NON_FATAL_ERROR(UART_ERR);
+            NON_FATAL_ERROR_DETAIL(UART_ERR, status);
         }
 
         /* Create a task for the decoder*/
@@ -137,9 +138,11 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
 
         NON_FATAL_ERROR(OUT_OF_DATE_ERR);
 
-        if (HAL_OK != HAL_UART_Abort(handle->huart))
-        { /* Abort so that we don't get stuck waiting for uart*/
-            NON_FATAL_ERROR(UART_ERR);
+        HAL_StatusTypeDef status = HAL_UART_Abort(handle->huart);
+        if (HAL_OK != status)
+        {
+            /* Abort so that we don't get stuck waiting for uart*/
+            NON_FATAL_ERROR_DETAIL(UART_ERR, status);
         }
 
         sendCellCommand(GET_DETAIL_COMMAND, handle);
@@ -147,10 +150,10 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
 
     /* Check our vbus voltage to ensure we're above 3.25V*/
     ADCV_t vbusVoltage = getVBusVoltage();
-    if(vbusVoltage < VBUS_MIN_VOLTAGE)
+    if (vbusVoltage < VBUS_MIN_VOLTAGE)
     {
         handle->status = CELL_FAIL;
-        NON_FATAL_ERROR(VBUS_UNDER_VOLTAGE_ERR);
+        NON_FATAL_ERROR_DETAIL(VBUS_UNDER_VOLTAGE_ERR, vbusVoltage* 1000.0f); /* Convert to millivolts for the error message */
     }
 
     PIDNumeric_t precisionPPO2 = ((PIDNumeric_t)handle->cellSample / (PIDNumeric_t)HPA_PER_BAR) / 100.0f;
@@ -158,7 +161,7 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
     if (tempPPO2 > 255.0f)
     {
         handle->status = CELL_FAIL;
-        NON_FATAL_ERROR(CELL_OVERRANGE_ERR);
+        NON_FATAL_ERROR_DETAIL(CELL_OVERRANGE_ERR, (int)tempPPO2);
     }
     PPO2 = (PPO2_t)(tempPPO2);
     /* Lodge the cell data*/
@@ -365,9 +368,10 @@ void DiveO2_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size)
         if (cell != NULL)
         {
             cell->ticksOfLastMessage = HAL_GetTick();
-            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & osThreadFlagsSet(cell->processor, 0x0001U)))
+            uint32_t flagRet = osThreadFlagsSet(cell->processor, 0x0001U);
+            if (FLAG_ERR_MASK == (FLAG_ERR_MASK & flagRet))
             {
-                NON_FATAL_ERROR_ISR(FLAG_ERR);
+                NON_FATAL_ERROR_ISR_DETAIL(FLAG_ERR, flagRet);
             }
         }
         else

@@ -97,7 +97,7 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
 
     if (length > MAX_CAN_RX_LENGTH)
     {
-        NON_FATAL_ERROR_ISR(CAN_OVERFLOW_ERR);
+        NON_FATAL_ERROR_ISR_DETAIL(CAN_OVERFLOW_ERR, length);
     }
     else
     {
@@ -112,7 +112,7 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
         BaseType_t err = xQueueOverwriteFromISR(*dataAvail, &dataReady, NULL);
         if (pdPASS != err)
         {
-            NON_FATAL_ERROR_ISR(QUEUEING_ERR);
+            NON_FATAL_ERROR_ISR_DETAIL(QUEUEING_ERR, err);
         }
 
         err = xQueueSendToBackFromISR(*inbound, &message, NULL);

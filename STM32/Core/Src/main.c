@@ -639,18 +639,20 @@ static void MX_ADC1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC1_Init 2 */
-
-  if (HAL_ADC_Stop(&hadc1) != HAL_OK)
+  HAL_StatusTypeDef status = HAL_ADC_Stop(&hadc1);
+  if (HAL_OK != status)
   {
-    NON_FATAL_ERROR(INT_ADC_ERR);
+    NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
   }
-  if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK)
+  status = HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+  if (HAL_OK != status)
   {
-    NON_FATAL_ERROR(INT_ADC_ERR);
+    NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
   }
-  if (HAL_ADC_Start(&hadc1) != HAL_OK)
+  status = HAL_ADC_Start(&hadc1);
+  if (HAL_OK != status)
   {
-    NON_FATAL_ERROR(INT_ADC_ERR);
+    NON_FATAL_ERROR_DETAIL(INT_ADC_ERR, status);
   }
   /* USER CODE END ADC1_Init 2 */
 }

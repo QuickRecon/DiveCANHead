@@ -16,7 +16,7 @@ static AnalogOxygenState_t *getCellState(uint8_t cellNum)
     AnalogOxygenState_t *cellState = NULL;
     if (cellNum >= CELL_COUNT)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
+        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
         cellState = &(analog_cellStates[0]); /* A safe fallback*/
     }
     else
@@ -42,7 +42,7 @@ AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueu
     AnalogOxygenState_t *handle = NULL;
     if (cell->cellNumber > CELL_3)
     {
-        NON_FATAL_ERROR(INVALID_CELL_NUMBER_ERR);
+        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cell->cellNumber);
     }
     else
     {
@@ -161,7 +161,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     if (calPPO2 > 255.0f)
     {
         handle->status = CELL_FAIL;
-        NON_FATAL_ERROR(CELL_OVERRANGE_ERR);
+        NON_FATAL_ERROR_DETAIL(CELL_OVERRANGE_ERR, (int)calPPO2);
     }
     PPO2 = (PPO2_t)(calPPO2);
 
