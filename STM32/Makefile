@@ -199,7 +199,7 @@ C_INCLUDES =  \
 WARN_FLAGS = -Wall -Wwrite-strings -Wextra \
  -Wduplicated-cond -Wlogical-op -Wrestrict  -Wnull-dereference -Wcast-align -Wsequence-point -Wcast-qual -Wuninitialized -Wchar-subscripts -Wrestrict -Wstringop-truncation \
  -Wunused-parameter -Wunused-value -Wjump-misses-init  -Wshadow -Wswitch -Wundef -Wswitch-default  -Wstrict-prototypes -Wtrigraphs -Wformat -Wformat-security  -Wimplicit -Wcomment -Wunreachable-code \
- -Wreturn-type -Wno-unused-parameter -fanalyzer -fdump-analyzer-callgraph -fdump-analyzer-supergraph -pedantic
+ -Wreturn-type -Wno-unused-parameter -Werror=vla -fanalyzer -fdump-analyzer-callgraph -fdump-analyzer-supergraph -pedantic
 
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) $(WARN_FLAGS) -fdata-sections -ffunction-sections -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish
 
