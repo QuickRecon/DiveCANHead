@@ -7,6 +7,8 @@ dpg.create_context()
 dpg.create_viewport(title='DiveCAN Configurator', resizable=True)
 
 
+FIRMWARE_VERSION = 8
+
 diveCANRun = True
 loadConfig = False
 configToWrite = None
@@ -16,15 +18,15 @@ load_PID = False
 send_PID = False
 
 index = [0]
-consensus_PPO2 = [0]
-c1_PPO2 = [0]
-c2_PPO2 = [0]
-c3_PPO2 = [0]
-setpoint = [0]
+consensus_PPO2 = [0.0]
+c1_PPO2 = [0.0]
+c2_PPO2 = [0.0]
+c3_PPO2 = [0.0]
+setpoint = [0.0]
 
-integral_state_data = [0]
-derivative_state_data = [0]
-duty_cycle_data = [0]
+integral_state_data = [0.0]
+derivative_state_data = [0.0]
+duty_cycle_data = [0.0]
 
 PLOT_LENGTH = 200
 
@@ -102,6 +104,8 @@ def dive_can_tick(divecan_client: DiveCAN.DiveCAN):
         dpg.set_value("printing_config", config.enable_printing)
         dpg.set_value("battery_alarm_config", config.battery_voltage_threshold.name)
         dpg.set_value("ppo2_control_config", config.ppo2_control_mode.name)
+        dpg.set_value("extended_messages_config", config.extended_messages)
+        dpg.set_value("depth_compensation_config", config.ppo2_depth_compensation)
         loadConfig = False
 
     if load_PID:
@@ -141,13 +145,14 @@ def dive_can_listen():
         divecan_client = DiveCAN.DiveCAN(dpg.get_value("divecan_adaptor_path"))
         diveCANRun = True
         dpg.set_value("connection_status", "Status: Listening")
+        while diveCANRun:
+            dive_can_tick(divecan_client)
+
+        diveCANthread = threading.Thread(target=dive_can_listen)
     except DiveCAN.can.CanInitializationError:
         dpg.set_value("connection_status", "Status: Error, cannot open adaptor")
 
-    while diveCANRun:
-        dive_can_tick(divecan_client)
 
-    diveCANthread = threading.Thread(target=dive_can_listen)
 
 diveCANthread = threading.Thread(target=dive_can_listen)
 
@@ -166,7 +171,7 @@ def load_config(sender, appdata):
 def save_config(sender, appdata):
     global configToWrite
     configToWrite = configuration.Configuration(
-        7,
+        FIRMWARE_VERSION,
         configuration.CellType[dpg.get_value("c1_config")],
         configuration.CellType[dpg.get_value("c2_config")],
         configuration.CellType[dpg.get_value("c3_config")],
@@ -174,7 +179,9 @@ def save_config(sender, appdata):
         configuration.OxygenCalMethod[dpg.get_value("calibration_mode_config")],
         bool(dpg.get_value("printing_config")),
         configuration.VoltageThreshold[dpg.get_value("battery_alarm_config")],
-        configuration.PPO2ControlScheme[dpg.get_value("ppo2_control_config")]
+        configuration.PPO2ControlScheme[dpg.get_value("ppo2_control_config")],
+        bool(dpg.get_value("extended_messages_config")),
+        bool(dpg.get_value("depth_compensation_config"))
     )
 
 def connect_to_board(sender, appdata):
@@ -191,7 +198,7 @@ def disconnect_from_board(sender, appdata):
 
 def update_config_text():
     config_to_print = configuration.Configuration(
-        7,
+        FIRMWARE_VERSION,
         configuration.CellType[dpg.get_value("c1_config")],
         configuration.CellType[dpg.get_value("c2_config")],
         configuration.CellType[dpg.get_value("c3_config")],
@@ -199,7 +206,9 @@ def update_config_text():
         configuration.OxygenCalMethod[dpg.get_value("calibration_mode_config")],
         bool(dpg.get_value("printing_config")),
         configuration.VoltageThreshold[dpg.get_value("battery_alarm_config")],
-        configuration.PPO2ControlScheme[dpg.get_value("ppo2_control_config")]
+        configuration.PPO2ControlScheme[dpg.get_value("ppo2_control_config")],
+        bool(dpg.get_value("extended_messages_config")),
+        bool(dpg.get_value("depth_compensation_config"))
     )
     config_bytes = [config_to_print.get_byte(3), config_to_print.get_byte(2), config_to_print.get_byte(1), config_to_print.get_byte(0)]
     dpg.set_value("config_bits_text", "Config Bytes: 0x" + bytes(config_bytes).hex())
@@ -227,7 +236,7 @@ with dpg.window(label="main", autosize=True) as primary_window:
             dpg.add_button(label="Disconnect", callback=disconnect_from_board)
 
         with dpg.collapsing_header(label="Configuration"):
-            dpg.add_text("Firmware Version: 7")
+            dpg.add_text("Firmware Version: " + str(FIRMWARE_VERSION))
             dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 1", tag="c1_config", default_value=configuration.CellType.CELL_ANALOG.name, callback=update_config_text)
             dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 2", tag="c2_config", default_value=configuration.CellType.CELL_ANALOG.name, callback=update_config_text)
             dpg.add_combo(items=([name for name, member in configuration.CellType.__members__.items()]), label="Cell 3", tag="c3_config", default_value=configuration.CellType.CELL_ANALOG.name, callback=update_config_text)
@@ -236,6 +245,9 @@ with dpg.window(label="main", autosize=True) as primary_window:
             dpg.add_checkbox(label="Enable Debug Printing (CAN)", tag="printing_config", callback=update_config_text)
             dpg.add_combo(items=([name for name, member in configuration.VoltageThreshold.__members__.items()]), label="Battery Alarm Threshold", tag="battery_alarm_config", default_value=configuration.VoltageThreshold.V_THRESHOLD_9V.name, callback=update_config_text)
             dpg.add_combo(items=([name for name, member in configuration.PPO2ControlScheme.__members__.items()]), label="PPO2 Control Mode", tag="ppo2_control_config", default_value=configuration.PPO2ControlScheme.PPO2CONTROL_OFF.name, callback=update_config_text)
+            dpg.add_checkbox(label="Enable Extended Messages", tag="extended_messages_config", callback=update_config_text)
+            dpg.add_checkbox(label="Enable depth compensation", tag="depth_compensation_config", callback=update_config_text)
+
 
             dpg.add_text(default_value="NONE", tag="config_bits_text")
             update_config_text()
@@ -269,11 +281,11 @@ with dpg.window(label="main", autosize=True) as primary_window:
                 dpg.add_plot_axis(dpg.mvYAxis, label="PPO2", tag="y_axis")
 
                 # series belong to a y axis
-                dpg.add_line_series(index, c1_PPO2, label="C1", parent="y_axis", tag="c1_series")
-                dpg.add_line_series(index, c2_PPO2, label="C2", parent="y_axis", tag="c2_series")
-                dpg.add_line_series(index, c3_PPO2, label="C3", parent="y_axis", tag="c3_series")
-                dpg.add_line_series(index, c3_PPO2, label="Setpoint", parent="y_axis", tag="setpoint_series")
-                dpg.add_line_series(index, consensus_PPO2, label="Consensus", parent="y_axis", tag="consensus_series")
+                dpg.add_line_series([float(i) for i in index], c1_PPO2, label="C1", parent="y_axis", tag="c1_series")
+                dpg.add_line_series([float(i) for i in index], c2_PPO2, label="C2", parent="y_axis", tag="c2_series")
+                dpg.add_line_series([float(i) for i in index], c3_PPO2, label="C3", parent="y_axis", tag="c3_series")
+                dpg.add_line_series([float(i) for i in index], setpoint, label="Setpoint", parent="y_axis", tag="setpoint_series")
+                dpg.add_line_series([float(i) for i in index], consensus_PPO2, label="Consensus", parent="y_axis", tag="consensus_series")
 
 
 
