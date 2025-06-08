@@ -1,7 +1,8 @@
 import dearpygui.dearpygui as dpg
 import dearpygui.demo as demo
-from DiveCANpy import configuration, DiveCAN
+from DiveCANpy import configuration, DiveCAN, bootloader
 import threading
+import time
 
 dpg.create_context()
 dpg.create_viewport(title='DiveCAN Configurator', resizable=True)
@@ -27,6 +28,9 @@ setpoint = [0.0]
 integral_state_data = [0.0]
 derivative_state_data = [0.0]
 duty_cycle_data = [0.0]
+
+firmware_file_path = None
+firmware_chunksize = 256  # Bytes per chunk for firmware update
 
 PLOT_LENGTH = 200
 
@@ -146,7 +150,10 @@ def dive_can_listen():
         diveCANRun = True
         dpg.set_value("connection_status", "Status: Listening")
         while diveCANRun:
-            dive_can_tick(divecan_client)
+            try:
+                dive_can_tick(divecan_client)
+            except DiveCAN.DiveCANNoMessageException:
+                print("No message received, retrying...")
 
         diveCANthread = threading.Thread(target=dive_can_listen)
     except DiveCAN.can.CanInitializationError:
@@ -228,10 +235,104 @@ def on_realtime_sample_toggle(sender):
         dpg.set_axis_limits_auto("x_axis")
         dpg.set_axis_limits_auto("y_axis")
 
+
+def on_firmware_select(sender, appdata):
+    global firmware_file_path
+    print("Firmware file selected: " + appdata['file_path_name'])
+    firmware_file_path = appdata['file_path_name']
+    dpg.set_item_label("load_firmware_button", "Selected Firmware: " + firmware_file_path)
+
+def on_write_firmware(sender, appdata):
+    global firmware_file_path
+    
+    if firmware_file_path == "None" or firmware_file_path == None:
+        print("No firmware file selected")
+        return
+    
+    dpg.set_value("progress_bar", 0.1)
+    dpg.set_value("fw_update_state", "State: Changing to bootloader")
+
+    # We need to kill the divecan thread to switch to bootloader mode
+    global diveCANRun
+    diveCANRun = False
+    if diveCANthread.ident is not None:
+        diveCANthread.join()
+    dpg.set_value("connection_status", "Status: Bootloader")
+
+    # Connect to the bootloader
+    bootloader_client = bootloader.STMBootloader(dpg.get_value("divecan_adaptor_path"))
+    # Once to go to the bootloader, twice to stay there
+    bootloader_client.flush_rx()
+    bootloader_client.send_bootloader()
+    bootloader_client.send_bootloader() 
+
+    try:
+        bootloader_client.wait_for_ack()
+        bootloader_client.wait_for_ack()
+    except bootloader.STMBootloaderNoMessageException as e:
+        print("we must have already been in the bootloader, continuing...")
+
+    #bootloader_client.get_bootloader_info()
+    
+    dpg.set_value("fw_update_state", "State: Erasing device")
+    #bootloader_client.send_erase_memory()
+
+    with open(firmware_file_path, 'rb') as firmware_file:
+        file_bytes = firmware_file.read()
+
+        # Write the firmware to the device
+        for i in range(0, len(file_bytes), firmware_chunksize):
+            chunk = file_bytes[i:i+firmware_chunksize]
+            state_str = f"State: Writing firmware {i + len(chunk)}/{len(file_bytes)}"
+            print(state_str)
+            dpg.set_value("fw_update_state", state_str)
+            #bootloader_client.send_write_memory(0x08000000 + i, len(chunk), chunk)
+            success = False
+            while not success:
+                try:
+                    bootloader_client.send_write_memory(0x08000000 + i, len(chunk), chunk)
+                    success = True
+                except bootloader.STMBootloaderNoMessageException as e:
+                    reinit_bootloader = False
+                    while not reinit_bootloader:
+                        bootloader_client.flush_rx()
+                        bootloader_client.send_bootloader()
+                        bootloader_client.send_bootloader() 
+                        bootloader_client.flush_rx()
+                        print("Restarting bootloader")
+                        time.sleep(1)
+                            
+            #         print(f"Error writing firmware at address {i}: {e}, retrying...")
+                
+            dpg.set_value("progress_bar", (i + len(chunk)) / len(file_bytes))
+        
+        # Read the firmware back to verify
+        # for i in range(0, len(file_bytes), firmware_chunksize):
+        #     actual_chunk = file_bytes[i:i+firmware_chunksize]
+        #     read_chunk = bootloader_client.send_read_memory(0x08000000 + i, len(actual_chunk))
+        #     state_str = f"State: Verifying firmware {i + len(actual_chunk)}/{len(file_bytes)}"
+        #     print(state_str)
+        #     dpg.set_value("fw_update_state", state_str)
+        #     dpg.set_value("progress_bar", (i + len(actual_chunk)) / len(file_bytes))
+            
+        #     for j in range(len(actual_chunk)):
+        #         if read_chunk[j] != actual_chunk[j]:
+        #             print(f"Error verifying firmware at address {0x08000000 + i}")
+        #             return
+    
+        # bootloader_client.send_go()
+        # dpg.set_value("fw_update_state", "State: Firmware written successfully")
+        # dpg.set_value("progress_bar", 1.0)
+
+    try:
+        print("Firmware written successfully")
+    except Exception as e:
+        print(f"Error writing firmware: {e}")
+
 with dpg.window(label="main", autosize=True) as primary_window:
         dpg.add_text(default_value="Status: Disconnected", tag="connection_status")
         with dpg.collapsing_header(label="Connection", default_open=True):
-            dpg.add_input_text(label="Adaptor Path", default_value="/dev/ttyACM0", tag="divecan_adaptor_path")
+            dpg.add_input_text(label="Adaptor Path", default_value="/dev/ttyCAN0", tag="divecan_adaptor_path")
             dpg.add_button(label="Connect", callback=connect_to_board)
             dpg.add_button(label="Disconnect", callback=disconnect_from_board)
 
@@ -265,6 +366,15 @@ with dpg.window(label="main", autosize=True) as primary_window:
             dpg.add_slider_float(min_value=-10, max_value=10, label="Derivative", tag="der_gain_slider")
             dpg.add_button(label="Write", callback=send_pid_vals)
             dpg.add_button(label="Read", callback=load_pid_vals)
+
+        with dpg.collapsing_header(label="Firmware Update"):
+
+            dpg.add_text(default_value="State: Idle", tag="fw_update_state")
+            with dpg.file_dialog(label="Firmware File", tag="file_dialog_id", callback=on_firmware_select, show=False, width=700 ,height=400):
+                dpg.add_file_extension(".bin", color=(255, 0, 255, 255), custom_text="[Firmware File]")
+            dpg.add_progress_bar(label="Progress", tag="progress_bar", default_value=0.0, width=-1)
+            dpg.add_button(label="Selected Firmware: None", tag="load_firmware_button", callback=lambda: dpg.show_item("file_dialog_id"))
+            dpg.add_button(label="Write Firmware", tag="write_firmware_button", callback=on_write_firmware)
 
         with dpg.group(label="PPO2", height=-1):
             dpg.add_table

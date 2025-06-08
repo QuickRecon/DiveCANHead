@@ -32,16 +32,16 @@ extern "C"
 
     static const Configuration_t DEFAULT_CONFIGURATION = {
         .firmwareVersion = FIRMWARE_VERSION,
-        .cell1 = CELL_ANALOG,
-        .cell2 = CELL_ANALOG,
+        .cell1 = CELL_DIVEO2,
+        .cell2 = CELL_O2S,
         .cell3 = CELL_ANALOG,
         .powerMode = MODE_BATTERY,
-        .calibrationMode = CAL_ANALOG_ABSOLUTE,
+        .calibrationMode = CAL_DIGITAL_REFERENCE,
         .enableUartPrinting = false,
-        .dischargeThresholdMode = V_THRESHOLD_9V,
-        .ppo2controlMode = PPO2CONTROL_SOLENOID_PID,
+        .dischargeThresholdMode = V_THRESHOLD_LI2S,
+        .ppo2controlMode = PPO2CONTROL_MK15,
         .extendedMessages = false,
-        .ppo2DepthCompensation = true};
+        .ppo2DepthCompensation = false};
 
 #ifdef __cplusplus
 }

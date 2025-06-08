@@ -16,3 +16,4 @@ cov-int
 STM32-cov-int.tgz
 __pycache__
 log_backup
+STM32.bin

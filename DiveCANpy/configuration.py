@@ -31,6 +31,7 @@ class VoltageThreshold(IntEnum):
 class PPO2ControlScheme(IntEnum):
     PPO2CONTROL_OFF = 0
     PPO2CONTROL_SOLENOID_PID = 1
+    PPO2CONTROL_MK15 = 2
 
 class Configuration():
     def __init__(self, firmware_version: int, cell1: CellType, cell2: CellType, cell3: CellType, power_mode: PowerSelectMode, cal_method: OxygenCalMethod, enable_printing: bool, battery_voltage_threshold: VoltageThreshold, ppo2_control_mode: PPO2ControlScheme, extended_messages: bool, ppo2_depth_compensation: bool):
