@@ -201,9 +201,9 @@ WARN_FLAGS = -Wall -Wwrite-strings -Wextra \
  -Wunused-parameter -Wunused-value -Wjump-misses-init  -Wshadow -Wswitch -Wundef -Wswitch-default  -Wstrict-prototypes -Wtrigraphs -Wformat -Wformat-security  -Wimplicit -Wcomment -Wunreachable-code \
  -Wreturn-type -Wno-unused-parameter -Werror=vla \
  -D_FORTIFY_SOURCE=3 -D__STDC_FORMAT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -D_GLIBCXX_ASSERTIONS \
- -fanalyzer -fdump-analyzer-callgraph -fdump-analyzer-supergraph -ftrivial-auto-var-init=pattern -fstack-protector-strong -fstack-clash-protection -fharden-compares -fharden-conditional-branches\
+ -fanalyzer \
  -pedantic
-
+#-fdump-analyzer-callgraph -fdump-analyzer-supergraph -ftrivial-auto-var-init=pattern -fstack-protector-strong -fstack-clash-protection -fharden-compares -fharden-conditional-branches
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) $(WARN_FLAGS) -fdata-sections -ffunction-sections -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish
 
 CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) $(WARN_FLAGS) -fdata-sections -ffunction-sections -Werror -std=gnu23 -fstack-usage -fdump-tree-optimized -fdump-rtl-dfinish

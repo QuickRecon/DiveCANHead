@@ -56,7 +56,7 @@ class STMBootloader(object):
             msg = self.reader.get_message(0)
         self.reset()
 
-    def _rx_msg_timed(self, id: int, timeout: int) -> can.Message:
+    def _rx_msg_timed(self, id: int, timeout: float) -> can.Message:
         start_time = time.time()
         while time.time() - start_time < timeout:
             msg = self.reader.get_message(self._timeout)
@@ -99,7 +99,7 @@ class STMBootloader(object):
     def wait_for_ack(self) -> None:
         self._rx_msg_timed(0x79, 3)
 
-    def get_bootloader_info(self) -> int:
+    def get_bootloader_info(self) -> int|None:
         tx_msg = can.Message(arbitration_id = 0x00, data=[], is_extended_id = False, is_fd=True)
         self.flush_rx()  # Clear any previous messages
         self._bus.send(tx_msg)
@@ -188,32 +188,39 @@ class STMBootloader(object):
                 tx_msg = can.Message(arbitration_id = 0x11, data=[(address >> 24) & 0xFF, (address >> 16) & 0xFF, (address >> 8) & 0xFF, address & 0xFF, length-1 & 0xFF], is_extended_id = False)
                 self.flush_rx()  # Clear any previous messages
                 self._bus.send(tx_msg)
-                msg = self._rx_msg_timed(0x11,1)
-                assert(len(msg.data) == 1)
-                assert(msg.data[0] == 0x79) # First message should be an ack
+                msg = self.reader.get_message(0.1)
+                assert(msg is not None), "No message received"
+                assert(msg.arbitration_id == 0x11), f"Wrong arbitration ID {msg.arbitration_id:02X}, expected 0x11"
+                assert(len(msg.data) == 1), "Wrong length"
+                assert(msg.data[0] == 0x79), "Not an ack"
                 success = True
-            except STMBootloaderNoMessageException:
-                continue
-            except AssertionError:
-                print("Got unexpected response to read memory request, retrying...")
+            except AssertionError as e:
+                print(f"Got unexpected response to read memory request {repr(e)}, retrying...")
                 time.sleep(1)
                 continue
         try:
             for i in range((length)//8):
-                msg = self._rx_msg(0x11)
+                msg = self.reader.get_message(0.1)
+                assert(msg is not None), "No message received"
+                assert(msg.arbitration_id == 0x11), f"Wrong arbitration ID {msg.arbitration_id:02X}, expected 0x11"
                 if i != (length // 8) - 1:
-                    assert(len(msg.data) == 8)
+                    assert(len(msg.data) == 8), "Wrong length"
+                else:
+                    assert(len(msg.data) <= 8), "Wrong length"
                 for byte in msg.data:
                     #print(f"Data Byte: {byte:02X}", end=' ')
                     data.append(byte)
 
-            msg = self._rx_msg(0x11)
-            assert(len(msg.data) == 1)
-            assert(msg.data[0] == 0x79)
+            msg = self.reader.get_message(0.1)
+            assert(msg is not None), "No message received for read memory ack"
+            assert(msg.arbitration_id == 0x11), f"Wrong arbitration ID {msg.arbitration_id:02X}, expected 0x11"
+            assert(len(msg.data) == 1), "Wrong length"
+            assert(msg.data[0] == 0x79), "Not an ack"
 
             return bytes(data)
-        except STMBootloaderNoMessageException:
-            raise STMBootloaderNoMessageException("Read memory request timed out")
+        except AssertionError as e:
+            print(f"Got unexpected response to read memory data {repr(e)}, retrying...")
+            return self.send_read_memory(address, length)
 
     def send_go(self) -> None:
         tx_msg = can.Message(arbitration_id = 0x21, data=[0x08, 0x00, 0x00, 0x00], is_extended_id = False) # 0x08000000 is the address of the start of the application
@@ -237,7 +244,6 @@ class STMBootloader(object):
         tx_msg = can.Message(arbitration_id = WRITE_BYTE, data=data, is_extended_id = False)
         #print(tx_msg)
         self._bus.send(tx_msg)
-
     def send_write_memory(self, address: int, length: int, data: bytes, warm=True) -> None:
         assert(0 <= address < 0xFFFFFFFF), "Address must be a 32-bit unsigned integer"
         assert(0 < length <= 256), "Length must be a positive integer between 1 and 256"
@@ -281,6 +287,65 @@ class STMBootloader(object):
             elif msg is None:
                 sm.send("timeout")
 
+    def send_write_memory_fast(self, address: int, length: int, data: bytes, warm=True) -> None:
+        assert(0 <= address < 0xFFFFFFFF), "Address must be a 32-bit unsigned integer"
+        assert(0 < length <= 256), "Length must be a positive integer between 1 and 256"
+        assert(address + length <= 0xFFFFFFFF), "Address and length must not exceed 32-bit unsigned integer limit"
+        assert(len(data) == length), "Data length must match the specified length"
+        assert(all(0 <= byte < 256 for byte in data)), "Data must be a sequence of bytes (0-255)"
+
+        complete = False
+        while not complete:
+            self.flush_rx()  # Clear any previous messages
+            try:
+                self.send_write_init(address, length)
+                msg = self.reader.get_message(0.2)
+                assert(msg is not None), "No message received"
+                assert(msg.arbitration_id == 0x31), f"Wrong arbitration ID {msg.arbitration_id:02X}, expected 0x31"
+                assert(msg.data[0] == 0x79), "Not an ack"
+                assert(len(msg.data) == 1), "Wrong length"
+                complete = True
+            except AssertionError as e: 
+                print(f"Got unexpected response to write memory request {repr(e)}, retrying...")
+                continue
+        
+        for i in range(0, len(data), 8):
+            complete = False
+            attempts = 0
+            while not complete and attempts < 5:
+                attempts += 1
+                self.flush_rx()
+                try:
+                    self.send_write_data_block(list(data[i:i+8]))
+                    msg = self.reader.get_message(0.1)
+                    assert(msg is not None), "No message received"
+                    assert(msg.arbitration_id == 0x31), f"Wrong arbitration ID {msg.arbitration_id:02X}, expected 0x31"
+                    assert(msg.data[0] == 0x79), "Not an ack "
+                    assert(len(msg.data) == 1), "Wrong length "
+                    complete = True
+                except AssertionError as e:
+                    if attempts > 2:
+                        print(f"Got unexpected response to write memory data {i} {repr(e)}, retrying...")
+                    continue
+
+            if not complete:
+                print("retrying from the top")
+                self.send_write_memory_fast(address, length, data, warm)
+                return
+
+        try:
+            msg = self.reader.get_message(0.5)
+            assert(msg is not None), "No message received"
+            assert(msg.arbitration_id == 0x31), f"Wrong arbitration ID {msg.arbitration_id:02X}, expected 0x31"
+            assert(msg.data[0] == 0x79), "Not an ack "
+            assert(len(msg.data) == 1), "Wrong length "
+        except AssertionError as e:
+            print(f"Got unexpected response in final ack {repr(e)}, retry from the top")
+            self.send_write_memory_fast(address, length, data, warm)
+            return
+
+
+
     # For simplicity, just do a global erase of the memory
     def send_erase_memory(self) -> None:
         success = False
@@ -301,6 +366,53 @@ class STMBootloader(object):
             except STMBootloaderNoMessageException:
                 print("Erase memory request timed out")
                 continue
+
+    def send_erase_memory_page(self, pageNumber: int) -> None:
+        assert(0 <= pageNumber < 127), "Page number must be between 0 and 127"
+        success = False
+        while not success:
+            self.flush_rx()
+            try:
+                tx_msg = can.Message(arbitration_id = 0x43, data=[0], is_extended_id = False)
+                self._bus.send(tx_msg)
+
+                msg = self.reader.get_message(5) # Wait up to 1 sec for the response
+                assert(msg is not None), "No message received for erase memory request"
+                assert(msg.arbitration_id == 0x43), f"Wrong arbitration ID {msg.arbitration_id:02X}, expected 0x43"
+                assert(len(msg.data) == 1), "Wrong length"
+                assert(msg.data[0] == 0x79), "Not ack"
+
+                tx_msg = can.Message(arbitration_id = 0x43, data=[pageNumber], is_extended_id = False)
+                self._bus.send(tx_msg)
+
+                msg = self.reader.get_message(5) 
+                assert(msg is not None), "No message received for erase memory data"
+                assert(msg.arbitration_id == 0x43), f"Wrong arbitration ID {msg.arbitration_id:02X}, expected 0x43"
+                assert(len(msg.data) == 1), "Wrong length"
+                assert(msg.data[0] == 0x79), "Not ack"
+
+                msg = self.reader.get_message(30) 
+                assert(msg is not None), "No message received for erase memory write"
+                assert(msg.arbitration_id == 0x43), f"Wrong arbitration ID {msg.arbitration_id:02X}, expected 0x43"
+                assert(len(msg.data) == 1), "Wrong length"
+                assert(msg.data[0] == 0x79), "Not ack"
+                success = True
+            except AssertionError as e:
+                print(f"Erase memory error: {repr(e)}, retrying...")
+                tx_msg = can.Message(arbitration_id = 0x43, data=[0xF0], is_extended_id = False) # An invalid number of sectors on our 256k device
+                self._bus.send(tx_msg)
+                continue
+
+        self.flush_rx()
+        # Verify that reading back the page returns all 0xFF
+        pageStartAddress = 0x08000000+(pageNumber*2048)
+        readback = self.send_read_memory(pageStartAddress, 256)
+        if not all(byte == 0xFF for byte in readback):
+            print(f"Error erasing page {pageNumber}, readback did not return all 0xFF, retrying...")
+            time.sleep(0.5)
+            self.send_erase_memory_page(pageNumber)
+            return
+
 
 
 
@@ -408,67 +520,96 @@ class BootloaderStateMachine(StateMachine):
         #print("had successfully written a byte")
         del self._data_queue[:8]
         
+def writePage(k, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time):
+    readback_ok = False
+    while not readback_ok:
+        page_number = k // page_length
+        print(f"Begining page write {page_number}")
+        for i in range(k, k+page_length, firmware_chunksize):
+            chunk = file_bytes[i:i+firmware_chunksize]
+            if len(chunk) > 0:
+                elapsed = time.time() - start_time
+                progress = (i + len(chunk)) / len(file_bytes)
+                if progress > 0:
+                    remaining = elapsed * (1 - progress) / progress
+                else:
+                    remaining = 0
+                state_str = f"State: Writing firmware {i + len(chunk)}/{len(file_bytes)} ({progress * 100:.2f}%) - Est. {remaining:.1f}s remaining"
+                print(state_str)
+                bootloader.send_write_memory_fast(base_address + i, len(chunk), chunk)
 
+        readback_ok = True
+        readback_chunksize = 256
+        print("Read back the page to verify")
+        for i in range(k, k+page_length, readback_chunksize):
+            actual_chunk = file_bytes[i:i+readback_chunksize]
+            success = False
+            if len(actual_chunk) > 0:
+                while not success:
+                    try:
+                        read_chunk = bootloader.send_read_memory(base_address + i, len(actual_chunk))
+                        state_str = f"State: Verifying firmware {i + len(read_chunk)}/{len(file_bytes)} ({(i + len(read_chunk))/len(file_bytes) * 100:.2f}%)"
+                        print(state_str)
+                        for j in range(len(actual_chunk)):
+                            if read_chunk[j] != actual_chunk[j]:
+                                print(f"Error verifying firmware at address {base_address + i + j}, got {read_chunk[j]:02X}, expected {actual_chunk[j]:02X}")
+                                readback_ok = False
+                        success = True
+                    except STMBootloaderNoMessageException:
+                        print(f"Error reading memory at address {base_address + i}, retrying...")
+                        continue
+        if not readback_ok:
+            print(f"Error reading back page {page_number}, erasing and retrying...")
+            bootloader.send_erase_memory_page(page_number)
 
-# Test code for flashing the app
-if __name__ == "__main__":
-    
+def main():
     bootloader = STMBootloader("/dev/ttyCAN0")
-    sm = BootloaderStateMachine(bootloader, 0x00, 0x00, [], False)
-    img_path = "test.png"
-    sm._graph().write_png(img_path)
+    # sm = BootloaderStateMachine(bootloader, 0x00, 0x00, [], False)
+    # img_path = "test.png"
+    # sm._graph().write_png(img_path)
 
-    firmware_chunksize = 8  # Bytes per chunk for firmware update
+    firmware_chunksize = 128  # Bytes per chunk for firmware update
     base_address = 0x08000000  # Base address for the firmware
+    page_length = 2048 # 2K bytes per page
     with open("/home/aren/DiveCANHeadRev2/STM32.bin", 'rb') as firmware_file:
         bootloader.send_write_memory(0x08000000, 1, bytes([0xFF]), False) # Write a byte that ensures we're in the proper mode
         file_bytes = firmware_file.read()
+        bootloader.flush_rx()
         bootloader.send_erase_memory()
         # Write the firmware to the device
         start_time = time.time()
-        for i in range(0, len(file_bytes), firmware_chunksize):
-            chunk = file_bytes[i:i+firmware_chunksize]
-            elapsed = time.time() - start_time
-            progress = (i + len(chunk)) / len(file_bytes)
-            if progress > 0:
-                remaining = elapsed * (1 - progress) / progress
-            else:
-                remaining = 0
-            state_str = f"State: Writing firmware {i + len(chunk)}/{len(file_bytes)} ({progress * 100:.2f}%) - Est. {remaining:.1f}s remaining"
-            print(state_str)
+        for k in range(page_length, len(file_bytes), page_length):
+            writePage(k, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time)
 
-            write_ok = False
-            while not write_ok:
-                chunk = file_bytes[i:i+firmware_chunksize]
-                bootloader.send_write_memory(base_address + i, len(chunk), chunk)
-                read_chunk = bootloader.send_read_memory(base_address + i, len(chunk))
-                readback_ok = True
-                for j in range(len(chunk)):
-                    if read_chunk[j] != chunk[j]:
-                        print(f"ERROR verifying firmware at address {base_address + i + j:X}, got {read_chunk[j]:02X}, expected {chunk[j]:02X}")
-                        #readback_ok = False
-                    else:
-                        #print(f"Valid at address {base_address + i + j:X}: {read_chunk[j]:02X}")
-                        pass
-                write_ok = readback_ok
+        writePage(0, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time)
 
-
-        # Read the firmware back to verify
-        readback_ok = True
-        for i in range(0, len(file_bytes), firmware_chunksize):
-            actual_chunk = file_bytes[i:i+firmware_chunksize]
-            read_chunk = bootloader.send_read_memory(base_address + i, len(actual_chunk))
-            state_str = f"State: Verifying firmware {i + len(read_chunk)}/{len(file_bytes)} ({(i + len(read_chunk))/len(file_bytes) * 100:.2f}%)"
-            print(state_str)
-        
-          
-            for j in range(len(actual_chunk)):
-                if read_chunk[j] != actual_chunk[j]:
-                    print(f"Error verifying firmware at address {base_address + i + j}, got {read_chunk[j]:02X}, expected {actual_chunk[j]:02X}")
-                    readback_ok = False
-
-
-        if readback_ok:
-            print("Firmware written successfully")
-        else:
-            print("Firmware failed to validate, please check the logs for errors")
+        # Read the whole firmware back to verify, infill busted pages
+        validated = False
+        while not validated: # Beatings continue until morale improves
+            validated = True
+            for k in range(0, len(file_bytes), page_length):
+                for i in range(k, k+page_length, 256):
+                    actual_chunk = file_bytes[i:i+256]
+                    if( len(actual_chunk) == 0):
+                        continue
+                    read_chunk = bootloader.send_read_memory(base_address + i, len(actual_chunk))
+                    state_str = f"State: Verifying firmware {i + len(read_chunk)}/{len(file_bytes)} ({(i + len(read_chunk))/len(file_bytes) * 100:.2f}%)"
+                    print(state_str)
+                    
+                    readback_ok = True
+                    for j in range(len(actual_chunk)):
+                        if read_chunk[j] != actual_chunk[j]:
+                            print(f"Error verifying firmware at address {base_address + i + j}, got {read_chunk[j]:02X}, expected {actual_chunk[j]:02X}")
+                            readback_ok = False
+                            validated = False
+                    
+                    if not readback_ok:
+                        print(f"Error reading back page {k // page_length}, erasing and retrying...")
+                        bootloader.send_erase_memory_page(k // page_length)
+                        writePage(k, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time)
+    # HURRAY WE MADE IT
+    bootloader.send_go()  # Send the go command to start the application
+# Test code for flashing the app
+if __name__ == "__main__":
+    main()
+    
