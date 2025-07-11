@@ -1,5 +1,6 @@
 """ Class to send and receive DiveCAN messages to the DUT """
 import can
+import can.interfaces.slcan
 import time
 import pytest
 from enum import IntEnum
@@ -20,7 +21,7 @@ class DiveCANNoMessageException(Exception):
 class DiveCAN(object):
     """ Class to send and receive DiveCAN messages to the DUT """
     def __init__(self, device: str) -> None:
-        self._bus = can.interface.Bus(interface='slcan', channel=device, bitrate=125000)
+        self._bus = can.interfaces.slcan.slcanBus(channel=device, bitrate=125000, timeout=0.1, rtscts=True)
 
         # Half a second for stuff we request
         self._timeout = 0.1
@@ -35,11 +36,14 @@ class DiveCAN(object):
             self.reader.get_message(0)
 
     def stop(self)-> None:
-        if hasattr(self, 'notifier'):
-            self.notifier.stop()
+        try:
+            if hasattr(self, 'notifier'):
+                self.notifier.stop()
 
-        if hasattr(self, '_bus'):
-            self._bus.shutdown()
+            if hasattr(self, '_bus'):
+                self._bus.shutdown()
+        except can.exceptions.CanOperationError as e:
+            print(f"Can bus faulted out")
 
     def __del__(self)-> None:
         self.stop()
