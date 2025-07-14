@@ -1,7 +1,7 @@
 (kicad_sch
-	(version 20231120)
+	(version 20250114)
 	(generator "eeschema")
-	(generator_version "8.0")
+	(generator_version "9.0")
 	(uuid "b93d8eab-1088-479a-b26d-5dbf0c299473")
 	(paper "A4")
 	(title_block
@@ -12,7 +12,9 @@
 	)
 	(lib_symbols
 		(symbol "Library:C"
-			(pin_numbers hide)
+			(pin_numbers
+				(hide yes)
+			)
 			(pin_names
 				(offset 0.254)
 			)
@@ -85,7 +87,7 @@
 			(symbol "C_0_1"
 				(polyline
 					(pts
-						(xy -2.032 -0.762) (xy 2.032 -0.762)
+						(xy -2.032 0.762) (xy 2.032 0.762)
 					)
 					(stroke
 						(width 0.508)
@@ -97,7 +99,7 @@
 				)
 				(polyline
 					(pts
-						(xy -2.032 0.762) (xy 2.032 0.762)
+						(xy -2.032 -0.762) (xy 2.032 -0.762)
 					)
 					(stroke
 						(width 0.508)
@@ -146,9 +148,12 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Library:R"
-			(pin_numbers hide)
+			(pin_numbers
+				(hide yes)
+			)
 			(pin_names
 				(offset 0)
 			)
@@ -267,6 +272,7 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Project:TPS7A2533DRVR"
 			(exclude_from_sim no)
@@ -378,60 +384,6 @@
 				)
 			)
 			(symbol "TPS7A2533DRVR_1_1"
-				(pin power_out line
-					(at 10.16 1.27 180)
-					(length 2.54)
-					(name "OUT"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin no_connect line
-					(at 10.16 -1.27 180)
-					(length 2.54)
-					(name "FB"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin open_collector line
-					(at 10.16 3.81 180)
-					(length 2.54)
-					(name "PG"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
 				(pin input line
 					(at -10.16 -1.27 0)
 					(length 2.54)
@@ -468,7 +420,62 @@
 						)
 					)
 				)
+				(pin open_collector line
+					(at 10.16 3.81 180)
+					(length 2.54)
+					(name "PG"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_out line
+					(at 10.16 1.27 180)
+					(length 2.54)
+					(name "OUT"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin no_connect line
+					(at 10.16 -1.27 180)
+					(length 2.54)
+					(name "FB"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "power:GNDREF"
 			(power)
@@ -584,7 +591,8 @@
 			(symbol "GNDREF_1_1"
 				(pin power_in line
 					(at 0 0 270)
-					(length 0) hide
+					(length 0)
+					(hide yes)
 					(name "GNDREF"
 						(effects
 							(font
@@ -601,7 +609,19 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
+	)
+	(text "340mV dropout voltage at full load"
+		(exclude_from_sim no)
+		(at 156.21 48.26 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "31521fbc-bef3-469a-8e80-7bf9e0ce9905")
 	)
 	(junction
 		(at 125.73 60.96)
@@ -769,21 +789,9 @@
 		)
 		(uuid "ee241fac-c122-49c4-b567-5099af6495a5")
 	)
-	(text "340mV dropout voltage at full load"
-		(exclude_from_sim no)
-		(at 156.21 48.26 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "31521fbc-bef3-469a-8e80-7bf9e0ce9905")
-	)
 	(hierarchical_label "ENABLE"
 		(shape input)
 		(at 139.7 66.04 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -795,7 +803,6 @@
 	(hierarchical_label "IN"
 		(shape input)
 		(at 123.19 60.96 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -807,7 +814,6 @@
 	(hierarchical_label "POWER_GOOD"
 		(shape input)
 		(at 179.07 58.42 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -819,7 +825,6 @@
 	(hierarchical_label "OUT"
 		(shape input)
 		(at 196.85 60.96 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -838,7 +843,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "061d5bc7-fff5-4768-a60a-5a84d7cf2c96")
-		(property "Reference" "C16"
+		(property "Reference" "C13"
 			(at 122.809 63.5579 0)
 			(effects
 				(font
@@ -921,7 +926,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "2fa5451f-a8f5-44ac-a08d-424e8170dc33")
-		(property "Reference" "#PWR049"
+		(property "Reference" "#PWR045"
 			(at 149.86 78.74 0)
 			(effects
 				(font
@@ -992,7 +997,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "44621dfa-5b0a-4ef8-8378-a8a8d91e2d06")
-		(property "Reference" "R45"
+		(property "Reference" "R44"
 			(at 170.18 54.61 90)
 			(effects
 				(font
@@ -1073,7 +1078,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "44eeaebe-5c4a-4e72-bbcb-65252509d060")
-		(property "Reference" "U4"
+		(property "Reference" "U3"
 			(at 149.86 54.61 0)
 			(effects
 				(font
@@ -1179,7 +1184,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "476c6e6e-02bc-46d3-8b73-adceab0fd306")
-		(property "Reference" "#PWR050"
+		(property "Reference" "#PWR046"
 			(at 181.61 74.93 0)
 			(effects
 				(font
@@ -1249,7 +1254,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "4d612cfe-f7f7-4cd3-bbaf-fec257662da2")
-		(property "Reference" "#PWR048"
+		(property "Reference" "#PWR044"
 			(at 125.73 74.93 0)
 			(effects
 				(font
@@ -1319,7 +1324,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "9effd604-2ac7-4fba-9066-a449b2d77b5e")
-		(property "Reference" "C17"
+		(property "Reference" "C14"
 			(at 184.531 63.5579 0)
 			(effects
 				(font
@@ -1402,7 +1407,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "c8f5ed8c-0589-416e-97e5-9220709a4dd4")
-		(property "Reference" "#PWR051"
+		(property "Reference" "#PWR047"
 			(at 191.77 74.93 0)
 			(effects
 				(font
@@ -1472,7 +1477,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "cb3491e0-8af6-46d9-aa65-55c7dca13268")
-		(property "Reference" "C18"
+		(property "Reference" "C15"
 			(at 194.691 63.746 0)
 			(effects
 				(font

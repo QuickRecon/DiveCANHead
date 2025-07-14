@@ -1,12 +1,14 @@
 (kicad_sch
-	(version 20231120)
+	(version 20250114)
 	(generator "eeschema")
-	(generator_version "8.0")
+	(generator_version "9.0")
 	(uuid "807970fd-4991-4090-8c2a-b108e891ad6a")
 	(paper "A4")
 	(lib_symbols
 		(symbol "Device:Fuse"
-			(pin_numbers hide)
+			(pin_numbers
+				(hide yes)
+			)
 			(pin_names
 				(offset 0)
 			)
@@ -137,10 +139,13 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Device:Q_NMOS_GSD"
 			(pin_names
-				(offset 0) hide)
+				(offset 0)
+				(hide yes)
+			)
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -201,18 +206,6 @@
 			(symbol "Q_NMOS_GSD_0_1"
 				(polyline
 					(pts
-						(xy 0.254 0) (xy -2.54 0)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
 						(xy 0.254 1.905) (xy 0.254 -1.905)
 					)
 					(stroke
@@ -225,7 +218,19 @@
 				)
 				(polyline
 					(pts
-						(xy 0.762 -1.27) (xy 0.762 -2.286)
+						(xy 0.254 0) (xy -2.54 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.762 2.286) (xy 0.762 1.27)
 					)
 					(stroke
 						(width 0.254)
@@ -249,34 +254,10 @@
 				)
 				(polyline
 					(pts
-						(xy 0.762 2.286) (xy 0.762 1.27)
+						(xy 0.762 -1.27) (xy 0.762 -2.286)
 					)
 					(stroke
 						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 2.54 2.54) (xy 2.54 1.778)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 2.54 -2.54) (xy 2.54 0) (xy 0.762 0)
-					)
-					(stroke
-						(width 0)
 						(type default)
 					)
 					(fill
@@ -307,6 +288,63 @@
 						(type outline)
 					)
 				)
+				(circle
+					(center 1.651 0)
+					(radius 2.794)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.54 2.54) (xy 2.54 1.778)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 2.54 1.778)
+					(radius 0.254)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(circle
+					(center 2.54 -1.778)
+					(radius 0.254)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.54 -2.54) (xy 2.54 0) (xy 0.762 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
 				(polyline
 					(pts
 						(xy 2.794 0.508) (xy 2.921 0.381) (xy 3.683 0.381) (xy 3.81 0.254)
@@ -331,39 +369,6 @@
 						(type none)
 					)
 				)
-				(circle
-					(center 1.651 0)
-					(radius 2.794)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(circle
-					(center 2.54 -1.778)
-					(radius 0.254)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
-				(circle
-					(center 2.54 1.778)
-					(radius 0.254)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
 			)
 			(symbol "Q_NMOS_GSD_1_1"
 				(pin input line
@@ -377,24 +382,6 @@
 						)
 					)
 					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 2.54 -5.08 90)
-					(length 2.54)
-					(name "S"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -420,11 +407,32 @@
 						)
 					)
 				)
+				(pin passive line
+					(at 2.54 -5.08 90)
+					(length 2.54)
+					(name "S"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Jumper:SolderJumper_2_Open"
 			(pin_names
-				(offset 0) hide)
+				(offset 0)
+				(hide yes)
+			)
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -490,30 +498,6 @@
 				)
 			)
 			(symbol "SolderJumper_2_Open_0_1"
-				(arc
-					(start -0.254 1.016)
-					(mid -1.2656 0)
-					(end -0.254 -1.016)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(arc
-					(start -0.254 1.016)
-					(mid -1.2656 0)
-					(end -0.254 -1.016)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
 				(polyline
 					(pts
 						(xy -0.254 1.016) (xy -0.254 -1.016)
@@ -526,6 +510,54 @@
 						(type none)
 					)
 				)
+				(arc
+					(start -0.254 -1.016)
+					(mid -1.2656 0)
+					(end -0.254 1.016)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start -0.254 -1.016)
+					(mid -1.2656 0)
+					(end -0.254 1.016)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(arc
+					(start 0.254 1.016)
+					(mid 1.2656 0)
+					(end 0.254 -1.016)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 0.254 1.016)
+					(mid 1.2656 0)
+					(end 0.254 -1.016)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
 				(polyline
 					(pts
 						(xy 0.254 1.016) (xy 0.254 -1.016)
@@ -536,30 +568,6 @@
 					)
 					(fill
 						(type none)
-					)
-				)
-				(arc
-					(start 0.254 -1.016)
-					(mid 1.2656 0)
-					(end 0.254 1.016)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(arc
-					(start 0.254 -1.016)
-					(mid 1.2656 0)
-					(end 0.254 1.016)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
 					)
 				)
 			)
@@ -601,9 +609,12 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Library:C"
-			(pin_numbers hide)
+			(pin_numbers
+				(hide yes)
+			)
 			(pin_names
 				(offset 0.254)
 			)
@@ -676,7 +687,7 @@
 			(symbol "C_0_1"
 				(polyline
 					(pts
-						(xy -2.032 -0.762) (xy 2.032 -0.762)
+						(xy -2.032 0.762) (xy 2.032 0.762)
 					)
 					(stroke
 						(width 0.508)
@@ -688,7 +699,7 @@
 				)
 				(polyline
 					(pts
-						(xy -2.032 0.762) (xy 2.032 0.762)
+						(xy -2.032 -0.762) (xy 2.032 -0.762)
 					)
 					(stroke
 						(width 0.508)
@@ -737,9 +748,12 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Library:R"
-			(pin_numbers hide)
+			(pin_numbers
+				(hide yes)
+			)
 			(pin_names
 				(offset 0)
 			)
@@ -858,11 +872,16 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Library:TestPoint"
-			(pin_numbers hide)
+			(pin_numbers
+				(hide yes)
+			)
 			(pin_names
-				(offset 0.762) hide)
+				(offset 0.762)
+				(hide yes)
+			)
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -960,11 +979,16 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Project:D_TVS_SINGLE"
-			(pin_numbers hide)
+			(pin_numbers
+				(hide yes)
+			)
 			(pin_names
-				(offset 1.016) hide)
+				(offset 1.016)
+				(hide yes)
+			)
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -1032,10 +1056,10 @@
 			(symbol "D_TVS_SINGLE_0_1"
 				(polyline
 					(pts
-						(xy 1.27 0) (xy -1.27 0)
+						(xy -1.27 0) (xy -1.27 0) (xy 1.27 1.27) (xy 1.27 -1.27) (xy -1.27 0)
 					)
 					(stroke
-						(width 0)
+						(width 0.254)
 						(type default)
 					)
 					(fill
@@ -1056,10 +1080,10 @@
 				)
 				(polyline
 					(pts
-						(xy -1.27 0) (xy -1.27 0) (xy 1.27 1.27) (xy 1.27 -1.27) (xy -1.27 0)
+						(xy 1.27 0) (xy -1.27 0)
 					)
 					(stroke
-						(width 0.254)
+						(width 0)
 						(type default)
 					)
 					(fill
@@ -1105,9 +1129,12 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Project:R"
-			(pin_numbers hide)
+			(pin_numbers
+				(hide yes)
+			)
 			(pin_names
 				(offset 0)
 			)
@@ -1226,6 +1253,7 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Project:TPS2115"
 			(pin_names
@@ -1390,34 +1418,16 @@
 					)
 				)
 				(pin power_in line
-					(at 12.7 -6.35 180)
+					(at 12.7 5.08 180)
 					(length 5.08)
-					(name "GND"
+					(name "IN1"
 						(effects
 							(font
 								(size 1.27 1.27)
 							)
 						)
 					)
-					(number "5"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin power_in line
-					(at 12.7 -2.54 180)
-					(length 5.08)
-					(name "IN2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "6"
+					(number "8"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -1444,16 +1454,34 @@
 					)
 				)
 				(pin power_in line
-					(at 12.7 5.08 180)
+					(at 12.7 -2.54 180)
 					(length 5.08)
-					(name "IN1"
+					(name "IN2"
 						(effects
 							(font
 								(size 1.27 1.27)
 							)
 						)
 					)
-					(number "8"
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 12.7 -6.35 180)
+					(length 5.08)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -1462,6 +1490,7 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Project:TPS2121"
 			(pin_names
@@ -1541,71 +1570,35 @@
 				)
 			)
 			(symbol "TPS2121_0_0"
-				(pin power_out line
-					(at 10.16 5.08 180)
-					(length 2.54)
-					(name "OUT"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin output line
-					(at 10.16 -3.81 180)
-					(length 2.54)
-					(name "ILIM"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "10"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin output line
-					(at 10.16 -1.27 180)
-					(length 2.54)
-					(name "SS"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "11"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
 				(pin power_in line
-					(at 10.16 -17.78 180)
+					(at -10.16 5.08 0)
 					(length 2.54)
-					(name "GND"
+					(name "IN1"
 						(effects
 							(font
 								(size 1.27 1.27)
 							)
 						)
 					)
-					(number "12"
+					(number "7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -10.16 -2.54 0)
+					(length 2.54)
+					(name "OV1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -1632,24 +1625,6 @@
 					)
 				)
 				(pin input line
-					(at 10.16 -15.24 180)
-					(length 2.54)
-					(name "CP2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin input line
 					(at -10.16 -17.78 0)
 					(length 2.54)
 					(name "OV2"
@@ -1667,53 +1642,17 @@
 						)
 					)
 				)
-				(pin input line
-					(at -10.16 -2.54 0)
+				(pin power_out line
+					(at 10.16 5.08 180)
 					(length 2.54)
-					(name "OV1"
+					(name "OUT"
 						(effects
 							(font
 								(size 1.27 1.27)
 							)
 						)
 					)
-					(number "5"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin input line
-					(at 10.16 -12.7 180)
-					(length 2.54)
-					(name "PR1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "6"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin power_in line
-					(at -10.16 5.08 0)
-					(length 2.54)
-					(name "IN1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "7"
+					(number "1"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -1739,6 +1678,96 @@
 						)
 					)
 				)
+				(pin output line
+					(at 10.16 -1.27 180)
+					(length 2.54)
+					(name "SS"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "11"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at 10.16 -3.81 180)
+					(length 2.54)
+					(name "ILIM"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "10"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at 10.16 -12.7 180)
+					(length 2.54)
+					(name "PR1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at 10.16 -15.24 180)
+					(length 2.54)
+					(name "CP2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 10.16 -17.78 180)
+					(length 2.54)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "12"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
 			)
 			(symbol "TPS2121_0_1"
 				(rectangle
@@ -1756,7 +1785,8 @@
 			(symbol "TPS2121_1_0"
 				(pin power_out line
 					(at 10.16 5.08 180)
-					(length 2.54) hide
+					(length 2.54)
+					(hide yes)
 					(name "OUT"
 						(effects
 							(font
@@ -1773,9 +1803,12 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "Transistor_FET:2N7000"
-			(pin_names hide)
+			(pin_names
+				(hide yes)
+			)
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -1848,18 +1881,6 @@
 			(symbol "2N7000_0_1"
 				(polyline
 					(pts
-						(xy 0.254 0) (xy -2.54 0)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
 						(xy 0.254 1.905) (xy 0.254 -1.905)
 					)
 					(stroke
@@ -1872,7 +1893,19 @@
 				)
 				(polyline
 					(pts
-						(xy 0.762 -1.27) (xy 0.762 -2.286)
+						(xy 0.254 0) (xy -2.54 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.762 2.286) (xy 0.762 1.27)
 					)
 					(stroke
 						(width 0.254)
@@ -1896,34 +1929,10 @@
 				)
 				(polyline
 					(pts
-						(xy 0.762 2.286) (xy 0.762 1.27)
+						(xy 0.762 -1.27) (xy 0.762 -2.286)
 					)
 					(stroke
 						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 2.54 2.54) (xy 2.54 1.778)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 2.54 -2.54) (xy 2.54 0) (xy 0.762 0)
-					)
-					(stroke
-						(width 0)
 						(type default)
 					)
 					(fill
@@ -1954,6 +1963,63 @@
 						(type outline)
 					)
 				)
+				(circle
+					(center 1.651 0)
+					(radius 2.794)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.54 2.54) (xy 2.54 1.778)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 2.54 1.778)
+					(radius 0.254)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(circle
+					(center 2.54 -1.778)
+					(radius 0.254)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.54 -2.54) (xy 2.54 0) (xy 0.762 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
 				(polyline
 					(pts
 						(xy 2.794 0.508) (xy 2.921 0.381) (xy 3.683 0.381) (xy 3.81 0.254)
@@ -1978,59 +2044,8 @@
 						(type none)
 					)
 				)
-				(circle
-					(center 1.651 0)
-					(radius 2.794)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(circle
-					(center 2.54 -1.778)
-					(radius 0.254)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
-				(circle
-					(center 2.54 1.778)
-					(radius 0.254)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
 			)
 			(symbol "2N7000_1_1"
-				(pin passive line
-					(at 2.54 -5.08 90)
-					(length 2.54)
-					(name "S"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
 				(pin input line
 					(at -5.08 0 0)
 					(length 2.54)
@@ -2067,7 +2082,26 @@
 						)
 					)
 				)
+				(pin passive line
+					(at 2.54 -5.08 90)
+					(length 2.54)
+					(name "S"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "power:GNDREF"
 			(power)
@@ -2183,7 +2217,8 @@
 			(symbol "GNDREF_1_1"
 				(pin power_in line
 					(at 0 0 270)
-					(length 0) hide
+					(length 0)
+					(hide yes)
 					(name "GNDREF"
 						(effects
 							(font
@@ -2200,12 +2235,17 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
 		(symbol "power:PWR_FLAG"
 			(power)
-			(pin_numbers hide)
+			(pin_numbers
+				(hide yes)
+			)
 			(pin_names
-				(offset 0) hide)
+				(offset 0)
+				(hide yes)
+			)
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -2296,7 +2336,261 @@
 					)
 				)
 			)
+			(embedded_fonts no)
 		)
+	)
+	(rectangle
+		(start 173.99 12.7)
+		(end 251.46 58.42)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(fill
+			(type none)
+		)
+		(uuid 0d86220d-7de4-4a0a-94c4-694bf03ef0a4)
+	)
+	(rectangle
+		(start 173.99 109.22)
+		(end 261.62 165.1)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(fill
+			(type none)
+		)
+		(uuid 34887b40-ef76-4542-a2c4-9fd0e47698b6)
+	)
+	(rectangle
+		(start 19.05 54.61)
+		(end 163.83 173.99)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(fill
+			(type none)
+		)
+		(uuid 60731277-767c-413d-9b1c-be54b45fc4c8)
+	)
+	(rectangle
+		(start 173.99 59.69)
+		(end 252.73 107.95)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(fill
+			(type none)
+		)
+		(uuid 62a8325f-31e2-46cd-b84a-1272fa804cca)
+	)
+	(text "Both power sources are symmetrical with 2 exceptions:\n1. CAN power has priority for powering the main microcontroller\n2. Battery power can by shut off by the microcontroller (undervolt protection)\n\nLoad shedding will happen if the voltage drops below 3.3v, it is expected by 3v\nthat functions will be very limited (loss of ADCs, CANBus).\n\nMAX Input 13.3v, 18v if TVS removed"
+		(exclude_from_sim no)
+		(at 163.83 173.99 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "0839a743-bdfa-4393-af0e-60436c2136e4")
+	)
+	(text "SOLENOID_PWR"
+		(exclude_from_sim no)
+		(at 173.99 111.76 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.254)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "129a1c2c-996a-4161-ad42-9b6e2846ceaf")
+	)
+	(text "25uA\n"
+		(exclude_from_sim no)
+		(at 175.26 114.3 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "3afbedea-9d96-4455-9cc6-22e902329706")
+	)
+	(text "VBUS is the power source for non-essential systems (such as SD card\nlogging) and higher power loads (like solid state cells) that we need\nto be able to load shed. We can also switch power-source in power \nconstrained environments like handset-only bus power, so we can run \nlarge loads without browning out the bus. 227 as it is plenty to run\nmultiple cells (~15mA each nominal), SD card (~130mA), plus external loads,\nwithout overloading the linear regs (300mA max)."
+		(exclude_from_sim no)
+		(at 252.73 106.68 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "3c153de8-a652-4124-8c64-32aa50e6b6c3")
+	)
+	(text "15uA per rail"
+		(exclude_from_sim no)
+		(at 143.51 77.47 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "55e8dbd9-6d3f-41c0-8748-47845d3f1974")
+	)
+	(text "100mA current limit\n"
+		(exclude_from_sim no)
+		(at 189.23 40.64 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "6fa47249-a6fd-4975-a2ae-2013663b2a35")
+	)
+	(text "90uA\n"
+		(exclude_from_sim no)
+		(at 173.99 17.78 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "710a8888-63b1-4ca9-ad67-1410677e95c6")
+	)
+	(text "Input Protection/Regulation"
+		(exclude_from_sim no)
+		(at 19.05 57.15 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "927ec720-058b-4341-a16d-3a9cb17034f4")
+	)
+	(text "227mA current limit\n"
+		(exclude_from_sim no)
+		(at 185.42 91.44 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "98ece913-2b16-41b6-8973-eff4a283e74c")
+	)
+	(text "VCC is designatied for mission critical systems (ie the microcontroller,\nADCs, CAN rx/tx, etc). Therefore it needs to be always powered, and as \nit powers the microcontroller we can't rely on that to set up the rail. \nTherefore the logic is fixed as CAN power first, then battery if \nthat is unavaliable. The current limit is chosen based on the 140mA\nabsolute max power of the microcontroller, there is no reason we should\nbe using that much power."
+		(exclude_from_sim no)
+		(at 250.19 57.15 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "9e986e47-9240-4db5-b5f2-32d0f86391fd")
+	)
+	(text "VCC"
+		(exclude_from_sim no)
+		(at 173.99 15.24 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.254)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "9ef7cec9-2924-47e5-828b-b64a7b6bc7d9")
+	)
+	(text "Regulated output: 3.3v\n\nLDOs used, dropout 300mV max\n~100mV closer to expected under\nthis load"
+		(exclude_from_sim no)
+		(at 127 68.58 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "a9df5b61-b7e0-4a23-b658-2f3c8a57a2dd")
+	)
+	(text "VBUS"
+		(exclude_from_sim no)
+		(at 173.99 62.23 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.254)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "b4ba343e-a953-4083-b0ff-8e59a9ec1e9e")
+	)
+	(text "For protection to function properly, CAN_GND and BATT_GND \nmust not be connected together outside of this block"
+		(exclude_from_sim no)
+		(at 74.93 115.57 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "b53d3ffd-4e24-4e43-8534-f6ee6bd3524a")
+	)
+	(text "1.37A current limit\n"
+		(exclude_from_sim no)
+		(at 215.9 132.08 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "de710105-eaab-482a-b462-c5017be76478")
+	)
+	(text "90uA\n"
+		(exclude_from_sim no)
+		(at 175.26 66.04 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "e263ba78-cb6a-44a9-a8d1-f1dfefe67169")
+	)
+	(text "BYPASS jumpers allow for the reverse voltage protection (RVP)\nand fuses to be disabled. This allows for an external protection\ncircuitry to be used."
+		(exclude_from_sim no)
+		(at 74.93 105.41 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "f016773d-58cb-4985-ae5a-1992b3986d30")
+	)
+	(text "SOLENOID_PWR is purely for powering the solenoid driver circuit. Like VBUS it is \nsoftware configurable to draw from either CAN power, battery power, or autoswitching\nas needed. It bypasses the regulators (to minimise power loss).\n\nWe run the TPS in either VCOMP mode (highest V gets used) manual\nswitching by manually feeding the overvolt detect from the microcontroller.\nThis is fine as overvolt suppression is upstream and the solenoid downstream\ncan take the max power rating."
+		(exclude_from_sim no)
+		(at 260.35 163.83 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "f8dbc763-f950-40b1-8185-50827ffed017")
 	)
 	(junction
 		(at 217.17 142.24)
@@ -3206,262 +3500,8 @@
 		)
 		(uuid "ff8254fd-9834-4ab1-a1d4-b62e7aaedad4")
 	)
-	(rectangle
-		(start 173.99 12.7)
-		(end 251.46 58.42)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(fill
-			(type none)
-		)
-		(uuid 0d86220d-7de4-4a0a-94c4-694bf03ef0a4)
-	)
-	(rectangle
-		(start 173.99 109.22)
-		(end 261.62 165.1)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(fill
-			(type none)
-		)
-		(uuid 34887b40-ef76-4542-a2c4-9fd0e47698b6)
-	)
-	(rectangle
-		(start 19.05 54.61)
-		(end 163.83 173.99)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(fill
-			(type none)
-		)
-		(uuid 60731277-767c-413d-9b1c-be54b45fc4c8)
-	)
-	(rectangle
-		(start 173.99 59.69)
-		(end 252.73 107.95)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(fill
-			(type none)
-		)
-		(uuid 62a8325f-31e2-46cd-b84a-1272fa804cca)
-	)
-	(text "Both power sources are symmetrical with 2 exceptions:\n1. CAN power has priority for powering the main microcontroller\n2. Battery power can by shut off by the microcontroller (undervolt protection)\n\nLoad shedding will happen if the voltage drops below 3.3v, it is expected by 3v\nthat functions will be very limited (loss of ADCs, CANBus).\n\nMAX Input 13.3v, 18v if TVS removed"
-		(exclude_from_sim no)
-		(at 163.83 173.99 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "0839a743-bdfa-4393-af0e-60436c2136e4")
-	)
-	(text "SOLENOID_PWR"
-		(exclude_from_sim no)
-		(at 173.99 111.76 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-				(thickness 0.254)
-				(bold yes)
-			)
-			(justify left bottom)
-		)
-		(uuid "129a1c2c-996a-4161-ad42-9b6e2846ceaf")
-	)
-	(text "25uA\n"
-		(exclude_from_sim no)
-		(at 175.26 114.3 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "3afbedea-9d96-4455-9cc6-22e902329706")
-	)
-	(text "VBUS is the power source for non-essential systems (such as SD card\nlogging) and higher power loads (like solid state cells) that we need\nto be able to load shed. We can also switch power-source in power \nconstrained environments like handset-only bus power, so we can run \nlarge loads without browning out the bus. 227 as it is plenty to run\nmultiple cells (~15mA each nominal), SD card (~130mA), plus external loads,\nwithout overloading the linear regs (300mA max)."
-		(exclude_from_sim no)
-		(at 252.73 106.68 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "3c153de8-a652-4124-8c64-32aa50e6b6c3")
-	)
-	(text "15uA per rail"
-		(exclude_from_sim no)
-		(at 143.51 77.47 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "55e8dbd9-6d3f-41c0-8748-47845d3f1974")
-	)
-	(text "100mA current limit\n"
-		(exclude_from_sim no)
-		(at 189.23 40.64 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "6fa47249-a6fd-4975-a2ae-2013663b2a35")
-	)
-	(text "90uA\n"
-		(exclude_from_sim no)
-		(at 173.99 17.78 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "710a8888-63b1-4ca9-ad67-1410677e95c6")
-	)
-	(text "Input Protection/Regulation"
-		(exclude_from_sim no)
-		(at 19.05 57.15 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-				(bold yes)
-			)
-			(justify left bottom)
-		)
-		(uuid "927ec720-058b-4341-a16d-3a9cb17034f4")
-	)
-	(text "227mA current limit\n"
-		(exclude_from_sim no)
-		(at 185.42 91.44 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "98ece913-2b16-41b6-8973-eff4a283e74c")
-	)
-	(text "VCC is designatied for mission critical systems (ie the microcontroller,\nADCs, CAN rx/tx, etc). Therefore it needs to be always powered, and as \nit powers the microcontroller we can't rely on that to set up the rail. \nTherefore the logic is fixed as CAN power first, then battery if \nthat is unavaliable. The current limit is chosen based on the 140mA\nabsolute max power of the microcontroller, there is no reason we should\nbe using that much power."
-		(exclude_from_sim no)
-		(at 250.19 57.15 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "9e986e47-9240-4db5-b5f2-32d0f86391fd")
-	)
-	(text "VCC"
-		(exclude_from_sim no)
-		(at 173.99 15.24 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-				(thickness 0.254)
-				(bold yes)
-			)
-			(justify left bottom)
-		)
-		(uuid "9ef7cec9-2924-47e5-828b-b64a7b6bc7d9")
-	)
-	(text "Regulated output: 3.3v\n\nLDOs used, dropout 300mV max\n~100mV closer to expected under\nthis load"
-		(exclude_from_sim no)
-		(at 127 68.58 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "a9df5b61-b7e0-4a23-b658-2f3c8a57a2dd")
-	)
-	(text "VBUS"
-		(exclude_from_sim no)
-		(at 173.99 62.23 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-				(thickness 0.254)
-				(bold yes)
-			)
-			(justify left bottom)
-		)
-		(uuid "b4ba343e-a953-4083-b0ff-8e59a9ec1e9e")
-	)
-	(text "For protection to function properly, CAN_GND and BATT_GND \nmust not be connected together outside of this block"
-		(exclude_from_sim no)
-		(at 74.93 115.57 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "b53d3ffd-4e24-4e43-8534-f6ee6bd3524a")
-	)
-	(text "1.37A current limit\n"
-		(exclude_from_sim no)
-		(at 215.9 132.08 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "de710105-eaab-482a-b462-c5017be76478")
-	)
-	(text "90uA\n"
-		(exclude_from_sim no)
-		(at 175.26 66.04 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "e263ba78-cb6a-44a9-a8d1-f1dfefe67169")
-	)
-	(text "BYPASS jumpers allow for the reverse voltage protection (RVP)\nand fuses to be disabled. This allows for an external protection\ncircuitry to be used."
-		(exclude_from_sim no)
-		(at 74.93 105.41 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "f016773d-58cb-4985-ae5a-1992b3986d30")
-	)
-	(text "SOLENOID_PWR is purely for powering the solenoid driver circuit. Like VBUS it is \nsoftware configurable to draw from either CAN power, battery power, or autoswitching\nas needed. It bypasses the regulators (to minimise power loss).\n\nWe run the TPS in either VCOMP mode (highest V gets used) manual\nswitching by manually feeding the overvolt detect from the microcontroller.\nThis is fine as overvolt suppression is upstream and the solenoid downstream\ncan take the max power rating."
-		(exclude_from_sim no)
-		(at 260.35 163.83 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "f8dbc763-f950-40b1-8185-50827ffed017")
-	)
 	(label "BATTERY_REGULATED"
 		(at 241.3 30.48 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3472,7 +3512,6 @@
 	)
 	(label "CAN_REGULATED"
 		(at 181.61 30.48 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3483,7 +3522,6 @@
 	)
 	(label "CAN"
 		(at 186.69 119.38 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3494,7 +3532,6 @@
 	)
 	(label "CAN"
 		(at 53.34 80.01 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3505,7 +3542,6 @@
 	)
 	(label "CAN_REGULATED"
 		(at 237.49 74.93 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3516,7 +3552,6 @@
 	)
 	(label "BATTERY"
 		(at 52.07 134.62 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3527,7 +3562,6 @@
 	)
 	(label "BATTERY_REGULATED"
 		(at 116.84 134.62 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3538,7 +3572,6 @@
 	)
 	(label "BATTERY"
 		(at 186.69 134.62 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3549,7 +3582,6 @@
 	)
 	(label "CAN_REGULATED"
 		(at 237.49 22.86 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3560,7 +3592,6 @@
 	)
 	(label "BATTERY_REGULATED"
 		(at 241.3 82.55 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3571,7 +3602,6 @@
 	)
 	(label "CAN_REGULATED"
 		(at 116.84 80.01 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3583,7 +3613,6 @@
 	(hierarchical_label "BAT_OFF"
 		(shape input)
 		(at 66.04 157.48 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3595,7 +3624,6 @@
 	(hierarchical_label "BUS_STAT"
 		(shape input)
 		(at 195.58 74.93 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3607,7 +3635,6 @@
 	(hierarchical_label "CAN_PWR"
 		(shape input)
 		(at 31.75 80.01 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3619,7 +3646,6 @@
 	(hierarchical_label "CAN_PG"
 		(shape input)
 		(at 100.33 83.82 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3631,7 +3657,6 @@
 	(hierarchical_label "BUS_SELECT1"
 		(shape input)
 		(at 196.85 78.74 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3643,7 +3668,6 @@
 	(hierarchical_label "SOLENOID_STAT"
 		(shape input)
 		(at 217.17 123.19 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3655,7 +3679,6 @@
 	(hierarchical_label "VCC_STAT"
 		(shape input)
 		(at 195.58 22.86 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3667,7 +3690,6 @@
 	(hierarchical_label "SOLENOID_PWR"
 		(shape input)
 		(at 240.03 119.38 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3679,7 +3701,6 @@
 	(hierarchical_label "CAN_GND"
 		(shape input)
 		(at 31.75 95.25 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3691,7 +3712,6 @@
 	(hierarchical_label "BAT_PG"
 		(shape input)
 		(at 100.33 138.43 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3703,7 +3723,6 @@
 	(hierarchical_label "BUS_SELECT2"
 		(shape input)
 		(at 196.85 82.55 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3715,7 +3734,6 @@
 	(hierarchical_label "SOLENOID_DIS_CAN"
 		(shape input)
 		(at 196.85 127 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3727,7 +3745,6 @@
 	(hierarchical_label "V_BUS"
 		(shape input)
 		(at 245.11 78.74 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3739,7 +3756,6 @@
 	(hierarchical_label "BATT_GND"
 		(shape input)
 		(at 31.75 149.86 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3751,7 +3767,6 @@
 	(hierarchical_label "SOLENOID_DIS_BATT"
 		(shape input)
 		(at 196.85 142.24 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3763,7 +3778,6 @@
 	(hierarchical_label "BATT_PWR"
 		(shape input)
 		(at 31.75 134.62 180)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3775,7 +3789,6 @@
 	(hierarchical_label "VCC"
 		(shape input)
 		(at 245.11 26.67 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7353,6 +7366,10 @@
 	(sheet
 		(at 72.39 132.08)
 		(size 24.13 8.89)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
 		(fields_autoplaced yes)
 		(stroke
 			(width 0.1524)
@@ -7382,43 +7399,43 @@
 		)
 		(pin "OUT" input
 			(at 96.52 134.62 0)
+			(uuid "0b64b03b-ced6-4823-a77d-71746e7150e6")
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify right)
 			)
-			(uuid "0b64b03b-ced6-4823-a77d-71746e7150e6")
 		)
 		(pin "IN" input
 			(at 72.39 134.62 180)
+			(uuid "e94c8820-3f9a-4bae-9774-dbe79c6961a7")
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left)
 			)
-			(uuid "e94c8820-3f9a-4bae-9774-dbe79c6961a7")
 		)
 		(pin "ENABLE" input
 			(at 72.39 138.43 180)
+			(uuid "48b21b6d-0414-41b5-9c46-9b84c55a24b8")
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left)
 			)
-			(uuid "48b21b6d-0414-41b5-9c46-9b84c55a24b8")
 		)
 		(pin "POWER_GOOD" input
 			(at 96.52 138.43 0)
+			(uuid "b1cf8a4d-507c-4844-adec-e65cbc1293d6")
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify right)
 			)
-			(uuid "b1cf8a4d-507c-4844-adec-e65cbc1293d6")
 		)
 		(instances
 			(project "DiveCAN Head2"
@@ -7431,6 +7448,10 @@
 	(sheet
 		(at 72.39 77.47)
 		(size 24.13 8.89)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
 		(fields_autoplaced yes)
 		(stroke
 			(width 0.1524)
@@ -7460,43 +7481,43 @@
 		)
 		(pin "OUT" input
 			(at 96.52 80.01 0)
+			(uuid "d90ae3a2-0364-45b2-8712-61e3254e8624")
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify right)
 			)
-			(uuid "d90ae3a2-0364-45b2-8712-61e3254e8624")
 		)
 		(pin "IN" input
 			(at 72.39 80.01 180)
+			(uuid "f272c29d-23ae-4ec3-8578-e5a7a2306893")
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left)
 			)
-			(uuid "f272c29d-23ae-4ec3-8578-e5a7a2306893")
 		)
 		(pin "ENABLE" input
 			(at 72.39 83.82 180)
+			(uuid "3fa813f5-a219-4f81-a517-518e93195028")
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left)
 			)
-			(uuid "3fa813f5-a219-4f81-a517-518e93195028")
 		)
 		(pin "POWER_GOOD" input
 			(at 96.52 83.82 0)
+			(uuid "c91abea3-2bc0-4f8b-95e4-902e74535820")
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify right)
 			)
-			(uuid "c91abea3-2bc0-4f8b-95e4-902e74535820")
 		)
 		(instances
 			(project "DiveCAN Head2"
