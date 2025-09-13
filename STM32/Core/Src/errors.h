@@ -108,8 +108,11 @@ extern "C"
         /** @brief VBus is undervolted, cell readings are unreliable */
         VBUS_UNDER_VOLTAGE_ERR = 28,
 
+        /** @brief We tried to fire the solenoid but were inhibited */
+        SOLENOID_DISABLED_ERR = 29,
+
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        MAX_ERR = VBUS_UNDER_VOLTAGE_ERR
+        MAX_ERR = SOLENOID_DISABLED_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

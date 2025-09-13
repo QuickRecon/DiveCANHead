@@ -1,13 +1,19 @@
 #pragma once
 #include "Hardware/power_modes.h"
 #include "Sensors/OxygenCell.h"
-#include "PPO2Control/PPO2Control.h"
 #include "Hardware/hw_version.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+    typedef enum
+    {
+        PPO2CONTROL_OFF = 0,
+        PPO2CONTROL_SOLENOID_PID = 1, /* Modern PID-style control loop*/
+        PPO2CONTROL_MK15 = 2, /* MK15 OEM style control scheme (1.5 on, 6 off, while below threshold)*/
+    } PPO2ControlScheme_t;
+
     /* UPDATING THIS STRUCTURE REQUIRES UPDATING THE VERSION NUMBER*/
     typedef struct
     {
@@ -32,16 +38,16 @@ extern "C"
 
     static const Configuration_t DEFAULT_CONFIGURATION = {
         .firmwareVersion = FIRMWARE_VERSION,
-        .cell1 = CELL_ANALOG,
-        .cell2 = CELL_ANALOG,
+        .cell1 = CELL_DIVEO2,
+        .cell2 = CELL_O2S,
         .cell3 = CELL_ANALOG,
         .powerMode = MODE_BATTERY,
         .calibrationMode = CAL_ANALOG_ABSOLUTE,
         .enableUartPrinting = false,
-        .dischargeThresholdMode = V_THRESHOLD_LI3S,
+        .dischargeThresholdMode = V_THRESHOLD_LI2S,
         .ppo2controlMode = PPO2CONTROL_MK15,
         .extendedMessages = false,
-        .ppo2DepthCompensation = false};
+        .ppo2DepthCompensation = true};
 
 #ifdef __cplusplus
 }

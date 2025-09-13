@@ -441,8 +441,8 @@ int main(void)
   InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
   (void)HAL_IWDG_Refresh(&hiwdg);
-
-  InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3], deviceConfig.ppo2DepthCompensation, deviceConfig.extendedMessages, deviceConfig.ppo2controlMode);
+  
+  InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3], deviceConfig.ppo2DepthCompensation, deviceConfig.extendedMessages, deviceConfig.ppo2controlMode, deviceConfig.powerMode);
 
   /* USER CODE END 2 */
 

@@ -1,11 +1,12 @@
 #pragma once
+#include "../configuration.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-    void setSolenoidOn(void);
+    void setSolenoidOn(PowerSelectMode_t powerMode);
     void setSolenoidOff(void);
 
 #ifdef __cplusplus

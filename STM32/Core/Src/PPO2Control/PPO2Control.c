@@ -18,6 +18,7 @@ typedef struct
     PIDState_t pidState;
     bool useExtendedMessages;
     bool depthCompensation;
+    PowerSelectMode_t powerMode;
 } PPO2ControlTask_params_t;
 
 void setSetpoint(PPO2_t ppo2)
@@ -92,7 +93,8 @@ static PPO2ControlTask_params_t *getControlParams(void)
             .saturationCount = 0,
         },
         .useExtendedMessages = false,
-        .depthCompensation = true};
+        .depthCompensation = true,
+        .powerMode = MODE_BATTERY_THEN_CAN};
     return &params;
 }
 
@@ -113,7 +115,7 @@ static void PPO2_PIDControlTask(void *arg);
 static void PIDSolenoidFireTask(void *arg);
 static void MK15SolenoidFireTask(void *arg);
 
-void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, bool depthCompensation, bool useExtendedMessages, PPO2ControlScheme_t controlScheme)
+void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, bool depthCompensation, bool useExtendedMessages, PPO2ControlScheme_t controlScheme, PowerSelectMode_t powerMode)
 {
     PPO2ControlTask_params_t *params = getControlParams();
     params->c1 = c1;
@@ -122,6 +124,8 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, b
 
     params->useExtendedMessages = useExtendedMessages;
     params->depthCompensation = depthCompensation;
+
+    params->powerMode = powerMode;
 
     /* Declare this stack externally so we can use it across the different control schemes without impacting our footprint */
     static uint8_t SolenoidFireTask_buffer[SOLENOIDFIRETASK_STACK_SIZE];
@@ -201,7 +205,7 @@ static void MK15SolenoidFireTask(void *arg)
         /* Check if now is a time when we fire the solenoid */
         if (getSolenoidEnable() && (d_setpoint > measurement))
         {
-            setSolenoidOn();
+            setSolenoidOn(params->powerMode);
             (void)osDelay(pdMS_TO_TICKS(on_time));
             setSolenoidOff();
         }
@@ -247,7 +251,7 @@ static void PIDSolenoidFireTask(void *arg)
                 }
             }
 
-            setSolenoidOn();
+            setSolenoidOn(params->powerMode);
             (void)osDelay(pdMS_TO_TICKS((PIDNumeric_t)totalFireTime * dutyCycle));
             setSolenoidOff();
             (void)osDelay(pdMS_TO_TICKS((PIDNumeric_t)totalFireTime * (1.0f - dutyCycle)));
