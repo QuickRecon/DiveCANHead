@@ -1,12 +1,19 @@
 #pragma once
 #include "Hardware/power_modes.h"
-#include "Sensors/OxygenCell.h"
 #include "Hardware/hw_version.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+
+    typedef enum
+    {
+        CAL_DIGITAL_REFERENCE = 0,
+        CAL_ANALOG_ABSOLUTE = 1,
+        CAL_TOTAL_ABSOLUTE = 2,
+        CAL_SOLENOID_FLUSH = 3,
+    } OxygenCalMethod_t;
     typedef enum
     {
         PPO2CONTROL_OFF = 0,
@@ -42,7 +49,7 @@ extern "C"
         .cell2 = CELL_O2S,
         .cell3 = CELL_ANALOG,
         .powerMode = MODE_BATTERY,
-        .calibrationMode = CAL_ANALOG_ABSOLUTE,
+        .calibrationMode = CAL_SOLENOID_FLUSH,
         .enableUartPrinting = false,
         .dischargeThresholdMode = V_THRESHOLD_LI2S,
         .ppo2controlMode = PPO2CONTROL_MK15,

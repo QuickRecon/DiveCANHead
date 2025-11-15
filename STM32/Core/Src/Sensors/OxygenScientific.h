@@ -31,6 +31,7 @@ extern "C"
         uint32_t ticksOfLastMessage;
         uint32_t ticksOfTX;
         uint32_t ticksOfLastPPO2;
+        CalCoeff_t calibrationCoefficient;
         osThreadId_t processor;
         QueueHandle_t outQueue;
     } OxygenScientificState_t;
@@ -40,6 +41,8 @@ extern "C"
 
     void O2S_Cell_TX_Complete(const UART_HandleTypeDef *huart);
     void O2S_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size);
+
+    ShortMillivolts_t O2SCalibrate(OxygenScientificState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);
 
 #ifdef __cplusplus
 }

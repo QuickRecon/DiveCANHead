@@ -186,7 +186,7 @@ void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const
 
     serial_printf("RX cal request; PPO2: %u, Pressure: %u\r\n", fO2, pressure);
 
-    RunCalibrationTask(deviceSpec->type, fO2, pressure, configuration->calibrationMode);
+    RunCalibrationTask(deviceSpec->type, fO2, pressure, configuration->calibrationMode, configuration->powerMode);
 }
 
 void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration)

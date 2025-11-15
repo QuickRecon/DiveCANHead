@@ -21,6 +21,8 @@ class PowerSelectMode(IntEnum):
 class OxygenCalMethod(IntEnum):
     CAL_DIGITAL_REFERENCE = 0
     CAL_ANALOG_ABSOLUTE = 1
+    CAL_TOTAL_ABSOLUTE = 2
+    CAL_SOLENOID_FLUSH = 3
 
 class VoltageThreshold(IntEnum):
     V_THRESHOLD_9V = 0

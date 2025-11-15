@@ -29,7 +29,15 @@ extern "C"
         mock().actualCall("O2S_InitCell");
         return NULL;
     }
-    ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
+    ShortMillivolts_t AnalogCalibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
+    {
+        return 0;
+    }
+    ShortMillivolts_t DiveO2Calibrate(DiveO2State_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
+    {
+        return 0;
+    }
+    ShortMillivolts_t O2SCalibrate(OxygenScientificState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
     {
         return 0;
     }

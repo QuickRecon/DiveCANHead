@@ -8,6 +8,8 @@
 #include "../Hardware/log.h"
 #include "assert.h"
 #include "stm32l4xx_hal_gpio.h"
+#include "../Hardware/flash.h"
+#include <math.h>
 
 /* Newline for terminating uart message*/
 static const uint8_t NEWLINE = 0x0A;
@@ -20,8 +22,12 @@ static const uint8_t ACK_LEN = 3;
 static const char *const GET_OXY_COMMAND = "Mm";
 static const char *const GET_OXY_RESPONSE = "Mn";
 
+/* If the value reported by the cell is more than 20% out then we need to get upset*/
+static const CalCoeff_t O2S_CAL_UPPER = 1.2f;
+static const CalCoeff_t O2S_CAL_LOWER = 0.8f;
+
 /* Time to wait on the cell to do things*/
-static const uint16_t DIGITAL_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before the cell *definitely* isn't coming back to us*/
+static const uint16_t DIGITAL_RESPONSE_TIMEOUT = TIMEOUT_2S_TICKS; /* Milliseconds, how long before the cell *definitely* isn't coming back to us*/
 
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
@@ -45,6 +51,7 @@ static OxygenScientificState_t *getCellState(uint8_t cellNum)
 
 static void decodeCellMessage(void *arg);
 static void sendCellCommand(const char *const commandStr, OxygenScientificState_t *cell);
+void O2SReadCalibration(OxygenScientificState_t *handle);
 
 OxygenScientificState_t *O2S_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
@@ -58,6 +65,8 @@ OxygenScientificState_t *O2S_InitCell(OxygenHandle_t *cell, QueueHandle_t outQue
         handle = getCellState(cell->cellNumber);
         handle->cellNumber = cell->cellNumber;
         handle->outQueue = outQueue;
+        handle->calibrationCoefficient = 1.0f;
+        O2SReadCalibration(handle);
         if (CELL_1 == cell->cellNumber)
         {
             handle->huart = &huart1;
@@ -101,6 +110,62 @@ OxygenScientificState_t *O2S_InitCell(OxygenHandle_t *cell, QueueHandle_t outQue
     return handle;
 }
 
+/* Dredge up the cal-coefficient from the eeprom*/
+void O2SReadCalibration(OxygenScientificState_t *handle)
+{
+    bool calOk = GetCalibration(handle->cellNumber, &(handle->calibrationCoefficient));
+    if (calOk)
+    {
+        serial_printf("Got cal %f\r\n", handle->calibrationCoefficient);
+        if ((handle->calibrationCoefficient > O2S_CAL_LOWER) &&
+            (handle->calibrationCoefficient < O2S_CAL_UPPER))
+        {
+            handle->status = CELL_OK;
+        }
+        else
+        {
+            handle->status = CELL_OK;
+            serial_printf("Valid Cal not found %d, defaulting\r\n", handle->cellNumber);
+            handle->calibrationCoefficient = 1.0f;
+        }
+    }
+    else
+    {
+        handle->status = CELL_OK;
+        serial_printf("failed to read %d, defaulting\r\n", handle->cellNumber);
+        handle->calibrationCoefficient = 1.0f;
+    }
+}
+
+
+/* Calculate and write the eeprom*/
+ShortMillivolts_t O2SCalibrate(OxygenScientificState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
+{
+    *calError = NONE_ERR;
+    /* Our coefficient is simply the float needed to make the current sample the current PPO2*/
+    /* Yes this is backwards compared to the analog cell, but it makes more intuitive sense when looking at the the values to see how deviated the cell is from OEM spec*/
+    CalCoeff_t newCal = (PPO2/100.0f)/handle->cellSample;
+
+    serial_printf("Calibrated cell %d with coefficient %f\r\n", handle->cellNumber, newCal);
+
+    bool calOK = SetCalibration(handle->cellNumber, newCal);
+    if (!calOK)
+    {
+        handle->status = CELL_FAIL;
+    }
+    O2SReadCalibration(handle);
+
+    if (((handle->calibrationCoefficient - newCal) > 0.00001) ||
+        ((handle->calibrationCoefficient - newCal) < -0.00001))
+    {
+        handle->status = CELL_FAIL;
+        *calError = CAL_MISMATCH_ERR;
+        NON_FATAL_ERROR(*calError);
+    }
+
+    return 0;
+}
+
 static void O2S_broadcastPPO2(OxygenScientificState_t *handle)
 {
     PPO2_t PPO2 = 0;
@@ -128,7 +193,7 @@ static void O2S_broadcastPPO2(OxygenScientificState_t *handle)
         }
     }
 
-    O2SNumeric_t tempPPO2 = handle->cellSample * 100.0f;
+    O2SNumeric_t tempPPO2 = handle->cellSample *handle->calibrationCoefficient* 100.0f;
     if (tempPPO2 > 255.0f)
     {
         handle->status = CELL_FAIL;
@@ -136,7 +201,7 @@ static void O2S_broadcastPPO2(OxygenScientificState_t *handle)
     }
     PPO2 = (PPO2_t)(tempPPO2);
 
-    PIDNumeric_t precisionPPO2 = (PIDNumeric_t)handle->cellSample;
+    PIDNumeric_t precisionPPO2 = (PIDNumeric_t)handle->cellSample*handle->calibrationCoefficient;
     /* Lodge the cell data*/
     OxygenCell_t cellData = {
         .cellNumber = handle->cellNumber,

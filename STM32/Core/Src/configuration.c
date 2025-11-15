@@ -80,7 +80,8 @@ bool ConfigurationValid(Configuration_t config, HW_Version_t hw_version)
     uint8_t calMode = (configBits >> 16) & 0b111u;
     valid = valid && ((calMode == CAL_DIGITAL_REFERENCE) ||
                       (calMode == CAL_ANALOG_ABSOLUTE) ||
-                      (calMode == CAL_TOTAL_ABSOLUTE));
+                      (calMode == CAL_TOTAL_ABSOLUTE) ||
+                      (calMode == CAL_SOLENOID_FLUSH));
 
     /* Check that the firmware version matches*/
     uint8_t firmwareVersion = configBits & 0xFFu;

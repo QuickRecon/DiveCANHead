@@ -37,6 +37,8 @@ const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before 
 
 void analogProcessor(void *arg);
 
+void AnalogReadCalibration(AnalogOxygenState_t *handle);
+
 AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
     AnalogOxygenState_t *handle = NULL;
@@ -50,7 +52,7 @@ AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueu
         handle->cellNumber = cell->cellNumber;
         handle->adcInputIndex = cell->cellNumber;
         handle->outQueue = outQueue;
-        ReadCalibration(handle);
+        AnalogReadCalibration(handle);
 
         osThreadAttr_t processor_attributes = {
             .name = "AnlgCellTask",
@@ -69,7 +71,7 @@ AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueu
 }
 
 /* Dredge up the cal-coefficient from the eeprom*/
-void ReadCalibration(AnalogOxygenState_t *handle)
+void AnalogReadCalibration(AnalogOxygenState_t *handle)
 {
     bool calOk = GetCalibration(handle->cellNumber, &(handle->calibrationCoefficient));
     if (calOk)
@@ -93,7 +95,7 @@ void ReadCalibration(AnalogOxygenState_t *handle)
 }
 
 /* Calculate and write the eeprom*/
-ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
+ShortMillivolts_t AnalogCalibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
 {
     *calError = NONE_ERR;
     int16_t adcCounts = handle->lastCounts;
@@ -107,7 +109,7 @@ ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonF
     {
         handle->status = CELL_FAIL;
     }
-    ReadCalibration(handle);
+    AnalogReadCalibration(handle);
 
     if (((handle->calibrationCoefficient - newCal) > 0.00001) ||
         ((handle->calibrationCoefficient - newCal) < -0.00001))

@@ -13,6 +13,7 @@
 #include "../errors.h"
 #include "../Hardware/printer.h"
 #include "assert.h"
+#include "../Hardware/solenoid.h"
 
 /** @fn getQueueHandle
  *  @brief Returns a pointer to the queue handle for a given oxygen cell.
@@ -107,33 +108,6 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
 #pragma region Calibration
 
 /**
- * @brief Calibrate a given analog cell
- * @param calPass Pointer to cal response variable
- * @param i Cell index
- * @param cell Pointer to oxygen cell handle
- * @param ppO2 Calibration PPO2
- * @param cellVals Response variable containing the millivolts of the calibration (i indexed)
- * @param calErrors Response variable containing any calibration errors (i indexed)
- */
-static void calibrateAnalogCell(DiveCANCalResponse_t *calPass, uint8_t i, OxygenHandle_t *cell, PPO2_t ppO2, ShortMillivolts_t *cellVals, NonFatalError_t *calErrors)
-{
-    AnalogOxygenState_t *analogCell = (AnalogOxygenState_t *)cell->cellHandle;
-    cellVals[i] = Calibrate(analogCell, ppO2, &(calErrors[i]));
-
-    /* Check the cell calibrated properly, if it still says needs cal it was outside the cal envelope */
-    if (analogCell->status == CELL_NEED_CAL)
-    {
-        *calPass = DIVECAN_CAL_FAIL_FO2_RANGE;
-    }
-
-    /* A fail state means some kind of internal fault during cal */
-    if (analogCell->status == CELL_FAIL)
-    {
-        *calPass = DIVECAN_CAL_FAIL_GEN;
-    }
-}
-
-/**
  * @brief Calibrate all of the analog cells based on the controller provided data
  * @param calParams Struct containing the FO2 and atmospheric pressure, gets populated with cell millis and error messages
  * @return Calibration status
@@ -155,7 +129,7 @@ DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
         OxygenHandle_t *cell = getCell(i);
         if (CELL_ANALOG == cell->type)
         {
-            calibrateAnalogCell(&calPass, i, cell, ppO2, cellVals, calErrors);
+            cellVals[i] = AnalogCalibrate((AnalogOxygenState_t *)cell, ppO2, &(calErrors[i]));
         }
 
         if (calErrors[i] != NONE_ERR)
@@ -217,7 +191,18 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
             OxygenHandle_t *cell = getCell(i);
             if (CELL_ANALOG == cell->type)
             {
-                calibrateAnalogCell(&calPass, i, cell, ppO2, cellVals, calErrors);
+                cellVals[i] = AnalogCalibrate((AnalogOxygenState_t *)(cell->cellHandle), ppO2, &(calErrors[i]));
+                /* Check the cell calibrated properly, if it still says needs cal it was outside the cal envelope */
+                if (((AnalogOxygenState_t *)(cell->cellHandle))->status == CELL_NEED_CAL)
+                {
+                    calPass = DIVECAN_CAL_FAIL_FO2_RANGE;
+                }
+
+                /* A fail state means some kind of internal fault during cal */
+                if (((AnalogOxygenState_t *)(cell->cellHandle))->status == CELL_FAIL)
+                {
+                    calPass = DIVECAN_CAL_FAIL_GEN;
+                }
             }
 
             if (calErrors[i] != NONE_ERR)
@@ -243,6 +228,98 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
     return calPass;
 }
 
+DiveCANCalResponse_t TotalAbsoluteCalibrate(CalParameters_t *calParams)
+{
+    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
+    PPO2_t ppO2 = (calParams->fO2 * calParams->pressureVal) / 1000;
+
+    /* Now that we have the PPO2 we cal all the analog cells
+     */
+    ShortMillivolts_t cellVals[CELL_COUNT] = {0};
+    NonFatalError_t calErrors[CELL_COUNT] = {NONE_ERR, NONE_ERR, NONE_ERR};
+
+    serial_printf("Using PPO2 %u for cal\r\n", ppO2);
+
+    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+    {
+        OxygenHandle_t *cell = getCell(i);
+        switch (cell->type)
+        {
+        case CELL_DIVEO2:
+            cellVals[i] = DiveO2Calibrate((DiveO2State_t *)(cell->cellHandle), ppO2, &(calErrors[i]));
+            /* Check the cell calibrated properly, if it still says needs cal it was outside the cal envelope */
+            if (((DiveO2State_t *)(cell->cellHandle))->status == CELL_NEED_CAL)
+            {
+                calPass = DIVECAN_CAL_FAIL_FO2_RANGE;
+            }
+
+            /* A fail state means some kind of internal fault during cal */
+            if (((DiveO2State_t *)(cell->cellHandle))->status == CELL_FAIL)
+            {
+                calPass = DIVECAN_CAL_FAIL_GEN;
+            }
+            break;
+        case CELL_ANALOG:
+            cellVals[i] = AnalogCalibrate((AnalogOxygenState_t *)(cell->cellHandle), ppO2, &(calErrors[i]));
+            /* Check the cell calibrated properly, if it still says needs cal it was outside the cal envelope */
+            if (((AnalogOxygenState_t *)(cell->cellHandle))->status == CELL_NEED_CAL)
+            {
+                calPass = DIVECAN_CAL_FAIL_FO2_RANGE;
+            }
+
+            /* A fail state means some kind of internal fault during cal */
+            if (((AnalogOxygenState_t *)(cell->cellHandle))->status == CELL_FAIL)
+            {
+                calPass = DIVECAN_CAL_FAIL_GEN;
+            }
+            break;
+        case CELL_O2S:
+            cellVals[i] = O2SCalibrate((OxygenScientificState_t *)(cell->cellHandle), ppO2, &(calErrors[i]));
+            /* Check the cell calibrated properly, if it still says needs cal it was outside the cal envelope */
+            if (((OxygenScientificState_t *)(cell->cellHandle))->status == CELL_NEED_CAL)
+            {
+                calPass = DIVECAN_CAL_FAIL_FO2_RANGE;
+            }
+
+            /* A fail state means some kind of internal fault during cal */
+            if (((OxygenScientificState_t *)(cell->cellHandle))->status == CELL_FAIL)
+            {
+                calPass = DIVECAN_CAL_FAIL_GEN;
+            }
+            break;
+        default:
+            NON_FATAL_ERROR(UNREACHABLE_ERR);
+        }
+
+        if (calErrors[i] != NONE_ERR)
+        {
+            calPass = DIVECAN_CAL_FAIL_GEN;
+        }
+    }
+
+    /* Now that calibration is done lets grab the millivolts for the record */
+    calParams->cell1 = cellVals[CELL_1];
+    calParams->cell2 = cellVals[CELL_2];
+    calParams->cell3 = cellVals[CELL_3];
+
+    return calPass;
+}
+
+/**
+ * @brief We flush the loop with oxygen for 15 seconds and then perform a total absolute calibration
+ * @param calParams pointer to the CalParameters struct where the calibration results will be stored.
+ * @return DiveCANCalResponse_t - Indicates the success or failure of the calibration process.
+ */
+DiveCANCalResponse_t SolenoidFlushCalibrate(CalParameters_t *calParams)
+{
+    /*Do the O2 flush*/
+    setSolenoidOn(calParams->powerMode);
+    (void)osDelay(TIMEOUT_25s_TICKS);
+    setSolenoidOff();
+
+    return TotalAbsoluteCalibrate(calParams);
+}
+
 /**
  * @brief This task handles the calibration process of the device by checking the calibration method used and then calling the appropriate function accordingly. The available calibration methods are CAL_DIGITAL_REFERENCE, CAL_ANALOG_ABSOLUTE, and CAL_TOTAL_ABSOLUTE.
  * @param arg A pointer to the CalParameters_t struct which contains all necessary parameters for the calibration process.
@@ -263,8 +340,11 @@ void CalibrationTask(void *arg)
         calResult = AnalogReferenceCalibrate(&calParams);
         break;
     case CAL_TOTAL_ABSOLUTE:
-        calResult = DIVECAN_CAL_FAIL_REJECTED;
-        NON_FATAL_ERROR(UNDEFINED_CAL_METHOD_ERR);
+        (void)osDelay(TIMEOUT_4s_TICKS);
+        calResult = TotalAbsoluteCalibrate(&calParams);
+        break;
+    case CAL_SOLENOID_FLUSH:
+        calResult = SolenoidFlushCalibrate(&calParams);
         break;
     default:
         calResult = DIVECAN_CAL_FAIL_REJECTED;
@@ -298,7 +378,7 @@ bool isCalibrating(void)
  * @param in_pressure_val ambient pressure to use in the calibration (millibar)
  * @param calMethod Calibration method to use for calibration
  */
-void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod)
+void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod, PowerSelectMode_t powerMode)
 {
     static CalParameters_t calParams;
 
@@ -310,6 +390,7 @@ void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint
     calParams.cell3 = 0;
 
     calParams.calMethod = calMethod;
+    calParams.powerMode = powerMode;
 
     txCalAck(deviceType);
 
@@ -398,7 +479,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         c2->dataTime,
         c3->dataTime};
 
-    const Timestamp_t timeout = TIMEOUT_4s_TICKS; /* 4000 millisecond timeout to avoid stale data */
+    const Timestamp_t timeout = TIMEOUT_10s_TICKS; /* 10 second timeout to avoid stale data, this is almost exclusively for the O2S cell path */
     Timestamp_t now = HAL_GetTick();
 
     Consensus_t consensus = {

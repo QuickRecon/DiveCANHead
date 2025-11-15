@@ -3,6 +3,7 @@
 
 #include "cmsis_os.h"
 #include "queue.h"
+#include "../configuration.h"
 
 typedef struct OxygenCellStruct OxygenCell_t;
 #include "../DiveCAN/Transciever.h"
@@ -45,13 +46,6 @@ extern "C"
         StaticTask_t processorControlblock;
     } OxygenHandle_t;
 
-    typedef enum
-    {
-        CAL_DIGITAL_REFERENCE = 0,
-        CAL_ANALOG_ABSOLUTE = 1,
-        CAL_TOTAL_ABSOLUTE = 2
-    } OxygenCalMethod_t;
-
     typedef struct
     {
         CellStatus_t statusArray[3];
@@ -82,12 +76,13 @@ extern "C"
         ShortMillivolts_t cell3;
 
         OxygenCalMethod_t calMethod;
+        PowerSelectMode_t powerMode;
     } CalParameters_t;
 
     QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type);
 
     bool isCalibrating(void);
-    void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod);
+    void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod, PowerSelectMode_t powerMode);
 
     Consensus_t peekCellConsensus(QueueHandle_t cell1, QueueHandle_t cell2, QueueHandle_t cell3);
     Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t *const c2, const OxygenCell_t *const c3);

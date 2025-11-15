@@ -138,7 +138,8 @@ TEST(configuration, TestCalModeValidation)
         testConfig = setConfigBytes(configBytes);
 
         bool valid = ConfigurationValid(testConfig, HW_REV_2_2);
-        if (i > CAL_TOTAL_ABSOLUTE)
+        if (i > CAL_SOLENOID_FLUSH
+        )
         {
             CHECK(!valid);
         }

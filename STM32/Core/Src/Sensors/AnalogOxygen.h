@@ -31,8 +31,7 @@ extern "C"
 
     /* Analog Cell*/
     AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue);
-    void ReadCalibration(AnalogOxygenState_t *handle);
-    ShortMillivolts_t Calibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);
+    ShortMillivolts_t AnalogCalibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);
 
 #ifdef __cplusplus
 }

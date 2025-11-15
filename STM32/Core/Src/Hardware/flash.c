@@ -3,14 +3,14 @@
 #include "eeprom_emul.h"
 #include "stm32l4xx_hal.h"
 #include "log.h"
+#include <assert.h>
+#include "string.h"
 
 /*  Define where stuff lives in the eeprom (only 100 vars up for grabs with current configuration) */
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x01;
 static const uint8_t FATAL_ERROR_BASE_ADDR = 0x04;
 /* 0x05 Used to be NON_FATAL recording point, but decided that was too hard because recursion*/
 static const uint8_t CONFIG_BASE_ADDRESS = 0x06;
-
-static const uint32_t CAL_TO_INT32 = 10000000;
 
 static const uint8_t MAX_WRITE_ATTEMPTS = 3;
 
@@ -227,7 +227,8 @@ bool GetCalibration(uint8_t cellNumber, CalCoeff_t *calCoeff)
     {
         EE_Status result = EE_ReadVariable32bits(ANALOG_CELL_EEPROM_BASE_ADDR + cellNumber, &calInt);
 
-        *calCoeff = (Numeric_t)calInt / (Numeric_t)CAL_TO_INT32;
+        assert(sizeof(float) == sizeof(uint32_t));
+        memcpy(calCoeff, &calInt, sizeof(float));
 
         if (result == EE_OK)
         {
@@ -264,7 +265,9 @@ bool SetCalibration(uint8_t cellNumber, CalCoeff_t calCoeff)
     else
     {
         /*  Convert it to raw bytes */
-        uint32_t calInt = (uint32_t)round(calCoeff * (CalCoeff_t)CAL_TO_INT32);
+        uint32_t calInt = 0;
+        assert(sizeof(float) == sizeof(uint32_t));
+        memcpy(&calInt, &calCoeff, sizeof(float));
         /*   Write that shit to the eeprom */
         writeOk = WriteInt32(ANALOG_CELL_EEPROM_BASE_ADDR + cellNumber, calInt);
     }
