@@ -1,9 +1,7 @@
-# Things that really ought to happen before this gets used on a dive
-- Menu logic for displaying any error states, as well as firmware commit
-- Work out why the brightness goes down when the CAN bus connects (protocol issue?)
-- ADC intermittently doesn't come online after shutdown logic added, board reset required to fix.
-- Battery voltage checks
-- Update pwr management for new hardware
+# Shitlist
+- Low battery error writing corrupting flash
+- O2S pipeline long latency
+- Voting logic flawed in C3 = 0mV scenario
 
 # Items to test
 - Error logging to eeprom emulation
