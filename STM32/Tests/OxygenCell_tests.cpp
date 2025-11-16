@@ -194,6 +194,45 @@ TEST(OxygenCell, calculateConsensus_ExcludesHigh)
     checkConsensus(expectedConsensus, &c1, &c2, &c3);
 }
 
+TEST(OxygenCell, calculateConsensus_ExcludesVeryHigh)
+{
+    OxygenCell_t c1 = {
+        .cellNumber = 0,
+        .type = CELL_ANALOG,
+        .ppo2 = 50,
+        .precisionPPO2 = 0.5f,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .dataTime = 0};
+
+    // CELL 2 should be excluded
+    OxygenCell_t c2 = {
+        .cellNumber = 1,
+        .type = CELL_ANALOG,
+        .ppo2 = 130,
+        .precisionPPO2 = 1.3f,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .dataTime = 0};
+    OxygenCell_t c3 = {
+        .cellNumber = 2,
+        .type = CELL_ANALOG,
+        .ppo2 = 60,
+        .precisionPPO2 = 0.6f,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .dataTime = 0};
+
+    Consensus_t expectedConsensus = {
+        .statusArray = {CELL_OK, CELL_OK, CELL_OK},
+        .ppo2Array = {50, 130, 60},
+        .milliArray = {0, 0, 0},
+        .consensus = 55,
+        .includeArray = {true, false, true}};
+
+    checkConsensus(expectedConsensus, &c1, &c2, &c3);
+}
+
 TEST(OxygenCell, calculateConsensus_ExcludesLow)
 {
     OxygenCell_t c1 = {
@@ -224,6 +263,43 @@ TEST(OxygenCell, calculateConsensus_ExcludesLow)
     Consensus_t expectedConsensus = {
         .statusArray = {CELL_OK, CELL_OK, CELL_OK},
         .ppo2Array = {120, 130, 100},
+        .milliArray = {0, 0, 0},
+        .consensus = 125,
+        .includeArray = {true, true, false}};
+
+    checkConsensus(expectedConsensus, &c1, &c2, &c3);
+}
+
+TEST(OxygenCell, calculateConsensus_ExcludesVeryLow)
+{
+    OxygenCell_t c1 = {
+        .cellNumber = 0,
+        .type = CELL_ANALOG,
+        .ppo2 = 120,
+        .precisionPPO2 = 1.2f,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .dataTime = 0};
+    OxygenCell_t c2 = {
+        .cellNumber = 1,
+        .type = CELL_ANALOG,
+        .ppo2 = 130,
+        .precisionPPO2 = 1.3f,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .dataTime = 0};
+    OxygenCell_t c3 = {
+        .cellNumber = 2,
+        .type = CELL_ANALOG,
+        .ppo2 = 50,
+        .precisionPPO2 = 0.5f,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .dataTime = 0};
+
+    Consensus_t expectedConsensus = {
+        .statusArray = {CELL_OK, CELL_OK, CELL_OK},
+        .ppo2Array = {120, 130, 50},
         .milliArray = {0, 0, 0},
         .consensus = 125,
         .includeArray = {true, true, false}};
