@@ -459,8 +459,6 @@ Consensus_t peekCellConsensus(QueueHandle_t cell1, QueueHandle_t cell2, QueueHan
     return calculateConsensus(&c1, &c2, &c3);
 }
 
-static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
-
 /** @brief Calculate the consensus PPO2, cell state aware but does not set the PPO2 to fail value for failed cells
  *        In an all fail scenario we want that data to still be intact so we can still have our best guess
  * @param c1
@@ -508,9 +506,13 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         .includeArray = {true, true, true}};
 
     /* Do a two pass check, loop through the cells and average the "good" cells
-     * Then afterwards we check each cells value against the average, and exclude deviations
+     * Then afterwards we have a few different processes depending on how many "good" cells we have:
+        0 good cells: set consensus to 0xFF so we fail safe and don't fire the solenoid
+        1 good cell: use that cell but vote it out so we get a vote fail alarm
+        2 good cells: ensure they are within the MAX_DEVIATION, if so average them, otherwise vote both out
+        3 good cells: do a pairwise comparison to find the closest two, average those, then check to see if the remaining cell is within MAX_DEVIATION of that average,
+                      if so use all three, otherwise vote out the remaining cell
      */
-    PIDNumeric_t PPO2_acc = 0; /* Start an accumulator to take an average, include the median cell always */
     uint8_t includedCellCount = 0;
 
     for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
@@ -521,42 +523,110 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
             ((now - sampleTimes[cellIdx]) > timeout))
         {
             consensus.includeArray[cellIdx] = false;
-        }
-        else
-        {
-            PPO2_acc += consensus.precisionPPO2Array[cellIdx];
+        } else {
             ++includedCellCount;
         }
     }
 
-    /* Assert that we actually have cells that got included */
-    if (includedCellCount > 0)
+    /* In the case of no included cells, just set the consensus to FF, which will inhibit the solenoid from firing*/
+    if (includedCellCount == 0)
     {
-        /* Now second pass, check to see if any of the included cells are deviant from the average */
+        consensus.consensus = PPO2_FAIL;
+        consensus.precisionConsensus = consensus.consensus;
+    }
+    else if (includedCellCount == 1) /* If we only have one cell, just use that cell's value, but vote it out so we still get a vote fail alarm (because we haven't actually voted) */
+    {
         for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
         {
-            /* We want to make sure the cell is actually included before we start checking it */
-            if ((includedCellCount > 0) &&
-                (consensus.includeArray[cellIdx]) &&
-                ((fabs((PPO2_acc / (PIDNumeric_t)includedCellCount) - consensus.precisionPPO2Array[cellIdx]) * 100.0f) > MAX_DEVIATION))
+            if (consensus.includeArray[cellIdx])
             {
-                /* Removing cells in this way can result in a change in the outcome depending on
-                 * cell position, depending on exactly how split-brained the cells are, but
-                 * frankly if things are that cooked then we're borderline guessing anyway
-                 */
-                PPO2_acc -= consensus.precisionPPO2Array[cellIdx];
-                --includedCellCount;
-                consensus.includeArray[cellIdx] = false;
+                consensus.consensus = consensus.ppo2Array[cellIdx];
+                consensus.precisionConsensus = consensus.precisionPPO2Array[cellIdx];
+                consensus.includeArray[cellIdx] = false; /* Vote it out so we get a vote fail alarm */
             }
         }
     }
-
-    if (includedCellCount > 0)
+    else if (includedCellCount == 2) /* If we have 2 cells, ensure they are within the MAX_DEVIATION (otherwise alarm)*/
     {
-        consensus.precisionConsensus = (PPO2_acc / (PIDNumeric_t)includedCellCount);
-        PIDNumeric_t tempConsensus = consensus.precisionConsensus * 100.0f;
-        assert(tempConsensus < 255.0f);
-        consensus.consensus = (PPO2_t)(tempConsensus);
+        /* Find the two values that we're including*/
+        PIDNumeric_t included_values[2] = {0};
+        uint8_t idx = 0;
+        for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
+        {
+            if (consensus.includeArray[cellIdx])
+            {
+                included_values[idx] = consensus.precisionPPO2Array[cellIdx];
+                ++idx;
+            }
+        }
+
+        /* Check to see if they pass the sniff check */
+        if ((fabs(included_values[0] - included_values[1]) * 100.0f) > MAX_DEVIATION)
+        {
+            /* Both cells are too far apart, vote them all out */
+            consensus.includeArray[0] = false;
+            consensus.includeArray[1] = false;
+            consensus.includeArray[2] = false;
+        }
+        /* Get our average */
+        PIDNumeric_t average = (included_values[0] + included_values[1]) / 2.0f;
+        consensus.consensus = (PPO2_t)(average * 100.0f);
+        assert(consensus.consensus < 255);
+        consensus.precisionConsensus = average;
+    }
+    else
+    { /* All 3 cells were valid, do a pairwise compare to find the closest two*/
+        const PIDNumeric_t pairwise_differences[3] = {
+            fabs(consensus.precisionPPO2Array[0] - consensus.precisionPPO2Array[1]),
+            fabs(consensus.precisionPPO2Array[0] - consensus.precisionPPO2Array[2]),
+            fabs(consensus.precisionPPO2Array[1] - consensus.precisionPPO2Array[2])};
+
+        const PIDNumeric_t pairwise_averages[3] = {
+            (consensus.precisionPPO2Array[0] + consensus.precisionPPO2Array[1]) / 2.0f,
+            (consensus.precisionPPO2Array[0] + consensus.precisionPPO2Array[2]) / 2.0f,
+            (consensus.precisionPPO2Array[1] + consensus.precisionPPO2Array[2]) / 2.0f};
+
+        const uint8_t remainder_cell[] = {2, 1, 0}; /* The cell that is not in the pairwise comparison */
+
+        /* Find the minimum value and its index */
+        PIDNumeric_t min_difference = pairwise_differences[0];
+        uint8_t min_index = 0;
+        for (uint8_t i = 0; i < (sizeof(pairwise_differences) / sizeof(pairwise_differences[0])); ++i)
+        {
+            if (pairwise_differences[i] < min_difference)
+            {
+                min_difference = pairwise_differences[i];
+                min_index = i;
+            }
+        }
+
+        /* Ensure that these values are within our maximum deviation, if they're too far apart
+         * flag them all as failed but carry forward to get a number so we still have a guess to fly off */
+        if ((min_difference * 100.0f) > MAX_DEVIATION)
+        {
+            /* All cells are too far apart, vote them all out */
+            consensus.includeArray[0] = false;
+            consensus.includeArray[1] = false;
+            consensus.includeArray[2] = false;
+        }
+
+        /* Check the remainder cell against the average of the 2 */
+        if (((fabs(consensus.precisionPPO2Array[remainder_cell[min_index]] - pairwise_averages[min_index]) * 100.0f) > MAX_DEVIATION ) )
+        {
+            /* Vote out the remainder cell */
+            consensus.includeArray[remainder_cell[min_index]] = false;
+            consensus.consensus = (PPO2_t)(pairwise_averages[min_index] * 100.0f);
+            assert(consensus.consensus < 255);
+            consensus.precisionConsensus = pairwise_averages[min_index];
+        }
+        else
+        {
+            /* All 3 cells are within range, use all 3 */
+            PIDNumeric_t total_average = (consensus.precisionPPO2Array[0] + consensus.precisionPPO2Array[1] + consensus.precisionPPO2Array[2]) / 3.0f;
+            consensus.consensus = (PPO2_t)(total_average * 100.0f);
+            assert(consensus.consensus < 255);
+            consensus.precisionConsensus = total_average;
+        }
     }
 
     return consensus;

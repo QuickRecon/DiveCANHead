@@ -131,8 +131,8 @@ TEST(OxygenCell, calculateConsensus_AveragesCells)
     OxygenCell_t c2 = {
         .cellNumber = 1,
         .type = CELL_ANALOG,
-        .ppo2 = 120,
-        .precisionPPO2 = 1.2f,
+        .ppo2 = 115,
+        .precisionPPO2 = 1.15f,
         .millivolts = 13,
         .status = CELL_OK,
         .dataTime = 0};
@@ -147,9 +147,9 @@ TEST(OxygenCell, calculateConsensus_AveragesCells)
 
     Consensus_t expectedConsensus = {
         .statusArray = {CELL_OK, CELL_OK, CELL_OK},
-        .ppo2Array = {110, 120, 100},
+        .ppo2Array = {110, 115, 100},
         .milliArray = {12, 13, 14},
-        .consensus = 110,
+        .consensus = 108,
         .includeArray = {true, true, true}};
 
     checkConsensus(expectedConsensus, &c1, &c2, &c3);
@@ -309,17 +309,17 @@ TEST(OxygenCell, calculateConsensus_ExcludesVeryLow)
 
 TEST(OxygenCell, calculateConsensus_ExcludesTimedOutCell)
 {
-    uint8_t consensusVal[3] = {105, 110, 115};
+    uint8_t consensusVal[3] = {107, 109, 112};
     for (int i = 0; i < 3; i++)
     {
         OxygenCell_t c1 = {
             .cellNumber = 0,
             .type = CELL_ANALOG,
-            .ppo2 = 120,
-            .precisionPPO2 = 1.2f,
+            .ppo2 = 115,
+            .precisionPPO2 = 1.15f,
             .millivolts = 0,
             .status = CELL_OK,
-            .dataTime = (i == 0) ? (Timestamp_t)1500 : (Timestamp_t)0};
+            .dataTime = (i == 0) ? (Timestamp_t)15000 : (Timestamp_t)0};
         OxygenCell_t c2 = {
             .cellNumber = 1,
             .type = CELL_ANALOG,
@@ -327,19 +327,19 @@ TEST(OxygenCell, calculateConsensus_ExcludesTimedOutCell)
             .precisionPPO2 = 1.1f,
             .millivolts = 0,
             .status = CELL_OK,
-            .dataTime = (i == 1) ? (Timestamp_t)1500 : (Timestamp_t)0};
+            .dataTime = (i == 1) ? (Timestamp_t)15000 : (Timestamp_t)0};
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
-            .ppo2 = 100,
-            .precisionPPO2 = 1.0f,
+            .ppo2 = 105,
+            .precisionPPO2 = 1.05f,
             .millivolts = 0,
             .status = CELL_OK,
-            .dataTime = (i == 2) ? (Timestamp_t)1500 : (Timestamp_t)0};
+            .dataTime = (i == 2) ? (Timestamp_t)15000 : (Timestamp_t)0};
 
         Consensus_t expectedConsensus = {
             .statusArray = {CELL_OK, CELL_OK, CELL_OK},
-            .ppo2Array = {120, 110, 100},
+            .ppo2Array = {115, 110, 105},
             .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
             .includeArray = {(i == 0) ? false : true,
@@ -352,14 +352,14 @@ TEST(OxygenCell, calculateConsensus_ExcludesTimedOutCell)
 
 TEST(OxygenCell, calculateConsensus_ExcludesFailedCell)
 {
-    uint8_t consensusVal[3] = {105, 110, 115};
+    uint8_t consensusVal[3] = {107, 109, 112};
     for (int i = 0; i < 3; i++)
     {
         OxygenCell_t c1 = {
             .cellNumber = 0,
             .type = CELL_ANALOG,
-            .ppo2 = 120,
-            .precisionPPO2 = 1.2f,
+            .ppo2 = 115,
+            .precisionPPO2 = 1.15f,
             .millivolts = 0,
             .status = (i == 0) ? CELL_FAIL : CELL_OK,
             .dataTime = 0};
@@ -374,8 +374,8 @@ TEST(OxygenCell, calculateConsensus_ExcludesFailedCell)
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
-            .ppo2 = 100,
-            .precisionPPO2 = 1.0f,
+            .ppo2 = 105,
+            .precisionPPO2 = 1.05f,
             .millivolts = 0,
             .status = (i == 2) ? CELL_FAIL : CELL_OK,
             .dataTime = 0};
@@ -384,7 +384,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesFailedCell)
             .statusArray = {(i == 0) ? CELL_FAIL : CELL_OK,
                             (i == 1) ? CELL_FAIL : CELL_OK,
                             (i == 2) ? CELL_FAIL : CELL_OK},
-            .ppo2Array = {120, 110, 100},
+            .ppo2Array = {115, 110, 105},
             .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
             .includeArray = {(i == 0) ? false : true,
@@ -397,14 +397,14 @@ TEST(OxygenCell, calculateConsensus_ExcludesFailedCell)
 
 TEST(OxygenCell, calculateConsensus_ExcludesCalCell)
 {
-    uint8_t consensusVal[3] = {105, 110, 115};
+    uint8_t consensusVal[3] = {107, 109, 112};
     for (int i = 0; i < 3; i++)
     {
         OxygenCell_t c1 = {
             .cellNumber = 0,
             .type = CELL_ANALOG,
-            .ppo2 = 120,
-            .precisionPPO2 = 1.2f,
+            .ppo2 = 115,
+            .precisionPPO2 = 1.15f,
             .millivolts = 0,
             .status = (i == 0) ? CELL_NEED_CAL : CELL_OK,
             .dataTime = 0};
@@ -419,8 +419,8 @@ TEST(OxygenCell, calculateConsensus_ExcludesCalCell)
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
-            .ppo2 = 100,
-            .precisionPPO2 = 1.0f,
+            .ppo2 = 105,
+            .precisionPPO2 = 1.05f,
             .millivolts = 0,
             .status = (i == 2) ? CELL_NEED_CAL : CELL_OK,
             .dataTime = 0};
@@ -429,7 +429,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesCalCell)
             .statusArray = {(i == 0) ? CELL_NEED_CAL : CELL_OK,
                             (i == 1) ? CELL_NEED_CAL : CELL_OK,
                             (i == 2) ? CELL_NEED_CAL : CELL_OK},
-            .ppo2Array = {120, 110, 100},
+            .ppo2Array = {115, 110, 105},
             .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
             .includeArray = {(i == 0) ? false : true,
@@ -442,14 +442,14 @@ TEST(OxygenCell, calculateConsensus_ExcludesCalCell)
 
 TEST(OxygenCell, calculateConsensus_ExcludesDegradedCell)
 {
-    uint8_t consensusVal[3] = {105, 110, 115};
+    uint8_t consensusVal[3] = {107, 109, 112};
     for (int i = 0; i < 3; i++)
     {
         OxygenCell_t c1 = {
             .cellNumber = 0,
             .type = CELL_ANALOG,
-            .ppo2 = 120,
-            .precisionPPO2 = 1.2f,
+            .ppo2 = 115,
+            .precisionPPO2 = 1.15f,
             .millivolts = 0,
             .status = (i == 0) ? CELL_DEGRADED : CELL_OK,
             .dataTime = 0};
@@ -464,8 +464,8 @@ TEST(OxygenCell, calculateConsensus_ExcludesDegradedCell)
         OxygenCell_t c3 = {
             .cellNumber = 2,
             .type = CELL_ANALOG,
-            .ppo2 = 100,
-            .precisionPPO2 = 1.0f,
+            .ppo2 = 105,
+            .precisionPPO2 = 1.05f,
             .millivolts = 0,
             .status = (i == 2) ? CELL_DEGRADED : CELL_OK,
             .dataTime = 0};
@@ -474,7 +474,7 @@ TEST(OxygenCell, calculateConsensus_ExcludesDegradedCell)
             .statusArray = {(i == 0) ? CELL_DEGRADED : CELL_OK,
                             (i == 1) ? CELL_DEGRADED : CELL_OK,
                             (i == 2) ? CELL_DEGRADED : CELL_OK},
-            .ppo2Array = {120, 110, 100},
+            .ppo2Array = {115, 110, 105},
             .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
             .includeArray = {(i == 0) ? false : true,
@@ -522,9 +522,9 @@ TEST(OxygenCell, calculateConsensus_DualCellFailure)
             .ppo2Array = {120, 110, 100},
             .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
-            .includeArray = {(i == 0),
-                             (i == 1),
-                             (i == 2)}};
+            .includeArray = {false,
+                             false,
+                             false}};
 
         checkConsensus(expectedConsensus, &c1, &c2, &c3);
     }
@@ -567,9 +567,9 @@ TEST(OxygenCell, calculateConsensus_DivergedDualCellFailure)
             .ppo2Array = {200, 100, 20},
             .milliArray = {0, 0, 0},
             .consensus = consensusVal[i],
-            .includeArray = {(i == 0),
-                             (i == 1),
-                             (i == 2)}};
+            .includeArray = {false,
+                             false,
+                             false}};
 
         checkConsensus(expectedConsensus, &c1, &c2, &c3);
     }
@@ -639,7 +639,7 @@ TEST(OxygenCell, calculateConsensus_HandlesAllCellsExcluded)
          .statusArray = {CELL_FAIL, CELL_FAIL, CELL_FAIL},
          .ppo2Array = {120, 110, 100},
          .milliArray = {0, 0, 0},
-         .consensus = 0,
+         .consensus = 0xFF,
          .includeArray = {false, false, false}};
 
     checkConsensus(expectedConsensus, &c1, &c2, &c3);

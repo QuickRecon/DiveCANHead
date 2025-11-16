@@ -146,16 +146,16 @@ TEST(PPO2Transmitter, TaskTXsValues)
     QueueDefinition c1_struct = {.cellData = {
                                      .cellNumber = 0,
                                      .type = CELL_ANALOG,
-                                     .ppo2 = 90,
-                                     .precisionPPO2 = 0.9f,
+                                     .ppo2 = 95,
+                                     .precisionPPO2 = 0.95f,
                                      .millivolts = 11,
                                      .status = CELL_OK,
                                      .dataTime = 0}};
     QueueDefinition c2_struct = {.cellData = {
                                      .cellNumber = 1,
                                      .type = CELL_ANALOG,
-                                     .ppo2 = 110,
-                                     .precisionPPO2 = 1.1f,
+                                     .ppo2 = 105,
+                                     .precisionPPO2 = 1.05f,
                                      .millivolts = 12,
                                      .status = CELL_OK,
                                      .dataTime = 0}};
@@ -189,10 +189,10 @@ TEST(PPO2Transmitter, TaskTXsValues)
     mock().expectOneCall("HAL_GetTick");
     mock().expectNCalls(3, "xQueuePeek");
 
-    mock().expectOneCall("txPPO2").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", 90).withParameter("cell2", 110).withParameter("cell3", 100);
+    mock().expectOneCall("txPPO2").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", 95).withParameter("cell2", 105).withParameter("cell3", 100);
     mock().expectOneCall("txMillivolts").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", 11).withParameter("cell2", 12).withParameter("cell3", 13);
-    mock().expectOneCall("txCellState").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", true).withParameter("cell2", true).withParameter("cell3", true).withParameter("PPO2", 100);
-    mock().expectOneCall("LogPPO2State").withParameter("c1_included", true).withParameter("c2_included", true).withParameter("c3_included", true).withParameter("c1", 0.9f).withParameter("c2", 1.1f).withParameter("c3", 1.0f).withParameter("consensus", 1.0f);
+    mock().expectOneCall("txCellState").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", true).withParameter("cell2", true).withParameter("cell3", true).withParameter("PPO2", 99);
+    mock().expectOneCall("LogPPO2State").withParameter("c1_included", true).withParameter("c2_included", true).withParameter("c3_included", true).withParameter("c1", 0.95f).withParameter("c2", 1.05f).withParameter("c3", 1.0f).withParameter("consensus", 1.0f);
     PPO2TXTask(&expectedParams);
 }
 
