@@ -1,7 +1,7 @@
 # Shitlist
 - Low battery error writing corrupting flash
 - O2S pipeline long latency
-- Voting logic flawed in C3 = 0mV scenario
+- Power on check
 
 # Items to test
 - Error logging to eeprom emulation

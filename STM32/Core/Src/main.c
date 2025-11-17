@@ -444,6 +444,13 @@ int main(void)
   
   InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3], deviceConfig.ppo2DepthCompensation, deviceConfig.extendedMessages, deviceConfig.ppo2controlMode, deviceConfig.powerMode);
 
+  /* So, we've booted up, time to make sure that the bus is actually in an off state and we didn't blip on in the dead of night */
+  if (!getBusStatus())
+  {
+    DeInitLog();
+    Shutdown(&deviceConfig);
+  }
+
   /* USER CODE END 2 */
 
   /* Init scheduler */
