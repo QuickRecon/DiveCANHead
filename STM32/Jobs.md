@@ -1,7 +1,6 @@
 # Shitlist
 - Low battery error writing corrupting flash
 - O2S pipeline long latency
-- Power on check
 
 # Items to test
 - Error logging to eeprom emulation
