@@ -314,7 +314,7 @@ DiveCANCalResponse_t SolenoidFlushCalibrate(CalParameters_t *calParams)
 {
     /*Do the O2 flush*/
     setSolenoidOn(calParams->powerMode);
-    (void)osDelay(TIMEOUT_25s_TICKS);
+    (void)osDelay(TIMEOUT_25S_TICKS);
     setSolenoidOff();
 
     return TotalAbsoluteCalibrate(calParams);
@@ -332,15 +332,15 @@ void CalibrationTask(void *arg)
     switch (calParams.calMethod)
     {
     case CAL_DIGITAL_REFERENCE:          /* Calibrate using the solid state cell as a reference */
-        (void)osDelay(TIMEOUT_4s_TICKS); /* Give the shearwater time to catch up */
+        (void)osDelay(TIMEOUT_4S_TICKS); /* Give the shearwater time to catch up */
         calResult = DigitalReferenceCalibrate(&calParams);
         break;
     case CAL_ANALOG_ABSOLUTE:
-        (void)osDelay(TIMEOUT_4s_TICKS);
+        (void)osDelay(TIMEOUT_4S_TICKS);
         calResult = AnalogReferenceCalibrate(&calParams);
         break;
     case CAL_TOTAL_ABSOLUTE:
-        (void)osDelay(TIMEOUT_4s_TICKS);
+        (void)osDelay(TIMEOUT_4S_TICKS);
         calResult = TotalAbsoluteCalibrate(&calParams);
         break;
     case CAL_SOLENOID_FLUSH:
@@ -477,7 +477,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         c2->dataTime,
         c3->dataTime};
 
-    const Timestamp_t timeout = TIMEOUT_10s_TICKS; /* 10 second timeout to avoid stale data, this is almost exclusively for the O2S cell path */
+    const Timestamp_t timeout = TIMEOUT_10S_TICKS; /* 10 second timeout to avoid stale data, this is almost exclusively for the O2S cell path */
     Timestamp_t now = HAL_GetTick();
 
     Consensus_t consensus = {

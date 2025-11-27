@@ -94,7 +94,7 @@ void PrinterTask(void *arg)
         PrintQueue_t printItem = {0};
 
         /* Wait until there is an item in the queue, if there is then print it over the canbus */
-        if (pdTRUE == xQueueReceive(*printQueue, &printItem, TIMEOUT_4s_TICKS))
+        if (pdTRUE == xQueueReceive(*printQueue, &printItem, TIMEOUT_4S_TICKS))
         {
             if (taskParams->printEnable)
             {

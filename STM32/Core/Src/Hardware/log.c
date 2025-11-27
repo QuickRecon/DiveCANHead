@@ -252,7 +252,7 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
     {
         LogQueue_t logItem = {0};
         /* Wait until there is an item in the queue, if there is then Log it*/
-        if (osOK == osMessageQueueGet(*logQueue, &logItem, NULL, TIMEOUT_4s_TICKS))
+        if (osOK == osMessageQueueGet(*logQueue, &logItem, NULL, TIMEOUT_4S_TICKS))
         {
             uint32_t expectedLength = (uint32_t)strnlen((char *)logItem.string, LOG_LINE_LENGTH);
             uint32_t byteswritten = 0;
@@ -271,7 +271,7 @@ void LogTask(void *) /* Yes this warns but it needs to be that way for matching 
             }
         }
 
-        if ((HAL_GetTick() - lastSynced) > TIMEOUT_4s_TICKS)
+        if ((HAL_GetTick() - lastSynced) > TIMEOUT_4S_TICKS)
         {
             res = f_sync(&(LOG_FILES[currSyncFile]));
             currSyncFile = (currSyncFile + 1) % LOGFILE_COUNT;
@@ -404,7 +404,7 @@ void LogMsg(const char *msg)
             if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
             {
                 LogQueue_t logItem = {0};
-                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4S_TICKS);
             }
             (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
             ++logMsgIndex;
@@ -515,7 +515,7 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
                 if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
                 {
                     LogQueue_t logItem = {0};
-                    (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+                    (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4S_TICKS);
                 }
                 (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
                 ++logMsgIndex;
@@ -551,7 +551,7 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
             if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
             {
                 LogQueue_t logItem = {0};
-                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4S_TICKS);
             }
             (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
             ++logMsgIndex;
@@ -581,7 +581,7 @@ void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumer
             if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
             {
                 LogQueue_t logItem = {0};
-                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4s_TICKS);
+                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4S_TICKS);
             }
             (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
             ++logMsgIndex;
