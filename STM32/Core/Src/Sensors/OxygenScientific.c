@@ -245,7 +245,7 @@ static void decodeCellMessage(void *arg)
     sendCellCommand(GET_OXY_COMMAND, cell);
     while (true)
     {
-        if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, TIMEOUT_4s_TICKS))
+        if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, TIMEOUT_1S_TICKS))
         {
             char *msgBuf = cell->lastMessage;
             uint32_t skipped = 0;
