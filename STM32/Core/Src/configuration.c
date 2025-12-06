@@ -107,7 +107,7 @@ bool ConfigurationValid(Configuration_t config, HW_Version_t hw_version)
 Configuration_t loadConfiguration(HW_Version_t hw_version)
 {
     Configuration_t config = {0};
-    if (GetConfiguration(&config) && ConfigurationValid(config, hw_version))
+    if ((GetConfiguration(&config) != 0) && (ConfigurationValid(config, hw_version) != 0))
     {
         /* Everything is fine */
     }

@@ -163,7 +163,7 @@ void Shutdown(const Configuration_t *const config)
 }
 
 /**
- * @brief Check if the bus is active by first pulling up the pin to avoid being capactively coupled to a false active, and then checking status, restores pin to no pull after check. 
+ * @brief Check if the bus is active by first pulling up the pin to avoid being capacitively coupled to a false active, and then checking status, restores pin to no pull after check.
  * @return True if bus active, false otherwise
  */
 bool testBusActive(void)
@@ -196,7 +196,7 @@ bool getBusStatus(void)
 }
 
 /**
- * @brief Returns the PowerSource_t currently running the VCC rail (Microcontroller, CAN transceiver, ADCs, etc) 
+ * @brief Returns the PowerSource_t currently running the VCC rail (Microcontroller, CAN transceiver, ADCs, etc)
  * @return SOURCE_BATTERY if powered from battery, SOURCE_CAN if powered from CAN bus, SOURCE_DEFAULT if unknown
  */
 PowerSource_t GetVCCSource(void)
@@ -215,7 +215,7 @@ PowerSource_t GetVCCSource(void)
 }
 
 /**
- * @brief Returns the PowerSource_t currently running the VBus rail (SD card, Cells, etc) 
+ * @brief Returns the PowerSource_t currently running the VBus rail (SD card, Cells, etc)
  * @return SOURCE_BATTERY if powered from battery, SOURCE_CAN if powered from CAN bus, SOURCE_DEFAULT if unknown
  */
 PowerSource_t GetVBusSource(void)

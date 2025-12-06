@@ -393,7 +393,7 @@ int main(void)
   HAL_GPIO_WritePin(LED5_GPIO_Port, LED5_Pin, GPIO_PIN_RESET);
   (void)HAL_IWDG_Refresh(&hiwdg);
 
-  InitPrinter(deviceConfig.enableUartPrinting && deviceConfig.extendedMessages);
+  InitPrinter((deviceConfig.enableUartPrinting != 0) && (deviceConfig.extendedMessages != 0));
   serial_printf("Booting, Last Reset Reason (%s)\r\n", reset_cause_get_name(reset_cause));
   serial_printf("Last fatal error: %d\r\n", getLastFatalError());
   serial_printf("Configuration: 0x%lx\r\n", getConfigBytes(&deviceConfig));
