@@ -37,8 +37,6 @@ const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before 
 
 void analogProcessor(void *arg);
 
-void AnalogReadCalibration(AnalogOxygenState_t *handle);
-
 AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
     AnalogOxygenState_t *handle = NULL;
@@ -70,7 +68,10 @@ AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueu
     return handle;
 }
 
-/* Dredge up the cal-coefficient from the eeprom*/
+/**
+ * @brief Read the calibration data for an analog cell from EEPROM, modifies the cells current state
+ * @param handle analog cell handle
+ */
 void AnalogReadCalibration(AnalogOxygenState_t *handle)
 {
     bool calOk = GetCalibration(handle->cellNumber, &(handle->calibrationCoefficient));

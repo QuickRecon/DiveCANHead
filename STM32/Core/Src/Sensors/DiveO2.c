@@ -68,7 +68,6 @@ static DiveO2State_t *getCellState(uint8_t cellNum)
 
 static void decodeCellMessage(void *arg);
 static void sendCellCommand(const char *const commandStr, DiveO2State_t *cell);
-void DiveO2ReadCalibration(DiveO2State_t *handle);
 
 DiveO2State_t *DiveO2_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
@@ -128,8 +127,10 @@ DiveO2State_t *DiveO2_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
     }
     return handle;
 }
-
-/* Dredge up the cal-coefficient from the eeprom*/
+/**
+ * @brief Read the calibration data for an analog cell from EEPROM, modifies the cells current state
+ * @param handle analog cell handle
+ */
 void DiveO2ReadCalibration(DiveO2State_t *handle)
 {
     bool calOk = GetCalibration(handle->cellNumber, &(handle->calibrationCoefficient));

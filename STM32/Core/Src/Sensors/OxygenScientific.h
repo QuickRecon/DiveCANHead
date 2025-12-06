@@ -43,6 +43,7 @@ extern "C"
     void O2S_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size);
 
     ShortMillivolts_t O2SCalibrate(OxygenScientificState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);
+    void O2SReadCalibration(OxygenScientificState_t *handle);
 
 #ifdef __cplusplus
 }

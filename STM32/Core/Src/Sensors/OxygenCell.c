@@ -14,6 +14,7 @@
 #include "../Hardware/printer.h"
 #include "assert.h"
 #include "../Hardware/solenoid.h"
+#include "../Hardware/flash.h"
 
 /** @fn getQueueHandle
  *  @brief Returns a pointer to the queue handle for a given oxygen cell.
@@ -104,6 +105,28 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
     }
     return *queueHandle;
 }
+
+/**
+ * @brief Force a cell to re-read its calibration data from EEPROM
+ * @param cell handle of the cell to refresh
+ */
+void RefreshCalibrationData(OxygenHandle_t *cell)
+{
+    switch (cell->type)
+    {
+    case CELL_ANALOG:
+        AnalogReadCalibration((AnalogOxygenState_t *)cell->cellHandle);
+        break;
+    case CELL_DIVEO2:
+        DiveO2ReadCalibration((DiveO2State_t *)cell->cellHandle);
+        break;
+    case CELL_O2S:
+        O2SReadCalibration((OxygenScientificState_t *)cell->cellHandle);
+        break;
+    default:
+        NON_FATAL_ERROR(UNREACHABLE_ERR);
+    }
+}
 #pragma endregion
 #pragma region Calibration
 
@@ -114,7 +137,7 @@ QueueHandle_t CreateCell(uint8_t cellNumber, CellType_t type)
  */
 DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
 {
-    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
+    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT_OK;
     PPO2_t ppO2 = (calParams->fO2 * calParams->pressureVal) / 1000;
 
     /* Now that we have the PPO2 we cal all the analog cells
@@ -154,11 +177,11 @@ DiveCANCalResponse_t AnalogReferenceCalibrate(CalParameters_t *calParams)
  *
  * @param calParams Pointer to the CalParameters struct where the calibration results will be stored.
  * @return DiveCANCalResponse_t - Indicates the success or failure of the calibration process.
- * @see CalParameters_t, DiveO2State_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, NONE_ERR, Numeric_t, FO2_t, CELL_DIVEO2, CELL_ANALOG
+ * @see CalParameters_t, DiveO2State_t, OxygenHandle_t, CELL_COUNT, DIVECAN_CAL_RESULT_OK, DIVECAN_CAL_FAIL_GEN, DIVECAN_CAL_FAIL_REJECTED, TIMEOUT_100MS, NONE_ERR, Numeric_t, FO2_t, CELL_DIVEO2, CELL_ANALOG
  */
 DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
 {
-    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
+    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT_OK;
     const DiveO2State_t *refCell = NULL;
     uint8_t refCellIndex = 0;
     /* Select the first digital cell */
@@ -230,7 +253,7 @@ DiveCANCalResponse_t DigitalReferenceCalibrate(CalParameters_t *calParams)
 
 DiveCANCalResponse_t TotalAbsoluteCalibrate(CalParameters_t *calParams)
 {
-    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT;
+    DiveCANCalResponse_t calPass = DIVECAN_CAL_RESULT_OK;
     PPO2_t ppO2 = (calParams->fO2 * calParams->pressureVal) / 1000;
 
     /* Now that we have the PPO2 we cal all the analog cells
@@ -328,6 +351,19 @@ void CalibrationTask(void *arg)
 {
     CalParameters_t calParams = *((CalParameters_t *)arg);
     DiveCANCalResponse_t calResult = DIVECAN_CAL_FAIL_REJECTED;
+
+    /* Store the current flash values so we can undo a cal if we need to */
+    CalCoeff_t previousCalibs[CELL_COUNT] = {0};
+    for (uint8_t i = 0; i < CELL_COUNT; ++i)
+    {
+        bool calOk = GetCalibration(i, &(previousCalibs[i]));
+        if (!calOk)
+        {
+            NON_FATAL_ERROR_DETAIL(EEPROM_ERR, i);
+        }
+    }
+
+    /* Do the calibration */
     serial_printf("Starting calibrate with method %u\r\n", calParams.calMethod);
     switch (calParams.calMethod)
     {
@@ -352,6 +388,23 @@ void CalibrationTask(void *arg)
     }
 
     serial_printf("Sending cal response %d\r\n", calResult);
+
+    if(calResult != DIVECAN_CAL_RESULT_OK)
+    {
+        /* The cal failed, we need to restore the previous cal values */
+        for (uint8_t i = 0; i < CELL_COUNT; ++i)
+        {
+            bool calOk = SetCalibration(i, previousCalibs[i]);
+            if (!calOk)
+            {
+                NON_FATAL_ERROR_DETAIL(EEPROM_ERR, i);
+            } else {
+                serial_printf("Restored cal for cell %d to %f\r\n", i, previousCalibs[i]);
+                RefreshCalibrationData(getCell(i));
+            }
+        }
+    }
+
     txCalResponse(calParams.deviceType, calResult, calParams.cell1, calParams.cell2, calParams.cell3, calParams.fO2, calParams.pressureVal);
 
     osThreadExit();

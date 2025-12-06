@@ -51,7 +51,6 @@ static OxygenScientificState_t *getCellState(uint8_t cellNum)
 
 static void decodeCellMessage(void *arg);
 static void sendCellCommand(const char *const commandStr, OxygenScientificState_t *cell);
-void O2SReadCalibration(OxygenScientificState_t *handle);
 
 OxygenScientificState_t *O2S_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
@@ -110,7 +109,10 @@ OxygenScientificState_t *O2S_InitCell(OxygenHandle_t *cell, QueueHandle_t outQue
     return handle;
 }
 
-/* Dredge up the cal-coefficient from the eeprom*/
+/**
+ * @brief Read the calibration data for an O2S cell from EEPROM, modifies the cells current state
+ * @param handle O2S cell handle
+ */
 void O2SReadCalibration(OxygenScientificState_t *handle)
 {
     bool calOk = GetCalibration(handle->cellNumber, &(handle->calibrationCoefficient));

@@ -43,6 +43,7 @@ extern "C"
     void DiveO2_Cell_RX_Complete(const UART_HandleTypeDef *huart, uint16_t size);
 
     ShortMillivolts_t DiveO2Calibrate(DiveO2State_t *handle, const PPO2_t PPO2, NonFatalError_t *calError);
+    void DiveO2ReadCalibration(DiveO2State_t *handle);
 
 #ifdef __cplusplus
 }

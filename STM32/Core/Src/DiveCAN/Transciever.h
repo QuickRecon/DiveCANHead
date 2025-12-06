@@ -192,7 +192,7 @@ extern "C"
     /**
      * @brief Calibration result/response code indicating success.
      */
-    DIVECAN_CAL_RESULT = 0x01,
+    DIVECAN_CAL_RESULT_OK = 0x01,
 
     /**
      * @brief Calibration failed due to low external battery voltage.
