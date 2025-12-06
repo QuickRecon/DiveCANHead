@@ -18,7 +18,7 @@ extern "C"
     {
         PPO2CONTROL_OFF = 0,
         PPO2CONTROL_SOLENOID_PID = 1, /* Modern PID-style control loop*/
-        PPO2CONTROL_MK15 = 2, /* MK15 OEM style control scheme (1.5 on, 6 off, while below threshold)*/
+        PPO2CONTROL_MK15 = 2,         /* MK15 OEM style control scheme (1.5 on, 6 off, while below threshold)*/
     } PPO2ControlScheme_t;
 
     /* UPDATING THIS STRUCTURE REQUIRES UPDATING THE VERSION NUMBER*/
@@ -40,7 +40,7 @@ extern "C"
     uint32_t getConfigBytes(const Configuration_t *const config);
     Configuration_t setConfigBytes(uint32_t configBits);
     Configuration_t loadConfiguration(HW_Version_t hw_version);
-    bool saveConfiguration(const Configuration_t *const config,HW_Version_t hw_version);
+    bool saveConfiguration(const Configuration_t *const config, HW_Version_t hw_version);
     bool ConfigurationValid(Configuration_t config, HW_Version_t hw_version);
 
     static const Configuration_t DEFAULT_CONFIGURATION = {

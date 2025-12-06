@@ -45,7 +45,6 @@ static const ADCV_t VBUS_MIN_VOLTAGE = 3.25f; /* Volts, the minimum voltage we c
 static const CalCoeff_t DIVEO2_CAL_UPPER = 1100000.0f;
 static const CalCoeff_t DIVEO2_CAL_LOWER = 800000.0f;
 
-
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
@@ -157,7 +156,6 @@ void DiveO2ReadCalibration(DiveO2State_t *handle)
     }
 }
 
-
 /* Calculate and write the eeprom*/
 ShortMillivolts_t DiveO2Calibrate(DiveO2State_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
 {
@@ -165,7 +163,7 @@ ShortMillivolts_t DiveO2Calibrate(DiveO2State_t *handle, const PPO2_t PPO2, NonF
     CalCoeff_t cellSample = handle->cellSample;
     /* Our coefficient is simply the float needed to make the current sample the current PPO2*/
     /* Yes this is backwards compared to the analog cell, but it makes more intuitive sense when looking at the the values to see how deviated the cell is from OEM spec*/
-    CalCoeff_t newCal = ((CalCoeff_t)fabs(cellSample))/((CalCoeff_t)(PPO2)/100.0f);
+    CalCoeff_t newCal = ((CalCoeff_t)fabs(cellSample)) / ((CalCoeff_t)(PPO2) / 100.0f);
 
     serial_printf("Calibrated cell %d with coefficient %f\r\n", handle->cellNumber, newCal);
 
@@ -221,11 +219,11 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
     if (vbusVoltage < VBUS_MIN_VOLTAGE)
     {
         handle->status = CELL_FAIL;
-        NON_FATAL_ERROR_DETAIL(VBUS_UNDER_VOLTAGE_ERR, vbusVoltage* 1000.0f); /* Convert to millivolts for the error message */
+        NON_FATAL_ERROR_DETAIL(VBUS_UNDER_VOLTAGE_ERR, vbusVoltage * 1000.0f); /* Convert to millivolts for the error message */
     }
 
     PIDNumeric_t precisionPPO2 = ((PIDNumeric_t)handle->cellSample / (PIDNumeric_t)handle->calibrationCoefficient);
-    PIDNumeric_t tempPPO2 = ((PIDNumeric_t)handle->cellSample / (PIDNumeric_t)handle->calibrationCoefficient)*100.0f;
+    PIDNumeric_t tempPPO2 = ((PIDNumeric_t)handle->cellSample / (PIDNumeric_t)handle->calibrationCoefficient) * 100.0f;
     if (tempPPO2 > 255.0f)
     {
         handle->status = CELL_FAIL;

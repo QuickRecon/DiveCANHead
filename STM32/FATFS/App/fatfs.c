@@ -6,7 +6,7 @@
  ******************************************************************************
  * @attention
  *
- * Copyright (c) 2023 STMicroelectronics.
+ * Copyright (c) 2025 STMicroelectronics.
  * All rights reserved.
  *
  * This software is licensed under terms that can be found in the LICENSE file
@@ -35,6 +35,18 @@ void MX_FATFS_Init(void)
   /* USER CODE BEGIN Init */
   /* additional user code for init */
   /* USER CODE END Init */
+}
+
+/**
+ * @brief  Gets Time from RTC
+ * @param  None
+ * @retval Time in DWORD
+ */
+DWORD get_fattime(void)
+{
+  /* USER CODE BEGIN get_fattime */
+  return 0;
+  /* USER CODE END get_fattime */
 }
 
 /* USER CODE BEGIN Application */

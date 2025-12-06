@@ -93,14 +93,14 @@ extern "C"
  */
 #define __HAL_CRC_POLYNOMIAL_CONFIG(__HANDLE__, __POLYNOMIAL__) ((__HANDLE__)->Instance->POL = (__POLYNOMIAL__))
 
-    /**
-     * @}
-     */
+  /**
+   * @}
+   */
 
-    /* Private macros --------------------------------------------------------*/
-    /** @defgroup CRCEx_Private_Macros CRC Extended Private Macros
-     * @{
-     */
+  /* Private macros --------------------------------------------------------*/
+  /** @defgroup CRCEx_Private_Macros CRC Extended Private Macros
+   * @{
+   */
 
 #define IS_CRC_INPUTDATA_INVERSION_MODE(MODE) (((MODE) == CRC_INPUTDATA_INVERSION_NONE) ||     \
                                                ((MODE) == CRC_INPUTDATA_INVERSION_BYTE) ||     \

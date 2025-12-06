@@ -60,8 +60,8 @@
  */
 
 /** @addtogroup SDEx_Exported_Functions_Group1
- *  @brief   High Speed function
- *
+  *  @brief   High Speed function
+  *
 @verbatim
   ==============================================================================
           ##### High Speed function #####
@@ -106,8 +106,8 @@ __weak void HAL_SDEx_DriveTransceiver_1_8V_Callback(FlagStatus status)
  */
 
 /** @addtogroup SDEx_Exported_Functions_Group2
- *  @brief   Multibuffer functions
- *
+  *  @brief   Multibuffer functions
+  *
 @verbatim
   ==============================================================================
           ##### Multibuffer functions #####
@@ -128,7 +128,8 @@ __weak void HAL_SDEx_DriveTransceiver_1_8V_Callback(FlagStatus status)
  * @param  BufferSize Size of Buffer0 in Blocks. Buffer0 and Buffer1 must have the same size.
  * @retval HAL status
  */
-HAL_StatusTypeDef HAL_SDEx_ConfigDMAMultiBuffer(SD_HandleTypeDef *hsd, uint32_t *pDataBuffer0, uint32_t *pDataBuffer1, uint32_t BufferSize)
+HAL_StatusTypeDef HAL_SDEx_ConfigDMAMultiBuffer(SD_HandleTypeDef *hsd, uint32_t *pDataBuffer0, uint32_t *pDataBuffer1,
+                                                uint32_t BufferSize)
 {
   if (hsd->State == HAL_SD_STATE_READY)
   {
@@ -215,7 +216,8 @@ HAL_StatusTypeDef HAL_SDEx_ReadBlocksDMAMultiBuffer(SD_HandleTypeDef *hsd, uint3
       return HAL_ERROR;
     }
 
-    __HAL_SD_ENABLE_IT(hsd, (SDMMC_IT_DCRCFAIL | SDMMC_IT_DTIMEOUT | SDMMC_IT_RXOVERR | SDMMC_IT_DATAEND | SDMMC_IT_IDMABTC));
+    __HAL_SD_ENABLE_IT(hsd, (SDMMC_IT_DCRCFAIL | SDMMC_IT_DTIMEOUT | SDMMC_IT_RXOVERR | SDMMC_IT_DATAEND |
+                             SDMMC_IT_IDMABTC));
 
     return HAL_OK;
   }
@@ -293,7 +295,8 @@ HAL_StatusTypeDef HAL_SDEx_WriteBlocksDMAMultiBuffer(SD_HandleTypeDef *hsd, uint
       return HAL_ERROR;
     }
 
-    __HAL_SD_ENABLE_IT(hsd, (SDMMC_IT_DCRCFAIL | SDMMC_IT_DTIMEOUT | SDMMC_IT_TXUNDERR | SDMMC_IT_DATAEND | SDMMC_IT_IDMABTC));
+    __HAL_SD_ENABLE_IT(hsd, (SDMMC_IT_DCRCFAIL | SDMMC_IT_DTIMEOUT | SDMMC_IT_TXUNDERR | SDMMC_IT_DATAEND |
+                             SDMMC_IT_IDMABTC));
 
     return HAL_OK;
   }
@@ -314,7 +317,8 @@ HAL_StatusTypeDef HAL_SDEx_WriteBlocksDMAMultiBuffer(SD_HandleTypeDef *hsd, uint
  *         transfer use BUFFER0.
  * @retval HAL status
  */
-HAL_StatusTypeDef HAL_SDEx_ChangeDMABuffer(SD_HandleTypeDef *hsd, HAL_SDEx_DMABuffer_MemoryTypeDef Buffer, uint32_t *pDataBuffer)
+HAL_StatusTypeDef HAL_SDEx_ChangeDMABuffer(SD_HandleTypeDef *hsd, HAL_SDEx_DMABuffer_MemoryTypeDef Buffer,
+                                           uint32_t *pDataBuffer)
 {
   if (Buffer == SD_DMA_BUFFER0)
   {

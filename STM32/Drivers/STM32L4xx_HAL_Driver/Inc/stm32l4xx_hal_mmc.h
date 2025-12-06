@@ -20,6 +20,8 @@
 #ifndef STM32L4xx_HAL_MMC_H
 #define STM32L4xx_HAL_MMC_H
 
+#if defined(SDMMC1)
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -33,10 +35,7 @@ extern "C"
    * @{
    */
 
-#if defined(SDMMC1)
-
   /** @addtogroup MMC
-   * @brief MMC HAL module driver
    * @{
    */
 
@@ -50,14 +49,14 @@ extern "C"
    */
   typedef enum
   {
-    HAL_MMC_STATE_RESET = ((uint32_t)0x00000000U),       /*!< MMC not yet initialized or disabled  */
-    HAL_MMC_STATE_READY = ((uint32_t)0x00000001U),       /*!< MMC initialized and ready for use    */
-    HAL_MMC_STATE_TIMEOUT = ((uint32_t)0x00000002U),     /*!< MMC Timeout state                    */
-    HAL_MMC_STATE_BUSY = ((uint32_t)0x00000003U),        /*!< MMC process ongoing                  */
-    HAL_MMC_STATE_PROGRAMMING = ((uint32_t)0x00000004U), /*!< MMC Programming State                */
-    HAL_MMC_STATE_RECEIVING = ((uint32_t)0x00000005U),   /*!< MMC Receinving State                 */
-    HAL_MMC_STATE_TRANSFER = ((uint32_t)0x00000006U),    /*!< MMC Transfer State                   */
-    HAL_MMC_STATE_ERROR = ((uint32_t)0x0000000FU)        /*!< MMC is in error state                */
+    HAL_MMC_STATE_RESET = 0x00000000U,       /*!< MMC not yet initialized or disabled  */
+    HAL_MMC_STATE_READY = 0x00000001U,       /*!< MMC initialized and ready for use    */
+    HAL_MMC_STATE_TIMEOUT = 0x00000002U,     /*!< MMC Timeout state                    */
+    HAL_MMC_STATE_BUSY = 0x00000003U,        /*!< MMC process ongoing                  */
+    HAL_MMC_STATE_PROGRAMMING = 0x00000004U, /*!< MMC Programming State                */
+    HAL_MMC_STATE_RECEIVING = 0x00000005U,   /*!< MMC Receinving State                 */
+    HAL_MMC_STATE_TRANSFER = 0x00000006U,    /*!< MMC Transfer State                  */
+    HAL_MMC_STATE_ERROR = 0x0000000FU        /*!< MMC is in error state                */
   } HAL_MMC_StateTypeDef;
   /**
    * @}
@@ -117,7 +116,7 @@ extern "C"
 #if defined(USE_HAL_MMC_REGISTER_CALLBACKS) && (USE_HAL_MMC_REGISTER_CALLBACKS == 1U)
   typedef struct __MMC_HandleTypeDef
 #else
-  typedef struct
+typedef struct
 #endif /* USE_HAL_MMC_REGISTER_CALLBACKS */
   {
     MMC_TypeDef *Instance; /*!< MMC registers base address           */
@@ -164,7 +163,7 @@ extern "C"
     void (*Read_DMADblBuf1CpltCallback)(struct __MMC_HandleTypeDef *hmmc);
     void (*Write_DMADblBuf0CpltCallback)(struct __MMC_HandleTypeDef *hmmc);
     void (*Write_DMADblBuf1CpltCallback)(struct __MMC_HandleTypeDef *hmmc);
-#endif
+#endif /* STM32L4P5xx || STM32L4Q5xx || STM32L4R5xx || STM32L4R7xx || STM32L4R9xx || STM32L4S5xx || STM32L4S7xx || STM32L4S9xx */
 
     void (*MspInitCallback)(struct __MMC_HandleTypeDef *hmmc);
     void (*MspDeInitCallback)(struct __MMC_HandleTypeDef *hmmc);
@@ -259,7 +258,7 @@ extern "C"
     HAL_MMC_READ_DMA_DBL_BUF1_CPLT_CB_ID = 0x05U,  /*!< MMC Rx DMA Double Buffer 1 Complete Callback ID */
     HAL_MMC_WRITE_DMA_DBL_BUF0_CPLT_CB_ID = 0x06U, /*!< MMC Tx DMA Double Buffer 0 Complete Callback ID */
     HAL_MMC_WRITE_DMA_DBL_BUF1_CPLT_CB_ID = 0x07U, /*!< MMC Tx DMA Double Buffer 1 Complete Callback ID */
-#endif
+#endif                                             /* STM32L4P5xx || STM32L4Q5xx || STM32L4R5xx || STM32L4R7xx || STM32L4R9xx || STM32L4S5xx || STM32L4S7xx || STM32L4S9xx */
 
     HAL_MMC_MSP_INIT_CB_ID = 0x10U,  /*!< MMC MspInit Callback ID                         */
     HAL_MMC_MSP_DEINIT_CB_ID = 0x11U /*!< MMC MspDeInit Callback ID                       */
@@ -276,7 +275,6 @@ extern "C"
  * @}
  */
 #endif
-
   /**
    * @}
    */
@@ -286,7 +284,7 @@ extern "C"
    * @{
    */
 
-#define MMC_BLOCKSIZE ((uint32_t)512U) /*!< Block size is 512 bytes */
+#define MMC_BLOCKSIZE 512U /*!< Block size is 512 bytes */
 
 /** @defgroup MMC_Exported_Constansts_Group1 MMC Error status enumeration Structure definition
  * @{
@@ -300,12 +298,12 @@ extern "C"
 #define HAL_MMC_ERROR_RX_OVERRUN SDMMC_ERROR_RX_OVERRUN                         /*!< Receive FIFO overrun                                          */
 #define HAL_MMC_ERROR_ADDR_MISALIGNED SDMMC_ERROR_ADDR_MISALIGNED               /*!< Misaligned address                                            */
 #define HAL_MMC_ERROR_BLOCK_LEN_ERR SDMMC_ERROR_BLOCK_LEN_ERR                   /*!< Transferred block length is not allowed for the card or the \
-                                                                                     number of transferred bytes does not match the block length   */
+                                                                                    number of transferred bytes does not match the block length   */
 #define HAL_MMC_ERROR_ERASE_SEQ_ERR SDMMC_ERROR_ERASE_SEQ_ERR                   /*!< An error in the sequence of erase command occurs              */
 #define HAL_MMC_ERROR_BAD_ERASE_PARAM SDMMC_ERROR_BAD_ERASE_PARAM               /*!< An invalid selection for erase groups                         */
 #define HAL_MMC_ERROR_WRITE_PROT_VIOLATION SDMMC_ERROR_WRITE_PROT_VIOLATION     /*!< Attempt to program a write protect block                      */
 #define HAL_MMC_ERROR_LOCK_UNLOCK_FAILED SDMMC_ERROR_LOCK_UNLOCK_FAILED         /*!< Sequence or password error has been detected in unlock \
-                                                                                     command or if there was an attempt to access a locked card    */
+                                                                                    command or if there was an attempt to access a locked card    */
 #define HAL_MMC_ERROR_COM_CRC_FAILED SDMMC_ERROR_COM_CRC_FAILED                 /*!< CRC check of the previous command failed                      */
 #define HAL_MMC_ERROR_ILLEGAL_CMD SDMMC_ERROR_ILLEGAL_CMD                       /*!< Command is not legal for the card state                       */
 #define HAL_MMC_ERROR_CARD_ECC_FAILED SDMMC_ERROR_CARD_ECC_FAILED               /*!< Card internal ECC was applied but failed to correct the data  */
@@ -317,7 +315,7 @@ extern "C"
 #define HAL_MMC_ERROR_WP_ERASE_SKIP SDMMC_ERROR_WP_ERASE_SKIP                   /*!< Only partial address space was erased                         */
 #define HAL_MMC_ERROR_CARD_ECC_DISABLED SDMMC_ERROR_CARD_ECC_DISABLED           /*!< Command has been executed without using internal ECC          */
 #define HAL_MMC_ERROR_ERASE_RESET SDMMC_ERROR_ERASE_RESET                       /*!< Erase sequence was cleared before executing because an out \
-                                                                                     of erase sequence command was received                        */
+                                                                                    of erase sequence command was received                        */
 #define HAL_MMC_ERROR_AKE_SEQ_ERR SDMMC_ERROR_AKE_SEQ_ERR                       /*!< Error in sequence of authentication                           */
 #define HAL_MMC_ERROR_INVALID_VOLTRANGE SDMMC_ERROR_INVALID_VOLTRANGE           /*!< Error in case of invalid voltage range                        */
 #define HAL_MMC_ERROR_ADDR_OUT_OF_RANGE SDMMC_ERROR_ADDR_OUT_OF_RANGE           /*!< Error when addressed block is out of range                    */
@@ -338,13 +336,13 @@ extern "C"
 /** @defgroup MMC_Exported_Constansts_Group2 MMC context enumeration
  * @{
  */
-#define MMC_CONTEXT_NONE ((uint32_t)0x00000000U)                 /*!< None                             */
-#define MMC_CONTEXT_READ_SINGLE_BLOCK ((uint32_t)0x00000001U)    /*!< Read single block operation      */
-#define MMC_CONTEXT_READ_MULTIPLE_BLOCK ((uint32_t)0x00000002U)  /*!< Read multiple blocks operation   */
-#define MMC_CONTEXT_WRITE_SINGLE_BLOCK ((uint32_t)0x00000010U)   /*!< Write single block operation     */
-#define MMC_CONTEXT_WRITE_MULTIPLE_BLOCK ((uint32_t)0x00000020U) /*!< Write multiple blocks operation  */
-#define MMC_CONTEXT_IT ((uint32_t)0x00000008U)                   /*!< Process in Interrupt mode        */
-#define MMC_CONTEXT_DMA ((uint32_t)0x00000080U)                  /*!< Process in DMA mode              */
+#define MMC_CONTEXT_NONE 0x00000000U                 /*!< None                             */
+#define MMC_CONTEXT_READ_SINGLE_BLOCK 0x00000001U    /*!< Read single block operation      */
+#define MMC_CONTEXT_READ_MULTIPLE_BLOCK 0x00000002U  /*!< Read multiple blocks operation   */
+#define MMC_CONTEXT_WRITE_SINGLE_BLOCK 0x00000010U   /*!< Write single block operation     */
+#define MMC_CONTEXT_WRITE_MULTIPLE_BLOCK 0x00000020U /*!< Write multiple blocks operation  */
+#define MMC_CONTEXT_IT 0x00000008U                   /*!< Process in Interrupt mode        */
+#define MMC_CONTEXT_DMA 0x00000080U                  /*!< Process in DMA mode              */
 
 /**
  * @}
@@ -370,8 +368,8 @@ extern "C"
 /** @defgroup MMC_Exported_Constansts_Group4 MMC Memory Cards
  * @{
  */
-#define MMC_LOW_CAPACITY_CARD ((uint32_t)0x00000000U)  /*!< MMC Card Capacity <=2Gbytes   */
-#define MMC_HIGH_CAPACITY_CARD ((uint32_t)0x00000001U) /*!< MMC Card Capacity >2Gbytes and <2Tbytes   */
+#define MMC_LOW_CAPACITY_CARD 0x00000000U  /*!< MMC Card Capacity <=2Gbytes   */
+#define MMC_HIGH_CAPACITY_CARD 0x00000001U /*!< MMC Card Capacity >2Gbytes and <2Tbytes   */
 
   /**
    * @}
@@ -468,34 +466,34 @@ extern "C"
 
 /**
  * @brief  Enable the MMC device interrupt.
- * @param  __HANDLE__ MMC Handle
- * @param  __INTERRUPT__ specifies the SDMMC interrupt sources to be enabled.
+ * @param  __HANDLE__: MMC Handle
+ * @param  __INTERRUPT__: specifies the SDMMC interrupt sources to be enabled.
  *         This parameter can be one or a combination of the following values:
- *            @arg SDMMC_IT_CCRCFAIL:   Command response received (CRC check failed) interrupt
- *            @arg SDMMC_IT_DCRCFAIL:   Data block sent/received (CRC check failed) interrupt
- *            @arg SDMMC_IT_CTIMEOUT:   Command response timeout interrupt
- *            @arg SDMMC_IT_DTIMEOUT:   Data timeout interrupt
- *            @arg SDMMC_IT_TXUNDERR:   Transmit FIFO underrun error interrupt
- *            @arg SDMMC_IT_RXOVERR:    Received FIFO overrun error interrupt
- *            @arg SDMMC_IT_CMDREND:    Command response received (CRC check passed) interrupt
- *            @arg SDMMC_IT_CMDSENT:    Command sent (no response required) interrupt
- *            @arg SDMMC_IT_DATAEND:    Data end (data counter, DATACOUNT, is zero) interrupt
+ *            @arg SDMMC_IT_CCRCFAIL: Command response received (CRC check failed) interrupt
+ *            @arg SDMMC_IT_DCRCFAIL: Data block sent/received (CRC check failed) interrupt
+ *            @arg SDMMC_IT_CTIMEOUT: Command response timeout interrupt
+ *            @arg SDMMC_IT_DTIMEOUT: Data timeout interrupt
+ *            @arg SDMMC_IT_TXUNDERR: Transmit FIFO underrun error interrupt
+ *            @arg SDMMC_IT_RXOVERR:  Received FIFO overrun error interrupt
+ *            @arg SDMMC_IT_CMDREND:  Command response received (CRC check passed) interrupt
+ *            @arg SDMMC_IT_CMDSENT:  Command sent (no response required) interrupt
+ *            @arg SDMMC_IT_DATAEND:  Data end (data counter, DATACOUNT, is zero) interrupt
  *            @arg SDMMC_IT_DHOLD:      Data transfer Hold interrupt
- *            @arg SDMMC_IT_DBCKEND:    Data block sent/received (CRC check passed) interrupt
+ *            @arg SDMMC_IT_DBCKEND:  Data block sent/received (CRC check passed) interrupt
  *            @arg SDMMC_IT_DABORT:     Data transfer aborted by CMD12 interrupt
- *            @arg SDMMC_IT_CMDACT:     Command transfer in progress interrupt
- *            @arg SDMMC_IT_TXACT:      Data transmit in progress interrupt
- *            @arg SDMMC_IT_RXACT:      Data receive in progress interrupt
- *            @arg SDMMC_IT_TXFIFOHE:   Transmit FIFO Half Empty interrupt
- *            @arg SDMMC_IT_RXFIFOHF:   Receive FIFO Half Full interrupt
- *            @arg SDMMC_IT_TXFIFOF:    Transmit FIFO full interrupt
- *            @arg SDMMC_IT_RXFIFOF:    Receive FIFO full interrupt
- *            @arg SDMMC_IT_TXFIFOE:    Transmit FIFO empty interrupt
- *            @arg SDMMC_IT_RXFIFOE:    Receive FIFO empty interrupt
- *            @arg SDMMC_IT_TXDAVL:     Data available in transmit FIFO interrupt
- *            @arg SDMMC_IT_RXDAVL:     Data available in receive FIFO interrupt
+ *            @arg SDMMC_IT_CMDACT:   Command transfer in progress interrupt
+ *            @arg SDMMC_IT_TXACT:    Data transmit in progress interrupt
+ *            @arg SDMMC_IT_RXACT:    Data receive in progress interrupt
+ *            @arg SDMMC_IT_TXFIFOHE: Transmit FIFO Half Empty interrupt
+ *            @arg SDMMC_IT_RXFIFOHF: Receive FIFO Half Full interrupt
+ *            @arg SDMMC_IT_TXFIFOF:  Transmit FIFO full interrupt
+ *            @arg SDMMC_IT_RXFIFOF:  Receive FIFO full interrupt
+ *            @arg SDMMC_IT_TXFIFOE:  Transmit FIFO empty interrupt
+ *            @arg SDMMC_IT_RXFIFOE:  Receive FIFO empty interrupt
+ *            @arg SDMMC_IT_TXDAVL:   Data available in transmit FIFO interrupt
+ *            @arg SDMMC_IT_RXDAVL:   Data available in receive FIFO interrupt
  *            @arg SDMMC_IT_BUSYD0END:  End of SDMMC_D0 Busy following a CMD response detected interrupt
- *            @arg SDMMC_IT_SDIOIT:     SD I/O interrupt received interrupt
+ *            @arg SDMMC_IT_SDIOIT:   SD I/O interrupt received interrupt
  *            @arg SDMMC_IT_ACKFAIL:    Boot Acknowledgment received interrupt
  *            @arg SDMMC_IT_ACKTIMEOUT: Boot Acknowledgment timeout interrupt
  *            @arg SDMMC_IT_VSWEND:     Voltage switch critical timing section completion interrupt
@@ -507,34 +505,34 @@ extern "C"
 
 /**
  * @brief  Disable the MMC device interrupt.
- * @param  __HANDLE__ MMC Handle
- * @param  __INTERRUPT__ specifies the SDMMC interrupt sources to be disabled.
- *          This parameter can be one or a combination of the following values:
- *            @arg SDMMC_IT_CCRCFAIL:   Command response received (CRC check failed) interrupt
- *            @arg SDMMC_IT_DCRCFAIL:   Data block sent/received (CRC check failed) interrupt
- *            @arg SDMMC_IT_CTIMEOUT:   Command response timeout interrupt
- *            @arg SDMMC_IT_DTIMEOUT:   Data timeout interrupt
- *            @arg SDMMC_IT_TXUNDERR:   Transmit FIFO underrun error interrupt
- *            @arg SDMMC_IT_RXOVERR:    Received FIFO overrun error interrupt
- *            @arg SDMMC_IT_CMDREND:    Command response received (CRC check passed) interrupt
- *            @arg SDMMC_IT_CMDSENT:    Command sent (no response required) interrupt
- *            @arg SDMMC_IT_DATAEND:    Data end (data counter, DATACOUNT, is zero) interrupt
+ * @param  __HANDLE__: MMC Handle
+ * @param  __INTERRUPT__: specifies the SDMMC interrupt sources to be disabled.
+ *         This parameter can be one or a combination of the following values:
+ *            @arg SDMMC_IT_CCRCFAIL: Command response received (CRC check failed) interrupt
+ *            @arg SDMMC_IT_DCRCFAIL: Data block sent/received (CRC check failed) interrupt
+ *            @arg SDMMC_IT_CTIMEOUT: Command response timeout interrupt
+ *            @arg SDMMC_IT_DTIMEOUT: Data timeout interrupt
+ *            @arg SDMMC_IT_TXUNDERR: Transmit FIFO underrun error interrupt
+ *            @arg SDMMC_IT_RXOVERR:  Received FIFO overrun error interrupt
+ *            @arg SDMMC_IT_CMDREND:  Command response received (CRC check passed) interrupt
+ *            @arg SDMMC_IT_CMDSENT:  Command sent (no response required) interrupt
+ *            @arg SDMMC_IT_DATAEND:  Data end (data counter, DATACOUNT, is zero) interrupt
  *            @arg SDMMC_IT_DHOLD:      Data transfer Hold interrupt
- *            @arg SDMMC_IT_DBCKEND:    Data block sent/received (CRC check passed) interrupt
+ *            @arg SDMMC_IT_DBCKEND:  Data block sent/received (CRC check passed) interrupt
  *            @arg SDMMC_IT_DABORT:     Data transfer aborted by CMD12 interrupt
- *            @arg SDMMC_IT_CMDACT:     Command transfer in progress interrupt
- *            @arg SDMMC_IT_TXACT:      Data transmit in progress interrupt
- *            @arg SDMMC_IT_RXACT:      Data receive in progress interrupt
- *            @arg SDMMC_IT_TXFIFOHE:   Transmit FIFO Half Empty interrupt
- *            @arg SDMMC_IT_RXFIFOHF:   Receive FIFO Half Full interrupt
- *            @arg SDMMC_IT_TXFIFOF:    Transmit FIFO full interrupt
- *            @arg SDMMC_IT_RXFIFOF:    Receive FIFO full interrupt
- *            @arg SDMMC_IT_TXFIFOE:    Transmit FIFO empty interrupt
- *            @arg SDMMC_IT_RXFIFOE:    Receive FIFO empty interrupt
- *            @arg SDMMC_IT_TXDAVL:     Data available in transmit FIFO interrupt
- *            @arg SDMMC_IT_RXDAVL:     Data available in receive FIFO interrupt
+ *            @arg SDMMC_IT_CMDACT:   Command transfer in progress interrupt
+ *            @arg SDMMC_IT_TXACT:    Data transmit in progress interrupt
+ *            @arg SDMMC_IT_RXACT:    Data receive in progress interrupt
+ *            @arg SDMMC_IT_TXFIFOHE: Transmit FIFO Half Empty interrupt
+ *            @arg SDMMC_IT_RXFIFOHF: Receive FIFO Half Full interrupt
+ *            @arg SDMMC_IT_TXFIFOF:  Transmit FIFO full interrupt
+ *            @arg SDMMC_IT_RXFIFOF:  Receive FIFO full interrupt
+ *            @arg SDMMC_IT_TXFIFOE:  Transmit FIFO empty interrupt
+ *            @arg SDMMC_IT_RXFIFOE:  Receive FIFO empty interrupt
+ *            @arg SDMMC_IT_TXDAVL:   Data available in transmit FIFO interrupt
+ *            @arg SDMMC_IT_RXDAVL:   Data available in receive FIFO interrupt
  *            @arg SDMMC_IT_BUSYD0END:  End of SDMMC_D0 Busy following a CMD response detected interrupt
- *            @arg SDMMC_IT_SDIOIT:     SD I/O interrupt received interrupt
+ *            @arg SDMMC_IT_SDIOIT:   SD I/O interrupt received interrupt
  *            @arg SDMMC_IT_ACKFAIL:    Boot Acknowledgment received interrupt
  *            @arg SDMMC_IT_ACKTIMEOUT: Boot Acknowledgment timeout interrupt
  *            @arg SDMMC_IT_VSWEND:     Voltage switch critical timing section completion interrupt
@@ -546,37 +544,37 @@ extern "C"
 
 /**
  * @brief  Check whether the specified MMC flag is set or not.
- * @param  __HANDLE__ MMC Handle
- * @param  __FLAG__ specifies the flag to check.
+ * @param  __HANDLE__: MMC Handle
+ * @param  __FLAG__: specifies the flag to check.
  *          This parameter can be one of the following values:
- *            @arg SDMMC_FLAG_CCRCFAIL:   Command response received (CRC check failed)
- *            @arg SDMMC_FLAG_DCRCFAIL:   Data block sent/received (CRC check failed)
- *            @arg SDMMC_FLAG_CTIMEOUT:   Command response timeout
- *            @arg SDMMC_FLAG_DTIMEOUT:   Data timeout
- *            @arg SDMMC_FLAG_TXUNDERR:   Transmit FIFO underrun error
- *            @arg SDMMC_FLAG_RXOVERR:    Received FIFO overrun error
- *            @arg SDMMC_FLAG_CMDREND:    Command response received (CRC check passed)
- *            @arg SDMMC_FLAG_CMDSENT:    Command sent (no response required)
- *            @arg SDMMC_FLAG_DATAEND:    Data end (data counter, DATACOUNT, is zero)
+ *            @arg SDMMC_FLAG_CCRCFAIL: Command response received (CRC check failed)
+ *            @arg SDMMC_FLAG_DCRCFAIL: Data block sent/received (CRC check failed)
+ *            @arg SDMMC_FLAG_CTIMEOUT: Command response timeout
+ *            @arg SDMMC_FLAG_DTIMEOUT: Data timeout
+ *            @arg SDMMC_FLAG_TXUNDERR: Transmit FIFO underrun error
+ *            @arg SDMMC_FLAG_RXOVERR:  Received FIFO overrun error
+ *            @arg SDMMC_FLAG_CMDREND:  Command response received (CRC check passed)
+ *            @arg SDMMC_FLAG_CMDSENT:  Command sent (no response required)
+ *            @arg SDMMC_FLAG_DATAEND:  Data end (data counter, DATACOUNT, is zero)
  *            @arg SDMMC_FLAG_DHOLD:      Data transfer Hold
- *            @arg SDMMC_FLAG_DBCKEND:    Data block sent/received (CRC check passed)
+ *            @arg SDMMC_FLAG_DBCKEND:  Data block sent/received (CRC check passed)
  *            @arg SDMMC_FLAG_DABORT:     Data transfer aborted by CMD12
  *            @arg SDMMC_FLAG_DPSMACT:    Data path state machine active
  *            @arg SDMMC_FLAG_CPSMACT:    Command path state machine active
- *            @arg SDMMC_FLAG_CMDACT:     Command transfer in progress
- *            @arg SDMMC_FLAG_TXACT:      Data transmit in progress
- *            @arg SDMMC_FLAG_RXACT:      Data receive in progress
- *            @arg SDMMC_FLAG_TXFIFOHE:   Transmit FIFO Half Empty
- *            @arg SDMMC_FLAG_RXFIFOHF:   Receive FIFO Half Full
- *            @arg SDMMC_FLAG_TXFIFOF:    Transmit FIFO full
- *            @arg SDMMC_FLAG_RXFIFOF:    Receive FIFO full
- *            @arg SDMMC_FLAG_TXFIFOE:    Transmit FIFO empty
- *            @arg SDMMC_FLAG_RXFIFOE:    Receive FIFO empty
+ *            @arg SDMMC_FLAG_CMDACT:   Command transfer in progress
+ *            @arg SDMMC_FLAG_TXACT:    Data transmit in progress
+ *            @arg SDMMC_FLAG_RXACT:    Data receive in progress
+ *            @arg SDMMC_FLAG_TXFIFOHE: Transmit FIFO Half Empty
+ *            @arg SDMMC_FLAG_RXFIFOHF: Receive FIFO Half Full
+ *            @arg SDMMC_FLAG_TXFIFOF:  Transmit FIFO full
+ *            @arg SDMMC_FLAG_RXFIFOF:  Receive FIFO full
+ *            @arg SDMMC_FLAG_TXFIFOE:  Transmit FIFO empty
+ *            @arg SDMMC_FLAG_RXFIFOE:  Receive FIFO empty
  *            @arg SDMMC_FLAG_BUSYD0:     Inverted value of SDMMC_D0 line (Busy)
  *            @arg SDMMC_FLAG_BUSYD0END:  End of SDMMC_D0 Busy following a CMD response detected
- *            @arg SDMMC_FLAG_TXDAVL:     Data available in transmit FIFO
- *            @arg SDMMC_FLAG_RXDAVL:     Data available in receive FIFO
- *            @arg SDMMC_FLAG_SDIOIT:     SD I/O interrupt received
+ *            @arg SDMMC_FLAG_TXDAVL:   Data available in transmit FIFO
+ *            @arg SDMMC_FLAG_RXDAVL:   Data available in receive FIFO
+ *            @arg SDMMC_FLAG_SDIOIT:   SD I/O interrupt received
  *            @arg SDMMC_FLAG_ACKFAIL:    Boot Acknowledgment received
  *            @arg SDMMC_FLAG_ACKTIMEOUT: Boot Acknowledgment timeout
  *            @arg SDMMC_FLAG_VSWEND:     Voltage switch critical timing section completion
@@ -589,23 +587,23 @@ extern "C"
 
 /**
  * @brief  Clear the MMC's pending flags.
- * @param  __HANDLE__ MMC Handle
- * @param  __FLAG__ specifies the flag to clear.
+ * @param  __HANDLE__: MMC Handle
+ * @param  __FLAG__: specifies the flag to clear.
  *          This parameter can be one or a combination of the following values:
- *            @arg SDMMC_FLAG_CCRCFAIL:   Command response received (CRC check failed)
- *            @arg SDMMC_FLAG_DCRCFAIL:   Data block sent/received (CRC check failed)
- *            @arg SDMMC_FLAG_CTIMEOUT:   Command response timeout
- *            @arg SDMMC_FLAG_DTIMEOUT:   Data timeout
- *            @arg SDMMC_FLAG_TXUNDERR:   Transmit FIFO underrun error
- *            @arg SDMMC_FLAG_RXOVERR:    Received FIFO overrun error
- *            @arg SDMMC_FLAG_CMDREND:    Command response received (CRC check passed)
- *            @arg SDMMC_FLAG_CMDSENT:    Command sent (no response required)
- *            @arg SDMMC_FLAG_DATAEND:    Data end (data counter, DATACOUNT, is zero)
+ *            @arg SDMMC_FLAG_CCRCFAIL: Command response received (CRC check failed)
+ *            @arg SDMMC_FLAG_DCRCFAIL: Data block sent/received (CRC check failed)
+ *            @arg SDMMC_FLAG_CTIMEOUT: Command response timeout
+ *            @arg SDMMC_FLAG_DTIMEOUT: Data timeout
+ *            @arg SDMMC_FLAG_TXUNDERR: Transmit FIFO underrun error
+ *            @arg SDMMC_FLAG_RXOVERR:  Received FIFO overrun error
+ *            @arg SDMMC_FLAG_CMDREND:  Command response received (CRC check passed)
+ *            @arg SDMMC_FLAG_CMDSENT:  Command sent (no response required)
+ *            @arg SDMMC_FLAG_DATAEND:  Data end (data counter, DATACOUNT, is zero)
  *            @arg SDMMC_FLAG_DHOLD:      Data transfer Hold
- *            @arg SDMMC_FLAG_DBCKEND:    Data block sent/received (CRC check passed)
+ *            @arg SDMMC_FLAG_DBCKEND:  Data block sent/received (CRC check passed)
  *            @arg SDMMC_FLAG_DABORT:     Data transfer aborted by CMD12
  *            @arg SDMMC_FLAG_BUSYD0END:  End of SDMMC_D0 Busy following a CMD response detected
- *            @arg SDMMC_FLAG_SDIOIT:     SD I/O interrupt received
+ *            @arg SDMMC_FLAG_SDIOIT:   SD I/O interrupt received
  *            @arg SDMMC_FLAG_ACKFAIL:    Boot Acknowledgment received
  *            @arg SDMMC_FLAG_ACKTIMEOUT: Boot Acknowledgment timeout
  *            @arg SDMMC_FLAG_VSWEND:     Voltage switch critical timing section completion
@@ -618,34 +616,34 @@ extern "C"
 
 /**
  * @brief  Check whether the specified MMC interrupt has occurred or not.
- * @param  __HANDLE__ MMC Handle
- * @param  __INTERRUPT__ specifies the SDMMC interrupt source to check.
+ * @param  __HANDLE__: MMC Handle
+ * @param  __INTERRUPT__: specifies the SDMMC interrupt source to check.
  *          This parameter can be one of the following values:
- *            @arg SDMMC_IT_CCRCFAIL:   Command response received (CRC check failed) interrupt
- *            @arg SDMMC_IT_DCRCFAIL:   Data block sent/received (CRC check failed) interrupt
- *            @arg SDMMC_IT_CTIMEOUT:   Command response timeout interrupt
- *            @arg SDMMC_IT_DTIMEOUT:   Data timeout interrupt
- *            @arg SDMMC_IT_TXUNDERR:   Transmit FIFO underrun error interrupt
- *            @arg SDMMC_IT_RXOVERR:    Received FIFO overrun error interrupt
- *            @arg SDMMC_IT_CMDREND:    Command response received (CRC check passed) interrupt
- *            @arg SDMMC_IT_CMDSENT:    Command sent (no response required) interrupt
- *            @arg SDMMC_IT_DATAEND:    Data end (data counter, DATACOUNT, is zero) interrupt
+ *            @arg SDMMC_IT_CCRCFAIL: Command response received (CRC check failed) interrupt
+ *            @arg SDMMC_IT_DCRCFAIL: Data block sent/received (CRC check failed) interrupt
+ *            @arg SDMMC_IT_CTIMEOUT: Command response timeout interrupt
+ *            @arg SDMMC_IT_DTIMEOUT: Data timeout interrupt
+ *            @arg SDMMC_IT_TXUNDERR: Transmit FIFO underrun error interrupt
+ *            @arg SDMMC_IT_RXOVERR:  Received FIFO overrun error interrupt
+ *            @arg SDMMC_IT_CMDREND:  Command response received (CRC check passed) interrupt
+ *            @arg SDMMC_IT_CMDSENT:  Command sent (no response required) interrupt
+ *            @arg SDMMC_IT_DATAEND:  Data end (data counter, DATACOUNT, is zero) interrupt
  *            @arg SDMMC_IT_DHOLD:      Data transfer Hold interrupt
- *            @arg SDMMC_IT_DBCKEND:    Data block sent/received (CRC check passed) interrupt
+ *            @arg SDMMC_IT_DBCKEND:  Data block sent/received (CRC check passed) interrupt
  *            @arg SDMMC_IT_DABORT:     Data transfer aborted by CMD12 interrupt
- *            @arg SDMMC_IT_CMDACT:     Command transfer in progress interrupt
- *            @arg SDMMC_IT_TXACT:      Data transmit in progress interrupt
- *            @arg SDMMC_IT_RXACT:      Data receive in progress interrupt
- *            @arg SDMMC_IT_TXFIFOHE:   Transmit FIFO Half Empty interrupt
- *            @arg SDMMC_IT_RXFIFOHF:   Receive FIFO Half Full interrupt
- *            @arg SDMMC_IT_TXFIFOF:    Transmit FIFO full interrupt
- *            @arg SDMMC_IT_RXFIFOF:    Receive FIFO full interrupt
- *            @arg SDMMC_IT_TXFIFOE:    Transmit FIFO empty interrupt
- *            @arg SDMMC_IT_RXFIFOE:    Receive FIFO empty interrupt
- *            @arg SDMMC_IT_TXDAVL:     Data available in transmit FIFO interrupt
- *            @arg SDMMC_IT_RXDAVL:     Data available in receive FIFO interrupt
+ *            @arg SDMMC_IT_CMDACT:   Command transfer in progress interrupt
+ *            @arg SDMMC_IT_TXACT:    Data transmit in progress interrupt
+ *            @arg SDMMC_IT_RXACT:    Data receive in progress interrupt
+ *            @arg SDMMC_IT_TXFIFOHE: Transmit FIFO Half Empty interrupt
+ *            @arg SDMMC_IT_RXFIFOHF: Receive FIFO Half Full interrupt
+ *            @arg SDMMC_IT_TXFIFOF:  Transmit FIFO full interrupt
+ *            @arg SDMMC_IT_RXFIFOF:  Receive FIFO full interrupt
+ *            @arg SDMMC_IT_TXFIFOE:  Transmit FIFO empty interrupt
+ *            @arg SDMMC_IT_RXFIFOE:  Receive FIFO empty interrupt
+ *            @arg SDMMC_IT_TXDAVL:   Data available in transmit FIFO interrupt
+ *            @arg SDMMC_IT_RXDAVL:   Data available in receive FIFO interrupt
  *            @arg SDMMC_IT_BUSYD0END:  End of SDMMC_D0 Busy following a CMD response detected interrupt
- *            @arg SDMMC_IT_SDIOIT:     SD I/O interrupt received interrupt
+ *            @arg SDMMC_IT_SDIOIT:   SD I/O interrupt received interrupt
  *            @arg SDMMC_IT_ACKFAIL:    Boot Acknowledgment received interrupt
  *            @arg SDMMC_IT_ACKTIMEOUT: Boot Acknowledgment timeout interrupt
  *            @arg SDMMC_IT_VSWEND:     Voltage switch critical timing section completion interrupt
@@ -657,18 +655,18 @@ extern "C"
 
 /**
  * @brief  Clear the MMC's interrupt pending bits.
- * @param  __HANDLE__ MMC Handle
- * @param  __INTERRUPT__ specifies the interrupt pending bit to clear.
+ * @param  __HANDLE__: MMC Handle
+ * @param  __INTERRUPT__: specifies the interrupt pending bit to clear.
  *          This parameter can be one or a combination of the following values:
- *            @arg SDMMC_IT_CCRCFAIL:   Command response received (CRC check failed) interrupt
- *            @arg SDMMC_IT_DCRCFAIL:   Data block sent/received (CRC check failed) interrupt
- *            @arg SDMMC_IT_CTIMEOUT:   Command response timeout interrupt
- *            @arg SDMMC_IT_DTIMEOUT:   Data timeout interrupt
- *            @arg SDMMC_IT_TXUNDERR:   Transmit FIFO underrun error interrupt
- *            @arg SDMMC_IT_RXOVERR:    Received FIFO overrun error interrupt
- *            @arg SDMMC_IT_CMDREND:    Command response received (CRC check passed) interrupt
- *            @arg SDMMC_IT_CMDSENT:    Command sent (no response required) interrupt
- *            @arg SDMMC_IT_DATAEND:    Data end (data counter, DATACOUNT, is zero) interrupt
+ *            @arg SDMMC_IT_CCRCFAIL: Command response received (CRC check failed) interrupt
+ *            @arg SDMMC_IT_DCRCFAIL: Data block sent/received (CRC check failed) interrupt
+ *            @arg SDMMC_IT_CTIMEOUT: Command response timeout interrupt
+ *            @arg SDMMC_IT_DTIMEOUT: Data timeout interrupt
+ *            @arg SDMMC_IT_TXUNDERR: Transmit FIFO underrun error interrupt
+ *            @arg SDMMC_IT_RXOVERR:  Received FIFO overrun error interrupt
+ *            @arg SDMMC_IT_CMDREND:  Command response received (CRC check passed) interrupt
+ *            @arg SDMMC_IT_CMDSENT:  Command sent (no response required) interrupt
+ *            @arg SDMMC_IT_DATAEND:  Data end (data counter, DATACOUNT, is zero) interrupt
  *            @arg SDMMC_IT_DHOLD:      Data transfer Hold interrupt
  *            @arg SDMMC_IT_DBCKEND:    Data block sent/received (CRC check passed) interrupt
  *            @arg SDMMC_IT_DABORT:     Data transfer aborted by CMD12 interrupt
@@ -677,7 +675,7 @@ extern "C"
  *            @arg SDMMC_IT_RXFIFOF:    Receive FIFO full interrupt
  *            @arg SDMMC_IT_TXFIFOE:    Transmit FIFO empty interrupt
  *            @arg SDMMC_IT_BUSYD0END:  End of SDMMC_D0 Busy following a CMD response detected interrupt
- *            @arg SDMMC_IT_SDIOIT:     SD I/O interrupt received interrupt
+ *            @arg SDMMC_IT_SDIOIT:   SD I/O interrupt received interrupt
  *            @arg SDMMC_IT_ACKFAIL:    Boot Acknowledgment received interrupt
  *            @arg SDMMC_IT_ACKTIMEOUT: Boot Acknowledgment timeout interrupt
  *            @arg SDMMC_IT_VSWEND:     Voltage switch critical timing section completion interrupt
@@ -694,14 +692,14 @@ extern "C"
 #if defined(STM32L4P5xx) || defined(STM32L4Q5xx) || defined(STM32L4R5xx) || defined(STM32L4R7xx) || defined(STM32L4R9xx) || defined(STM32L4S5xx) || defined(STM32L4S7xx) || defined(STM32L4S9xx)
 /* Include MMC HAL Extension module */
 #include "stm32l4xx_hal_mmc_ex.h"
-#endif
+#endif /* STM32L4P5xx || STM32L4Q5xx || STM32L4R5xx || STM32L4R7xx || STM32L4R9xx || STM32L4S5xx || STM32L4S7xx || STM32L4S9xx */
 
   /* Exported functions --------------------------------------------------------*/
-  /** @addtogroup MMC_Exported_Functions
+  /** @defgroup MMC_Exported_Functions MMC Exported Functions
    * @{
    */
 
-  /** @addtogroup MMC_Exported_Functions_Group1
+  /** @defgroup MMC_Exported_Functions_Group1 Initialization and de-initialization functions
    * @{
    */
   HAL_StatusTypeDef HAL_MMC_Init(MMC_HandleTypeDef *hmmc);
@@ -718,15 +716,21 @@ extern "C"
    * @{
    */
   /* Blocking mode: Polling */
-  HAL_StatusTypeDef HAL_MMC_ReadBlocks(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks, uint32_t Timeout);
-  HAL_StatusTypeDef HAL_MMC_WriteBlocks(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks, uint32_t Timeout);
+  HAL_StatusTypeDef HAL_MMC_ReadBlocks(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd,
+                                       uint32_t NumberOfBlocks, uint32_t Timeout);
+  HAL_StatusTypeDef HAL_MMC_WriteBlocks(MMC_HandleTypeDef *hmmc, const uint8_t *pData, uint32_t BlockAdd,
+                                        uint32_t NumberOfBlocks, uint32_t Timeout);
   HAL_StatusTypeDef HAL_MMC_Erase(MMC_HandleTypeDef *hmmc, uint32_t BlockStartAdd, uint32_t BlockEndAdd);
   /* Non-Blocking mode: IT */
-  HAL_StatusTypeDef HAL_MMC_ReadBlocks_IT(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks);
-  HAL_StatusTypeDef HAL_MMC_WriteBlocks_IT(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks);
+  HAL_StatusTypeDef HAL_MMC_ReadBlocks_IT(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd,
+                                          uint32_t NumberOfBlocks);
+  HAL_StatusTypeDef HAL_MMC_WriteBlocks_IT(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd,
+                                           uint32_t NumberOfBlocks);
   /* Non-Blocking mode: DMA */
-  HAL_StatusTypeDef HAL_MMC_ReadBlocks_DMA(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks);
-  HAL_StatusTypeDef HAL_MMC_WriteBlocks_DMA(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks);
+  HAL_StatusTypeDef HAL_MMC_ReadBlocks_DMA(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd,
+                                           uint32_t NumberOfBlocks);
+  HAL_StatusTypeDef HAL_MMC_WriteBlocks_DMA(MMC_HandleTypeDef *hmmc, uint8_t *pData, uint32_t BlockAdd,
+                                            uint32_t NumberOfBlocks);
 
   void HAL_MMC_IRQHandler(MMC_HandleTypeDef *hmmc);
 
@@ -738,7 +742,8 @@ extern "C"
 
 #if defined(USE_HAL_MMC_REGISTER_CALLBACKS) && (USE_HAL_MMC_REGISTER_CALLBACKS == 1U)
   /* MMC callback registering/unregistering */
-  HAL_StatusTypeDef HAL_MMC_RegisterCallback(MMC_HandleTypeDef *hmmc, HAL_MMC_CallbackIDTypeDef CallbackId, pMMC_CallbackTypeDef pCallback);
+  HAL_StatusTypeDef HAL_MMC_RegisterCallback(MMC_HandleTypeDef *hmmc, HAL_MMC_CallbackIDTypeDef CallbackId,
+                                             pMMC_CallbackTypeDef pCallback);
   HAL_StatusTypeDef HAL_MMC_UnRegisterCallback(MMC_HandleTypeDef *hmmc, HAL_MMC_CallbackIDTypeDef CallbackId);
 #endif
   /**
@@ -751,7 +756,7 @@ extern "C"
   HAL_StatusTypeDef HAL_MMC_ConfigWideBusOperation(MMC_HandleTypeDef *hmmc, uint32_t WideMode);
 #if defined(STM32L4P5xx) || defined(STM32L4Q5xx) || defined(STM32L4R5xx) || defined(STM32L4R7xx) || defined(STM32L4R9xx) || defined(STM32L4S5xx) || defined(STM32L4S7xx) || defined(STM32L4S9xx)
   HAL_StatusTypeDef HAL_MMC_ConfigSpeedBusOperation(MMC_HandleTypeDef *hmmc, uint32_t SpeedMode);
-#endif
+#endif /* STM32L4P5xx || STM32L4Q5xx || STM32L4R5xx || STM32L4R7xx || STM32L4R9xx || STM32L4S5xx || STM32L4S7xx || STM32L4S9xx */
   /**
    * @}
    */
@@ -771,8 +776,8 @@ extern "C"
   /** @defgroup MMC_Exported_Functions_Group5 Peripheral State and Errors functions
    * @{
    */
-  HAL_MMC_StateTypeDef HAL_MMC_GetState(MMC_HandleTypeDef *hmmc);
-  uint32_t HAL_MMC_GetError(MMC_HandleTypeDef *hmmc);
+  HAL_MMC_StateTypeDef HAL_MMC_GetState(const MMC_HandleTypeDef *hmmc);
+  uint32_t HAL_MMC_GetError(const MMC_HandleTypeDef *hmmc);
   /**
    * @}
    */
@@ -789,7 +794,8 @@ extern "C"
   /** @defgroup MMC_Exported_Functions_Group7 Peripheral Erase management
    * @{
    */
-  HAL_StatusTypeDef HAL_MMC_EraseSequence(MMC_HandleTypeDef *hmmc, uint32_t EraseType, uint32_t BlockStartAdd, uint32_t BlockEndAdd);
+  HAL_StatusTypeDef HAL_MMC_EraseSequence(MMC_HandleTypeDef *hmmc, uint32_t EraseType, uint32_t BlockStartAdd,
+                                          uint32_t BlockEndAdd);
   HAL_StatusTypeDef HAL_MMC_Sanitize(MMC_HandleTypeDef *hmmc);
   HAL_StatusTypeDef HAL_MMC_ConfigSecRemovalType(MMC_HandleTypeDef *hmmc, uint32_t SRTMode);
   HAL_StatusTypeDef HAL_MMC_GetSupportedSecRemovalType(MMC_HandleTypeDef *hmmc, uint32_t *SupportedSRT);
@@ -807,24 +813,24 @@ extern "C"
  */
 #endif /* defined(STM32L4P5xx) || defined(STM32L4Q5xx) || defined(STM32L4R5xx) || defined(STM32L4R7xx) || defined(STM32L4R9xx) || defined(STM32L4S5xx) || defined(STM32L4S7xx) || defined(STM32L4S9xx) */
 
-  /**
-   * @}
-   */
+/**
+ * @}
+ */
+/* Private types -------------------------------------------------------------*/
+/** @defgroup MMC_Private_Types MMC Private Types
+ * @{
+ */
 
-  /* Private types -------------------------------------------------------------*/
-  /** @defgroup MMC_Private_Types MMC Private Types
-   * @{
-   */
+/**
+ * @}
+ */
 
-  /**
-   * @}
-   */
-
-  /* Private defines -----------------------------------------------------------*/
-  /** @defgroup MMC_Private_Defines MMC Private Defines
-   * @{
-   */
-
+/* Private defines -----------------------------------------------------------*/
+/** @defgroup MMC_Private_Defines MMC Private Defines
+ * @{
+ */
+#define MMC_EXT_CSD_DATA_SEC_SIZE_INDEX 61
+#define MMC_EXT_CSD_DATA_SEC_SIZE_POS 8
   /**
    * @}
    */
@@ -882,8 +888,6 @@ extern "C"
    * @}
    */
 
-#endif /* SDMMC1 */
-
   /**
    * @}
    */
@@ -891,5 +895,7 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* SDMMC1 */
 
 #endif /* STM32L4xx_HAL_MMC_H */

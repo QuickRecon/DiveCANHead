@@ -651,11 +651,9 @@ __attribute__((always_inline)) __STATIC_INLINE uint32_t __RBIT(uint32_t value)
   \return               Rotated value
  */
 #ifndef __NO_EMBEDDED_ASM
-__attribute__((section(".rrx_text"))) __STATIC_INLINE __ASM uint32_t __RRX(uint32_t value)
-{
-  rrx r0, r0
-              bx lr
-}
+__attribute__((section(".rrx_text"))) __STATIC_INLINE __ASM uint32_t __RRX(uint32_t value){
+    rrx r0, r0
+                bx lr}
 #endif
 
 /**

@@ -18,15 +18,15 @@ extern CAN_HandleTypeDef hcan1;
 
 static const ADCV_t POWER_RESISTOR_DIVIDER = ((12.0f + 75.0f) / 12.0f);
 static const ADCV_t VBUS_RESISTOR_DIVIDER = ((10.0f + 100.0f) / 10.0f);
-static const ADCV_t VCC_RESISTOR_DIVIDER = (1.0f/3.0f);
+static const ADCV_t VCC_RESISTOR_DIVIDER = (1.0f / 3.0f);
 
 ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode)
 {
     const ADCV_t V_THRESHOLD_MAP[4] = {
         7.7f, /* 9V battery */
-        3.0f,  /* 1S Lithium Ion */
-        6.0f,  /* 2S Lithium Ion */
-        9.0f,  /* 3S Lithium Ion */
+        3.0f, /* 1S Lithium Ion */
+        6.0f, /* 2S Lithium Ion */
+        9.0f, /* 3S Lithium Ion */
     };
 
     return V_THRESHOLD_MAP[thresholdMode];
@@ -93,15 +93,18 @@ void Shutdown(const Configuration_t *const config)
     (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_5);
 
     /* O2S cells need to be pulled up to prevent them going into analog mode */
-    if(CELL_O2S == config->cell1){
+    if (CELL_O2S == config->cell1)
+    {
         (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_6);
         (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_7);
     }
-    if(CELL_O2S == config->cell2){
+    if (CELL_O2S == config->cell2)
+    {
         (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_2);
         (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_3);
     }
-    if(CELL_O2S == config->cell3){
+    if (CELL_O2S == config->cell3)
+    {
         (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_4);
         (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_5);
     }

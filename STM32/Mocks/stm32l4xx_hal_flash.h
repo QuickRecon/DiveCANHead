@@ -13,15 +13,15 @@ extern "C"
 #define OB_USER_IWDG_STOP ((uint32_t)0x0010)  /*!< Independent watchdog counter freeze in stop mode */
 #define OB_USER_IWDG_STDBY ((uint32_t)0x0020) /*!< Independent watchdog counter freeze in standby mode */
 #define OB_USER_WWDG_SW ((uint32_t)0x0040)    /*!< Window watchdog selection */
-#define OB_USER_BFB2 ((uint32_t)0x0080) /*!< Dual-bank boot */
-#define OB_USER_DUALBANK ((uint32_t)0x0100) /*!< Dual-Bank on 1MB or 512kB Flash memory devices */
-#define OB_USER_nBOOT1 ((uint32_t)0x0200)    /*!< Boot configuration */
-#define OB_USER_SRAM2_PE ((uint32_t)0x0400)  /*!< SRAM2 parity check enable */
-#define OB_USER_SRAM2_RST ((uint32_t)0x0800) /*!< SRAM2 Erase when system reset */
-#define OB_USER_nRST_SHDW ((uint32_t)0x1000) /*!< Reset generated when entering the shutdown mode */
-#define OB_USER_nSWBOOT0 ((uint32_t)0x2000) /*!< Software BOOT0 */
-#define OB_USER_nBOOT0 ((uint32_t)0x4000)   /*!< nBOOT0 option bit */
-#define OB_USER_DBANK ((uint32_t)0x8000) /*!< Single bank with 128-bits data or two banks with 64-bits data */
+#define OB_USER_BFB2 ((uint32_t)0x0080)       /*!< Dual-bank boot */
+#define OB_USER_DUALBANK ((uint32_t)0x0100)   /*!< Dual-Bank on 1MB or 512kB Flash memory devices */
+#define OB_USER_nBOOT1 ((uint32_t)0x0200)     /*!< Boot configuration */
+#define OB_USER_SRAM2_PE ((uint32_t)0x0400)   /*!< SRAM2 parity check enable */
+#define OB_USER_SRAM2_RST ((uint32_t)0x0800)  /*!< SRAM2 Erase when system reset */
+#define OB_USER_nRST_SHDW ((uint32_t)0x1000)  /*!< Reset generated when entering the shutdown mode */
+#define OB_USER_nSWBOOT0 ((uint32_t)0x2000)   /*!< Software BOOT0 */
+#define OB_USER_nBOOT0 ((uint32_t)0x4000)     /*!< nBOOT0 option bit */
+#define OB_USER_DBANK ((uint32_t)0x8000)      /*!< Single bank with 128-bits data or two banks with 64-bits data */
 
     typedef struct
     {

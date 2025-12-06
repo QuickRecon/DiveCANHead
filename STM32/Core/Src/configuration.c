@@ -20,7 +20,8 @@ Configuration_t setConfigBytes(uint32_t configBits)
     return config;
 }
 
-bool HWValid(Configuration_t config, HW_Version_t hw_version){
+bool HWValid(Configuration_t config, HW_Version_t hw_version)
+{
     bool valid = true;
     if (HW_JR == hw_version)
     {

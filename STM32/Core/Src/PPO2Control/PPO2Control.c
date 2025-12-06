@@ -165,7 +165,8 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, b
 
         osThreadId_t *SolenoidFireTaskHandle = getSolenoid_OSThreadId();
         *SolenoidFireTaskHandle = osThreadNew(PIDSolenoidFireTask, params, &PIDSolenoidFireTask_attributes);
-    } else if (controlScheme == PPO2CONTROL_MK15)
+    }
+    else if (controlScheme == PPO2CONTROL_MK15)
     {
         static const osThreadAttr_t PIDSolenoidFireTask_attributes = {
             .name = "PIDSolenoidFireTask",
@@ -181,10 +182,12 @@ void InitPPO2ControlLoop(QueueHandle_t c1, QueueHandle_t c2, QueueHandle_t c3, b
         osThreadId_t *SolenoidFireTaskHandle = getSolenoid_OSThreadId();
         *SolenoidFireTaskHandle = osThreadNew(MK15SolenoidFireTask, params, &PIDSolenoidFireTask_attributes);
     }
-    else if(controlScheme == PPO2CONTROL_OFF)
+    else if (controlScheme == PPO2CONTROL_OFF)
     {
         /* Don't do anything, no PPO2 control requested */
-    } else {
+    }
+    else
+    {
         NON_FATAL_ERROR(UNREACHABLE_ERR);
     }
 }
@@ -194,7 +197,7 @@ static void MK15SolenoidFireTask(void *arg)
     const PPO2ControlTask_params_t *const params = (PPO2ControlTask_params_t *)arg;
     do
     {
-        const uint32_t off_time = 6000;   /* Wait for 6 seconds before checking again */
+        const uint32_t off_time = 6000; /* Wait for 6 seconds before checking again */
         const uint32_t on_time = 1500;  /* Fire 1.5 seconds to empty the accumulator */
 
         /* Work out the current PPO2 and the setpoint */

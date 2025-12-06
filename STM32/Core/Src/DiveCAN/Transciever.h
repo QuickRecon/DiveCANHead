@@ -68,7 +68,7 @@ extern "C"
     uint32_t id;
     uint8_t length;
     uint8_t data[MAX_CAN_RX_LENGTH];
-    const char* type;
+    const char *type;
   } DiveCANMessage_t;
 
   /**

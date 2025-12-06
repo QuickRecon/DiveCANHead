@@ -27,7 +27,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "../../../../Core/Src/errors.h"
 
 /* Defining MPU_WRAPPERS_INCLUDED_FROM_API_FILE prevents task.h from redefining
 all the API functions to use the MPU wrappers.  That should only be done when
@@ -49,7 +48,7 @@ correct privileged Vs unprivileged linkage and placement. */
 #undef MPU_WRAPPERS_INCLUDED_FROM_API_FILE /*lint !e961 !e750 !e9021. */
 
 /* Constants used with the cRxLock and cTxLock structure members. */
-#define queueUNLOCKED ((int8_t) - 1)
+#define queueUNLOCKED ((int8_t)-1)
 #define queueLOCKED_UNMODIFIED ((int8_t)0)
 
 /* When the Queue_t structure is used to represent a base queue its pcHead and
@@ -2093,7 +2092,7 @@ static BaseType_t prvCopyDataToQueue(Queue_t *const pxQueue, const void *pvItemT
 		}
 #endif /* configUSE_MUTEXES */
 	}
-	else if (xPosition == queueSEND_TO_BACK && pvItemToQueue != NULL)
+	else if (xPosition == queueSEND_TO_BACK)
 	{
 		(void)memcpy((void *)pxQueue->pcWriteTo, pvItemToQueue, (size_t)pxQueue->uxItemSize); /*lint !e961 !e418 !e9087 MISRA exception as the casts are only redundant for some ports, plus previous logic ensures a null pointer can only be passed to memcpy() if the copy size is 0.  Cast to void required by function signature and safe as no alignment requirement and copy length specified in bytes. */
 		pxQueue->pcWriteTo += pxQueue->uxItemSize;											  /*lint !e9016 Pointer arithmetic on char types ok, especially in this use case where it is the clearest way of conveying intent. */
@@ -2106,7 +2105,7 @@ static BaseType_t prvCopyDataToQueue(Queue_t *const pxQueue, const void *pvItemT
 			mtCOVERAGE_TEST_MARKER();
 		}
 	}
-	else if (pvItemToQueue != NULL)
+	else
 	{
 		(void)memcpy((void *)pxQueue->u.xQueue.pcReadFrom, pvItemToQueue, (size_t)pxQueue->uxItemSize); /*lint !e961 !e9087 !e418 MISRA exception as the casts are only redundant for some ports.  Cast to void required by function signature and safe as no alignment requirement and copy length specified in bytes.  Assert checks null pointer only used when length is 0. */
 		pxQueue->u.xQueue.pcReadFrom -= pxQueue->uxItemSize;
@@ -2139,10 +2138,7 @@ static BaseType_t prvCopyDataToQueue(Queue_t *const pxQueue, const void *pvItemT
 			mtCOVERAGE_TEST_MARKER();
 		}
 	}
-	else
-	{
-		FATAL_ERROR(UNDEFINED_STATE_FERR);
-	}
+
 	pxQueue->uxMessagesWaiting = uxMessagesWaiting + (UBaseType_t)1;
 
 	return xReturn;

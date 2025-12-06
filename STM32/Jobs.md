@@ -1,6 +1,8 @@
 # Shitlist
 - Low battery error writing corrupting flash
-- O2S pipeline long latency
+
+# Watchlist
+- O2S pipeline long latency (adjusted timings)
 
 # Items to test
 - Error logging to eeprom emulation

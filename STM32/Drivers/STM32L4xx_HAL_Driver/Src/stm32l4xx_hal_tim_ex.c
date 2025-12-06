@@ -2164,11 +2164,13 @@ HAL_StatusTypeDef HAL_TIMEx_ConfigBreakInput(TIM_HandleTypeDef *htim,
     /* Set the break input polarity */
 #if defined(DFSDM1_Channel0)
     if (sBreakInputConfig->Source != TIM_BREAKINPUTSOURCE_DFSDM1)
-#endif /* DFSDM1_Channel0 */
     {
+#endif /* DFSDM1_Channel0 */
       tmporx &= ~bkin_polarity_mask;
       tmporx |= (sBreakInputConfig->Polarity << bkin_polarity_bitpos) & bkin_polarity_mask;
+#if defined(DFSDM1_Channel0)
     }
+#endif /* DFSDM1_Channel0 */
 
     /* Set TIMx_OR2 */
     htim->Instance->OR2 = tmporx;
@@ -2186,11 +2188,13 @@ HAL_StatusTypeDef HAL_TIMEx_ConfigBreakInput(TIM_HandleTypeDef *htim,
     /* Set the break input polarity */
 #if defined(DFSDM1_Channel0)
     if (sBreakInputConfig->Source != TIM_BREAKINPUTSOURCE_DFSDM1)
-#endif /* DFSDM1_Channel0 */
     {
+#endif /* DFSDM1_Channel0 */
       tmporx &= ~bkin_polarity_mask;
       tmporx |= (sBreakInputConfig->Polarity << bkin_polarity_bitpos) & bkin_polarity_mask;
+#if defined(DFSDM1_Channel0)
     }
+#endif /* DFSDM1_Channel0 */
 
     /* Set TIMx_OR3 */
     htim->Instance->OR3 = tmporx;
@@ -2610,9 +2614,9 @@ HAL_TIM_StateTypeDef HAL_TIMEx_HallSensor_GetState(const TIM_HandleTypeDef *htim
  * @param  htim TIM handle
  * @param  ChannelN TIM Complementary channel
  *          This parameter can be one of the following values:
- *            @arg TIM_CHANNEL_1: TIM Channel 1
- *            @arg TIM_CHANNEL_2: TIM Channel 2
- *            @arg TIM_CHANNEL_3: TIM Channel 3
+ *            @arg TIM_CHANNEL_1: TIM Channel 1 selected
+ *            @arg TIM_CHANNEL_2: TIM Channel 2 selected
+ *            @arg TIM_CHANNEL_3: TIM Channel 3 selected
  * @retval TIM Complementary channel state
  */
 HAL_TIM_ChannelStateTypeDef HAL_TIMEx_GetChannelNState(const TIM_HandleTypeDef *htim, uint32_t ChannelN)
@@ -2770,9 +2774,9 @@ static void TIM_DMAErrorCCxN(DMA_HandleTypeDef *hdma)
  * @param  TIMx to select the TIM peripheral
  * @param  Channel specifies the TIM Channel
  *          This parameter can be one of the following values:
- *            @arg TIM_CHANNEL_1: TIM Channel 1
- *            @arg TIM_CHANNEL_2: TIM Channel 2
- *            @arg TIM_CHANNEL_3: TIM Channel 3
+ *            @arg TIM_CHANNEL_1: TIM Channel 1 selected
+ *            @arg TIM_CHANNEL_2: TIM Channel 2 selected
+ *            @arg TIM_CHANNEL_3: TIM Channel 3 selected
  * @param  ChannelNState specifies the TIM Channel CCxNE bit new state.
  *          This parameter can be: TIM_CCxN_ENABLE or TIM_CCxN_Disable.
  * @retval None

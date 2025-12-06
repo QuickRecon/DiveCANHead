@@ -52,7 +52,6 @@ extern "C"
 #define TRIGGER_RISING (0x1uL << TRIGGER_MODE_Pos)
 #define TRIGGER_FALLING (0x2uL << TRIGGER_MODE_Pos)
 
-
 #define GPIO_MODE_INPUT MODE_INPUT                                                              /*!< Input Floating Mode                                                */
 #define GPIO_MODE_OUTPUT_PP (MODE_OUTPUT | OUTPUT_PP)                                           /*!< Output Push Pull Mode                                              */
 #define GPIO_MODE_OUTPUT_OD (MODE_OUTPUT | OUTPUT_OD)                                           /*!< Output Open Drain Mode                                             */

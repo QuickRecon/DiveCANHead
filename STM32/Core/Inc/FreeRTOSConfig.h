@@ -168,12 +168,12 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 /* Normal assert() semantics without relying on the provision of an assert.h
 header file. */
 /* USER CODE BEGIN 1 */
-#define configASSERT(x)       \
-  if ((x) == 0)               \
-  {                           \
-    taskDISABLE_INTERRUPTS(); \
+#define configASSERT(x)            \
+  if ((x) == 0)                    \
+  {                                \
+    taskDISABLE_INTERRUPTS();      \
     FATAL_ERROR(ASSERT_FAIL_FERR); \
-    NVIC_SystemReset();       \
+    NVIC_SystemReset();            \
   }
 /* USER CODE END 1 */
 
@@ -208,8 +208,8 @@ placed into the low power state respectively. */
 #define configPRE_SLEEP_PROCESSING(__x__) \
   do                                      \
   {                                       \
-    __x__ = 0;                            \
     PreSleepProcessing(__x__);            \
+    __x__ = 0;                            \
   } while (0)
 #define configPOST_SLEEP_PROCESSING PostSleepProcessing
 #endif /* configUSE_TICKLESS_IDLE == 1 */

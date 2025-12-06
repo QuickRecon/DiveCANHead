@@ -389,7 +389,7 @@ void CalibrationTask(void *arg)
 
     serial_printf("Sending cal response %d\r\n", calResult);
 
-    if(calResult != DIVECAN_CAL_RESULT_OK)
+    if (calResult != DIVECAN_CAL_RESULT_OK)
     {
         /* The cal failed, we need to restore the previous cal values */
         for (uint8_t i = 0; i < CELL_COUNT; ++i)
@@ -398,7 +398,9 @@ void CalibrationTask(void *arg)
             if (!calOk)
             {
                 NON_FATAL_ERROR_DETAIL(EEPROM_ERR, i);
-            } else {
+            }
+            else
+            {
                 serial_printf("Restored cal for cell %d to %f\r\n", i, previousCalibs[i]);
                 RefreshCalibrationData(getCell(i));
             }
@@ -576,7 +578,9 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
             ((now - sampleTimes[cellIdx]) > timeout))
         {
             consensus.includeArray[cellIdx] = false;
-        } else {
+        }
+        else
+        {
             ++includedCellCount;
         }
     }
@@ -664,7 +668,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
         }
 
         /* Check the remainder cell against the average of the 2 */
-        if (((fabs(consensus.precisionPPO2Array[remainder_cell[min_index]] - pairwise_averages[min_index]) * 100.0f) > MAX_DEVIATION ) )
+        if (((fabs(consensus.precisionPPO2Array[remainder_cell[min_index]] - pairwise_averages[min_index]) * 100.0f) > MAX_DEVIATION))
         {
             /* Vote out the remainder cell */
             consensus.includeArray[remainder_cell[min_index]] = false;

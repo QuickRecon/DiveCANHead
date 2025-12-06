@@ -139,14 +139,13 @@ void O2SReadCalibration(OxygenScientificState_t *handle)
     }
 }
 
-
 /* Calculate and write the eeprom*/
 ShortMillivolts_t O2SCalibrate(OxygenScientificState_t *handle, const PPO2_t PPO2, NonFatalError_t *calError)
 {
     *calError = NONE_ERR;
     /* Our coefficient is simply the float needed to make the current sample the current PPO2*/
     /* Yes this is backwards compared to the analog cell, but it makes more intuitive sense when looking at the the values to see how deviated the cell is from OEM spec*/
-    CalCoeff_t newCal = (PPO2/100.0f)/handle->cellSample;
+    CalCoeff_t newCal = (PPO2 / 100.0f) / handle->cellSample;
 
     serial_printf("Calibrated cell %d with coefficient %f\r\n", handle->cellNumber, newCal);
 
@@ -195,7 +194,7 @@ static void O2S_broadcastPPO2(OxygenScientificState_t *handle)
         }
     }
 
-    O2SNumeric_t tempPPO2 = handle->cellSample *handle->calibrationCoefficient* 100.0f;
+    O2SNumeric_t tempPPO2 = handle->cellSample * handle->calibrationCoefficient * 100.0f;
     if (tempPPO2 > 255.0f)
     {
         handle->status = CELL_FAIL;
@@ -203,7 +202,7 @@ static void O2S_broadcastPPO2(OxygenScientificState_t *handle)
     }
     PPO2 = (PPO2_t)(tempPPO2);
 
-    PIDNumeric_t precisionPPO2 = (PIDNumeric_t)handle->cellSample*handle->calibrationCoefficient;
+    PIDNumeric_t precisionPPO2 = (PIDNumeric_t)handle->cellSample * handle->calibrationCoefficient;
     /* Lodge the cell data*/
     OxygenCell_t cellData = {
         .cellNumber = handle->cellNumber,

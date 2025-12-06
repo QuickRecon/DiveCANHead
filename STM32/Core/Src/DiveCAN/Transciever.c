@@ -208,8 +208,7 @@ void txName(const DiveCANType_t deviceType, const char *const name)
             .id = BUS_NAME_ID | deviceType,
             .data = {0},
             .length = 8,
-            .type = "BUS_NAME"
-        };
+            .type = "BUS_NAME"};
         (void)memcpy(message.data, data, BUS_NAME_LEN);
         sendCANMessage(message);
     }

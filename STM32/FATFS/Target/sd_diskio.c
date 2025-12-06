@@ -6,7 +6,7 @@
  ******************************************************************************
  * @attention
  *
- * Copyright (c) 2023 STMicroelectronics.
+ * Copyright (c) 2025 STMicroelectronics.
  * All rights reserved.
  *
  * This software is licensed under terms that can be found in the LICENSE file
@@ -448,7 +448,6 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
       adjust the address and the D-Cache size to clean accordingly.
     */
     alignedAddr = (uint32_t)buff & ~0x1F;
-
     SCB_CleanDCache_by_Addr((uint32_t *)alignedAddr, count * BLOCKSIZE + ((uint32_t)buff - alignedAddr));
 #endif
 #pragma GCC diagnostic ignored "-Wcast-align"
@@ -496,76 +495,77 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
 #endif
     }
 #if defined(ENABLE_SCRATCH_BUFFER)
-    else
-    {
-      /* Slow path, fetch each sector a part and memcpy to destination buffer */
-      int i;
+  }
+  else
+  {
+    /* Slow path, fetch each sector a part and memcpy to destination buffer */
+    int i;
 
 #if (ENABLE_SD_DMA_CACHE_MAINTENANCE == 1)
-      /*
-       * invalidate the scratch buffer before the next write to get the actual data instead of the cached one
-       */
-      SCB_InvalidateDCache_by_Addr((uint32_t *)scratch, BLOCKSIZE);
+    /*
+     * invalidate the scratch buffer before the next write to get the actual data instead of the cached one
+     */
+    SCB_InvalidateDCache_by_Addr((uint32_t *)scratch, BLOCKSIZE);
 #endif
-      for (i = 0; i < count; i++)
+    for (i = 0; i < count; i++)
+    {
+      memcpy((void *)scratch, buff, BLOCKSIZE);
+      buff += BLOCKSIZE;
+
+      ret = BSP_SD_WriteBlocks_DMA((uint32_t *)scratch, (uint32_t)sector++, 1);
+      if (ret == MSD_OK)
       {
-        memcpy((void *)scratch, buff, BLOCKSIZE);
-        buff += BLOCKSIZE;
-
-        ret = BSP_SD_WriteBlocks_DMA((uint32_t *)scratch, (uint32_t)sector++, 1);
-        if (ret == MSD_OK)
-        {
-          /* wait until the read is successful or a timeout occurs */
+        /* wait until the read is successful or a timeout occurs */
 #if (osCMSIS < 0x20000U)
-          /* wait for a message from the queue or a timeout */
-          event = osMessageGet(SDQueueID, SD_TIMEOUT);
+        /* wait for a message from the queue or a timeout */
+        event = osMessageGet(SDQueueID, SD_TIMEOUT);
 
-          if (event.status == osEventMessage)
+        if (event.status == osEventMessage)
+        {
+          if (event.value.v == READ_CPLT_MSG)
           {
-            if (event.value.v == READ_CPLT_MSG)
-            {
-              timer = osKernelSysTick();
-              /* block until SDIO IP is ready or a timeout occur */
-              while (osKernelSysTick() - timer < SD_TIMEOUT)
-#else
-          status = osMessageQueueGet(SDQueueID, (void *)&event, NULL, SD_TIMEOUT);
-          if ((status == osOK) && (event == READ_CPLT_MSG))
-          {
-            timer = osKernelGetTickCount();
+            timer = osKernelSysTick();
             /* block until SDIO IP is ready or a timeout occur */
-            ret = MSD_ERROR;
-            while (osKernelGetTickCount() - timer < SD_TIMEOUT)
+            while (osKernelSysTick() - timer < SD_TIMEOUT)
+#else
+        status = osMessageQueueGet(SDQueueID, (void *)&event, NULL, SD_TIMEOUT);
+        if ((status == osOK) && (event == READ_CPLT_MSG))
+        {
+          timer = osKernelGetTickCount();
+          /* block until SDIO IP is ready or a timeout occur */
+          ret = MSD_ERROR;
+          while (osKernelGetTickCount() - timer < SD_TIMEOUT)
 #endif
-              {
-                ret = BSP_SD_GetCardState();
+            {
+              ret = BSP_SD_GetCardState();
 
-                if (ret == MSD_OK)
-                {
-                  break;
-                }
-              }
-
-              if (ret != MSD_OK)
+              if (ret == MSD_OK)
               {
                 break;
               }
-#if (osCMSIS < 0x20000U)
             }
-          }
-#else
-          }
-#endif
-        }
-        else
-        {
-          break;
-        }
-      }
 
-      if ((i == count) && (ret == MSD_OK))
-        res = RES_OK;
+            if (ret != MSD_OK)
+            {
+              break;
+            }
+#if (osCMSIS < 0x20000U)
+          }
+        }
+#else
+        }
+#endif
+      }
+      else
+      {
+        break;
+      }
     }
+
+    if ((i == count) && (ret == MSD_OK))
+      res = RES_OK;
   }
+
 #endif
 
   return res;
@@ -683,7 +683,7 @@ void BSP_SD_AbortCallback(void)
    osMessagePut(SDQueueID, RW_ABORT_MSG, 0);
 #else
    const uint16_t msg = RW_ABORT_MSG;
-   osMessageQueuePut(SDQueueID, (const void *)&msg, NULL, 0);
+   osMessageQueuePut(SDQueueID, (const void *)&msg, 0, 0);
 #endif
 }
 */

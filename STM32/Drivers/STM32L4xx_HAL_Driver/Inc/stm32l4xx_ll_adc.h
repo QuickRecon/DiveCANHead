@@ -348,22 +348,22 @@ extern "C"
 
 /* ADC internal channels related definitions */
 /* Internal voltage reference VrefInt */
-#define VREFINT_CAL_ADDR ((uint16_t *)(0x1FFF75AAUL)) /* Internal voltage reference, address of      \
-                         parameter VREFINT_CAL: VrefInt ADC raw data acquired at temperature 30 DegC \
+#define VREFINT_CAL_ADDR ((const uint16_t *)(0x1FFF75AAUL)) /* Internal voltage reference, address of \
+                         parameter VREFINT_CAL: VrefInt ADC raw data acquired at temperature 30 DegC  \
                          (tolerance: +-5 DegC), Vref+ = 3.0 V (tolerance: +-10 mV). */
-#define VREFINT_CAL_VREF (3000UL)                     /* Analog voltage reference (Vref+) value \
-                         with which VrefInt has been calibrated in production                   \
-                         (tolerance: +-10 mV) (unit: mV). */
+#define VREFINT_CAL_VREF (3000UL)                           /* Analog voltage reference (Vref+) value \
+                               with which VrefInt has been calibrated in production                   \
+                               (tolerance: +-10 mV) (unit: mV). */
 /* Temperature sensor */
-#define TEMPSENSOR_CAL1_ADDR ((uint16_t *)(0x1FFF75A8UL)) /* Address of parameter TS_CAL1: On STM32L4, \
-                             temperature sensor ADC raw data acquired at temperature  30 DegC          \
+#define TEMPSENSOR_CAL1_ADDR ((const uint16_t *)(0x1FFF75A8UL)) /* Address of parameter TS_CAL1: \
+                             temperature sensor ADC raw data acquired at temperature  30 DegC    \
                              (tolerance: +-5 DegC), Vref+ = 3.0 V (tolerance: +-10 mV). */
-#define TEMPSENSOR_CAL2_ADDR ((uint16_t *)(0x1FFF75CAUL)) /* Address of parameter TS_CAL2: On STM32L4, \
-                             temperature sensor ADC raw data acquired at temperature defined by        \
+#define TEMPSENSOR_CAL2_ADDR ((const uint16_t *)(0x1FFF75CAUL)) /* Address of parameter TS_CAL2: \
+                             temperature sensor ADC raw data acquired at temperature defined by  \
                              TEMPSENSOR_CAL2_TEMP (tolerance: +-5 DegC), Vref+ = 3.0 V (tolerance: +-10 mV). */
-#define TEMPSENSOR_CAL1_TEMP ((int32_t)30L)               /* Temperature at which temperature sensor \
-                             has been calibrated in production for data into TEMPSENSOR_CAL1_ADDR    \
-                             (tolerance: +-5 DegC) (unit: DegC). */
+#define TEMPSENSOR_CAL1_TEMP ((int32_t)30L)                     /* Temperature at which temperature sensor \
+                                   has been calibrated in production for data into TEMPSENSOR_CAL1_ADDR    \
+                                   (tolerance: +-5 DegC) (unit: DegC). */
 #if defined(STM32L471xx) || defined(STM32L475xx) || defined(STM32L476xx) || defined(STM32L485xx) || defined(STM32L486xx)
 #define TEMPSENSOR_CAL2_TEMP (110L) /* Temperature at which temperature sensor \
        has been calibrated in production for data into TEMPSENSOR_CAL2_ADDR    \
