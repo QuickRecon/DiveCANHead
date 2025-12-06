@@ -289,7 +289,7 @@ static void decodeCellMessage(void *arg)
                     O2S_broadcastPPO2(cell);
 
                     /* Ensure we don't sample more than once per second by waiting a second for the cell to reset itself */
-                    (void)osDelay(TIMEOUT_1S_TICKS);
+                    (void)osDelay(TIMEOUT_500MS_TICKS);
 
                     sendCellCommand(GET_OXY_COMMAND, cell);
                 }
