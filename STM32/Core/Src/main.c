@@ -350,12 +350,12 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   MX_SDMMC1_SD_Init();
-  MX_FATFS_Init();
   MX_CRC_Init();
   MX_TIM7_Init();
   MX_IWDG_Init();
   MX_TIM1_Init();
   MX_TIM15_Init();
+  MX_FATFS_Init();
 
   /* Initialize interrupts */
   MX_NVIC_Init();
@@ -441,15 +441,8 @@ int main(void)
   InitPPO2TX(&defaultDeviceSpec, cells[CELL_1], cells[CELL_2], cells[CELL_3]);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
   (void)HAL_IWDG_Refresh(&hiwdg);
-  
-  InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3], deviceConfig.ppo2DepthCompensation, deviceConfig.extendedMessages, deviceConfig.ppo2controlMode, deviceConfig.powerMode);
 
-  /* So, we've booted up, time to make sure that the bus is actually in an off state and we didn't blip on in the dead of night */
-  if (!getBusStatus())
-  {
-    DeInitLog();
-    Shutdown(&deviceConfig);
-  }
+  InitPPO2ControlLoop(cells[CELL_1], cells[CELL_2], cells[CELL_3], deviceConfig.ppo2DepthCompensation, deviceConfig.extendedMessages, deviceConfig.ppo2controlMode, deviceConfig.powerMode);
 
   /* USER CODE END 2 */
 
@@ -1308,6 +1301,14 @@ void SDInitTask(void *argument)
   (void)argument;
   (void)osDelay(TIMEOUT_1S_TICKS);
   StartLogTask();
+  /* So, we've booted up, time to make sure that the bus is actually in an off state and we didn't blip on in the dead of night */
+  if (!testBusActive())
+  {
+    DeInitLog();
+    const HW_Version_t HARDWARE_VERSION = get_hardware_version();
+    const Configuration_t deviceConfig = loadConfiguration(HARDWARE_VERSION);
+    Shutdown(&deviceConfig);
+  }
   (void)vTaskDelete(NULL);
   /* USER CODE END SDInitTask */
 }
@@ -1345,7 +1346,6 @@ void Error_Handler(void)
   NON_FATAL_ERROR(CRITICAL_ERR);
   /* USER CODE END Error_Handler_Debug */
 }
-
 #ifdef USE_FULL_ASSERT
 /**
  * @brief  Reports the name of the source file and the source line number

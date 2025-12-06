@@ -162,12 +162,43 @@ void Shutdown(const Configuration_t *const config)
     HAL_PWREx_EnterSHUTDOWNMode();
 }
 
-/* Pin low means bus on, so return true*/
+/**
+ * @brief Check if the bus is active by first pulling up the pin to avoid being capactively coupled to a false active, and then checking status, restores pin to no pull after check. 
+ * @return True if bus active, false otherwise
+ */
+bool testBusActive(void)
+{
+    /* Pull up the GPIO pin to avoid capacitance giving a false active*/
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = CAN_EN_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+    bool busActive = HAL_GPIO_ReadPin(CAN_EN_GPIO_Port, CAN_EN_Pin) == GPIO_PIN_RESET;
+
+    /* Return to no pull to save power */
+    GPIO_InitStruct.Pin = CAN_EN_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(CAN_EN_GPIO_Port, &GPIO_InitStruct);
+    return busActive;
+}
+
+/**
+ * @brief Get the current bus status
+ * @return True if bus on, false if bus off
+ */
 bool getBusStatus(void)
 {
+    /* Pin low means bus on, so return true*/
     return HAL_GPIO_ReadPin(CAN_EN_GPIO_Port, CAN_EN_Pin) == GPIO_PIN_RESET;
 }
 
+/**
+ * @brief Returns the PowerSource_t currently running the VCC rail (Microcontroller, CAN transceiver, ADCs, etc) 
+ * @return SOURCE_BATTERY if powered from battery, SOURCE_CAN if powered from CAN bus, SOURCE_DEFAULT if unknown
+ */
 PowerSource_t GetVCCSource(void)
 {
     PowerSource_t source = SOURCE_DEFAULT;
@@ -183,6 +214,10 @@ PowerSource_t GetVCCSource(void)
     return source;
 }
 
+/**
+ * @brief Returns the PowerSource_t currently running the VBus rail (SD card, Cells, etc) 
+ * @return SOURCE_BATTERY if powered from battery, SOURCE_CAN if powered from CAN bus, SOURCE_DEFAULT if unknown
+ */
 PowerSource_t GetVBusSource(void)
 {
     PowerSource_t source = SOURCE_DEFAULT;
@@ -198,6 +233,10 @@ PowerSource_t GetVBusSource(void)
     return source;
 }
 
+/**
+ * @brief Set the power mode of the VBus power mux
+ * @param powerMode The desired power mode
+ */
 void SetVBusMode(PowerSelectMode_t powerMode)
 {
     GPIO_PinState Pin1 = GPIO_PIN_RESET;
@@ -216,6 +255,10 @@ void SetVBusMode(PowerSelectMode_t powerMode)
     HAL_GPIO_WritePin(BUS_SEL2_GPIO_Port, BUS_SEL2_Pin, Pin2);
 }
 
+/**
+ * @brief Set the battery regulator to enabled or disabled
+ * @param enable
+ */
 void SetBattery(bool enable)
 {
     GPIO_PinState Pin = GPIO_PIN_RESET;
@@ -227,6 +270,12 @@ void SetBattery(bool enable)
     HAL_GPIO_WritePin(BATTERY_EN_GPIO_Port, BATTERY_EN_Pin, Pin);
 }
 
+/**
+ * @brief Sample the given internal ADC channel, applies divider ratio to return real world voltage
+ * @param adcChannel STM32 ADC Channel to sample
+ * @param divider_ratio divider ratio
+ * @return voltage sampled from pin
+ */
 ADCV_t sampleADC(uint32_t adcChannel, ADCV_t divider_ratio)
 {
     const ADCV_t adc_correction_factor = 7.00f / 6.9257431f; /* This may vary board-to-board, but its like 1% so no worries */
@@ -295,26 +344,47 @@ ADCV_t sampleADC(uint32_t adcChannel, ADCV_t divider_ratio)
     return sourceVoltage;
 }
 
+/**
+ * @brief Sample the CAN voltage rail
+ * @return Voltage on CAN rail
+ */
 ADCV_t getCANVoltage(void)
 {
     return sampleADC(ADC_CHANNEL_3, POWER_RESISTOR_DIVIDER);
 }
 
+/**
+ * @brief Sample the battery voltage rail
+ * @return Voltage on battery rail
+ */
 ADCV_t getBatteryVoltage(void)
 {
     return sampleADC(ADC_CHANNEL_4, POWER_RESISTOR_DIVIDER);
 }
 
+/**
+ * @brief Sample the VBus voltage rail
+ * @return Voltage on VBus rail
+ */
 ADCV_t getVBusVoltage(void)
 {
     return sampleADC(ADC_CHANNEL_5, VBUS_RESISTOR_DIVIDER);
 }
 
+/**
+ * @brief Sample the VCC voltage rail
+ * @return Voltage on VCC rail
+ */
 ADCV_t getVCCVoltage(void)
 {
     return sampleADC(ADC_CHANNEL_18, VCC_RESISTOR_DIVIDER);
 }
 
+/**
+ * @brief Get the voltage of the given power source
+ * @param powerSource The power source to sample
+ * @return The voltage of the given power source
+ */
 ADCV_t getVoltage(PowerSource_t powerSource)
 {
     ADCV_t voltage = 0;

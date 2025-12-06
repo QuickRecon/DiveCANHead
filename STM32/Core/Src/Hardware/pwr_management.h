@@ -21,6 +21,7 @@ extern "C"
     PowerSource_t GetVCCSource(void);
     PowerSource_t GetVBusSource(void);
     void SetBattery(bool enable);
+    bool testBusActive(void);
     bool getBusStatus(void);
 
     ADCV_t getVoltage(PowerSource_t powerSource);

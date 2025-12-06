@@ -4,6 +4,7 @@
 extern "C"
 {
 #endif
+    /* These values are specifically chosen to match up with the IO of the power muxes*/
     typedef enum
     {
         MODE_BATTERY = 0,
