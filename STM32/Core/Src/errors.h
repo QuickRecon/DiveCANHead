@@ -108,8 +108,11 @@ extern "C"
         /** @brief VBus is undervolted, cell readings are unreliable */
         VBUS_UNDER_VOLTAGE_ERR = 28,
 
+        /** @brief VBus is undervolted, can't write to flash */
+        VCC_UNDER_VOLTAGE_ERR = 29,
+
         /** @brief We tried to fire the solenoid but were inhibited */
-        SOLENOID_DISABLED_ERR = 29,
+        SOLENOID_DISABLED_ERR = 30,
 
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
         MAX_ERR = SOLENOID_DISABLED_ERR

@@ -5,6 +5,7 @@
 #include "log.h"
 #include <assert.h>
 #include "string.h"
+#include "pwr_management.h"
 
 /*  Define where stuff lives in the eeprom (only 100 vars up for grabs with current configuration) */
 static const uint8_t ANALOG_CELL_EEPROM_BASE_ADDR = 0x01;
@@ -158,6 +159,13 @@ void initFlash(void)
     setOptionBytes();
 }
 
+static const ADCV_t MIN_OPERATING_VOLTAGE = 3.0f; /*  Minimum operating voltage in mV */
+static bool checkCoreVoltage(void)
+{
+    ADCV_t voltage = getVCCVoltage();
+    return (voltage >= MIN_OPERATING_VOLTAGE);
+}
+
 static bool WriteInt32(uint16_t addr, uint32_t value)
 {
     bool writeOk = true; /*  Presume that we're doing ok, if we hit a fail state then false it */
@@ -165,40 +173,47 @@ static bool WriteInt32(uint16_t addr, uint32_t value)
     EE_Status result = EE_OK;
     do
     {
-        HAL_StatusTypeDef status = HAL_FLASH_Unlock();
-        if (HAL_OK == status)
+        if (checkCoreVoltage() == false)
         {
-            __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_PROGERR | FLASH_FLAG_WRPERR |
-                                   FLASH_FLAG_PGAERR | FLASH_FLAG_SIZERR | FLASH_FLAG_PGSERR | FLASH_FLAG_MISERR | FLASH_FLAG_FASTERR |
-                                   FLASH_FLAG_RDERR | FLASH_FLAG_OPTVERR);
+            NON_FATAL_ERROR(VCC_UNDER_VOLTAGE_ERR);
+        }
+        else
+        {
+            HAL_StatusTypeDef status = HAL_FLASH_Unlock();
+            if (HAL_OK == status)
+            {
+                __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_PROGERR | FLASH_FLAG_WRPERR |
+                                       FLASH_FLAG_PGAERR | FLASH_FLAG_SIZERR | FLASH_FLAG_PGSERR | FLASH_FLAG_MISERR | FLASH_FLAG_FASTERR |
+                                       FLASH_FLAG_RDERR | FLASH_FLAG_OPTVERR);
 
-            result = EE_WriteVariable32bits(addr, value);
-            status = HAL_FLASH_Lock();
-            if (HAL_OK != status)
+                result = EE_WriteVariable32bits(addr, value);
+                status = HAL_FLASH_Lock();
+                if (HAL_OK != status)
+                {
+                    NON_FATAL_ERROR_DETAIL(FLASH_LOCK_ERR, status);
+                    writeOk = false;
+                }
+
+                if (result == EE_CLEANUP_REQUIRED)
+                {
+                    /*  This could be expensive, maybe it should be a queued job rather than eating up time in a task? */
+                    (void)EE_CleanUp(); /*  If it doesn't work we don't really care, we'll just get told to try it again next time, and if it keeps failing eventually something more important will break */
+                }
+                else if (result == EE_OK)
+                {
+                    /*  Happy days, nothing really to do */
+                }
+                else /*  An error we don't handle */
+                {
+                    NON_FATAL_ERROR_DETAIL(EEPROM_ERR, result);
+                    writeOk = false;
+                }
+            }
+            else
             {
                 NON_FATAL_ERROR_DETAIL(FLASH_LOCK_ERR, status);
                 writeOk = false;
             }
-
-            if (result == EE_CLEANUP_REQUIRED)
-            {
-                /*  This could be expensive, maybe it should be a queued job rather than eating up time in a task? */
-                (void)EE_CleanUp(); /*  If it doesn't work we don't really care, we'll just get told to try it again next time, and if it keeps failing eventually something more important will break */
-            }
-            else if (result == EE_OK)
-            {
-                /*  Happy days, nothing really to do */
-            }
-            else /*  An error we don't handle */
-            {
-                NON_FATAL_ERROR_DETAIL(EEPROM_ERR, result);
-                writeOk = false;
-            }
-        }
-        else
-        {
-            NON_FATAL_ERROR_DETAIL(FLASH_LOCK_ERR, status);
-            writeOk = false;
         }
         ++attempts;
     } while ((!writeOk) && (attempts < MAX_WRITE_ATTEMPTS));
