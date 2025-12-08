@@ -1,4 +1,11 @@
 # Shitlist
+- Power Reset during start with SD card
+- O2S intermittent giving garbled data
+- ADC intermittent timeout
+- Add handler for new known messages (stop spurious logging)
+- Solenoid will turn off during calibration if started during fire cycle
+- Reset fatal error reason on clean shutdown
+- Fix low voltage detection
 
 # Watchlist
 - O2S pipeline long latency (adjusted timings)
