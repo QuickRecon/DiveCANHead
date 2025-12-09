@@ -336,8 +336,13 @@ DiveCANCalResponse_t TotalAbsoluteCalibrate(CalParameters_t *calParams)
 DiveCANCalResponse_t SolenoidFlushCalibrate(CalParameters_t *calParams)
 {
     /*Do the O2 flush*/
-    setSolenoidOn(calParams->powerMode);
-    (void)osDelay(TIMEOUT_25S_TICKS);
+    const uint8_t flushTimeSeconds = 25;
+
+    for(uint8_t i = 0; i < flushTimeSeconds; ++i)
+    {
+        setSolenoidOn(calParams->powerMode);
+        (void)osDelay(TIMEOUT_1S_TICKS);
+    }
     setSolenoidOff();
 
     return TotalAbsoluteCalibrate(calParams);
