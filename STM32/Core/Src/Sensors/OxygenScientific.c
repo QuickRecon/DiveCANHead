@@ -156,8 +156,8 @@ ShortMillivolts_t O2SCalibrate(OxygenScientificState_t *handle, const PPO2_t PPO
     }
     O2SReadCalibration(handle);
 
-    if (((handle->calibrationCoefficient - newCal) > 0.00001) ||
-        ((handle->calibrationCoefficient - newCal) < -0.00001))
+    if (((handle->calibrationCoefficient - newCal) > EPS) ||
+        ((handle->calibrationCoefficient - newCal) < -EPS))
     {
         handle->status = CELL_FAIL;
         *calError = CAL_MISMATCH_ERR;

@@ -38,6 +38,7 @@ extern "C"
     /* Handy consts */
     static const uint32_t BYTE_WIDTH = 8;      /* Bitshift operations */
     static const uint32_t HALF_BYTE_WIDTH = 4; /* Bitshift operations */
+    static const CalCoeff_t EPS = 0.00001f;    /* Small value for float comparisons */
 
     /* PPO2 values */
     static const PPO2_t PPO2_FAIL = 0xFF;

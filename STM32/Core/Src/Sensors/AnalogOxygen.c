@@ -112,14 +112,14 @@ ShortMillivolts_t AnalogCalibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2
     }
     AnalogReadCalibration(handle);
 
-    if (((handle->calibrationCoefficient - newCal) > 0.00001) ||
-        ((handle->calibrationCoefficient - newCal) < -0.00001))
+    if (((handle->calibrationCoefficient - newCal) > EPS) ||
+        ((handle->calibrationCoefficient - newCal) < EPS))
     {
         handle->status = CELL_FAIL;
         *calError = CAL_MISMATCH_ERR;
         NON_FATAL_ERROR(*calError);
     }
-    const CalCoeff_t TO_SHORT_MILLIS = (CalCoeff_t)(1e-2);
+    const CalCoeff_t TO_SHORT_MILLIS = 1e-2f;
     return (ShortMillivolts_t)round((CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS * TO_SHORT_MILLIS);
 }
 
