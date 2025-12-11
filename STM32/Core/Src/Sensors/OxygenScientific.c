@@ -266,11 +266,13 @@ static void decodeCellMessage(void *arg)
             /* Null terminate the end newline, interferes with logging */
             msgBuf[strcspn(msgBuf, "\r\n")] = 0;
 
+            serial_printf("O2S Cell %d Message: %s\r\n", cell->cellNumber, msgBuf);
+
             const char *const sep = ":";
             char *saveptr = NULL;
             const char *const CMD_Name = strtok_r(msgBuf, sep, &saveptr);
 
-            /* Decode either a #DRAW or a #DOXY, we don't care about anything else yet*/
+            /* Decode either a Mn or a Mm, we don't care about anything else yet*/
             if ((0 == strcmp(CMD_Name, GET_OXY_RESPONSE)) || (0 == strcmp(CMD_Name, GET_OXY_COMMAND)))
             {
                 const char *const PPO2_str = strtok_r(NULL, sep, &saveptr);
