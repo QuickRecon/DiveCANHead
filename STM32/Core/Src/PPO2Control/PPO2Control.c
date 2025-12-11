@@ -206,7 +206,7 @@ static void MK15SolenoidFireTask(void *arg)
         PIDNumeric_t measurement = consensus.precisionConsensus;
 
         /* Check if now is a time when we fire the solenoid */
-        if (getSolenoidEnable() && (d_setpoint > measurement))
+        if (getSolenoidEnable() && (d_setpoint > measurement) && (consensus.consensus != PPO2_FAIL))
         {
             setSolenoidOn(params->powerMode);
             (void)osDelay(pdMS_TO_TICKS(on_time));
@@ -344,7 +344,10 @@ static void PPO2_PIDControlTask(void *arg)
         PIDNumeric_t measurement = consensus.precisionConsensus;
 
         PIDNumeric_t *dutyCycle = getDutyCyclePtr();
-        *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
+        if (consensus.consensus != PPO2_FAIL)
+        {
+            *dutyCycle = updatePID(d_setpoint, measurement, &(params->pidState));
+        }
 
         if (params->useExtendedMessages)
         {
