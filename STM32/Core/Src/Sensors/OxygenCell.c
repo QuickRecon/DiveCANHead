@@ -338,7 +338,7 @@ DiveCANCalResponse_t SolenoidFlushCalibrate(CalParameters_t *calParams)
     /*Do the O2 flush*/
     const uint8_t flushTimeSeconds = 25;
 
-    for(uint8_t i = 0; i < flushTimeSeconds; ++i)
+    for (uint8_t i = 0; i < flushTimeSeconds; ++i)
     {
         setSolenoidOn(calParams->powerMode);
         (void)osDelay(TIMEOUT_1S_TICKS);
@@ -649,8 +649,8 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
             c2->millivolts,
             c3->millivolts,
         },
-        .consensus = 0,
-        .precisionConsensus = 0,
+        .consensus = PPO2_FAIL,
+        .precisionConsensus = (PIDNumeric_t)PPO2_FAIL,
         .includeArray = {true, true, true}};
 
     /* Do a two pass check, loop through the cells and average the "good" cells
@@ -665,10 +665,15 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
 
     for (uint8_t cellIdx = 0; cellIdx < CELL_COUNT; ++cellIdx)
     {
-        if ((consensus.statusArray[cellIdx] == CELL_NEED_CAL) ||
-            (consensus.statusArray[cellIdx] == CELL_FAIL) ||
-            (consensus.statusArray[cellIdx] == CELL_DEGRADED) ||
-            ((now - sampleTimes[cellIdx]) > timeout))
+        /* If the PPO2 is invalid (zero or max) we vote the cell out, likewise if the cell status is failed or the cell is timed out it doesn't get included */
+        if ((consensus.ppo2Array[cellIdx] == PPO2_FAIL) || (consensus.ppo2Array[cellIdx] == 0))
+        {
+            consensus.includeArray[cellIdx] = false;
+        }
+        else if ((consensus.statusArray[cellIdx] == CELL_NEED_CAL) ||
+                 (consensus.statusArray[cellIdx] == CELL_FAIL) ||
+                 (consensus.statusArray[cellIdx] == CELL_DEGRADED) ||
+                 ((now - sampleTimes[cellIdx]) > timeout))
         {
             consensus.includeArray[cellIdx] = false;
         }
@@ -681,8 +686,7 @@ Consensus_t calculateConsensus(const OxygenCell_t *const c1, const OxygenCell_t 
     /* In the case of no included cells, just set the consensus to FF, which will inhibit the solenoid from firing*/
     if (includedCellCount == 0)
     {
-        consensus.consensus = PPO2_FAIL;
-        consensus.precisionConsensus = consensus.consensus;
+        /* Do nothing as the consensus is FF by the initializer*/
     }
     else if (includedCellCount == 1) /* If we only have one cell, just use that cell's value, but vote it out so we still get a vote fail alarm (because we haven't actually voted) */
     {

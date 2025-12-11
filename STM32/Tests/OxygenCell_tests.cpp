@@ -61,6 +61,21 @@ extern "C"
     {
         mock().actualCall("txCalAck");
     }
+
+    void AnalogReadCalibration(AnalogOxygenState_t *handle)
+    {
+        mock().actualCall("AnalogReadCalibration");
+    }
+
+    void DiveO2ReadCalibration(DiveO2State_t *handle)
+    {
+        mock().actualCall("DiveO2ReadCalibration");
+    }
+
+    void O2SReadCalibration(OxygenScientificState_t *handle)
+    {
+        mock().actualCall("O2SReadCalibration");
+    }
 }
 
 // Run through each permutation of cell positions and check
@@ -599,7 +614,6 @@ TEST(OxygenCell, CreateCell_InitializesO2SCells)
     mock().checkExpectations();
 }
 
-
 TEST(OxygenCell, CreateCell_HandlesInvalidCellType)
 {
     mock().expectOneCall("NonFatalError").withParameter("error", UNREACHABLE_ERR);
@@ -636,40 +650,119 @@ TEST(OxygenCell, calculateConsensus_HandlesAllCellsExcluded)
         .dataTime = 0};
 
     Consensus_t expectedConsensus = {
-         .statusArray = {CELL_FAIL, CELL_FAIL, CELL_FAIL},
-         .ppo2Array = {120, 110, 100},
-         .milliArray = {0, 0, 0},
-         .consensus = 0xFF,
-         .includeArray = {false, false, false}};
+        .statusArray = {CELL_FAIL, CELL_FAIL, CELL_FAIL},
+        .ppo2Array = {120, 110, 100},
+        .milliArray = {0, 0, 0},
+        .consensus = 0xFF,
+        .includeArray = {false, false, false}};
 
     checkConsensus(expectedConsensus, &c1, &c2, &c3);
 
     mock().checkExpectations();
 }
 
+TEST(OxygenCell, calculateConsensus_HandlesFailAndZeroedCell)
+{
 
+    OxygenCell_t c1 = {
+        .cellNumber = 0,
+        .type = CELL_ANALOG,
+        .ppo2 = 110,
+        .precisionPPO2 = 1.1f,
+        .millivolts = 12,
+        .status = CELL_FAIL,
+        .dataTime = 0};
+    OxygenCell_t c2 = {
+        .cellNumber = 1,
+        .type = CELL_ANALOG,
+        .ppo2 = 115,
+        .precisionPPO2 = 1.15f,
+        .millivolts = 13,
+        .status = CELL_OK,
+        .dataTime = 0};
+    OxygenCell_t c3 = {
+        .cellNumber = 2,
+        .type = CELL_ANALOG,
+        .ppo2 = 0,
+        .precisionPPO2 = 0.0f,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .dataTime = 0};
+
+    Consensus_t expectedConsensus = {
+        .statusArray = {CELL_FAIL, CELL_OK, CELL_OK},
+        .ppo2Array = {110, 115, 0},
+        .milliArray = {12, 13, 0},
+        .consensus = 115,
+        .includeArray = {false, false, false}};
+
+    checkConsensus(expectedConsensus, &c1, &c2, &c3);
+
+    mock().checkExpectations();
+}
+
+TEST(OxygenCell, calculateConsensus_HandlesFailAndFailValuedCell)
+{
+
+    OxygenCell_t c1 = {
+        .cellNumber = 0,
+        .type = CELL_ANALOG,
+        .ppo2 = 110,
+        .precisionPPO2 = 1.1f,
+        .millivolts = 12,
+        .status = CELL_FAIL,
+        .dataTime = 0};
+    OxygenCell_t c2 = {
+        .cellNumber = 1,
+        .type = CELL_ANALOG,
+        .ppo2 = 115,
+        .precisionPPO2 = 1.15f,
+        .millivolts = 13,
+        .status = CELL_OK,
+        .dataTime = 0};
+    OxygenCell_t c3 = {
+        .cellNumber = 2,
+        .type = CELL_ANALOG,
+        .ppo2 = PPO2_FAIL,
+        .precisionPPO2 = 0.0f,
+        .millivolts = 0,
+        .status = CELL_OK,
+        .dataTime = 0};
+
+    Consensus_t expectedConsensus = {
+        .statusArray = {CELL_FAIL, CELL_OK, CELL_OK},
+        .ppo2Array = {110, 115, PPO2_FAIL},
+        .milliArray = {12, 13, 0},
+        .consensus = 115,
+        .includeArray = {false, false, false}};
+
+    checkConsensus(expectedConsensus, &c1, &c2, &c3);
+
+    mock().checkExpectations();
+}
 
 TEST(OxygenCell, cellConfidence_CalculatesCorrectly)
 {
     // Test cases for different cell combinations
-    struct {
+    struct
+    {
         bool include[3];
         uint8_t expected;
     } testCases[] = {
-        {{true, true, true}, 3},     // All cells included
-        {{true, true, false}, 2},    // Two cells included
-        {{true, false, false}, 1},   // One cell included
-        {{false, false, false}, 0},  // No cells included
+        {{true, true, true}, 3},    // All cells included
+        {{true, true, false}, 2},   // Two cells included
+        {{true, false, false}, 1},  // One cell included
+        {{false, false, false}, 0}, // No cells included
     };
 
-    for (const auto& test : testCases) {
+    for (const auto &test : testCases)
+    {
         Consensus_t consensus = {
             .statusArray = {CELL_OK, CELL_OK, CELL_OK},
             .ppo2Array = {100, 110, 120},
             .milliArray = {0, 0, 0},
             .consensus = 110,
-            .includeArray = {test.include[0], test.include[1], test.include[2]}
-        };
+            .includeArray = {test.include[0], test.include[1], test.include[2]}};
 
         uint8_t confidence = cellConfidence(&consensus);
         CHECK_EQUAL(test.expected, confidence);
