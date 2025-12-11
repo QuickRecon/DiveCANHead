@@ -273,7 +273,7 @@ void RespDiving(const DiveCANMessage_t *const message)
 {
     uint32_t diveNumber = ((uint32_t)message->data[1] << BYTE_WIDTH) | message->data[2];
     uint32_t unixTimestamp = ((uint32_t)message->data[3] << THREE_BYTE_WIDTH) | ((uint32_t)message->data[4] << TWO_BYTE_WIDTH) | ((uint32_t)message->data[5] << BYTE_WIDTH) | (uint32_t)message->data[6];
-    if(message->data[0] == 0)
+    if(message->data[0] == 1)
     {
         serial_printf("Dive #%d started at Local Unix Timestamp: %d", diveNumber, unixTimestamp);
     }
