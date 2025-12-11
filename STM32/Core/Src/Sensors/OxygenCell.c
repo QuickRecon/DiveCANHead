@@ -542,11 +542,14 @@ Consensus_t TwoCellConsensus(Consensus_t consensus)
         consensus.includeArray[CELL_2] = false;
         consensus.includeArray[CELL_3] = false;
     }
-    /* Get our average */
-    PIDNumeric_t average = ((included_values[0] + included_values[1]) / 2.0f) * 100.0f;
-    consensus.consensus = (PPO2_t)(average);
-    assert(consensus.consensus < 255);
-    consensus.precisionConsensus = average / 100.0f;
+    else
+    {
+        /* Get our average */
+        PIDNumeric_t average = ((included_values[0] + included_values[1]) / 2.0f) * 100.0f;
+        consensus.consensus = (PPO2_t)(average);
+        assert(consensus.consensus < 255);
+        consensus.precisionConsensus = average / 100.0f;
+    }
     return consensus;
 }
 
@@ -585,9 +588,8 @@ Consensus_t ThreeCellConsensus(Consensus_t consensus)
         consensus.includeArray[CELL_2] = false;
         consensus.includeArray[CELL_3] = false;
     }
-
     /* Check the remainder cell against the average of the 2 */
-    if ((fabs(consensus.precisionPPO2Array[remainder_cell[min_index]] - pairwise_averages[min_index]) * 100.0f) > MAX_DEVIATION)
+    else if ((fabs(consensus.precisionPPO2Array[remainder_cell[min_index]] - pairwise_averages[min_index]) * 100.0f) > MAX_DEVIATION)
     {
         /* Vote out the remainder cell */
         consensus.includeArray[remainder_cell[min_index]] = false;

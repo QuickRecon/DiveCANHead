@@ -667,7 +667,7 @@ TEST(OxygenCell, calculateConsensus_HandlesFailAndZeroedCell)
     OxygenCell_t c1 = {
         .cellNumber = 0,
         .type = CELL_ANALOG,
-        .ppo2 = 110,
+        .ppo2 = 25,
         .precisionPPO2 = 1.1f,
         .millivolts = 12,
         .status = CELL_FAIL,
@@ -675,7 +675,7 @@ TEST(OxygenCell, calculateConsensus_HandlesFailAndZeroedCell)
     OxygenCell_t c2 = {
         .cellNumber = 1,
         .type = CELL_ANALOG,
-        .ppo2 = 115,
+        .ppo2 = 21,
         .precisionPPO2 = 1.15f,
         .millivolts = 13,
         .status = CELL_OK,
@@ -691,9 +691,9 @@ TEST(OxygenCell, calculateConsensus_HandlesFailAndZeroedCell)
 
     Consensus_t expectedConsensus = {
         .statusArray = {CELL_FAIL, CELL_OK, CELL_OK},
-        .ppo2Array = {110, 115, 0},
+        .ppo2Array = {25, 21, 0},
         .milliArray = {12, 13, 0},
-        .consensus = 115,
+        .consensus = 21,
         .includeArray = {false, false, false}};
 
     checkConsensus(expectedConsensus, &c1, &c2, &c3);
@@ -707,7 +707,7 @@ TEST(OxygenCell, calculateConsensus_HandlesFailAndFailValuedCell)
     OxygenCell_t c1 = {
         .cellNumber = 0,
         .type = CELL_ANALOG,
-        .ppo2 = 110,
+        .ppo2 = 25,
         .precisionPPO2 = 1.1f,
         .millivolts = 12,
         .status = CELL_FAIL,
@@ -715,7 +715,7 @@ TEST(OxygenCell, calculateConsensus_HandlesFailAndFailValuedCell)
     OxygenCell_t c2 = {
         .cellNumber = 1,
         .type = CELL_ANALOG,
-        .ppo2 = 115,
+        .ppo2 = 21,
         .precisionPPO2 = 1.15f,
         .millivolts = 13,
         .status = CELL_OK,
@@ -731,9 +731,9 @@ TEST(OxygenCell, calculateConsensus_HandlesFailAndFailValuedCell)
 
     Consensus_t expectedConsensus = {
         .statusArray = {CELL_FAIL, CELL_OK, CELL_OK},
-        .ppo2Array = {110, 115, PPO2_FAIL},
+        .ppo2Array = {25, 21, PPO2_FAIL},
         .milliArray = {12, 13, 0},
-        .consensus = 115,
+        .consensus = 21,
         .includeArray = {false, false, false}};
 
     checkConsensus(expectedConsensus, &c1, &c2, &c3);
