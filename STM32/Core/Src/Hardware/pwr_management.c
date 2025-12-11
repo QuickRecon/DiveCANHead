@@ -41,7 +41,7 @@ void Shutdown(const Configuration_t *const config)
 {
     /* We've been asked to shut down cleanly, reset the last fatal reason so we're not logging upsets when we start back up again*/
     bool writeErrOk = SetFatalError(NONE_FERR);
-    if(writeErrOk == false)
+    if(!writeErrOk)
     {
         serial_printf("Failed to reset last fatal error on shutdown");
     }
