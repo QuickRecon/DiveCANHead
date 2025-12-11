@@ -37,6 +37,8 @@ extern "C"
 
     /* Handy consts */
     static const uint32_t BYTE_WIDTH = 8;      /* Bitshift operations */
+    static const uint32_t TWO_BYTE_WIDTH = 16;      /* Bitshift operations */
+    static const uint32_t THREE_BYTE_WIDTH = 24;      /* Bitshift operations */
     static const uint32_t HALF_BYTE_WIDTH = 4; /* Bitshift operations */
     static const CalCoeff_t EPS = 0.00001f;    /* Small value for float comparisons */
 

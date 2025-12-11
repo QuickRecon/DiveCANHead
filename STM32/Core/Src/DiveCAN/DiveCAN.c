@@ -18,6 +18,7 @@ void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *
 void RespAtmos(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
 void RespShutdown(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration);
 void RespSerialNumber(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec);
+void RespDiving(const DiveCANMessage_t *const message);
 void updatePIDPGain(const DiveCANMessage_t *const message);
 void updatePIDIGain(const DiveCANMessage_t *const message);
 void updatePIDDGain(const DiveCANMessage_t *const message);
@@ -81,51 +82,96 @@ void CANTask(void *arg)
             uint32_t message_id = message.id & ID_MASK; /* Drop the source/dest stuff, we're listening for anything from anyone */
             switch (message_id)
             {
-            case BUS_INIT_ID:
-                /* Bus Init */
-                message.type = "BUS_INIT";
-                RespBusInit(&message, deviceSpec, configuration);
-                break;
             case BUS_ID_ID:
                 message.type = "BUS_ID";
                 /* Respond to pings */
                 RespPing(&message, deviceSpec, configuration);
                 break;
-            case CAL_REQ_ID:
-                message.type = "CAL_REQ";
-                /* Respond to calibration request */
-                RespCal(&message, deviceSpec, configuration);
-                break;
-            case MENU_ID:
-                message.type = "MENU";
-                /* Send Menu stuff */
-                RespMenu(&message, deviceSpec, configuration);
-                break;
-            case PPO2_SETPOINT_ID:
-                message.type = "PPO2_SETPOINT";
-                /* Deal with setpoint being set */
-                RespSetpoint(&message, deviceSpec);
-                break;
-            case PPO2_ATMOS_ID:
-                message.type = "PPO2_ATMOS";
-                /* Error response */
-                RespAtmos(&message, deviceSpec);
+            case BUS_NAME_ID:
+                message.type = "BUS_NAME";
                 break;
             case BUS_OFF_ID:
                 message.type = "BUS_OFF";
                 /* Turn off bus */
                 RespShutdown(&message, deviceSpec, configuration);
                 break;
-            case BUS_NAME_ID:
-                message.type = "BUS_NAME";
+            case PPO2_PPO2_ID:
+                message.type = "PPO2_PPO2";
+                break;
+            case HUD_STAT_ID:
+                message.type = "HUD_STAT";
+                break;
+            case PPO2_ATMOS_ID:
+                message.type = "PPO2_ATMOS";
+                /* Error response */
+                RespAtmos(&message, deviceSpec);
+                break;
+            case MENU_ID:
+                message.type = "MENU";
+                /* Send Menu stuff */
+                RespMenu(&message, deviceSpec, configuration);
+                break;
+            case TANK_PRESSURE_ID:
+                message.type = "TANK_PRESSURE";
+                break;
+            case PPO2_MILLIS_ID:
+                message.type = "PPO2_MILLIS";
+                break;
+            case CAL_ID:
+                message.type = "CAL";
+                break;
+            case CAL_REQ_ID:
+                message.type = "CAL_REQ";
+                /* Respond to calibration request */
+                RespCal(&message, deviceSpec, configuration);
+                break;
+            case CO2_STATUS_ID:
+                message.type = "CO2_STATUS";
+                break;
+            case CO2_ID:
+                message.type = "CO2";
+                break;
+            case CO2_CAL_ID:
+                message.type = "CO2_CAL";
+                break;
+            case CO2_CAL_REQ_ID:
+                message.type = "CO2_CAL_REQ";
                 break;
             case BUS_MENU_OPEN_ID:
                 message.type = "BUS_MENU_OPEN";
                 break;
-            case CAN_SERIAL_NUMBER:
+            case BUS_INIT_ID:
+                /* Bus Init */
+                message.type = "BUS_INIT";
+                RespBusInit(&message, deviceSpec, configuration);
+                break;
+            case RMS_TEMP_ID:
+                message.type = "RMS_TEMP";
+                break;
+            case RMS_TEMP_ENABLED_ID:
+                message.type = "RMS_TEMP_ENABLED";
+                break;
+            case PPO2_SETPOINT_ID:
+                message.type = "PPO2_SETPOINT";
+                /* Deal with setpoint being set */
+                RespSetpoint(&message, deviceSpec);
+                break;
+            case PPO2_STATUS_ID:
+                message.type = "PPO2_STATUS";
+                break;
+            case BUS_STATUS_ID:
+                message.type = "BUS_STATUS";
+                break;
+            case DIVING_ID:
+                message.type = "DIVING";
+                RespDiving(&message);
+                break;
+            case CAN_SERIAL_NUMBER_ID:
                 message.type = "CAN_SERIAL_NUMBER";
                 RespSerialNumber(&message, deviceSpec);
                 break;
+
+            /* Here lie the unofficial extensions, I want to remove these once the bluetooth is working*/
             case PID_P_GAIN_ID:
                 message.type = "PID_P_GAIN";
                 updatePIDPGain(&message);
@@ -221,6 +267,20 @@ void RespShutdown(const DiveCANMessage_t *, const DiveCANDevice_t *, const Confi
         (void)osDelay(TIMEOUT_100MS_TICKS);
     }
     serial_printf("Shutdown attempted but timed out due to missing en signal");
+}
+
+void RespDiving(const DiveCANMessage_t *const message)
+{
+    uint32_t diveNumber = ((uint32_t)message->data[1] << BYTE_WIDTH) | message->data[2];
+    uint32_t unixTimestamp = ((uint32_t)message->data[3] << THREE_BYTE_WIDTH) | ((uint32_t)message->data[4] << TWO_BYTE_WIDTH) | ((uint32_t)message->data[5] << BYTE_WIDTH) | (uint32_t)message->data[6];
+    if(message->data[0] == 0)
+    {
+        serial_printf("Dive #%d started at Local Unix Timestamp: %d", diveNumber, unixTimestamp);
+    }
+    else
+    {
+        serial_printf("Dive #%d ended at Local Unix Timestamp: %d", diveNumber, unixTimestamp);
+    }
 }
 
 void RespSerialNumber(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec)

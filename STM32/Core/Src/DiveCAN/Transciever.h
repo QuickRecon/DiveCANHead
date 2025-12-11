@@ -13,31 +13,39 @@ extern "C"
 
 #define BUS_ID_ID 0xD000000
 #define BUS_NAME_ID 0xD010000
+#define CAN_UNKNOWN_0 0xD020000
 #define BUS_OFF_ID 0xD030000
 #define PPO2_PPO2_ID 0xD040000
 #define HUD_STAT_ID 0xD070000
 #define PPO2_ATMOS_ID 0xD080000
 
 #define MENU_ID 0xD0A0000
+#define TANK_PRESSURE_ID 0xD0B0000
+
+#define CAN_UNKNOWN_1 0xd100000
 
 #define PPO2_MILLIS_ID 0xD110000
 #define CAL_ID 0xD120000
 #define CAL_REQ_ID 0xD130000
 
-#define CAN_UNKNOWN_1 0xd200000
+#define CO2_STATUS_ID 0xd200000
+#define CO2_ID 0xd210000
+#define CO2_CAL_ID 0xd220000
+#define CO2_CAL_REQ_ID 0xd230000
 
 #define BUS_MENU_OPEN_ID 0xD300000
 
 #define BUS_INIT_ID 0xD370000
 
-#define CAN_UNKNOWN_2 0xdc10000
-#define CAN_UNKNOWN_3 0xdc40000
+#define RMS_TEMP_ID 0xdc10000
+#define CAN_UNKNOWN_2 0xdc30000
+#define RMS_TEMP_ENABLED_ID 0xdc40000
 #define PPO2_SETPOINT_ID 0xDC90000
 #define PPO2_STATUS_ID 0xDCA0000
 #define BUS_STATUS_ID 0xDCB0000
-#define CAN_UNKNOWN_4 0xDCC0000
+#define DIVING_ID 0xDCC0000
 
-#define CAN_SERIAL_NUMBER 0xdd20000
+#define CAN_SERIAL_NUMBER_ID 0xdd20000
 
 /* Extensions, these are not part of the standard but we use it for debugging, and adv features the shearwater doesn't natively support */
 /* We're using higher IDs here so they get arbitrated away if other things are happening */
