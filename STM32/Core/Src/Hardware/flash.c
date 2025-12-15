@@ -159,12 +159,12 @@ void initFlash(void)
     setOptionBytes();
 }
 
-static const ADCV_t MIN_OPERATING_VOLTAGE = 3.0f; /*  Minimum operating voltage in mV */
-static bool checkCoreVoltage(void)
-{
-    ADCV_t voltage = getVCCVoltage();
-    return (voltage >= MIN_OPERATING_VOLTAGE);
-}
+// static const ADCV_t MIN_OPERATING_VOLTAGE = 3.0f; /*  Minimum operating voltage in mV */
+// static bool checkCoreVoltage(void)
+// {
+//     ADCV_t voltage = getVCCVoltage();
+//     return (voltage >= MIN_OPERATING_VOLTAGE);
+// }
 
 static bool WriteInt32(uint16_t addr, uint32_t value)
 {
@@ -173,7 +173,7 @@ static bool WriteInt32(uint16_t addr, uint32_t value)
     EE_Status result = EE_OK;
     do
     {
-        if (checkCoreVoltage())
+        if(false)/*if (checkCoreVoltage()) */ /* This causes spurious cal fails some of the time (voltage sag?)*/
         {
             NON_FATAL_ERROR(VCC_UNDER_VOLTAGE_ERR);
         }

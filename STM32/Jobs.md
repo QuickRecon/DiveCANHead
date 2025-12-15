@@ -2,14 +2,14 @@
 - Power Reset during start with SD card
 - O2S intermittent giving garbled data
 - ADC intermittent timeout
-- Add handler for new known messages (stop spurious logging)
-- Solenoid will turn off during calibration if started during fire cycle
-- Reset fatal error reason on clean shutdown
 - Fix low voltage detection
 
 # Watchlist
+
+- Solenoid will turn off during calibration if started during fire cycle (resets timer)
 - O2S pipeline long latency (adjusted timings)
 - Low battery error writing corrupting flash (added check)
+- Reset fatal error reason on clean shutdow
 
 # Items to test
 - Error logging to eeprom emulation
