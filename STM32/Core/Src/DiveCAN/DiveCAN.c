@@ -9,6 +9,11 @@
 #include "../configuration.h"
 #include "../Hardware/log.h"
 
+#ifdef UDS_ENABLED
+#include "uds/isotp.h"
+#include "uds/uds.h"
+#endif
+
 void CANTask(void *arg);
 void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration /*  */);
 void RespPing(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration);
@@ -25,6 +30,17 @@ void updatePIDDGain(const DiveCANMessage_t *const message);
 
 static const uint8_t DIVECAN_TYPE_MASK = 0xF;
 static const uint8_t BATTERY_FLOAT_TO_INT_SCALER = 10;
+
+#ifdef UDS_ENABLED
+/* ISO-TP and UDS contexts (file scope for single-session constraint) */
+static ISOTPContext_t isotpContext = {0};
+static UDSContext_t udsContext = {0};
+static bool isotpInitialized = false;
+
+/* UDS callback handlers */
+static void HandleUDSMessage(const uint8_t *data, uint16_t length);
+static void HandleUDSTxComplete(void);
+#endif
 
 /* FreeRTOS tasks */
 
@@ -74,8 +90,21 @@ void CANTask(void *arg)
     const DiveCANDevice_t *const deviceSpec = &(task_params->deviceSpec);
     Configuration_t *configuration = &(task_params->configuration);
 
+#ifdef UDS_ENABLED
+    uint32_t lastPollTime = HAL_GetTick();
+#endif
+
     while (true)
     {
+#ifdef UDS_ENABLED
+        // Poll ISO-TP for timeouts every 100ms
+        uint32_t now = HAL_GetTick();
+        if ((now - lastPollTime) >= ISOTP_POLL_INTERVAL) {
+            ISOTP_Poll(&isotpContext, now);
+            lastPollTime = now;
+        }
+#endif
+
         DiveCANMessage_t message = {0};
         if (pdTRUE == GetLatestCAN(TIMEOUT_1S_TICKS, &message))
         {
@@ -108,7 +137,24 @@ void CANTask(void *arg)
                 break;
             case MENU_ID:
                 message.type = "MENU";
-                /* Send Menu stuff */
+#ifdef UDS_ENABLED
+                // Initialize ISO-TP on first MENU message
+                if (!isotpInitialized) {
+                    uint8_t targetType = message.id & 0xFF;
+                    ISOTP_Init(&isotpContext, deviceSpec->type, targetType, MENU_ID);
+                    isotpContext.rxCompleteCallback = HandleUDSMessage;
+                    isotpContext.txCompleteCallback = HandleUDSTxComplete;
+
+                    UDS_Init(&udsContext, configuration, &isotpContext);
+                    isotpInitialized = true;
+                }
+
+                // Try ISO-TP first - returns true if consumed
+                if (ISOTP_ProcessRxFrame(&isotpContext, &message)) {
+                    break;  // ISO-TP handled it
+                }
+#endif
+                /* Fallback to legacy menu protocol */
                 RespMenu(&message, deviceSpec, configuration);
                 break;
             case TANK_PRESSURE_ID:
@@ -291,6 +337,33 @@ void RespSerialNumber(const DiveCANMessage_t *const message, const DiveCANDevice
     (void)memcpy(serial_number, message->data, sizeof(message->data));
     serial_printf("Received Serial Number of device %d: %s", origin, serial_number);
 }
+
+#ifdef UDS_ENABLED
+/**
+ * @brief UDS RX completion callback - called when ISO-TP receives complete UDS message
+ * @param data Pointer to received data
+ * @param length Length of received data
+ */
+static void HandleUDSMessage(const uint8_t *data, uint16_t length)
+{
+    serial_printf("UDS RX: [");
+    for (uint16_t i = 0; i < length; i++) {
+        serial_printf("0x%02x%s", data[i], (i < length - 1) ? ", " : "");
+    }
+    serial_printf("]\n\r");
+
+    // Process UDS request
+    UDS_ProcessRequest(&udsContext, data, length);
+}
+
+/**
+ * @brief UDS TX completion callback - called when ISO-TP finishes transmitting response
+ */
+static void HandleUDSTxComplete(void)
+{
+    serial_printf("UDS TX complete\n\r");
+}
+#endif
 
 void updatePIDPGain(const DiveCANMessage_t *const message)
 {

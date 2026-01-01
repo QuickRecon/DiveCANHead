@@ -24,8 +24,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "isotp.h"
-#include "Transciever.h"
-#include "configuration.h"
+#include "../Transciever.h"
+#include "../../configuration.h"
 
 // UDS Service IDs (SID)
 #define UDS_SID_DIAGNOSTIC_SESSION_CONTROL  0x10

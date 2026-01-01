@@ -24,7 +24,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "Transciever.h"  // For DiveCANMessage_t, DiveCANType_t
+#include "../Transciever.h"  // For DiveCANMessage_t, DiveCANType_t
 
 // ISO-TP Configuration
 #define ISOTP_MAX_PAYLOAD 128        // Maximum payload size (reduced from 4095 for STM32L4)

@@ -55,6 +55,8 @@ Core/Src/DiveCAN/menu.c \
 Core/Src/DiveCAN/Transciever.c \
 Core/Src/DiveCAN/DiveCAN.c \
 Core/Src/DiveCAN/PPO2Transmitter.c \
+Core/Src/DiveCAN/uds/isotp.c \
+Core/Src/DiveCAN/uds/uds.c \
 Core/Src/PPO2Control/PPO2Control.c \
 Core/Src/stm32l4xx_it.c \
 Core/Src/stm32l4xx_hal_msp.c \
@@ -169,6 +171,7 @@ C_DEFS =  \
 -DUSE_HAL_DRIVER \
 -DSTM32L431xx \
 -DSTM32_THREAD_SAFE_STRATEGY=4 \
+-DUDS_ENABLED \
 -DENABLE_SD_DMA_CACHE_MAINTENANCE=0 \
 -DCOMMIT_HASH=$(COMMIT) \
 -DFIRMWARE_VERSION=$(FIRMWARE_VERSION)
