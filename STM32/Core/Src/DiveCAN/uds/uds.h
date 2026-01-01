@@ -69,6 +69,13 @@
 #define UDS_DID_PPO2_VALUES                 0xF201  // Read PPO2 values
 #define UDS_DID_ERROR_STATUS                0xF300  // Read error status
 
+// Settings DIDs (Phase 4)
+#define UDS_DID_SETTING_COUNT               0x9100  // Read: number of settings
+#define UDS_DID_SETTING_INFO_BASE           0x9110  // Read: setting metadata (0x9110 + index)
+#define UDS_DID_SETTING_VALUE_BASE          0x9130  // Read/Write: setting value (0x9130 + index)
+#define UDS_DID_SETTING_LABEL_BASE          0x9150  // Read: option labels (0x9150 + index + (option << 4))
+#define UDS_DID_SETTING_SAVE                0x9350  // Write: save settings to flash
+
 // UDS maximum message sizes
 #define UDS_MAX_REQUEST_LENGTH              128  // Matches ISOTP_MAX_PAYLOAD
 #define UDS_MAX_RESPONSE_LENGTH             128  // Matches ISOTP_MAX_PAYLOAD

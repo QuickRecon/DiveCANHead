@@ -6,8 +6,10 @@
  */
 
 #include "uds.h"
+#include "uds_settings.h"
 #include "../../errors.h"
 #include "../../Hardware/hw_version.h"
+#include "../../Hardware/flash.h"
 #include <string.h>
 
 // Forward declarations of service handlers
@@ -228,7 +230,95 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
         break;
     }
 
+    case UDS_DID_SETTING_COUNT:
+    {
+        // Return number of settings
+        ctx->responseBuffer[3] = UDS_GetSettingCount();
+        ctx->responseLength = 4;
+        break;
+    }
+
     default:
+        // Check if DID is in settings range
+        if (did >= UDS_DID_SETTING_INFO_BASE && did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount()))
+        {
+            // SettingInfo: [kind(1), editable(1), maxValue(1), optionCount(1), label(N)]
+            uint8_t index = did - UDS_DID_SETTING_INFO_BASE;
+            const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
+
+            if (setting == NULL)
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+                return;
+            }
+
+            ctx->responseBuffer[3] = (uint8_t)setting->kind;
+            ctx->responseBuffer[4] = setting->editable ? 1 : 0;
+            ctx->responseBuffer[5] = setting->maxValue;
+            ctx->responseBuffer[6] = setting->optionCount;
+
+            // Append label string
+            uint16_t labelLen = strlen(setting->label);
+            if (labelLen > (UDS_MAX_RESPONSE_LENGTH - 7))
+            {
+                labelLen = UDS_MAX_RESPONSE_LENGTH - 7;
+            }
+            memcpy(&ctx->responseBuffer[7], setting->label, labelLen);
+            ctx->responseLength = 7 + labelLen;
+            UDS_SendResponse(ctx);
+            return;
+        }
+        else if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
+        {
+            // SettingValue: [maxValue(8 bytes BE), currentValue(8 bytes BE)]
+            uint8_t index = did - UDS_DID_SETTING_VALUE_BASE;
+            const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
+
+            if (setting == NULL)
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+                return;
+            }
+
+            uint64_t maxValue = setting->maxValue;
+            uint64_t currentValue = UDS_GetSettingValue(index, ctx->configuration);
+
+            // Encode as big-endian u64
+            for (int i = 0; i < 8; i++)
+            {
+                ctx->responseBuffer[3 + i] = (uint8_t)(maxValue >> (56 - i * 8));
+                ctx->responseBuffer[11 + i] = (uint8_t)(currentValue >> (56 - i * 8));
+            }
+            ctx->responseLength = 19;  // 3 header + 8 max + 8 current
+            UDS_SendResponse(ctx);
+            return;
+        }
+        else if (did >= UDS_DID_SETTING_LABEL_BASE && did < 0x9200)
+        {
+            // SettingLabel: [label string]
+            // DID format: 0x9150 + setting_index + (option_index << 4)
+            uint16_t offset = did - UDS_DID_SETTING_LABEL_BASE;
+            uint8_t settingIndex = offset & 0x0F;
+            uint8_t optionIndex = (offset >> 4) & 0x0F;
+
+            const char *label = UDS_GetSettingOptionLabel(settingIndex, optionIndex);
+            if (label == NULL)
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+                return;
+            }
+
+            uint16_t labelLen = strlen(label);
+            if (labelLen > (UDS_MAX_RESPONSE_LENGTH - 3))
+            {
+                labelLen = UDS_MAX_RESPONSE_LENGTH - 3;
+            }
+            memcpy(&ctx->responseBuffer[3], label, labelLen);
+            ctx->responseLength = 3 + labelLen;
+            UDS_SendResponse(ctx);
+            return;
+        }
+
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
         return;
     }
@@ -293,7 +383,66 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         break;
     }
 
+    case UDS_DID_SETTING_SAVE:
+    {
+        // Save configuration to flash
+        // No data payload needed - just trigger save
+        extern HW_Version_t get_hardware_version(void);
+        HW_Version_t hw_ver = get_hardware_version();
+
+        if (!saveConfiguration(ctx->configuration, hw_ver))
+        {
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_GENERAL_PROGRAMMING_FAILURE);
+            return;
+        }
+
+        // Build positive response
+        ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->responseBuffer[1] = requestData[1];
+        ctx->responseBuffer[2] = requestData[2];
+        ctx->responseLength = 3;
+
+        UDS_SendResponse(ctx);
+        break;
+    }
+
     default:
+        // Check if DID is in settings value range
+        if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
+        {
+            // Write setting value: expect 8-byte big-endian u64
+            if (requestLength != 11)  // SID + DID(2) + value(8)
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
+                return;
+            }
+
+            uint8_t index = did - UDS_DID_SETTING_VALUE_BASE;
+
+            // Decode big-endian u64
+            uint64_t value = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                value = (value << 8) | requestData[3 + i];
+            }
+
+            // Update setting
+            if (!UDS_SetSettingValue(index, value, ctx->configuration))
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+                return;
+            }
+
+            // Build positive response
+            ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+            ctx->responseBuffer[1] = requestData[1];
+            ctx->responseBuffer[2] = requestData[2];
+            ctx->responseLength = 3;
+
+            UDS_SendResponse(ctx);
+            return;
+        }
+
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
         break;
     }
