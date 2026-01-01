@@ -10,11 +10,6 @@
 #include "../../Hardware/hw_version.h"
 #include <string.h>
 
-// COMMIT_HASH is defined by the Makefile as a string literal
-#ifndef COMMIT_HASH
-#define COMMIT_HASH "unknown"
-#endif
-
 // Forward declarations of service handlers
 static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
@@ -202,7 +197,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
     case UDS_DID_FIRMWARE_VERSION:
     {
         // Return commit hash as string
-        const char *commitHash = COMMIT_HASH;
+        const char *commitHash = getCommitHash();
         uint16_t hashLen = strlen(commitHash);
         if (hashLen > (UDS_MAX_RESPONSE_LENGTH - 3))
         {

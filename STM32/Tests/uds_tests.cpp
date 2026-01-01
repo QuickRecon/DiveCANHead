@@ -25,7 +25,6 @@ extern "C"
     // External functions we need to mock or provide
     extern void sendCANMessage(const DiveCANMessage_t message);
     extern uint32_t HAL_GetTick(void);
-    extern const char *getCommitHash(void);
     extern HW_Version_t get_hardware_version(void);
 }
 
@@ -34,11 +33,6 @@ extern "C"
 // in isotp_tests.cpp and will be linked from there to avoid multiple
 // definition errors
 extern void setMockTime(uint32_t time);
-
-const char *getCommitHash(void)
-{
-    return "test1234";  // 8 characters
-}
 
 // Test group
 TEST_GROUP(UDS_Basic)
@@ -161,9 +155,13 @@ TEST(UDS_Basic, ReadFirmwareVersion)
     // Arrange: Read DID 0xF000 [0x22, 0xF0, 0x00]
     uint8_t request[] = {0x22, 0xF0, 0x00};
 
-    // Expect: Positive response [0x62, 0xF0, 0x00, "test1234"]
-    // Note: 11-byte response requires multi-frame, which calls HAL_GetTick
-    mock().expectOneCall("HAL_GetTick");
+    // Expect: Positive response [0x62, 0xF0, 0x00, <commit-hash>]
+    // Note: multi-byte response may require multi-frame, which calls HAL_GetTick
+    const char *expectedHash = getCommitHash();
+    uint16_t expectedLen = 3 + strlen(expectedHash);
+    if (expectedLen > 7) {
+        mock().expectOneCall("HAL_GetTick");
+    }
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
 
     // Act
@@ -173,8 +171,8 @@ TEST(UDS_Basic, ReadFirmwareVersion)
     CHECK_EQUAL(0x62, udsCtx.responseBuffer[0]);
     CHECK_EQUAL(0xF0, udsCtx.responseBuffer[1]);
     CHECK_EQUAL(0x00, udsCtx.responseBuffer[2]);
-    MEMCMP_EQUAL("test1234", &udsCtx.responseBuffer[3], 8);
-    CHECK_EQUAL(11, udsCtx.responseLength);  // 3 header + 8 data
+    MEMCMP_EQUAL(expectedHash, &udsCtx.responseBuffer[3], strlen(expectedHash));
+    CHECK_EQUAL(expectedLen, udsCtx.responseLength);
 }
 
 /**
