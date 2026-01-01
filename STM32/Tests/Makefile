@@ -35,6 +35,7 @@ SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/hw_version.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/configuration.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/menu.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/isotp.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/uds.c
 
 # --- TEST_SRC_FILES and TEST_SRC_DIRS ---
 # Test files are always included in the build.
