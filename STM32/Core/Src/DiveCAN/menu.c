@@ -1,6 +1,7 @@
 #include "menu.h"
 #include "Transciever.h"
 #include "../Hardware/printer.h"
+#include "../errors.h"
 
 #define MENU_COUNT 5
 #define MENU_ITEMS 1

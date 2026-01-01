@@ -191,7 +191,7 @@ TEST(flash, SetCalibrationFlashLockFail)
         mock().expectNCalls(3, "HAL_FLASH_Lock");
         LockReturnCode = HAL_ERROR;
 
-        mock().expectNCalls(3, "NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR);
+        mock().expectNCalls(3, "NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR).withParameter("detail", 1);
         mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
         mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
         mock().expectNCalls(3, "__HAL_FLASH_CLEAR_FLAG");
@@ -213,9 +213,9 @@ TEST(flash, SetCalibrationFlashUnlockFail)
 
         mock().expectNCalls(3, "HAL_FLASH_Unlock");
         mock().expectNCalls(3, "HAL_FLASH_Lock");
-        mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR);
-        mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR);
-        mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR);
+        mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR).withParameter("detail", 1);;
+        mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR).withParameter("detail", 1);;
+        mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR).withParameter("detail", 1);;
 
         UnlockReturnCode = HAL_ERROR;
         mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
@@ -238,9 +238,9 @@ TEST(flash, SetCalibrationEEPROMFail)
 
         mock().expectNCalls(3, "HAL_FLASH_Unlock");
         mock().expectNCalls(3, "HAL_FLASH_Lock");
-        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
-        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
-        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
+        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR).withParameter("detail", 7);
+        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR).withParameter("detail", 7);
+        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR).withParameter("detail", 7);
 
         WriteReturnCode = EE_NO_DATA;
         mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", cellAddresses[i]).withParameter("Data", expectedData);
@@ -279,7 +279,7 @@ TEST(flash, SetCalibrationCleanupRequired)
 TEST(flash, GetCalibrationInvalidCell)
 {
     CalCoeff_t calVal = 0;
-    mock().expectOneCall("NonFatalError_Detail").withParameter("error", INVALID_CELL_NUMBER_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", INVALID_CELL_NUMBER_ERR).withParameter("detail", 3);
     bool calOk = GetCalibration(3, &calVal);
     CHECK(calOk == false);
 }
@@ -325,7 +325,7 @@ TEST(flash, GetCalibrationUnknownErr)
         ReadData = 123 * 10000000;
 
         mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", cellAddresses[i]);
-        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
+        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR).withParameter("detail", 15);
         ReadReturnCode = EE_NO_PAGE_FOUND; // An error we don't handle explictly
 
         bool calOk = GetCalibration(i, &calVal);
@@ -338,7 +338,7 @@ TEST(flash, GetCalibrationUnknownErr)
 TEST(flash, SetCalibrationInvalidCell)
 {
     CalCoeff_t calVal = 0;
-    mock().expectOneCall("NonFatalError_Detail").withParameter("error", INVALID_CELL_NUMBER_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", INVALID_CELL_NUMBER_ERR).withParameter("detail", 3);
     bool calOk = SetCalibration(3, calVal);
     CHECK(calOk == false);
 }
@@ -382,7 +382,7 @@ TEST(flash, GetFatalErrUnknownErr)
 
         ReadData = i;
         mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x04);
-        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
+        mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR).withParameter("detail", 15);
         ReadReturnCode = EE_NO_PAGE_FOUND; // An error we don't handle explictly
 
         bool calOk = GetFatalError(&err);
@@ -436,7 +436,7 @@ TEST(flash, GetConfigurationError)
     ReadReturnCode = EE_NO_PAGE_FOUND;
 
     mock().expectOneCall("EE_ReadVariable32bits").withParameter("VirtAddress", 0x06);
-    mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR).withParameter("detail", 15);
 
     bool configOk = GetConfiguration(&config);
     CHECK(configOk == false);
@@ -475,7 +475,7 @@ TEST(flash, SetConfigurationWriteError)
     mock().expectNCalls(3, "HAL_FLASH_Lock");
     mock().expectNCalls(3, "EE_WriteVariable32bits").withParameter("VirtAddress", 0x06).withParameter("Data", expectedConfigBits);
     mock().expectNCalls(3, "__HAL_FLASH_CLEAR_FLAG");
-    mock().expectNCalls(3, "NonFatalError_Detail").withParameter("error", EEPROM_ERR);
+    mock().expectNCalls(3, "NonFatalError_Detail").withParameter("error", EEPROM_ERR).withParameter("detail", 15);
 
     bool writeOk = SetConfiguration(&testConfig);
     CHECK(writeOk == false);
@@ -485,7 +485,7 @@ TEST(flash, SetOptionBytes_UnlockFail)
 {
     UnlockReturnCode = HAL_ERROR;
     mock().expectOneCall("HAL_FLASH_Unlock");
-    mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR).withParameter("detail", 1);
 
     setOptionBytes();
 }
@@ -529,7 +529,7 @@ TEST(flash, SetOptionBytes_ProgramFail)
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
     mock().expectOneCall("HAL_FLASHEx_OBProgram");
-    mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR).withParameter("detail", 1);
     mock().expectOneCall("HAL_FLASH_Lock");
 
     setOptionBytes();
@@ -546,7 +546,7 @@ TEST(flash, SetOptionBytes_LockFail)
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
     mock().expectOneCall("HAL_FLASH_Lock");
-    mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR).withParameter("detail", 1);
 
     setOptionBytes();
 }
@@ -578,7 +578,7 @@ TEST(flash, InitFlash_UnlockFail)
     UnlockReturnCode = HAL_ERROR;
 
     mock().expectNCalls(2,"HAL_FLASH_Unlock");
-    mock().expectNCalls(2,"NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR);
+    mock().expectNCalls(2,"NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR).withParameter("detail", 1);
 
     initFlash();
 }
@@ -591,7 +591,7 @@ TEST(flash, InitFlash_EEInitFail)
     mock().expectOneCall("__HAL_FLASH_CLEAR_FLAG");
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("EE_Init");
-    mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", EEPROM_ERR).withParameter("detail", 15);
     mock().expectOneCall("HAL_FLASH_Lock");
 
     // Still try to set option bytes
@@ -612,14 +612,14 @@ TEST(flash, InitFlash_LockFailAfterInit)
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("EE_Init");
     mock().expectOneCall("HAL_FLASH_Lock");
-    mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR).withParameter("detail", 1);
 
     // Still try to set option bytes
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
     mock().expectOneCall("HAL_FLASHEx_OBProgram");
     mock().expectOneCall("HAL_FLASH_Lock");
-    mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR);
+    mock().expectOneCall("NonFatalError_Detail").withParameter("error", FLASH_LOCK_ERR).withParameter("detail", 1);
 
     initFlash();
 }
