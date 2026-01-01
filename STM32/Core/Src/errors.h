@@ -114,8 +114,20 @@ extern "C"
         /** @brief We tried to fire the solenoid but were inhibited */
         SOLENOID_DISABLED_ERR = 30,
 
+        /** @brief ISO-TP timeout waiting for FC or CF **/
+        ISOTP_TIMEOUT_ERR = 31,
+
+        /** @brief ISO-TP consecutive frame sequence number error **/
+        ISOTP_SEQ_ERR = 32,
+
+        /** @brief ISO-TP message exceeds ISOTP_MAX_PAYLOAD **/
+        ISOTP_OVERFLOW_ERR = 33,
+
+        /** @brief ISO-TP invalid state transition **/
+        ISOTP_STATE_ERR = 34,
+
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        MAX_ERR = SOLENOID_DISABLED_ERR
+        MAX_ERR = ISOTP_STATE_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);
