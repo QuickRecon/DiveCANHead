@@ -149,7 +149,7 @@ static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *req
     case UDS_SESSION_PROGRAMMING:
         ctx->sessionState = UDS_SESSION_STATE_PROGRAMMING;
         // Cancel any active transfer
-        ctx->transferActive = false;
+        ctx->memoryTransfer.active = false;
         break;
 
     case UDS_SESSION_EXTENDED_DIAGNOSTIC:
@@ -461,37 +461,155 @@ static void HandleRequestDownload(UDSContext_t *ctx, const uint8_t *requestData,
 }
 
 /**
- * @brief Handle RequestUpload (0x35) - Placeholder for Phase 5
+ * @brief Handle RequestUpload (0x35) - Phase 5
+ *
+ * Request format: [0x35, dataFormatIdentifier, addressLengthFormatIdentifier, address..., length...]
+ * Response format: [0x75, lengthFormatIdentifier, maxNumberOfBlockLength...]
  */
 static void HandleRequestUpload(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
-    (void)requestData;
-    (void)requestLength;
+    // Require Extended Diagnostic or Programming session
+    if (ctx->sessionState != UDS_SESSION_STATE_EXTENDED &&
+        ctx->sessionState != UDS_SESSION_STATE_PROGRAMMING)
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_UPLOAD, UDS_NRC_CONDITIONS_NOT_CORRECT);
+        return;
+    }
 
-    // Not implemented yet - Phase 5
-    UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_UPLOAD, UDS_NRC_SERVICE_NOT_SUPPORTED);
+    // Validate minimum length: SID + dataFormat + addrLenFormat = 3 bytes minimum
+    if (requestLength < 3)
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_UPLOAD, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
+        return;
+    }
+
+    // Extract addressLengthFormatIdentifier (byte 2)
+    uint8_t addrLenFormat = requestData[2];
+    uint8_t addressLength = (addrLenFormat >> 4) & 0x0F;  // High nibble
+    uint8_t lengthFieldLength = addrLenFormat & 0x0F;     // Low nibble
+
+    // Validate we support 4-byte address and 4-byte length (0x44)
+    if (addressLength != 4 || lengthFieldLength != 4)
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_UPLOAD, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        return;
+    }
+
+    // Validate message length: SID + dataFormat + addrLenFormat + address + length
+    if (requestLength != (3 + addressLength + lengthFieldLength))
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_UPLOAD, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
+        return;
+    }
+
+    // Extract address (big-endian)
+    uint32_t address = 0;
+    for (uint8_t i = 0; i < addressLength; i++)
+    {
+        address = (address << 8) | requestData[3 + i];
+    }
+
+    // Extract length (big-endian)
+    uint32_t length = 0;
+    for (uint8_t i = 0; i < lengthFieldLength; i++)
+    {
+        length = (length << 8) | requestData[3 + addressLength + i];
+    }
+
+    // Start upload via memory module
+    uint16_t maxBlockLength = 0;
+    if (!UDS_Memory_StartUpload(&ctx->memoryTransfer, address, length, &maxBlockLength))
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_UPLOAD, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        return;
+    }
+
+    // Build positive response: [0x75, lengthFormatIdentifier, maxNumberOfBlockLength...]
+    ctx->responseBuffer[0] = UDS_SID_REQUEST_UPLOAD + UDS_RESPONSE_SID_OFFSET;  // 0x75
+    ctx->responseBuffer[1] = 0x20;  // lengthFormatIdentifier: 2-byte length
+    ctx->responseBuffer[2] = (maxBlockLength >> 8) & 0xFF;  // MSB
+    ctx->responseBuffer[3] = maxBlockLength & 0xFF;         // LSB
+    ctx->responseLength = 4;
+
+    UDS_SendResponse(ctx);
 }
 
 /**
- * @brief Handle TransferData (0x36) - Placeholder for Phase 5/6
+ * @brief Handle TransferData (0x36) - Phase 5/6
+ *
+ * Upload request format: [0x36, blockSequenceCounter]
+ * Upload response format: [0x76, blockSequenceCounter, ...data]
+ *
+ * Download request format: [0x36, blockSequenceCounter, ...data]
+ * Download response format: [0x76, blockSequenceCounter]
  */
 static void HandleTransferData(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
-    (void)requestData;
-    (void)requestLength;
+    // Validate minimum length: SID + sequence
+    if (requestLength < 2)
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
+        return;
+    }
 
-    // Not implemented yet - Phase 5/6
-    UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA, UDS_NRC_SERVICE_NOT_SUPPORTED);
+    // Check if transfer is active
+    if (!ctx->memoryTransfer.active)
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA, UDS_NRC_REQUEST_SEQUENCE_ERROR);
+        return;
+    }
+
+    uint8_t sequenceCounter = requestData[1];
+
+    // Handle based on transfer direction
+    if (ctx->memoryTransfer.isUpload)
+    {
+        // Upload (read from device memory, send to tester)
+        uint16_t bytesRead = 0;
+        uint8_t *dataBuffer = &ctx->responseBuffer[2];  // Skip SID and sequence
+        uint16_t bufferAvailable = UDS_MAX_RESPONSE_LENGTH - 2;
+
+        if (!UDS_Memory_ReadBlock(&ctx->memoryTransfer, sequenceCounter, dataBuffer, bufferAvailable, &bytesRead))
+        {
+            UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA, UDS_NRC_REQUEST_SEQUENCE_ERROR);
+            return;
+        }
+
+        // Build positive response: [0x76, blockSequenceCounter, ...data]
+        ctx->responseBuffer[0] = UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET;  // 0x76
+        ctx->responseBuffer[1] = sequenceCounter;
+        ctx->responseLength = 2 + bytesRead;
+
+        UDS_SendResponse(ctx);
+    }
+    else
+    {
+        // Download (write to device memory) - Phase 6
+        UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA, UDS_NRC_SERVICE_NOT_SUPPORTED);
+    }
 }
 
 /**
- * @brief Handle RequestTransferExit (0x37) - Placeholder for Phase 5/6
+ * @brief Handle RequestTransferExit (0x37) - Phase 5/6
+ *
+ * Request format: [0x37]
+ * Response format: [0x77]
  */
 static void HandleRequestTransferExit(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
     (void)requestData;
     (void)requestLength;
 
-    // Not implemented yet - Phase 5/6
-    UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_TRANSFER_EXIT, UDS_NRC_SERVICE_NOT_SUPPORTED);
+    // Complete the transfer
+    if (!UDS_Memory_CompleteTransfer(&ctx->memoryTransfer))
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_TRANSFER_EXIT, UDS_NRC_REQUEST_SEQUENCE_ERROR);
+        return;
+    }
+
+    // Build positive response: [0x77]
+    ctx->responseBuffer[0] = UDS_SID_REQUEST_TRANSFER_EXIT + UDS_RESPONSE_SID_OFFSET;  // 0x77
+    ctx->responseLength = 1;
+
+    UDS_SendResponse(ctx);
 }

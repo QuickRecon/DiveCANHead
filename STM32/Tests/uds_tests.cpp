@@ -573,3 +573,392 @@ TEST(UDS_Settings, WriteSettingValueInvalid)
     CHECK_EQUAL(0x31, udsCtx.responseBuffer[2]);
     CHECK_EQUAL(CELL_ANALOG, config.cell1);  // Value unchanged
 }
+
+/******************************************************************************
+ * TEST GROUP: UDS_Memory - Memory Upload/Download Services
+ ******************************************************************************/
+
+extern "C"
+{
+#include "../Core/Src/DiveCAN/uds/uds_memory.h"
+}
+
+TEST_GROUP(UDS_Memory)
+{
+    UDSContext_t udsCtx;
+    ISOTPContext_t isotpCtx;
+    Configuration_t config;
+    MemoryTransferState_t memState;
+
+    void setup()
+    {
+        // Reset mock time
+        setMockTime(0);
+
+        // Initialize configuration with defaults
+        config = DEFAULT_CONFIGURATION;
+
+        // Initialize ISO-TP context
+        ISOTP_Init(&isotpCtx, DIVECAN_SOLO, DIVECAN_CONTROLLER, MENU_ID);
+
+        // Initialize UDS context
+        UDS_Init(&udsCtx, &config, &isotpCtx);
+
+        // Initialize memory transfer state
+        UDS_Memory_Init(&memState);
+
+        // Clear mock expectations
+        mock().clear();
+    }
+
+    void teardown()
+    {
+        mock().checkExpectations();
+        mock().clear();
+    }
+};
+
+/**
+ * Test: Memory region validation - BLOCK1 (flash config)
+ */
+TEST(UDS_Memory, ValidateRegionBlock1)
+{
+    // BLOCK1: 0xC2000080-0xC2000FFF (flash config area)
+    UDS_MemoryRegion_t region = UDS_Memory_ValidateAddress(0xC2000080, 128, true);
+    CHECK_EQUAL(MEMORY_REGION_BLOCK1, region);
+
+    // Valid address within range
+    region = UDS_Memory_ValidateAddress(0xC2000100, 64, true);
+    CHECK_EQUAL(MEMORY_REGION_BLOCK1, region);
+
+    // Last valid address
+    region = UDS_Memory_ValidateAddress(0xC2000FF8, 8, true);
+    CHECK_EQUAL(MEMORY_REGION_BLOCK1, region);
+}
+
+/**
+ * Test: Memory region validation - BLOCK2 (flash logs)
+ */
+TEST(UDS_Memory, ValidateRegionBlock2)
+{
+    // BLOCK2: 0xC3001000-0xC3FFFFFF (flash log area, 4KB aligned)
+    UDS_MemoryRegion_t region = UDS_Memory_ValidateAddress(0xC3001000, 4096, true);
+    CHECK_EQUAL(MEMORY_REGION_BLOCK2, region);
+
+    // Valid 4KB-aligned address
+    region = UDS_Memory_ValidateAddress(0xC3002000, 1024, true);
+    CHECK_EQUAL(MEMORY_REGION_BLOCK2, region);
+}
+
+/**
+ * Test: Memory region validation - BLOCK3 (MCU ID)
+ */
+TEST(UDS_Memory, ValidateRegionBlock3)
+{
+    // BLOCK3: 0xC5000000-0xC500007F (MCU unique ID, read-only)
+    UDS_MemoryRegion_t region = UDS_Memory_ValidateAddress(0xC5000000, 12, true);
+    CHECK_EQUAL(MEMORY_REGION_BLOCK3, region);
+
+    // Verify upload allowed, download not allowed
+    region = UDS_Memory_ValidateAddress(0xC5000000, 12, false);
+    CHECK_EQUAL(MEMORY_REGION_INVALID, region);  // Download not allowed
+}
+
+/**
+ * Test: Memory region validation - invalid address
+ */
+TEST(UDS_Memory, ValidateRegionInvalid)
+{
+    // Invalid: Before BLOCK1 range
+    UDS_MemoryRegion_t region = UDS_Memory_ValidateAddress(0xC2000000, 128, true);
+    CHECK_EQUAL(MEMORY_REGION_INVALID, region);
+
+    // Invalid: Between BLOCK1 and BLOCK2
+    region = UDS_Memory_ValidateAddress(0xC2800000, 128, true);
+    CHECK_EQUAL(MEMORY_REGION_INVALID, region);
+
+    // Invalid: Exceeds region bounds
+    region = UDS_Memory_ValidateAddress(0xC2000FF0, 32, true);  // Would exceed BLOCK1 end
+    CHECK_EQUAL(MEMORY_REGION_INVALID, region);
+}
+
+/**
+ * Test: RequestUpload (0x35) - valid request
+ */
+TEST(UDS_Memory, RequestUpload)
+{
+    // Switch to Extended Diagnostic session (required for upload)
+    uint8_t sessionReq[] = {0x10, 0x03};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    CHECK_EQUAL(UDS_SESSION_STATE_EXTENDED, udsCtx.sessionState);
+    mock().clear();
+
+    // RequestUpload: [0x35, dataFormatIdentifier, addressLengthFormatIdentifier, address..., length...]
+    // Upload 128 bytes from 0xC2000080 (BLOCK1)
+    // addressLengthFormatIdentifier = 0x44 (4-byte address, 4-byte length)
+    uint8_t request[] = {
+        0x35,                           // SID: RequestUpload
+        0x00,                           // dataFormatIdentifier (uncompressed/unencrypted)
+        0x44,                           // addressLengthFormatIdentifier (4+4)
+        0xC2, 0x00, 0x00, 0x80,        // address: 0xC2000080 (big-endian)
+        0x00, 0x00, 0x00, 0x80         // length: 128 bytes (big-endian)
+    };
+
+    // Expect: Positive response [0x75, lengthFormatIdentifier, maxNumberOfBlockLength...]
+    // lengthFormatIdentifier = 0x20 (2-byte length)
+    // maxNumberOfBlockLength = 126 bytes
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    // Assert positive response
+    CHECK_EQUAL(0x75, udsCtx.responseBuffer[0]);  // Positive response SID
+    CHECK_EQUAL(0x20, udsCtx.responseBuffer[1]);  // lengthFormatIdentifier (2 bytes)
+    CHECK_EQUAL(0x00, udsCtx.responseBuffer[2]);  // maxBlockLength MSB
+    CHECK_EQUAL(126, udsCtx.responseBuffer[3]);   // maxBlockLength LSB (126 bytes)
+    CHECK_EQUAL(4, udsCtx.responseLength);
+}
+
+/**
+ * Test: RequestUpload rejects request in default session
+ */
+TEST(UDS_Memory, RequestUploadSessionDenied)
+{
+    // Attempt RequestUpload in default session
+    uint8_t request[] = {
+        0x35, 0x00, 0x44,
+        0xC2, 0x00, 0x00, 0x80,
+        0x00, 0x00, 0x00, 0x80
+    };
+
+    // Expect: Negative response [0x7F, 0x35, 0x22] (conditions not correct)
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x35, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(0x22, udsCtx.responseBuffer[2]);  // NRC: conditions not correct
+}
+
+/**
+ * Test: RequestUpload rejects invalid address
+ */
+TEST(UDS_Memory, RequestUploadInvalidAddress)
+{
+    // Switch to Extended Diagnostic session
+    uint8_t sessionReq[] = {0x10, 0x03};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    // RequestUpload from invalid address 0xDEADBEEF
+    uint8_t request[] = {
+        0x35, 0x00, 0x44,
+        0xDE, 0xAD, 0xBE, 0xEF,
+        0x00, 0x00, 0x00, 0x80
+    };
+
+    // Expect: Negative response [0x7F, 0x35, 0x31] (request out of range)
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x35, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(0x31, udsCtx.responseBuffer[2]);  // NRC: request out of range
+}
+
+/**
+ * Test: TransferData (0x36) upload - first block
+ */
+TEST(UDS_Memory, TransferDataUploadFirstBlock)
+{
+    // Setup: Switch to Extended Diagnostic session and start upload transfer
+    uint8_t sessionReq[] = {0x10, 0x03};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    // RequestUpload 128 bytes from 0xC2000080
+    uint8_t uploadReq[] = {
+        0x35, 0x00, 0x44,
+        0xC2, 0x00, 0x00, 0x80,
+        0x00, 0x00, 0x00, 0x80
+    };
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, uploadReq, sizeof(uploadReq));
+    CHECK_EQUAL(0x75, udsCtx.responseBuffer[0]);
+    mock().clear();
+
+    // TransferData request: [0x36, blockSequenceCounter]
+    uint8_t request[] = {0x36, 0x01};  // Sequence counter starts at 1
+
+    // Expect: Positive response [0x76, blockSequenceCounter, ...data]
+    // Since response will exceed 7 bytes, ISO-TP multi-frame will be used
+    mock().expectOneCall("HAL_GetTick");
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    // Assert positive response with correct sequence counter
+    CHECK_EQUAL(0x76, udsCtx.responseBuffer[0]);  // Positive response SID
+    CHECK_EQUAL(0x01, udsCtx.responseBuffer[1]);  // Block sequence counter
+    // Response should contain up to 126 bytes of data starting at index 2
+    // Total response length = 2 + min(126, 128) = 128 bytes
+    CHECK_EQUAL(128, udsCtx.responseLength);
+}
+
+/**
+ * Test: TransferData upload - sequence counter validation
+ */
+TEST(UDS_Memory, TransferDataUploadSequenceMismatch)
+{
+    // Setup: Switch to Extended session and start upload transfer
+    uint8_t sessionReq[] = {0x10, 0x03};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    uint8_t uploadReq[] = {
+        0x35, 0x00, 0x44,
+        0xC2, 0x00, 0x00, 0x80,
+        0x00, 0x00, 0x00, 0x80
+    };
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, uploadReq, sizeof(uploadReq));
+    mock().clear();
+
+    // Send first block successfully
+    uint8_t request1[] = {0x36, 0x01};
+    mock().expectOneCall("HAL_GetTick");
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, request1, sizeof(request1));
+    CHECK_EQUAL(0x76, udsCtx.responseBuffer[0]);
+    mock().clear();
+
+    // Reset ISO-TP to IDLE (in real system, Flow Control would complete the transfer)
+    ISOTP_Reset(&isotpCtx);
+
+    // Send block with wrong sequence counter (should be 2, send 5)
+    uint8_t request2[] = {0x36, 0x05};
+
+    // Expect: Negative response [0x7F, 0x36, 0x24] (sequence error)
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request2, sizeof(request2));
+
+    CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x36, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(0x24, udsCtx.responseBuffer[2]);  // NRC: request sequence error
+}
+
+/**
+ * Test: TransferData upload - sequence counter wraps at 256
+ */
+TEST(UDS_Memory, TransferDataUploadSequenceWrap)
+{
+    // Setup: Switch to Extended session and start upload
+    uint8_t sessionReq[] = {0x10, 0x03};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    uint8_t uploadReq[] = {
+        0x35, 0x00, 0x44,
+        0xC3, 0x00, 0x10, 0x00,
+        0x00, 0x00, 0x80, 0x00
+    };
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, uploadReq, sizeof(uploadReq));
+    mock().clear();
+
+    // Manually set sequence to 255 (last before wrap)
+    udsCtx.memoryTransfer.sequenceCounter = 255;
+    udsCtx.memoryTransfer.bytesRemaining = 252;  // 2 blocks remaining (126 bytes each)
+
+    // Send block 255
+    uint8_t request255[] = {0x36, 0xFF};
+    mock().expectOneCall("HAL_GetTick");
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, request255, sizeof(request255));
+    CHECK_EQUAL(0x76, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0xFF, udsCtx.responseBuffer[1]);
+    mock().clear();
+
+    // Reset ISO-TP to IDLE (in real system, Flow Control would complete the transfer)
+    ISOTP_Reset(&isotpCtx);
+
+    // Next block should wrap to 0 (skip sequence 0, wrap to 1)
+    uint8_t request1[] = {0x36, 0x01};
+    mock().expectOneCall("HAL_GetTick");
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, request1, sizeof(request1));
+    CHECK_EQUAL(0x76, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x01, udsCtx.responseBuffer[1]);
+}
+
+/**
+ * Test: RequestTransferExit (0x37) completes transfer
+ */
+TEST(UDS_Memory, RequestTransferExit)
+{
+    // Setup: Switch to Extended session and start upload
+    uint8_t sessionReq[] = {0x10, 0x03};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    // Request upload of 126 bytes
+    uint8_t uploadReq[] = {
+        0x35, 0x00, 0x44,
+        0xC2, 0x00, 0x00, 0x80,
+        0x00, 0x00, 0x00, 0x7E
+    };
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, uploadReq, sizeof(uploadReq));
+    mock().clear();
+
+    // Transfer single block
+    uint8_t transferReq[] = {0x36, 0x01};
+    mock().expectOneCall("HAL_GetTick");
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, transferReq, sizeof(transferReq));
+    mock().clear();
+
+    // Reset ISO-TP to IDLE (in real system, Flow Control would complete the transfer)
+    ISOTP_Reset(&isotpCtx);
+
+    // RequestTransferExit: [0x37]
+    uint8_t request[] = {0x37};
+
+    // Expect: Positive response [0x77]
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x77, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(1, udsCtx.responseLength);
+
+    // Transfer should now be inactive
+    CHECK_FALSE(udsCtx.memoryTransfer.active);
+}
+
+/**
+ * Test: RequestTransferExit rejects when no transfer active
+ */
+TEST(UDS_Memory, RequestTransferExitNoTransfer)
+{
+    // RequestTransferExit without starting transfer
+    uint8_t request[] = {0x37};
+
+    // Expect: Negative response [0x7F, 0x37, 0x24] (request sequence error)
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x37, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(0x24, udsCtx.responseBuffer[2]);  // NRC: request sequence error
+}

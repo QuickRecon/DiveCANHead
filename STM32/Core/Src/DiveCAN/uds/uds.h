@@ -26,6 +26,7 @@
 #include "isotp.h"
 #include "../Transciever.h"
 #include "../../configuration.h"
+#include "uds_memory.h"
 
 // UDS Service IDs (SID)
 #define UDS_SID_DIAGNOSTIC_SESSION_CONTROL  0x10
@@ -49,6 +50,7 @@
 #define UDS_NRC_INCORRECT_MESSAGE_LENGTH    0x13
 #define UDS_NRC_RESPONSE_TOO_LONG           0x14
 #define UDS_NRC_CONDITIONS_NOT_CORRECT      0x22
+#define UDS_NRC_REQUEST_SEQUENCE_ERROR      0x24
 #define UDS_NRC_REQUEST_OUT_OF_RANGE        0x31
 #define UDS_NRC_SECURITY_ACCESS_DENIED      0x33
 #define UDS_NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED 0x70
@@ -96,11 +98,9 @@ typedef enum {
  */
 typedef struct {
     UDSSessionState_t sessionState;     ///< Current diagnostic session
-    bool transferActive;                ///< Transfer in progress (upload/download)
-    uint8_t transferDirection;          ///< 0x34=download, 0x35=upload
-    uint32_t transferAddress;           ///< Current transfer address
-    uint32_t transferBytesRemaining;    ///< Bytes remaining in transfer
-    uint8_t transferSequence;           ///< Transfer sequence counter (1-255, wraps)
+
+    // Memory upload/download state (Phase 5-6)
+    MemoryTransferState_t memoryTransfer;
 
     // Response buffer
     uint8_t responseBuffer[UDS_MAX_RESPONSE_LENGTH];
