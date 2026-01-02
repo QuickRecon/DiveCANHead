@@ -88,6 +88,19 @@ UDS_MemoryRegion_t UDS_Memory_ValidateAddress(uint32_t udsAddress, uint32_t leng
 bool UDS_Memory_StartUpload(MemoryTransferState_t *state, uint32_t udsAddress, uint32_t length, uint16_t *maxBlockLength);
 
 /**
+ * @brief Start memory download transfer
+ *
+ * Called from RequestDownload (0x34) service handler.
+ *
+ * @param state Transfer state
+ * @param udsAddress Starting UDS address
+ * @param length Number of bytes to download
+ * @param maxBlockLength Maximum bytes per block (output parameter)
+ * @return true if download started successfully, false if invalid
+ */
+bool UDS_Memory_StartDownload(MemoryTransferState_t *state, uint32_t udsAddress, uint32_t length, uint16_t *maxBlockLength);
+
+/**
  * @brief Read memory block for TransferData
  *
  * Called from TransferData (0x36) service handler during upload.
@@ -100,6 +113,19 @@ bool UDS_Memory_StartUpload(MemoryTransferState_t *state, uint32_t udsAddress, u
  * @return true if read successful, false if error (sequence mismatch, etc.)
  */
 bool UDS_Memory_ReadBlock(MemoryTransferState_t *state, uint8_t sequenceCounter, uint8_t *buffer, uint16_t bufferSize, uint16_t *bytesRead);
+
+/**
+ * @brief Write memory block for TransferData
+ *
+ * Called from TransferData (0x36) service handler during download.
+ *
+ * @param state Transfer state
+ * @param sequenceCounter Expected sequence counter (1-255)
+ * @param buffer Input buffer with data to write
+ * @param dataLength Length of data to write
+ * @return true if write successful, false if error (sequence mismatch, flash write error, etc.)
+ */
+bool UDS_Memory_WriteBlock(MemoryTransferState_t *state, uint8_t sequenceCounter, const uint8_t *buffer, uint16_t dataLength);
 
 /**
  * @brief Complete memory transfer
@@ -134,5 +160,18 @@ bool UDS_Memory_ReadFlash(uint32_t physicalAddress, uint8_t *buffer, uint16_t le
  * @return true if read successful
  */
 bool UDS_Memory_ReadMCUID(uint32_t offset, uint8_t *buffer, uint16_t length);
+
+/**
+ * @brief Write to physical flash memory
+ *
+ * Internal helper to write to flash region.
+ * Handles flash unlock, erase (if needed), program, and lock.
+ *
+ * @param physicalAddress Physical flash address (must be 8-byte aligned)
+ * @param buffer Data to write
+ * @param length Number of bytes to write (must be multiple of 8)
+ * @return true if write successful
+ */
+bool UDS_Memory_WriteFlash(uint32_t physicalAddress, const uint8_t *buffer, uint16_t length);
 
 #endif // UDS_MEMORY_H

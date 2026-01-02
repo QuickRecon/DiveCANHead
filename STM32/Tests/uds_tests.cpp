@@ -344,10 +344,10 @@ TEST(UDS_Basic, RequestDownloadNotYetImplemented)
     // Act
     UDS_ProcessRequest(&udsCtx, request, 3);
 
-    // Assert
+    // Assert - Phase 6: Now expects CONDITIONS_NOT_CORRECT instead of SERVICE_NOT_SUPPORTED
     CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
     CHECK_EQUAL(0x34, udsCtx.responseBuffer[1]);
-    CHECK_EQUAL(0x11, udsCtx.responseBuffer[2]);  // NRC: service not supported
+    CHECK_EQUAL(0x22, udsCtx.responseBuffer[2]);  // NRC: conditions not correct (need Programming session)
 }
 /**
  * Test Group: UDS Settings
@@ -961,4 +961,246 @@ TEST(UDS_Memory, RequestTransferExitNoTransfer)
     CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
     CHECK_EQUAL(0x37, udsCtx.responseBuffer[1]);
     CHECK_EQUAL(0x24, udsCtx.responseBuffer[2]);  // NRC: request sequence error
+}
+
+/******************************************************************************
+ * DOWNLOAD (WRITE) TESTS
+ ******************************************************************************/
+
+/**
+ * Test: RequestDownload requires Programming session
+ */
+TEST(UDS_Memory, RequestDownloadRequiresProgrammingSession)
+{
+    // Request download in default session
+    // Format: [0x34, dataFormatIdentifier, addressAndLengthFormatIdentifier,
+    //          address (4 bytes BE), length (4 bytes BE)]
+    uint8_t request[] = {
+        0x34, 0x00, 0x44,  // SID, format, addr/len format
+        0xC3, 0x00, 0x10, 0x00,  // Address: 0xC3001000 (BLOCK2)
+        0x00, 0x00, 0x01, 0x00   // Length: 256 bytes
+    };
+
+    // Expect: Negative response [0x7F, 0x34, 0x22] (conditions not correct)
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x34, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(0x22, udsCtx.responseBuffer[2]);  // NRC: conditions not correct
+}
+
+/**
+ * Test: RequestDownload successful in Programming session
+ */
+TEST(UDS_Memory, RequestDownloadSuccess)
+{
+    // Switch to Programming session
+    uint8_t sessionReq[] = {0x10, 0x02};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    // Request download of 256 bytes to BLOCK2
+    uint8_t request[] = {
+        0x34, 0x00, 0x44,
+        0xC3, 0x00, 0x10, 0x00,  // Address: 0xC3001000 (BLOCK2)
+        0x00, 0x00, 0x01, 0x00   // Length: 256 bytes
+    };
+
+    // Expect: Positive response [0x74, lengthFormatIdentifier, maxBlockLength]
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x74, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x20, udsCtx.responseBuffer[1]);  // Length format (2 bytes)
+    // Max block length should be 126 bytes (2 bytes, big-endian)
+    uint16_t maxBlockLength = (udsCtx.responseBuffer[2] << 8) | udsCtx.responseBuffer[3];
+    CHECK_EQUAL(126, maxBlockLength);
+
+    // Transfer should now be active
+    CHECK_TRUE(udsCtx.memoryTransfer.active);
+    CHECK_FALSE(udsCtx.memoryTransfer.isUpload);  // Download
+}
+
+/**
+ * Test: RequestDownload rejects BLOCK1 (config area)
+ */
+TEST(UDS_Memory, RequestDownloadRejectsBLOCK1)
+{
+    // Switch to Programming session
+    uint8_t sessionReq[] = {0x10, 0x02};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    // Try to download to BLOCK1 (config area - should be read-only)
+    uint8_t request[] = {
+        0x34, 0x00, 0x44,
+        0xC2, 0x00, 0x00, 0x80,  // Address: 0xC2000080 (BLOCK1)
+        0x00, 0x00, 0x00, 0x80   // Length: 128 bytes
+    };
+
+    // Expect: Negative response [0x7F, 0x34, 0x31] (request out of range)
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x34, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(0x31, udsCtx.responseBuffer[2]);  // NRC: request out of range
+}
+
+/**
+ * Test: RequestDownload rejects BLOCK3 (MCU ID - read-only)
+ */
+TEST(UDS_Memory, RequestDownloadRejectsBLOCK3)
+{
+    // Switch to Programming session
+    uint8_t sessionReq[] = {0x10, 0x02};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    // Try to download to BLOCK3 (MCU ID - read-only)
+    uint8_t request[] = {
+        0x34, 0x00, 0x44,
+        0xC5, 0x00, 0x00, 0x00,  // Address: 0xC5000000 (BLOCK3)
+        0x00, 0x00, 0x00, 0x0C   // Length: 12 bytes
+    };
+
+    // Expect: Negative response [0x7F, 0x34, 0x31] (request out of range)
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x34, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(0x31, udsCtx.responseBuffer[2]);  // NRC: request out of range
+}
+
+/**
+ * Test: TransferData write single block
+ */
+TEST(UDS_Memory, TransferDataDownloadSingleBlock)
+{
+    // Setup: Switch to Programming session and start download
+    uint8_t sessionReq[] = {0x10, 0x02};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    uint8_t downloadReq[] = {
+        0x34, 0x00, 0x44,
+        0xC3, 0x00, 0x10, 0x00,  // Address: 0xC3001000
+        0x00, 0x00, 0x00, 0x10   // Length: 16 bytes
+    };
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, downloadReq, sizeof(downloadReq));
+    mock().clear();
+
+    // TransferData: [0x36, sequenceCounter, ...data]
+    uint8_t request[18];
+    request[0] = 0x36;
+    request[1] = 0x01;  // Sequence counter
+    // Fill with test data
+    for (int i = 0; i < 16; i++) {
+        request[2 + i] = 0x10 + i;
+    }
+
+    // Expect: Flash write and positive response [0x76, sequenceCounter]
+    mock().expectOneCall("UDS_Memory_WriteFlash")
+        .ignoreOtherParameters()
+        .andReturnValue(true);
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x76, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x01, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(2, udsCtx.responseLength);
+}
+
+/**
+ * Test: TransferData download sequence counter validation
+ */
+TEST(UDS_Memory, TransferDataDownloadSequenceMismatch)
+{
+    // Setup: Switch to Programming session and start download
+    uint8_t sessionReq[] = {0x10, 0x02};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    uint8_t downloadReq[] = {
+        0x34, 0x00, 0x44,
+        0xC3, 0x00, 0x10, 0x00,
+        0x00, 0x00, 0x00, 0x20   // Length: 32 bytes
+    };
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, downloadReq, sizeof(downloadReq));
+    mock().clear();
+
+    // Send first block successfully
+    uint8_t request1[18];
+    request1[0] = 0x36;
+    request1[1] = 0x01;
+    for (int i = 0; i < 16; i++) request1[2 + i] = i;
+
+    mock().expectOneCall("UDS_Memory_WriteFlash").ignoreOtherParameters().andReturnValue(true);
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, request1, sizeof(request1));
+    mock().clear();
+
+    // Send block with wrong sequence (should be 2, send 5)
+    uint8_t request2[18];
+    request2[0] = 0x36;
+    request2[1] = 0x05;  // Wrong sequence
+    for (int i = 0; i < 16; i++) request2[2 + i] = i;
+
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, request2, sizeof(request2));
+
+    CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x36, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(0x24, udsCtx.responseBuffer[2]);  // NRC: request sequence error
+}
+
+/**
+ * Test: TransferData download flash write failure
+ */
+TEST(UDS_Memory, TransferDataDownloadFlashWriteFailure)
+{
+    // Setup: Switch to Programming session and start download
+    uint8_t sessionReq[] = {0x10, 0x02};
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, sessionReq, 2);
+    mock().clear();
+
+    uint8_t downloadReq[] = {
+        0x34, 0x00, 0x44,
+        0xC3, 0x00, 0x10, 0x00,
+        0x00, 0x00, 0x00, 0x10
+    };
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+    UDS_ProcessRequest(&udsCtx, downloadReq, sizeof(downloadReq));
+    mock().clear();
+
+    // TransferData with flash write failure
+    uint8_t request[18];
+    request[0] = 0x36;
+    request[1] = 0x01;
+    for (int i = 0; i < 16; i++) request[2 + i] = i;
+
+    // Mock flash write failure
+    mock().expectOneCall("UDS_Memory_WriteFlash").ignoreOtherParameters().andReturnValue(false);
+    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
+
+    UDS_ProcessRequest(&udsCtx, request, sizeof(request));
+
+    CHECK_EQUAL(0x7F, udsCtx.responseBuffer[0]);
+    CHECK_EQUAL(0x36, udsCtx.responseBuffer[1]);
+    CHECK_EQUAL(0x72, udsCtx.responseBuffer[2]);  // NRC: general programming failure
 }

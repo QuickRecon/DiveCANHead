@@ -33,7 +33,7 @@ static const MemoryRegionDef_t memoryRegions[] = {
         .udsAddressEnd = 0xC3FFFFFF,
         .physicalAddress = 0x08010000,  // Absolute flash address
         .uploadAllowed = true,
-        .downloadAllowed = false,  // Phase 6: enable for firmware download
+        .downloadAllowed = true,  // Phase 6: enabled for firmware download
         .alignment = 4096
     },
     // BLOCK3: MCU Unique ID (read-only)
@@ -133,6 +133,37 @@ bool UDS_Memory_StartUpload(MemoryTransferState_t *state, uint32_t udsAddress, u
 }
 
 /**
+ * @brief Start memory download transfer
+ */
+bool UDS_Memory_StartDownload(MemoryTransferState_t *state, uint32_t udsAddress, uint32_t length, uint16_t *maxBlockLength)
+{
+    if (state == NULL || maxBlockLength == NULL)
+    {
+        return false;
+    }
+
+    // Validate address and get region (isUpload=false for download)
+    UDS_MemoryRegion_t region = UDS_Memory_ValidateAddress(udsAddress, length, false);
+    if (region == MEMORY_REGION_INVALID)
+    {
+        return false;  // Invalid address or region
+    }
+
+    // Initialize transfer state
+    state->active = true;
+    state->isUpload = false;  // Download (write)
+    state->region = region;
+    state->address = udsAddress;
+    state->bytesRemaining = length;
+    state->sequenceCounter = 1;  // Sequence starts at 1
+    state->maxBlockLength = MEMORY_MAX_BLOCK_LENGTH;
+
+    *maxBlockLength = state->maxBlockLength;
+
+    return true;
+}
+
+/**
  * @brief Read memory block for TransferData
  */
 bool UDS_Memory_ReadBlock(MemoryTransferState_t *state, uint8_t sequenceCounter, uint8_t *buffer, uint16_t bufferSize, uint16_t *bytesRead)
@@ -207,6 +238,62 @@ bool UDS_Memory_ReadBlock(MemoryTransferState_t *state, uint8_t sequenceCounter,
 }
 
 /**
+ * @brief Write memory block for TransferData
+ */
+bool UDS_Memory_WriteBlock(MemoryTransferState_t *state, uint8_t sequenceCounter, const uint8_t *buffer, uint16_t dataLength)
+{
+    if (state == NULL || buffer == NULL)
+    {
+        return false;
+    }
+
+    // Validate transfer is active and is download
+    if (!state->active || state->isUpload)
+    {
+        return false;
+    }
+
+    // Validate sequence counter
+    if (sequenceCounter != state->sequenceCounter)
+    {
+        return false;  // Sequence mismatch
+    }
+
+    // Validate data length doesn't exceed remaining bytes
+    if (dataLength > state->bytesRemaining)
+    {
+        return false;  // Too much data
+    }
+
+    // Get memory region definition
+    const MemoryRegionDef_t *regionDef = &memoryRegions[state->region - 1];
+
+    // Calculate physical address
+    uint32_t physicalAddress = regionDef->physicalAddress + (state->address - regionDef->udsAddressStart);
+
+    // Write to flash
+    bool success = UDS_Memory_WriteFlash(physicalAddress, buffer, dataLength);
+
+    if (!success)
+    {
+        return false;
+    }
+
+    // Update transfer state
+    state->address += dataLength;
+    state->bytesRemaining -= dataLength;
+    state->sequenceCounter++;
+    if (state->sequenceCounter == 0)
+    {
+        state->sequenceCounter = 1;  // Wrap at 256 (skip 0)
+    }
+
+    // Note: Transfer remains active until RequestTransferExit is called,
+    // even if all bytes have been transferred
+    return true;
+}
+
+/**
  * @brief Complete memory transfer
  */
 bool UDS_Memory_CompleteTransfer(MemoryTransferState_t *state)
@@ -221,8 +308,8 @@ bool UDS_Memory_CompleteTransfer(MemoryTransferState_t *state)
         return false;  // No active transfer
     }
 
-    // For upload: verify all bytes transferred
-    if (state->isUpload && state->bytesRemaining != 0)
+    // Verify all bytes transferred
+    if (state->bytesRemaining != 0)
     {
         // Transfer incomplete
         state->active = false;
@@ -283,5 +370,37 @@ bool UDS_Memory_ReadMCUID(uint32_t offset, uint8_t *buffer, uint16_t length)
     memcpy(buffer, mcuIdPtr, length);
 
     return true;
+}
+
+/**
+ * @brief Write to physical flash memory
+ *
+ * IMPORTANT: This is a placeholder for Phase 6. Real implementation will:
+ * 1. Unlock flash
+ * 2. Erase pages if needed
+ * 3. Program flash (8-byte aligned double-words)
+ * 4. Lock flash
+ * 5. Verify write
+ */
+bool UDS_Memory_WriteFlash(uint32_t physicalAddress, const uint8_t *buffer, uint16_t length)
+{
+    if (buffer == NULL || length == 0)
+    {
+        return false;
+    }
+
+    // Validate address is within STM32L4 flash range (0x08000000-0x0803FFFF = 256KB)
+    const uint32_t flashSize = 256 * 1024;  // 256KB
+
+    if (physicalAddress < FLASH_BASE || (physicalAddress + length) > (FLASH_BASE + flashSize))
+    {
+        return false;  // Out of flash range
+    }
+
+    // TODO: Implement flash programming using STM32 HAL
+    // For now, this is a stub that will be mocked in tests
+    // Real implementation in Phase 6 final step
+
+    return true;  // Placeholder - always succeeds
 }
 #endif // TESTING

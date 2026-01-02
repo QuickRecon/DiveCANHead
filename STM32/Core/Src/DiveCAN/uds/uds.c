@@ -449,15 +449,76 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 }
 
 /**
- * @brief Handle RequestDownload (0x34) - Placeholder for Phase 6
+ * @brief Handle RequestDownload (0x34) - Phase 6
+ *
+ * Request format: [0x34, dataFormatIdentifier, addressLengthFormatIdentifier, address..., length...]
+ * Response format: [0x74, lengthFormatIdentifier, maxNumberOfBlockLength...]
  */
 static void HandleRequestDownload(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
-    (void)requestData;
-    (void)requestLength;
+    // Require Programming session (more restrictive than upload)
+    if (ctx->sessionState != UDS_SESSION_STATE_PROGRAMMING)
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD, UDS_NRC_CONDITIONS_NOT_CORRECT);
+        return;
+    }
 
-    // Not implemented yet - Phase 6
-    UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD, UDS_NRC_SERVICE_NOT_SUPPORTED);
+    // Validate minimum length: SID + dataFormat + addrLenFormat = 3 bytes minimum
+    if (requestLength < 3)
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
+        return;
+    }
+
+    // Parse addressAndLengthFormatIdentifier (byte 2)
+    // Upper nibble = length of length field, lower nibble = length of address field
+    uint8_t addrLenFormat = requestData[2];
+    uint8_t addressLength = addrLenFormat & 0x0F;
+    uint8_t lengthLength = (addrLenFormat >> 4) & 0x0F;
+
+    // Validate format (expecting 4-byte address and 4-byte length: 0x44)
+    if (addressLength != 4 || lengthLength != 4)
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        return;
+    }
+
+    // Validate total message length
+    uint16_t expectedLength = 3 + addressLength + lengthLength;  // 3 + 4 + 4 = 11
+    if (requestLength != expectedLength)
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
+        return;
+    }
+
+    // Parse address (big-endian, 4 bytes at offset 3)
+    uint32_t address = ((uint32_t)requestData[3] << 24) |
+                       ((uint32_t)requestData[4] << 16) |
+                       ((uint32_t)requestData[5] << 8) |
+                       ((uint32_t)requestData[6]);
+
+    // Parse length (big-endian, 4 bytes at offset 7)
+    uint32_t length = ((uint32_t)requestData[7] << 24) |
+                      ((uint32_t)requestData[8] << 16) |
+                      ((uint32_t)requestData[9] << 8) |
+                      ((uint32_t)requestData[10]);
+
+    // Start download
+    uint16_t maxBlockLength = 0;
+    if (!UDS_Memory_StartDownload(&ctx->memoryTransfer, address, length, &maxBlockLength))
+    {
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        return;
+    }
+
+    // Construct positive response: [0x74, lengthFormatIdentifier, maxBlockLength]
+    ctx->responseBuffer[0] = 0x74;  // Positive response SID
+    ctx->responseBuffer[1] = 0x20;  // Length format: 2 bytes for max block length
+    ctx->responseBuffer[2] = (maxBlockLength >> 8) & 0xFF;  // Big-endian
+    ctx->responseBuffer[3] = maxBlockLength & 0xFF;
+    ctx->responseLength = 4;
+
+    UDS_SendResponse(ctx);
 }
 
 /**
@@ -585,7 +646,32 @@ static void HandleTransferData(UDSContext_t *ctx, const uint8_t *requestData, ui
     else
     {
         // Download (write to device memory) - Phase 6
-        UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA, UDS_NRC_SERVICE_NOT_SUPPORTED);
+        // Request contains data to write after sequence counter
+        uint16_t dataLength = requestLength - 2;  // Subtract SID and sequence counter
+        const uint8_t *dataBuffer = &requestData[2];
+
+        if (!UDS_Memory_WriteBlock(&ctx->memoryTransfer, sequenceCounter, dataBuffer, dataLength))
+        {
+            // Write failed - could be sequence error or flash programming failure
+            // If sequence error, use REQUEST_SEQUENCE_ERROR, otherwise use GENERAL_PROGRAMMING_FAILURE
+            // For now, check if it's a sequence error by checking the current sequence counter
+            if (sequenceCounter != ctx->memoryTransfer.sequenceCounter)
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA, UDS_NRC_REQUEST_SEQUENCE_ERROR);
+            }
+            else
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA, UDS_NRC_GENERAL_PROGRAMMING_FAILURE);
+            }
+            return;
+        }
+
+        // Build positive response: [0x76, blockSequenceCounter]
+        ctx->responseBuffer[0] = UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET;  // 0x76
+        ctx->responseBuffer[1] = sequenceCounter;
+        ctx->responseLength = 2;
+
+        UDS_SendResponse(ctx);
     }
 }
 
