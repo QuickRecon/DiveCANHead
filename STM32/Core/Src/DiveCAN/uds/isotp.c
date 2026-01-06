@@ -109,7 +109,7 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
 // }
 
 /**
- * @brief Process received CAN frame (Extended Addressing)
+ * @brief Process received CAN frame
  */
 bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
@@ -118,26 +118,24 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
         return false;
     }
 
-    // Minimum length check (need at least TA + PCI)
-    if (message->length < 2)
-    {
-        return false;  // Too short for extended addressing
-    }
+    // Check for legacy menu protocol first
+    // if (isLegacyMenuMessage(message))
+    // {
+    //     return false;  // Not ISO-TP
+    // }
 
-    // Extract target address from data[0] (extended addressing)
-    uint8_t targetAddr = message->data[0];
+    // Extract addressing from CAN ID
+    uint8_t msgTarget = (message->id >> 8) & 0x0F;  // Bits 11-8
+    uint8_t msgSource = message->id & 0xFF;         // Bits 7-0
 
     // Check if message is for us
-    if (targetAddr != ctx->source)
+    if (msgTarget != ctx->source)
     {
         return false;  // Not addressed to us
     }
 
-    // Extract source from CAN ID (bits 7-0)
-    uint8_t msgSource = message->id & 0xFF;
-
-    // Extract PCI byte from data[1] (extended addressing)
-    uint8_t pci = message->data[ISOTP_EXTENDED_ADDR_OFFSET] & ISOTP_PCI_MASK;
+    // Extract PCI byte
+    uint8_t pci = message->data[0] & ISOTP_PCI_MASK;
 
     // Special case: Shearwater FC quirk (accept FC with source=0xFF)
     bool isShearwaterFC = (pci == ISOTP_PCI_FC) && (msgSource == 0xFF);
@@ -169,27 +167,27 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 }
 
 /**
- * @brief Handle Single Frame reception (Extended Addressing)
+ * @brief Handle Single Frame reception
  */
 static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
-    // Extract length from PCI byte (data[1] in extended addressing)
-    uint8_t length = message->data[ISOTP_EXTENDED_ADDR_OFFSET] & ISOTP_PCI_LEN_MASK;
+    // Extract length from PCI byte
+    uint8_t length = message->data[0] & ISOTP_PCI_LEN_MASK;
 
-    // Validate length (1-6 bytes for SF in extended addressing)
-    if (length == 0 || length > ISOTP_SF_MAX_PAYLOAD)
+    // Validate length (1-7 bytes for SF)
+    if (length == 0 || length > 7)
     {
         return false;  // Invalid SF length
     }
 
-    // Validate message has enough bytes (TA + PCI + payload)
-    if (message->length < (length + 2))
+    // Validate message has enough bytes
+    if (message->length < (length + 1))
     {
         return false;  // Message too short
     }
 
-    // Copy data to RX buffer (payload starts at data[2])
-    memcpy(ctx->rxBuffer, &message->data[2], length);
+    // Copy data to RX buffer
+    memcpy(ctx->rxBuffer, &message->data[1], length);
 
     // Set received length and completion flag for caller to check
     ctx->rxDataLength = length;
@@ -202,14 +200,13 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
 }
 
 /**
- * @brief Handle First Frame reception (Extended Addressing)
+ * @brief Handle First Frame reception
  */
 static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
-    // Extract 12-bit length from PCI byte (data[1]) and length byte (data[2])
-    // In extended addressing: [TA, 0x1N, len_low, payload...]
-    uint16_t dataLength = ((uint16_t)(message->data[ISOTP_EXTENDED_ADDR_OFFSET] & ISOTP_PCI_LEN_MASK) << 8) |
-                          message->data[2];
+    // Extract 12-bit length from first two bytes
+    uint16_t dataLength = ((uint16_t)(message->data[0] & ISOTP_PCI_LEN_MASK) << 8) |
+                          message->data[1];
 
     // Validate length
     if (dataLength == 0 || dataLength > ISOTP_MAX_PAYLOAD)
@@ -226,9 +223,9 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
     ctx->rxBytesReceived = 0;
     ctx->rxSequenceNumber = 0;  // Expecting CF with seq=0
 
-    // Copy first 5 data bytes (bytes 3-7 of CAN frame in extended addressing)
-    uint8_t firstFrameBytes = ISOTP_FF_FIRST_PAYLOAD;
-    memcpy(ctx->rxBuffer, &message->data[3], firstFrameBytes);
+    // Copy first 6 data bytes (bytes 2-7 of CAN frame)
+    uint8_t firstFrameBytes = 6;
+    memcpy(ctx->rxBuffer, &message->data[2], firstFrameBytes);
     ctx->rxBytesReceived = firstFrameBytes;
 
     // Transition to RECEIVING state
@@ -245,7 +242,7 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
 }
 
 /**
- * @brief Handle Consecutive Frame reception (Extended Addressing)
+ * @brief Handle Consecutive Frame reception
  */
 static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
@@ -255,8 +252,8 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
         return false;  // Not expecting CF
     }
 
-    // Extract sequence number from PCI byte (data[1])
-    uint8_t seqNum = message->data[ISOTP_EXTENDED_ADDR_OFFSET] & ISOTP_PCI_LEN_MASK;
+    // Extract sequence number
+    uint8_t seqNum = message->data[0] & ISOTP_PCI_LEN_MASK;
 
     // Validate sequence number
     if (seqNum != ctx->rxSequenceNumber)
@@ -267,12 +264,12 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
         return true;  // Message consumed (but error)
     }
 
-    // Calculate bytes to copy (6 bytes or remaining in extended addressing)
+    // Calculate bytes to copy (7 bytes or remaining)
     uint16_t bytesRemaining = ctx->rxDataLength - ctx->rxBytesReceived;
-    uint8_t bytesToCopy = (bytesRemaining > ISOTP_CF_PAYLOAD) ? ISOTP_CF_PAYLOAD : (uint8_t)bytesRemaining;
+    uint8_t bytesToCopy = (bytesRemaining > 7) ? 7 : (uint8_t)bytesRemaining;
 
-    // Copy data (payload starts at data[2])
-    memcpy(&ctx->rxBuffer[ctx->rxBytesReceived], &message->data[2], bytesToCopy);
+    // Copy data
+    memcpy(&ctx->rxBuffer[ctx->rxBytesReceived], &message->data[1], bytesToCopy);
     ctx->rxBytesReceived += bytesToCopy;
 
     // Update timestamp
@@ -296,7 +293,7 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
 }
 
 /**
- * @brief Handle Flow Control reception (Extended Addressing)
+ * @brief Handle Flow Control reception
  */
 static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
@@ -306,16 +303,16 @@ static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
         return false;  // Not expecting FC
     }
 
-    // Extract flow status from PCI byte (data[1] in extended addressing)
-    uint8_t flowStatus = message->data[ISOTP_EXTENDED_ADDR_OFFSET];
+    // Extract flow status
+    uint8_t flowStatus = message->data[0];
 
     // Handle different flow statuses
     switch (flowStatus)
     {
     case ISOTP_FC_CTS:  // Continue to send
-        // Extract block size and STmin (data[2] and data[3] in extended addressing)
-        ctx->txBlockSize = message->data[2];
-        ctx->txSTmin = message->data[3];
+        // Extract block size and STmin
+        ctx->txBlockSize = message->data[1];
+        ctx->txSTmin = message->data[2];
         ctx->txBlockCounter = 0;
 
         // Transition to TRANSMITTING state
@@ -345,7 +342,7 @@ static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
 }
 
 /**
- * @brief Send Flow Control frame (Extended Addressing)
+ * @brief Send Flow Control frame
  */
 static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blockSize, uint8_t stmin)
 {
@@ -353,17 +350,16 @@ static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blo
 
     // Build CAN ID: messageId | (target << 8) | source
     fc.id = ctx->messageId | (ctx->target << 8) | ctx->source;
-    fc.length = 4;  // Extended addressing: TA + PCI + BS + STmin
-    fc.data[0] = ctx->target;  // Target address
-    fc.data[1] = flowStatus;   // PCI byte with flow status
-    fc.data[2] = blockSize;
-    fc.data[3] = stmin;
+    fc.length = 3;
+    fc.data[0] = flowStatus;
+    fc.data[1] = blockSize;
+    fc.data[2] = stmin;
 
     sendCANMessage(fc);
 }
 
 /**
- * @brief Send data via ISO-TP (Extended Addressing)
+ * @brief Send data via ISO-TP
  */
 bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 {
@@ -384,15 +380,14 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
         return false;  // Transmission already in progress
     }
 
-    // Single frame (≤6 bytes in extended addressing)
-    if (length <= ISOTP_SF_MAX_PAYLOAD)
+    // Single frame (≤7 bytes)
+    if (length <= 7)
     {
         DiveCANMessage_t sf = {0};
         sf.id = ctx->messageId | (ctx->target << 8) | ctx->source;
         sf.length = 8;
-        sf.data[0] = ctx->target;      // Target address
-        sf.data[1] = (uint8_t)length;  // SF PCI
-        memcpy(&sf.data[2], data, length);
+        sf.data[0] = (uint8_t)length;  // SF PCI
+        memcpy(&sf.data[1], data, length);
 
         sendCANMessage(sf);
 
@@ -408,16 +403,15 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
     ctx->txBytesSent = 0;
     ctx->txSequenceNumber = 0;
 
-    // Send First Frame (Extended addressing format)
+    // Send First Frame
     DiveCANMessage_t ff = {0};
     ff.id = ctx->messageId | (ctx->target << 8) | ctx->source;
     ff.length = 8;
-    ff.data[0] = ctx->target;                            // Target address
-    ff.data[1] = 0x10 | ((length >> 8) & 0x0F);          // FF PCI + upper nibble of length
-    ff.data[2] = (uint8_t)(length & 0xFF);               // Lower byte of length
-    memcpy(&ff.data[3], data, ISOTP_FF_FIRST_PAYLOAD);   // First 5 bytes
+    ff.data[0] = 0x10 | ((length >> 8) & 0x0F);  // FF PCI + upper nibble of length
+    ff.data[1] = (uint8_t)(length & 0xFF);       // Lower byte of length
+    memcpy(&ff.data[2], data, 6);                // First 6 bytes
 
-    ctx->txBytesSent = ISOTP_FF_FIRST_PAYLOAD;
+    ctx->txBytesSent = 6;
 
     // Update timestamp
     extern uint32_t HAL_GetTick(void);
@@ -432,7 +426,7 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 }
 
 /**
- * @brief Send consecutive frames (Extended Addressing)
+ * @brief Send consecutive frames
  */
 static void SendConsecutiveFrames(ISOTPContext_t *ctx)
 {
@@ -453,17 +447,16 @@ static void SendConsecutiveFrames(ISOTPContext_t *ctx)
             }
         }
 
-        // Build CF frame (Extended addressing format)
+        // Build CF frame
         DiveCANMessage_t cf = {0};
         cf.id = ctx->messageId | (ctx->target << 8) | ctx->source;
         cf.length = 8;
-        cf.data[0] = ctx->target;                   // Target address
-        cf.data[1] = 0x20 | ctx->txSequenceNumber;  // CF PCI + sequence number
+        cf.data[0] = 0x20 | ctx->txSequenceNumber;  // CF PCI + sequence number
 
-        // Copy up to 6 bytes (extended addressing)
+        // Copy up to 7 bytes
         uint16_t bytesRemaining = ctx->txDataLength - ctx->txBytesSent;
-        uint8_t bytesToCopy = (bytesRemaining > ISOTP_CF_PAYLOAD) ? ISOTP_CF_PAYLOAD : (uint8_t)bytesRemaining;
-        memcpy(&cf.data[2], &ctx->txDataPtr[ctx->txBytesSent], bytesToCopy);
+        uint8_t bytesToCopy = (bytesRemaining > 7) ? 7 : (uint8_t)bytesRemaining;
+        memcpy(&cf.data[1], &ctx->txDataPtr[ctx->txBytesSent], bytesToCopy);
 
         ctx->txBytesSent += bytesToCopy;
         ctx->txLastFrameTime = HAL_GetTick();

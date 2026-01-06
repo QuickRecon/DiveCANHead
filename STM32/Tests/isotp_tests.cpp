@@ -88,18 +88,17 @@ TEST_GROUP(ISOTP_Basic)
 };
 
 /**
- * Test: Single Frame reception with 5 bytes payload (Extended Addressing)
+ * Test: Single Frame reception with 5 bytes payload
  */
 TEST(ISOTP_Basic, SingleFrameReception)
 {
-    // Arrange: SF with 5 bytes: "HELLO" (Extended addressing format)
-    message.data[0] = DIVECAN_SOLO;  // Target address
-    message.data[1] = 0x05;          // SF PCI with length 5
-    message.data[2] = 'H';
-    message.data[3] = 'E';
+    // Arrange: SF with 5 bytes: "HELLO"
+    message.data[0] = 0x05;  // SF with length 5
+    message.data[1] = 'H';
+    message.data[2] = 'E';
+    message.data[3] = 'L';
     message.data[4] = 'L';
-    message.data[5] = 'L';
-    message.data[6] = 'O';
+    message.data[5] = 'O';
 
     // Act
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &message);
@@ -113,19 +112,19 @@ TEST(ISOTP_Basic, SingleFrameReception)
 }
 
 /**
- * Test: Single Frame reception with maximum length (6 bytes in extended addressing)
+ * Test: Single Frame reception with maximum length (7 bytes)
  */
 TEST(ISOTP_Basic, SingleFrameMaxLength)
 {
-    // Arrange: SF with 6 bytes (max for SF in extended addressing)
-    message.data[0] = DIVECAN_SOLO;  // Target address
-    message.data[1] = 0x06;          // SF PCI with length 6
-    message.data[2] = 0x01;
-    message.data[3] = 0x02;
-    message.data[4] = 0x03;
-    message.data[5] = 0x04;
-    message.data[6] = 0x05;
-    message.data[7] = 0x06;
+    // Arrange: SF with 7 bytes (max for SF)
+    message.data[0] = 0x07;  // SF with length 7
+    message.data[1] = 0x01;
+    message.data[2] = 0x02;
+    message.data[3] = 0x03;
+    message.data[4] = 0x04;
+    message.data[5] = 0x05;
+    message.data[6] = 0x06;
+    message.data[7] = 0x07;
 
     // Act
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &message);
@@ -133,20 +132,20 @@ TEST(ISOTP_Basic, SingleFrameMaxLength)
     // Assert
     CHECK_TRUE(consumed);
     CHECK_TRUE(ctx.rxComplete);
-    CHECK_EQUAL(6, ctx.rxDataLength);
+    CHECK_EQUAL(7, ctx.rxDataLength);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
 /**
- * Test: Single Frame transmission with 5 bytes (Extended Addressing)
+ * Test: Single Frame transmission with 5 bytes
  */
 TEST(ISOTP_Basic, SingleFrameTransmission)
 {
     // Arrange
     uint8_t data[] = {0x22, 0x91, 0x00, 0x00, 0x00};  // UDS Read DID example
 
-    // Expect: SF transmitted (Extended addressing format)
-    uint8_t expectedData[8] = {DIVECAN_CONTROLLER, 0x05, 0x22, 0x91, 0x00, 0x00, 0x00, 0x00};
+    // Expect: SF transmitted
+    uint8_t expectedData[8] = {0x05, 0x22, 0x91, 0x00, 0x00, 0x00, 0x00, 0x00};
     mock().expectOneCall("sendCANMessage")
         .withParameter("id", MENU_ID | (DIVECAN_CONTROLLER << 8) | DIVECAN_SOLO)
         .withParameter("length", 8)
@@ -162,26 +161,26 @@ TEST(ISOTP_Basic, SingleFrameTransmission)
 }
 
 /**
- * Test: First Frame triggers Flow Control response (Extended Addressing)
+ * Test: First Frame triggers Flow Control response
  */
 TEST(ISOTP_Basic, FirstFrameTriggersFlowControl)
 {
-    // Arrange: FF for 20-byte message (Extended addressing)
-    message.data[0] = DIVECAN_SOLO;  // Target address
-    message.data[1] = 0x10;          // FF PCI, upper nibble of length
-    message.data[2] = 0x14;          // Length = 0x014 = 20 bytes
-    message.data[3] = 0x01;          // First 5 data bytes (extended addressing)
-    message.data[4] = 0x02;
-    message.data[5] = 0x03;
-    message.data[6] = 0x04;
-    message.data[7] = 0x05;
+    // Arrange: FF for 20-byte message
+    message.data[0] = 0x10;  // FF, upper nibble of length
+    message.data[1] = 0x14;  // Length = 0x014 = 20 bytes
+    message.data[2] = 0x01;  // First 6 data bytes
+    message.data[3] = 0x02;
+    message.data[4] = 0x03;
+    message.data[5] = 0x04;
+    message.data[6] = 0x05;
+    message.data[7] = 0x06;
 
-    // Expect: FC sent (CTS, BS=0, STmin=0) - Extended addressing format
-    uint8_t expectedFC[8] = {DIVECAN_CONTROLLER, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    // Expect: FC sent (CTS, BS=0, STmin=0)
+    uint8_t expectedFC[8] = {0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     mock().expectOneCall("sendCANMessage")
         .withParameter("id", MENU_ID | (DIVECAN_CONTROLLER << 8) | DIVECAN_SOLO)
-        .withParameter("length", 4)
-        .withMemoryBufferParameter("data", expectedFC, 4);
+        .withParameter("length", 3)
+        .withMemoryBufferParameter("data", expectedFC, 3);
     mock().expectOneCall("HAL_GetTick");
 
     // Act
@@ -192,74 +191,60 @@ TEST(ISOTP_Basic, FirstFrameTriggersFlowControl)
     CHECK_FALSE(ctx.rxComplete);  // Not complete yet
     CHECK_EQUAL(ISOTP_RECEIVING, ctx.state);
     CHECK_EQUAL(20, ctx.rxDataLength);
-    CHECK_EQUAL(5, ctx.rxBytesReceived);  // 5 bytes in FF (extended addressing)
+    CHECK_EQUAL(6, ctx.rxBytesReceived);
     CHECK_EQUAL(0, ctx.rxSequenceNumber);  // Expecting CF with seq=0
 }
 
 /**
- * Test: Consecutive Frame assembly (FF + 3 CF = 20 bytes) - Extended Addressing
+ * Test: Consecutive Frame assembly (FF + 2 CF = 20 bytes)
  */
 TEST(ISOTP_Basic, ConsecutiveFrameAssembly)
 {
-    // Arrange: First send FF (Extended addressing: 5 bytes in FF)
-    message.data[0] = DIVECAN_SOLO;  // Target address
-    message.data[1] = 0x10;          // FF PCI
-    message.data[2] = 0x14;          // 20 bytes
-    message.data[3] = 0x00;          // First 5 data bytes
-    message.data[4] = 0x01;
-    message.data[5] = 0x02;
-    message.data[6] = 0x03;
-    message.data[7] = 0x04;
+    // Arrange: First send FF
+    message.data[0] = 0x10;  // FF
+    message.data[1] = 0x14;  // 20 bytes
+    message.data[2] = 0x00;
+    message.data[3] = 0x01;
+    message.data[4] = 0x02;
+    message.data[5] = 0x03;
+    message.data[6] = 0x04;
+    message.data[7] = 0x05;
 
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // FC
     mock().expectOneCall("HAL_GetTick");
     ISOTP_ProcessRxFrame(&ctx, &message);
 
-    // CF #0 (6 more bytes: 5-10, extended addressing)
+    // CF #0 (7 more bytes: 6-12)
     DiveCANMessage_t cf0 = message;
-    cf0.data[0] = DIVECAN_SOLO;  // Target address
-    cf0.data[1] = 0x20;          // CF PCI, seq=0
-    cf0.data[2] = 0x05;
-    cf0.data[3] = 0x06;
-    cf0.data[4] = 0x07;
-    cf0.data[5] = 0x08;
-    cf0.data[6] = 0x09;
-    cf0.data[7] = 0x0A;
+    cf0.data[0] = 0x20;  // CF, seq=0
+    cf0.data[1] = 0x06;
+    cf0.data[2] = 0x07;
+    cf0.data[3] = 0x08;
+    cf0.data[4] = 0x09;
+    cf0.data[5] = 0x0A;
+    cf0.data[6] = 0x0B;
+    cf0.data[7] = 0x0C;
 
     mock().expectOneCall("HAL_GetTick");
     ISOTP_ProcessRxFrame(&ctx, &cf0);
 
     CHECK_FALSE(ctx.rxComplete);  // Still incomplete
-    CHECK_EQUAL(11, ctx.rxBytesReceived);  // 5 from FF + 6 from CF0
+    CHECK_EQUAL(13, ctx.rxBytesReceived);
 
-    // CF #1 (6 more bytes: 11-16)
+    // CF #1 (7 more bytes: 13-19, total 20)
     DiveCANMessage_t cf1 = message;
-    cf1.data[0] = DIVECAN_SOLO;  // Target address
-    cf1.data[1] = 0x21;          // CF PCI, seq=1
-    cf1.data[2] = 0x0B;
-    cf1.data[3] = 0x0C;
-    cf1.data[4] = 0x0D;
-    cf1.data[5] = 0x0E;
-    cf1.data[6] = 0x0F;
-    cf1.data[7] = 0x10;
-
-    mock().expectOneCall("HAL_GetTick");
-    ISOTP_ProcessRxFrame(&ctx, &cf1);
-
-    CHECK_FALSE(ctx.rxComplete);  // Still incomplete
-    CHECK_EQUAL(17, ctx.rxBytesReceived);  // 5 + 6 + 6
-
-    // CF #2 (3 more bytes: 17-19, total 20)
-    DiveCANMessage_t cf2 = message;
-    cf2.data[0] = DIVECAN_SOLO;  // Target address
-    cf2.data[1] = 0x22;          // CF PCI, seq=2
-    cf2.data[2] = 0x11;
-    cf2.data[3] = 0x12;
-    cf2.data[4] = 0x13;
+    cf1.data[0] = 0x21;  // CF, seq=1
+    cf1.data[1] = 0x0D;
+    cf1.data[2] = 0x0E;
+    cf1.data[3] = 0x0F;
+    cf1.data[4] = 0x10;
+    cf1.data[5] = 0x11;
+    cf1.data[6] = 0x12;
+    cf1.data[7] = 0x13;
 
     // Act
     mock().expectOneCall("HAL_GetTick");
-    ISOTP_ProcessRxFrame(&ctx, &cf2);
+    ISOTP_ProcessRxFrame(&ctx, &cf1);
 
     // Assert
     CHECK_TRUE(ctx.rxComplete);
@@ -309,9 +294,8 @@ TEST(ISOTP_Basic, IgnoreWrongTarget)
 {
     // Arrange: Message addressed to DIVECAN_REVO, not DIVECAN_SOLO
     message.id = MENU_ID | (DIVECAN_REVO << 8) | DIVECAN_CONTROLLER;
-    message.data[0] = DIVECAN_REVO;  // Target address (not DIVECAN_SOLO)
-    message.data[1] = 0x05;          // SF PCI
-    message.data[2] = 0x01;
+    message.data[0] = 0x05;  // SF
+    message.data[1] = 0x01;
 
     // Act
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &message);
@@ -328,9 +312,8 @@ TEST(ISOTP_Basic, IgnoreWrongSource)
 {
     // Arrange: Message from DIVECAN_REVO, expecting DIVECAN_CONTROLLER
     message.id = MENU_ID | (DIVECAN_SOLO << 8) | DIVECAN_REVO;
-    message.data[0] = DIVECAN_SOLO;  // Target address
-    message.data[1] = 0x05;          // SF PCI
-    message.data[2] = 0x01;
+    message.data[0] = 0x05;  // SF
+    message.data[1] = 0x01;
 
     // Act
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &message);
@@ -345,15 +328,15 @@ TEST(ISOTP_Basic, IgnoreWrongSource)
  */
 TEST(ISOTP_Basic, SequenceNumberValidation)
 {
-    // Arrange: Send FF to start reception (Extended addressing)
-    message.data[0] = DIVECAN_SOLO;  // Target address
-    message.data[1] = 0x10;          // FF PCI
-    message.data[2] = 0x14;          // 20 bytes
-    message.data[3] = 0x00;          // First 5 data bytes
-    message.data[4] = 0x01;
-    message.data[5] = 0x02;
-    message.data[6] = 0x03;
-    message.data[7] = 0x04;
+    // Arrange: Send FF to start reception
+    message.data[0] = 0x10;  // FF
+    message.data[1] = 0x14;  // 20 bytes
+    message.data[2] = 0x00;
+    message.data[3] = 0x01;
+    message.data[4] = 0x02;
+    message.data[5] = 0x03;
+    message.data[6] = 0x04;
+    message.data[7] = 0x05;
 
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // FC
     mock().expectOneCall("HAL_GetTick");
@@ -361,9 +344,8 @@ TEST(ISOTP_Basic, SequenceNumberValidation)
 
     // Act: Send CF with wrong sequence (expecting 0, send 2)
     DiveCANMessage_t cf = message;
-    cf.data[0] = DIVECAN_SOLO;  // Target address
-    cf.data[1] = 0x22;          // CF PCI, seq=2 (should be 0)
-    cf.data[2] = 0x05;
+    cf.data[0] = 0x22;  // CF, seq=2 (should be 0)
+    cf.data[1] = 0x06;
 
     // Sequence validation happens BEFORE HAL_GetTick, so no HAL_GetTick on error
     mock().expectOneCall("NonFatalError_Detail")
@@ -381,30 +363,28 @@ TEST(ISOTP_Basic, SequenceNumberValidation)
  */
 TEST(ISOTP_Basic, SequenceNumberWrap)
 {
-    // Arrange: Send FF for 128-byte message (max size) - Extended addressing
-    // FF contains 5 bytes, need 123 more bytes = 21 CF frames (20*6=120 + 3 final)
-    message.data[0] = DIVECAN_SOLO;  // Target address
-    message.data[1] = 0x10;          // FF PCI
-    message.data[2] = 0x80;          // 128 bytes
-    for (int i = 0; i < 5; i++) {
-        message.data[3 + i] = i;
+    // Arrange: Send FF for 128-byte message (max size)
+    // FF contains 6 bytes, need 122 more bytes = 18 CF frames (17*7=119 + 3 final)
+    message.data[0] = 0x10;  // FF
+    message.data[1] = 0x80;  // 128 bytes
+    for (int i = 0; i < 6; i++) {
+        message.data[2 + i] = i;
     }
 
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // FC
     mock().expectOneCall("HAL_GetTick");
     ISOTP_ProcessRxFrame(&ctx, &message);
 
-    // Send 21 CF frames (seq 0-15, then wrap to 0-5)
-    for (uint8_t seq = 0; seq < 21; seq++)
+    // Send 18 CF frames (seq 0-15, then wrap to 0, 1)
+    for (uint8_t seq = 0; seq < 18; seq++)
     {
         DiveCANMessage_t cf = message;
-        cf.data[0] = DIVECAN_SOLO;             // Target address
-        cf.data[1] = 0x20 | (seq & 0x0F);      // CF PCI with wrapped sequence
+        cf.data[0] = 0x20 | (seq & 0x0F);  // CF with wrapped sequence
 
-        // Fill with sequential data (6 bytes per CF in extended addressing)
-        uint16_t baseOffset = 5 + (seq * 6);
-        for (int i = 0; i < 6 && (baseOffset + i) < 128; i++) {
-            cf.data[2 + i] = (baseOffset + i) & 0xFF;
+        // Fill with sequential data
+        uint16_t baseOffset = 6 + (seq * 7);
+        for (int i = 0; i < 7 && (baseOffset + i) < 128; i++) {
+            cf.data[1 + i] = (baseOffset + i) & 0xFF;
         }
 
         mock().expectOneCall("HAL_GetTick");
@@ -412,7 +392,7 @@ TEST(ISOTP_Basic, SequenceNumberWrap)
         CHECK_TRUE(consumed);
     }
 
-    // Assert: Message complete after 21 CFs
+    // Assert: Message complete after 18 CFs
     CHECK_TRUE(ctx.rxComplete);
     CHECK_EQUAL(128, ctx.rxDataLength);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
@@ -434,11 +414,10 @@ TEST(ISOTP_Basic, FirstFrameSent)
         data[i] = i;
     }
 
-    // Expect: FF transmitted with length 0x014 (20 bytes) - Extended addressing
+    // Expect: FF transmitted with length 0x014 (20 bytes)
     uint8_t expectedFF[8] = {
-        DIVECAN_CONTROLLER,  // Target address
-        0x10, 0x14,          // FF PCI with length 20
-        0x00, 0x01, 0x02, 0x03, 0x04  // First 5 bytes
+        0x10, 0x14,  // FF with length 20
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05  // First 6 bytes
     };
     mock().expectOneCall("sendCANMessage")
         .withParameter("id", MENU_ID | (DIVECAN_CONTROLLER << 8) | DIVECAN_SOLO)
@@ -470,11 +449,9 @@ TEST(ISOTP_Basic, FlowControlReceived)
     mock().expectOneCall("HAL_GetTick");
     ISOTP_Send(&ctx, data, 20);
 
-    // Expect: 3 CF frames sent after FC (Extended addressing: 6 bytes per CF)
-    // FF has 5 bytes (0-4), need 15 more bytes = 3 CF frames (6+6+3)
-    uint8_t expectedCF0[8] = {DIVECAN_CONTROLLER, 0x20, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A};
-    uint8_t expectedCF1[8] = {DIVECAN_CONTROLLER, 0x21, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10};
-    uint8_t expectedCF2[8] = {DIVECAN_CONTROLLER, 0x22, 0x11, 0x12, 0x13, 0x00, 0x00, 0x00};
+    // Expect: 2 CF frames sent after FC
+    uint8_t expectedCF0[8] = {0x20, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C};
+    uint8_t expectedCF1[8] = {0x21, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13};
 
     mock().expectOneCall("sendCANMessage")
         .withParameter("id", MENU_ID | (DIVECAN_CONTROLLER << 8) | DIVECAN_SOLO)
@@ -488,20 +465,13 @@ TEST(ISOTP_Basic, FlowControlReceived)
         .withMemoryBufferParameter("data", expectedCF1, 8);
     mock().expectOneCall("HAL_GetTick");
 
-    mock().expectOneCall("sendCANMessage")
-        .withParameter("id", MENU_ID | (DIVECAN_CONTROLLER << 8) | DIVECAN_SOLO)
-        .withParameter("length", 8)
-        .withMemoryBufferParameter("data", expectedCF2, 8);
-    mock().expectOneCall("HAL_GetTick");
-
-    // Act: Receive FC (CTS, BS=0, STmin=0) - Extended addressing
+    // Act: Receive FC (CTS, BS=0, STmin=0)
     DiveCANMessage_t fc = {0};
     fc.id = MENU_ID | (DIVECAN_SOLO << 8) | DIVECAN_CONTROLLER;
-    fc.length = 4;
-    fc.data[0] = DIVECAN_SOLO;     // Target address
-    fc.data[1] = ISOTP_FC_CTS;     // FC PCI
-    fc.data[2] = 0;                // BS=0 (infinite)
-    fc.data[3] = 0;                // STmin=0
+    fc.length = 3;
+    fc.data[0] = ISOTP_FC_CTS;
+    fc.data[1] = 0;  // BS=0 (infinite)
+    fc.data[2] = 0;  // STmin=0
 
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
@@ -515,8 +485,7 @@ TEST(ISOTP_Basic, FlowControlReceived)
  */
 TEST(ISOTP_Basic, BlockSizeZeroInfinite)
 {
-    // Arrange: 50-byte message (Extended addressing: FF + 8 CF frames)
-    // FF has 5 bytes, need 45 more bytes = 8 CF frames (7*6 + 3)
+    // Arrange: 50-byte message (FF + 7 CF frames)
     uint8_t data[50];
     for (int i = 0; i < 50; i++) {
         data[i] = i;
@@ -526,20 +495,19 @@ TEST(ISOTP_Basic, BlockSizeZeroInfinite)
     mock().expectOneCall("HAL_GetTick");
     ISOTP_Send(&ctx, data, 50);
 
-    // Expect: All 8 CF frames sent after single FC
-    for (uint8_t seq = 0; seq < 8; seq++) {
+    // Expect: All 7 CF frames sent after single FC
+    for (uint8_t seq = 0; seq < 7; seq++) {
         mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
         mock().expectOneCall("HAL_GetTick");
     }
 
-    // Act: Receive FC with BS=0 (infinite) - Extended addressing
+    // Act: Receive FC with BS=0 (infinite)
     DiveCANMessage_t fc = {0};
     fc.id = MENU_ID | (DIVECAN_SOLO << 8) | DIVECAN_CONTROLLER;
-    fc.length = 4;
-    fc.data[0] = DIVECAN_SOLO;     // Target address
-    fc.data[1] = ISOTP_FC_CTS;     // FC PCI
-    fc.data[2] = 0;                // BS=0 (infinite)
-    fc.data[3] = 0;                // STmin=0
+    fc.length = 3;
+    fc.data[0] = ISOTP_FC_CTS;
+    fc.data[1] = 0;  // BS=0 (infinite)
+    fc.data[2] = 0;  // STmin=0
 
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
@@ -581,11 +549,10 @@ TEST(ISOTP_Basic, TimeoutOnMissingFC)
  */
 TEST(ISOTP_Basic, TimeoutOnMissingCF)
 {
-    // Arrange: Receive FF to start multi-frame reception (Extended addressing)
-    message.data[0] = DIVECAN_SOLO;  // Target address
-    message.data[1] = 0x10;          // FF PCI
-    message.data[2] = 0x14;          // 20 bytes
-    message.data[3] = 0x00;
+    // Arrange: Receive FF to start multi-frame reception
+    message.data[0] = 0x10;  // FF
+    message.data[1] = 0x14;  // 20 bytes
+    message.data[2] = 0x00;
 
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // FC
     mock().expectOneCall("HAL_GetTick");
@@ -621,14 +588,13 @@ TEST(ISOTP_Basic, FlowControlOverflow)
 
     CHECK_EQUAL(ISOTP_WAIT_FC, ctx.state);
 
-    // Act: Receive FC Overflow (Extended addressing)
+    // Act: Receive FC Overflow
     DiveCANMessage_t fc = {0};
     fc.id = MENU_ID | (DIVECAN_SOLO << 8) | DIVECAN_CONTROLLER;
-    fc.length = 4;
-    fc.data[0] = DIVECAN_SOLO;     // Target address
-    fc.data[1] = ISOTP_FC_OVFLW;   // FC PCI - Overflow
+    fc.length = 3;
+    fc.data[0] = ISOTP_FC_OVFLW;
+    fc.data[1] = 0;
     fc.data[2] = 0;
-    fc.data[3] = 0;
 
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
@@ -652,22 +618,19 @@ TEST(ISOTP_Basic, ShearwaterFCBroadcast)
     mock().expectOneCall("HAL_GetTick");
     ISOTP_Send(&ctx, data, 20);
 
-    // Expect: 3 CF frames sent after FC (Extended addressing: 5+6+6+3=20 bytes)
+    // Expect: 2 CF frames sent after FC
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // CF0
     mock().expectOneCall("HAL_GetTick");
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // CF1
     mock().expectOneCall("HAL_GetTick");
-    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // CF2
-    mock().expectOneCall("HAL_GetTick");
 
-    // Act: Receive FC from 0xFF (Shearwater broadcast) - Extended addressing
+    // Act: Receive FC from 0xFF (Shearwater broadcast)
     DiveCANMessage_t fc = {0};
     fc.id = MENU_ID | (DIVECAN_SOLO << 8) | 0xFF;  // Source = 0xFF
-    fc.length = 4;
-    fc.data[0] = DIVECAN_SOLO;     // Target address
-    fc.data[1] = ISOTP_FC_CTS;     // FC PCI
-    fc.data[2] = 0;                // BS=0
-    fc.data[3] = 0;                // STmin=0
+    fc.length = 3;
+    fc.data[0] = ISOTP_FC_CTS;
+    fc.data[1] = 0;
+    fc.data[2] = 0;
 
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
@@ -691,22 +654,19 @@ TEST(ISOTP_Basic, StandardFCUnicast)
     mock().expectOneCall("HAL_GetTick");
     ISOTP_Send(&ctx, data, 20);
 
-    // Expect: 3 CF frames sent after FC (Extended addressing: 5+6+6+3=20 bytes)
+    // Expect: 2 CF frames sent after FC
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // CF0
     mock().expectOneCall("HAL_GetTick");
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // CF1
     mock().expectOneCall("HAL_GetTick");
-    mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // CF2
-    mock().expectOneCall("HAL_GetTick");
 
-    // Act: Receive FC from DIVECAN_CONTROLLER (standard unicast) - Extended addressing
+    // Act: Receive FC from DIVECAN_CONTROLLER (standard unicast)
     DiveCANMessage_t fc = {0};
     fc.id = MENU_ID | (DIVECAN_SOLO << 8) | DIVECAN_CONTROLLER;
-    fc.length = 4;
-    fc.data[0] = DIVECAN_SOLO;     // Target address
-    fc.data[1] = ISOTP_FC_CTS;     // FC PCI
-    fc.data[2] = 0;                // BS=0
-    fc.data[3] = 0;                // STmin=0
+    fc.length = 3;
+    fc.data[0] = ISOTP_FC_CTS;
+    fc.data[1] = 0;
+    fc.data[2] = 0;
 
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
@@ -720,26 +680,24 @@ TEST(ISOTP_Basic, StandardFCUnicast)
  */
 TEST(ISOTP_Basic, MultiFrameMaxLength)
 {
-    // Arrange: FF for 128 bytes (Extended addressing)
-    message.data[0] = DIVECAN_SOLO;  // Target address
-    message.data[1] = 0x10;          // FF PCI
-    message.data[2] = 0x80;          // 128 bytes
-    for (int i = 0; i < 5; i++) {
-        message.data[3 + i] = i;
+    // Arrange: FF for 128 bytes
+    message.data[0] = 0x10;
+    message.data[1] = 0x80;  // 128 bytes
+    for (int i = 0; i < 6; i++) {
+        message.data[2 + i] = i;
     }
 
     mock().expectOneCall("sendCANMessage").ignoreOtherParameters();  // FC
     mock().expectOneCall("HAL_GetTick");
     ISOTP_ProcessRxFrame(&ctx, &message);
 
-    // Send 21 CF frames to complete 128 bytes (5 + 21*6 = 5 + 126 = 131, but only need 123 more)
-    for (uint8_t seq = 0; seq < 21; seq++) {
+    // Send 18 CF frames to complete 128 bytes
+    for (uint8_t seq = 0; seq < 18; seq++) {
         DiveCANMessage_t cf = message;
-        cf.data[0] = DIVECAN_SOLO;             // Target address
-        cf.data[1] = 0x20 | (seq & 0x0F);      // CF PCI
-        uint16_t baseOffset = 5 + (seq * 6);
-        for (int i = 0; i < 6 && (baseOffset + i) < 128; i++) {
-            cf.data[2 + i] = (baseOffset + i) & 0xFF;
+        cf.data[0] = 0x20 | (seq & 0x0F);
+        uint16_t baseOffset = 6 + (seq * 7);
+        for (int i = 0; i < 7 && (baseOffset + i) < 128; i++) {
+            cf.data[1 + i] = (baseOffset + i) & 0xFF;
         }
         mock().expectOneCall("HAL_GetTick");
         ISOTP_ProcessRxFrame(&ctx, &cf);
@@ -762,8 +720,8 @@ TEST(ISOTP_Basic, TransmitLargeMessage)
         data[i] = i & 0xFF;
     }
 
-    // Expect: FF with 100-byte length (Extended addressing)
-    uint8_t expectedFF[8] = {DIVECAN_CONTROLLER, 0x10, 0x64, 0x00, 0x01, 0x02, 0x03, 0x04};
+    // Expect: FF with 100-byte length
+    uint8_t expectedFF[8] = {0x10, 0x64, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
     mock().expectOneCall("sendCANMessage")
         .withParameter("id", MENU_ID | (DIVECAN_CONTROLLER << 8) | DIVECAN_SOLO)
         .withParameter("length", 8)
@@ -773,20 +731,19 @@ TEST(ISOTP_Basic, TransmitLargeMessage)
     // Act: Send FF
     ISOTP_Send(&ctx, data, 100);
 
-    // Expect: 16 CF frames (95 bytes / 6 = 15.83, round up to 16)
-    for (uint8_t seq = 0; seq < 16; seq++) {
+    // Expect: 14 CF frames (94 bytes / 7 = 13.4, round up to 14)
+    for (uint8_t seq = 0; seq < 14; seq++) {
         mock().expectOneCall("sendCANMessage").ignoreOtherParameters();
         mock().expectOneCall("HAL_GetTick");
     }
 
-    // Act: Receive FC (Extended addressing)
+    // Act: Receive FC
     DiveCANMessage_t fc = {0};
     fc.id = MENU_ID | (DIVECAN_SOLO << 8) | DIVECAN_CONTROLLER;
-    fc.length = 4;
-    fc.data[0] = DIVECAN_SOLO;     // Target address
-    fc.data[1] = ISOTP_FC_CTS;     // FC PCI
-    fc.data[2] = 0;                // BS=0
-    fc.data[3] = 0;                // STmin=0
+    fc.length = 3;
+    fc.data[0] = ISOTP_FC_CTS;
+    fc.data[1] = 0;
+    fc.data[2] = 0;
 
     ISOTP_ProcessRxFrame(&ctx, &fc);
 

@@ -1,22 +1,14 @@
 /**
  * @file isotp.h
- * @brief ISO-TP (ISO-15765-2) transport layer for DiveCAN with Extended Addressing
+ * @brief ISO-TP (ISO-15765-2) transport layer for DiveCAN
  *
  * Implements ISO 15765-2 transport protocol for segmenting and reassembling
  * CAN messages larger than 8 bytes. Provides foundation for UDS implementation.
  *
- * Addressing Mode: EXTENDED ADDRESSING
- * - Target address (TA) is in data[0] of every CAN frame
- * - PCI byte moved to data[1]
- * - Payload capacities reduced by 1 byte compared to normal addressing
- *
  * Key features:
- * - Single Frame (SF): 1-6 bytes payload [TA, 0x0N, payload...]
+ * - Single Frame (SF): 1-7 bytes payload
  * - Multi-Frame: First Frame (FF) + Consecutive Frames (CF)
- *   - FF: [TA, 0x1N, len_low, payload...] (5 bytes payload in FF)
- *   - CF: [TA, 0x2N, payload...] (6 bytes payload per CF)
- * - Flow Control (FC): [TA, 0x3N, BS, STmin, ...]
- * - Receiver pacing with block size and separation time
+ * - Flow Control (FC): Receiver pacing with block size and separation time
  * - Shearwater quirk: Accept FC frames with dst=0xFF (broadcast)
  *
  * Memory constraints:
@@ -42,14 +34,7 @@
 #define ISOTP_DEFAULT_STMIN 0        // 0 ms minimum separation time between CF frames
 #define ISOTP_POLL_INTERVAL 100      // ms - How often to call ISOTP_Poll()
 
-// Extended addressing offsets
-#define ISOTP_EXTENDED_ADDR_OFFSET 1    // PCI byte offset in extended addressing
-#define ISOTP_SF_MAX_PAYLOAD 6          // Max payload for Single Frame (extended addressing)
-#define ISOTP_FF_FIRST_PAYLOAD 5        // Payload bytes in First Frame (extended addressing)
-#define ISOTP_CF_PAYLOAD 6              // Payload bytes per Consecutive Frame (extended addressing)
-
 // PCI (Protocol Control Information) byte masks
-// Note: In extended addressing, PCI is in data[1], not data[0]
 #define ISOTP_PCI_SF 0x00   // Single frame: 0x0N (N = length)
 #define ISOTP_PCI_FF 0x10   // First frame: 0x1N (N = upper nibble of length)
 #define ISOTP_PCI_CF 0x20   // Consecutive frame: 0x2N (N = sequence number 0-15)
