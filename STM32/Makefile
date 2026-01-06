@@ -51,7 +51,6 @@ Core/Src/Hardware/printer.c \
 Core/Src/Hardware/log.c \
 Core/Src/Hardware/solenoid.c \
 Core/Src/Hardware/hw_version.c \
-Core/Src/DiveCAN/menu.c \
 Core/Src/DiveCAN/Transciever.c \
 Core/Src/DiveCAN/DiveCAN.c \
 Core/Src/DiveCAN/PPO2Transmitter.c \

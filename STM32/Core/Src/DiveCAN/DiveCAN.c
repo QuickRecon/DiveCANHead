@@ -2,7 +2,6 @@
 #include <string.h>
 #include "cmsis_os.h"
 #include "../Sensors/OxygenCell.h"
-#include "menu.h"
 #include "../Hardware/pwr_management.h"
 #include "../Hardware/printer.h"
 #include "../PPO2Control/PPO2Control.h"
@@ -96,27 +95,6 @@ void CANTask(void *arg)
 
     while (true)
     {
-#ifdef UDS_ENABLED
-        // Poll ISO-TP for timeouts every 100ms
-        uint32_t now = HAL_GetTick();
-        if ((now - lastPollTime) >= ISOTP_POLL_INTERVAL) {
-            ISOTP_Poll(&isotpContext, now);
-            lastPollTime = now;
-        }
-
-        // Check for completed ISO-TP RX transfers
-        if (isotpContext.rxComplete) {
-            HandleUDSMessage(isotpContext.rxBuffer, isotpContext.rxDataLength);
-            isotpContext.rxComplete = false;  // Clear flag
-        }
-
-        // Check for completed ISO-TP TX transfers
-        if (isotpContext.txComplete) {
-            HandleUDSTxComplete();
-            isotpContext.txComplete = false;  // Clear flag
-        }
-#endif
-
         DiveCANMessage_t message = {0};
         if (pdTRUE == GetLatestCAN(TIMEOUT_1S_TICKS, &message))
         {
@@ -249,6 +227,25 @@ void CANTask(void *arg)
         {
             /* We didn't get a message, soldier forth */
         }
+
+        // Poll ISO-TP for timeouts every 100ms
+        uint32_t now = HAL_GetTick();
+        if ((now - lastPollTime) >= ISOTP_POLL_INTERVAL) {
+            ISOTP_Poll(&isotpContext, now);
+            lastPollTime = now;
+        }
+
+        // Check for completed ISO-TP RX transfers
+        if (isotpContext.rxComplete) {
+            HandleUDSMessage(isotpContext.rxBuffer, isotpContext.rxDataLength);
+            isotpContext.rxComplete = false;  // Clear flag
+        }
+
+        // Check for completed ISO-TP TX transfers
+        if (isotpContext.txComplete) {
+            HandleUDSTxComplete();
+            isotpContext.txComplete = false;  // Clear flag
+        }
     }
 }
 
@@ -287,13 +284,6 @@ void RespCal(const DiveCANMessage_t *const message, const DiveCANDevice_t *const
     serial_printf("RX cal request; PPO2: %u, Pressure: %u\r\n", fO2, pressure);
 
     RunCalibrationTask(deviceSpec->type, fO2, pressure, configuration->calibrationMode, configuration->powerMode);
-}
-
-void RespMenu(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, Configuration_t *const configuration)
-{
-    serial_printf("MENU message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message->id,
-                  message->data[0], message->data[1], message->data[2], message->data[3], message->data[4], message->data[5], message->data[6], message->data[7]);
-    ProcessMenu(message, deviceSpec, configuration);
 }
 
 void RespSetpoint(const DiveCANMessage_t *const message, const DiveCANDevice_t *)
