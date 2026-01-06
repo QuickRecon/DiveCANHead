@@ -164,8 +164,6 @@ void CANTask(void *arg)
                     break;  // ISO-TP handled it
                 }
 #endif
-                /* Fallback to legacy menu protocol */
-                RespMenu(&message, deviceSpec, configuration);
                 break;
             case TANK_PRESSURE_ID:
                 message.type = "TANK_PRESSURE";
