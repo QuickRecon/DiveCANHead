@@ -386,8 +386,9 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
         DiveCANMessage_t sf = {0};
         sf.id = ctx->messageId | (ctx->target << 8) | ctx->source;
         sf.length = 8;
-        sf.data[0] = (uint8_t)length;  // SF PCI
-        memcpy(&sf.data[1], data, length);
+        sf.data[0] = (uint8_t)length+1;  // SF PCI
+        sf.data[1] = 0;
+        memcpy(&sf.data[2], data, length);
 
         sendCANMessage(sf);
 
@@ -409,9 +410,9 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
     ff.length = 8;
     ff.data[0] = 0x10 | ((length >> 8) & 0x0F);  // FF PCI + upper nibble of length
     ff.data[1] = (uint8_t)(length & 0xFF);       // Lower byte of length
-    memcpy(&ff.data[2], data, 6);                // First 6 bytes
+    memcpy(&ff.data[3], data, 5);                // First 5 bytes
 
-    ctx->txBytesSent = 6;
+    ctx->txBytesSent = 5;
 
     // Update timestamp
     extern uint32_t HAL_GetTick(void);
@@ -451,7 +452,7 @@ static void SendConsecutiveFrames(ISOTPContext_t *ctx)
         DiveCANMessage_t cf = {0};
         cf.id = ctx->messageId | (ctx->target << 8) | ctx->source;
         cf.length = 8;
-        cf.data[0] = 0x20 | ctx->txSequenceNumber;  // CF PCI + sequence number
+        cf.data[0] = 0x20 | (ctx->txSequenceNumber+1);  // CF PCI + sequence number
 
         // Copy up to 7 bytes
         uint16_t bytesRemaining = ctx->txDataLength - ctx->txBytesSent;

@@ -22,11 +22,13 @@
 #include "../../configuration.h"
 
 // Settings DIDs
-#define UDS_DID_SETTING_COUNT       0x9100  ///< Read: number of settings
-#define UDS_DID_SETTING_INFO_BASE   0x9110  ///< Read: setting metadata (0x9110 + setting_index)
-#define UDS_DID_SETTING_VALUE_BASE  0x9130  ///< Read/Write: setting value (0x9130 + setting_index)
-#define UDS_DID_SETTING_LABEL_BASE  0x9150  ///< Read: option labels (0x9150 + setting_index + (option_index << 4))
-#define UDS_DID_SETTING_SAVE        0x9350  ///< Write: save settings to flash
+typedef enum {
+    UDS_DID_SETTING_COUNT       = 0x9100,  ///< Read: number of settings
+    UDS_DID_SETTING_INFO_BASE   = 0x9110,  ///< Read: setting metadata (0x9110 + setting_index)
+    UDS_DID_SETTING_VALUE_BASE  = 0x9130,  ///< Read/Write: setting value (0x9130 + setting_index)
+    UDS_DID_SETTING_LABEL_BASE  = 0x9150,  ///< Read: option labels (0x9150 + setting_index + (option_index << 4))
+    UDS_DID_SETTING_SAVE        = 0x9350   ///< Write: save settings to flash
+} UDS_SettingsDID_t;
 
 /**
  * @brief Setting types

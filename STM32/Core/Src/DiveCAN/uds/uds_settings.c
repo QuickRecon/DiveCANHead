@@ -9,147 +9,62 @@
 #include "../../configuration.h"
 #include <string.h>
 
+#define BYTE_1_OFFSET 8
+#define BYTE_2_OFFSET 16
+#define BYTE_3_OFFSET 24
+
 // Option labels for selection-type settings
-static const char *cellTypeOptions[] = {
-    "Analog",
-    "DiveO2",
-    "O2ptima",
-    "OxygenScientific",
+static const char *FW_CommitOptions[] = {
+    COMMIT_HASH,
     NULL
 };
 
-static const char *powerModeOptions[] = {
-    "Auto",
-    "Battery",
-    "CAN Bus",
-    "Disabled",
-    NULL
-};
-
-static const char *calibrationModeOptions[] = {
-    "Digital Reference",
-    "Analog Absolute",
-    "Total Absolute",
-    "Solenoid Flush",
-    NULL
-};
-
-static const char *voltageThresholdOptions[] = {
-    "9.0V",
-    "10.0V",
-    "11.0V",
-    "12.0V",
-    NULL
-};
-
-static const char *ppo2ControlOptions[] = {
-    "Off",
-    "PID Control",
-    "MK15 Legacy",
-    NULL
-};
-
-static const char *booleanOptions[] = {
-    "Disabled",
-    "Enabled",
-    NULL
+static const char* NumericOptions[] = {
+    0,
 };
 
 // Settings definitions array (maps Configuration_t fields to UDS settings)
 static const SettingDefinition_t settings[] = {
     // Index 0: Cell 1 Type
     {
-        .label = "Cell 1 Type",
-        .kind = SETTING_KIND_SELECTION,
-        .editable = true,
-        .maxValue = 3,
-        .options = cellTypeOptions,
-        .optionCount = 4
-    },
-    // Index 1: Cell 2 Type
-    {
-        .label = "Cell 2 Type",
-        .kind = SETTING_KIND_SELECTION,
-        .editable = true,
-        .maxValue = 3,
-        .options = cellTypeOptions,
-        .optionCount = 4
-    },
-    // Index 2: Cell 3 Type
-    {
-        .label = "Cell 3 Type",
-        .kind = SETTING_KIND_SELECTION,
-        .editable = true,
-        .maxValue = 3,
-        .options = cellTypeOptions,
-        .optionCount = 4
-    },
-    // Index 3: Power Mode
-    {
-        .label = "Power Mode",
-        .kind = SETTING_KIND_SELECTION,
-        .editable = true,
-        .maxValue = 3,
-        .options = powerModeOptions,
-        .optionCount = 4
-    },
-    // Index 4: Calibration Mode
-    {
-        .label = "Calibration Mode",
-        .kind = SETTING_KIND_SELECTION,
-        .editable = true,
-        .maxValue = 3,
-        .options = calibrationModeOptions,
-        .optionCount = 4
-    },
-    // Index 5: UART Printing
-    {
-        .label = "UART Debug Output",
+        .label = "FW Commit",
         .kind = SETTING_KIND_BOOLEAN,
-        .editable = true,
+        .editable = false,
         .maxValue = 1,
-        .options = booleanOptions,
-        .optionCount = 2
+        .options = FW_CommitOptions,
+        .optionCount = 1
     },
-    // Index 6: Voltage Threshold
     {
-        .label = "Low Battery Threshold",
-        .kind = SETTING_KIND_SELECTION,
+        .label = "Config 1",
+        .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .maxValue = 3,
-        .options = voltageThresholdOptions,
-        .optionCount = 4
+        .options = NumericOptions,
+        .maxValue = 0xFF,
     },
-    // Index 7: PPO2 Control Mode
     {
-        .label = "PPO2 Control Mode",
-        .kind = SETTING_KIND_SELECTION,
+        .label = "Config 2",
+        .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .maxValue = 2,
-        .options = ppo2ControlOptions,
-        .optionCount = 3
+        .options = NumericOptions,
+        .maxValue = 0xFF,
     },
-    // Index 8: Extended Messages
     {
-        .label = "Extended CAN Messages",
-        .kind = SETTING_KIND_BOOLEAN,
+        .label = "Config 3",
+        .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .maxValue = 1,
-        .options = booleanOptions,
-        .optionCount = 2
+        .options = NumericOptions,
+        .maxValue = 0xFF,
     },
-    // Index 9: PPO2 Depth Compensation
     {
-        .label = "PPO2 Depth Compensation",
-        .kind = SETTING_KIND_BOOLEAN,
+        .label = "Config 4",
+        .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .maxValue = 1,
-        .options = booleanOptions,
-        .optionCount = 2
-    }
+        .options = NumericOptions,
+        .maxValue = 0xFF,
+    },
 };
 
-#define SETTING_COUNT (sizeof(settings) / sizeof(settings[0]))
+#define SETTING_COUNT 5
 
 /**
  * @brief Get total number of settings
@@ -181,18 +96,15 @@ uint64_t UDS_GetSettingValue(uint8_t index, const Configuration_t *config)
         return 0;
     }
 
+    uint32_t configBits = getConfigBytes(config);
+
     switch (index)
     {
-    case 0: return config->cell1;
-    case 1: return config->cell2;
-    case 2: return config->cell3;
-    case 3: return config->powerMode;
-    case 4: return config->calibrationMode;
-    case 5: return config->enableUartPrinting;
-    case 6: return config->dischargeThresholdMode;
-    case 7: return config->ppo2controlMode;
-    case 8: return config->extendedMessages;
-    case 9: return config->ppo2DepthCompensation;
+    case 0: return 1;
+    case 1: return (uint8_t)(configBits);
+    case 2: return (uint8_t)(configBits >> BYTE_1_OFFSET);
+    case 3: return (uint8_t)(configBits >> BYTE_2_OFFSET);
+    case 4: return (uint8_t)(configBits >> BYTE_3_OFFSET);
     default: return 0;
     }
 }
@@ -222,20 +134,25 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
     }
 
     // Update configuration field
-    switch (index)
-    {
-    case 0: config->cell1 = (CellType_t)value; break;
-    case 1: config->cell2 = (CellType_t)value; break;
-    case 2: config->cell3 = (CellType_t)value; break;
-    case 3: config->powerMode = (PowerSelectMode_t)value; break;
-    case 4: config->calibrationMode = (OxygenCalMethod_t)value; break;
-    case 5: config->enableUartPrinting = (bool)value; break;
-    case 6: config->dischargeThresholdMode = (VoltageThreshold_t)value; break;
-    case 7: config->ppo2controlMode = (PPO2ControlScheme_t)value; break;
-    case 8: config->extendedMessages = (bool)value; break;
-    case 9: config->ppo2DepthCompensation = (bool)value; break;
-    default: return false;
-    }
+    uint32_t configBits = getConfigBytes(config);
+    uint8_t configBytes[4] = {(uint8_t)(configBits),
+                              (uint8_t)(configBits >> BYTE_1_OFFSET),
+                              (uint8_t)(configBits >> BYTE_2_OFFSET),
+                              (uint8_t)(configBits >> BYTE_3_OFFSET)};
+
+    configBytes[index-1] = value & 0xFF;
+
+    uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
+    *config = setConfigBytes(newBytes);
+    // bool valid = saveConfiguration(config, deviceSpec->hardwareVersion);
+    // if (valid)
+    // {
+    //     serial_printf("Config accepted\r\n");
+    // }
+    // else
+    // {
+    //     serial_printf("Config rejected\r\n");
+    // }
 
     return true;
 }

@@ -48,7 +48,7 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData, uint16_t 
     }
 
     // Extract Service ID (first byte)
-    uint8_t sid = requestData[0];
+    uint8_t sid = requestData[1];
 
     // Dispatch to appropriate service handler
     switch (sid)
@@ -178,19 +178,19 @@ static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *req
 static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
     // Validate message length (minimum: SID + 2-byte DID)
-    if (requestLength < 3)
+    if (requestLength < 4)
     {
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
 
     // Extract DID (big-endian)
-    uint16_t did = (requestData[1] << 8) | requestData[2];
+    uint16_t did = (requestData[2] << 8) | requestData[3];
 
     // Build response header
     ctx->responseBuffer[0] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    ctx->responseBuffer[1] = requestData[1];  // DID high byte
-    ctx->responseBuffer[2] = requestData[2];  // DID low byte
+    ctx->responseBuffer[1] = requestData[2];  // DID high byte
+    ctx->responseBuffer[2] = requestData[3];  // DID low byte
     ctx->responseLength = 3;
 
     // Dispatch based on DID
@@ -252,18 +252,20 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
                 return;
             }
 
-            ctx->responseBuffer[3] = (uint8_t)setting->kind;
-            ctx->responseBuffer[4] = setting->editable ? 1 : 0;
-            ctx->responseBuffer[5] = setting->maxValue;
-            ctx->responseBuffer[6] = setting->optionCount;
-
             // Append label string
             uint16_t labelLen = strlen(setting->label);
             if (labelLen > (UDS_MAX_RESPONSE_LENGTH - 7))
             {
                 labelLen = UDS_MAX_RESPONSE_LENGTH - 7;
             }
-            memcpy(&ctx->responseBuffer[7], setting->label, labelLen);
+            
+            memcpy(&ctx->responseBuffer[3], setting->label, labelLen);
+            ctx->responseBuffer[labelLen+3] = 0; // Null terminator
+            ctx->responseBuffer[labelLen+4] = (uint8_t)setting->kind;
+            ctx->responseBuffer[labelLen+5] = setting->editable ? 1 : 0;
+            //ctx->responseBuffer[labelLen+6] = setting->maxValue;
+            //ctx->responseBuffer[labelLen+7] = setting->optionCount;
+
             ctx->responseLength = 7 + labelLen;
             UDS_SendResponse(ctx);
             return;
@@ -314,7 +316,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
                 labelLen = UDS_MAX_RESPONSE_LENGTH - 3;
             }
             memcpy(&ctx->responseBuffer[3], label, labelLen);
-            ctx->responseLength = 3 + labelLen;
+            ctx->responseLength = 4 + labelLen;
             UDS_SendResponse(ctx);
             return;
         }

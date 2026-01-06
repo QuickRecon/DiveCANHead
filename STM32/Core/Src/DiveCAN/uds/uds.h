@@ -27,60 +27,65 @@
 #include "../Transciever.h"
 #include "../../configuration.h"
 #include "uds_memory.h"
-
 // UDS Service IDs (SID)
-#define UDS_SID_DIAGNOSTIC_SESSION_CONTROL  0x10
-#define UDS_SID_ECU_RESET                   0x11
-#define UDS_SID_READ_DATA_BY_ID             0x22
-#define UDS_SID_WRITE_DATA_BY_ID            0x2E
-#define UDS_SID_REQUEST_DOWNLOAD            0x34
-#define UDS_SID_REQUEST_UPLOAD              0x35
-#define UDS_SID_TRANSFER_DATA               0x36
-#define UDS_SID_REQUEST_TRANSFER_EXIT       0x37
-#define UDS_SID_TESTER_PRESENT              0x3E
+typedef enum {
+    UDS_SID_DIAGNOSTIC_SESSION_CONTROL  = 0x10,
+    UDS_SID_ECU_RESET                   = 0x11,
+    UDS_SID_READ_DATA_BY_ID             = 0x22,
+    UDS_SID_WRITE_DATA_BY_ID            = 0x2E,
+    UDS_SID_REQUEST_DOWNLOAD            = 0x34,
+    UDS_SID_REQUEST_UPLOAD              = 0x35,
+    UDS_SID_TRANSFER_DATA               = 0x36,
+    UDS_SID_REQUEST_TRANSFER_EXIT       = 0x37,
+    UDS_SID_TESTER_PRESENT              = 0x3E
+} UDS_SID_t;
 
 // UDS Response SIDs (positive response = request + 0x40)
-#define UDS_RESPONSE_SID_OFFSET             0x40
-#define UDS_SID_NEGATIVE_RESPONSE           0x7F
+enum {
+    UDS_RESPONSE_SID_OFFSET             = 0x40,
+    UDS_SID_NEGATIVE_RESPONSE           = 0x7F
+};
 
 // UDS Negative Response Codes (NRC)
-#define UDS_NRC_GENERAL_REJECT              0x10
-#define UDS_NRC_SERVICE_NOT_SUPPORTED       0x11
-#define UDS_NRC_SUBFUNCTION_NOT_SUPPORTED   0x12
-#define UDS_NRC_INCORRECT_MESSAGE_LENGTH    0x13
-#define UDS_NRC_RESPONSE_TOO_LONG           0x14
-#define UDS_NRC_CONDITIONS_NOT_CORRECT      0x22
-#define UDS_NRC_REQUEST_SEQUENCE_ERROR      0x24
-#define UDS_NRC_REQUEST_OUT_OF_RANGE        0x31
-#define UDS_NRC_SECURITY_ACCESS_DENIED      0x33
-#define UDS_NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED 0x70
-#define UDS_NRC_TRANSFER_DATA_SUSPENDED     0x71
-#define UDS_NRC_GENERAL_PROGRAMMING_FAILURE 0x72
-#define UDS_NRC_REQUEST_CORRECTLY_RECEIVED  0x78
+typedef enum {
+    UDS_NRC_GENERAL_REJECT              = 0x10,
+    UDS_NRC_SERVICE_NOT_SUPPORTED       = 0x11,
+    UDS_NRC_SUBFUNCTION_NOT_SUPPORTED   = 0x12,
+    UDS_NRC_INCORRECT_MESSAGE_LENGTH    = 0x13,
+    UDS_NRC_RESPONSE_TOO_LONG           = 0x14,
+    UDS_NRC_CONDITIONS_NOT_CORRECT      = 0x22,
+    UDS_NRC_REQUEST_SEQUENCE_ERROR      = 0x24,
+    UDS_NRC_REQUEST_OUT_OF_RANGE        = 0x31,
+    UDS_NRC_SECURITY_ACCESS_DENIED      = 0x33,
+    UDS_NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED= 0x70,
+    UDS_NRC_TRANSFER_DATA_SUSPENDED     = 0x71,
+    UDS_NRC_GENERAL_PROGRAMMING_FAILURE = 0x72,
+    UDS_NRC_REQUEST_CORRECTLY_RECEIVED  = 0x78
+} UDS_NRC_t;
 
 // UDS Diagnostic Session Types (sub-function for 0x10)
-#define UDS_SESSION_DEFAULT                 0x01
-#define UDS_SESSION_PROGRAMMING             0x02
-#define UDS_SESSION_EXTENDED_DIAGNOSTIC     0x03
+typedef enum {
+    UDS_SESSION_DEFAULT                 = 0x01,
+    UDS_SESSION_PROGRAMMING             = 0x02,
+    UDS_SESSION_EXTENDED_DIAGNOSTIC     = 0x03
+} UDS_SessionType_t;
 
 // UDS Data Identifiers (DID) - custom for DiveCAN
-#define UDS_DID_FIRMWARE_VERSION            0xF000  // Read firmware commit hash
-#define UDS_DID_HARDWARE_VERSION            0xF001  // Read hardware version
-#define UDS_DID_CONFIGURATION_BLOCK         0xF100  // Read/Write full configuration
-#define UDS_DID_CELL_VOLTAGES               0xF200  // Read cell voltages
-#define UDS_DID_PPO2_VALUES                 0xF201  // Read PPO2 values
-#define UDS_DID_ERROR_STATUS                0xF300  // Read error status
-
-// Settings DIDs (Phase 4)
-#define UDS_DID_SETTING_COUNT               0x9100  // Read: number of settings
-#define UDS_DID_SETTING_INFO_BASE           0x9110  // Read: setting metadata (0x9110 + index)
-#define UDS_DID_SETTING_VALUE_BASE          0x9130  // Read/Write: setting value (0x9130 + index)
-#define UDS_DID_SETTING_LABEL_BASE          0x9150  // Read: option labels (0x9150 + index + (option << 4))
-#define UDS_DID_SETTING_SAVE                0x9350  // Write: save settings to flash
+typedef enum {
+    UDS_DID_FIRMWARE_VERSION            = 0xF000,  // Read firmware commit hash
+    UDS_DID_HARDWARE_VERSION            = 0xF001,  // Read hardware version
+    UDS_DID_CONFIGURATION_BLOCK         = 0xF100,  // Read/Write full configuration
+    UDS_DID_CELL_VOLTAGES               = 0xF200,  // Read cell voltages
+    UDS_DID_PPO2_VALUES                 = 0xF201,  // Read PPO2 values
+    UDS_DID_ERROR_STATUS                = 0xF300   // Read error status
+} UDS_DID_t;
 
 // UDS maximum message sizes
-#define UDS_MAX_REQUEST_LENGTH              128  // Matches ISOTP_MAX_PAYLOAD
-#define UDS_MAX_RESPONSE_LENGTH             128  // Matches ISOTP_MAX_PAYLOAD
+enum {
+    UDS_MAX_REQUEST_LENGTH              = 128,  // Matches ISOTP_MAX_PAYLOAD
+    UDS_MAX_RESPONSE_LENGTH             = 128   // Matches ISOTP_MAX_PAYLOAD
+};
+
 
 /**
  * @brief UDS diagnostic session state
