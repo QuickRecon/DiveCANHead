@@ -76,6 +76,7 @@ typedef struct {
     uint8_t rxSequenceNumber;       ///< Expected next CF sequence number (0-15)
     uint8_t rxBuffer[ISOTP_MAX_PAYLOAD];  ///< Reassembly buffer (128 bytes)
     uint32_t rxLastFrameTime;       ///< ms timestamp of last received frame
+    bool rxComplete;                ///< RX transfer complete flag (caller must clear)
 
     // TX state
     uint16_t txDataLength;          ///< Total length to send
@@ -86,15 +87,12 @@ typedef struct {
     uint8_t txSTmin;                ///< STmin from FC (0-127 ms)
     uint8_t txBlockCounter;         ///< Frames sent in current block
     uint32_t txLastFrameTime;       ///< ms timestamp of last transmitted frame
+    bool txComplete;                ///< TX transfer complete flag (caller must clear)
 
     // Addressing
     DiveCANType_t source;           ///< Our device type
     DiveCANType_t target;           ///< Remote device type
     uint32_t messageId;             ///< Base CAN ID (e.g., MENU_ID = 0xD0A0000)
-
-    // Completion callbacks
-    void (*rxCompleteCallback)(const uint8_t *data, uint16_t length);  ///< Called when RX complete
-    void (*txCompleteCallback)(void);  ///< Called when TX complete
 } ISOTPContext_t;
 
 // Public API

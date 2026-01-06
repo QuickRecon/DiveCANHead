@@ -37,7 +37,7 @@ static ISOTPContext_t isotpContext = {0};
 static UDSContext_t udsContext = {0};
 static bool isotpInitialized = false;
 
-/* UDS callback handlers */
+/* UDS message handlers */
 static void HandleUDSMessage(const uint8_t *data, uint16_t length);
 static void HandleUDSTxComplete(void);
 #endif
@@ -103,6 +103,18 @@ void CANTask(void *arg)
             ISOTP_Poll(&isotpContext, now);
             lastPollTime = now;
         }
+
+        // Check for completed ISO-TP RX transfers
+        if (isotpContext.rxComplete) {
+            HandleUDSMessage(isotpContext.rxBuffer, isotpContext.rxDataLength);
+            isotpContext.rxComplete = false;  // Clear flag
+        }
+
+        // Check for completed ISO-TP TX transfers
+        if (isotpContext.txComplete) {
+            HandleUDSTxComplete();
+            isotpContext.txComplete = false;  // Clear flag
+        }
 #endif
 
         DiveCANMessage_t message = {0};
@@ -142,8 +154,6 @@ void CANTask(void *arg)
                 if (!isotpInitialized) {
                     uint8_t targetType = message.id & 0xFF;
                     ISOTP_Init(&isotpContext, deviceSpec->type, targetType, MENU_ID);
-                    isotpContext.rxCompleteCallback = HandleUDSMessage;
-                    isotpContext.txCompleteCallback = HandleUDSTxComplete;
 
                     UDS_Init(&udsContext, configuration, &isotpContext);
                     isotpInitialized = true;
@@ -340,7 +350,7 @@ void RespSerialNumber(const DiveCANMessage_t *const message, const DiveCANDevice
 
 #ifdef UDS_ENABLED
 /**
- * @brief UDS RX completion callback - called when ISO-TP receives complete UDS message
+ * @brief Process completed UDS message - called from main loop when rxComplete flag is set
  * @param data Pointer to received data
  * @param length Length of received data
  */
@@ -357,7 +367,7 @@ static void HandleUDSMessage(const uint8_t *data, uint16_t length)
 }
 
 /**
- * @brief UDS TX completion callback - called when ISO-TP finishes transmitting response
+ * @brief Handle completed UDS transmission - called from main loop when txComplete flag is set
  */
 static void HandleUDSTxComplete(void)
 {

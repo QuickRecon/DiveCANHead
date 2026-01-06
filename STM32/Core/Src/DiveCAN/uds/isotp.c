@@ -44,7 +44,7 @@ void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source, DiveCANType_t target,
     ctx->messageId = messageId;
 
     // State is already ISOTP_IDLE (0) from memset
-    // Callbacks are NULL (caller should set them after Init)
+    // Completion flags are false (caller must poll rxComplete/txComplete)
 }
 
 /**
@@ -57,12 +57,17 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
         return;
     }
 
-    // Preserve addressing and callbacks
+    // Preserve addressing, completion flags, and completed transfer data across reset
     DiveCANType_t source = ctx->source;
     DiveCANType_t target = ctx->target;
     uint32_t messageId = ctx->messageId;
-    void (*rxCallback)(const uint8_t *, uint16_t) = ctx->rxCompleteCallback;
-    void (*txCallback)(void) = ctx->txCompleteCallback;
+    bool rxComplete = ctx->rxComplete;
+    bool txComplete = ctx->txComplete;
+    uint16_t rxDataLength = ctx->rxDataLength;
+    uint8_t rxBuffer[ISOTP_MAX_PAYLOAD];
+    if (rxComplete) {
+        memcpy(rxBuffer, ctx->rxBuffer, rxDataLength);
+    }
 
     // Reset all state
     memset(ctx, 0, sizeof(ISOTPContext_t));
@@ -71,8 +76,12 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
     ctx->source = source;
     ctx->target = target;
     ctx->messageId = messageId;
-    ctx->rxCompleteCallback = rxCallback;
-    ctx->txCompleteCallback = txCallback;
+    ctx->rxComplete = rxComplete;
+    ctx->txComplete = txComplete;
+    ctx->rxDataLength = rxDataLength;
+    if (rxComplete) {
+        memcpy(ctx->rxBuffer, rxBuffer, rxDataLength);
+    }
 }
 
 // /**
@@ -180,11 +189,9 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
     // Copy data to RX buffer
     memcpy(ctx->rxBuffer, &message->data[1], length);
 
-    // Call completion callback
-    if (ctx->rxCompleteCallback != NULL)
-    {
-        ctx->rxCompleteCallback(ctx->rxBuffer, length);
-    }
+    // Set received length and completion flag for caller to check
+    ctx->rxDataLength = length;
+    ctx->rxComplete = true;
 
     // Remain in IDLE state (or reset if we were in another state)
     ctx->state = ISOTP_IDLE;
@@ -275,11 +282,8 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
     // Check if reception complete
     if (ctx->rxBytesReceived >= ctx->rxDataLength)
     {
-        // Call completion callback
-        if (ctx->rxCompleteCallback != NULL)
-        {
-            ctx->rxCompleteCallback(ctx->rxBuffer, ctx->rxDataLength);
-        }
+        // Set completion flag for caller to check
+        ctx->rxComplete = true;
 
         // Return to IDLE
         ISOTP_Reset(ctx);
@@ -324,11 +328,7 @@ static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
         break;
 
     case ISOTP_FC_OVFLW:  // Overflow - receiver rejected
-        // Abort transmission
-        if (ctx->txCompleteCallback != NULL)
-        {
-            ctx->txCompleteCallback();  // Notify caller
-        }
+        // Abort transmission - don't set txComplete flag (transfer failed)
         ISOTP_Reset(ctx);
         break;
 
@@ -391,11 +391,8 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 
         sendCANMessage(sf);
 
-        // Call completion callback immediately
-        if (ctx->txCompleteCallback != NULL)
-        {
-            ctx->txCompleteCallback();
-        }
+        // Set completion flag for caller to check
+        ctx->txComplete = true;
 
         return true;
     }
@@ -480,10 +477,7 @@ static void SendConsecutiveFrames(ISOTPContext_t *ctx)
     }
 
     // Transmission complete
-    if (ctx->txCompleteCallback != NULL)
-    {
-        ctx->txCompleteCallback();
-    }
+    ctx->txComplete = true;
 
     ISOTP_Reset(ctx);
 }

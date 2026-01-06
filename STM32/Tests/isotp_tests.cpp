@@ -58,26 +58,6 @@ void sendCANMessage(const DiveCANMessage_t message)
 
 // NonFatalError_Detail is defined in mockErrors.cpp - don't redefine it here
 
-// Callback state (shared across tests)
-static bool rxCallbackCalled = false;
-static uint8_t rxCallbackDataCopy[ISOTP_MAX_PAYLOAD];  // Copy of received data
-static const uint8_t *rxCallbackData = NULL;
-static uint16_t rxCallbackLength = 0;
-static bool txCallbackCalled = false;
-
-static void rxCallback(const uint8_t *data, uint16_t length)
-{
-    rxCallbackCalled = true;
-    rxCallbackLength = length;
-    memcpy(rxCallbackDataCopy, data, length);
-    rxCallbackData = rxCallbackDataCopy;  // Point to our copy
-}
-
-static void txCallback(void)
-{
-    txCallbackCalled = true;
-}
-
 // Test group
 TEST_GROUP(ISOTP_Basic)
 {
@@ -91,14 +71,6 @@ TEST_GROUP(ISOTP_Basic)
 
         // Initialize context
         ISOTP_Init(&ctx, DIVECAN_SOLO, DIVECAN_CONTROLLER, MENU_ID);
-        ctx.rxCompleteCallback = rxCallback;
-        ctx.txCompleteCallback = txCallback;
-
-        // Reset callback flags
-        rxCallbackCalled = false;
-        rxCallbackData = NULL;
-        rxCallbackLength = 0;
-        txCallbackCalled = false;
 
         // Initialize message
         memset(&message, 0, sizeof(message));
@@ -133,9 +105,9 @@ TEST(ISOTP_Basic, SingleFrameReception)
 
     // Assert
     CHECK_TRUE(consumed);
-    CHECK_TRUE(rxCallbackCalled);
-    CHECK_EQUAL(5, rxCallbackLength);
-    MEMCMP_EQUAL("HELLO", rxCallbackData, 5);
+    CHECK_TRUE(ctx.rxComplete);
+    CHECK_EQUAL(5, ctx.rxDataLength);
+    MEMCMP_EQUAL("HELLO", ctx.rxBuffer, 5);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -159,8 +131,8 @@ TEST(ISOTP_Basic, SingleFrameMaxLength)
 
     // Assert
     CHECK_TRUE(consumed);
-    CHECK_TRUE(rxCallbackCalled);
-    CHECK_EQUAL(7, rxCallbackLength);
+    CHECK_TRUE(ctx.rxComplete);
+    CHECK_EQUAL(7, ctx.rxDataLength);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -184,7 +156,7 @@ TEST(ISOTP_Basic, SingleFrameTransmission)
 
     // Assert
     CHECK_TRUE(result);
-    CHECK_TRUE(txCallbackCalled);
+    CHECK_TRUE(ctx.txComplete);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -216,7 +188,7 @@ TEST(ISOTP_Basic, FirstFrameTriggersFlowControl)
 
     // Assert
     CHECK_TRUE(consumed);
-    CHECK_FALSE(rxCallbackCalled);  // Not complete yet
+    CHECK_FALSE(ctx.rxComplete);  // Not complete yet
     CHECK_EQUAL(ISOTP_RECEIVING, ctx.state);
     CHECK_EQUAL(20, ctx.rxDataLength);
     CHECK_EQUAL(6, ctx.rxBytesReceived);
@@ -256,7 +228,7 @@ TEST(ISOTP_Basic, ConsecutiveFrameAssembly)
     mock().expectOneCall("HAL_GetTick");
     ISOTP_ProcessRxFrame(&ctx, &cf0);
 
-    CHECK_FALSE(rxCallbackCalled);  // Still incomplete
+    CHECK_FALSE(ctx.rxComplete);  // Still incomplete
     CHECK_EQUAL(13, ctx.rxBytesReceived);
 
     // CF #1 (7 more bytes: 13-19, total 20)
@@ -275,15 +247,15 @@ TEST(ISOTP_Basic, ConsecutiveFrameAssembly)
     ISOTP_ProcessRxFrame(&ctx, &cf1);
 
     // Assert
-    CHECK_TRUE(rxCallbackCalled);
-    CHECK_EQUAL(20, rxCallbackLength);
+    CHECK_TRUE(ctx.rxComplete);
+    CHECK_EQUAL(20, ctx.rxDataLength);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 
     // Verify assembled data
     uint8_t expected[20] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                             0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
                             0x10, 0x11, 0x12, 0x13};
-    MEMCMP_EQUAL(expected, rxCallbackData, 20);
+    MEMCMP_EQUAL(expected, ctx.rxBuffer, 20);
 }
 
 /**
@@ -330,7 +302,7 @@ TEST(ISOTP_Basic, IgnoreWrongTarget)
 
     // Assert
     CHECK_FALSE(consumed);  // Not for us
-    CHECK_FALSE(rxCallbackCalled);
+    CHECK_FALSE(ctx.rxComplete);
 }
 
 /**
@@ -348,7 +320,7 @@ TEST(ISOTP_Basic, IgnoreWrongSource)
 
     // Assert
     CHECK_FALSE(consumed);  // Not from expected peer
-    CHECK_FALSE(rxCallbackCalled);
+    CHECK_FALSE(ctx.rxComplete);
 }
 
 /**
@@ -382,7 +354,7 @@ TEST(ISOTP_Basic, SequenceNumberValidation)
     ISOTP_ProcessRxFrame(&ctx, &cf);
 
     // Assert: Reception aborted, returned to IDLE
-    CHECK_FALSE(rxCallbackCalled);  // Callback NOT called due to error
+    CHECK_FALSE(ctx.rxComplete);  // Callback NOT called due to error
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -421,13 +393,13 @@ TEST(ISOTP_Basic, SequenceNumberWrap)
     }
 
     // Assert: Message complete after 18 CFs
-    CHECK_TRUE(rxCallbackCalled);
-    CHECK_EQUAL(128, rxCallbackLength);
+    CHECK_TRUE(ctx.rxComplete);
+    CHECK_EQUAL(128, ctx.rxDataLength);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 
     // Verify sequential data (first few and wrapped sequence bytes)
     for (uint16_t i = 0; i < 128; i++) {
-        CHECK_EQUAL(i & 0xFF, rxCallbackData[i]);
+        CHECK_EQUAL(i & 0xFF, ctx.rxBuffer[i]);
     }
 }
 
@@ -459,7 +431,7 @@ TEST(ISOTP_Basic, FirstFrameSent)
     // Assert
     CHECK_TRUE(result);
     CHECK_EQUAL(ISOTP_WAIT_FC, ctx.state);
-    CHECK_FALSE(txCallbackCalled);  // Not complete yet
+    CHECK_FALSE(ctx.txComplete);  // Not complete yet
 }
 
 /**
@@ -504,7 +476,7 @@ TEST(ISOTP_Basic, FlowControlReceived)
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
     // Assert
-    CHECK_TRUE(txCallbackCalled);
+    CHECK_TRUE(ctx.txComplete);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -540,7 +512,7 @@ TEST(ISOTP_Basic, BlockSizeZeroInfinite)
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
     // Assert: All sent, transmission complete
-    CHECK_TRUE(txCallbackCalled);
+    CHECK_TRUE(ctx.txComplete);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -569,7 +541,7 @@ TEST(ISOTP_Basic, TimeoutOnMissingFC)
 
     // Assert: Timeout detected, reset to IDLE
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
-    CHECK_FALSE(txCallbackCalled);  // No callback on timeout
+    CHECK_FALSE(ctx.txComplete);  // No callback on timeout
 }
 
 /**
@@ -600,7 +572,7 @@ TEST(ISOTP_Basic, TimeoutOnMissingCF)
 
     // Assert: Timeout detected, reset to IDLE
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
-    CHECK_FALSE(rxCallbackCalled);  // No callback on timeout
+    CHECK_FALSE(ctx.rxComplete);  // No callback on timeout
 }
 
 /**
@@ -626,8 +598,8 @@ TEST(ISOTP_Basic, FlowControlOverflow)
 
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
-    // Assert: Transmission aborted, callback still called to notify completion
-    CHECK_TRUE(txCallbackCalled);
+    // Assert: Transmission aborted, txComplete NOT set (transfer failed)
+    CHECK_FALSE(ctx.txComplete);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -663,7 +635,7 @@ TEST(ISOTP_Basic, ShearwaterFCBroadcast)
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
     // Assert: FC accepted despite source=0xFF
-    CHECK_TRUE(txCallbackCalled);
+    CHECK_TRUE(ctx.txComplete);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -699,7 +671,7 @@ TEST(ISOTP_Basic, StandardFCUnicast)
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
     // Assert: FC accepted from expected peer
-    CHECK_TRUE(txCallbackCalled);
+    CHECK_TRUE(ctx.txComplete);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -732,8 +704,8 @@ TEST(ISOTP_Basic, MultiFrameMaxLength)
     }
 
     // Assert: 128-byte message received successfully
-    CHECK_TRUE(rxCallbackCalled);
-    CHECK_EQUAL(128, rxCallbackLength);
+    CHECK_TRUE(ctx.rxComplete);
+    CHECK_EQUAL(128, ctx.rxDataLength);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
 
@@ -776,6 +748,6 @@ TEST(ISOTP_Basic, TransmitLargeMessage)
     ISOTP_ProcessRxFrame(&ctx, &fc);
 
     // Assert
-    CHECK_TRUE(txCallbackCalled);
+    CHECK_TRUE(ctx.txComplete);
     CHECK_EQUAL(ISOTP_IDLE, ctx.state);
 }
