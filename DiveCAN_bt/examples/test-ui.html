@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiveCAN Protocol Test UI</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: #00bcd4;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+
+    h2 {
+      color: #00bcd4;
+      margin-top: 20px;
+      margin-bottom: 10px;
+      font-size: 18px;
+      border-bottom: 2px solid #00bcd4;
+      padding-bottom: 5px;
+    }
+
+    .section {
+      background: #2a2a2a;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      border: 1px solid #3a3a3a;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    button {
+      background: #00bcd4;
+      color: #1a1a1a;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #00acc1;
+    }
+
+    button:disabled {
+      background: #555;
+      color: #888;
+      cursor: not-allowed;
+    }
+
+    button.danger {
+      background: #f44336;
+    }
+
+    button.danger:hover {
+      background: #d32f2f;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 5px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+
+    .status.connected {
+      background: #4caf50;
+      color: white;
+    }
+
+    .status.disconnected {
+      background: #757575;
+      color: white;
+    }
+
+    .status.session {
+      background: #ff9800;
+      color: white;
+      font-size: 12px;
+    }
+
+    input[type="text"] {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      color: #e0e0e0;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 14px;
+      width: 200px;
+    }
+
+    label {
+      display: inline-block;
+      margin-right: 10px;
+      font-weight: bold;
+    }
+
+    .response-box, .log-box {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .log-entry {
+      margin-bottom: 5px;
+      padding: 5px;
+      border-left: 3px solid #00bcd4;
+      padding-left: 8px;
+    }
+
+    .log-entry.error {
+      border-left-color: #f44336;
+      color: #f44336;
+    }
+
+    .log-entry.tx {
+      border-left-color: #4caf50;
+      color: #4caf50;
+    }
+
+    .log-entry.rx {
+      border-left-color: #00bcd4;
+      color: #00bcd4;
+    }
+
+    .log-entry .timestamp {
+      color: #888;
+      font-size: 10px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background: #1a1a1a;
+      border: 1px solid #555;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #00bcd4;
+      transition: width 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1a1a1a;
+      font-weight: bold;
+      font-size: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    @media (max-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+
+    .warning {
+      background: #ff9800;
+      color: #1a1a1a;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>🤿 DiveCAN Protocol Test UI</h1>
+
+  <div class="warning" id="browserWarning" style="display: none;">
+    ⚠️ Web Bluetooth not available. Please use Chrome, Edge, or Opera browser.
+  </div>
+
+  <!-- Connection Section -->
+  <div class="section">
+    <h2>Connection</h2>
+    <div class="button-group">
+      <button id="scanButton">Scan & Connect</button>
+      <button id="disconnectButton" disabled>Disconnect</button>
+      <span class="status disconnected" id="connectionStatus">Disconnected</span>
+      <span class="status session" id="sessionStatus">DEFAULT</span>
+    </div>
+    <div id="deviceInfo" style="margin-top: 10px; font-size: 14px; color: #888;"></div>
+  </div>
+
+  <!-- Session Control -->
+  <div class="section">
+    <h2>Session Control</h2>
+    <div class="button-group">
+      <button id="defaultSession" disabled>Default Session (0x01)</button>
+      <button id="extendedSession" disabled>Extended Diagnostic (0x03)</button>
+      <button id="programmingSession" disabled>Programming Session (0x02)</button>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="section">
+    <h2>Quick Actions</h2>
+    <div class="button-group">
+      <button id="readFwVersion" disabled>Read FW Version</button>
+      <button id="readHwVersion" disabled>Read HW Version</button>
+      <button id="readConfig" disabled>Read Configuration</button>
+      <button id="uploadMemory" disabled>Upload Memory (128 bytes)</button>
+    </div>
+  </div>
+
+  <!-- Raw Command -->
+  <div class="section">
+    <h2>Raw UDS Command</h2>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <label>DID (hex):</label>
+      <input type="text" id="didInput" placeholder="F000" disabled>
+      <button id="sendRawRead" disabled>Send Read</button>
+    </div>
+  </div>
+
+  <!-- Response Display -->
+  <div class="section">
+    <h2>Response</h2>
+    <div class="response-box" id="responseData">No response yet...</div>
+    <div class="progress-bar" id="progressBar" style="display: none;">
+      <div class="progress-fill" id="progressFill" style="width: 0%;">0%</div>
+    </div>
+  </div>
+
+  <!-- Packet Inspector -->
+  <div class="section">
+    <h2>Packet Log</h2>
+    <button id="clearLog" style="margin-bottom: 10px;">Clear Log</button>
+    <div class="log-box" id="packetLog"></div>
+  </div>
+
+  <script type="module">
+    import { DiveCANProtocolStack, DeviceManager, UDSConstants, ByteUtils } from '../src/index.js';
+
+    // Check browser support
+    const checkBrowserSupport = () => {
+      if (!navigator.bluetooth) {
+        document.getElementById('browserWarning').style.display = 'block';
+        return false;
+      }
+      return true;
+    };
+
+    // UI Elements
+    const elements = {
+      scanButton: document.getElementById('scanButton'),
+      disconnectButton: document.getElementById('disconnectButton'),
+      connectionStatus: document.getElementById('connectionStatus'),
+      sessionStatus: document.getElementById('sessionStatus'),
+      deviceInfo: document.getElementById('deviceInfo'),
+      defaultSession: document.getElementById('defaultSession'),
+      extendedSession: document.getElementById('extendedSession'),
+      programmingSession: document.getElementById('programmingSession'),
+      readFwVersion: document.getElementById('readFwVersion'),
+      readHwVersion: document.getElementById('readHwVersion'),
+      readConfig: document.getElementById('readConfig'),
+      uploadMemory: document.getElementById('uploadMemory'),
+      didInput: document.getElementById('didInput'),
+      sendRawRead: document.getElementById('sendRawRead'),
+      responseData: document.getElementById('responseData'),
+      packetLog: document.getElementById('packetLog'),
+      clearLog: document.getElementById('clearLog'),
+      progressBar: document.getElementById('progressBar'),
+      progressFill: document.getElementById('progressFill')
+    };
+
+    // State
+    let stack = null;
+    let deviceManager = null;
+    let currentDevice = null;
+
+    // Logger
+    const log = (message, type = 'debug') => {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+      elements.packetLog.appendChild(entry);
+      elements.packetLog.scrollTop = elements.packetLog.scrollHeight;
+
+      console.log(`[${type}] ${message}`);
+    };
+
+    // Update UI state
+    const updateUIState = (connected) => {
+      elements.scanButton.disabled = connected;
+      elements.disconnectButton.disabled = !connected;
+      elements.defaultSession.disabled = !connected;
+      elements.extendedSession.disabled = !connected;
+      elements.programmingSession.disabled = !connected;
+      elements.readFwVersion.disabled = !connected;
+      elements.readHwVersion.disabled = !connected;
+      elements.readConfig.disabled = !connected;
+      elements.uploadMemory.disabled = !connected;
+      elements.didInput.disabled = !connected;
+      elements.sendRawRead.disabled = !connected;
+
+      if (connected) {
+        elements.connectionStatus.textContent = 'Connected';
+        elements.connectionStatus.className = 'status connected';
+      } else {
+        elements.connectionStatus.textContent = 'Disconnected';
+        elements.connectionStatus.className = 'status disconnected';
+        elements.deviceInfo.textContent = '';
+      }
+    };
+
+    // Update progress bar
+    const updateProgress = (percent) => {
+      if (percent > 0) {
+        elements.progressBar.style.display = 'block';
+        elements.progressFill.style.width = percent + '%';
+        elements.progressFill.textContent = Math.round(percent) + '%';
+      } else {
+        elements.progressBar.style.display = 'none';
+      }
+    };
+
+    // Display response
+    const displayResponse = (data, label = 'Response') => {
+      let formatted;
+      if (typeof data === 'string') {
+        formatted = data;
+      } else if (data instanceof Uint8Array || Array.isArray(data)) {
+        const hex = ByteUtils.toHexString(data);
+        const ascii = Array.from(data)
+          .map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.')
+          .join('');
+        formatted = `${label}:\nHex: ${hex}\nASCII: ${ascii}\nLength: ${data.length} bytes`;
+      } else {
+        formatted = JSON.stringify(data, null, 2);
+      }
+      elements.responseData.textContent = formatted;
+    };
+
+    // Scan and connect
+    elements.scanButton.addEventListener('click', async () => {
+      try {
+        log('Starting device scan...', 'info');
+        deviceManager = new DeviceManager();
+        const devices = await deviceManager.scan();
+
+        if (devices.length === 0) {
+          log('No devices found or scan canceled', 'error');
+          return;
+        }
+
+        currentDevice = devices[0].device;
+        log(`Found device: ${devices[0].name}`, 'info');
+        elements.deviceInfo.textContent = `Device: ${devices[0].name} (${devices[0].id})`;
+
+        // Create stack and connect
+        stack = deviceManager.createStack(currentDevice);
+
+        // Set up event handlers
+        stack.on('connected', () => {
+          log('Protocol stack connected', 'info');
+          updateUIState(true);
+        });
+
+        stack.on('disconnected', () => {
+          log('Protocol stack disconnected', 'info');
+          updateUIState(false);
+        });
+
+        stack.on('frame', ({ layer, frame }) => {
+          log(`TX [${layer}]: ${ByteUtils.toHexString(frame)}`, 'tx');
+        });
+
+        stack.on('data', ({ layer, data }) => {
+          log(`RX [${layer}]: ${ByteUtils.toHexString(data)}`, 'rx');
+        });
+
+        stack.on('error', (error) => {
+          log(`Error: ${error.message}`, 'error');
+          displayResponse(`Error: ${error.message}\n${error.stack || ''}`, 'Error');
+        });
+
+        stack.on('progress', ({ current, total, percent }) => {
+          updateProgress(percent);
+        });
+
+        // Connect
+        log('Connecting to device...', 'info');
+        await stack.connect(currentDevice);
+
+      } catch (error) {
+        log(`Connection failed: ${error.message}`, 'error');
+        displayResponse(`Error: ${error.message}`, 'Error');
+      }
+    });
+
+    // Disconnect
+    elements.disconnectButton.addEventListener('click', async () => {
+      if (stack) {
+        await stack.disconnect();
+        stack = null;
+        currentDevice = null;
+      }
+    });
+
+    // Session control
+    elements.defaultSession.addEventListener('click', async () => {
+      try {
+        log('Starting default session...', 'info');
+        await stack.uds.startSession(UDSConstants.SESSION_DEFAULT);
+        elements.sessionStatus.textContent = 'DEFAULT';
+        displayResponse('Session: DEFAULT', 'Success');
+      } catch (error) {
+        log(`Session change failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    elements.extendedSession.addEventListener('click', async () => {
+      try {
+        log('Starting extended diagnostic session...', 'info');
+        await stack.uds.startSession(UDSConstants.SESSION_EXTENDED_DIAGNOSTIC);
+        elements.sessionStatus.textContent = 'EXTENDED';
+        displayResponse('Session: EXTENDED DIAGNOSTIC', 'Success');
+      } catch (error) {
+        log(`Session change failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    elements.programmingSession.addEventListener('click', async () => {
+      try {
+        log('Starting programming session...', 'info');
+        await stack.uds.startSession(UDSConstants.SESSION_PROGRAMMING);
+        elements.sessionStatus.textContent = 'PROGRAMMING';
+        displayResponse('Session: PROGRAMMING', 'Success');
+      } catch (error) {
+        log(`Session change failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    // Quick actions
+    elements.readFwVersion.addEventListener('click', async () => {
+      try {
+        log('Reading firmware version...', 'info');
+        const version = await stack.readFirmwareVersion();
+        log(`Firmware version: ${version}`, 'info');
+        displayResponse(`Firmware Version: ${version}`, 'Success');
+      } catch (error) {
+        log(`Read failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    elements.readHwVersion.addEventListener('click', async () => {
+      try {
+        log('Reading hardware version...', 'info');
+        const version = await stack.readHardwareVersion();
+        log(`Hardware version: ${version}`, 'info');
+        displayResponse(`Hardware Version: ${version}`, 'Success');
+      } catch (error) {
+        log(`Read failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    elements.readConfig.addEventListener('click', async () => {
+      try {
+        log('Reading configuration...', 'info');
+        const config = await stack.readConfiguration();
+        log(`Configuration: ${ByteUtils.toHexString(config)}`, 'info');
+        displayResponse(config, 'Configuration');
+      } catch (error) {
+        log(`Read failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    elements.uploadMemory.addEventListener('click', async () => {
+      try {
+        log('Uploading memory...', 'info');
+        const memory = await stack.uploadMemory(
+          UDSConstants.MEMORY_CONFIG,
+          128,
+          (current, total) => {
+            log(`Upload progress: ${current}/${total} bytes`, 'info');
+          }
+        );
+        log(`Upload complete: ${memory.length} bytes`, 'info');
+        displayResponse(memory, 'Uploaded Memory');
+        updateProgress(0);
+      } catch (error) {
+        log(`Upload failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+        updateProgress(0);
+      }
+    });
+
+    // Raw command
+    elements.sendRawRead.addEventListener('click', async () => {
+      try {
+        const didHex = elements.didInput.value.trim();
+        if (!didHex) {
+          alert('Please enter a DID');
+          return;
+        }
+
+        const did = parseInt(didHex, 16);
+        if (isNaN(did)) {
+          alert('Invalid DID (must be hex)');
+          return;
+        }
+
+        log(`Reading DID 0x${did.toString(16).padStart(4, '0')}...`, 'info');
+        const data = await stack.uds.readDataByIdentifier(did);
+        log(`Read ${data.length} bytes`, 'info');
+        displayResponse(data, `DID 0x${did.toString(16).padStart(4, '0')}`);
+      } catch (error) {
+        log(`Read failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    // Clear log
+    elements.clearLog.addEventListener('click', () => {
+      elements.packetLog.innerHTML = '';
+    });
+
+    // Initialize
+    if (checkBrowserSupport()) {
+      log('DiveCAN Protocol Test UI ready', 'info');
+      updateUIState(false);
+    }
+  </script>
+</body>
+</html>

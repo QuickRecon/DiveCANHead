@@ -1,0 +1,34 @@
+{
+  "name": "@divecan/protocol",
+  "version": "1.0.0",
+  "description": "Browser-based JavaScript API for DiveCAN protocol over Bluetooth (BLE-SLIP-ISO-TP-UDS)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "python3 -m http.server 8000",
+    "test": "echo \"No tests configured yet\" && exit 0"
+  },
+  "keywords": [
+    "divecan",
+    "bluetooth",
+    "ble",
+    "isotp",
+    "uds",
+    "slip",
+    "rebreather",
+    "dive",
+    "petrel"
+  ],
+  "author": "DiveCAN Project",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/DiveCANHeadRev2.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/DiveCANHeadRev2/issues"
+  },
+  "homepage": "https://github.com/yourusername/DiveCANHeadRev2#readme",
+  "devDependencies": {},
+  "dependencies": {}
+}
