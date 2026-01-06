@@ -5,7 +5,7 @@
 
 import { BLEConnection } from './ble/BLEConnection.js';
 import { SLIPCodec } from './slip/SLIPCodec.js';
-import { DiveCANFramer, TESTER_ADDRESS, CONTROLLER_ADDRESS } from './divecan/DiveCANFramer.js';
+import { DiveCANFramer, TESTER_ADDRESS, CONTROLLER_ADDRESS, SOLO_ADDRESS } from './divecan/DiveCANFramer.js';
 import { ISOTPTransport } from './isotp/ISOTPTransport.js';
 import { UDSClient } from './uds/UDSClient.js';
 import { Logger } from './utils/Logger.js';
@@ -63,11 +63,11 @@ export class DiveCANProtocolStack extends EventEmitter {
     this._slip = new SLIPCodec();
     this._divecan = new DiveCANFramer(
       options.sourceAddress || TESTER_ADDRESS,
-      options.targetAddress || CONTROLLER_ADDRESS
+      options.targetAddress || SOLO_ADDRESS
     );
     this._isotp = new ISOTPTransport(
       options.sourceAddress || TESTER_ADDRESS,
-      options.targetAddress || CONTROLLER_ADDRESS,
+      options.targetAddress || SOLO_ADDRESS,
       options.isotp
     );
     this._uds = new UDSClient(this._isotp, options.uds);
