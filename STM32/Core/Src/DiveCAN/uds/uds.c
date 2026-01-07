@@ -291,7 +291,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
                 ctx->responseBuffer[3 + i] = (uint8_t)(maxValue >> (56 - i * 8));
                 ctx->responseBuffer[11 + i] = (uint8_t)(currentValue >> (56 - i * 8));
             }
-            ctx->responseLength = 19;  // 3 header + 8 max + 8 current
+            ctx->responseLength = 20;  // 3 header + 8 max + 8 current
             UDS_SendResponse(ctx);
             return;
         }
@@ -300,8 +300,8 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
             // SettingLabel: [label string]
             // DID format: 0x9150 + setting_index + (option_index << 4)
             uint16_t offset = did - UDS_DID_SETTING_LABEL_BASE;
-            uint8_t settingIndex = offset & 0x0F;
-            uint8_t optionIndex = (offset >> 4) & 0x0F;
+            uint8_t optionIndex = offset & 0x0F;
+            uint8_t settingIndex = (offset >> 4) & 0x0F;
 
             const char *label = UDS_GetSettingOptionLabel(settingIndex, optionIndex);
             if (label == NULL)

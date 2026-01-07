@@ -14,10 +14,10 @@
 #define BYTE_3_OFFSET 24
 
 // Option labels for selection-type settings
-static const char *FW_CommitOptions[] = {
-    COMMIT_HASH,
-    NULL
-};
+// static const char *FW_CommitOptions[] = {
+//     COMMIT_HASH,
+//     NULL
+// };
 
 static const char* NumericOptions[] = {
     0,
@@ -25,38 +25,38 @@ static const char* NumericOptions[] = {
 
 // Settings definitions array (maps Configuration_t fields to UDS settings)
 static const SettingDefinition_t settings[] = {
-    // Index 0: Cell 1 Type
+    // // Index 0: Cell 1 Type
+    // {
+    //     .label = "FW Commit",
+    //     .kind = SETTING_KIND_TEXT,
+    //     .editable = false,
+    //     .maxValue = 1,
+    //     .options = FW_CommitOptions,
+    //     .optionCount = 1
+    // },
     {
-        .label = "FW Commit",
-        .kind = SETTING_KIND_BOOLEAN,
-        .editable = false,
-        .maxValue = 1,
-        .options = FW_CommitOptions,
-        .optionCount = 1
-    },
-    {
-        .label = "Config 1",
+        .label = "Config 1 ",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .options = NumericOptions,
         .maxValue = 0xFF,
     },
     {
-        .label = "Config 2",
+        .label = "Config 2 ",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .options = NumericOptions,
         .maxValue = 0xFF,
     },
     {
-        .label = "Config 3",
+        .label = "Config 3 ",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .options = NumericOptions,
         .maxValue = 0xFF,
     },
     {
-        .label = "Config 4",
+        .label = "Config 4 ",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .options = NumericOptions,
@@ -64,7 +64,7 @@ static const SettingDefinition_t settings[] = {
     },
 };
 
-#define SETTING_COUNT 5
+#define SETTING_COUNT 4
 
 /**
  * @brief Get total number of settings
@@ -100,11 +100,10 @@ uint64_t UDS_GetSettingValue(uint8_t index, const Configuration_t *config)
 
     switch (index)
     {
-    case 0: return 1;
-    case 1: return (uint8_t)(configBits);
-    case 2: return (uint8_t)(configBits >> BYTE_1_OFFSET);
-    case 3: return (uint8_t)(configBits >> BYTE_2_OFFSET);
-    case 4: return (uint8_t)(configBits >> BYTE_3_OFFSET);
+    case 0: return (uint8_t)(configBits);
+    case 1: return (uint8_t)(configBits >> BYTE_1_OFFSET);
+    case 2: return (uint8_t)(configBits >> BYTE_2_OFFSET);
+    case 3: return (uint8_t)(configBits >> BYTE_3_OFFSET);
     default: return 0;
     }
 }
@@ -168,11 +167,6 @@ const char *UDS_GetSettingOptionLabel(uint8_t settingIndex, uint8_t optionIndex)
     }
 
     const SettingDefinition_t *setting = &settings[settingIndex];
-
-    if (setting->kind != SETTING_KIND_SELECTION && setting->kind != SETTING_KIND_BOOLEAN)
-    {
-        return NULL;
-    }
 
     if (optionIndex >= setting->optionCount)
     {

@@ -34,10 +34,8 @@ typedef enum {
  * @brief Setting types
  */
 typedef enum {
-    SETTING_KIND_SELECTION = 0,  ///< Multiple choice (enum-based)
-    SETTING_KIND_BOOLEAN = 1,    ///< On/off (1-bit)
-    SETTING_KIND_NUMBER = 2,     ///< Numeric value with range
-    SETTING_KIND_TEXT = 3        ///< Read-only text
+    SETTING_KIND_NUMBER = 0,  ///< Multiple choice (enum-based)
+    SETTING_KIND_TEXT = 1,    ///< On/off (1-bit)
 } SettingKind_t;
 
 /**
