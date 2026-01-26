@@ -269,9 +269,6 @@ export class DiveCANProtocolStack extends EventEmitter {
   get transport() { return this._transport; }
   get uds() { return this._uds; }
 
-  // Backwards compatibility
-  get isotp() { return this._transport; }
-
   /**
    * Check if connected
    * @returns {boolean} True if connected
@@ -289,7 +286,6 @@ export class DiveCANProtocolStack extends EventEmitter {
 
     return {
       device: this._ble.deviceInfo,
-      session: this._uds.sessionState,
       transportState: this._transport.state
     };
   }

@@ -1,6 +1,6 @@
 /**
  * UDS (Unified Diagnostic Services) Client
- * Implements UDS diagnostic services over ISO-TP transport
+ * Implements UDS diagnostic services over transport layer
  */
 
 import { ByteUtils } from '../utils/ByteUtils.js';
@@ -48,23 +48,22 @@ class EventEmitter {
 export class UDSClient extends EventEmitter {
   /**
    * Create UDS client
-   * @param {ISOTPTransport} isotpTransport - ISO-TP transport layer
+   * @param {DirectTransport} transport - Transport layer
    * @param {Object} options - Options
    */
-  constructor(isotpTransport, options = {}) {
+  constructor(transport, options = {}) {
     super();
     this.logger = new Logger('UDS', 'debug');
-    this.isotp = isotpTransport;
+    this.transport = transport;
     this.options = options;
 
-    this.currentSession = constants.SESSION_DEFAULT;
     this.pendingRequest = null;
     this.pendingResolve = null;
     this.pendingReject = null;
 
-    // Set up ISO-TP message handler
-    this.isotp.on('message', (data) => this._handleResponse(data));
-    this.isotp.on('error', (error) => {
+    // Set up transport message handler
+    this.transport.on('message', (data) => this._handleResponse(data));
+    this.transport.on('error', (error) => {
       if (this.pendingReject) {
         this.pendingReject(error);
         this.pendingResolve = null;
@@ -108,7 +107,7 @@ export class UDSClient extends EventEmitter {
       }, timeout);
 
       try {
-        await this.isotp.send(requestArray);
+        await this.transport.send(requestArray);
       } catch (error) {
         clearTimeout(timer);
         this.pendingRequest = null;
@@ -178,19 +177,6 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
-   * Start diagnostic session
-   * Service 0x10: DiagnosticSessionControl
-   * @param {number} sessionType - Session type
-   * @returns {Promise<void>}
-   */
-  async startSession(sessionType) {
-    const request = [constants.SID_DIAGNOSTIC_SESSION_CONTROL, sessionType];
-    await this._sendRequest(request);
-    this.currentSession = sessionType;
-    this.logger.info(`Session changed to: ${sessionType}`);
-  }
-
-  /**
    * Read data by identifier
    * Service 0x22: ReadDataByIdentifier
    * @param {number} did - Data identifier
@@ -221,13 +207,6 @@ export class UDSClient extends EventEmitter {
    * @returns {Promise<void>}
    */
   async writeDataByIdentifier(did, data) {
-    // Validate session
-    if (this.currentSession === constants.SESSION_DEFAULT) {
-      throw new UDSError('Write not allowed in default session', constants.SID_WRITE_DATA_BY_ID, null, {
-        requiredSession: 'EXTENDED or PROGRAMMING'
-      });
-    }
-
     const didBytes = ByteUtils.uint16ToBE(did);
     const dataArray = ByteUtils.toUint8Array(data);
     const request = ByteUtils.concat([constants.SID_WRITE_DATA_BY_ID], didBytes, dataArray);
@@ -451,29 +430,6 @@ export class UDSClient extends EventEmitter {
     await this.writeDataByIdentifier(constants.DID_CONFIGURATION_BLOCK, config);
   }
 
-  /**
-   * Get current session state
-   * @returns {number} Current session
-   */
-  get sessionState() {
-    return this.currentSession;
-  }
-
-  /**
-   * Check if in programming session
-   * @returns {boolean} True if in programming session
-   */
-  get isInProgrammingSession() {
-    return this.currentSession === constants.SESSION_PROGRAMMING;
-  }
-
-  /**
-   * Check if in extended diagnostic session
-   * @returns {boolean} True if in extended diagnostic session
-   */
-  get isInExtendedSession() {
-    return this.currentSession === constants.SESSION_EXTENDED_DIAGNOSTIC;
-  }
 }
 
 // Export constants

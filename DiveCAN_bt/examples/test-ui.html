@@ -98,12 +98,6 @@
       color: white;
     }
 
-    .status.session {
-      background: #ff9800;
-      color: white;
-      font-size: 12px;
-    }
-
     input[type="text"] {
       background: #1a1a1a;
       border: 1px solid #555;
@@ -226,19 +220,8 @@
       <button id="scanButton">Scan & Connect</button>
       <button id="disconnectButton" disabled>Disconnect</button>
       <span class="status disconnected" id="connectionStatus">Disconnected</span>
-      <span class="status session" id="sessionStatus">DEFAULT</span>
     </div>
     <div id="deviceInfo" style="margin-top: 10px; font-size: 14px; color: #888;"></div>
-  </div>
-
-  <!-- Session Control -->
-  <div class="section">
-    <h2>Session Control</h2>
-    <div class="button-group">
-      <button id="defaultSession" disabled>Default Session (0x01)</button>
-      <button id="extendedSession" disabled>Extended Diagnostic (0x03)</button>
-      <button id="programmingSession" disabled>Programming Session (0x02)</button>
-    </div>
   </div>
 
   <!-- Quick Actions -->
@@ -295,11 +278,7 @@
       scanButton: document.getElementById('scanButton'),
       disconnectButton: document.getElementById('disconnectButton'),
       connectionStatus: document.getElementById('connectionStatus'),
-      sessionStatus: document.getElementById('sessionStatus'),
       deviceInfo: document.getElementById('deviceInfo'),
-      defaultSession: document.getElementById('defaultSession'),
-      extendedSession: document.getElementById('extendedSession'),
-      programmingSession: document.getElementById('programmingSession'),
       readFwVersion: document.getElementById('readFwVersion'),
       readHwVersion: document.getElementById('readHwVersion'),
       readConfig: document.getElementById('readConfig'),
@@ -334,9 +313,6 @@
     const updateUIState = (connected) => {
       elements.scanButton.disabled = connected;
       elements.disconnectButton.disabled = !connected;
-      elements.defaultSession.disabled = !connected;
-      elements.extendedSession.disabled = !connected;
-      elements.programmingSession.disabled = !connected;
       elements.readFwVersion.disabled = !connected;
       elements.readHwVersion.disabled = !connected;
       elements.readConfig.disabled = !connected;
@@ -445,43 +421,6 @@
         await stack.disconnect();
         stack = null;
         currentDevice = null;
-      }
-    });
-
-    // Session control
-    elements.defaultSession.addEventListener('click', async () => {
-      try {
-        log('Starting default session...', 'info');
-        await stack.uds.startSession(UDSConstants.SESSION_DEFAULT);
-        elements.sessionStatus.textContent = 'DEFAULT';
-        displayResponse('Session: DEFAULT', 'Success');
-      } catch (error) {
-        log(`Session change failed: ${error.message}`, 'error');
-        displayResponse(error.message, 'Error');
-      }
-    });
-
-    elements.extendedSession.addEventListener('click', async () => {
-      try {
-        log('Starting extended diagnostic session...', 'info');
-        await stack.uds.startSession(UDSConstants.SESSION_EXTENDED_DIAGNOSTIC);
-        elements.sessionStatus.textContent = 'EXTENDED';
-        displayResponse('Session: EXTENDED DIAGNOSTIC', 'Success');
-      } catch (error) {
-        log(`Session change failed: ${error.message}`, 'error');
-        displayResponse(error.message, 'Error');
-      }
-    });
-
-    elements.programmingSession.addEventListener('click', async () => {
-      try {
-        log('Starting programming session...', 'info');
-        await stack.uds.startSession(UDSConstants.SESSION_PROGRAMMING);
-        elements.sessionStatus.textContent = 'PROGRAMMING';
-        displayResponse('Session: PROGRAMMING', 'Success');
-      } catch (error) {
-        log(`Session change failed: ${error.message}`, 'error');
-        displayResponse(error.message, 'Error');
       }
     });
 

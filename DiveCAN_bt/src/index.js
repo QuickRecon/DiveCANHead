@@ -12,7 +12,6 @@ export { BLEConnection } from './ble/BLEConnection.js';
 export { SLIPCodec } from './slip/SLIPCodec.js';
 export { DiveCANFramer } from './divecan/DiveCANFramer.js';
 export { DirectTransport } from './transport/DirectTransport.js';
-export { ISOTPTransport } from './isotp/ISOTPTransport.js';
 export { UDSClient } from './uds/UDSClient.js';
 
 // Utilities
@@ -25,7 +24,6 @@ export * from './errors/ProtocolErrors.js';
 
 // Constants
 export * as DiveCANConstants from './divecan/constants.js';
-export * as ISOTPConstants from './isotp/constants.js';
 export * as UDSConstants from './uds/constants.js';
 
 // Version
