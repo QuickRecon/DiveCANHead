@@ -267,7 +267,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
             {
                 labelLen = UDS_MAX_RESPONSE_LENGTH - 7;
             }
-            
+
             memcpy(&ctx->responseBuffer[3], setting->label, labelLen);
             ctx->responseBuffer[labelLen+3] = 0; // Null terminator
             ctx->responseBuffer[labelLen+4] = (uint8_t)setting->kind;
@@ -300,7 +300,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
                 ctx->responseBuffer[3 + i] = (uint8_t)(maxValue >> (56 - i * 8));
                 ctx->responseBuffer[11 + i] = (uint8_t)(currentValue >> (56 - i * 8));
             }
-            ctx->responseLength = 20;  // 3 header + 8 max + 8 current
+            ctx->responseLength = 21;  // 3 header + 8 max + 8 current // THis is higher than needed but for some reason the gateway mode hates 20 bytes
             UDS_SendResponse(ctx);
             return;
         }

@@ -143,7 +143,7 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
     // Check if message is from expected peer (or Shearwater FC broadcast)
     if (msgSource != ctx->target && !isShearwaterFC)
     {
-        return false;  // Not from expected peer
+        ctx->target = msgSource;  // Update target to sender
     }
 
     // Route based on PCI type
