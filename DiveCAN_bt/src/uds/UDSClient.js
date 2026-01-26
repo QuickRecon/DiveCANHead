@@ -411,11 +411,40 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
-   * High-level: Read firmware version
-   * @returns {Promise<string>} Firmware version string
+   * High-level: Read serial number
+   * @returns {Promise<string>} Serial number string
    */
-  async readFirmwareVersion() {
-    const data = await this.readDataByIdentifier(constants.DID_FIRMWARE_VERSION);
+  async readSerialNumber() {
+    const data = await this.readDataByIdentifier(constants.DID_SERIAL_NUMBER);
+    return new TextDecoder().decode(data);
+  }
+
+  /**
+   * High-level: Read model name
+   * @returns {Promise<string>} Model name string
+   */
+  async readModel() {
+    const data = await this.readDataByIdentifier(constants.DID_MODEL);
+    return new TextDecoder().decode(data);
+  }
+
+  /**
+   * High-level: Enumerate devices on the DiveCAN bus
+   * @returns {Promise<Array<number>>} Array of device IDs on the bus
+   */
+  async enumerateBusDevices() {
+    const data = await this.readDataByIdentifier(constants.DID_BUS_DEVICES);
+    return Array.from(data);
+  }
+
+  /**
+   * High-level: Get device name by ID
+   * @param {number} deviceId - Device ID (e.g., 0x01 for NERD, 0x04 for SOLO)
+   * @returns {Promise<string>} Device name
+   */
+  async getDeviceName(deviceId) {
+    const did = constants.DID_DEVICE_NAME_BASE + deviceId;
+    const data = await this.readDataByIdentifier(did);
     return new TextDecoder().decode(data);
   }
 

@@ -228,10 +228,31 @@
   <div class="section">
     <h2>Quick Actions</h2>
     <div class="button-group">
-      <button id="readFwVersion" disabled>Read FW Version</button>
-      <button id="readHwVersion" disabled>Read HW Version</button>
-      <button id="readConfig" disabled>Read Configuration</button>
-      <button id="uploadMemory" disabled>Upload Memory (128 bytes)</button>
+      <button id="readSerial" disabled>Read Serial Number</button>
+      <button id="readModel" disabled>Read Model</button>
+    </div>
+  </div>
+
+  <!-- Bus Enumeration -->
+  <div class="section">
+    <h2>Bus Devices</h2>
+    <div class="button-group">
+      <button id="enumDevices" disabled>Enumerate Devices</button>
+    </div>
+    <div id="deviceList" style="margin-top: 10px; font-family: monospace; font-size: 14px;"></div>
+  </div>
+
+  <!-- Target Selection -->
+  <div class="section">
+    <h2>Target Device</h2>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <select id="targetSelect" disabled style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px; border-radius: 4px; font-size: 14px;">
+        <option value="128">Controller (0x80)</option>
+        <option value="4">SOLO (0x04)</option>
+        <option value="2">HUD (0x02)</option>
+        <option value="1">NERD (0x01)</option>
+      </select>
+      <span id="currentTarget" style="color: #00bcd4; font-weight: bold;">Target: 0x80</span>
     </div>
   </div>
 
@@ -279,10 +300,12 @@
       disconnectButton: document.getElementById('disconnectButton'),
       connectionStatus: document.getElementById('connectionStatus'),
       deviceInfo: document.getElementById('deviceInfo'),
-      readFwVersion: document.getElementById('readFwVersion'),
-      readHwVersion: document.getElementById('readHwVersion'),
-      readConfig: document.getElementById('readConfig'),
-      uploadMemory: document.getElementById('uploadMemory'),
+      readSerial: document.getElementById('readSerial'),
+      readModel: document.getElementById('readModel'),
+      enumDevices: document.getElementById('enumDevices'),
+      deviceList: document.getElementById('deviceList'),
+      targetSelect: document.getElementById('targetSelect'),
+      currentTarget: document.getElementById('currentTarget'),
       didInput: document.getElementById('didInput'),
       sendRawRead: document.getElementById('sendRawRead'),
       responseData: document.getElementById('responseData'),
@@ -313,10 +336,10 @@
     const updateUIState = (connected) => {
       elements.scanButton.disabled = connected;
       elements.disconnectButton.disabled = !connected;
-      elements.readFwVersion.disabled = !connected;
-      elements.readHwVersion.disabled = !connected;
-      elements.readConfig.disabled = !connected;
-      elements.uploadMemory.disabled = !connected;
+      elements.readSerial.disabled = !connected;
+      elements.readModel.disabled = !connected;
+      elements.enumDevices.disabled = !connected;
+      elements.targetSelect.disabled = !connected;
       elements.didInput.disabled = !connected;
       elements.sendRawRead.disabled = !connected;
 
@@ -327,6 +350,7 @@
         elements.connectionStatus.textContent = 'Disconnected';
         elements.connectionStatus.className = 'status disconnected';
         elements.deviceInfo.textContent = '';
+        elements.deviceList.textContent = '';
       }
     };
 
@@ -425,60 +449,64 @@
     });
 
     // Quick actions
-    elements.readFwVersion.addEventListener('click', async () => {
+    elements.readSerial.addEventListener('click', async () => {
       try {
-        log('Reading firmware version...', 'info');
-        const version = await stack.readFirmwareVersion();
-        log(`Firmware version: ${version}`, 'info');
-        displayResponse(`Firmware Version: ${version}`, 'Success');
+        log('Reading serial number...', 'info');
+        const serial = await stack.readSerialNumber();
+        log(`Serial number: ${serial}`, 'info');
+        displayResponse(`Serial Number: ${serial}`, 'Success');
       } catch (error) {
         log(`Read failed: ${error.message}`, 'error');
         displayResponse(error.message, 'Error');
       }
     });
 
-    elements.readHwVersion.addEventListener('click', async () => {
+    elements.readModel.addEventListener('click', async () => {
       try {
-        log('Reading hardware version...', 'info');
-        const version = await stack.readHardwareVersion();
-        log(`Hardware version: ${version}`, 'info');
-        displayResponse(`Hardware Version: ${version}`, 'Success');
+        log('Reading model...', 'info');
+        const model = await stack.readModel();
+        log(`Model: ${model}`, 'info');
+        displayResponse(`Model: ${model}`, 'Success');
       } catch (error) {
         log(`Read failed: ${error.message}`, 'error');
         displayResponse(error.message, 'Error');
       }
     });
 
-    elements.readConfig.addEventListener('click', async () => {
+    // Bus enumeration
+    elements.enumDevices.addEventListener('click', async () => {
       try {
-        log('Reading configuration...', 'info');
-        const config = await stack.readConfiguration();
-        log(`Configuration: ${ByteUtils.toHexString(config)}`, 'info');
-        displayResponse(config, 'Configuration');
-      } catch (error) {
-        log(`Read failed: ${error.message}`, 'error');
-        displayResponse(error.message, 'Error');
-      }
-    });
+        log('Enumerating bus devices...', 'info');
+        const deviceIds = await stack.enumerateBusDevices();
+        log(`Found ${deviceIds.length} device(s): ${deviceIds.map(id => '0x' + id.toString(16).padStart(2, '0')).join(', ')}`, 'info');
 
-    elements.uploadMemory.addEventListener('click', async () => {
-      try {
-        log('Uploading memory...', 'info');
-        const memory = await stack.uploadMemory(
-          UDSConstants.MEMORY_CONFIG,
-          128,
-          (current, total) => {
-            log(`Upload progress: ${current}/${total} bytes`, 'info');
+        // Get names for each device
+        let deviceListHtml = '';
+        for (const id of deviceIds) {
+          try {
+            const name = await stack.getDeviceName(id);
+            deviceListHtml += `<div>0x${id.toString(16).padStart(2, '0')} - ${name}</div>`;
+            log(`Device 0x${id.toString(16).padStart(2, '0')}: ${name}`, 'info');
+          } catch (e) {
+            deviceListHtml += `<div>0x${id.toString(16).padStart(2, '0')} - (unknown)</div>`;
+            log(`Device 0x${id.toString(16).padStart(2, '0')}: failed to get name`, 'error');
           }
-        );
-        log(`Upload complete: ${memory.length} bytes`, 'info');
-        displayResponse(memory, 'Uploaded Memory');
-        updateProgress(0);
+        }
+        elements.deviceList.innerHTML = deviceListHtml || 'No devices found';
+        displayResponse(`Found ${deviceIds.length} device(s)`, 'Success');
       } catch (error) {
-        log(`Upload failed: ${error.message}`, 'error');
+        log(`Enumeration failed: ${error.message}`, 'error');
         displayResponse(error.message, 'Error');
-        updateProgress(0);
+        elements.deviceList.textContent = 'Enumeration failed';
       }
+    });
+
+    // Target selection
+    elements.targetSelect.addEventListener('change', () => {
+      const address = parseInt(elements.targetSelect.value);
+      stack.setTargetAddress(address);
+      elements.currentTarget.textContent = `Target: 0x${address.toString(16).padStart(2, '0')}`;
+      log(`Target changed to 0x${address.toString(16).padStart(2, '0')}`, 'info');
     });
 
     // Raw command

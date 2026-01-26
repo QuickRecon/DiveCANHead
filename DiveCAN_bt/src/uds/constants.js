@@ -34,8 +34,13 @@ export const NRC_GENERAL_PROGRAMMING_FAILURE = 0x72;
 export const NRC_WRONG_BLOCK_SEQUENCE_COUNTER = 0x73;
 export const NRC_REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING = 0x78;
 
-// Data Identifiers (DID)
-export const DID_FIRMWARE_VERSION = 0x8100;
+// Common DIDs (available on all DiveCAN devices)
+export const DID_BUS_DEVICES = 0x8000;      // Returns list of device IDs on bus
+export const DID_SERIAL_NUMBER = 0x8010;    // Device serial number
+export const DID_MODEL = 0x8011;            // Device model name
+export const DID_DEVICE_NAME_BASE = 0x8100; // 0x81XX where XX = device ID
+
+// Device-specific DIDs
 export const DID_HARDWARE_VERSION = 0xF001;
 export const DID_CONFIGURATION_BLOCK = 0xF100;
 export const DID_CELL_VOLTAGES = 0xF200;

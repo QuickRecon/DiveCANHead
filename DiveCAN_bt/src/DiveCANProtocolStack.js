@@ -198,11 +198,53 @@ export class DiveCANProtocolStack extends EventEmitter {
   }
 
   /**
-   * Convenience method: Read firmware version
-   * @returns {Promise<string>} Firmware version
+   * Set target device address for communication
+   * @param {number} address - Target device address (e.g., 0x80 for Controller, 0x04 for SOLO)
    */
-  async readFirmwareVersion() {
-    return await this._uds.readFirmwareVersion();
+  setTargetAddress(address) {
+    this._divecan.targetAddress = address;
+    this.logger.info(`Target address changed to 0x${address.toString(16).padStart(2, '0')}`);
+  }
+
+  /**
+   * Get current target address
+   * @returns {number} Current target address
+   */
+  get targetAddress() {
+    return this._divecan.targetAddress;
+  }
+
+  /**
+   * Convenience method: Read serial number
+   * @returns {Promise<string>} Serial number
+   */
+  async readSerialNumber() {
+    return await this._uds.readSerialNumber();
+  }
+
+  /**
+   * Convenience method: Read model name
+   * @returns {Promise<string>} Model name
+   */
+  async readModel() {
+    return await this._uds.readModel();
+  }
+
+  /**
+   * Convenience method: Enumerate devices on the DiveCAN bus
+   * @returns {Promise<Array<number>>} Array of device IDs
+   */
+  async enumerateBusDevices() {
+    return await this._uds.enumerateBusDevices();
+  }
+
+  /**
+   * Convenience method: Get device name by ID
+   * @param {number} deviceId - Device ID
+   * @returns {Promise<string>} Device name
+   */
+  async getDeviceName(deviceId) {
+    return await this._uds.getDeviceName(deviceId);
   }
 
   /**
