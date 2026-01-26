@@ -1,15 +1,18 @@
 /**
  * DiveCAN Protocol Stack
- * Coordinates all protocol layers: BLE -> SLIP -> DiveCAN -> ISO-TP -> UDS
+ * Coordinates all protocol layers: BLE -> SLIP -> DiveCAN -> UDS
+ *
+ * Note: The Petrel 3 BLE bridge handles ISO-TP internally.
+ * We send raw UDS payloads wrapped in DiveCAN datagrams.
  */
 
 import { BLEConnection } from './ble/BLEConnection.js';
 import { SLIPCodec } from './slip/SLIPCodec.js';
-import { DiveCANFramer, TESTER_ADDRESS, CONTROLLER_ADDRESS, SOLO_ADDRESS } from './divecan/DiveCANFramer.js';
-import { ISOTPTransport } from './isotp/ISOTPTransport.js';
+import { DiveCANFramer, TESTER_ADDRESS, CONTROLLER_ADDRESS } from './divecan/DiveCANFramer.js';
+import { DirectTransport } from './transport/DirectTransport.js';
 import { UDSClient } from './uds/UDSClient.js';
 import { Logger } from './utils/Logger.js';
-import { ProtocolError } from './errors/ProtocolErrors.js';
+import { ByteUtils } from './utils/ByteUtils.js';
 
 /**
  * Simple EventEmitter
@@ -63,14 +66,15 @@ export class DiveCANProtocolStack extends EventEmitter {
     this._slip = new SLIPCodec();
     this._divecan = new DiveCANFramer(
       options.sourceAddress || TESTER_ADDRESS,
-      options.targetAddress || SOLO_ADDRESS
+      options.targetAddress || CONTROLLER_ADDRESS
     );
-    this._isotp = new ISOTPTransport(
+    // Use DirectTransport - Petrel handles ISO-TP
+    this._transport = new DirectTransport(
       options.sourceAddress || TESTER_ADDRESS,
-      options.targetAddress || SOLO_ADDRESS,
-      options.isotp
+      options.targetAddress || CONTROLLER_ADDRESS,
+      options.transport
     );
-    this._uds = new UDSClient(this._isotp, options.uds);
+    this._uds = new UDSClient(this._transport, options.uds);
 
     this._wireUpLayers();
   }
@@ -80,21 +84,26 @@ export class DiveCANProtocolStack extends EventEmitter {
    * @private
    */
   _wireUpLayers() {
-    // BLE -> SLIP -> DiveCAN -> ISO-TP
+    // BLE -> SLIP -> DiveCAN -> Transport -> UDS
     this._ble.on('data', (data) => {
       try {
+        this.logger.debug(`BLE RX: ${ByteUtils.toHexString(data)}`);
+
         // SLIP decode
         const packets = this._slip.decode(data);
 
         for (const packet of packets) {
+          this.logger.debug(`SLIP decoded: ${ByteUtils.toHexString(packet)}`);
+
           // DiveCAN parse
           const datagram = this._divecan.parse(packet);
+          this.logger.debug(`DiveCAN parsed: src=0x${datagram.source.toString(16)}, dst=0x${datagram.target.toString(16)}, payload=${ByteUtils.toHexString(datagram.payload)}`);
 
-          // ISO-TP process
-          this._isotp.processFrame(datagram.payload);
+          // Transport process (passes to UDS)
+          this._transport.processFrame(datagram.payload);
 
           // Emit raw data event
-          this.emit('data', { layer: 'BLE', data });
+          this.emit('data', { layer: 'BLE', data: packet });
         }
       } catch (error) {
         this.logger.error('Error processing received data', error);
@@ -102,20 +111,24 @@ export class DiveCANProtocolStack extends EventEmitter {
       }
     });
 
-    // ISO-TP -> DiveCAN -> SLIP -> BLE
-    this._isotp.on('frame', async (frame) => {
+    // Transport -> DiveCAN -> SLIP -> BLE
+    this._transport.on('frame', async (udsPayload) => {
       try {
-        // DiveCAN frame
-        const datagram = this._divecan.frame(frame);
+        this.logger.debug(`Transport TX: ${ByteUtils.toHexString(udsPayload)}`);
+
+        // DiveCAN frame (wraps UDS payload)
+        const datagram = this._divecan.frame(udsPayload);
+        this.logger.debug(`DiveCAN framed: ${ByteUtils.toHexString(datagram)}`);
 
         // SLIP encode
         const slipData = this._slip.encode(datagram);
+        this.logger.debug(`SLIP encoded: ${ByteUtils.toHexString(slipData)}`);
 
         // BLE write
         await this._ble.write(slipData);
 
         // Emit frame event
-        this.emit('frame', { layer: 'ISO-TP', frame });
+        this.emit('frame', { layer: 'Transport', frame: udsPayload });
       } catch (error) {
         this.logger.error('Error sending frame', error);
         this.emit('error', error);
@@ -134,12 +147,12 @@ export class DiveCANProtocolStack extends EventEmitter {
 
       // Reset layers
       this._slip.reset();
-      this._isotp.reset();
+      this._transport.reset();
     });
 
     // Forward errors from all layers
     this._ble.on('error', (error) => this.emit('error', error));
-    this._isotp.on('error', (error) => this.emit('error', error));
+    this._transport.on('error', (error) => this.emit('error', error));
     this._uds.on('error', (error) => this.emit('error', error));
 
     // Forward UDS events
@@ -253,8 +266,11 @@ export class DiveCANProtocolStack extends EventEmitter {
   get ble() { return this._ble; }
   get slip() { return this._slip; }
   get divecan() { return this._divecan; }
-  get isotp() { return this._isotp; }
+  get transport() { return this._transport; }
   get uds() { return this._uds; }
+
+  // Backwards compatibility
+  get isotp() { return this._transport; }
 
   /**
    * Check if connected
@@ -274,7 +290,7 @@ export class DiveCANProtocolStack extends EventEmitter {
     return {
       device: this._ble.deviceInfo,
       session: this._uds.sessionState,
-      isotpState: this._isotp.state
+      transportState: this._transport.state
     };
   }
 }

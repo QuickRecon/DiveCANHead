@@ -11,6 +11,7 @@ export { DeviceManager } from './DeviceManager.js';
 export { BLEConnection } from './ble/BLEConnection.js';
 export { SLIPCodec } from './slip/SLIPCodec.js';
 export { DiveCANFramer } from './divecan/DiveCANFramer.js';
+export { DirectTransport } from './transport/DirectTransport.js';
 export { ISOTPTransport } from './isotp/ISOTPTransport.js';
 export { UDSClient } from './uds/UDSClient.js';
 
