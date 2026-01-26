@@ -204,6 +204,46 @@
       margin-bottom: 15px;
       font-weight: bold;
     }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid #3a3a3a;
+    }
+
+    .setting-label {
+      flex: 1;
+      font-weight: 500;
+      color: #e0e0e0;
+    }
+
+    .setting-row input {
+      width: 100px;
+      background: #1a1a1a;
+      border: 1px solid #555;
+      color: #e0e0e0;
+      padding: 6px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .setting-row input:disabled {
+      background: #333;
+      color: #888;
+    }
+
+    .setting-row button {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .setting-info {
+      font-size: 11px;
+      color: #888;
+      margin-left: 8px;
+    }
   </style>
 </head>
 <body>
@@ -256,6 +296,15 @@
     </div>
   </div>
 
+  <!-- Device Settings -->
+  <div class="section">
+    <h2>Device Settings</h2>
+    <div class="button-group">
+      <button id="enumSettings" disabled>Enumerate Settings</button>
+    </div>
+    <div id="settingsList" style="margin-top: 10px;"></div>
+  </div>
+
   <!-- Raw Command -->
   <div class="section">
     <h2>Raw UDS Command</h2>
@@ -306,6 +355,8 @@
       deviceList: document.getElementById('deviceList'),
       targetSelect: document.getElementById('targetSelect'),
       currentTarget: document.getElementById('currentTarget'),
+      enumSettings: document.getElementById('enumSettings'),
+      settingsList: document.getElementById('settingsList'),
       didInput: document.getElementById('didInput'),
       sendRawRead: document.getElementById('sendRawRead'),
       responseData: document.getElementById('responseData'),
@@ -340,6 +391,7 @@
       elements.readModel.disabled = !connected;
       elements.enumDevices.disabled = !connected;
       elements.targetSelect.disabled = !connected;
+      elements.enumSettings.disabled = !connected;
       elements.didInput.disabled = !connected;
       elements.sendRawRead.disabled = !connected;
 
@@ -507,7 +559,102 @@
       stack.setTargetAddress(address);
       elements.currentTarget.textContent = `Target: 0x${address.toString(16).padStart(2, '0')}`;
       log(`Target changed to 0x${address.toString(16).padStart(2, '0')}`, 'info');
+      // Clear settings list when target changes
+      elements.settingsList.innerHTML = '';
     });
+
+    // Settings enumeration
+    elements.enumSettings.addEventListener('click', async () => {
+      try {
+        log('Enumerating settings...', 'info');
+        elements.settingsList.innerHTML = '<div style="color: #888;">Loading settings...</div>';
+        const settings = await stack.enumerateSettings();
+        log(`Found ${settings.length} setting(s)`, 'info');
+        displaySettings(settings);
+        displayResponse(`Found ${settings.length} setting(s)`, 'Success');
+      } catch (error) {
+        log(`Settings enumeration failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+        elements.settingsList.innerHTML = '<div style="color: #f44336;">Failed to enumerate settings</div>';
+      }
+    });
+
+    // Display settings with read/write/save controls
+    function displaySettings(settings) {
+      elements.settingsList.innerHTML = '';
+
+      if (settings.length === 0) {
+        elements.settingsList.innerHTML = '<div style="color: #888;">No settings found</div>';
+        return;
+      }
+
+      settings.forEach(setting => {
+        const row = document.createElement('div');
+        row.className = 'setting-row';
+
+        const kindLabel = setting.kind === 0 ? 'NUM' : 'TXT';
+        const editableIcon = setting.editable ? '' : ' (read-only)';
+
+        row.innerHTML = `
+          <span class="setting-label">${setting.label}${editableIcon}</span>
+          <span class="setting-info">[${kindLabel}, max: ${setting.maxValue}]</span>
+          <input type="number"
+                 id="setting-${setting.index}"
+                 value="${setting.currentValue}"
+                 min="0"
+                 max="${setting.maxValue}"
+                 ${setting.editable ? '' : 'disabled'}>
+          <button onclick="readSetting(${setting.index})">Read</button>
+          <button onclick="writeSetting(${setting.index})" ${setting.editable ? '' : 'disabled'}>Write</button>
+          <button onclick="saveSetting(${setting.index})" ${setting.editable ? '' : 'disabled'}>Save</button>
+        `;
+        elements.settingsList.appendChild(row);
+      });
+    }
+
+    // Read single setting value (make global for onclick)
+    window.readSetting = async function(index) {
+      try {
+        log(`Reading setting ${index}...`, 'info');
+        const value = await stack.getSettingValue(index);
+        document.getElementById(`setting-${index}`).value = value.currentValue.toString();
+        log(`Setting ${index}: ${value.currentValue}`, 'info');
+        displayResponse(`Setting ${index}: ${value.currentValue} (max: ${value.maxValue})`, 'Success');
+      } catch (error) {
+        log(`Error reading setting ${index}: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    };
+
+    // Write setting value (temporary, not saved to flash)
+    window.writeSetting = async function(index) {
+      try {
+        const inputValue = document.getElementById(`setting-${index}`).value;
+        const value = BigInt(inputValue);
+        log(`Writing ${value} to setting ${index}...`, 'info');
+        await stack.writeSettingValue(index, value);
+        log(`Written ${value} to setting ${index}`, 'info');
+        displayResponse(`Written ${value} to setting ${index} (not saved to flash)`, 'Success');
+      } catch (error) {
+        log(`Error writing setting ${index}: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    };
+
+    // Save setting to flash (persistent)
+    window.saveSetting = async function(index) {
+      try {
+        const inputValue = document.getElementById(`setting-${index}`).value;
+        const value = BigInt(inputValue);
+        log(`Saving ${value} to setting ${index} (flash)...`, 'info');
+        await stack.saveSetting(index, value);
+        log(`Saved ${value} to setting ${index} (flash)`, 'info');
+        displayResponse(`Saved ${value} to setting ${index} (persisted to flash)`, 'Success');
+      } catch (error) {
+        log(`Error saving setting ${index}: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    };
 
     // Raw command
     elements.sendRawRead.addEventListener('click', async () => {

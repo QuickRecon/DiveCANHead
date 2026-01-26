@@ -141,4 +141,32 @@ export class ByteUtils {
   static beToUint32(bytes) {
     return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
   }
+
+  /**
+   * Convert 8 bytes big-endian to BigInt
+   * @param {Uint8Array|Array} bytes - 8 bytes
+   * @returns {bigint} 64-bit value as BigInt
+   */
+  static beToUint64(bytes) {
+    let result = 0n;
+    for (let i = 0; i < 8; i++) {
+      result = (result << 8n) | BigInt(bytes[i] || 0);
+    }
+    return result;
+  }
+
+  /**
+   * Convert BigInt to 8 bytes big-endian
+   * @param {bigint|number} value - 64-bit value
+   * @returns {Uint8Array} 8 bytes in big-endian
+   */
+  static uint64ToBE(value) {
+    const bytes = new Uint8Array(8);
+    let v = BigInt(value);
+    for (let i = 7; i >= 0; i--) {
+      bytes[i] = Number(v & 0xFFn);
+      v = v >> 8n;
+    }
+    return bytes;
+  }
 }

@@ -52,7 +52,11 @@ export const DID_SETTING_COUNT = 0x9100;
 export const DID_SETTING_INFO_BASE = 0x9110;
 export const DID_SETTING_VALUE_BASE = 0x9130;
 export const DID_SETTING_LABEL_BASE = 0x9150;
-export const DID_SETTING_SAVE = 0x9350;
+export const DID_SETTING_SAVE_BASE = 0x9350;
+
+// Setting kinds
+export const SETTING_KIND_NUMBER = 0;
+export const SETTING_KIND_TEXT = 1;
 
 // Memory addresses (UDS address space)
 export const MEMORY_CONFIG = 0xC2000080;

@@ -304,6 +304,74 @@ export class DiveCANProtocolStack extends EventEmitter {
     await this._uds.downloadMemory(address, data, wrappedCallback);
   }
 
+  // ============================================================
+  // Settings System Convenience Methods
+  // ============================================================
+
+  /**
+   * Convenience method: Get number of settings on target device
+   * @returns {Promise<number>} Setting count
+   */
+  async getSettingCount() {
+    return await this._uds.getSettingCount();
+  }
+
+  /**
+   * Convenience method: Get setting metadata
+   * @param {number} index - Setting index (0-based)
+   * @returns {Promise<{label: string, kind: number, editable: boolean}>}
+   */
+  async getSettingInfo(index) {
+    return await this._uds.getSettingInfo(index);
+  }
+
+  /**
+   * Convenience method: Get setting current and max value
+   * @param {number} index - Setting index (0-based)
+   * @returns {Promise<{maxValue: bigint, currentValue: bigint}>}
+   */
+  async getSettingValue(index) {
+    return await this._uds.getSettingValue(index);
+  }
+
+  /**
+   * Convenience method: Get option label for selection-type setting
+   * @param {number} settingIndex - Setting index
+   * @param {number} optionIndex - Option index
+   * @returns {Promise<string>} Option label
+   */
+  async getSettingOptionLabel(settingIndex, optionIndex) {
+    return await this._uds.getSettingOptionLabel(settingIndex, optionIndex);
+  }
+
+  /**
+   * Convenience method: Write setting value (temporary, not persisted)
+   * @param {number} index - Setting index
+   * @param {bigint|number} value - New value
+   * @returns {Promise<void>}
+   */
+  async writeSettingValue(index, value) {
+    await this._uds.writeSettingValue(index, value);
+  }
+
+  /**
+   * Convenience method: Save setting to flash (persisted)
+   * @param {number} index - Setting index
+   * @param {bigint|number} value - Value to save
+   * @returns {Promise<void>}
+   */
+  async saveSetting(index, value) {
+    await this._uds.saveSetting(index, value);
+  }
+
+  /**
+   * Convenience method: Enumerate all settings on device
+   * @returns {Promise<Array<{index: number, label: string, kind: number, editable: boolean, maxValue: bigint, currentValue: bigint}>>}
+   */
+  async enumerateSettings() {
+    return await this._uds.enumerateSettings();
+  }
+
   // Layer accessors
   get ble() { return this._ble; }
   get slip() { return this._slip; }

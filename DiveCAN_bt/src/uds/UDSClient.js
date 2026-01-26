@@ -62,6 +62,10 @@ export class UDSClient extends EventEmitter {
     this.pendingReject = null;
     this.pendingTimer = null;
 
+    // Inter-request delay (ms) - allows Petrel ISO-TP layer to settle
+    this.requestDelay = options.requestDelay ?? 500;
+    this.lastRequestTime = 0;
+
     // Set up transport message handler
     this.transport.on('message', (data) => this._handleResponse(data));
     this.transport.on('error', (error) => {
@@ -85,6 +89,13 @@ export class UDSClient extends EventEmitter {
   async _sendRequest(request, timeout = 5000) {
     if (this.pendingRequest) {
       throw new UDSError('Request already pending', 0);
+    }
+
+    // Enforce inter-request delay to allow Petrel ISO-TP layer to settle
+    const now = Date.now();
+    const elapsed = now - this.lastRequestTime;
+    if (elapsed < this.requestDelay) {
+      await new Promise(r => setTimeout(r, this.requestDelay - elapsed));
     }
 
     const requestArray = ByteUtils.toUint8Array(request);
@@ -152,6 +163,7 @@ export class UDSClient extends EventEmitter {
         this.pendingTimer = null;
       }
       if (this.pendingReject) {
+        this.lastRequestTime = Date.now();  // Track completion time for inter-request delay
         this.pendingReject(error);
         this.pendingResolve = null;
         this.pendingReject = null;
@@ -169,6 +181,7 @@ export class UDSClient extends EventEmitter {
         this.pendingTimer = null;
       }
       if (this.pendingReject) {
+        this.lastRequestTime = Date.now();  // Track completion time for inter-request delay
         this.pendingReject(new UDSError('Unexpected response SID', sid));
         this.pendingResolve = null;
         this.pendingReject = null;
@@ -184,6 +197,7 @@ export class UDSClient extends EventEmitter {
       this.pendingTimer = null;
     }
     if (this.pendingResolve) {
+      this.lastRequestTime = Date.now();  // Track completion time for inter-request delay
       this.pendingResolve(data);
       this.pendingResolve = null;
       this.pendingReject = null;
@@ -472,6 +486,116 @@ export class UDSClient extends EventEmitter {
    */
   async writeConfiguration(config) {
     await this.writeDataByIdentifier(constants.DID_CONFIGURATION_BLOCK, config);
+  }
+
+  // ============================================================
+  // Settings System Methods
+  // ============================================================
+
+  /**
+   * Get number of settings on target device
+   * @returns {Promise<number>} Setting count
+   */
+  async getSettingCount() {
+    const data = await this.readDataByIdentifier(constants.DID_SETTING_COUNT);
+    return data[0];
+  }
+
+  /**
+   * Get setting metadata
+   * @param {number} index - Setting index (0-based)
+   * @returns {Promise<{label: string, kind: number, editable: boolean}>}
+   */
+  async getSettingInfo(index) {
+    const did = constants.DID_SETTING_INFO_BASE + index;
+    const data = await this.readDataByIdentifier(did);
+
+    // Parse response: [label(N), 0x00, kind(1), editable(1)]
+    const nullIndex = data.indexOf(0);
+    const label = new TextDecoder().decode(data.slice(0, nullIndex));
+    const kind = data[nullIndex + 1];
+    const editable = data[nullIndex + 2] === 1;
+
+    return { label, kind, editable };
+  }
+
+  /**
+   * Get setting current and max value
+   * @param {number} index - Setting index (0-based)
+   * @returns {Promise<{maxValue: bigint, currentValue: bigint}>}
+   */
+  async getSettingValue(index) {
+    const did = constants.DID_SETTING_VALUE_BASE + index;
+    const data = await this.readDataByIdentifier(did);
+
+    // Parse response: [maxValue(8 BE), currentValue(8 BE)]
+    const maxValue = ByteUtils.beToUint64(data.slice(0, 8));
+    const currentValue = ByteUtils.beToUint64(data.slice(8, 16));
+
+    return { maxValue, currentValue };
+  }
+
+  /**
+   * Get option label for selection-type setting
+   * @param {number} settingIndex - Setting index
+   * @param {number} optionIndex - Option index
+   * @returns {Promise<string>} Option label
+   */
+  async getSettingOptionLabel(settingIndex, optionIndex) {
+    const did = constants.DID_SETTING_LABEL_BASE + settingIndex + (optionIndex << 4);
+    const data = await this.readDataByIdentifier(did);
+    return new TextDecoder().decode(data);
+  }
+
+  /**
+   * Write setting value (temporary, not persisted)
+   * @param {number} index - Setting index
+   * @param {bigint|number} value - New value
+   * @returns {Promise<void>}
+   */
+  async writeSettingValue(index, value) {
+    const did = constants.DID_SETTING_VALUE_BASE + index;
+    const valueBytes = ByteUtils.uint64ToBE(BigInt(value));
+    await this.writeDataByIdentifier(did, valueBytes);
+    this.logger.info(`Wrote setting ${index} = ${value}`);
+  }
+
+  /**
+   * Save setting to flash (persisted)
+   * @param {number} index - Setting index
+   * @param {bigint|number} value - Value to save
+   * @returns {Promise<void>}
+   */
+  async saveSetting(index, value) {
+    const did = constants.DID_SETTING_SAVE_BASE + index;
+    const valueBytes = ByteUtils.uint64ToBE(BigInt(value));
+    await this.writeDataByIdentifier(did, valueBytes);
+    this.logger.info(`Saved setting ${index} = ${value} to flash`);
+  }
+
+  /**
+   * Enumerate all settings on device
+   * @returns {Promise<Array<{index: number, label: string, kind: number, editable: boolean, maxValue: bigint, currentValue: bigint}>>}
+   */
+  async enumerateSettings() {
+    const count = await this.getSettingCount();
+    this.logger.info(`Found ${count} settings`);
+    const settings = [];
+
+    for (let i = 0; i < count; i++) {
+      const info = await this.getSettingInfo(i);
+      const value = await this.getSettingValue(i);
+      settings.push({
+        index: i,
+        label: info.label,
+        kind: info.kind,
+        editable: info.editable,
+        maxValue: value.maxValue,
+        currentValue: value.currentValue
+      });
+    }
+
+    return settings;
   }
 
 }
