@@ -216,7 +216,8 @@ static void MK15SolenoidFireTask(void *arg)
 
         /* Do our off time before waiting again */
         (void)osDelay(pdMS_TO_TICKS(off_time));
-        serial_printf("TICK!TOCKGOESTHECLOCK");
+
+        LogPIDState(&(params->pidState), 0, d_setpoint);
 
     } while (RTOS_LOOP_FOREVER);
 }

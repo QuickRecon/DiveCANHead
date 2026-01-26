@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiveCANHead Diagnostics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: #00bcd4;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+
+    h2 {
+      color: #00bcd4;
+      margin-top: 20px;
+      margin-bottom: 10px;
+      font-size: 18px;
+      border-bottom: 2px solid #00bcd4;
+      padding-bottom: 5px;
+    }
+
+    .section {
+      background: #2a2a2a;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      border: 1px solid #3a3a3a;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    button {
+      background: #00bcd4;
+      color: #1a1a1a;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #00acc1;
+    }
+
+    button:disabled {
+      background: #555;
+      color: #888;
+      cursor: not-allowed;
+    }
+
+    button.danger {
+      background: #f44336;
+    }
+
+    button.danger:hover {
+      background: #d32f2f;
+    }
+
+    button.small {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 5px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+
+    .status.connected {
+      background: #4caf50;
+      color: white;
+    }
+
+    .status.disconnected {
+      background: #757575;
+      color: white;
+    }
+
+    .status.streaming {
+      background: #00bcd4;
+      color: #1a1a1a;
+    }
+
+    .log-box {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .log-entry {
+      margin-bottom: 2px;
+      padding: 2px 5px;
+      border-left: 3px solid #00bcd4;
+      padding-left: 8px;
+    }
+
+    .log-entry.error {
+      border-left-color: #f44336;
+      color: #f44336;
+    }
+
+    .log-entry .timestamp {
+      color: #888;
+      font-size: 10px;
+    }
+
+    /* Cell panels grid */
+    .cell-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+    }
+
+    @media (max-width: 900px) {
+      .cell-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .cell-panel {
+      background: #252525;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .cell-header {
+      font-size: 14px;
+      font-weight: bold;
+      color: #888;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #3a3a3a;
+    }
+
+    .cell-header.active {
+      color: #00bcd4;
+    }
+
+    .cell-fields {
+      font-size: 13px;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      border-bottom: 1px solid #333;
+    }
+
+    .field-row:last-child {
+      border-bottom: none;
+    }
+
+    .field-label {
+      color: #888;
+      min-width: 70px;
+    }
+
+    .field-value {
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      min-width: 60px;
+    }
+
+    .field-unit {
+      color: #666;
+      font-size: 11px;
+      min-width: 40px;
+    }
+
+    .field-inactive {
+      color: #555;
+      font-style: italic;
+      padding: 10px 0;
+    }
+
+    .plot-btn {
+      padding: 2px 6px;
+      font-size: 10px;
+      background: #3a3a3a;
+      min-width: 20px;
+    }
+
+    .plot-btn.plot-left {
+      margin-left: auto;
+      color: #00bcd4;
+      border: 1px solid #00bcd4;
+    }
+
+    .plot-btn.plot-left:hover {
+      background: #00bcd4;
+      color: #1a1a1a;
+    }
+
+    .plot-btn.plot-right {
+      color: #4caf50;
+      border: 1px solid #4caf50;
+    }
+
+    .plot-btn.plot-right:hover {
+      background: #4caf50;
+      color: #1a1a1a;
+    }
+
+    /* PID/Consensus section */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+    }
+
+    .summary-item {
+      text-align: center;
+      padding: 10px;
+      background: #252525;
+      border-radius: 5px;
+    }
+
+    .summary-label {
+      color: #888;
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+
+    .summary-value {
+      color: #00bcd4;
+      font-size: 18px;
+      font-weight: bold;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Chart container */
+    .chart-container {
+      position: relative;
+      height: 300px;
+      background: #1a1a1a;
+      border-radius: 5px;
+      padding: 10px;
+    }
+
+    .chart-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .chart-controls label {
+      color: #888;
+      font-size: 13px;
+    }
+
+    .chart-controls select {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      color: #e0e0e0;
+      padding: 5px 10px;
+      border-radius: 4px;
+    }
+
+    /* Stats bar */
+    .stats-bar {
+      display: flex;
+      gap: 20px;
+      font-size: 13px;
+      color: #888;
+    }
+
+    .stats-bar span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .stats-bar .value {
+      color: #00bcd4;
+      font-family: 'Courier New', monospace;
+    }
+
+    .warning {
+      background: #ff9800;
+      color: #1a1a1a;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>DiveCANHead Diagnostics</h1>
+
+  <div class="warning" id="browserWarning" style="display: none;">
+    Web Bluetooth not available. Please use Chrome, Edge, or Opera browser.
+  </div>
+
+  <!-- Connection Section -->
+  <div class="section">
+    <h2>Connection</h2>
+    <div class="button-group">
+      <button id="scanButton">Scan & Connect</button>
+      <button id="disconnectButton" disabled>Disconnect</button>
+      <span class="status disconnected" id="connectionStatus">Disconnected</span>
+    </div>
+    <div id="deviceInfo" style="margin-top: 10px; font-size: 14px; color: #888;"></div>
+  </div>
+
+  <!-- Stream Status -->
+  <div class="section">
+    <h2>Stream Status</h2>
+    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+      <span class="status disconnected" id="streamStatus">Inactive</span>
+      <div class="stats-bar">
+        <span>Events: <span class="value" id="eventCount">0</span></span>
+        <span>Rate: <span class="value" id="eventRate">--</span> events/s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cell Panels -->
+  <div class="section">
+    <h2>Oxygen Cells</h2>
+    <div class="cell-grid">
+      <div class="cell-panel" id="cell-panel-0">
+        <div class="cell-header">Cell 0: --</div>
+        <div class="cell-fields">
+          <div class="field-inactive">(No data)</div>
+        </div>
+      </div>
+      <div class="cell-panel" id="cell-panel-1">
+        <div class="cell-header">Cell 1: --</div>
+        <div class="cell-fields">
+          <div class="field-inactive">(No data)</div>
+        </div>
+      </div>
+      <div class="cell-panel" id="cell-panel-2">
+        <div class="cell-header">Cell 2: --</div>
+        <div class="cell-fields">
+          <div class="field-inactive">(No data)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PID / Consensus Summary -->
+  <div class="section">
+    <h2>Controller State</h2>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="summary-label">Setpoint</div>
+        <div class="summary-value" id="summary-setpoint">--</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Consensus PPO2</div>
+        <div class="summary-value" id="summary-consensus">--</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Duty Cycle</div>
+        <div class="summary-value" id="summary-dutyCycle">--</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Integral</div>
+        <div class="summary-value" id="summary-integral">--</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Saturation</div>
+        <div class="summary-value" id="summary-saturation">--</div>
+      </div>
+    </div>
+    <div style="margin-top: 10px; display: flex; gap: 15px; flex-wrap: wrap;">
+      <span>
+        Duty Cycle:
+        <button class="small plot-left" onclick="plotToLeftAxis('PID.dutyCycle', 'Duty Cycle')">L</button>
+        <button class="small plot-right" onclick="plotToRightAxis('PID.dutyCycle', 'Duty Cycle')">R</button>
+      </span>
+      <span>
+        Consensus:
+        <button class="small plot-left" onclick="plotToLeftAxis('PPO2STATE.consensus', 'Consensus')">L</button>
+        <button class="small plot-right" onclick="plotToRightAxis('PPO2STATE.consensus', 'Consensus')">R</button>
+      </span>
+      <span>
+        Setpoint:
+        <button class="small plot-left" onclick="plotToLeftAxis('PID.setpoint', 'Setpoint')">L</button>
+        <button class="small plot-right" onclick="plotToRightAxis('PID.setpoint', 'Setpoint')">R</button>
+      </span>
+      <span>
+        Integral:
+        <button class="small plot-left" onclick="plotToLeftAxis('PID.integralState', 'Integral')">L</button>
+        <button class="small plot-right" onclick="plotToRightAxis('PID.integralState', 'Integral')">R</button>
+      </span>
+    </div>
+  </div>
+
+  <!-- Real-Time Plot -->
+  <div class="section">
+    <h2>Real-Time Plot</h2>
+    <div class="chart-controls">
+      <label style="color: #00bcd4;">Left Axis:</label>
+      <span id="leftAxisLabel" style="color: #00bcd4; min-width: 100px;">--</span>
+      <button class="small" onclick="clearLeftAxis()">Clear</button>
+      <span style="margin: 0 10px; color: #555;">|</span>
+      <label style="color: #4caf50;">Right Axis:</label>
+      <span id="rightAxisLabel" style="color: #4caf50; min-width: 100px;">--</span>
+      <button class="small" onclick="clearRightAxis()">Clear</button>
+    </div>
+    <div class="chart-controls">
+      <label>Window:</label>
+      <select id="windowSelect" onchange="setPlotWindow(this.value)">
+        <option value="30">30 seconds</option>
+        <option value="60" selected>60 seconds</option>
+        <option value="120">2 minutes</option>
+        <option value="300">5 minutes</option>
+      </select>
+      <button class="small" onclick="clearPlot()">Clear All</button>
+    </div>
+    <div class="chart-container">
+      <canvas id="realtimeChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Log Messages -->
+  <div class="section">
+    <h2>Log Messages</h2>
+    <button class="small" id="clearLogMessages" style="margin-bottom: 10px;">Clear</button>
+    <div class="log-box" id="logMessages"></div>
+  </div>
+
+  <script type="module">
+    import { DiveCANProtocolStack, DeviceManager, ByteUtils } from '../src/index.js';
+    import { EventParser } from '../src/diagnostics/EventParser.js';
+    import { DataStore } from '../src/diagnostics/DataStore.js';
+    import { PlotManager } from '../src/diagnostics/PlotManager.js';
+    import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
+
+    // Check browser support
+    const checkBrowserSupport = () => {
+      if (!navigator.bluetooth) {
+        document.getElementById('browserWarning').style.display = 'block';
+        return false;
+      }
+      return true;
+    };
+
+    // State
+    let stack = null;
+    let deviceManager = null;
+    let dataStore = new DataStore(1000, 300); // 1000 points, 5 min max age
+    let plotManager = null;
+    let cellUIAdapter = null;
+    let eventCount = 0;
+    let eventTimes = [];
+
+    // UI Elements
+    const elements = {
+      scanButton: document.getElementById('scanButton'),
+      disconnectButton: document.getElementById('disconnectButton'),
+      connectionStatus: document.getElementById('connectionStatus'),
+      deviceInfo: document.getElementById('deviceInfo'),
+      streamStatus: document.getElementById('streamStatus'),
+      eventCount: document.getElementById('eventCount'),
+      eventRate: document.getElementById('eventRate'),
+      logMessages: document.getElementById('logMessages'),
+      clearLogMessages: document.getElementById('clearLogMessages'),
+      leftAxisLabel: document.getElementById('leftAxisLabel'),
+      rightAxisLabel: document.getElementById('rightAxisLabel'),
+      summarySetpoint: document.getElementById('summary-setpoint'),
+      summaryConsensus: document.getElementById('summary-consensus'),
+      summaryDutyCycle: document.getElementById('summary-dutyCycle'),
+      summaryIntegral: document.getElementById('summary-integral'),
+      summarySaturation: document.getElementById('summary-saturation')
+    };
+
+    // Initialize plot manager
+    plotManager = new PlotManager('realtimeChart', {
+      updateInterval: 100,
+      windowSize: 60
+    });
+    plotManager.init(Chart);
+    plotManager.setDataStore(dataStore);
+    plotManager.start();
+
+    // Initialize cell UI adapter with separate left/right axis callbacks
+    cellUIAdapter = new CellUIAdapter(
+      dataStore,
+      (seriesKey, label) => plotToLeftAxis(seriesKey, label),
+      (seriesKey, label) => plotToRightAxis(seriesKey, label)
+    );
+    cellUIAdapter.initPlotButtons();
+
+    // Update UI state
+    const updateUIState = (connected) => {
+      elements.scanButton.disabled = connected;
+      elements.disconnectButton.disabled = !connected;
+
+      if (connected) {
+        elements.connectionStatus.textContent = 'Connected';
+        elements.connectionStatus.className = 'status connected';
+      } else {
+        elements.connectionStatus.textContent = 'Disconnected';
+        elements.connectionStatus.className = 'status disconnected';
+        elements.deviceInfo.textContent = '';
+        elements.streamStatus.textContent = 'Inactive';
+        elements.streamStatus.className = 'status disconnected';
+      }
+    };
+
+    // Update stream status
+    const updateStreamStatus = (active) => {
+      if (active) {
+        elements.streamStatus.textContent = 'Streaming';
+        elements.streamStatus.className = 'status streaming';
+      } else {
+        elements.streamStatus.textContent = 'Inactive';
+        elements.streamStatus.className = 'status disconnected';
+      }
+    };
+
+    // Add to log messages (text logs only)
+    const addToLogMessages = (message) => {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.textContent = message;
+      elements.logMessages.appendChild(entry);
+
+      // Keep only last 500 entries
+      while (elements.logMessages.children.length > 500) {
+        elements.logMessages.removeChild(elements.logMessages.firstChild);
+      }
+
+      elements.logMessages.scrollTop = elements.logMessages.scrollHeight;
+    };
+
+    // Update event rate
+    const updateEventRate = () => {
+      const now = Date.now();
+      eventTimes.push(now);
+
+      // Keep only events from last second
+      eventTimes = eventTimes.filter(t => now - t < 1000);
+
+      elements.eventCount.textContent = eventCount;
+      elements.eventRate.textContent = eventTimes.length.toFixed(0);
+    };
+
+    // Update summary values
+    const updateSummary = () => {
+      const pid = dataStore.getLatestEvent('PID');
+      const ppo2state = dataStore.getLatestEvent('PPO2STATE');
+
+      if (pid) {
+        elements.summarySetpoint.textContent = pid.setpoint.toFixed(2);
+        elements.summaryDutyCycle.textContent = (pid.dutyCycle * 100).toFixed(1) + '%';
+        elements.summaryIntegral.textContent = pid.integralState.toFixed(4);
+        elements.summarySaturation.textContent = pid.saturationCount;
+      }
+
+      if (ppo2state) {
+        elements.summaryConsensus.textContent = ppo2state.consensus.toFixed(3);
+      }
+    };
+
+    // Current axis selection mode: 'left' or 'right'
+    let currentAxisTarget = 'left';
+
+    // Plot a series - adds to left axis by default, or right if left is occupied
+    window.plotSeries = (seriesKey, label) => {
+      // If left axis is empty, use it; otherwise use right axis
+      if (!plotManager.getLeftAxisKey()) {
+        plotManager.setLeftAxis(seriesKey, label);
+        elements.leftAxisLabel.textContent = label || seriesKey;
+      } else if (!plotManager.getRightAxisKey()) {
+        plotManager.setRightAxis(seriesKey, label);
+        elements.rightAxisLabel.textContent = label || seriesKey;
+      } else {
+        // Both axes occupied - replace left axis
+        plotManager.setLeftAxis(seriesKey, label);
+        elements.leftAxisLabel.textContent = label || seriesKey;
+      }
+    };
+
+    // Plot to specific axis
+    window.plotToLeftAxis = (seriesKey, label) => {
+      plotManager.setLeftAxis(seriesKey, label);
+      elements.leftAxisLabel.textContent = label || seriesKey;
+    };
+
+    window.plotToRightAxis = (seriesKey, label) => {
+      plotManager.setRightAxis(seriesKey, label);
+      elements.rightAxisLabel.textContent = label || seriesKey;
+    };
+
+    // Clear individual axes
+    window.clearLeftAxis = () => {
+      plotManager.setLeftAxis(null);
+      elements.leftAxisLabel.textContent = '--';
+    };
+
+    window.clearRightAxis = () => {
+      plotManager.setRightAxis(null);
+      elements.rightAxisLabel.textContent = '--';
+    };
+
+    // Set plot window
+    window.setPlotWindow = (seconds) => {
+      plotManager.setWindowSize(parseInt(seconds, 10));
+    };
+
+    // Clear plot
+    window.clearPlot = () => {
+      plotManager.clearSeries();
+      elements.leftAxisLabel.textContent = '--';
+      elements.rightAxisLabel.textContent = '--';
+    };
+
+    // Scan and connect
+    elements.scanButton.addEventListener('click', async () => {
+      try {
+        deviceManager = new DeviceManager();
+        const devices = await deviceManager.scan();
+
+        if (devices.length === 0) {
+          return;
+        }
+
+        const currentDevice = devices[0].device;
+        elements.deviceInfo.textContent = `Device: ${devices[0].name}`;
+
+        // Create stack and connect
+        stack = deviceManager.createStack(currentDevice);
+
+        // Set up event handlers
+        stack.on('connected', async () => {
+          updateUIState(true);
+
+          // Set target to SOLO (0x04)
+          stack.setTargetAddress(0x04);
+
+          // Auto-enable log streaming
+          try {
+            await stack.enableLogStreaming();
+            updateStreamStatus(true);
+          } catch (error) {
+            console.error('Failed to enable log streaming:', error);
+          }
+        });
+
+        stack.on('disconnected', () => {
+          updateUIState(false);
+          updateStreamStatus(false);
+        });
+
+        stack.on('error', (error) => {
+          console.error('Stack error:', error);
+        });
+
+        // Handle event messages (structured CSV data - for parsing only, not displayed)
+        stack.on('eventMessage', (message) => {
+          eventCount++;
+          updateEventRate();
+
+          // Parse and store
+          const event = EventParser.parse(message);
+          if (event) {
+            dataStore.addEvent(event);
+            cellUIAdapter.update();
+            updateSummary();
+          }
+        });
+
+        // Handle log messages (text logs - displayed in log box)
+        stack.on('logMessage', (message) => {
+          addToLogMessages(message);
+        });
+
+        // Connect
+        await stack.connect(currentDevice);
+
+      } catch (error) {
+        console.error('Connection failed:', error);
+      }
+    });
+
+    // Disconnect
+    elements.disconnectButton.addEventListener('click', async () => {
+      if (stack) {
+        try {
+          await stack.disableLogStreaming();
+        } catch (e) {
+          // Ignore errors on disconnect
+        }
+        await stack.disconnect();
+        stack = null;
+      }
+    });
+
+    // Clear log messages
+    elements.clearLogMessages.addEventListener('click', () => {
+      elements.logMessages.innerHTML = '';
+    });
+
+    // Periodic UI update for cell values
+    setInterval(() => {
+      cellUIAdapter.update();
+      updateSummary();
+    }, 200);
+
+    // Initialize
+    if (checkBrowserSupport()) {
+      updateUIState(false);
+    }
+  </script>
+</body>
+</html>

@@ -603,7 +603,7 @@ void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumer
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2STATE,%d,%d,%f,%d,%f,%d,%f,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, c1_included, c2_included, (Numeric_t)c1, c3_included, (Numeric_t)c2, c3_included, (Numeric_t)c3, (Numeric_t)consensus);
+    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2STATE,%d,%f,%d,%f,%d,%f,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, c1_included, (Numeric_t)c1, c2_included, (Numeric_t)c2, c3_included, (Numeric_t)c3, (Numeric_t)consensus);
     if (printedChars > LOG_LINE_LENGTH)
     {
         printedChars = LOG_LINE_LENGTH;
