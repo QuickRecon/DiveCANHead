@@ -465,11 +465,14 @@
   </div>
 
   <script type="module">
-    import { DiveCANProtocolStack, DeviceManager, ByteUtils } from '../src/index.js';
+    import { DiveCANProtocolStack, DeviceManager, ByteUtils, Logger } from '../src/index.js';
     import { EventParser } from '../src/diagnostics/EventParser.js';
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
+
+    // Reduce logging to improve performance - only show warnings and errors
+    Logger.setGlobalLevel('warn');
 
     // Check browser support
     const checkBrowserSupport = () => {

@@ -224,17 +224,11 @@ export class PlotManager {
   _updateChart() {
     if (!this.dataStore || this.activeSeries.length === 0) return;
 
+    // First pass: find the latest timestamp across all series
     let latestTimestamp = 0;
-
     for (let i = 0; i < this.activeSeries.length; i++) {
       const series = this.activeSeries[i];
       const data = this.dataStore.getSeries(series.key);
-
-      this.chart.data.datasets[i].data = data.map(p => ({
-        x: p.timestamp,
-        y: p.value
-      }));
-
       if (data.length > 0) {
         const seriesLatest = data[data.length - 1].timestamp;
         if (seriesLatest > latestTimestamp) {
@@ -243,9 +237,25 @@ export class PlotManager {
       }
     }
 
-    // Auto-scale X axis to show window
+    // Calculate window bounds
+    const windowMin = latestTimestamp - this.windowSize;
+
+    // Second pass: filter data to only include points within the window
+    for (let i = 0; i < this.activeSeries.length; i++) {
+      const series = this.activeSeries[i];
+      const data = this.dataStore.getSeries(series.key);
+
+      // Filter to only points within the visible window
+      const filteredData = data
+        .filter(p => p.timestamp >= windowMin)
+        .map(p => ({ x: p.timestamp, y: p.value }));
+
+      this.chart.data.datasets[i].data = filteredData;
+    }
+
+    // Set X axis bounds
     if (latestTimestamp > 0) {
-      this.chart.options.scales.x.min = latestTimestamp - this.windowSize;
+      this.chart.options.scales.x.min = windowMin;
       this.chart.options.scales.x.max = latestTimestamp;
     }
 
