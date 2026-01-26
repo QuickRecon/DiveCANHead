@@ -331,6 +331,30 @@
     <div class="log-box" id="packetLog"></div>
   </div>
 
+  <!-- Log Streaming Section -->
+  <div class="section">
+    <h2>Log Streaming</h2>
+    <div class="button-group">
+      <button id="toggleLogStream" disabled>Enable Log Stream</button>
+      <span id="logStreamStatus" class="status disconnected">Disabled</span>
+    </div>
+  </div>
+
+  <!-- Log Messages Grid -->
+  <div class="grid">
+    <div class="section">
+      <h2>Debug Log (0xA100)</h2>
+      <button id="clearLogMessages" style="margin-bottom: 10px;">Clear</button>
+      <div class="log-box" id="logMessages" style="max-height: 200px;"></div>
+    </div>
+
+    <div class="section">
+      <h2>Event Data (0xA200)</h2>
+      <button id="clearEventMessages" style="margin-bottom: 10px;">Clear</button>
+      <div class="log-box" id="eventMessages" style="max-height: 200px;"></div>
+    </div>
+  </div>
+
   <script type="module">
     import { DiveCANProtocolStack, DeviceManager, UDSConstants, ByteUtils } from '../src/index.js';
 
@@ -363,13 +387,20 @@
       packetLog: document.getElementById('packetLog'),
       clearLog: document.getElementById('clearLog'),
       progressBar: document.getElementById('progressBar'),
-      progressFill: document.getElementById('progressFill')
+      progressFill: document.getElementById('progressFill'),
+      toggleLogStream: document.getElementById('toggleLogStream'),
+      logStreamStatus: document.getElementById('logStreamStatus'),
+      logMessages: document.getElementById('logMessages'),
+      eventMessages: document.getElementById('eventMessages'),
+      clearLogMessages: document.getElementById('clearLogMessages'),
+      clearEventMessages: document.getElementById('clearEventMessages')
     };
 
     // State
     let stack = null;
     let deviceManager = null;
     let currentDevice = null;
+    let logStreamEnabled = false;
 
     // Logger
     const log = (message, type = 'debug') => {
@@ -394,6 +425,7 @@
       elements.enumSettings.disabled = !connected;
       elements.didInput.disabled = !connected;
       elements.sendRawRead.disabled = !connected;
+      elements.toggleLogStream.disabled = !connected;
 
       if (connected) {
         elements.connectionStatus.textContent = 'Connected';
@@ -403,6 +435,10 @@
         elements.connectionStatus.className = 'status disconnected';
         elements.deviceInfo.textContent = '';
         elements.deviceList.textContent = '';
+        logStreamEnabled = false;
+        elements.logStreamStatus.textContent = 'Disabled';
+        elements.logStreamStatus.className = 'status disconnected';
+        elements.toggleLogStream.textContent = 'Enable Log Stream';
       }
     };
 
@@ -479,6 +515,26 @@
 
         stack.on('progress', ({ current, total, percent }) => {
           updateProgress(percent);
+        });
+
+        // Log message listener
+        stack.on('logMessage', (message) => {
+          const timestamp = new Date().toLocaleTimeString();
+          const entry = document.createElement('div');
+          entry.className = 'log-entry';
+          entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+          elements.logMessages.appendChild(entry);
+          elements.logMessages.scrollTop = elements.logMessages.scrollHeight;
+        });
+
+        // Event message listener
+        stack.on('eventMessage', (message) => {
+          const timestamp = new Date().toLocaleTimeString();
+          const entry = document.createElement('div');
+          entry.className = 'log-entry rx';
+          entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+          elements.eventMessages.appendChild(entry);
+          elements.eventMessages.scrollTop = elements.eventMessages.scrollHeight;
         });
 
         // Connect
@@ -684,6 +740,42 @@
     // Clear log
     elements.clearLog.addEventListener('click', () => {
       elements.packetLog.innerHTML = '';
+    });
+
+    // Log streaming toggle
+    elements.toggleLogStream.addEventListener('click', async () => {
+      try {
+        if (logStreamEnabled) {
+          log('Disabling log streaming...', 'info');
+          await stack.disableLogStreaming();
+          logStreamEnabled = false;
+          elements.toggleLogStream.textContent = 'Enable Log Stream';
+          elements.logStreamStatus.textContent = 'Disabled';
+          elements.logStreamStatus.className = 'status disconnected';
+          log('Log streaming disabled', 'info');
+        } else {
+          log('Enabling log streaming...', 'info');
+          await stack.enableLogStreaming();
+          logStreamEnabled = true;
+          elements.toggleLogStream.textContent = 'Disable Log Stream';
+          elements.logStreamStatus.textContent = 'Enabled';
+          elements.logStreamStatus.className = 'status connected';
+          log('Log streaming enabled', 'info');
+        }
+      } catch (error) {
+        log(`Log stream toggle failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    // Clear log messages
+    elements.clearLogMessages.addEventListener('click', () => {
+      elements.logMessages.innerHTML = '';
+    });
+
+    // Clear event messages
+    elements.clearEventMessages.addEventListener('click', () => {
+      elements.eventMessages.innerHTML = '';
     });
 
     // Initialize

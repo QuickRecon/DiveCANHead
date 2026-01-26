@@ -158,6 +158,11 @@ export class DiveCANProtocolStack extends EventEmitter {
     // Forward UDS events
     this._uds.on('response', (response) => this.emit('udsResponse', response));
     this._uds.on('negativeResponse', (nrc) => this.emit('udsNegativeResponse', nrc));
+
+    // Forward log streaming events
+    this._uds.on('logMessage', (message) => this.emit('logMessage', message));
+    this._uds.on('eventMessage', (message) => this.emit('eventMessage', message));
+    this._uds.on('unsolicitedMessage', (data) => this.emit('unsolicitedMessage', data));
   }
 
   /**
@@ -370,6 +375,34 @@ export class DiveCANProtocolStack extends EventEmitter {
    */
   async enumerateSettings() {
     return await this._uds.enumerateSettings();
+  }
+
+  // ============================================================
+  // Log Streaming Convenience Methods
+  // ============================================================
+
+  /**
+   * Enable log streaming from ECU
+   * @returns {Promise<void>}
+   */
+  async enableLogStreaming() {
+    await this._uds.enableLogStreaming();
+  }
+
+  /**
+   * Disable log streaming from ECU
+   * @returns {Promise<void>}
+   */
+  async disableLogStreaming() {
+    await this._uds.disableLogStreaming();
+  }
+
+  /**
+   * Check if log streaming is enabled
+   * @returns {Promise<boolean>}
+   */
+  async isLogStreamingEnabled() {
+    return await this._uds.isLogStreamingEnabled();
   }
 
   // Layer accessors

@@ -137,15 +137,21 @@ export class UDSClient extends EventEmitter {
    * @private
    */
   _handleResponse(data) {
-    if (!this.pendingRequest) {
-      this.logger.warn('Received response but no pending request');
-    }
-
     const sid = data[0];
 
     this.logger.debug(`UDS response: SID=0x${sid.toString(16).padStart(2, '0')}`, {
       response: ByteUtils.toHexString(data)
     });
+
+    // Check for unsolicited WDBI (push from ECU) - handle BEFORE checking pending
+    if (sid === constants.SID_WRITE_DATA_BY_ID) {
+      this._handleUnsolicitedWDBI(data);
+      return;  // Don't process as response
+    }
+
+    if (!this.pendingRequest) {
+      this.logger.warn('Received response but no pending request');
+    }
 
     // Check for negative response
     if (sid === constants.SID_NEGATIVE_RESPONSE) {
@@ -189,14 +195,7 @@ export class UDSClient extends EventEmitter {
         }
         return;
       }
-    } else { // Unprovoked message, Broadcast from HEAD?
-      if(data[1] == 0xa1) { // LOG broadcast message
-        const decoder = new TextDecoder('utf-8')
-        console.log(`HEAD message: ${decoder.decode(data.slice(3))}`);
-      }
     }
-
-
 
     this.emit('response', data);
 
@@ -210,6 +209,28 @@ export class UDSClient extends EventEmitter {
       this.pendingResolve = null;
       this.pendingReject = null;
       this.pendingRequest = null;
+    }
+  }
+
+  /**
+   * Handle unsolicited WDBI messages (push from ECU)
+   * @param {Uint8Array} data - Raw message [SID, DID_hi, DID_lo, payload...]
+   * @private
+   */
+  _handleUnsolicitedWDBI(data) {
+    const did = ByteUtils.beToUint16(data.slice(1, 3));
+    const payload = data.slice(3);
+
+    this.logger.debug(`Unsolicited WDBI: DID=0x${did.toString(16).padStart(4, '0')}`);
+
+    if (did === constants.DID_LOG_MESSAGE) {
+      const message = new TextDecoder('utf-8').decode(payload);
+      this.emit('logMessage', message);
+    } else if (did === constants.DID_EVENT_MESSAGE) {
+      const message = new TextDecoder('utf-8').decode(payload);
+      this.emit('eventMessage', message);
+    } else {
+      this.emit('unsolicitedMessage', { did, payload });
     }
   }
 
@@ -604,6 +625,37 @@ export class UDSClient extends EventEmitter {
     }
 
     return settings;
+  }
+
+  // ============================================================
+  // Log Streaming Methods
+  // ============================================================
+
+  /**
+   * Enable log streaming from ECU
+   * @returns {Promise<void>}
+   */
+  async enableLogStreaming() {
+    await this.writeDataByIdentifier(constants.DID_LOG_STREAM_ENABLE, [0x01]);
+    this.logger.info('Log streaming enabled');
+  }
+
+  /**
+   * Disable log streaming from ECU
+   * @returns {Promise<void>}
+   */
+  async disableLogStreaming() {
+    await this.writeDataByIdentifier(constants.DID_LOG_STREAM_ENABLE, [0x00]);
+    this.logger.info('Log streaming disabled');
+  }
+
+  /**
+   * Check if log streaming is enabled
+   * @returns {Promise<boolean>}
+   */
+  async isLogStreamingEnabled() {
+    const data = await this.readDataByIdentifier(constants.DID_LOG_STREAM_ENABLE);
+    return data[0] !== 0;
   }
 
 }

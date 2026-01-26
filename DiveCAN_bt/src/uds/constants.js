@@ -47,6 +47,11 @@ export const DID_CELL_VOLTAGES = 0xF200;
 export const DID_PPO2_VALUES = 0xF201;
 export const DID_ERROR_STATUS = 0xF300;
 
+// Log streaming DIDs (0xAxxx range)
+export const DID_LOG_STREAM_ENABLE = 0xA000;  // Read/Write: enable log push (1 byte)
+export const DID_LOG_MESSAGE = 0xA100;         // Push: log message (ECU -> Tester)
+export const DID_EVENT_MESSAGE = 0xA200;       // Push: event message (ECU -> Tester)
+
 // Settings DIDs
 export const DID_SETTING_COUNT = 0x9100;
 export const DID_SETTING_INFO_BASE = 0x9110;

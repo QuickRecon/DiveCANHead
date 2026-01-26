@@ -435,8 +435,8 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
     }
     if ((printedChars > 0))
     {
-        /* Send to the UDS stack */
-        (void)UDS_LogPush_SendEventMessage(enQueueItem.string, printedChars);
+        /* Send to the UDS stack - low priority cell sample */
+        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_LOW);
 
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
@@ -466,8 +466,8 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
     }
     if ((printedChars > 0))
     {
-        /* Send to the UDS stack */
-        (void)UDS_LogPush_SendEventMessage(enQueueItem.string, printedChars);
+        /* Send to the UDS stack - low priority cell sample */
+        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_LOW);
 
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
@@ -497,8 +497,8 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     }
     if ((printedChars > 0))
     {
-        /* Send to the UDS stack */
-        (void)UDS_LogPush_SendEventMessage(enQueueItem.string, printedChars);
+        /* Send to the UDS stack - low priority cell sample */
+        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_LOW);
 
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
@@ -572,21 +572,21 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
-    if ((pid_state != NULL) && logRunning())
+    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PID,%f,%d,%f,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, (Numeric_t)pid_state->integralState, pid_state->saturationCount, (Numeric_t)dutyCycle, (Numeric_t)setpoint);
+    if (printedChars > LOG_LINE_LENGTH)
     {
+        printedChars = LOG_LINE_LENGTH;
+        NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
+    }
+    if ((printedChars > 0))
+    {
+        /* Send to the UDS stack - high priority state message */
+        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_HIGH);
 
-        timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
-        /* Cast doubles to floats for printing */
-        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PID,%f,%d,%f,%f\r\n", timestamp, logMsgIndex, (Numeric_t)pid_state->integralState, pid_state->saturationCount, (Numeric_t)dutyCycle, (Numeric_t)setpoint);
-        if (strLen > 0)
+        /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+        if (logRunning() &&
+            (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
         {
-            /* High priority, clear old items to make room */
-            if (0 == osMessageQueueGetSpace(*(getQueueHandle())))
-            {
-                LogQueue_t logItem = {0};
-                (void)osMessageQueueGet(*(getQueueHandle()), &logItem, NULL, TIMEOUT_4S_TICKS);
-            }
             (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
             ++logMsgIndex;
         }
@@ -603,13 +603,18 @@ void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumer
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
-    if (logRunning())
+    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2STATE,%d,%d,%f,%d,%f,%d,%f,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, c1_included, c2_included, (Numeric_t)c1, c3_included, (Numeric_t)c2, c3_included, (Numeric_t)c3, (Numeric_t)consensus);
+    if (printedChars > LOG_LINE_LENGTH)
     {
-        timestamp_t timestamp = (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq();
-        /* Cast doubles to floats for printing */
-        uint8_t strLen = (uint8_t)snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2,%d,%f,%d,%f,%d,%f,%f\r\n", timestamp, logMsgIndex, c1_included, (Numeric_t)c1, c2_included, (Numeric_t)c2, c3_included, (Numeric_t)c3, consensus);
-        if (strLen > 0)
+        printedChars = LOG_LINE_LENGTH;
+        NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
+    }
+    if ((printedChars > 0))
+    {
+        /* Send to the UDS stack - high priority state message */
+        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_HIGH);
+
+        if (logRunning())
         {
             /* High priority, clear old items to make room */
             if (0 == osMessageQueueGetSpace(*(getQueueHandle())))

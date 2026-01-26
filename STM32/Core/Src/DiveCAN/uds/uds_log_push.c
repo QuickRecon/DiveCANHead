@@ -3,11 +3,13 @@
  * @brief UDS log message push implementation
  *
  * Implements push-based log streaming from ECU to bluetooth client.
+ * Uses a message queue to avoid blocking calling tasks.
  */
 
 #include "uds_log_push.h"
 #include "uds.h"
 #include "../Transciever.h"
+#include "cmsis_os.h"
 #include <string.h>
 
 /* Tester address (bluetooth client) */
@@ -15,6 +17,29 @@
 
 /* WDBI frame header size: SID (1) + DID (2) */
 #define WDBI_HEADER_SIZE 3U
+
+/* Queue configuration */
+#define UDS_LOG_QUEUE_LENGTH 8U
+
+/**
+ * @brief Message type for queue items
+ */
+typedef enum
+{
+    UDS_LOG_TYPE_LOG = 0,
+    UDS_LOG_TYPE_EVENT = 1
+} UDSLogType_t;
+
+/**
+ * @brief Queue item structure
+ */
+typedef struct
+{
+    UDSLogType_t type;
+    UDSLogPriority_t priority;
+    uint16_t length;
+    uint8_t data[UDS_LOG_MAX_PAYLOAD];
+} UDSLogQueueItem_t;
 
 /**
  * @brief Module state structure (file scope, static allocation per NASA rules)
@@ -26,7 +51,12 @@ static struct
     uint8_t errorCount;                                       /**< Consecutive error counter */
     bool txPending;                                           /**< TX in progress flag */
     uint8_t txBuffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE]; /**< WDBI frame buffer */
+    osMessageQueueId_t queueHandle;                           /**< Message queue handle */
 } logPushState = {0};
+
+/* Static allocation for queue (per NASA rules - no heap) */
+static uint8_t logPushQueueStorage[UDS_LOG_QUEUE_LENGTH * sizeof(UDSLogQueueItem_t)];
+static StaticQueue_t logPushQueueControlBlock;
 
 void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
 {
@@ -39,6 +69,17 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
     logPushState.enabled = false; /* Default: disabled */
     logPushState.errorCount = 0;
     logPushState.txPending = false;
+
+    /* Create message queue with static allocation */
+    const osMessageQueueAttr_t queueAttr = {
+        .name = "UDSLogQueue",
+        .cb_mem = &logPushQueueControlBlock,
+        .cb_size = sizeof(logPushQueueControlBlock),
+        .mq_mem = logPushQueueStorage,
+        .mq_size = sizeof(logPushQueueStorage)};
+    logPushState.queueHandle = osMessageQueueNew(UDS_LOG_QUEUE_LENGTH,
+                                                  sizeof(UDSLogQueueItem_t),
+                                                  &queueAttr);
 
     /* Initialize ISO-TP context for push (SOLO -> Tester)
      * Source is SOLO (0x04), Target is Tester (0xFF) */
@@ -62,12 +103,12 @@ void UDS_LogPush_SetEnabled(bool enable)
 bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
 {
     /* Check preconditions */
-    // if (!logPushState.enabled)
-    // {
-    //     return false;
-    // }
+    if (!logPushState.enabled)
+    {
+        return false;
+    }
 
-    if (logPushState.isotpContext == NULL)
+    if (logPushState.queueHandle == NULL)
     {
         return false;
     }
@@ -77,62 +118,45 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
         return false;
     }
 
-    /* Check if previous TX still pending - drop message rather than block */
-    while (logPushState.txPending)
+    /* Prepare queue item - log messages are always high priority */
+    UDSLogQueueItem_t item = {0};
+    item.type = UDS_LOG_TYPE_LOG;
+    item.priority = UDS_LOG_PRIORITY_HIGH;
+    item.length = length;
+    if (item.length > UDS_LOG_MAX_PAYLOAD)
     {
-        osDelay(1);
+        item.length = UDS_LOG_MAX_PAYLOAD;
+    }
+    (void)memcpy(item.data, message, item.length);
+
+    /* Check if queue is full - high priority drops front item to make room */
+    if (osMessageQueueGetSpace(logPushState.queueHandle) == 0)
+    {
+        UDSLogQueueItem_t discardItem;
+        (void)osMessageQueueGet(logPushState.queueHandle, &discardItem, NULL, 0);
     }
 
-    /* Check if ISO-TP is idle */
-    if (logPushState.isotpContext->state != ISOTP_IDLE)
-    {
-        return false;
-    }
+    /* Enqueue with high priority */
+    osStatus_t status = osMessageQueuePut(logPushState.queueHandle, &item, (uint8_t)UDS_LOG_PRIORITY_HIGH, 0);
 
-    /* Truncate if necessary */
-    uint16_t payloadLen = length + 1;
-    if (payloadLen > UDS_LOG_MAX_PAYLOAD)
-    {
-        payloadLen = UDS_LOG_MAX_PAYLOAD;
-    }
-
-    /* Build WDBI frame: [SID, DID_high, DID_low, data...] */
-    logPushState.txBuffer[0] = UDS_SID_WRITE_DATA_BY_ID;
-    logPushState.txBuffer[1] = (uint8_t)(UDS_DID_LOG_MESSAGE >> 8);
-    logPushState.txBuffer[2] = (uint8_t)(UDS_DID_LOG_MESSAGE & 0xFFU);
-    (void)memcpy(&logPushState.txBuffer[WDBI_HEADER_SIZE], message, payloadLen);
-
-    /* Send via ISO-TP */
-    bool sent = ISOTP_Send(logPushState.isotpContext,
-                           logPushState.txBuffer,
-                           WDBI_HEADER_SIZE + payloadLen);
-
-    if (sent)
-    {
-        logPushState.txPending = true;
-    }
-    else
-    {
-        /* Increment error counter */
-        logPushState.errorCount++;
-        if (logPushState.errorCount >= UDS_LOG_ERROR_THRESHOLD)
-        {
-            logPushState.enabled = false; /* Auto-disable */
-        }
-    }
-
-    return sent;
+    return (status == osOK);
 }
 
 bool UDS_LogPush_SendEventMessage(const char *message, uint16_t length)
 {
-    /* Check preconditions */
-    // if (!logPushState.enabled)
-    // {
-    //     return false;
-    // }
+    /* Default to low priority for backwards compatibility */
+    return UDS_LogPush_SendEventMessagePrio(message, length, UDS_LOG_PRIORITY_LOW);
+}
 
-    if (logPushState.isotpContext == NULL)
+bool UDS_LogPush_SendEventMessagePrio(const char *message, uint16_t length, UDSLogPriority_t priority)
+{
+    /* Check preconditions */
+    if (!logPushState.enabled)
+    {
+        return false;
+    }
+
+    if (logPushState.queueHandle == NULL)
     {
         return false;
     }
@@ -142,49 +166,67 @@ bool UDS_LogPush_SendEventMessage(const char *message, uint16_t length)
         return false;
     }
 
-    /* Check if previous TX still pending - drop message rather than block */
-    while (logPushState.txPending)
+    /* Prepare queue item */
+    UDSLogQueueItem_t item = {0};
+    item.type = UDS_LOG_TYPE_EVENT;
+    item.priority = priority;
+    item.length = length;
+    if (item.length > UDS_LOG_MAX_PAYLOAD)
     {
-        osDelay(1);
+        item.length = UDS_LOG_MAX_PAYLOAD;
+    }
+    (void)memcpy(item.data, message, item.length);
+
+    /* Check if queue is full */
+    if (osMessageQueueGetSpace(logPushState.queueHandle) == 0)
+    {
+        if (priority == UDS_LOG_PRIORITY_HIGH)
+        {
+            /* High priority: drop a low priority message to make room */
+            UDSLogQueueItem_t discardItem;
+            (void)osMessageQueueGet(logPushState.queueHandle, &discardItem, NULL, 0);
+            /* Note: We drop whatever is at the front. A more sophisticated
+             * approach would scan for low priority items, but that's not
+             * supported by the CMSIS queue API without significant overhead. */
+        }
+        else
+        {
+            /* Low priority and queue full: drop this message */
+            return false;
+        }
     }
 
-    /* Check if ISO-TP is idle */
-    if (logPushState.isotpContext->state != ISOTP_IDLE)
-    {
-        return false;
-    }
+    /* Enqueue with priority (higher value = higher priority in CMSIS-RTOS2) */
+    osStatus_t status = osMessageQueuePut(logPushState.queueHandle, &item, (uint8_t)priority, 0);
 
-    /* Truncate if necessary */
-    uint16_t payloadLen = length + 1;
-    if (payloadLen > UDS_LOG_MAX_PAYLOAD)
+    return (status == osOK);
+}
+
+/**
+ * @brief Internal function to send a queued item via ISO-TP
+ */
+static bool sendQueuedItem(const UDSLogQueueItem_t *item)
+{
+    uint16_t did;
+    if (item->type == UDS_LOG_TYPE_LOG)
     {
-        payloadLen = UDS_LOG_MAX_PAYLOAD;
+        did = UDS_DID_LOG_MESSAGE;
+    }
+    else
+    {
+        did = UDS_DID_EVENT_MESSAGE;
     }
 
     /* Build WDBI frame: [SID, DID_high, DID_low, data...] */
     logPushState.txBuffer[0] = UDS_SID_WRITE_DATA_BY_ID;
-    logPushState.txBuffer[1] = (uint8_t)(UDS_DID_EVENT_MESSAGE >> 8);
-    logPushState.txBuffer[2] = (uint8_t)(UDS_DID_EVENT_MESSAGE & 0xFFU);
-    (void)memcpy(&logPushState.txBuffer[WDBI_HEADER_SIZE], message, payloadLen);
+    logPushState.txBuffer[1] = (uint8_t)(did >> 8);
+    logPushState.txBuffer[2] = (uint8_t)(did & 0xFFU);
+    (void)memcpy(&logPushState.txBuffer[WDBI_HEADER_SIZE], item->data, item->length);
 
     /* Send via ISO-TP */
     bool sent = ISOTP_Send(logPushState.isotpContext,
                            logPushState.txBuffer,
-                           WDBI_HEADER_SIZE + payloadLen);
-
-    if (sent)
-    {
-        logPushState.txPending = true;
-    }
-    else
-    {
-        /* Increment error counter */
-        logPushState.errorCount++;
-        if (logPushState.errorCount >= UDS_LOG_ERROR_THRESHOLD)
-        {
-            logPushState.enabled = false; /* Auto-disable */
-        }
-    }
+                           WDBI_HEADER_SIZE + item->length);
 
     return sent;
 }
@@ -196,29 +238,72 @@ void UDS_LogPush_Poll(void)
         return;
     }
 
-    if (!logPushState.txPending)
+    if (logPushState.queueHandle == NULL)
     {
         return;
     }
 
-    /* Check for TX completion */
-    if (logPushState.isotpContext->txComplete)
+    /* If TX is pending, check for completion */
+    if (logPushState.txPending)
     {
-        logPushState.txPending = false;
-        logPushState.isotpContext->txComplete = false;
-        logPushState.errorCount = 0; /* Reset on success */
-        return;
-    }
-
-    /* Check for timeout/failure (ISO-TP returned to IDLE without completing) */
-    if (logPushState.isotpContext->state == ISOTP_IDLE)
-    {
-        /* TX failed (timeout or error) */
-        logPushState.txPending = false;
-        logPushState.errorCount++;
-        if (logPushState.errorCount >= UDS_LOG_ERROR_THRESHOLD)
+        /* Check for TX completion */
+        if (logPushState.isotpContext->txComplete)
         {
-            logPushState.enabled = false; /* Auto-disable */
+            logPushState.txPending = false;
+            logPushState.isotpContext->txComplete = false;
+            logPushState.errorCount = 0; /* Reset on success */
+        }
+        /* Check for timeout/failure (ISO-TP returned to IDLE without completing) */
+        else if (logPushState.isotpContext->state == ISOTP_IDLE)
+        {
+            /* TX failed (timeout or error) */
+            logPushState.txPending = false;
+            logPushState.errorCount++;
+            if (logPushState.errorCount >= UDS_LOG_ERROR_THRESHOLD)
+            {
+                logPushState.enabled = false; /* Auto-disable */
+            }
+        }
+        else
+        {
+            /* TX still in progress, nothing to do */
+            return;
+        }
+    }
+
+    /* If not enabled, drain queue without sending */
+    if (!logPushState.enabled)
+    {
+        UDSLogQueueItem_t item;
+        while (osMessageQueueGet(logPushState.queueHandle, &item, NULL, 0) == osOK)
+        {
+            /* Discard */
+        }
+        return;
+    }
+
+    /* Check if ISO-TP is ready for new transmission */
+    if (logPushState.isotpContext->state != ISOTP_IDLE)
+    {
+        return;
+    }
+
+    /* Try to dequeue and send next message */
+    UDSLogQueueItem_t item;
+    if (osMessageQueueGet(logPushState.queueHandle, &item, NULL, 0) == osOK)
+    {
+        if (sendQueuedItem(&item))
+        {
+            logPushState.txPending = true;
+        }
+        else
+        {
+            /* Send failed, increment error counter */
+            logPushState.errorCount++;
+            if (logPushState.errorCount >= UDS_LOG_ERROR_THRESHOLD)
+            {
+                logPushState.enabled = false; /* Auto-disable */
+            }
         }
     }
 }

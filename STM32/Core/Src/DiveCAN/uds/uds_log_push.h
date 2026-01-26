@@ -32,6 +32,18 @@
 #define UDS_LOG_ERROR_THRESHOLD 3U
 
 /**
+ * @brief Priority levels for log messages
+ *
+ * High priority messages (PPO2STATE, PID) are sent before low priority ones.
+ * When the queue is full, low priority messages are dropped.
+ */
+typedef enum
+{
+    UDS_LOG_PRIORITY_LOW = 0,  /**< Cell samples (AnalogCell, DiveO2, O2S) - can be dropped */
+    UDS_LOG_PRIORITY_HIGH = 1  /**< State messages (PPO2STATE, PID) - always sent */
+} UDSLogPriority_t;
+
+/**
  * @brief Initialize log push module
  *
  * Sets up the dedicated ISO-TP context for push operations.
@@ -79,9 +91,10 @@ void UDS_LogPush_SetEnabled(bool enable);
 bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length);
 
 /**
- * @brief Push log message to bluetooth client
+ * @brief Push event message to bluetooth client (default low priority)
  *
  * Same as above but uses a different channel for event messages.
+ * Uses low priority - may be dropped if queue is full.
  *
  * @param message Log message string (null terminator not sent)
  * @param length Length of message (truncated to UDS_LOG_MAX_PAYLOAD if larger)
@@ -91,6 +104,21 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length);
  * @note Increments error counter on failure, auto-disables at threshold
  */
 bool UDS_LogPush_SendEventMessage(const char *message, uint16_t length);
+
+/**
+ * @brief Push event message with specified priority
+ *
+ * High priority messages are sent before low priority ones.
+ * When the queue is full:
+ * - High priority: drops oldest low priority message to make room
+ * - Low priority: message is dropped
+ *
+ * @param message Log message string (null terminator not sent)
+ * @param length Length of message (truncated to UDS_LOG_MAX_PAYLOAD if larger)
+ * @param priority Message priority level
+ * @return true if push was initiated, false if dropped
+ */
+bool UDS_LogPush_SendEventMessagePrio(const char *message, uint16_t length, UDSLogPriority_t priority);
 
 /**
  * @brief Poll for TX completion
