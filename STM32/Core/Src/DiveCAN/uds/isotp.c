@@ -221,7 +221,7 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
     // Reset RX state
     ctx->rxDataLength = dataLength;
     ctx->rxBytesReceived = 0;
-    ctx->rxSequenceNumber = 0;  // Expecting CF with seq=0
+    ctx->rxSequenceNumber = 1;  // Expecting CF with seq=1 (per ISO 15765-2)
 
     // Copy first 6 data bytes (bytes 2-7 of CAN frame)
     uint8_t firstFrameBytes = 6;

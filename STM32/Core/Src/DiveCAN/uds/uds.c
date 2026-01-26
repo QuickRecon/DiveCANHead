@@ -343,15 +343,8 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         return;
     }
 
-    // Check session - writing requires extended or programming session
-    if (ctx->sessionState == UDS_SESSION_STATE_DEFAULT)
-    {
-        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
-        return;
-    }
-
     // Extract DID (big-endian)
-    uint16_t did = (requestData[1] << 8) | requestData[2];
+    uint16_t did = (requestData[2] << 8) | requestData[3];
 
     // Dispatch based on DID
     switch (did)
@@ -385,35 +378,62 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         break;
     }
 
-    case UDS_DID_SETTING_SAVE:
-    {
-        // Save configuration to flash
-        // No data payload needed - just trigger save
-        extern HW_Version_t get_hardware_version(void);
-        HW_Version_t hw_ver = get_hardware_version();
-
-        if (!saveConfiguration(ctx->configuration, hw_ver))
+    default:
+        // Check if DID is in setting save range (0x9350 + index)
+        // This is the primary save mechanism - handset sends value with this DID to update and persist
+        if (did >= UDS_DID_SETTING_SAVE_BASE && did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))
         {
-            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_GENERAL_PROGRAMMING_FAILURE);
+            uint8_t index = did - UDS_DID_SETTING_SAVE_BASE;
+            const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
+
+            // Check if setting exists and is editable
+            if (setting == NULL || !setting->editable)
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+                return;
+            }
+
+            // Extract value from message data (starts at requestData[4] after pad+SID+DID)
+            // Value format depends on message length
+            uint64_t value = 0;
+            uint16_t dataLen = requestLength - 4;  // Subtract pad(1) + SID(1) + DID(2)
+            for (uint16_t i = 0; i < dataLen && i < 8; i++)
+            {
+                value = (value << 8) | requestData[4 + i];
+            }
+
+            // Update setting in memory
+            if (!UDS_SetSettingValue(index, value, ctx->configuration))
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+                return;
+            }
+
+            // Save to flash
+            extern HW_Version_t get_hardware_version(void);
+            HW_Version_t hw_ver = get_hardware_version();
+
+            if (!saveConfiguration(ctx->configuration, hw_ver))
+            {
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_GENERAL_PROGRAMMING_FAILURE);
+                return;
+            }
+
+            // Build positive response
+            ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+            ctx->responseBuffer[1] = requestData[2];  // DID high
+            ctx->responseBuffer[2] = requestData[3];  // DID low
+            ctx->responseLength = 3;
+
+            UDS_SendResponse(ctx);
             return;
         }
 
-        // Build positive response
-        ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[1] = requestData[1];
-        ctx->responseBuffer[2] = requestData[2];
-        ctx->responseLength = 3;
-
-        UDS_SendResponse(ctx);
-        break;
-    }
-
-    default:
-        // Check if DID is in settings value range
+        // Check if DID is in settings value range (0x9130 + index) - update without save
         if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
         {
             // Write setting value: expect 8-byte big-endian u64
-            if (requestLength != 11)  // SID + DID(2) + value(8)
+            if (requestLength != 12)  // pad(1) + SID(1) + DID(2) + value(8)
             {
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
                 return;
@@ -425,7 +445,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             uint64_t value = 0;
             for (int i = 0; i < 8; i++)
             {
-                value = (value << 8) | requestData[3 + i];
+                value = (value << 8) | requestData[4 + i];
             }
 
             // Update setting
@@ -437,8 +457,8 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
             // Build positive response
             ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[1] = requestData[1];
-            ctx->responseBuffer[2] = requestData[2];
+            ctx->responseBuffer[1] = requestData[2];  // DID high
+            ctx->responseBuffer[2] = requestData[3];  // DID low
             ctx->responseLength = 3;
 
             UDS_SendResponse(ctx);

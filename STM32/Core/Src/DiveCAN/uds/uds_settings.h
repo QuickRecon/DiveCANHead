@@ -27,7 +27,7 @@ typedef enum {
     UDS_DID_SETTING_INFO_BASE   = 0x9110,  ///< Read: setting metadata (0x9110 + setting_index)
     UDS_DID_SETTING_VALUE_BASE  = 0x9130,  ///< Read/Write: setting value (0x9130 + setting_index)
     UDS_DID_SETTING_LABEL_BASE  = 0x9150,  ///< Read: option labels (0x9150 + setting_index + (option_index << 4))
-    UDS_DID_SETTING_SAVE        = 0x9350   ///< Write: save settings to flash
+    UDS_DID_SETTING_SAVE_BASE   = 0x9350   ///< Write: save setting to flash (0x9350 + setting_index)
 } UDS_SettingsDID_t;
 
 /**
