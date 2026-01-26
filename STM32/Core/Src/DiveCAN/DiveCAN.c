@@ -11,6 +11,7 @@
 #ifdef UDS_ENABLED
 #include "uds/isotp.h"
 #include "uds/uds.h"
+#include "uds/uds_log_push.h"
 #endif
 
 void CANTask(void *arg);
@@ -35,6 +36,10 @@ static const uint8_t BATTERY_FLOAT_TO_INT_SCALER = 10;
 static ISOTPContext_t isotpContext = {0};
 static UDSContext_t udsContext = {0};
 static bool isotpInitialized = false;
+
+/* Second ISO-TP context for log push (ECU -> Tester) */
+static ISOTPContext_t logPushIsoTpContext = {0};
+static bool logPushInitialized = false;
 
 /* UDS message handlers */
 static void HandleUDSMessage(const uint8_t *data, uint16_t length);
@@ -137,9 +142,20 @@ void CANTask(void *arg)
                     isotpInitialized = true;
                 }
 
+                // Initialize log push ISO-TP context (separate from request/response)
+                if (!logPushInitialized) {
+                    UDS_LogPush_Init(&logPushIsoTpContext);
+                    logPushInitialized = true;
+                }
+
                 // Try ISO-TP first - returns true if consumed
                 if (ISOTP_ProcessRxFrame(&isotpContext, &message)) {
                     break;  // ISO-TP handled it
+                }
+
+                // Also check log push ISO-TP for Flow Control frames from tester
+                if (logPushInitialized && ISOTP_ProcessRxFrame(&logPushIsoTpContext, &message)) {
+                    break;  // Log push ISO-TP handled it (likely FC)
                 }
 #endif
                 break;
@@ -232,6 +248,13 @@ void CANTask(void *arg)
         uint32_t now = HAL_GetTick();
         if ((now - lastPollTime) >= ISOTP_POLL_INTERVAL) {
             ISOTP_Poll(&isotpContext, now);
+
+            // Also poll log push ISO-TP and module
+            if (logPushInitialized) {
+                ISOTP_Poll(&logPushIsoTpContext, now);
+                UDS_LogPush_Poll();
+            }
+
             lastPollTime = now;
         }
 
@@ -344,11 +367,11 @@ void RespSerialNumber(const DiveCANMessage_t *const message, const DiveCANDevice
  */
 static void HandleUDSMessage(const uint8_t *data, uint16_t length)
 {
-    serial_printf("UDS RX: [");
-    for (uint16_t i = 0; i < length; i++) {
-        serial_printf("0x%02x%s", data[i], (i < length - 1) ? ", " : "");
-    }
-    serial_printf("]\n\r");
+    // serial_printf("UDS RX: [");
+    // for (uint16_t i = 0; i < length; i++) {
+    //     serial_printf("0x%02x%s", data[i], (i < length - 1) ? ", " : "");
+    // }
+    // serial_printf("]\n\r");
 
     // Process UDS request
     UDS_ProcessRequest(&udsContext, data, length);
@@ -359,7 +382,7 @@ static void HandleUDSMessage(const uint8_t *data, uint16_t length)
  */
 static void HandleUDSTxComplete(void)
 {
-    serial_printf("UDS TX complete\n\r");
+    //serial_printf("UDS TX complete\n\r");
 }
 #endif
 

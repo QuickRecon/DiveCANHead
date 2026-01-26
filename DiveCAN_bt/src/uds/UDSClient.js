@@ -139,7 +139,6 @@ export class UDSClient extends EventEmitter {
   _handleResponse(data) {
     if (!this.pendingRequest) {
       this.logger.warn('Received response but no pending request');
-      return;
     }
 
     const sid = data[0];
@@ -173,22 +172,31 @@ export class UDSClient extends EventEmitter {
     }
 
     // Positive response
-    const expectedSid = this.pendingRequest[0] + constants.RESPONSE_SID_OFFSET;
-    if (sid !== expectedSid) {
-      this.logger.error(`Unexpected response SID: expected 0x${expectedSid.toString(16)}, got 0x${sid.toString(16)}`);
-      if (this.pendingTimer) {
-        clearTimeout(this.pendingTimer);
-        this.pendingTimer = null;
+    if (this.pendingRequest) {
+      const expectedSid = this.pendingRequest[0] + constants.RESPONSE_SID_OFFSET;
+      if (sid !== expectedSid) {
+        this.logger.error(`Unexpected response SID: expected 0x${expectedSid.toString(16)}, got 0x${sid.toString(16)}`);
+        if (this.pendingTimer) {
+          clearTimeout(this.pendingTimer);
+          this.pendingTimer = null;
+        }
+        if (this.pendingReject) {
+          this.lastRequestTime = Date.now();  // Track completion time for inter-request delay
+          this.pendingReject(new UDSError('Unexpected response SID', sid));
+          this.pendingResolve = null;
+          this.pendingReject = null;
+          this.pendingRequest = null;
+        }
+        return;
       }
-      if (this.pendingReject) {
-        this.lastRequestTime = Date.now();  // Track completion time for inter-request delay
-        this.pendingReject(new UDSError('Unexpected response SID', sid));
-        this.pendingResolve = null;
-        this.pendingReject = null;
-        this.pendingRequest = null;
+    } else { // Unprovoked message, Broadcast from HEAD?
+      if(data[1] == 0xa1) { // LOG broadcast message
+        const decoder = new TextDecoder('utf-8')
+        console.log(`HEAD message: ${decoder.decode(data.slice(3))}`);
       }
-      return;
     }
+
+
 
     this.emit('response', data);
 

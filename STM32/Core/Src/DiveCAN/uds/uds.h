@@ -77,7 +77,11 @@ typedef enum {
     UDS_DID_CONFIGURATION_BLOCK         = 0xF100,  // Read/Write full configuration
     UDS_DID_CELL_VOLTAGES               = 0xF200,  // Read cell voltages
     UDS_DID_PPO2_VALUES                 = 0xF201,  // Read PPO2 values
-    UDS_DID_ERROR_STATUS                = 0xF300   // Read error status
+    UDS_DID_ERROR_STATUS                = 0xF300,  // Read error status
+
+    // Log streaming DIDs (0xAxxx range)
+    UDS_DID_LOG_STREAM_ENABLE           = 0xA000,  // Read/Write: enable log push (1 byte)
+    UDS_DID_LOG_MESSAGE                 = 0xA100   // Push: log message (ECU -> Tester)
 } UDS_DID_t;
 
 // UDS maximum message sizes

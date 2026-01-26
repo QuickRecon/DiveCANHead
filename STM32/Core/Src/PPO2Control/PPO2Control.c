@@ -7,6 +7,7 @@
 #include "../Sensors/OxygenCell.h"
 #include "../errors.h"
 #include "../Hardware/log.h"
+#include "../Hardware/printer.h"
 
 static PPO2_t setpoint = 70;
 
@@ -215,6 +216,7 @@ static void MK15SolenoidFireTask(void *arg)
 
         /* Do our off time before waiting again */
         (void)osDelay(pdMS_TO_TICKS(off_time));
+        serial_printf("TICK!TOCKGOESTHECLOCK");
 
     } while (RTOS_LOOP_FOREVER);
 }

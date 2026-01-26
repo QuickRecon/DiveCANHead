@@ -7,6 +7,7 @@
 
 #include "uds.h"
 #include "uds_settings.h"
+#include "uds_log_push.h"
 #include "../../errors.h"
 #include "../../Hardware/hw_version.h"
 #include "../../Hardware/flash.h"
@@ -238,6 +239,14 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
         break;
     }
 
+    case UDS_DID_LOG_STREAM_ENABLE:
+    {
+        // Return log streaming enable state (1 byte: 0=disabled, 1=enabled)
+        ctx->responseBuffer[3] = UDS_LogPush_IsEnabled() ? 0x01U : 0x00U;
+        ctx->responseLength = 4;
+        break;
+    }
+
     default:
         // Check if DID is in settings range
         if (did >= UDS_DID_SETTING_INFO_BASE && did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount()))
@@ -349,6 +358,29 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     // Dispatch based on DID
     switch (did)
     {
+    case UDS_DID_LOG_STREAM_ENABLE:
+    {
+        // Enable/disable log streaming (1 byte: 0=disable, non-zero=enable)
+        // Works in any session (no session restriction)
+        if (requestLength != 5)  // pad(1) + SID(1) + DID(2) + value(1)
+        {
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
+            return;
+        }
+
+        bool enable = (requestData[4] != 0);
+        UDS_LogPush_SetEnabled(enable);
+
+        // Build positive response: [0x6E, DID_high, DID_low]
+        ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->responseBuffer[1] = requestData[2];  // DID high
+        ctx->responseBuffer[2] = requestData[3];  // DID low
+        ctx->responseLength = 3;
+
+        UDS_SendResponse(ctx);
+        return;
+    }
+
     case UDS_DID_CONFIGURATION_BLOCK:
     {
         // Validate data length (4 bytes for config)
