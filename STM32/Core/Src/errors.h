@@ -125,9 +125,12 @@ extern "C"
 
         /** @brief ISO-TP invalid state transition **/
         ISOTP_STATE_ERR = 34,
+        
+        /** @brief A log message wasn't going to fit in the buffer */
+        LOG_MSG_TRUNCATED_ERR = 35,
 
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        MAX_ERR = ISOTP_STATE_ERR
+        MAX_ERR = LOG_MSG_TRUNCATED_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

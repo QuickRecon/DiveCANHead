@@ -10,6 +10,7 @@
 #include "./printer.h"
 #include "../errors.h"
 #include "../PPO2Control/PPO2Control.h"
+#include "../DiveCAN/uds/uds_log_push.h"
 
 extern SD_HandleTypeDef hsd1;
 
@@ -426,13 +427,24 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
-    if (logRunning() &&
-        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,DIVEO2,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity)) &&
-        (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
+    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,DIVEO2,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity);
+    if (printedChars > LOG_LINE_LENGTH)
     {
-        (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
-        ++logMsgIndex;
+        printedChars = LOG_LINE_LENGTH;
+        NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
+    }
+    if ((printedChars > 0))
+    {
+        /* Send to the UDS stack */
+        (void)UDS_LogPush_SendMessage(enQueueItem.string, printedChars);
+
+        /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+        if (logRunning() &&
+            (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
+        {
+            (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+            ++logMsgIndex;
+        }
     }
 }
 
@@ -446,13 +458,24 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
-    if (logRunning() &&
-        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,O2S,%u,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2)) &&
-        (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
+    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,O2S,%u,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2);
+    if (printedChars > LOG_LINE_LENGTH)
     {
-        (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
-        ++logMsgIndex;
+        printedChars = LOG_LINE_LENGTH;
+        NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
+    }
+    if ((printedChars > 0))
+    {
+        /* Send to the UDS stack */
+        (void)UDS_LogPush_SendMessage(enQueueItem.string, printedChars);
+
+        /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+        if (logRunning() &&
+            (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
+        {
+            (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+            ++logMsgIndex;
+        }
     }
 }
 
@@ -466,13 +489,24 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
-    if (logRunning() &&
-        (0 < snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,ANALOGCELL,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, sample)) &&
-        (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
+    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,ANALOGCELL,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, sample);
+    if (printedChars > LOG_LINE_LENGTH)
     {
-        (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
-        ++logMsgIndex;
+        printedChars = LOG_LINE_LENGTH;
+        NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
+    }
+    if ((printedChars > 0))
+    {
+        /* Send to the UDS stack */
+        (void)UDS_LogPush_SendMessage(enQueueItem.string, printedChars);
+
+        /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
+        if (logRunning() &&
+            (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
+        {
+            (void)osMessageQueuePut(*(getQueueHandle()), &enQueueItem, 1, 0);
+            ++logMsgIndex;
+        }
     }
 }
 
