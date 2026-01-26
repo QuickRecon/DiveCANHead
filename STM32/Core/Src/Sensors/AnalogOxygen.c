@@ -113,7 +113,7 @@ ShortMillivolts_t AnalogCalibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2
     AnalogReadCalibration(handle);
 
     if (((handle->calibrationCoefficient - newCal) > EPS) ||
-        ((handle->calibrationCoefficient - newCal) < EPS))
+        ((handle->calibrationCoefficient - newCal) < -EPS))
     {
         handle->status = CELL_FAIL;
         *calError = CAL_MISMATCH_ERR;
