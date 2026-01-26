@@ -60,6 +60,7 @@ export class UDSClient extends EventEmitter {
     this.pendingRequest = null;
     this.pendingResolve = null;
     this.pendingReject = null;
+    this.pendingTimer = null;
 
     // Set up transport message handler
     this.transport.on('message', (data) => this._handleResponse(data));
@@ -99,7 +100,8 @@ export class UDSClient extends EventEmitter {
       this.pendingReject = reject;
 
       // Set timeout
-      const timer = setTimeout(() => {
+      this.pendingTimer = setTimeout(() => {
+        this.pendingTimer = null;
         this.pendingRequest = null;
         this.pendingResolve = null;
         this.pendingReject = null;
@@ -109,7 +111,8 @@ export class UDSClient extends EventEmitter {
       try {
         await this.transport.send(requestArray);
       } catch (error) {
-        clearTimeout(timer);
+        clearTimeout(this.pendingTimer);
+        this.pendingTimer = null;
         this.pendingRequest = null;
         this.pendingResolve = null;
         this.pendingReject = null;
@@ -144,6 +147,10 @@ export class UDSClient extends EventEmitter {
       const error = new UDSError('Negative response', requestedSid, nrc);
       this.emit('negativeResponse', { sid: requestedSid, nrc, description: error.getNRCDescription() });
 
+      if (this.pendingTimer) {
+        clearTimeout(this.pendingTimer);
+        this.pendingTimer = null;
+      }
       if (this.pendingReject) {
         this.pendingReject(error);
         this.pendingResolve = null;
@@ -157,6 +164,10 @@ export class UDSClient extends EventEmitter {
     const expectedSid = this.pendingRequest[0] + constants.RESPONSE_SID_OFFSET;
     if (sid !== expectedSid) {
       this.logger.error(`Unexpected response SID: expected 0x${expectedSid.toString(16)}, got 0x${sid.toString(16)}`);
+      if (this.pendingTimer) {
+        clearTimeout(this.pendingTimer);
+        this.pendingTimer = null;
+      }
       if (this.pendingReject) {
         this.pendingReject(new UDSError('Unexpected response SID', sid));
         this.pendingResolve = null;
@@ -168,6 +179,10 @@ export class UDSClient extends EventEmitter {
 
     this.emit('response', data);
 
+    if (this.pendingTimer) {
+      clearTimeout(this.pendingTimer);
+      this.pendingTimer = null;
+    }
     if (this.pendingResolve) {
       this.pendingResolve(data);
       this.pendingResolve = null;
