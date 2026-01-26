@@ -24,32 +24,35 @@
 #include <stdbool.h>
 
 // Memory region identifiers
-typedef enum {
+typedef enum
+{
     MEMORY_REGION_INVALID = 0,
-    MEMORY_REGION_BLOCK1,   ///< Flash config area (0xC2000080-0xC2000FFF)
-    MEMORY_REGION_BLOCK2,   ///< Flash log area (0xC3001000-0xC3FFFFFF)
-    MEMORY_REGION_BLOCK3    ///< MCU unique ID (0xC5000000-0xC500007F)
+    MEMORY_REGION_BLOCK1, ///< Flash config area (0xC2000080-0xC2000FFF)
+    MEMORY_REGION_BLOCK2, ///< Flash log area (0xC3001000-0xC3FFFFFF)
+    MEMORY_REGION_BLOCK3  ///< MCU unique ID (0xC5000000-0xC500007F)
 } UDS_MemoryRegion_t;
 
 // Memory region definition
-typedef struct {
-    uint32_t udsAddressStart;   ///< UDS address space start
-    uint32_t udsAddressEnd;     ///< UDS address space end (inclusive)
-    uint32_t physicalAddress;   ///< Physical address offset
-    bool uploadAllowed;         ///< Can read via RequestUpload
-    bool downloadAllowed;       ///< Can write via RequestDownload
-    uint16_t alignment;         ///< Address alignment requirement (bytes)
+typedef struct
+{
+    uint32_t udsAddressStart; ///< UDS address space start
+    uint32_t udsAddressEnd;   ///< UDS address space end (inclusive)
+    uint32_t physicalAddress; ///< Physical address offset
+    bool uploadAllowed;       ///< Can read via RequestUpload
+    bool downloadAllowed;     ///< Can write via RequestDownload
+    uint16_t alignment;       ///< Address alignment requirement (bytes)
 } MemoryRegionDef_t;
 
 // Upload/Download transfer state
-typedef struct {
-    bool active;                ///< Transfer in progress
-    bool isUpload;              ///< True = upload (read), false = download (write)
-    UDS_MemoryRegion_t region;      ///< Active memory region
-    uint32_t address;           ///< Current UDS address
-    uint32_t bytesRemaining;    ///< Bytes remaining in transfer
-    uint8_t sequenceCounter;    ///< TransferData sequence (1-255, wraps)
-    uint16_t maxBlockLength;    ///< Maximum bytes per TransferData frame
+typedef struct
+{
+    bool active;               ///< Transfer in progress
+    bool isUpload;             ///< True = upload (read), false = download (write)
+    UDS_MemoryRegion_t region; ///< Active memory region
+    uint32_t address;          ///< Current UDS address
+    uint32_t bytesRemaining;   ///< Bytes remaining in transfer
+    uint8_t sequenceCounter;   ///< TransferData sequence (1-255, wraps)
+    uint16_t maxBlockLength;   ///< Maximum bytes per TransferData frame
 } MemoryTransferState_t;
 
 // Maximum transfer block size (ISO-TP payload minus service overhead)

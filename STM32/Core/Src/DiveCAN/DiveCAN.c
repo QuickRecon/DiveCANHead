@@ -134,7 +134,8 @@ void CANTask(void *arg)
                 message.type = "MENU";
 #ifdef UDS_ENABLED
                 // Initialize ISO-TP on first MENU message
-                if (!isotpInitialized) {
+                if (!isotpInitialized)
+                {
                     uint8_t targetType = message.id & 0xFF;
                     ISOTP_Init(&isotpContext, deviceSpec->type, targetType, MENU_ID);
 
@@ -143,19 +144,22 @@ void CANTask(void *arg)
                 }
 
                 // Initialize log push ISO-TP context (separate from request/response)
-                if (!logPushInitialized) {
+                if (!logPushInitialized)
+                {
                     UDS_LogPush_Init(&logPushIsoTpContext);
                     logPushInitialized = true;
                 }
 
                 // Try ISO-TP first - returns true if consumed
-                if (ISOTP_ProcessRxFrame(&isotpContext, &message)) {
-                    break;  // ISO-TP handled it
+                if (ISOTP_ProcessRxFrame(&isotpContext, &message))
+                {
+                    break; // ISO-TP handled it
                 }
 
                 // Also check log push ISO-TP for Flow Control frames from tester
-                if (logPushInitialized && ISOTP_ProcessRxFrame(&logPushIsoTpContext, &message)) {
-                    break;  // Log push ISO-TP handled it (likely FC)
+                if (logPushInitialized && ISOTP_ProcessRxFrame(&logPushIsoTpContext, &message))
+                {
+                    break; // Log push ISO-TP handled it (likely FC)
                 }
 #endif
                 break;
@@ -246,11 +250,13 @@ void CANTask(void *arg)
 
         // Poll ISO-TP for timeouts every 100ms
         uint32_t now = HAL_GetTick();
-        if ((now - lastPollTime) >= ISOTP_POLL_INTERVAL) {
+        if ((now - lastPollTime) >= ISOTP_POLL_INTERVAL)
+        {
             ISOTP_Poll(&isotpContext, now);
 
             // Also poll log push ISO-TP and module
-            if (logPushInitialized) {
+            if (logPushInitialized)
+            {
                 ISOTP_Poll(&logPushIsoTpContext, now);
                 UDS_LogPush_Poll();
             }
@@ -259,15 +265,17 @@ void CANTask(void *arg)
         }
 
         // Check for completed ISO-TP RX transfers
-        if (isotpContext.rxComplete) {
+        if (isotpContext.rxComplete)
+        {
             HandleUDSMessage(isotpContext.rxBuffer, isotpContext.rxDataLength);
-            isotpContext.rxComplete = false;  // Clear flag
+            isotpContext.rxComplete = false; // Clear flag
         }
 
         // Check for completed ISO-TP TX transfers
-        if (isotpContext.txComplete) {
+        if (isotpContext.txComplete)
+        {
             HandleUDSTxComplete();
-            isotpContext.txComplete = false;  // Clear flag
+            isotpContext.txComplete = false; // Clear flag
         }
     }
 }
@@ -340,7 +348,7 @@ void RespDiving(const DiveCANMessage_t *const message)
 {
     uint32_t diveNumber = ((uint32_t)message->data[1] << BYTE_WIDTH) | message->data[2];
     uint32_t unixTimestamp = ((uint32_t)message->data[3] << THREE_BYTE_WIDTH) | ((uint32_t)message->data[4] << TWO_BYTE_WIDTH) | ((uint32_t)message->data[5] << BYTE_WIDTH) | (uint32_t)message->data[6];
-    if(message->data[0] == 1)
+    if (message->data[0] == 1)
     {
         serial_printf("Dive #%d started at Local Unix Timestamp: %d", diveNumber, unixTimestamp);
     }
@@ -382,7 +390,7 @@ static void HandleUDSMessage(const uint8_t *data, uint16_t length)
  */
 static void HandleUDSTxComplete(void)
 {
-    //serial_printf("UDS TX complete\n\r");
+    // serial_printf("UDS TX complete\n\r");
 }
 #endif
 

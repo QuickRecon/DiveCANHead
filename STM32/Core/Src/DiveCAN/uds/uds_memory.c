@@ -22,30 +22,26 @@ static const MemoryRegionDef_t memoryRegions[] = {
     {
         .udsAddressStart = 0xC2000080,
         .udsAddressEnd = 0xC2000FFF,
-        .physicalAddress = 0x08000080,  // Absolute flash address
+        .physicalAddress = 0x08000080, // Absolute flash address
         .uploadAllowed = true,
-        .downloadAllowed = false,  // Phase 6: enable for firmware download
-        .alignment = 8
-    },
+        .downloadAllowed = false, // Phase 6: enable for firmware download
+        .alignment = 8},
     // BLOCK2: Flash log area (flash address 0x08010000-...)
     {
         .udsAddressStart = 0xC3001000,
         .udsAddressEnd = 0xC3FFFFFF,
-        .physicalAddress = 0x08010000,  // Absolute flash address
+        .physicalAddress = 0x08010000, // Absolute flash address
         .uploadAllowed = true,
-        .downloadAllowed = true,  // Phase 6: enabled for firmware download
-        .alignment = 4096
-    },
+        .downloadAllowed = true, // Phase 6: enabled for firmware download
+        .alignment = 4096},
     // BLOCK3: MCU Unique ID (read-only)
     {
         .udsAddressStart = 0xC5000000,
         .udsAddressEnd = 0xC500007F,
         .physicalAddress = MCU_ID_ADDRESS,
         .uploadAllowed = true,
-        .downloadAllowed = false,  // MCU ID is read-only
-        .alignment = 1
-    }
-};
+        .downloadAllowed = false, // MCU ID is read-only
+        .alignment = 1}};
 
 #define MEMORY_REGION_COUNT (sizeof(memoryRegions) / sizeof(memoryRegions[0]))
 
@@ -80,17 +76,17 @@ UDS_MemoryRegion_t UDS_Memory_ValidateAddress(uint32_t udsAddress, uint32_t leng
             // Check if access would exceed region bounds
             if ((udsAddress + length - 1) > region->udsAddressEnd)
             {
-                return MEMORY_REGION_INVALID;  // Would exceed region
+                return MEMORY_REGION_INVALID; // Would exceed region
             }
 
             // Check access permissions
             if (isUpload && !region->uploadAllowed)
             {
-                return MEMORY_REGION_INVALID;  // Upload not allowed
+                return MEMORY_REGION_INVALID; // Upload not allowed
             }
             if (!isUpload && !region->downloadAllowed)
             {
-                return MEMORY_REGION_INVALID;  // Download not allowed
+                return MEMORY_REGION_INVALID; // Download not allowed
             }
 
             // Return region ID (1-based index)
@@ -98,7 +94,7 @@ UDS_MemoryRegion_t UDS_Memory_ValidateAddress(uint32_t udsAddress, uint32_t leng
         }
     }
 
-    return MEMORY_REGION_INVALID;  // Address not in any region
+    return MEMORY_REGION_INVALID; // Address not in any region
 }
 
 /**
@@ -115,7 +111,7 @@ bool UDS_Memory_StartUpload(MemoryTransferState_t *state, uint32_t udsAddress, u
     UDS_MemoryRegion_t region = UDS_Memory_ValidateAddress(udsAddress, length, true);
     if (region == MEMORY_REGION_INVALID)
     {
-        return false;  // Invalid address or region
+        return false; // Invalid address or region
     }
 
     // Initialize transfer state
@@ -124,7 +120,7 @@ bool UDS_Memory_StartUpload(MemoryTransferState_t *state, uint32_t udsAddress, u
     state->region = region;
     state->address = udsAddress;
     state->bytesRemaining = length;
-    state->sequenceCounter = 1;  // Sequence starts at 1
+    state->sequenceCounter = 1; // Sequence starts at 1
     state->maxBlockLength = MEMORY_MAX_BLOCK_LENGTH;
 
     *maxBlockLength = state->maxBlockLength;
@@ -146,16 +142,16 @@ bool UDS_Memory_StartDownload(MemoryTransferState_t *state, uint32_t udsAddress,
     UDS_MemoryRegion_t region = UDS_Memory_ValidateAddress(udsAddress, length, false);
     if (region == MEMORY_REGION_INVALID)
     {
-        return false;  // Invalid address or region
+        return false; // Invalid address or region
     }
 
     // Initialize transfer state
     state->active = true;
-    state->isUpload = false;  // Download (write)
+    state->isUpload = false; // Download (write)
     state->region = region;
     state->address = udsAddress;
     state->bytesRemaining = length;
-    state->sequenceCounter = 1;  // Sequence starts at 1
+    state->sequenceCounter = 1; // Sequence starts at 1
     state->maxBlockLength = MEMORY_MAX_BLOCK_LENGTH;
 
     *maxBlockLength = state->maxBlockLength;
@@ -182,7 +178,7 @@ bool UDS_Memory_ReadBlock(MemoryTransferState_t *state, uint8_t sequenceCounter,
     // Validate sequence counter
     if (sequenceCounter != state->sequenceCounter)
     {
-        return false;  // Sequence mismatch
+        return false; // Sequence mismatch
     }
 
     // Calculate how many bytes to read (min of maxBlockLength, bytesRemaining, bufferSize)
@@ -227,7 +223,7 @@ bool UDS_Memory_ReadBlock(MemoryTransferState_t *state, uint8_t sequenceCounter,
     state->sequenceCounter++;
     if (state->sequenceCounter == 0)
     {
-        state->sequenceCounter = 1;  // Wrap at 256 (skip 0)
+        state->sequenceCounter = 1; // Wrap at 256 (skip 0)
     }
 
     *bytesRead = toRead;
@@ -256,13 +252,13 @@ bool UDS_Memory_WriteBlock(MemoryTransferState_t *state, uint8_t sequenceCounter
     // Validate sequence counter
     if (sequenceCounter != state->sequenceCounter)
     {
-        return false;  // Sequence mismatch
+        return false; // Sequence mismatch
     }
 
     // Validate data length doesn't exceed remaining bytes
     if (dataLength > state->bytesRemaining)
     {
-        return false;  // Too much data
+        return false; // Too much data
     }
 
     // Get memory region definition
@@ -285,7 +281,7 @@ bool UDS_Memory_WriteBlock(MemoryTransferState_t *state, uint8_t sequenceCounter
     state->sequenceCounter++;
     if (state->sequenceCounter == 0)
     {
-        state->sequenceCounter = 1;  // Wrap at 256 (skip 0)
+        state->sequenceCounter = 1; // Wrap at 256 (skip 0)
     }
 
     // Note: Transfer remains active until RequestTransferExit is called,
@@ -305,7 +301,7 @@ bool UDS_Memory_CompleteTransfer(MemoryTransferState_t *state)
 
     if (!state->active)
     {
-        return false;  // No active transfer
+        return false; // No active transfer
     }
 
     // Verify all bytes transferred
@@ -335,11 +331,11 @@ bool UDS_Memory_ReadFlash(uint32_t physicalAddress, uint8_t *buffer, uint16_t le
 
     // Validate address is within STM32L4 flash range (0x08000000-0x0803FFFF = 256KB)
     // FLASH_BASE is defined in STM32 headers as 0x08000000
-    const uint32_t flashSize = 256 * 1024;  // 256KB
+    const uint32_t flashSize = 256 * 1024; // 256KB
 
     if (physicalAddress < FLASH_BASE || (physicalAddress + length) > (FLASH_BASE + flashSize))
     {
-        return false;  // Out of flash range
+        return false; // Out of flash range
     }
 
     // Read directly from flash memory (memory-mapped)
@@ -362,7 +358,7 @@ bool UDS_Memory_ReadMCUID(uint32_t offset, uint8_t *buffer, uint16_t length)
     // Validate offset and length
     if (offset >= MCU_ID_LENGTH || (offset + length) > MCU_ID_LENGTH)
     {
-        return false;  // Out of MCU ID range
+        return false; // Out of MCU ID range
     }
 
     // Read from MCU ID address (memory-mapped)
@@ -390,17 +386,17 @@ bool UDS_Memory_WriteFlash(uint32_t physicalAddress, const uint8_t *buffer, uint
     }
 
     // Validate address is within STM32L4 flash range (0x08000000-0x0803FFFF = 256KB)
-    const uint32_t flashSize = 256 * 1024;  // 256KB
+    const uint32_t flashSize = 256 * 1024; // 256KB
 
     if (physicalAddress < FLASH_BASE || (physicalAddress + length) > (FLASH_BASE + flashSize))
     {
-        return false;  // Out of flash range
+        return false; // Out of flash range
     }
 
     // TODO: Implement flash programming using STM32 HAL
     // For now, this is a stub that will be mocked in tests
     // Real implementation in Phase 6 final step
 
-    return true;  // Placeholder - always succeeds
+    return true; // Placeholder - always succeeds
 }
 #endif // TESTING

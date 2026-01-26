@@ -26,10 +26,10 @@
 
 /* Maximum log message payload size
  * ISO-TP max payload (128) - WDBI header (SID + DID = 3 bytes) - margin (1 byte) */
-#define UDS_LOG_MAX_PAYLOAD        124U
+#define UDS_LOG_MAX_PAYLOAD 124U
 
 /* Error threshold for auto-disable */
-#define UDS_LOG_ERROR_THRESHOLD    3U
+#define UDS_LOG_ERROR_THRESHOLD 3U
 
 /**
  * @brief Initialize log push module

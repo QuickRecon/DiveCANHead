@@ -65,7 +65,8 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
     bool txComplete = ctx->txComplete;
     uint16_t rxDataLength = ctx->rxDataLength;
     uint8_t rxBuffer[ISOTP_MAX_PAYLOAD];
-    if (rxComplete) {
+    if (rxComplete)
+    {
         memcpy(rxBuffer, ctx->rxBuffer, rxDataLength);
     }
 
@@ -79,7 +80,8 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
     ctx->rxComplete = rxComplete;
     ctx->txComplete = txComplete;
     ctx->rxDataLength = rxDataLength;
-    if (rxComplete) {
+    if (rxComplete)
+    {
         memcpy(ctx->rxBuffer, rxBuffer, rxDataLength);
     }
 }
@@ -125,13 +127,13 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
     // }
 
     // Extract addressing from CAN ID
-    uint8_t msgTarget = (message->id >> 8) & 0x0F;  // Bits 11-8
-    uint8_t msgSource = message->id & 0xFF;         // Bits 7-0
+    uint8_t msgTarget = (message->id >> 8) & 0x0F; // Bits 11-8
+    uint8_t msgSource = message->id & 0xFF;        // Bits 7-0
 
     // Check if message is for us
     if (msgTarget != ctx->source)
     {
-        return false;  // Not addressed to us
+        return false; // Not addressed to us
     }
 
     // Extract PCI byte
@@ -143,26 +145,26 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
     // Check if message is from expected peer (or Shearwater FC broadcast)
     if (msgSource != ctx->target && !isShearwaterFC)
     {
-        ctx->target = msgSource;  // Update target to sender
+        ctx->target = msgSource; // Update target to sender
     }
 
     // Route based on PCI type
     switch (pci)
     {
-    case ISOTP_PCI_SF:  // Single frame
+    case ISOTP_PCI_SF: // Single frame
         return HandleSingleFrame(ctx, message);
 
-    case ISOTP_PCI_FF:  // First frame
+    case ISOTP_PCI_FF: // First frame
         return HandleFirstFrame(ctx, message);
 
-    case ISOTP_PCI_CF:  // Consecutive frame
+    case ISOTP_PCI_CF: // Consecutive frame
         return HandleConsecutiveFrame(ctx, message);
 
-    case ISOTP_PCI_FC:  // Flow control
+    case ISOTP_PCI_FC: // Flow control
         return HandleFlowControl(ctx, message);
 
     default:
-        return false;  // Unknown PCI
+        return false; // Unknown PCI
     }
 }
 
@@ -177,13 +179,13 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
     // Validate length (1-7 bytes for SF)
     if (length == 0 || length > 7)
     {
-        return false;  // Invalid SF length
+        return false; // Invalid SF length
     }
 
     // Validate message has enough bytes
     if (message->length < (length + 1))
     {
-        return false;  // Message too short
+        return false; // Message too short
     }
 
     // Copy data to RX buffer
@@ -196,7 +198,7 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
     // Remain in IDLE state (or reset if we were in another state)
     ctx->state = ISOTP_IDLE;
 
-    return true;  // Message consumed
+    return true; // Message consumed
 }
 
 /**
@@ -215,13 +217,13 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
         SendFlowControl(ctx, ISOTP_FC_OVFLW, 0, 0);
         ISOTP_Reset(ctx);
         NON_FATAL_ERROR_DETAIL(ISOTP_OVERFLOW_ERR, dataLength);
-        return true;  // Message consumed (but rejected)
+        return true; // Message consumed (but rejected)
     }
 
     // Reset RX state
     ctx->rxDataLength = dataLength;
     ctx->rxBytesReceived = 0;
-    ctx->rxSequenceNumber = 1;  // Expecting CF with seq=1 (per ISO 15765-2)
+    ctx->rxSequenceNumber = 1; // Expecting CF with seq=1 (per ISO 15765-2)
 
     // Copy first 6 data bytes (bytes 2-7 of CAN frame)
     uint8_t firstFrameBytes = 6;
@@ -238,7 +240,7 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
     // Send Flow Control (CTS, BS=0, STmin=0)
     SendFlowControl(ctx, ISOTP_FC_CTS, ISOTP_DEFAULT_BLOCK_SIZE, ISOTP_DEFAULT_STMIN);
 
-    return true;  // Message consumed
+    return true; // Message consumed
 }
 
 /**
@@ -249,7 +251,7 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
     // Must be in RECEIVING state
     if (ctx->state != ISOTP_RECEIVING)
     {
-        return false;  // Not expecting CF
+        return false; // Not expecting CF
     }
 
     // Extract sequence number
@@ -261,7 +263,7 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
         // Sequence error - abort reception
         NON_FATAL_ERROR_DETAIL(ISOTP_SEQ_ERR, (ctx->rxSequenceNumber << 4) | seqNum);
         ISOTP_Reset(ctx);
-        return true;  // Message consumed (but error)
+        return true; // Message consumed (but error)
     }
 
     // Calculate bytes to copy (7 bytes or remaining)
@@ -289,7 +291,7 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
         ISOTP_Reset(ctx);
     }
 
-    return true;  // Message consumed
+    return true; // Message consumed
 }
 
 /**
@@ -300,7 +302,7 @@ static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
     // Must be in WAIT_FC state
     if (ctx->state != ISOTP_WAIT_FC)
     {
-        return false;  // Not expecting FC
+        return false; // Not expecting FC
     }
 
     // Extract flow status
@@ -309,7 +311,7 @@ static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
     // Handle different flow statuses
     switch (flowStatus)
     {
-    case ISOTP_FC_CTS:  // Continue to send
+    case ISOTP_FC_CTS: // Continue to send
         // Extract block size and STmin
         ctx->txBlockSize = message->data[1];
         ctx->txSTmin = message->data[2];
@@ -322,12 +324,12 @@ static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
         SendConsecutiveFrames(ctx);
         break;
 
-    case ISOTP_FC_WAIT:  // Wait
+    case ISOTP_FC_WAIT: // Wait
         // Not implemented - just abort for now
         ISOTP_Reset(ctx);
         break;
 
-    case ISOTP_FC_OVFLW:  // Overflow - receiver rejected
+    case ISOTP_FC_OVFLW: // Overflow - receiver rejected
         // Abort transmission - don't set txComplete flag (transfer failed)
         ISOTP_Reset(ctx);
         break;
@@ -338,7 +340,7 @@ static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
         break;
     }
 
-    return true;  // Message consumed
+    return true; // Message consumed
 }
 
 /**
@@ -371,13 +373,13 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
     // Validate length
     if (length == 0 || length > ISOTP_MAX_PAYLOAD)
     {
-        return false;  // Invalid length
+        return false; // Invalid length
     }
 
     // Check if we're idle
     if (ctx->state != ISOTP_IDLE)
     {
-        return false;  // Transmission already in progress
+        return false; // Transmission already in progress
     }
 
     // Single frame (≤7 bytes)
@@ -386,7 +388,7 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
         DiveCANMessage_t sf = {0};
         sf.id = ctx->messageId | (ctx->target << 8) | ctx->source;
         sf.length = 8;
-        sf.data[0] = (uint8_t)length+1;  // SF PCI
+        sf.data[0] = (uint8_t)length + 1; // SF PCI
         sf.data[1] = 0;
         memcpy(&sf.data[2], data, length);
 
@@ -408,9 +410,9 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
     DiveCANMessage_t ff = {0};
     ff.id = ctx->messageId | (ctx->target << 8) | ctx->source;
     ff.length = 8;
-    ff.data[0] = 0x10 | ((length >> 8) & 0x0F);  // FF PCI + upper nibble of length
-    ff.data[1] = (uint8_t)(length & 0xFF);       // Lower byte of length
-    memcpy(&ff.data[3], data, 5);                // First 5 bytes
+    ff.data[0] = 0x10 | ((length >> 8) & 0x0F); // FF PCI + upper nibble of length
+    ff.data[1] = (uint8_t)(length & 0xFF);      // Lower byte of length
+    memcpy(&ff.data[3], data, 5);               // First 5 bytes
 
     ctx->txBytesSent = 5;
 
@@ -452,7 +454,7 @@ static void SendConsecutiveFrames(ISOTPContext_t *ctx)
         DiveCANMessage_t cf = {0};
         cf.id = ctx->messageId | (ctx->target << 8) | ctx->source;
         cf.length = 8;
-        cf.data[0] = 0x20 | (ctx->txSequenceNumber+1);  // CF PCI + sequence number
+        cf.data[0] = 0x20 | (ctx->txSequenceNumber + 1); // CF PCI + sequence number
 
         // Copy up to 7 bytes
         uint16_t bytesRemaining = ctx->txDataLength - ctx->txBytesSent;

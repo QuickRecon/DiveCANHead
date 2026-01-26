@@ -11,20 +11,21 @@
 #include <string.h>
 
 /* Tester address (bluetooth client) */
-#define TESTER_ADDRESS  0xFFU
+#define TESTER_ADDRESS 0xFFU
 
 /* WDBI frame header size: SID (1) + DID (2) */
-#define WDBI_HEADER_SIZE  3U
+#define WDBI_HEADER_SIZE 3U
 
 /**
  * @brief Module state structure (file scope, static allocation per NASA rules)
  */
-static struct {
-    ISOTPContext_t *isotpContext;                      /**< Dedicated context for push */
-    bool enabled;                                       /**< Log streaming enabled */
-    uint8_t errorCount;                                 /**< Consecutive error counter */
-    bool txPending;                                     /**< TX in progress flag */
-    uint8_t txBuffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE];  /**< WDBI frame buffer */
+static struct
+{
+    ISOTPContext_t *isotpContext;                             /**< Dedicated context for push */
+    bool enabled;                                             /**< Log streaming enabled */
+    uint8_t errorCount;                                       /**< Consecutive error counter */
+    bool txPending;                                           /**< TX in progress flag */
+    uint8_t txBuffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE]; /**< WDBI frame buffer */
 } logPushState = {0};
 
 void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
@@ -35,7 +36,7 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
     }
 
     logPushState.isotpContext = isotpCtx;
-    logPushState.enabled = false;  /* Default: disabled */
+    logPushState.enabled = false; /* Default: disabled */
     logPushState.errorCount = 0;
     logPushState.txPending = false;
 
@@ -54,7 +55,7 @@ void UDS_LogPush_SetEnabled(bool enable)
     logPushState.enabled = enable;
     if (enable)
     {
-        logPushState.errorCount = 0;  /* Reset on enable */
+        logPushState.errorCount = 0; /* Reset on enable */
     }
 }
 
@@ -89,7 +90,7 @@ bool UDS_LogPush_SendMessage(const char *message, uint16_t length)
     }
 
     /* Truncate if necessary */
-    uint16_t payloadLen = length+1;
+    uint16_t payloadLen = length + 1;
     if (payloadLen > UDS_LOG_MAX_PAYLOAD)
     {
         payloadLen = UDS_LOG_MAX_PAYLOAD;
@@ -116,7 +117,7 @@ bool UDS_LogPush_SendMessage(const char *message, uint16_t length)
         logPushState.errorCount++;
         if (logPushState.errorCount >= UDS_LOG_ERROR_THRESHOLD)
         {
-            logPushState.enabled = false;  /* Auto-disable */
+            logPushState.enabled = false; /* Auto-disable */
         }
     }
 
@@ -140,7 +141,7 @@ void UDS_LogPush_Poll(void)
     {
         logPushState.txPending = false;
         logPushState.isotpContext->txComplete = false;
-        logPushState.errorCount = 0;  /* Reset on success */
+        logPushState.errorCount = 0; /* Reset on success */
         return;
     }
 
@@ -152,7 +153,7 @@ void UDS_LogPush_Poll(void)
         logPushState.errorCount++;
         if (logPushState.errorCount >= UDS_LOG_ERROR_THRESHOLD)
         {
-            logPushState.enabled = false;  /* Auto-disable */
+            logPushState.enabled = false; /* Auto-disable */
         }
     }
 }

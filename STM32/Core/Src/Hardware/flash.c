@@ -173,7 +173,7 @@ static bool WriteInt32(uint16_t addr, uint32_t value)
     EE_Status result = EE_OK;
     do
     {
-        if(false)/*if (checkCoreVoltage()) */ /* This causes spurious cal fails some of the time (voltage sag?)*/
+        if (false) /*if (checkCoreVoltage()) */ /* This causes spurious cal fails some of the time (voltage sag?)*/
         {
             NON_FATAL_ERROR(VCC_UNDER_VOLTAGE_ERR);
         }

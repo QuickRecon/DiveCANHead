@@ -36,11 +36,11 @@ extern "C"
     static const TickType_t TIMEOUT_25S_TICKS = pdMS_TO_TICKS(25000);
 
     /* Handy consts */
-    static const uint32_t BYTE_WIDTH = 8;      /* Bitshift operations */
-    static const uint32_t TWO_BYTE_WIDTH = 16;      /* Bitshift operations */
-    static const uint32_t THREE_BYTE_WIDTH = 24;      /* Bitshift operations */
-    static const uint32_t HALF_BYTE_WIDTH = 4; /* Bitshift operations */
-    static const CalCoeff_t EPS = 0.00001f;    /* Small value for float comparisons */
+    static const uint32_t BYTE_WIDTH = 8;        /* Bitshift operations */
+    static const uint32_t TWO_BYTE_WIDTH = 16;   /* Bitshift operations */
+    static const uint32_t THREE_BYTE_WIDTH = 24; /* Bitshift operations */
+    static const uint32_t HALF_BYTE_WIDTH = 4;   /* Bitshift operations */
+    static const CalCoeff_t EPS = 0.00001f;      /* Small value for float comparisons */
 
     /* PPO2 values */
     static const PPO2_t PPO2_FAIL = 0xFF;

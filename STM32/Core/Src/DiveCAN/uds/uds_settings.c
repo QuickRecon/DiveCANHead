@@ -16,10 +16,9 @@
 // Option labels for selection-type settings
 static const char *FW_CommitOptions[] = {
     COMMIT_HASH,
-    NULL
-};
+    NULL};
 
-static const char* NumericOptions[] = {
+static const char *NumericOptions[] = {
     0,
 };
 
@@ -32,8 +31,7 @@ static const SettingDefinition_t settings[] = {
         .editable = false,
         .maxValue = 1,
         .options = FW_CommitOptions,
-        .optionCount = 1
-    },
+        .optionCount = 1},
     {
         .label = "Config 1",
         .kind = SETTING_KIND_NUMBER,
@@ -100,12 +98,18 @@ uint64_t UDS_GetSettingValue(uint8_t index, const Configuration_t *config)
 
     switch (index)
     {
-    case 0: return 0;
-    case 1: return (uint8_t)(configBits);
-    case 2: return (uint8_t)(configBits >> BYTE_1_OFFSET);
-    case 3: return (uint8_t)(configBits >> BYTE_2_OFFSET);
-    case 4: return (uint8_t)(configBits >> BYTE_3_OFFSET);
-    default: return 0;
+    case 0:
+        return 0;
+    case 1:
+        return (uint8_t)(configBits);
+    case 2:
+        return (uint8_t)(configBits >> BYTE_1_OFFSET);
+    case 3:
+        return (uint8_t)(configBits >> BYTE_2_OFFSET);
+    case 4:
+        return (uint8_t)(configBits >> BYTE_3_OFFSET);
+    default:
+        return 0;
     }
 }
 
@@ -140,7 +144,7 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
                               (uint8_t)(configBits >> BYTE_2_OFFSET),
                               (uint8_t)(configBits >> BYTE_3_OFFSET)};
 
-    configBytes[index-1] = value & 0xFF;
+    configBytes[index - 1] = value & 0xFF;
 
     uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
     *config = setConfigBytes(newBytes);

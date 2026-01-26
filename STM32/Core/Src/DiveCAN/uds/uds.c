@@ -190,8 +190,8 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
 
     // Build response header
     ctx->responseBuffer[0] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    ctx->responseBuffer[1] = requestData[2];  // DID high byte
-    ctx->responseBuffer[2] = requestData[3];  // DID low byte
+    ctx->responseBuffer[1] = requestData[2]; // DID high byte
+    ctx->responseBuffer[2] = requestData[3]; // DID low byte
     ctx->responseLength = 3;
 
     // Dispatch based on DID
@@ -306,7 +306,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
                 ctx->responseBuffer[3 + i] = (uint8_t)(maxValue >> (56 - i * 8));
                 ctx->responseBuffer[11 + i] = (uint8_t)(currentValue >> (56 - i * 8));
             }
-            ctx->responseLength = 21;  // 3 header + 8 max + 8 current // THis is higher than needed but for some reason the gateway mode hates 20 bytes
+            ctx->responseLength = 21; // 3 header + 8 max + 8 current // THis is higher than needed but for some reason the gateway mode hates 20 bytes
             UDS_SendResponse(ctx);
             return;
         }
@@ -368,7 +368,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     {
         // Enable/disable log streaming (1 byte: 0=disable, non-zero=enable)
         // Works in any session (no session restriction)
-        if (requestLength != 5)  // pad(1) + SID(1) + DID(2) + value(1)
+        if (requestLength != 5) // pad(1) + SID(1) + DID(2) + value(1)
         {
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             return;
@@ -379,8 +379,8 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
         // Build positive response: [0x6E, DID_high, DID_low]
         ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[1] = requestData[2];  // DID high
-        ctx->responseBuffer[2] = requestData[3];  // DID low
+        ctx->responseBuffer[1] = requestData[2]; // DID high
+        ctx->responseBuffer[2] = requestData[3]; // DID low
         ctx->responseLength = 3;
 
         UDS_SendResponse(ctx);
@@ -390,7 +390,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     case UDS_DID_CONFIGURATION_BLOCK:
     {
         // Validate data length (4 bytes for config)
-        if (requestLength != 7)  // SID + DID(2) + data(4)
+        if (requestLength != 7) // SID + DID(2) + data(4)
         {
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             return;
@@ -434,7 +434,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             // Extract value from message data (starts at requestData[4] after pad+SID+DID)
             // Value format depends on message length
             uint64_t value = 0;
-            uint16_t dataLen = requestLength - 4;  // Subtract pad(1) + SID(1) + DID(2)
+            uint16_t dataLen = requestLength - 4; // Subtract pad(1) + SID(1) + DID(2)
             for (uint16_t i = 0; i < dataLen && i < 8; i++)
             {
                 value = (value << 8) | requestData[4 + i];
@@ -459,8 +459,8 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
             // Build positive response
             ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[1] = requestData[2];  // DID high
-            ctx->responseBuffer[2] = requestData[3];  // DID low
+            ctx->responseBuffer[1] = requestData[2]; // DID high
+            ctx->responseBuffer[2] = requestData[3]; // DID low
             ctx->responseLength = 3;
 
             UDS_SendResponse(ctx);
@@ -471,7 +471,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
         {
             // Write setting value: expect 8-byte big-endian u64
-            if (requestLength != 12)  // pad(1) + SID(1) + DID(2) + value(8)
+            if (requestLength != 12) // pad(1) + SID(1) + DID(2) + value(8)
             {
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
                 return;
@@ -495,8 +495,8 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
             // Build positive response
             ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[1] = requestData[2];  // DID high
-            ctx->responseBuffer[2] = requestData[3];  // DID low
+            ctx->responseBuffer[1] = requestData[2]; // DID high
+            ctx->responseBuffer[2] = requestData[3]; // DID low
             ctx->responseLength = 3;
 
             UDS_SendResponse(ctx);
@@ -544,7 +544,7 @@ static void HandleRequestDownload(UDSContext_t *ctx, const uint8_t *requestData,
     }
 
     // Validate total message length
-    uint16_t expectedLength = 3 + addressLength + lengthLength;  // 3 + 4 + 4 = 11
+    uint16_t expectedLength = 3 + addressLength + lengthLength; // 3 + 4 + 4 = 11
     if (requestLength != expectedLength)
     {
         UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
@@ -572,9 +572,9 @@ static void HandleRequestDownload(UDSContext_t *ctx, const uint8_t *requestData,
     }
 
     // Construct positive response: [0x74, lengthFormatIdentifier, maxBlockLength]
-    ctx->responseBuffer[0] = 0x74;  // Positive response SID
-    ctx->responseBuffer[1] = 0x20;  // Length format: 2 bytes for max block length
-    ctx->responseBuffer[2] = (maxBlockLength >> 8) & 0xFF;  // Big-endian
+    ctx->responseBuffer[0] = 0x74;                         // Positive response SID
+    ctx->responseBuffer[1] = 0x20;                         // Length format: 2 bytes for max block length
+    ctx->responseBuffer[2] = (maxBlockLength >> 8) & 0xFF; // Big-endian
     ctx->responseBuffer[3] = maxBlockLength & 0xFF;
     ctx->responseLength = 4;
 
@@ -606,8 +606,8 @@ static void HandleRequestUpload(UDSContext_t *ctx, const uint8_t *requestData, u
 
     // Extract addressLengthFormatIdentifier (byte 2)
     uint8_t addrLenFormat = requestData[2];
-    uint8_t addressLength = (addrLenFormat >> 4) & 0x0F;  // High nibble
-    uint8_t lengthFieldLength = addrLenFormat & 0x0F;     // Low nibble
+    uint8_t addressLength = (addrLenFormat >> 4) & 0x0F; // High nibble
+    uint8_t lengthFieldLength = addrLenFormat & 0x0F;    // Low nibble
 
     // Validate we support 4-byte address and 4-byte length (0x44)
     if (addressLength != 4 || lengthFieldLength != 4)
@@ -646,10 +646,10 @@ static void HandleRequestUpload(UDSContext_t *ctx, const uint8_t *requestData, u
     }
 
     // Build positive response: [0x75, lengthFormatIdentifier, maxNumberOfBlockLength...]
-    ctx->responseBuffer[0] = UDS_SID_REQUEST_UPLOAD + UDS_RESPONSE_SID_OFFSET;  // 0x75
-    ctx->responseBuffer[1] = 0x20;  // lengthFormatIdentifier: 2-byte length
-    ctx->responseBuffer[2] = (maxBlockLength >> 8) & 0xFF;  // MSB
-    ctx->responseBuffer[3] = maxBlockLength & 0xFF;         // LSB
+    ctx->responseBuffer[0] = UDS_SID_REQUEST_UPLOAD + UDS_RESPONSE_SID_OFFSET; // 0x75
+    ctx->responseBuffer[1] = 0x20;                                             // lengthFormatIdentifier: 2-byte length
+    ctx->responseBuffer[2] = (maxBlockLength >> 8) & 0xFF;                     // MSB
+    ctx->responseBuffer[3] = maxBlockLength & 0xFF;                            // LSB
     ctx->responseLength = 4;
 
     UDS_SendResponse(ctx);
@@ -687,7 +687,7 @@ static void HandleTransferData(UDSContext_t *ctx, const uint8_t *requestData, ui
     {
         // Upload (read from device memory, send to tester)
         uint16_t bytesRead = 0;
-        uint8_t *dataBuffer = &ctx->responseBuffer[2];  // Skip SID and sequence
+        uint8_t *dataBuffer = &ctx->responseBuffer[2]; // Skip SID and sequence
         uint16_t bufferAvailable = UDS_MAX_RESPONSE_LENGTH - 2;
 
         if (!UDS_Memory_ReadBlock(&ctx->memoryTransfer, sequenceCounter, dataBuffer, bufferAvailable, &bytesRead))
@@ -697,7 +697,7 @@ static void HandleTransferData(UDSContext_t *ctx, const uint8_t *requestData, ui
         }
 
         // Build positive response: [0x76, blockSequenceCounter, ...data]
-        ctx->responseBuffer[0] = UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET;  // 0x76
+        ctx->responseBuffer[0] = UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET; // 0x76
         ctx->responseBuffer[1] = sequenceCounter;
         ctx->responseLength = 2 + bytesRead;
 
@@ -707,7 +707,7 @@ static void HandleTransferData(UDSContext_t *ctx, const uint8_t *requestData, ui
     {
         // Download (write to device memory) - Phase 6
         // Request contains data to write after sequence counter
-        uint16_t dataLength = requestLength - 2;  // Subtract SID and sequence counter
+        uint16_t dataLength = requestLength - 2; // Subtract SID and sequence counter
         const uint8_t *dataBuffer = &requestData[2];
 
         if (!UDS_Memory_WriteBlock(&ctx->memoryTransfer, sequenceCounter, dataBuffer, dataLength))
@@ -727,7 +727,7 @@ static void HandleTransferData(UDSContext_t *ctx, const uint8_t *requestData, ui
         }
 
         // Build positive response: [0x76, blockSequenceCounter]
-        ctx->responseBuffer[0] = UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET;  // 0x76
+        ctx->responseBuffer[0] = UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET; // 0x76
         ctx->responseBuffer[1] = sequenceCounter;
         ctx->responseLength = 2;
 
@@ -754,7 +754,7 @@ static void HandleRequestTransferExit(UDSContext_t *ctx, const uint8_t *requestD
     }
 
     // Build positive response: [0x77]
-    ctx->responseBuffer[0] = UDS_SID_REQUEST_TRANSFER_EXIT + UDS_RESPONSE_SID_OFFSET;  // 0x77
+    ctx->responseBuffer[0] = UDS_SID_REQUEST_TRANSFER_EXIT + UDS_RESPONSE_SID_OFFSET; // 0x77
     ctx->responseLength = 1;
 
     UDS_SendResponse(ctx);

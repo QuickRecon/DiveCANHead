@@ -125,7 +125,7 @@ extern "C"
 
         /** @brief ISO-TP invalid state transition **/
         ISOTP_STATE_ERR = 34,
-        
+
         /** @brief A log message wasn't going to fit in the buffer */
         LOG_MSG_TRUNCATED_ERR = 35,
 
