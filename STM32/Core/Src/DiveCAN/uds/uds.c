@@ -269,13 +269,19 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
             }
 
             memcpy(&ctx->responseBuffer[3], setting->label, labelLen);
-            ctx->responseBuffer[labelLen+3] = 0; // Null terminator
-            ctx->responseBuffer[labelLen+4] = (uint8_t)setting->kind;
-            ctx->responseBuffer[labelLen+5] = setting->editable ? 1 : 0;
-            //ctx->responseBuffer[labelLen+6] = setting->maxValue;
-            //ctx->responseBuffer[labelLen+7] = setting->optionCount;
-
-            ctx->responseLength = 7 + labelLen;
+            ctx->responseBuffer[labelLen + 3] = 0; // Null terminator
+            ctx->responseBuffer[labelLen + 4] = (uint8_t)setting->kind;
+            ctx->responseBuffer[labelLen + 5] = setting->editable ? 1 : 0;
+            if (setting->kind == SETTING_KIND_TEXT)
+            {
+                ctx->responseBuffer[labelLen + 6] = setting->maxValue;
+                ctx->responseBuffer[labelLen + 7] = setting->optionCount;
+                ctx->responseLength = 7 + labelLen;
+            }
+            else
+            {
+                ctx->responseLength = 5 + labelLen;
+            }
             UDS_SendResponse(ctx);
             return;
         }

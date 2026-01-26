@@ -35,28 +35,28 @@ static const SettingDefinition_t settings[] = {
         .optionCount = 1
     },
     {
-        .label = "Config 1 ",
+        .label = "Config 1",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .options = NumericOptions,
         .maxValue = 0xFF,
     },
     {
-        .label = "Config 2 ",
+        .label = "Config 2",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .options = NumericOptions,
         .maxValue = 0xFF,
     },
     {
-        .label = "Config 3 ",
+        .label = "Config 3",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .options = NumericOptions,
         .maxValue = 0xFF,
     },
     {
-        .label = "Config 4 ",
+        .label = "Config 4",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .options = NumericOptions,

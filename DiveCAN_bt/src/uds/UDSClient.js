@@ -63,7 +63,7 @@ export class UDSClient extends EventEmitter {
     this.pendingTimer = null;
 
     // Inter-request delay (ms) - allows Petrel ISO-TP layer to settle
-    this.requestDelay = options.requestDelay ?? 2000;
+    this.requestDelay = options.requestDelay ?? 0;
     this.lastRequestTime = 0;
 
     // Set up transport message handler
