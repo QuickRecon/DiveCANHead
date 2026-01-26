@@ -105,7 +105,7 @@ void PrinterTask(void *arg)
             }
 
             /* Also push via UDS if enabled (non-blocking, best-effort) */
-            (void)UDS_LogPush_SendMessage(printItem.string, msgLen);
+            (void)UDS_LogPush_SendLogMessage(printItem.string, msgLen);
 
             LogMsg(printItem.string);
         }

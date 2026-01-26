@@ -436,7 +436,7 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
     if ((printedChars > 0))
     {
         /* Send to the UDS stack */
-        (void)UDS_LogPush_SendMessage(enQueueItem.string, printedChars);
+        (void)UDS_LogPush_SendEventMessage(enQueueItem.string, printedChars);
 
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
@@ -467,7 +467,7 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
     if ((printedChars > 0))
     {
         /* Send to the UDS stack */
-        (void)UDS_LogPush_SendMessage(enQueueItem.string, printedChars);
+        (void)UDS_LogPush_SendEventMessage(enQueueItem.string, printedChars);
 
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
@@ -498,7 +498,7 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     if ((printedChars > 0))
     {
         /* Send to the UDS stack */
-        (void)UDS_LogPush_SendMessage(enQueueItem.string, printedChars);
+        (void)UDS_LogPush_SendEventMessage(enQueueItem.string, printedChars);
 
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&

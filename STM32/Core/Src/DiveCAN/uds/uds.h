@@ -86,7 +86,8 @@ typedef enum
 
     // Log streaming DIDs (0xAxxx range)
     UDS_DID_LOG_STREAM_ENABLE = 0xA000, // Read/Write: enable log push (1 byte)
-    UDS_DID_LOG_MESSAGE = 0xA100        // Push: log message (ECU -> Tester)
+    UDS_DID_LOG_MESSAGE = 0xA100,        // Push: log message (ECU -> Tester)
+    UDS_DID_EVENT_MESSAGE = 0xA200        // Push: log message (ECU -> Tester)
 } UDS_DID_t;
 
 // UDS maximum message sizes

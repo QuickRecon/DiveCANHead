@@ -76,7 +76,21 @@ void UDS_LogPush_SetEnabled(bool enable);
  * @note Does not wait for transmission to complete
  * @note Increments error counter on failure, auto-disables at threshold
  */
-bool UDS_LogPush_SendMessage(const char *message, uint16_t length);
+bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length);
+
+/**
+ * @brief Push log message to bluetooth client
+ *
+ * Same as above but uses a different channel for event messages.
+ *
+ * @param message Log message string (null terminator not sent)
+ * @param length Length of message (truncated to UDS_LOG_MAX_PAYLOAD if larger)
+ * @return true if push was initiated, false if dropped
+ *
+ * @note Does not wait for transmission to complete
+ * @note Increments error counter on failure, auto-disables at threshold
+ */
+bool UDS_LogPush_SendEventMessage(const char *message, uint16_t length);
 
 /**
  * @brief Poll for TX completion

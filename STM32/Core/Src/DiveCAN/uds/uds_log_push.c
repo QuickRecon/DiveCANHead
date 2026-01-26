@@ -59,7 +59,7 @@ void UDS_LogPush_SetEnabled(bool enable)
     }
 }
 
-bool UDS_LogPush_SendMessage(const char *message, uint16_t length)
+bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
 {
     /* Check preconditions */
     // if (!logPushState.enabled)
@@ -100,6 +100,71 @@ bool UDS_LogPush_SendMessage(const char *message, uint16_t length)
     logPushState.txBuffer[0] = UDS_SID_WRITE_DATA_BY_ID;
     logPushState.txBuffer[1] = (uint8_t)(UDS_DID_LOG_MESSAGE >> 8);
     logPushState.txBuffer[2] = (uint8_t)(UDS_DID_LOG_MESSAGE & 0xFFU);
+    (void)memcpy(&logPushState.txBuffer[WDBI_HEADER_SIZE], message, payloadLen);
+
+    /* Send via ISO-TP */
+    bool sent = ISOTP_Send(logPushState.isotpContext,
+                           logPushState.txBuffer,
+                           WDBI_HEADER_SIZE + payloadLen);
+
+    if (sent)
+    {
+        logPushState.txPending = true;
+    }
+    else
+    {
+        /* Increment error counter */
+        logPushState.errorCount++;
+        if (logPushState.errorCount >= UDS_LOG_ERROR_THRESHOLD)
+        {
+            logPushState.enabled = false; /* Auto-disable */
+        }
+    }
+
+    return sent;
+}
+
+bool UDS_LogPush_SendEventMessage(const char *message, uint16_t length)
+{
+    /* Check preconditions */
+    // if (!logPushState.enabled)
+    // {
+    //     return false;
+    // }
+
+    if (logPushState.isotpContext == NULL)
+    {
+        return false;
+    }
+
+    if ((message == NULL) || (length == 0))
+    {
+        return false;
+    }
+
+    /* Check if previous TX still pending - drop message rather than block */
+    while (logPushState.txPending)
+    {
+        osDelay(1);
+    }
+
+    /* Check if ISO-TP is idle */
+    if (logPushState.isotpContext->state != ISOTP_IDLE)
+    {
+        return false;
+    }
+
+    /* Truncate if necessary */
+    uint16_t payloadLen = length + 1;
+    if (payloadLen > UDS_LOG_MAX_PAYLOAD)
+    {
+        payloadLen = UDS_LOG_MAX_PAYLOAD;
+    }
+
+    /* Build WDBI frame: [SID, DID_high, DID_low, data...] */
+    logPushState.txBuffer[0] = UDS_SID_WRITE_DATA_BY_ID;
+    logPushState.txBuffer[1] = (uint8_t)(UDS_DID_EVENT_MESSAGE >> 8);
+    logPushState.txBuffer[2] = (uint8_t)(UDS_DID_EVENT_MESSAGE & 0xFFU);
     (void)memcpy(&logPushState.txBuffer[WDBI_HEADER_SIZE], message, payloadLen);
 
     /* Send via ISO-TP */
