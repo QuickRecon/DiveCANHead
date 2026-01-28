@@ -21,10 +21,7 @@ extern uint32_t HAL_GetTick(void);
 static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
 static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
 static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
-static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
 static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blockSize, uint8_t stmin);
-static void SendConsecutiveFrames(ISOTPContext_t *ctx);
-// static bool isLegacyMenuMessage(const DiveCANMessage_t *msg);
 
 /**
  * @brief Initialize ISO-TP context
@@ -87,30 +84,6 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
     }
 }
 
-// /**
-//  * @brief Check if message is legacy menu protocol (not ISO-TP)
-//  */
-// static bool isLegacyMenuMessage(const DiveCANMessage_t *msg)
-// {
-//     uint8_t pci = msg->data[0];
-
-//     // Legacy MENU_RESP_HEADER: [0x10, length, 0x00, 0x62, 0x91, ...]
-//     if (pci == 0x10 && msg->length >= 5 &&
-//         msg->data[2] == 0x00 && msg->data[3] == 0x62 && msg->data[4] == 0x91)
-//     {
-//         return true;  // Legacy menu pattern
-//     }
-
-//     // Legacy MENU_REQ: [0x04, ...]
-//     // Legacy MENU_ACK_INIT: [0x05, ...]
-//     if (pci == 0x04 || pci == 0x05)
-//     {
-//         return true;  // Legacy menu opcodes
-//     }
-
-//     return false;  // Likely ISO-TP
-// }
-
 /**
  * @brief Process received CAN frame
  */
@@ -120,12 +93,6 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
     {
         return false;
     }
-
-    // Check for legacy menu protocol first
-    // if (isLegacyMenuMessage(message))
-    // {
-    //     return false;  // Not ISO-TP
-    // }
 
     // Extract addressing from CAN ID
     uint8_t msgTarget = (message->id >> 8) & 0x0F; // Bits 11-8
@@ -162,7 +129,9 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
         return HandleConsecutiveFrame(ctx, message);
 
     case ISOTP_PCI_FC: // Flow control
-        return HandleFlowControl(ctx, message);
+        // FC frames are handled by the centralized TX queue (ISOTP_TxQueue_ProcessFC)
+        // Individual contexts no longer do TX, so ignore FC here
+        return false;
 
     default:
         return false; // Unknown PCI
@@ -296,55 +265,6 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
 }
 
 /**
- * @brief Handle Flow Control reception
- */
-static bool HandleFlowControl(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
-{
-    // Must be in WAIT_FC state
-    if (ctx->state != ISOTP_WAIT_FC)
-    {
-        return false; // Not expecting FC
-    }
-
-    // Extract flow status
-    uint8_t flowStatus = message->data[0];
-
-    // Handle different flow statuses
-    switch (flowStatus)
-    {
-    case ISOTP_FC_CTS: // Continue to send
-        // Extract block size and STmin
-        ctx->txBlockSize = message->data[1];
-        ctx->txSTmin = message->data[2];
-        ctx->txBlockCounter = 0;
-
-        // Transition to TRANSMITTING state
-        ctx->state = ISOTP_TRANSMITTING;
-
-        // Start sending consecutive frames
-        SendConsecutiveFrames(ctx);
-        break;
-
-    case ISOTP_FC_WAIT: // Wait
-        // Not implemented - just abort for now
-        ISOTP_Reset(ctx);
-        break;
-
-    case ISOTP_FC_OVFLW: // Overflow - receiver rejected
-        // Abort transmission - don't set txComplete flag (transfer failed)
-        ISOTP_Reset(ctx);
-        break;
-
-    default:
-        // Unknown flow status - abort
-        ISOTP_Reset(ctx);
-        break;
-    }
-
-    return true; // Message consumed
-}
-
-/**
  * @brief Send Flow Control frame
  */
 static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blockSize, uint8_t stmin)
@@ -399,64 +319,7 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 }
 
 /**
- * @brief Send consecutive frames
- */
-static void SendConsecutiveFrames(ISOTPContext_t *ctx)
-{
-    while (ctx->txBytesSent < ctx->txDataLength)
-    {
-        // Wait for STmin to elapse
-        uint32_t stminMs = (ctx->txSTmin <= 0x7F) ? ctx->txSTmin : 0;
-        if (stminMs > 0)
-        {
-            uint32_t elapsed = HAL_GetTick() - ctx->txLastFrameTime;
-            if (elapsed < stminMs)
-            {
-                // Busy wait for STmin (note: could use osDelay for long waits in production)
-                while ((HAL_GetTick() - ctx->txLastFrameTime) < stminMs)
-                {
-                    // Busy wait
-                }
-            }
-        }
-
-        // Build CF frame
-        DiveCANMessage_t cf = {0};
-        cf.id = ctx->messageId | (ctx->target << 8) | ctx->source;
-        cf.length = 8;
-        cf.data[0] = 0x20 | (ctx->txSequenceNumber + 1); // CF PCI + sequence number
-
-        // Copy up to 7 bytes
-        uint16_t bytesRemaining = ctx->txDataLength - ctx->txBytesSent;
-        uint8_t bytesToCopy = (bytesRemaining > 7) ? 7 : (uint8_t)bytesRemaining;
-        memcpy(&cf.data[1], &ctx->txDataPtr[ctx->txBytesSent], bytesToCopy);
-
-        ctx->txBytesSent += bytesToCopy;
-        ctx->txLastFrameTime = HAL_GetTick();
-
-        sendCANMessage(cf);
-
-        // Increment sequence number (wraps at 16)
-        ctx->txSequenceNumber = (ctx->txSequenceNumber + 1) & 0x0F;
-
-        // Check block size
-        ctx->txBlockCounter++;
-        if (ctx->txBlockSize != 0 && ctx->txBlockCounter >= ctx->txBlockSize)
-        {
-            // Need to wait for next FC
-            ctx->state = ISOTP_WAIT_FC;
-            return;
-        }
-    }
-
-    // Transmission complete
-    ctx->txComplete = true;
-
-    ISOTP_Reset(ctx);
-}
-
-/**
- * @brief Poll for timeouts
+ * @brief Poll for timeouts (RX only - TX is handled by centralized queue)
  */
 void ISOTP_Poll(ISOTPContext_t *ctx, uint32_t currentTime)
 {
@@ -465,33 +328,14 @@ void ISOTP_Poll(ISOTPContext_t *ctx, uint32_t currentTime)
         return;
     }
 
-    switch (ctx->state)
+    // Only RX timeout checking - TX is handled by ISOTP_TxQueue_Poll
+    if (ctx->state == ISOTP_RECEIVING)
     {
-    case ISOTP_WAIT_FC:
-        // Check N_Bs timeout (waiting for FC after sending FF)
-        if ((currentTime - ctx->txLastFrameTime) > ISOTP_TIMEOUT_N_BS)
-        {
-            NON_FATAL_ERROR_DETAIL(ISOTP_TIMEOUT_ERR, ctx->state);
-            ISOTP_Reset(ctx);
-        }
-        break;
-
-    case ISOTP_RECEIVING:
         // Check N_Cr timeout (waiting for CF)
         if ((currentTime - ctx->rxLastFrameTime) > ISOTP_TIMEOUT_N_CR)
         {
             NON_FATAL_ERROR_DETAIL(ISOTP_TIMEOUT_ERR, ctx->state);
             ISOTP_Reset(ctx);
         }
-        break;
-
-    case ISOTP_TRANSMITTING:
-        // No timeout in this state (we're actively sending)
-        break;
-
-    case ISOTP_IDLE:
-    default:
-        // No timeout checking needed
-        break;
     }
 }

@@ -175,6 +175,10 @@ extern "C"
   BaseType_t GetLatestCAN(const Timestamp_t blockTime, DiveCANMessage_t *message);
   void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const data);
 
+  /* Low-level CAN transmit */
+  void sendCANMessage(const DiveCANMessage_t message);
+  void sendCANMessageBlocking(const DiveCANMessage_t message);
+
   /* Device Metadata */
   void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType);
   void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, uint8_t firmwareVersion);

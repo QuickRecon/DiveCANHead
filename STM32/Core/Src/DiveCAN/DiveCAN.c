@@ -276,11 +276,12 @@ void CANTask(void *arg)
                 UDS_LogPush_Poll();
             }
 
-            // Poll centralized TX queue for serialized transmission
-            ISOTP_TxQueue_Poll(now);
-
             lastPollTime = now;
         }
+
+        // Poll TX queue every iteration - minimizes latency between
+        // enqueue and FF transmission, and handles timeout checks
+        ISOTP_TxQueue_Poll(now);
 
         // Check for completed ISO-TP RX transfers
         if (isotpContext.rxComplete)

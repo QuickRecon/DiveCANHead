@@ -159,6 +159,60 @@ void sendCANMessage(const DiveCANMessage_t message)
     }
 }
 
+/** @brief Send CAN message and wait for transmission to complete.
+ *
+ * Unlike sendCANMessage(), this function blocks until the frame is actually
+ * transmitted on the bus. This is required for ISO-TP where frame ordering
+ * is critical - with auto-retransmission enabled, frames that lose arbitration
+ * could be retried and transmitted out of order if we don't wait.
+ *
+ * @param message The CAN message to send
+ */
+void sendCANMessageBlocking(const DiveCANMessage_t message)
+{
+    /* Wait for a free mailbox */
+    while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))
+    {
+        (void)osDelay(TX_WAIT_DELAY);
+    }
+
+    /* Don't log messages that would cause a recursion */
+    if ((message.id & ID_MASK) != LOG_TEXT_ID)
+    {
+        LogTXDiveCANMessage(&message);
+    }
+
+    CAN_TxHeaderTypeDef header = {0};
+    header.StdId = 0x0;
+    header.ExtId = message.id;
+    header.RTR = CAN_RTR_DATA;
+    header.IDE = CAN_ID_EXT;
+    header.DLC = message.length;
+    header.TransmitGlobalTime = DISABLE;
+
+    uint32_t mailboxNumber = 0;
+
+    HAL_StatusTypeDef err = HAL_CAN_AddTxMessage(&hcan1, &header, message.data, &mailboxNumber);
+    if (HAL_OK != err)
+    {
+        NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, err);
+        return;
+    }
+
+    /* Wait for this specific mailbox to complete transmission.
+     * This ensures the frame is actually on the bus before we return,
+     * preventing out-of-order transmission with auto-retransmit enabled. */
+    uint32_t mailboxMask = (mailboxNumber == CAN_TX_MAILBOX0) ? CAN_TSR_TME0 :
+                           (mailboxNumber == CAN_TX_MAILBOX1) ? CAN_TSR_TME1 :
+                                                                 CAN_TSR_TME2;
+
+    /* Poll until mailbox is empty (transmission complete) */
+    while ((hcan1.Instance->TSR & mailboxMask) == 0U)
+    {
+        (void)osDelay(1);
+    }
+}
+
 /*-----------------------------------------------------------------------------------*/
 /* Device Metadata */
 
