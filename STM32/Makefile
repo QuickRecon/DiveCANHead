@@ -55,6 +55,7 @@ Core/Src/DiveCAN/Transciever.c \
 Core/Src/DiveCAN/DiveCAN.c \
 Core/Src/DiveCAN/PPO2Transmitter.c \
 Core/Src/DiveCAN/uds/isotp.c \
+Core/Src/DiveCAN/uds/isotp_tx_queue.c \
 Core/Src/DiveCAN/uds/uds.c \
 Core/Src/DiveCAN/uds/uds_settings.c \
 Core/Src/DiveCAN/uds/uds_memory.c \

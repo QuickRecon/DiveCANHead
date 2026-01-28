@@ -10,6 +10,7 @@
 
 #ifdef UDS_ENABLED
 #include "uds/isotp.h"
+#include "uds/isotp_tx_queue.h"
 #include "uds/uds.h"
 #include "uds/uds_log_push.h"
 #endif
@@ -140,6 +141,10 @@ void CANTask(void *arg)
                     ISOTP_Init(&isotpContext, deviceSpec->type, targetType, MENU_ID);
 
                     UDS_Init(&udsContext, configuration, &isotpContext);
+
+                    // Initialize centralized TX queue for serialized message transmission
+                    ISOTP_TxQueue_Init();
+
                     isotpInitialized = true;
                 }
 
@@ -150,7 +155,17 @@ void CANTask(void *arg)
                     logPushInitialized = true;
                 }
 
-                // Try ISO-TP first - returns true if consumed
+                // Check if this is a Flow Control frame for our TX queue
+                // FC frames have PCI type 0x30 (upper nibble)
+                if ((message.data[0] & ISOTP_PCI_MASK) == ISOTP_PCI_FC)
+                {
+                    if (ISOTP_TxQueue_ProcessFC(&message))
+                    {
+                        break; // FC consumed by TX queue
+                    }
+                }
+
+                // Try ISO-TP RX processing - returns true if consumed
                 if (ISOTP_ProcessRxFrame(&isotpContext, &message))
                 {
                     break; // ISO-TP handled it
@@ -260,6 +275,9 @@ void CANTask(void *arg)
                 ISOTP_Poll(&logPushIsoTpContext, now);
                 UDS_LogPush_Poll();
             }
+
+            // Poll centralized TX queue for serialized transmission
+            ISOTP_TxQueue_Poll(now);
 
             lastPollTime = now;
         }

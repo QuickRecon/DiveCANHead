@@ -288,6 +288,14 @@ void UDS_LogPush_Poll(void)
         return;
     }
 
+    /* Check if centralized TX queue is busy - wait for it to drain */
+    extern bool ISOTP_TxQueue_IsBusy(void);
+    extern uint8_t ISOTP_TxQueue_GetPendingCount(void);
+    if (ISOTP_TxQueue_IsBusy() || ISOTP_TxQueue_GetPendingCount() > 0)
+    {
+        return; /* Queue busy, try again on next poll */
+    }
+
     /* Try to dequeue and send next message */
     UDSLogQueueItem_t item;
     if (osMessageQueueGet(logPushState.queueHandle, &item, NULL, 0) == osOK)

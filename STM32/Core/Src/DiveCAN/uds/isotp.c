@@ -7,6 +7,7 @@
  */
 
 #include "isotp.h"
+#include "isotp_tx_queue.h"
 #include "../Transciever.h"
 #include "../../errors.h"
 #include <string.h>
@@ -362,6 +363,13 @@ static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blo
 
 /**
  * @brief Send data via ISO-TP
+ *
+ * Uses the centralized TX queue to ensure serialized transmission,
+ * preventing interleaving when multiple ISO-TP contexts are active.
+ *
+ * Note: txComplete is set immediately on successful queue. Callers that need
+ * to wait for actual transmission should check ISOTP_TxQueue_IsBusy() before
+ * sending subsequent messages.
  */
 bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 {
@@ -376,56 +384,18 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
         return false; // Invalid length
     }
 
-    // Check if we're idle
-    if (ctx->state != ISOTP_IDLE)
+    // Enqueue to centralized TX queue instead of direct send
+    // This ensures all ISO-TP messages are serialized
+    bool queued = ISOTP_TxQueue_Enqueue(ctx->source, ctx->target,
+                                         ctx->messageId, data, length);
+
+    if (queued)
     {
-        return false; // Transmission already in progress
-    }
-
-    // Single frame (≤7 bytes)
-    if (length <= 7)
-    {
-        DiveCANMessage_t sf = {0};
-        sf.id = ctx->messageId | (ctx->target << 8) | ctx->source;
-        sf.length = 8;
-        sf.data[0] = (uint8_t)length + 1; // SF PCI
-        sf.data[1] = 0;
-        memcpy(&sf.data[2], data, length);
-
-        sendCANMessage(sf);
-
-        // Set completion flag for caller to check
+        // Set completion flag - message is queued and will be sent in order
         ctx->txComplete = true;
-
-        return true;
     }
 
-    // Multi-frame transmission
-    ctx->txDataPtr = data;
-    ctx->txDataLength = length;
-    ctx->txBytesSent = 0;
-    ctx->txSequenceNumber = 0;
-
-    // Send First Frame
-    DiveCANMessage_t ff = {0};
-    ff.id = ctx->messageId | (ctx->target << 8) | ctx->source;
-    ff.length = 8;
-    ff.data[0] = 0x10 | ((length >> 8) & 0x0F); // FF PCI + upper nibble of length
-    ff.data[1] = (uint8_t)(length & 0xFF);      // Lower byte of length
-    memcpy(&ff.data[3], data, 5);               // First 5 bytes
-
-    ctx->txBytesSent = 5;
-
-    // Update timestamp
-    extern uint32_t HAL_GetTick(void);
-    ctx->txLastFrameTime = HAL_GetTick();
-
-    // Transition to WAIT_FC state
-    ctx->state = ISOTP_WAIT_FC;
-
-    sendCANMessage(ff);
-
-    return true;
+    return queued;
 }
 
 /**
