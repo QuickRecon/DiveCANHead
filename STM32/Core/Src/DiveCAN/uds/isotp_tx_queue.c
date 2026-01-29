@@ -141,7 +141,7 @@ static void StartNextTx(void)
     ISOTPTxRequest_t *tx = &txState.current;
 
     /* Single frame (<=7 bytes) - send immediately */
-    if (tx->length <= 7U)
+    if (tx->length <= 6U)
     {
         DiveCANMessage_t sf = {0};
         sf.id = tx->messageId | ((uint32_t)tx->target << 8) | (uint32_t)tx->source;
