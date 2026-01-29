@@ -288,9 +288,9 @@ void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, c
 {
     uint8_t errByte = (uint8_t)error;
     /* Only send the battery info if there aren't error */
-    if (showBattery)
+    if (error != DIVECAN_ERR_BAT_LOW && showBattery)
     {
-        errByte |= DIVECAN_ERR_BAT_AVAIL;
+        errByte = DIVECAN_ERR_BAT_NORM;
     }
     const DiveCANMessage_t message = {
         .id = BUS_STATUS_ID | deviceType,
@@ -303,12 +303,12 @@ void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, c
 /**
  * @brief Transmit the magic packet to the HUD, this lets it know to show the yellow bar of low-battery-ness during boot
  * @param deviceType the device type of this device
- * @param error Current error state (we only check if its DIVECAN_ERR_LOW_BATTERY or not)
+ * @param error Current error state (we only check if its DIVECAN_ERR_BAT_LOW or not)
  */
 void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error)
 {
     uint8_t batByte = 0x1;
-    if (error == DIVECAN_ERR_LOW_BATTERY)
+    if (error == DIVECAN_ERR_BAT_LOW)
     {
         batByte = 0x0;
     }

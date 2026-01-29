@@ -109,34 +109,39 @@ extern "C"
   typedef enum
   {
     /**
-     * @brief An unknown error 1.
+     * @brief Hides battery status.
      */
-    DIVECAN_ERR_UNKNOWN1 = 0,
+    DIVECAN_ERR_NONE = 0,
 
     /**
      * @brief Error indicating low battery status.
      */
-    DIVECAN_ERR_LOW_BATTERY = 1 << 0,
+    DIVECAN_ERR_BAT_LOW = 0x01,
 
     /**
      * @brief Battery information is valid and should be shown.
      */
-    DIVECAN_ERR_BAT_AVAIL = 1 << 1,
+    DIVECAN_ERR_BAT_NORM = 0x02,
 
     /**
-     * @brief Error indicating a problem with the solenoid.
+     * @brief Battery information is valid and should be shown.
      */
-    DIVECAN_ERR_SOLENOID = 1 << 2,
+    DIVECAN_ERR_BAT_HIGH = 0x03,
 
     /**
-     * @brief Indicates there are no errors in the system.
+     * @brief Error indicating solenoid undercurrent
      */
-    DIVECAN_ERR_NONE = 1 << 3,
+    DIVECAN_ERR_SOLENOID_UNDERCURRENT = 0x04,
 
     /**
-     * @brief An unknown error 4.
+     * @brief Indicates solenoid is okay
      */
-    DIVECAN_ERR_UNKNOWN4 = 1 << 5,
+    DIVECAN_ERR_SOLENOID_NORM = 0x08,
+
+    /**
+     * @brief Indicates solenoid overcurrent
+     */
+    DIVECAN_ERR_SOLENOID_OVERCURRENT= 0x0C,
 
     /**
      * @brief An unknown error 5.
