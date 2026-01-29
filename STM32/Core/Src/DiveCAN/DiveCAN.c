@@ -270,11 +270,8 @@ void CANTask(void *arg)
             UDS_LogPush_Poll();
         }
 
-        // Poll TX queue every iteration - minimizes latency between
-        // enqueue and FF transmission, and handles timeout checks
-        ISOTP_TxQueue_Poll(now);
-
-        // Check for completed ISO-TP RX transfers
+        // Check for completed ISO-TP RX transfers BEFORE polling TX queue
+        // so that responses are enqueued before we try to send them
         if (isotpContext.rxComplete)
         {
             HandleUDSMessage(isotpContext.rxBuffer, isotpContext.rxDataLength);
@@ -287,6 +284,10 @@ void CANTask(void *arg)
             HandleUDSTxComplete();
             isotpContext.txComplete = false; // Clear flag
         }
+
+        // Poll TX queue AFTER processing RX - ensures responses enqueued
+        // by HandleUDSMessage are sent immediately in the same iteration
+        ISOTP_TxQueue_Poll(now);
     }
 }
 
