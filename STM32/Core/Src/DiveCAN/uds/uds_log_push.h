@@ -20,14 +20,9 @@
 #include "isotp.h"
 
 /* DIDs for log streaming are defined in uds.h:
- * UDS_DID_LOG_STREAM_ENABLE = 0xA000  - Read/Write: enable log streaming (1 byte)
  * UDS_DID_LOG_MESSAGE       = 0xA100  - Push: log message data (ECU -> Tester)
  * UDS_DID_EVENT_MESSAGE     = 0xA200  - Push: event message data (ECU -> Tester)
- * UDS_DID_STATE_VECTOR      = 0xA203  - Push: binary state vector (ECU -> Tester)
  */
-
-/* DID for binary state vector push */
-#define UDS_DID_STATE_VECTOR 0xA203U
 
 /* Maximum log message payload size
  * TX buffer (256) - WDBI header (SID + DID = 3 bytes) */
@@ -150,54 +145,5 @@ uint8_t UDS_LogPush_GetErrorCount(void);
  * manually if needed.
  */
 void UDS_LogPush_ResetErrorCount(void);
-
-/**
- * @brief Binary state vector for efficient CAN log push
- *
- * Contains complete system state in a compact binary format.
- * Sent once per second to reduce CAN bus traffic.
- *
- * Cell type is determined from config field (bits 8-13, 2 bits per cell):
- *   - CELL_ANALOG (1): detail[0] = raw ADC value (int16 in low bits)
- *   - CELL_O2S (2): no detail fields used
- *   - CELL_DIVEO2 (3): detail[0-6] = temp, err, phase, intensity, ambientLight, pressure, humidity
- *
- * Fields ordered for natural alignment (4-byte, then 2-byte, then 1-byte).
- */
-typedef struct __attribute__((packed))
-{
-    /* 4-byte aligned fields (112 bytes) */
-    uint32_t config;           /**< Full Configuration_t bitfield (cell types in bits 8-13) */
-    float consensus_ppo2;      /**< Voted PPO2 value */
-    float setpoint;            /**< Current setpoint */
-    float duty_cycle;          /**< Solenoid duty cycle (0.0-1.0) */
-    float integral_state;      /**< PID integral accumulator */
-    float cell_ppo2[3];        /**< Per-cell PPO2 (float precision from precisionPPO2) */
-    uint32_t cell_detail[3][7]; /**< Per-cell detail fields (interpretation depends on cell type) */
-
-    /* 2-byte aligned fields (4 bytes) */
-    uint16_t timestamp_sec;    /**< Seconds since boot (wraps at ~18 hours) */
-    uint16_t saturation_count; /**< PID saturation event counter */
-
-    /* 1-byte fields (2 bytes) */
-    uint8_t version;           /**< Protocol version (for client compatibility) */
-    uint8_t cellsValid;        /**< Bit flags: which cells included in voting (bits 0-2) */
-} BinaryStateVector_t;
-
-_Static_assert(sizeof(BinaryStateVector_t) == 122, "BinaryStateVector_t size must be 122 bytes");
-
-/**
- * @brief Push binary state vector to bluetooth client
- *
- * Sends complete system state as a single ISO-TP message.
- * Should be called once per second from PPO2TransmitterTask.
- *
- * @param state Pointer to populated state vector
- * @return true if push was initiated, false if dropped
- *
- * @note Message is silently dropped if log streaming is disabled
- * @note Uses UDS_DID_STATE_VECTOR (0xA203)
- */
-bool UDS_LogPush_SendStateVector(const BinaryStateVector_t *state);
 
 #endif /* UDS_LOG_PUSH_H */

@@ -1,82 +1,46 @@
 /**
  * DataStore - Time-series data storage for real-time diagnostics
  *
- * Primary data source is the binary state vector received once per second.
- * Stores time series for plotting and provides access to latest values.
+ * Uses DID-based polling with subscription model:
+ * - Initial fetch of all DIDs on connect
+ * - Polling of subscribed DIDs only
+ * - Change events when values update
  */
 
-import { parseStateVector, getCellTypeName } from './StateVectorParser.js';
 import {
   CELL_TYPE_NONE,
   CELL_TYPE_ANALOG,
   CELL_TYPE_O2S,
-  CELL_TYPE_DIVEO2
+  CELL_TYPE_DIVEO2,
+  STATE_DIDS,
+  getControlStateDIDs,
+  getValidCellDIDs,
+  getDIDInfo
 } from '../uds/constants.js';
 
 export class DataStore {
   /**
    * Create a new DataStore
-   * @param {number} maxPoints - Maximum data points per series
-   * @param {number} maxAge - Maximum age in seconds
+   * @param {Object} options - Configuration options
+   * @param {number} options.maxPoints - Maximum data points per series (default: 500)
+   * @param {number} options.maxAge - Maximum age in seconds (default: 300)
+   * @param {Object} options.udsClient - UDSClient instance for DID-based polling
+   * @param {number} options.pollInterval - Poll interval in ms (default: 200)
    */
-  constructor(maxPoints = 500, maxAge = 300) {
-    this.maxPoints = maxPoints;
-    this.maxAge = maxAge;
+  constructor(options = {}) {
+    this.maxPoints = options.maxPoints ?? 500;
+    this.maxAge = options.maxAge ?? 300;
+    this.udsClient = options.udsClient ?? null;
+    this.pollInterval = options.pollInterval ?? 200;
+
     this.series = new Map();
-    this.latestStateVector = null;
-  }
 
-  /**
-   * Add a binary state vector to the store
-   * @param {Uint8Array} data - Raw binary state vector (122 bytes)
-   * @returns {Object|null} Parsed state vector or null if invalid
-   */
-  addStateVector(data) {
-    const sv = parseStateVector(data);
-    if (!sv) {
-      return null;
-    }
-
-    this.latestStateVector = sv;
-    const ts = sv.timestamp;
-
-    // Store global fields as time series
-    this._addPoint('consensus_ppo2', ts, sv.consensus_ppo2);
-    this._addPoint('setpoint', ts, sv.setpoint);
-    this._addPoint('duty_cycle', ts, sv.duty_cycle);
-    this._addPoint('integral_state', ts, sv.integral_state);
-    this._addPoint('saturation_count', ts, sv.saturation_count);
-
-    // Store per-cell fields
-    for (const cell of sv.cells) {
-      const prefix = `cell${cell.cellNumber}`;
-
-      // PPO2 is always available
-      this._addPoint(`${prefix}.ppo2`, ts, cell.ppo2);
-
-      // Type-specific fields
-      switch (cell.cellType) {
-        case CELL_TYPE_DIVEO2:
-          this._addPoint(`${prefix}.temperature`, ts, cell.temperature);
-          this._addPoint(`${prefix}.error`, ts, cell.error);
-          this._addPoint(`${prefix}.phase`, ts, cell.phase);
-          this._addPoint(`${prefix}.intensity`, ts, cell.intensity);
-          this._addPoint(`${prefix}.ambientLight`, ts, cell.ambientLight);
-          this._addPoint(`${prefix}.pressure`, ts, cell.pressure);
-          this._addPoint(`${prefix}.humidity`, ts, cell.humidity);
-          break;
-
-        case CELL_TYPE_ANALOG:
-          this._addPoint(`${prefix}.rawAdc`, ts, cell.rawAdc);
-          break;
-
-        case CELL_TYPE_O2S:
-          // O2S only has PPO2, already stored above
-          break;
-      }
-    }
-
-    return sv;
+    // DID-based state
+    this.didValues = new Map();          // DID key -> latest value
+    this.subscriptions = new Map();      // DID key -> Set of callbacks
+    this.pollTimer = null;
+    this.cellTypes = [0, 0, 0];          // Cached cell types
+    this.isPolling = false;
   }
 
   /**
@@ -124,31 +88,12 @@ export class DataStore {
   }
 
   /**
-   * Get latest state vector
-   * @returns {Object|null} Parsed state vector or null
-   */
-  getLatestStateVector() {
-    return this.latestStateVector;
-  }
-
-  /**
-   * Get cell data from latest state vector
-   * @param {number} cellNumber - Cell number (0, 1, or 2)
-   * @returns {Object|null} Cell data or null
-   */
-  getCell(cellNumber) {
-    if (!this.latestStateVector) return null;
-    return this.latestStateVector.cells[cellNumber] || null;
-  }
-
-  /**
-   * Get cell type from latest state vector
+   * Get cell type from cached cell types
    * @param {number} cellNumber - Cell number (0, 1, or 2)
    * @returns {number} Cell type constant (CELL_TYPE_*)
    */
   getCellType(cellNumber) {
-    if (!this.latestStateVector) return CELL_TYPE_NONE;
-    return this.latestStateVector.cellTypes[cellNumber] || CELL_TYPE_NONE;
+    return this.cellTypes[cellNumber] || CELL_TYPE_NONE;
   }
 
   /**
@@ -157,7 +102,9 @@ export class DataStore {
    * @returns {string} Cell type name
    */
   getCellTypeName(cellNumber) {
-    return getCellTypeName(this.getCellType(cellNumber));
+    const CELL_TYPE_NAMES = ['DiveO2', 'Analog', 'O2S'];
+    const type = this.getCellType(cellNumber);
+    return CELL_TYPE_NAMES[type] || 'Unknown';
   }
 
   /**
@@ -166,8 +113,9 @@ export class DataStore {
    * @returns {boolean}
    */
   isCellIncluded(cellNumber) {
-    if (!this.latestStateVector) return false;
-    return (this.latestStateVector.cellsValid & (1 << cellNumber)) !== 0;
+    const cellsValid = this.getDIDValue('CELLS_VALID');
+    if (cellsValid === undefined) return false;
+    return (cellsValid & (1 << cellNumber)) !== 0;
   }
 
   /**
@@ -183,6 +131,295 @@ export class DataStore {
    */
   clear() {
     this.series.clear();
-    this.latestStateVector = null;
+    this.didValues.clear();
+  }
+
+  // ============================================================
+  // DID-Based Polling Methods
+  // ============================================================
+
+  /**
+   * Initialize pull mode - fetch all DIDs and start polling
+   * @returns {Promise<Object>} Initial state values
+   */
+  async initialize() {
+    if (!this.udsClient) {
+      throw new Error('UDSClient required for pull mode');
+    }
+
+    // Fetch all DIDs once
+    const state = await this.fetchAllDIDs();
+
+    // Start polling subscribed DIDs
+    this.startPolling();
+
+    return state;
+  }
+
+  /**
+   * Fetch all known DIDs from device
+   * @returns {Promise<Object>} Object with all DID values
+   */
+  async fetchAllDIDs() {
+    if (!this.udsClient) {
+      throw new Error('UDSClient required for fetchAllDIDs');
+    }
+
+    const state = await this.udsClient.fetchAllState();
+
+    // Update cached cell types
+    if (state._cellTypes) {
+      this.cellTypes = state._cellTypes;
+    }
+
+    // Update internal state and notify subscribers
+    const timestamp = Date.now() / 1000;
+    for (const [key, value] of Object.entries(state)) {
+      if (key.startsWith('_')) continue;  // Skip metadata
+
+      const oldValue = this.didValues.get(key);
+      this.didValues.set(key, value);
+
+      // Add to time series using normalized key for charting compatibility
+      const seriesKey = this._didKeyToSeriesKey(key);
+      this._addPoint(seriesKey, timestamp, value);
+
+      // Notify subscribers if value changed
+      if (oldValue !== value) {
+        this._notifySubscribers(key, value, oldValue);
+      }
+    }
+
+    return state;
+  }
+
+  /**
+   * Subscribe to a DID value
+   * @param {string} didKey - DID key (e.g., 'CONSENSUS_PPO2')
+   * @param {Function} callback - Called when value changes: (newValue, oldValue, key) => void
+   * @returns {Function} Unsubscribe function
+   */
+  subscribe(didKey, callback) {
+    if (!this.subscriptions.has(didKey)) {
+      this.subscriptions.set(didKey, new Set());
+    }
+    this.subscriptions.get(didKey).add(callback);
+
+    // Return unsubscribe function
+    return () => this.unsubscribe(didKey, callback);
+  }
+
+  /**
+   * Unsubscribe from a DID value
+   * @param {string} didKey - DID key
+   * @param {Function} callback - Callback to remove
+   */
+  unsubscribe(didKey, callback) {
+    const subs = this.subscriptions.get(didKey);
+    if (subs) {
+      subs.delete(callback);
+      if (subs.size === 0) {
+        this.subscriptions.delete(didKey);
+      }
+    }
+  }
+
+  /**
+   * Get current value of a DID
+   * @param {string} didKey - DID key
+   * @returns {*} Current value or undefined
+   */
+  getDIDValue(didKey) {
+    return this.didValues.get(didKey);
+  }
+
+  /**
+   * Get all current DID values
+   * @returns {Object} Object with all DID values
+   */
+  getAllDIDValues() {
+    const result = {};
+    for (const [key, value] of this.didValues) {
+      result[key] = value;
+    }
+    return result;
+  }
+
+  /**
+   * Start polling subscribed DIDs
+   * @param {number} intervalMs - Poll interval (default: use constructor value)
+   */
+  startPolling(intervalMs = null) {
+    if (this.isPolling) return;
+
+    const interval = intervalMs ?? this.pollInterval;
+    this.isPolling = true;
+
+    this.pollTimer = setInterval(async () => {
+      if (!this.isPolling) return;
+
+      try {
+        await this._pollSubscribedDIDs();
+      } catch (error) {
+        console.error('Poll error:', error);
+      }
+    }, interval);
+  }
+
+  /**
+   * Stop polling
+   */
+  stopPolling() {
+    this.isPolling = false;
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  /**
+   * Poll only subscribed DIDs
+   * @private
+   */
+  async _pollSubscribedDIDs() {
+    if (!this.udsClient || this.subscriptions.size === 0) return;
+
+    // Collect DIDs to poll (only those with active subscriptions)
+    const didsToRead = [];
+    for (const didKey of this.subscriptions.keys()) {
+      const didInfo = STATE_DIDS[didKey];
+      if (didInfo) {
+        // Check if DID is valid for current cell type
+        if (didInfo.cellType !== undefined) {
+          const cellNum = this._extractCellNum(didKey);
+          if (cellNum !== null && didInfo.cellType !== this.cellTypes[cellNum]) {
+            continue;  // Skip - cell type mismatch
+          }
+        }
+        didsToRead.push(didInfo.did);
+      }
+    }
+
+    if (didsToRead.length === 0) return;
+
+    // Read DIDs (chunked to fit BLE MTU)
+    // Request: 1 (SID) + N*2 (DID bytes) must fit in ~20 byte MTU
+    const DIDS_PER_REQUEST = 8;
+    const timestamp = Date.now() / 1000;
+
+    for (let i = 0; i < didsToRead.length; i += DIDS_PER_REQUEST) {
+      const chunk = didsToRead.slice(i, i + DIDS_PER_REQUEST);
+      const result = await this.udsClient.readDIDsParsed(chunk);
+
+      // Update values and notify
+      for (const [key, value] of Object.entries(result)) {
+        const oldValue = this.didValues.get(key);
+        this.didValues.set(key, value);
+
+        // Add to time series using normalized key for charting compatibility
+        const seriesKey = this._didKeyToSeriesKey(key);
+        this._addPoint(seriesKey, timestamp, value);
+
+        // Notify if changed
+        if (oldValue !== value) {
+          this._notifySubscribers(key, value, oldValue);
+        }
+      }
+    }
+  }
+
+  /**
+   * Notify subscribers of a value change
+   * @private
+   */
+  _notifySubscribers(key, newValue, oldValue) {
+    const subs = this.subscriptions.get(key);
+    if (subs) {
+      for (const callback of subs) {
+        try {
+          callback(newValue, oldValue, key);
+        } catch (error) {
+          console.error(`Subscriber error for ${key}:`, error);
+        }
+      }
+    }
+  }
+
+  /**
+   * Extract cell number from DID key
+   * @private
+   */
+  _extractCellNum(didKey) {
+    const match = didKey.match(/^CELL(\d)_/);
+    return match ? parseInt(match[1]) : null;
+  }
+
+  /**
+   * Convert DID key to series key for charting
+   * Maps CONSENSUS_PPO2 -> consensus_ppo2, CELL0_PPO2 -> cell0.ppo2, etc.
+   * @private
+   */
+  _didKeyToSeriesKey(didKey) {
+    // Cell DIDs: CELL0_PPO2 -> cell0.ppo2
+    const cellMatch = didKey.match(/^CELL(\d)_(.+)$/);
+    if (cellMatch) {
+      const cellNum = cellMatch[1];
+      const field = cellMatch[2].toLowerCase();
+      // Map field names to match state vector format
+      const fieldMap = {
+        'ambient_light': 'ambientLight',
+        'raw_adc': 'rawAdc'
+      };
+      const mappedField = fieldMap[field] || field;
+      return `cell${cellNum}.${mappedField}`;
+    }
+
+    // Control DIDs: CONSENSUS_PPO2 -> consensus_ppo2
+    return didKey.toLowerCase();
+  }
+
+  /**
+   * Convert series key back to DID key
+   * Maps cell0.ppo2 -> CELL0_PPO2, consensus_ppo2 -> CONSENSUS_PPO2, etc.
+   * @param {string} seriesKey - Series key
+   * @returns {string|null} DID key or null if not found
+   */
+  seriesKeyToDIDKey(seriesKey) {
+    // Cell series: cell0.ppo2 -> CELL0_PPO2
+    const cellMatch = seriesKey.match(/^cell(\d)\.(.+)$/);
+    if (cellMatch) {
+      const cellNum = cellMatch[1];
+      const field = cellMatch[2];
+      // Reverse map field names
+      const fieldMap = {
+        'ambientlight': 'AMBIENT_LIGHT',
+        'rawadc': 'RAW_ADC'
+      };
+      const mappedField = fieldMap[field.toLowerCase()] || field.toUpperCase();
+      return `CELL${cellNum}_${mappedField}`;
+    }
+
+    // Control series: consensus_ppo2 -> CONSENSUS_PPO2
+    return seriesKey.toUpperCase();
+  }
+
+  /**
+   * Get cached cell types
+   * @returns {Array<number>} Array of 3 cell types
+   */
+  getCachedCellTypes() {
+    return [...this.cellTypes];
+  }
+
+  /**
+   * Refresh cell types from device
+   * @returns {Promise<Array<number>>}
+   */
+  async refreshCellTypes() {
+    if (!this.udsClient) {
+      throw new Error('UDSClient required');
+    }
+    this.cellTypes = await this.udsClient.getCellTypes();
+    return this.cellTypes;
   }
 }

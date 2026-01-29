@@ -86,14 +86,6 @@ extern "C"
      */
     void Log_SetConfig(uint32_t config);
 
-    /**
-     * @brief Send the accumulated state vector if UDS logging is enabled
-     *
-     * Should be called once per second from PPO2TransmitterTask.
-     * Updates timestamp and sends via UDS_LogPush_SendStateVector().
-     */
-    void Log_SendStateVectorIfEnabled(void);
-
 #ifdef __cplusplus
 }
 #endif

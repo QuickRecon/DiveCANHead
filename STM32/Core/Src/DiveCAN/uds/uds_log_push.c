@@ -27,8 +27,7 @@
 typedef enum
 {
     UDS_LOG_TYPE_LOG = 0,
-    UDS_LOG_TYPE_EVENT = 1,
-    UDS_LOG_TYPE_STATE_VECTOR = 2
+    UDS_LOG_TYPE_EVENT = 1
 } UDSLogType_t;
 
 /**
@@ -216,10 +215,6 @@ static bool sendQueuedItem(const UDSLogQueueItem_t *item)
     {
         did = UDS_DID_LOG_MESSAGE;
     }
-    else if (item->type == UDS_LOG_TYPE_STATE_VECTOR)
-    {
-        did = UDS_DID_STATE_VECTOR;
-    }
     else
     {
         did = UDS_DID_EVENT_MESSAGE;
@@ -330,41 +325,4 @@ uint8_t UDS_LogPush_GetErrorCount(void)
 void UDS_LogPush_ResetErrorCount(void)
 {
     logPushState.errorCount = 0;
-}
-
-bool UDS_LogPush_SendStateVector(const BinaryStateVector_t *state)
-{
-    /* Check preconditions */
-    if (!logPushState.enabled)
-    {
-        return false;
-    }
-
-    if (logPushState.queueHandle == NULL)
-    {
-        return false;
-    }
-
-    if (state == NULL)
-    {
-        return false;
-    }
-
-    /* Prepare queue item using static buffer - state vectors are always high priority */
-    (void)memset(&txItemBuffer, 0, sizeof(txItemBuffer));
-    txItemBuffer.type = UDS_LOG_TYPE_STATE_VECTOR;
-    txItemBuffer.priority = UDS_LOG_PRIORITY_HIGH;
-    txItemBuffer.length = sizeof(BinaryStateVector_t);
-    (void)memcpy(txItemBuffer.data, state, sizeof(BinaryStateVector_t));
-
-    /* Check if queue is full - high priority drops front item to make room */
-    if (osMessageQueueGetSpace(logPushState.queueHandle) == 0)
-    {
-        (void)osMessageQueueGet(logPushState.queueHandle, &rxItemBuffer, NULL, 0);
-    }
-
-    /* Enqueue with high priority */
-    osStatus_t status = osMessageQueuePut(logPushState.queueHandle, &txItemBuffer, (uint8_t)UDS_LOG_PRIORITY_HIGH, 0);
-
-    return (status == osOK);
 }

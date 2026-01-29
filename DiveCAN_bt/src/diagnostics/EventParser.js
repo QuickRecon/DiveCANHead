@@ -11,8 +11,7 @@ export class EventParser {
     ANALOGCELL: 'ANALOGCELL',
     CAN: 'CAN',
     PID: 'PID',
-    PPO2STATE: 'PPO2STATE',
-    STATE_VECTOR: 'STATE_VECTOR'  // Binary state vector (handled via StateVectorParser)
+    PPO2STATE: 'PPO2STATE'
   };
 
   /**

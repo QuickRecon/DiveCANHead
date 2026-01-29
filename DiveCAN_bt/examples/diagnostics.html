@@ -324,6 +324,84 @@
       margin-bottom: 15px;
       font-weight: bold;
     }
+
+    /* DID Subscription UI */
+    .did-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 8px;
+    }
+
+    .did-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: #252525;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .did-item input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #00bcd4;
+    }
+
+    .did-item .did-label {
+      color: #888;
+      min-width: 120px;
+    }
+
+    .did-item .did-value {
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      min-width: 80px;
+    }
+
+    .did-item .did-hex {
+      color: #555;
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .did-item.subscribed {
+      border-left: 3px solid #00bcd4;
+    }
+
+    .did-category {
+      color: #00bcd4;
+      font-size: 13px;
+      font-weight: bold;
+      margin-top: 12px;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #3a3a3a;
+    }
+
+    .did-category:first-child {
+      margin-top: 0;
+    }
+
+    .subscription-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      align-items: center;
+    }
+
+    .subscription-stats {
+      color: #888;
+      font-size: 13px;
+      margin-left: auto;
+    }
+
+    .subscription-stats .value {
+      color: #00bcd4;
+      font-family: 'Courier New', monospace;
+    }
   </style>
 </head>
 <body>
@@ -457,6 +535,23 @@
     </div>
   </div>
 
+  <!-- DID Subscriptions -->
+  <div class="section">
+    <h2>DID Subscriptions</h2>
+    <div class="subscription-controls">
+      <button class="small" id="subscribeAll">Subscribe All</button>
+      <button class="small" id="unsubscribeAll">Unsubscribe All</button>
+      <button class="small" id="refreshDIDs" disabled>Refresh All DIDs</button>
+      <div class="subscription-stats">
+        Subscribed: <span class="value" id="subscriptionCount">0</span> |
+        Poll Rate: <span class="value" id="pollRate">--</span>
+      </div>
+    </div>
+    <div id="didSubscriptionList">
+      <div class="field-inactive">(Connect to device to see available DIDs)</div>
+    </div>
+  </div>
+
   <!-- Log Messages -->
   <div class="section">
     <h2>Log Messages</h2>
@@ -469,6 +564,7 @@
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
+    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_TYPE_DIVEO2, CELL_TYPE_ANALOG } from '../src/uds/constants.js';
 
     // Reduce logging to improve performance - only show warnings and errors
     Logger.setGlobalLevel('debug');
@@ -485,7 +581,7 @@
     // State
     let stack = null;
     let deviceManager = null;
-    let dataStore = new DataStore(1000, 300); // 1000 points, 5 min max age
+    let dataStore = new DataStore({ maxPoints: 1000, maxAge: 300 }); // 1000 points, 5 min max age
     let plotManager = null;
     let cellUIAdapter = null;
     let eventCount = 0;
@@ -508,8 +604,18 @@
       summaryConsensus: document.getElementById('summary-consensus'),
       summaryDutyCycle: document.getElementById('summary-dutyCycle'),
       summaryIntegral: document.getElementById('summary-integral'),
-      summarySaturation: document.getElementById('summary-saturation')
+      summarySaturation: document.getElementById('summary-saturation'),
+      // DID subscription elements
+      subscribeAll: document.getElementById('subscribeAll'),
+      unsubscribeAll: document.getElementById('unsubscribeAll'),
+      refreshDIDs: document.getElementById('refreshDIDs'),
+      subscriptionCount: document.getElementById('subscriptionCount'),
+      pollRate: document.getElementById('pollRate'),
+      didSubscriptionList: document.getElementById('didSubscriptionList')
     };
+
+    // Subscription state
+    let activeSubscriptions = new Map();  // didKey -> unsubscribe function
 
     // Initialize plot manager
     plotManager = new PlotManager('realtimeChart', {
@@ -583,23 +689,364 @@
       elements.eventRate.textContent = eventTimes.length.toFixed(0);
     };
 
-    // Update summary values from state vector
+    // Update summary values from DID values
     const updateSummary = () => {
-      const sv = dataStore.getLatestStateVector();
-      if (!sv) return;
+      const setpoint = dataStore.getDIDValue('SETPOINT');
+      const consensus = dataStore.getDIDValue('CONSENSUS_PPO2');
+      const duty = dataStore.getDIDValue('DUTY_CYCLE');
+      const integral = dataStore.getDIDValue('INTEGRAL_STATE');
+      const saturation = dataStore.getDIDValue('SATURATION_COUNT');
 
-      elements.summarySetpoint.textContent = sv.setpoint.toFixed(2);
-      elements.summaryConsensus.textContent = sv.consensus_ppo2.toFixed(3);
-      elements.summaryDutyCycle.textContent = (sv.duty_cycle * 100).toFixed(1) + '%';
-      elements.summaryIntegral.textContent = sv.integral_state.toFixed(4);
-      elements.summarySaturation.textContent = sv.saturation_count;
+      elements.summarySetpoint.textContent = setpoint !== undefined ? setpoint.toFixed(2) : '--';
+      elements.summaryConsensus.textContent = consensus !== undefined ? consensus.toFixed(3) : '--';
+      elements.summaryDutyCycle.textContent = duty !== undefined ? (duty * 100).toFixed(1) + '%' : '--';
+      elements.summaryIntegral.textContent = integral !== undefined ? integral.toFixed(4) : '--';
+      elements.summarySaturation.textContent = saturation !== undefined ? saturation : '--';
+    };
+
+    // Track cell types for rebuilding panels
+    let cachedCellTypes = [null, null, null];
+
+    // Build cell panel fields HTML for a given type
+    const buildCellFieldsHTML = (cellNum, cellType) => {
+      const typeNames = { 0: 'DiveO2', 1: 'Analog', 2: 'O2S' };
+
+      let fields = [];
+      switch (cellType) {
+        case 0: // DiveO2
+          fields = [
+            { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3 },
+            { field: 'temperature', label: 'Temp', unit: 'mC', decimals: 0 },
+            { field: 'error', label: 'Error', unit: '', decimals: 0 },
+            { field: 'phase', label: 'Phase', unit: '', decimals: 0 },
+            { field: 'intensity', label: 'Intensity', unit: '', decimals: 0 },
+            { field: 'ambientLight', label: 'Ambient', unit: '', decimals: 0 },
+            { field: 'pressure', label: 'Pressure', unit: 'ubar', decimals: 0 },
+            { field: 'humidity', label: 'Humidity', unit: 'mRH', decimals: 0 }
+          ];
+          break;
+        case 1: // Analog
+          fields = [
+            { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3 },
+            { field: 'rawAdc', label: 'ADC', unit: '', decimals: 0 },
+            { field: 'millivolts', label: 'mV', unit: 'mV', decimals: 0 }
+          ];
+          break;
+        case 2: // O2S
+          fields = [
+            { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3 }
+          ];
+          break;
+        default:
+          return '<div class="field-inactive">(No data)</div>';
+      }
+
+      return fields.map(f => {
+        const seriesKey = `cell${cellNum}.${f.field}`;
+        const label = `Cell ${cellNum} ${f.label}`;
+        return `
+          <div class="field-row" data-cell="${cellNum}" data-field="${f.field}">
+            <span class="field-label">${f.label}:</span>
+            <span class="field-value" data-decimals="${f.decimals}">--</span>
+            <span class="field-unit">${f.unit}</span>
+            <button class="plot-btn plot-left" data-series-key="${seriesKey}" data-label="${label}" title="Plot on left axis">L</button>
+            <button class="plot-btn plot-right" data-series-key="${seriesKey}" data-label="${label}" title="Plot on right axis">R</button>
+          </div>
+        `;
+      }).join('');
+    };
+
+    // Update cell panels from DID values
+    const updateCellPanelsFromDIDs = () => {
+      for (let cellNum = 0; cellNum < 3; cellNum++) {
+        const panel = document.getElementById(`cell-panel-${cellNum}`);
+        if (!panel) continue;
+
+        // Get cell type
+        const cellType = dataStore.getDIDValue(`CELL${cellNum}_TYPE`);
+        const included = dataStore.getDIDValue(`CELL${cellNum}_INCLUDED`);
+
+        // Update header
+        const header = panel.querySelector('.cell-header');
+        if (header && cellType !== undefined) {
+          const typeNames = { 0: 'DiveO2', 1: 'Analog', 2: 'O2S' };
+          const typeName = typeNames[cellType] || '--';
+          header.textContent = `Cell ${cellNum}: ${typeName}${included ? '' : ' (excluded)'}`;
+          header.classList.add('active');
+        }
+
+        // Rebuild fields if cell type changed
+        if (cellType !== cachedCellTypes[cellNum] && cellType !== undefined) {
+          const fieldsContainer = panel.querySelector('.cell-fields');
+          if (fieldsContainer) {
+            fieldsContainer.innerHTML = buildCellFieldsHTML(cellNum, cellType);
+            cachedCellTypes[cellNum] = cellType;
+          }
+        }
+
+        // Update field values
+        const fieldRows = panel.querySelectorAll('.field-row');
+        fieldRows.forEach(row => {
+          const field = row.dataset.field;
+          const valueEl = row.querySelector('.field-value');
+          if (!valueEl || !field) return;
+
+          // Map field name to DID key
+          const fieldToDID = {
+            'ppo2': `CELL${cellNum}_PPO2`,
+            'temperature': `CELL${cellNum}_TEMPERATURE`,
+            'error': `CELL${cellNum}_ERROR`,
+            'phase': `CELL${cellNum}_PHASE`,
+            'intensity': `CELL${cellNum}_INTENSITY`,
+            'ambientLight': `CELL${cellNum}_AMBIENT_LIGHT`,
+            'pressure': `CELL${cellNum}_PRESSURE`,
+            'humidity': `CELL${cellNum}_HUMIDITY`,
+            'rawAdc': `CELL${cellNum}_RAW_ADC`,
+            'millivolts': `CELL${cellNum}_MILLIVOLTS`
+          };
+
+          const didKey = fieldToDID[field];
+          if (!didKey) return;
+
+          const value = dataStore.getDIDValue(didKey);
+          const decimals = parseInt(valueEl.dataset.decimals || '0', 10);
+
+          if (value !== undefined && value !== null && !isNaN(value)) {
+            valueEl.textContent = value.toFixed(decimals);
+          } else {
+            valueEl.textContent = '--';
+          }
+        });
+      }
+    };
+
+    // Build DID subscription list UI
+    const buildDIDSubscriptionUI = () => {
+      const container = elements.didSubscriptionList;
+      container.innerHTML = '';
+
+      // Group DIDs by category
+      const controlDIDs = getControlStateDIDs();
+      const cell0DIDs = getCellDIDs(0);
+      const cell1DIDs = getCellDIDs(1);
+      const cell2DIDs = getCellDIDs(2);
+
+      // Build control state section
+      const controlSection = document.createElement('div');
+      controlSection.innerHTML = '<div class="did-category">Control State</div>';
+      const controlGrid = document.createElement('div');
+      controlGrid.className = 'did-grid';
+      for (const [key, info] of Object.entries(controlDIDs)) {
+        controlGrid.appendChild(createDIDItem(key, info));
+      }
+      controlSection.appendChild(controlGrid);
+      container.appendChild(controlSection);
+
+      // Build cell sections
+      [cell0DIDs, cell1DIDs, cell2DIDs].forEach((cellDIDs, cellNum) => {
+        const cellSection = document.createElement('div');
+        cellSection.innerHTML = `<div class="did-category">Cell ${cellNum}</div>`;
+        const cellGrid = document.createElement('div');
+        cellGrid.className = 'did-grid';
+        for (const [key, info] of Object.entries(cellDIDs)) {
+          cellGrid.appendChild(createDIDItem(key, info));
+        }
+        cellSection.appendChild(cellGrid);
+        container.appendChild(cellSection);
+      });
+    };
+
+    // Create a single DID item element
+    const createDIDItem = (key, info) => {
+      const item = document.createElement('div');
+      item.className = 'did-item';
+      item.dataset.didKey = key;
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = `did-${key}`;
+      checkbox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          subscribeToDID(key);
+        } else {
+          unsubscribeFromDID(key);
+        }
+      });
+
+      const label = document.createElement('span');
+      label.className = 'did-label';
+      label.textContent = info.label;
+
+      const value = document.createElement('span');
+      value.className = 'did-value';
+      value.id = `did-value-${key}`;
+      value.textContent = '--';
+
+      const hex = document.createElement('span');
+      hex.className = 'did-hex';
+      hex.textContent = `0x${info.did.toString(16).toUpperCase().padStart(4, '0')}`;
+
+      item.appendChild(checkbox);
+      item.appendChild(label);
+      item.appendChild(value);
+      item.appendChild(hex);
+
+      return item;
+    };
+
+    // Subscribe to a DID
+    const subscribeToDID = (didKey) => {
+      if (activeSubscriptions.has(didKey)) return;
+
+      const unsubscribe = dataStore.subscribe(didKey, (newValue, oldValue, key) => {
+        updateDIDValueDisplay(key, newValue);
+      });
+
+      activeSubscriptions.set(didKey, unsubscribe);
+      updateSubscriptionUI(didKey, true);
+      updateSubscriptionCount();
+
+      // Update display with current value if available
+      const currentValue = dataStore.getDIDValue(didKey);
+      if (currentValue !== undefined) {
+        updateDIDValueDisplay(didKey, currentValue);
+      }
+    };
+
+    // Unsubscribe from a DID
+    const unsubscribeFromDID = (didKey) => {
+      const unsubscribe = activeSubscriptions.get(didKey);
+      if (unsubscribe) {
+        unsubscribe();
+        activeSubscriptions.delete(didKey);
+        updateSubscriptionUI(didKey, false);
+        updateSubscriptionCount();
+      }
+    };
+
+    // Update DID value display
+    const updateDIDValueDisplay = (didKey, value) => {
+      const valueEl = document.getElementById(`did-value-${didKey}`);
+      if (!valueEl) return;
+
+      const info = STATE_DIDS[didKey];
+      if (!info) return;
+
+      if (value === undefined || value === null) {
+        valueEl.textContent = '--';
+        return;
+      }
+
+      // Format based on type
+      switch (info.type) {
+        case 'float32':
+          valueEl.textContent = value.toFixed(3);
+          break;
+        case 'bool':
+          valueEl.textContent = value ? 'Yes' : 'No';
+          break;
+        default:
+          valueEl.textContent = value.toString();
+      }
+    };
+
+    // Update subscription UI state
+    const updateSubscriptionUI = (didKey, subscribed) => {
+      const item = document.querySelector(`[data-did-key="${didKey}"]`);
+      if (item) {
+        if (subscribed) {
+          item.classList.add('subscribed');
+        } else {
+          item.classList.remove('subscribed');
+        }
+      }
+    };
+
+    // Update subscription count display
+    const updateSubscriptionCount = () => {
+      elements.subscriptionCount.textContent = activeSubscriptions.size;
+    };
+
+    // Subscribe to all DIDs
+    const subscribeToAllDIDs = () => {
+      for (const key of Object.keys(STATE_DIDS)) {
+        const checkbox = document.getElementById(`did-${key}`);
+        if (checkbox && !checkbox.checked) {
+          checkbox.checked = true;
+          subscribeToDID(key);
+        }
+      }
+    };
+
+    // Unsubscribe from all DIDs
+    const unsubscribeFromAllDIDs = () => {
+      // Copy keys to avoid modifying map while iterating
+      const keys = [...activeSubscriptions.keys()];
+      for (const key of keys) {
+        const checkbox = document.getElementById(`did-${key}`);
+        if (checkbox) {
+          checkbox.checked = false;
+        }
+        unsubscribeFromDID(key);
+      }
+    };
+
+    // Initialize DID-based polling
+    const initDIDPolling = async () => {
+      if (!stack || !stack._uds) {
+        console.warn('UDS client not available');
+        return false;
+      }
+
+      try {
+        // Create new DataStore with UDS client
+        const newDataStore = new DataStore({
+          maxPoints: 1000,
+          maxAge: 300,
+          udsClient: stack._uds,
+          pollInterval: 200
+        });
+
+        // Fetch all DIDs initially
+        await newDataStore.initialize();
+
+        // Update dataStore reference
+        dataStore = newDataStore;
+        plotManager.setDataStore(dataStore);
+
+        elements.refreshDIDs.disabled = false;
+
+        // Update all DID displays with initial values
+        for (const [key, value] of Object.entries(dataStore.getAllDIDValues())) {
+          updateDIDValueDisplay(key, value);
+        }
+
+        return true;
+      } catch (error) {
+        console.error('DID polling initialization failed:', error);
+        return false;
+      }
     };
 
     // Current axis selection mode: 'left' or 'right'
     let currentAxisTarget = 'left';
 
+    // Ensure a series is subscribed when plotting
+    const ensureSubscribed = (seriesKey) => {
+      const didKey = dataStore.seriesKeyToDIDKey(seriesKey);
+      if (didKey && !activeSubscriptions.has(didKey)) {
+        // Subscribe and update checkbox
+        const checkbox = document.getElementById(`did-${didKey}`);
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+        subscribeToDID(didKey);
+      }
+    };
+
     // Plot a series - adds to left axis by default, or right if left is occupied
     window.plotSeries = (seriesKey, label) => {
+      ensureSubscribed(seriesKey);
       // If left axis is empty, use it; otherwise use right axis
       if (!plotManager.getLeftAxisKey()) {
         plotManager.setLeftAxis(seriesKey, label);
@@ -616,11 +1063,13 @@
 
     // Plot to specific axis
     window.plotToLeftAxis = (seriesKey, label) => {
+      ensureSubscribed(seriesKey);
       plotManager.setLeftAxis(seriesKey, label);
       elements.leftAxisLabel.textContent = label || seriesKey;
     };
 
     window.plotToRightAxis = (seriesKey, label) => {
+      ensureSubscribed(seriesKey);
       plotManager.setRightAxis(seriesKey, label);
       elements.rightAxisLabel.textContent = label || seriesKey;
     };
@@ -671,34 +1120,34 @@
           // Set target to SOLO (0x04)
           stack.setTargetAddress(0x04);
 
-          // Auto-enable log streaming
-          try {
-            await stack.enableLogStreaming();
-            updateStreamStatus(true);
-          } catch (error) {
-            console.error('Failed to enable log streaming:', error);
+          // Initialize DID-based polling
+          const success = await initDIDPolling();
+          if (success) {
+            // Enable log streaming for log/event messages
+            try {
+              await stack.enableLogStreaming();
+              updateStreamStatus(true);
+            } catch (error) {
+              console.error('Failed to enable log streaming:', error);
+            }
           }
         });
 
         stack.on('disconnected', () => {
           updateUIState(false);
           updateStreamStatus(false);
+
+          // Clean up subscriptions and polling
+          if (dataStore) {
+            dataStore.stopPolling();
+          }
+          unsubscribeFromAllDIDs();
+          elements.refreshDIDs.disabled = true;
+          elements.pollRate.textContent = '--';
         });
 
         stack.on('error', (error) => {
           console.error('Stack error:', error);
-        });
-
-        // Handle binary state vectors (primary data source - 122-byte binary format)
-        stack.on('stateVector', (data) => {
-          eventCount++;
-          updateEventRate();
-
-          const stateVector = dataStore.addStateVector(data);
-          if (stateVector) {
-            cellUIAdapter.update();
-            updateSummary();
-          }
         });
 
         // Handle log messages (text logs - displayed in log box)
@@ -732,11 +1181,38 @@
       elements.logMessages.innerHTML = '';
     });
 
+    // Subscribe/unsubscribe all buttons
+    elements.subscribeAll.addEventListener('click', subscribeToAllDIDs);
+    elements.unsubscribeAll.addEventListener('click', unsubscribeFromAllDIDs);
+
+    // Refresh DIDs button
+    elements.refreshDIDs.addEventListener('click', async () => {
+      if (dataStore.udsClient) {
+        try {
+          await dataStore.fetchAllDIDs();
+          // Update all displays
+          for (const [key, value] of Object.entries(dataStore.getAllDIDValues())) {
+            updateDIDValueDisplay(key, value);
+          }
+        } catch (error) {
+          console.error('Failed to refresh DIDs:', error);
+        }
+      }
+    });
+
     // Periodic UI update for cell values
     setInterval(() => {
-      cellUIAdapter.update();
+      updateCellPanelsFromDIDs();
       updateSummary();
+
+      // Update poll rate display
+      if (dataStore.isPolling) {
+        elements.pollRate.textContent = `${dataStore.pollInterval}ms`;
+      }
     }, 200);
+
+    // Build DID subscription UI on load
+    buildDIDSubscriptionUI();
 
     // Initialize
     if (checkBrowserSupport()) {

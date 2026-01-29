@@ -1,7 +1,7 @@
 /**
- * CellUIAdapter - Dynamically update cell UI based on state vector data
+ * CellUIAdapter - Dynamically update cell UI based on DID data
  *
- * Reads directly from state vector for current values and DataStore series for plots.
+ * Reads from DataStore DID values and series for plots.
  */
 
 import {
@@ -139,7 +139,7 @@ export class CellUIAdapter {
   }
 
   /**
-   * Update field values from state vector
+   * Update field values from DID values
    * @private
    */
   _updateFieldValues(cellNum, cellType) {
@@ -148,8 +148,18 @@ export class CellUIAdapter {
     const panel = document.getElementById(`cell-panel-${cellNum}`);
     if (!panel) return;
 
-    const cell = this.dataStore.getCell(cellNum);
-    if (!cell) return;
+    // Map field names to DID keys
+    const fieldToDIDKey = {
+      'ppo2': `CELL${cellNum}_PPO2`,
+      'temperature': `CELL${cellNum}_TEMPERATURE`,
+      'error': `CELL${cellNum}_ERROR`,
+      'phase': `CELL${cellNum}_PHASE`,
+      'intensity': `CELL${cellNum}_INTENSITY`,
+      'ambientLight': `CELL${cellNum}_AMBIENT_LIGHT`,
+      'pressure': `CELL${cellNum}_PRESSURE`,
+      'humidity': `CELL${cellNum}_HUMIDITY`,
+      'rawAdc': `CELL${cellNum}_RAW_ADC`
+    };
 
     const fieldRows = panel.querySelectorAll('.field-row');
     fieldRows.forEach(row => {
@@ -157,7 +167,8 @@ export class CellUIAdapter {
       const valueEl = row.querySelector('.field-value');
       if (!valueEl || !field) return;
 
-      const value = cell[field];
+      const didKey = fieldToDIDKey[field];
+      const value = didKey ? this.dataStore.getDIDValue(didKey) : undefined;
       const decimals = parseInt(valueEl.dataset.decimals || '0', 10);
 
       if (value !== undefined && value !== null && !isNaN(value)) {

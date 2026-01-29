@@ -7,6 +7,7 @@
 
 #include "uds.h"
 #include "uds_settings.h"
+#include "uds_state_did.h"
 #include "uds_log_push.h"
 #include "../../errors.h"
 #include "../../Hardware/hw_version.h"
@@ -171,175 +172,229 @@ static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *req
 }
 
 /**
+ * @brief Read a single DID and append to response buffer
+ *
+ * @param ctx UDS context
+ * @param did Data identifier to read
+ * @param responseOffset Current offset in response buffer (after response SID)
+ * @param bytesWritten Output: number of bytes written (including DID header)
+ * @return true if DID read successfully, false if DID not found or error
+ */
+static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffset, uint16_t *bytesWritten)
+{
+    uint8_t *buf = &ctx->responseBuffer[responseOffset];
+    uint16_t maxAvailable = UDS_MAX_RESPONSE_LENGTH - responseOffset;
+    *bytesWritten = 0U;
+
+    /* Need at least 3 bytes for DID header + 1 byte data */
+    if (maxAvailable < 3U)
+    {
+        return false;
+    }
+
+    /* Write DID header (big-endian) */
+    buf[0] = (uint8_t)(did >> 8);
+    buf[1] = (uint8_t)(did);
+    uint16_t dataOffset = 2U;
+
+    /* Try state DID handler first (0xF2xx, 0xF4xx) */
+    if (UDS_StateDID_IsStateDID(did))
+    {
+        uint16_t dataLen = 0U;
+        if (UDS_StateDID_HandleRead(did, ctx->configuration, &buf[dataOffset], &dataLen))
+        {
+            *bytesWritten = dataOffset + dataLen;
+            return true;
+        }
+        return false; /* State DID handler returned NRC */
+    }
+
+    /* Handle existing DIDs */
+    switch (did)
+    {
+    case UDS_DID_FIRMWARE_VERSION:
+    {
+        const char *commitHash = getCommitHash();
+        uint16_t hashLen = strlen(commitHash);
+        if (hashLen > (maxAvailable - dataOffset))
+        {
+            hashLen = maxAvailable - dataOffset;
+        }
+        memcpy(&buf[dataOffset], commitHash, hashLen);
+        *bytesWritten = dataOffset + hashLen;
+        return true;
+    }
+
+    case UDS_DID_HARDWARE_VERSION:
+        buf[dataOffset] = (uint8_t)get_hardware_version();
+        *bytesWritten = dataOffset + 1U;
+        return true;
+
+    case UDS_DID_CONFIGURATION_BLOCK:
+    {
+        uint32_t configBits = getConfigBytes(ctx->configuration);
+        buf[dataOffset + 0] = (uint8_t)(configBits);
+        buf[dataOffset + 1] = (uint8_t)(configBits >> 8);
+        buf[dataOffset + 2] = (uint8_t)(configBits >> 16);
+        buf[dataOffset + 3] = (uint8_t)(configBits >> 24);
+        *bytesWritten = dataOffset + 4U;
+        return true;
+    }
+
+    case UDS_DID_SETTING_COUNT:
+        buf[dataOffset] = UDS_GetSettingCount();
+        *bytesWritten = dataOffset + 1U;
+        return true;
+
+    default:
+        break;
+    }
+
+    /* Check settings DIDs */
+    if (did >= UDS_DID_SETTING_INFO_BASE && did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount()))
+    {
+        uint8_t index = did - UDS_DID_SETTING_INFO_BASE;
+        const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
+        if (setting == NULL)
+        {
+            return false;
+        }
+
+        uint16_t labelLen = strlen(setting->label);
+        uint16_t needed = labelLen + 5U; /* label + null + kind + editable + (optional maxValue + optionCount) */
+        if (setting->kind == SETTING_KIND_TEXT)
+        {
+            needed += 2U;
+        }
+        if (needed > (maxAvailable - dataOffset))
+        {
+            return false; /* Response too long */
+        }
+
+        memcpy(&buf[dataOffset], setting->label, labelLen);
+        buf[dataOffset + labelLen] = 0; /* Null terminator */
+        buf[dataOffset + labelLen + 1] = (uint8_t)setting->kind;
+        buf[dataOffset + labelLen + 2] = setting->editable ? 1 : 0;
+        if (setting->kind == SETTING_KIND_TEXT)
+        {
+            buf[dataOffset + labelLen + 3] = setting->maxValue;
+            buf[dataOffset + labelLen + 4] = setting->optionCount;
+            *bytesWritten = dataOffset + labelLen + 5U;
+        }
+        else
+        {
+            *bytesWritten = dataOffset + labelLen + 3U;
+        }
+        return true;
+    }
+    else if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
+    {
+        uint8_t index = did - UDS_DID_SETTING_VALUE_BASE;
+        const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
+        if (setting == NULL)
+        {
+            return false;
+        }
+
+        if (maxAvailable < (dataOffset + 18U)) /* 8 + 8 + 2 padding */
+        {
+            return false;
+        }
+
+        uint64_t maxValue = setting->maxValue;
+        uint64_t currentValue = UDS_GetSettingValue(index, ctx->configuration);
+
+        for (int i = 0; i < 8; i++)
+        {
+            buf[dataOffset + i] = (uint8_t)(maxValue >> (56 - i * 8));
+            buf[dataOffset + 8 + i] = (uint8_t)(currentValue >> (56 - i * 8));
+        }
+        /* Add 2 padding bytes for gateway compatibility */
+        buf[dataOffset + 16] = 0;
+        buf[dataOffset + 17] = 0;
+        *bytesWritten = dataOffset + 18U;
+        return true;
+    }
+    else if (did >= UDS_DID_SETTING_LABEL_BASE && did < 0x9200)
+    {
+        uint16_t offset = did - UDS_DID_SETTING_LABEL_BASE;
+        uint8_t settingIndex = offset & 0x0F;
+        uint8_t optionIndex = (offset >> 4) & 0x0F;
+
+        const char *label = UDS_GetSettingOptionLabel(settingIndex, optionIndex);
+        if (label == NULL)
+        {
+            return false;
+        }
+
+        uint16_t labelLen = strlen(label);
+        if (labelLen > (maxAvailable - dataOffset - 1U))
+        {
+            labelLen = maxAvailable - dataOffset - 1U;
+        }
+        memcpy(&buf[dataOffset], label, labelLen);
+        buf[dataOffset + labelLen] = 0; /* Null terminator */
+        *bytesWritten = dataOffset + labelLen + 1U;
+        return true;
+    }
+
+    return false; /* DID not found */
+}
+
+/**
  * @brief Handle ReadDataByIdentifier (0x22)
  *
- * Format: [0x22, DID_high, DID_low]
- * Response: [0x62, DID_high, DID_low, ...data]
+ * Supports multi-DID read per UDS specification.
+ * Format: [0x22, DID1_high, DID1_low, DID2_high, DID2_low, ...]
+ * Response: [0x62, DID1_high, DID1_low, data1..., DID2_high, DID2_low, data2..., ...]
  */
 static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
-    // Validate message length (minimum: SID + 2-byte DID)
-    if (requestLength < 4)
+    /* Validate message length (minimum: pad + SID + 2-byte DID = 4 bytes) */
+    if (requestLength < 4U)
     {
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
 
-    // Extract DID (big-endian)
-    uint16_t did = (requestData[2] << 8) | requestData[3];
-
-    // Build response header
-    ctx->responseBuffer[0] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    ctx->responseBuffer[1] = requestData[2]; // DID high byte
-    ctx->responseBuffer[2] = requestData[3]; // DID low byte
-    ctx->responseLength = 3;
-
-    // Dispatch based on DID
-    switch (did)
+    /* Check that we have complete DID pairs (requestLength - 2 must be even) */
+    uint16_t didBytesCount = requestLength - 2U; /* Subtract pad + SID */
+    if ((didBytesCount % 2U) != 0U)
     {
-    case UDS_DID_FIRMWARE_VERSION:
-    {
-        // Return commit hash as string
-        const char *commitHash = getCommitHash();
-        uint16_t hashLen = strlen(commitHash);
-        if (hashLen > (UDS_MAX_RESPONSE_LENGTH - 3))
-        {
-            hashLen = UDS_MAX_RESPONSE_LENGTH - 3;
-        }
-        memcpy(&ctx->responseBuffer[3], commitHash, hashLen);
-        ctx->responseLength = 3 + hashLen;
-        break;
-    }
-
-    case UDS_DID_HARDWARE_VERSION:
-    {
-        // Return hardware version as single byte
-        ctx->responseBuffer[3] = (uint8_t)get_hardware_version();
-        ctx->responseLength = 4;
-        break;
-    }
-
-    case UDS_DID_CONFIGURATION_BLOCK:
-    {
-        // Return configuration as 4-byte block
-        uint32_t configBits = getConfigBytes(ctx->configuration);
-        ctx->responseBuffer[3] = (uint8_t)(configBits);
-        ctx->responseBuffer[4] = (uint8_t)(configBits >> 8);
-        ctx->responseBuffer[5] = (uint8_t)(configBits >> 16);
-        ctx->responseBuffer[6] = (uint8_t)(configBits >> 24);
-        ctx->responseLength = 7;
-        break;
-    }
-
-    case UDS_DID_SETTING_COUNT:
-    {
-        // Return number of settings
-        ctx->responseBuffer[3] = UDS_GetSettingCount();
-        ctx->responseLength = 4;
-        break;
-    }
-
-    case UDS_DID_LOG_STREAM_ENABLE:
-    {
-        // Return log streaming enable state (1 byte: 0=disabled, 1=enabled)
-        ctx->responseBuffer[3] = UDS_LogPush_IsEnabled() ? 0x01U : 0x00U;
-        ctx->responseLength = 4;
-        break;
-    }
-
-    default:
-        // Check if DID is in settings range
-        if (did >= UDS_DID_SETTING_INFO_BASE && did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount()))
-        {
-            // SettingInfo: [kind(1), editable(1), maxValue(1), optionCount(1), label(N)]
-            uint8_t index = did - UDS_DID_SETTING_INFO_BASE;
-            const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
-
-            if (setting == NULL)
-            {
-                UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
-                return;
-            }
-
-            // Append label string
-            uint16_t labelLen = strlen(setting->label);
-            if (labelLen > (UDS_MAX_RESPONSE_LENGTH - 7))
-            {
-                labelLen = UDS_MAX_RESPONSE_LENGTH - 7;
-            }
-
-            memcpy(&ctx->responseBuffer[3], setting->label, labelLen);
-            ctx->responseBuffer[labelLen + 3] = 0; // Null terminator
-            ctx->responseBuffer[labelLen + 4] = (uint8_t)setting->kind;
-            ctx->responseBuffer[labelLen + 5] = setting->editable ? 1 : 0;
-            if (setting->kind == SETTING_KIND_TEXT)
-            {
-                ctx->responseBuffer[labelLen + 6] = setting->maxValue;
-                ctx->responseBuffer[labelLen + 7] = setting->optionCount;
-                ctx->responseLength = 7 + labelLen;
-            }
-            else
-            {
-                ctx->responseLength = 5 + labelLen;
-            }
-            UDS_SendResponse(ctx);
-            return;
-        }
-        else if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
-        {
-            // SettingValue: [maxValue(8 bytes BE), currentValue(8 bytes BE)]
-            uint8_t index = did - UDS_DID_SETTING_VALUE_BASE;
-            const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
-
-            if (setting == NULL)
-            {
-                UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
-                return;
-            }
-
-            uint64_t maxValue = setting->maxValue;
-            uint64_t currentValue = UDS_GetSettingValue(index, ctx->configuration);
-
-            // Encode as big-endian u64
-            for (int i = 0; i < 8; i++)
-            {
-                ctx->responseBuffer[3 + i] = (uint8_t)(maxValue >> (56 - i * 8));
-                ctx->responseBuffer[11 + i] = (uint8_t)(currentValue >> (56 - i * 8));
-            }
-            ctx->responseLength = 21; // 3 header + 8 max + 8 current // THis is higher than needed but for some reason the gateway mode hates 20 bytes
-            UDS_SendResponse(ctx);
-            return;
-        }
-        else if (did >= UDS_DID_SETTING_LABEL_BASE && did < 0x9200)
-        {
-            // SettingLabel: [label string]
-            // DID format: 0x9150 + setting_index + (option_index << 4)
-            uint16_t offset = did - UDS_DID_SETTING_LABEL_BASE;
-            uint8_t settingIndex = offset & 0x0F;
-            uint8_t optionIndex = (offset >> 4) & 0x0F;
-
-            const char *label = UDS_GetSettingOptionLabel(settingIndex, optionIndex);
-            if (label == NULL)
-            {
-                UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
-                return;
-            }
-
-            uint16_t labelLen = strlen(label);
-            if (labelLen > (UDS_MAX_RESPONSE_LENGTH - 3))
-            {
-                labelLen = UDS_MAX_RESPONSE_LENGTH - 3;
-            }
-            memcpy(&ctx->responseBuffer[3], label, labelLen);
-            ctx->responseLength = 4 + labelLen;
-            UDS_SendResponse(ctx);
-            return;
-        }
-
-        UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
 
+    /* Build response header */
+    ctx->responseBuffer[0] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+    uint16_t responseOffset = 1U;
+
+    /* Process each DID in the request */
+    uint16_t requestOffset = 2U; /* Start after pad + SID */
+    while (requestOffset + 2U <= requestLength)
+    {
+        uint16_t did = ((uint16_t)requestData[requestOffset] << 8) | requestData[requestOffset + 1U];
+        requestOffset += 2U;
+
+        uint16_t bytesWritten = 0U;
+        if (!ReadSingleDID(ctx, did, responseOffset, &bytesWritten))
+        {
+            /* DID read failed - send NRC for this DID */
+            UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+            return;
+        }
+
+        responseOffset += bytesWritten;
+
+        /* Check if response would overflow */
+        if (responseOffset >= UDS_MAX_RESPONSE_LENGTH)
+        {
+            UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_RESPONSE_TOO_LONG);
+            return;
+        }
+    }
+
+    ctx->responseLength = responseOffset;
     UDS_SendResponse(ctx);
 }
 
@@ -366,7 +421,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     {
     case UDS_DID_LOG_STREAM_ENABLE:
     {
-        // Enable/disable log streaming (1 byte: 0=disable, non-zero=enable)
+        // Enable/disable log/event streaming (1 byte: 0=disable, non-zero=enable)
         // Works in any session (no session restriction)
         if (requestLength != 5) // pad(1) + SID(1) + DID(2) + value(1)
         {

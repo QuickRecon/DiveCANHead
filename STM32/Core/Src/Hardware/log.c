@@ -10,7 +10,7 @@
 #include "./printer.h"
 #include "../errors.h"
 #include "../PPO2Control/PPO2Control.h"
-#include "../DiveCAN/uds/uds_log_push.h"
+#include "../DiveCAN/uds/uds_state_did.h"
 
 extern SD_HandleTypeDef hsd1;
 
@@ -649,14 +649,13 @@ void LogTXDiveCANMessage(const DiveCANMessage_t *const message)
 /* ============================================================================
  * Binary State Vector Accumulator
  * ============================================================================
- * Accumulates system state for efficient binary transmission via UDS.
+ * Accumulates system state for UDS DID-based reads.
  * Updated by cell sample functions and control loops.
- * Sent once per second from PPO2TransmitterTask.
+ * Accessed via extern in uds_state_did.c for state DID reads.
  */
 
-#define STATE_VECTOR_VERSION 1U
-
-static BinaryStateVector_t stateVectorAccumulator = {0};
+/* Exposed for UDS state DID reads - accessed via extern in uds_state_did.c */
+BinaryStateVector_t stateVectorAccumulator = {0};
 
 void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, int32_t temp, int32_t err,
                           int32_t phase, int32_t intensity, int32_t ambientLight,
@@ -714,18 +713,4 @@ void Log_UpdateControlState(float duty, float integral, uint16_t satCount)
 void Log_SetConfig(uint32_t config)
 {
     stateVectorAccumulator.config = config;
-}
-
-void Log_SendStateVectorIfEnabled(void)
-{
-    if (!UDS_LogPush_IsEnabled())
-    {
-        return;
-    }
-
-    /* Update timestamp (seconds since boot, wraps at ~18 hours) */
-    stateVectorAccumulator.timestamp_sec = (uint16_t)(HAL_GetTick() / 1000U);
-    stateVectorAccumulator.version = STATE_VECTOR_VERSION;
-
-    (void)UDS_LogPush_SendStateVector(&stateVectorAccumulator);
 }

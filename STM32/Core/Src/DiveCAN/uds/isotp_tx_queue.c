@@ -162,7 +162,7 @@ static void StartNextTx(void)
      * DiveCAN uses non-standard ISO-TP format with padding byte at offset 2.
      * Frame format: [PCI_hi][len_lo][0x00 pad][5 data bytes]
      * Length field includes the padding byte (tx->length + 1). */
-    uint16_t totalLength = tx->length;// + 1U; /* +1 for padding byte */
+    uint16_t totalLength = tx->length + 1U; /* +1 for padding byte */
     DiveCANMessage_t ff = {0};
     ff.id = tx->messageId | ((uint32_t)tx->target << 8) | (uint32_t)tx->source;
     ff.length = 8;

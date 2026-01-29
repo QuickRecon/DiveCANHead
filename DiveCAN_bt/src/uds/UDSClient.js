@@ -229,9 +229,6 @@ export class UDSClient extends EventEmitter {
     } else if (did === constants.DID_EVENT_MESSAGE) {
       const message = new TextDecoder('utf-8').decode(payload);
       this.emit('eventMessage', message);
-    } else if (did === constants.DID_STATE_VECTOR) {
-      // Binary state vector (122 bytes) - emit raw payload for parsing
-      this.emit('stateVector', payload);
     } else {
       this.emit('unsolicitedMessage', { did, payload });
     }
@@ -659,6 +656,203 @@ export class UDSClient extends EventEmitter {
   async isLogStreamingEnabled() {
     const data = await this.readDataByIdentifier(constants.DID_LOG_STREAM_ENABLE);
     return data[0] !== 0;
+  }
+
+  // ============================================================
+  // Multi-DID Read Methods (State DID Support)
+  // ============================================================
+
+  /**
+   * Read multiple DIDs in a single request
+   * @param {Array<number>} dids - Array of DID addresses
+   * @returns {Promise<Map<number, Uint8Array>>} Map of DID to data
+   */
+  async readMultipleDIDs(dids) {
+    if (!dids || dids.length === 0) {
+      return new Map();
+    }
+
+    // Build request: [SID, DID1_hi, DID1_lo, DID2_hi, DID2_lo, ...]
+    const request = [constants.SID_READ_DATA_BY_ID];
+    for (const did of dids) {
+      const didBytes = ByteUtils.uint16ToBE(did);
+      request.push(didBytes[0], didBytes[1]);
+    }
+
+    const response = await this._sendRequest(request);
+
+    // Parse response: [0x62, DID1_hi, DID1_lo, data1..., DID2_hi, DID2_lo, data2..., ...]
+    const result = new Map();
+    let offset = 1;  // Skip response SID
+
+    while (offset + 2 < response.length) {
+      const did = ByteUtils.beToUint16(response.slice(offset, offset + 2));
+      offset += 2;
+
+      // Get expected size for this DID
+      const didInfo = constants.getDIDInfo(did);
+      let dataSize;
+      if (didInfo) {
+        dataSize = didInfo.size;
+      } else {
+        // Unknown DID - try to find next DID header or use rest of response
+        let nextDIDOffset = response.length;
+        for (let i = offset; i + 1 < response.length; i++) {
+          const potentialDID = ByteUtils.beToUint16(response.slice(i, i + 2));
+          if (constants.getDIDInfo(potentialDID)) {
+            nextDIDOffset = i;
+            break;
+          }
+        }
+        dataSize = nextDIDOffset - offset;
+      }
+
+      const data = response.slice(offset, offset + dataSize);
+      result.set(did, data);
+      offset += dataSize;
+    }
+
+    return result;
+  }
+
+  /**
+   * Parse a single DID value based on its type definition
+   * @param {number} did - DID address
+   * @param {Uint8Array} data - Raw data
+   * @returns {number|boolean|undefined} Parsed value, or undefined if data insufficient
+   */
+  parseDIDValue(did, data) {
+    const didInfo = constants.getDIDInfo(did);
+    if (!didInfo) {
+      return data;  // Return raw data for unknown DIDs
+    }
+
+    // Check if we have enough data for the expected type
+    if (!data || data.length < didInfo.size) {
+      console.warn(`DID 0x${did.toString(16)}: expected ${didInfo.size} bytes, got ${data ? data.length : 0}`);
+      return undefined;
+    }
+
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+    switch (didInfo.type) {
+      case 'float32':
+        return view.getFloat32(0, true);  // Little-endian
+      case 'int32':
+        return view.getInt32(0, true);
+      case 'uint32':
+        return view.getUint32(0, true);
+      case 'int16':
+        return view.getInt16(0, true);
+      case 'uint16':
+        return view.getUint16(0, true);
+      case 'uint8':
+        return data[0];
+      case 'bool':
+        return data[0] !== 0;
+      default:
+        return data;
+    }
+  }
+
+  /**
+   * Read multiple DIDs and parse values
+   * @param {Array<number>} dids - Array of DID addresses
+   * @returns {Promise<Object>} Object with DID keys and parsed values
+   */
+  async readDIDsParsed(dids) {
+    const rawMap = await this.readMultipleDIDs(dids);
+    const result = {};
+
+    for (const [did, data] of rawMap) {
+      const didInfo = constants.getDIDInfo(did);
+      const key = didInfo ? didInfo.key : `0x${did.toString(16).padStart(4, '0')}`;
+      result[key] = this.parseDIDValue(did, data);
+    }
+
+    return result;
+  }
+
+  /**
+   * Read all control state DIDs (non-cell DIDs)
+   * @returns {Promise<Object>} Object with DID keys and parsed values
+   */
+  async readControlState() {
+    const controlDIDs = constants.getControlStateDIDs();
+    const dids = Object.values(controlDIDs).map(info => info.did);
+    return await this.readDIDsParsed(dids);
+  }
+
+  /**
+   * Read all cell DIDs for a specific cell
+   * @param {number} cellNum - Cell number (0-2)
+   * @param {number} cellType - Cell type constant (to filter valid DIDs)
+   * @returns {Promise<Object>} Object with DID keys and parsed values
+   */
+  async readCellState(cellNum, cellType) {
+    const validDIDs = constants.getValidCellDIDs(cellNum, cellType);
+    const dids = Object.values(validDIDs).map(info => info.did);
+    return await this.readDIDsParsed(dids);
+  }
+
+  /**
+   * Get cell types from configuration
+   * @returns {Promise<Array<number>>} Array of 3 cell types
+   */
+  async getCellTypes() {
+    const data = await this.readDataByIdentifier(constants.DID_CONFIGURATION_BLOCK);
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const config = view.getUint32(0, true);
+
+    // Extract cell types from config bits 8-13 (2 bits per cell)
+    return [
+      (config >> 8) & 0x03,
+      (config >> 10) & 0x03,
+      (config >> 12) & 0x03
+    ];
+  }
+
+  /**
+   * Fetch all state DIDs (control + all cells with type filtering)
+   * @returns {Promise<Object>} Complete state object
+   */
+  async fetchAllState() {
+    // Get cell types first
+    const cellTypes = await this.getCellTypes();
+
+    // Collect all DIDs to read
+    const allDIDs = [];
+
+    // Add control state DIDs
+    const controlDIDs = constants.getControlStateDIDs();
+    for (const info of Object.values(controlDIDs)) {
+      allDIDs.push(info.did);
+    }
+
+    // Add cell DIDs (filtered by type)
+    for (let cellNum = 0; cellNum < 3; cellNum++) {
+      const validDIDs = constants.getValidCellDIDs(cellNum, cellTypes[cellNum]);
+      for (const info of Object.values(validDIDs)) {
+        allDIDs.push(info.did);
+      }
+    }
+
+    // Split into chunks to fit within BLE MTU constraints
+    // Request format: 1 (SID) + N*2 (DID bytes) must fit in ~20 byte MTU
+    // Safe limit: (20-1)/2 = 9 DIDs max per request, use 8 to be safe
+    const DIDS_PER_REQUEST = 4;
+    const result = {};
+
+    for (let i = 0; i < allDIDs.length; i += DIDS_PER_REQUEST) {
+      const chunk = allDIDs.slice(i, i + DIDS_PER_REQUEST);
+      const chunkResult = await this.readDIDsParsed(chunk);
+      Object.assign(result, chunkResult);
+    }
+
+    // Add cell types to result
+    result._cellTypes = cellTypes;
+
+    return result;
   }
 
 }

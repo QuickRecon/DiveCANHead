@@ -84,10 +84,10 @@ typedef enum
     UDS_DID_PPO2_VALUES = 0xF201,         // Read PPO2 values
     UDS_DID_ERROR_STATUS = 0xF300,        // Read error status
 
-    // Log streaming DIDs (0xAxxx range)
-    UDS_DID_LOG_STREAM_ENABLE = 0xA000, // Read/Write: enable log push (1 byte)
+    // Log/Event push DIDs (0xAxxx range) - unsolicited ECU -> Tester messages
+    UDS_DID_LOG_STREAM_ENABLE = 0xA000,  // Read/Write: enable log/event push (1 byte)
     UDS_DID_LOG_MESSAGE = 0xA100,        // Push: log message (ECU -> Tester)
-    UDS_DID_EVENT_MESSAGE = 0xA200        // Push: log message (ECU -> Tester)
+    UDS_DID_EVENT_MESSAGE = 0xA200       // Push: event message (ECU -> Tester)
 } UDS_DID_t;
 
 // UDS maximum message sizes
