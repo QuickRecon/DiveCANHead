@@ -33,9 +33,6 @@ typedef struct
     uint32_t messageId;                 /**< Base CAN ID */
 } ISOTPTxRequest_t;
 
-/* Backoff delay after timeout (ms) - gives bridge time to recover */
-#define ISOTP_TX_BACKOFF_DELAY 200U
-
 /**
  * @brief Active TX state (for multi-frame in-progress transmissions)
  */
@@ -50,7 +47,6 @@ static struct
     uint8_t txSTmin;          /**< From FC */
     uint8_t txBlockCounter;   /**< CFs sent in current block */
     uint32_t txLastFrameTime; /**< For timeout tracking */
-    uint32_t backoffUntil;    /**< Timestamp until which we should wait (backoff after timeout) */
 } txState = {0};
 
 /* FreeRTOS queue - static allocation */
@@ -166,7 +162,7 @@ static void StartNextTx(void)
      * DiveCAN uses non-standard ISO-TP format with padding byte at offset 2.
      * Frame format: [PCI_hi][len_lo][0x00 pad][5 data bytes]
      * Length field includes the padding byte (tx->length + 1). */
-    uint16_t totalLength = tx->length + 1U; /* +1 for padding byte */
+    uint16_t totalLength = tx->length;// + 1U; /* +1 for padding byte */
     DiveCANMessage_t ff = {0};
     ff.id = tx->messageId | ((uint32_t)tx->target << 8) | (uint32_t)tx->source;
     ff.length = 8;
@@ -301,20 +297,12 @@ void ISOTP_TxQueue_Poll(uint32_t currentTime)
             NON_FATAL_ERROR_DETAIL(ISOTP_TIMEOUT_ERR, ISOTP_WAIT_FC);
             txState.txActive = false;
             txState.txState = ISOTP_IDLE;
-            /* Set backoff to give the bridge time to recover */
-            txState.backoffUntil = currentTime + ISOTP_TX_BACKOFF_DELAY;
         }
     }
 
-    /* If not busy and backoff has elapsed, start next TX */
+    /* If not busy, start next TX */
     if (!txState.txActive)
     {
-        /* Check if we're still in backoff period */
-        if (txState.backoffUntil != 0U && currentTime < txState.backoffUntil)
-        {
-            return; /* Still backing off, don't start new TX yet */
-        }
-        txState.backoffUntil = 0U; /* Clear backoff */
         StartNextTx();
     }
 }

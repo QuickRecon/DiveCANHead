@@ -206,10 +206,19 @@ void sendCANMessageBlocking(const DiveCANMessage_t message)
                            (mailboxNumber == CAN_TX_MAILBOX1) ? CAN_TSR_TME1 :
                                                                  CAN_TSR_TME2;
 
-    /* Poll until mailbox is empty (transmission complete) */
+    /* Busy-wait until mailbox is empty (transmission complete).
+     * Using busy-wait instead of osDelay(1) because CAN frame transmission
+     * at 250kbps takes ~500us max, and osDelay has 1ms tick resolution
+     * which would add unnecessary latency to multi-frame ISO-TP transfers.
+     * Timeout after 10ms to prevent infinite loop on bus errors. */
+    uint32_t startTime = HAL_GetTick();
     while ((hcan1.Instance->TSR & mailboxMask) == 0U)
     {
-        (void)osDelay(1);
+        if ((HAL_GetTick() - startTime) > 10U)
+        {
+            NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, 0xFFU); /* Timeout */
+            break;
+        }
     }
 }
 

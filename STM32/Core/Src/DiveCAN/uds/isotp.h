@@ -32,7 +32,7 @@
 #define ISOTP_TIMEOUT_N_CR 1000    // ms - Timeout waiting for CF after FC or previous CF
 #define ISOTP_DEFAULT_BLOCK_SIZE 0 // 0 = infinite (no additional FC frames needed)
 #define ISOTP_DEFAULT_STMIN 0      // 0 ms minimum separation time between CF frames
-#define ISOTP_POLL_INTERVAL 100    // ms - How often to call ISOTP_Poll()
+#define ISOTP_POLL_INTERVAL 10    // ms - How often to call ISOTP_Poll()
 
 // PCI (Protocol Control Information) byte masks
 #define ISOTP_PCI_SF 0x00 // Single frame: 0x0N (N = length)
