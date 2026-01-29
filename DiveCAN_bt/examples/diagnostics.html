@@ -309,6 +309,110 @@
       color: #1a1a1a;
     }
 
+    /* Configuration Settings */
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .config-field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #252525;
+      border-radius: 5px;
+      border-left: 3px solid transparent;
+    }
+
+    .config-field.readonly {
+      opacity: 0.7;
+    }
+
+    .config-field.config-dirty {
+      border-left-color: #ff9800;
+    }
+
+    .config-field label {
+      color: #888;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .config-field select {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      color: #e0e0e0;
+      padding: 5px 8px;
+      border-radius: 4px;
+      min-width: 120px;
+      font-size: 13px;
+    }
+
+    .config-field select:focus {
+      outline: none;
+      border-color: #00bcd4;
+    }
+
+    .config-field input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #00bcd4;
+      cursor: pointer;
+    }
+
+    .config-field .value-display {
+      color: #00bcd4;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .config-raw {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: #252525;
+      border-radius: 5px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .config-raw .label {
+      color: #888;
+    }
+
+    .config-raw .value {
+      color: #00bcd4;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+    }
+
+    .config-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .config-buttons button.danger {
+      background: #d32f2f;
+    }
+
+    .config-buttons button.danger:hover:not(:disabled) {
+      background: #f44336;
+    }
+
+    .config-status {
+      color: #888;
+      font-size: 13px;
+      margin-left: 10px;
+    }
+
     /* Chart container */
     .chart-container {
       position: relative;
@@ -624,6 +728,23 @@
     </div>
   </div>
 
+  <!-- Configuration Settings -->
+  <div class="section">
+    <h2>Configuration Settings</h2>
+    <div class="config-buttons">
+      <button id="readConfigButton" disabled>Read from Device</button>
+      <button id="writeConfigButton" disabled class="danger">Write to Device</button>
+      <span id="configStatus" class="config-status">(Connect to device to read configuration)</span>
+    </div>
+    <div id="configFieldsContainer" class="config-grid">
+      <!-- Dynamically populated -->
+    </div>
+    <div class="config-raw">
+      <span class="label">Raw Config Bytes:</span>
+      <span class="value" id="configRawHex">--</span>
+    </div>
+  </div>
+
   <!-- DID Subscriptions -->
   <div class="section">
     <h2>DID Subscriptions</h2>
@@ -654,6 +775,7 @@
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
     import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_TYPE_DIVEO2, CELL_TYPE_ANALOG, CELL_STATUS_NAMES } from '../src/uds/constants.js';
+    import { ConfigurationDecoder, CONFIG_FIELDS } from '../src/config/ConfigurationDecoder.js';
 
     // Reduce logging to improve performance - only show warnings and errors
     Logger.setGlobalLevel('debug');
@@ -697,11 +819,22 @@
       refreshDIDs: document.getElementById('refreshDIDs'),
       subscriptionCount: document.getElementById('subscriptionCount'),
       pollRate: document.getElementById('pollRate'),
-      didSubscriptionList: document.getElementById('didSubscriptionList')
+      didSubscriptionList: document.getElementById('didSubscriptionList'),
+      // Configuration elements
+      readConfigButton: document.getElementById('readConfigButton'),
+      writeConfigButton: document.getElementById('writeConfigButton'),
+      configStatus: document.getElementById('configStatus'),
+      configFieldsContainer: document.getElementById('configFieldsContainer'),
+      configRawHex: document.getElementById('configRawHex')
     };
 
     // Subscription state
     let activeSubscriptions = new Map();  // didKey -> unsubscribe function
+
+    // Configuration state
+    let configDecoder = new ConfigurationDecoder();
+    let originalConfigBytes = [0, 0, 0, 0];
+    let configLoaded = false;
 
     // Initialize plot manager
     plotManager = new PlotManager('realtimeChart', {
@@ -1177,6 +1310,206 @@
       }
     };
 
+    // ============================================================
+    // Configuration Settings Functions
+    // ============================================================
+
+    // Build configuration UI from CONFIG_FIELDS
+    const buildConfigUI = () => {
+      const container = elements.configFieldsContainer;
+      container.innerHTML = '';
+
+      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
+        const fieldEl = document.createElement('div');
+        fieldEl.className = `config-field${field.editable ? '' : ' readonly'}`;
+        fieldEl.dataset.field = fieldName;
+
+        const label = document.createElement('label');
+        label.textContent = field.label;
+        fieldEl.appendChild(label);
+
+        if (!field.editable) {
+          // Read-only display
+          const display = document.createElement('span');
+          display.className = 'value-display';
+          display.id = `config-${fieldName}`;
+          display.textContent = '--';
+          fieldEl.appendChild(display);
+        } else if (field.type === 'bool') {
+          // Checkbox
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.id = `config-${fieldName}`;
+          input.addEventListener('change', () => onConfigFieldChange(fieldName));
+          fieldEl.appendChild(input);
+        } else if (field.type === 'enum') {
+          // Dropdown
+          const select = document.createElement('select');
+          select.id = `config-${fieldName}`;
+          for (const opt of field.options) {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            select.appendChild(option);
+          }
+          select.addEventListener('change', () => onConfigFieldChange(fieldName));
+          fieldEl.appendChild(select);
+        }
+
+        container.appendChild(fieldEl);
+      }
+    };
+
+    // Load configuration from device
+    const loadConfigFromDevice = async () => {
+      if (!stack || !stack._uds) {
+        elements.configStatus.textContent = 'Not connected';
+        return;
+      }
+
+      elements.configStatus.textContent = 'Reading configuration...';
+      elements.readConfigButton.disabled = true;
+
+      try {
+        // Read 4 config bytes (settings indices 1-4)
+        const bytes = [];
+        for (let i = 1; i <= 4; i++) {
+          const result = await stack._uds.getSettingValue(i);
+          bytes.push(Number(result.currentValue) & 0xFF);
+        }
+
+        configDecoder.fromBytes(bytes);
+        originalConfigBytes = [...bytes];
+        configLoaded = true;
+
+        updateConfigUI();
+        elements.configStatus.textContent = 'Configuration loaded';
+        elements.writeConfigButton.disabled = false;
+
+      } catch (error) {
+        console.error('Failed to read config:', error);
+        elements.configStatus.textContent = 'Failed to read: ' + error.message;
+      } finally {
+        elements.readConfigButton.disabled = false;
+      }
+    };
+
+    // Update UI from decoder state
+    const updateConfigUI = () => {
+      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
+        const value = configDecoder.getField(fieldName);
+        const el = document.getElementById(`config-${fieldName}`);
+        if (!el) continue;
+
+        if (!field.editable) {
+          el.textContent = value;
+        } else if (field.type === 'bool') {
+          el.checked = !!value;
+        } else {
+          el.value = value;
+        }
+
+        // Clear dirty indicator
+        const fieldEl = el.closest('.config-field');
+        if (fieldEl) {
+          fieldEl.classList.remove('config-dirty');
+        }
+      }
+
+      elements.configRawHex.textContent = configDecoder.toHexString();
+    };
+
+    // Handle config field change
+    const onConfigFieldChange = (fieldName) => {
+      const field = CONFIG_FIELDS[fieldName];
+      const el = document.getElementById(`config-${fieldName}`);
+      if (!field || !el) return;
+
+      let newValue;
+      if (field.type === 'bool') {
+        newValue = el.checked ? 1 : 0;
+      } else {
+        newValue = parseInt(el.value, 10);
+      }
+
+      configDecoder.setField(fieldName, newValue);
+
+      // Check if byte changed from original
+      const currentBytes = configDecoder.toBytes();
+      const byteIndex = field.byte;
+      const fieldEl = el.closest('.config-field');
+
+      if (currentBytes[byteIndex] !== originalConfigBytes[byteIndex]) {
+        fieldEl.classList.add('config-dirty');
+      } else {
+        fieldEl.classList.remove('config-dirty');
+      }
+
+      elements.configRawHex.textContent = configDecoder.toHexString();
+    };
+
+    // Save configuration to device
+    const saveConfigToDevice = async () => {
+      if (!stack || !stack._uds || !configLoaded) {
+        elements.configStatus.textContent = 'Cannot save: not connected or config not loaded';
+        return;
+      }
+
+      elements.configStatus.textContent = 'Writing configuration...';
+      elements.writeConfigButton.disabled = true;
+
+      try {
+        const currentBytes = configDecoder.toBytes();
+
+        // Save only changed bytes
+        for (let i = 0; i < 4; i++) {
+          if (currentBytes[i] !== originalConfigBytes[i]) {
+            await stack._uds.saveSetting(i + 1, BigInt(currentBytes[i]));
+          }
+        }
+
+        originalConfigBytes = [...currentBytes];
+        updateConfigUI();  // Clear dirty indicators
+        elements.configStatus.textContent = 'Configuration saved successfully';
+
+      } catch (error) {
+        console.error('Failed to save config:', error);
+        elements.configStatus.textContent = 'Failed to save: ' + error.message;
+      } finally {
+        elements.writeConfigButton.disabled = false;
+      }
+    };
+
+    // Reset config UI state on disconnect
+    const resetConfigUI = () => {
+      configLoaded = false;
+      originalConfigBytes = [0, 0, 0, 0];
+      configDecoder = new ConfigurationDecoder();
+      elements.readConfigButton.disabled = true;
+      elements.writeConfigButton.disabled = true;
+      elements.configStatus.textContent = '(Connect to device to read configuration)';
+      elements.configRawHex.textContent = '--';
+
+      // Clear all field values
+      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
+        const el = document.getElementById(`config-${fieldName}`);
+        if (!el) continue;
+
+        if (!field.editable) {
+          el.textContent = '--';
+        } else if (field.type === 'bool') {
+          el.checked = false;
+        } else {
+          el.value = field.options ? field.options[0].value : 0;
+        }
+
+        const fieldEl = el.closest('.config-field');
+        if (fieldEl) {
+          fieldEl.classList.remove('config-dirty');
+        }
+      }
+    };
+
     // Current axis selection mode: 'left' or 'right'
     let currentAxisTarget = 'left';
 
@@ -1266,6 +1599,10 @@
         stack.on('connected', async () => {
           updateUIState(true);
 
+          // Enable config read button
+          elements.readConfigButton.disabled = false;
+          elements.configStatus.textContent = 'Ready to read configuration';
+
           // Set target to SOLO (0x04)
           stack.setTargetAddress(0x04);
 
@@ -1277,6 +1614,13 @@
               await stack.enableLogStreaming();
             } catch (error) {
               console.error('Failed to enable log streaming:', error);
+            }
+
+            // Auto-load configuration after DID polling is ready
+            try {
+              await loadConfigFromDevice();
+            } catch (error) {
+              console.error('Failed to auto-load config:', error);
             }
           }
         });
@@ -1292,6 +1636,9 @@
           unsubscribeFromAllDIDs();
           elements.refreshDIDs.disabled = true;
           elements.pollRate.textContent = '--';
+
+          // Reset configuration UI
+          resetConfigUI();
         });
 
         stack.on('error', (error) => {
@@ -1348,6 +1695,10 @@
       }
     });
 
+    // Configuration buttons
+    elements.readConfigButton.addEventListener('click', loadConfigFromDevice);
+    elements.writeConfigButton.addEventListener('click', saveConfigToDevice);
+
     // Periodic UI update for cell values
     setInterval(() => {
       updateCellPanelsFromDIDs();
@@ -1362,6 +1713,9 @@
 
     // Build DID subscription UI on load
     buildDIDSubscriptionUI();
+
+    // Build configuration UI on load
+    buildConfigUI();
 
     // Initialize
     if (checkBrowserSupport()) {
