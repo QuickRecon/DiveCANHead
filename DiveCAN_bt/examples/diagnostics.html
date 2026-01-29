@@ -200,6 +200,11 @@
       min-width: 60px;
     }
 
+    .field-value.stale {
+      color: #555;
+      font-style: italic;
+    }
+
     .field-unit {
       color: #666;
       font-size: 11px;
@@ -265,6 +270,11 @@
       font-size: 18px;
       font-weight: bold;
       font-family: 'Courier New', monospace;
+    }
+
+    .summary-value.stale {
+      color: #555;
+      font-style: italic;
     }
 
     .summary-unit {
@@ -505,6 +515,12 @@
       font-family: 'Courier New', monospace;
       font-weight: bold;
       min-width: 80px;
+    }
+
+    /* Stale/unsubscribed values appear grey */
+    .did-item:not(.subscribed) .did-value {
+      color: #555;
+      font-style: italic;
     }
 
     .did-item .did-hex {
@@ -912,6 +928,19 @@
       elements.logMessages.scrollTop = elements.logMessages.scrollHeight;
     };
 
+    // Helper to check if a DID is subscribed
+    const isDIDSubscribed = (didKey) => activeSubscriptions.has(didKey);
+
+    // Helper to apply/remove stale class based on subscription status
+    const updateStaleClass = (element, didKey) => {
+      if (!element) return;
+      if (isDIDSubscribed(didKey)) {
+        element.classList.remove('stale');
+      } else {
+        element.classList.add('stale');
+      }
+    };
+
     // Update summary values from DID values
     const updateSummary = () => {
       const setpoint = dataStore.getDIDValue('SETPOINT');
@@ -925,6 +954,13 @@
       elements.summaryDutyCycle.textContent = duty !== undefined ? (duty * 100).toFixed(1) + '%' : '--';
       elements.summaryIntegral.textContent = integral !== undefined ? integral.toFixed(4) : '--';
       elements.summarySaturation.textContent = saturation !== undefined ? saturation : '--';
+
+      // Update stale indicators
+      updateStaleClass(elements.summarySetpoint, 'SETPOINT');
+      updateStaleClass(elements.summaryConsensus, 'CONSENSUS_PPO2');
+      updateStaleClass(elements.summaryDutyCycle, 'DUTY_CYCLE');
+      updateStaleClass(elements.summaryIntegral, 'INTEGRAL_STATE');
+      updateStaleClass(elements.summarySaturation, 'SATURATION_COUNT');
     };
 
     // Update power status values from DID values
@@ -937,19 +973,23 @@
         const el = document.getElementById(voltageIds[i]);
         if (el) {
           el.textContent = val !== undefined && val !== null ? val.toFixed(2) : '--';
+          updateStaleClass(el, key);
         }
       });
 
       const sources = dataStore.getDIDValue('POWER_SOURCES');
+      const vccEl = document.getElementById('vcc-source');
+      const vbusEl = document.getElementById('vbus-source');
       if (sources !== undefined && sources !== null) {
         const vccSrc = sources & 0x03;
         const vbusSrc = (sources >> 2) & 0x03;
         const sourceNames = ['Default', 'Battery', 'CAN'];
-        const vccEl = document.getElementById('vcc-source');
-        const vbusEl = document.getElementById('vbus-source');
         if (vccEl) vccEl.textContent = sourceNames[vccSrc] || '?';
         if (vbusEl) vbusEl.textContent = sourceNames[vbusSrc] || '?';
       }
+      // Both source fields depend on POWER_SOURCES DID
+      updateStaleClass(vccEl, 'POWER_SOURCES');
+      updateStaleClass(vbusEl, 'POWER_SOURCES');
     };
 
     // Track cell types for rebuilding panels
@@ -1073,6 +1113,7 @@
             } else {
               valueEl.textContent = '--';
             }
+            updateStaleClass(valueEl, didKey);
             return;
           }
 
@@ -1083,6 +1124,9 @@
           } else {
             valueEl.textContent = '--';
           }
+
+          // Update stale indicator based on subscription status
+          updateStaleClass(valueEl, didKey);
         });
       }
     };
