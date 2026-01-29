@@ -183,3 +183,32 @@ This codebase follows NASA's Power of 10 rules for safety-critical embedded syst
 The system outputs debug information via SWD, which is done using the cortex-debug plugin.
 
 Stack analysis available via `STM32/stackAnalysis.sh`.
+
+## Subsystem Documentation
+
+Detailed documentation for key subsystems is available in the `docs/` directory.
+
+**Maintenance Directive:** When making changes to the codebase that affect documented subsystems, update the corresponding documentation in `docs/`. This includes:
+- Adding/removing/renaming DIDs, services, or settings
+- Changing data structures (Configuration_t, state DIDs, etc.)
+- Modifying FreeRTOS task priorities or patterns
+- Updating calibration methods or voting algorithms
+- Changes to the testing infrastructure or fixtures
+- Protocol changes (UDS, ISO-TP, SLIP)
+
+Documentation should stay in sync with the implementation to reduce future exploration time.
+
+| Document | Description |
+|----------|-------------|
+| [docs/UDS_PROTOCOL.md](docs/UDS_PROTOCOL.md) | UDS diagnostic services (0x10, 0x22, 0x2E, 0x34-37), session model, NRCs |
+| [docs/ISOTP_TRANSPORT.md](docs/ISOTP_TRANSPORT.md) | ISO-TP framing, state machine, TX queue, timeouts |
+| [docs/DATA_IDENTIFIERS.md](docs/DATA_IDENTIFIERS.md) | Complete DID reference (0xF2xx state, 0xF4Nx cells, 0x9xxx settings) |
+| [docs/FREERTOS_PATTERNS.md](docs/FREERTOS_PATTERNS.md) | Cooperative scheduling, 1-element peek queues, static allocation |
+| [docs/OXYGEN_SENSORS.md](docs/OXYGEN_SENSORS.md) | Analog/DiveO2/O2S drivers, voting algorithm, calibration methods |
+| [docs/CONFIGURATION_SYSTEM.md](docs/CONFIGURATION_SYSTEM.md) | Configuration_t bitfield, settings via UDS, flash persistence |
+| [docs/TESTING_ARCHITECTURE.md](docs/TESTING_ARCHITECTURE.md) | DiveCANpy, pytest fixtures, HWShim commands, PSU control |
+| [docs/DIVECAN_BT.md](docs/DIVECAN_BT.md) | Browser JS client, SLIP encoding, UDSClient API |
+
+### External References
+
+- [DiveCAN Protocol](https://github.com/QuickRecon/DiveCAN) - Base protocol documentation and message format
