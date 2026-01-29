@@ -210,8 +210,7 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
         return true;
 
     case CELL_DID_STATUS:
-        /* Cell status would need to be added to accumulator - for now return OK */
-        buf[0] = (uint8_t)CELL_OK;
+        buf[0] = stateVectorAccumulator.cell_status[cellNum];
         *len = 1U;
         return true;
 

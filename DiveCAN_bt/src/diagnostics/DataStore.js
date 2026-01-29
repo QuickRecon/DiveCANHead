@@ -140,15 +140,16 @@ export class DataStore {
 
   /**
    * Initialize pull mode - fetch all DIDs and start polling
+   * @param {Function} progressCallback - Optional callback (current, total) => void
    * @returns {Promise<Object>} Initial state values
    */
-  async initialize() {
+  async initialize(progressCallback = null) {
     if (!this.udsClient) {
       throw new Error('UDSClient required for pull mode');
     }
 
     // Fetch all DIDs once
-    const state = await this.fetchAllDIDs();
+    const state = await this.fetchAllDIDs(progressCallback);
 
     // Start polling subscribed DIDs
     this.startPolling();
@@ -158,14 +159,15 @@ export class DataStore {
 
   /**
    * Fetch all known DIDs from device
+   * @param {Function} progressCallback - Optional callback (current, total) => void
    * @returns {Promise<Object>} Object with all DID values
    */
-  async fetchAllDIDs() {
+  async fetchAllDIDs(progressCallback = null) {
     if (!this.udsClient) {
       throw new Error('UDSClient required for fetchAllDIDs');
     }
 
-    const state = await this.udsClient.fetchAllState();
+    const state = await this.udsClient.fetchAllState(progressCallback);
 
     // Update cached cell types
     if (state._cellTypes) {

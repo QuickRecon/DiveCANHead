@@ -23,9 +23,9 @@ extern "C"
     void DeInitLog(void);
     void StartLogTask(void);
     void LogMsg(const char *msg);
-    void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity);
-    void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2);
-    void AnalogCellSample(uint8_t cellNumber, int16_t sample);
+    void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, CellStatus_t status, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity);
+    void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2, CellStatus_t status);
+    void AnalogCellSample(uint8_t cellNumber, int16_t sample, CellStatus_t status);
     void LogRXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogTXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDNumeric_t setpoint);
@@ -37,6 +37,7 @@ extern "C"
      * @brief Update DiveO2 cell data in the binary state vector accumulator
      * @param cellNum Cell number (0-2)
      * @param precisionPPO2 PPO2 in float (from cell's precisionPPO2 field)
+     * @param status Cell status (CellStatus_t enum value)
      * @param temp Temperature in millicelsius
      * @param err Error code
      * @param phase Phase value
@@ -45,24 +46,26 @@ extern "C"
      * @param pressure Pressure in microbar
      * @param humidity Humidity in milliRH
      */
-    void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, int32_t temp, int32_t err,
-                              int32_t phase, int32_t intensity, int32_t ambientLight,
-                              int32_t pressure, int32_t humidity);
+    void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, CellStatus_t status,
+                              int32_t temp, int32_t err, int32_t phase, int32_t intensity,
+                              int32_t ambientLight, int32_t pressure, int32_t humidity);
 
     /**
      * @brief Update O2S cell data in the binary state vector accumulator
      * @param cellNum Cell number (0-2)
      * @param ppo2 PPO2 in float
+     * @param status Cell status (CellStatus_t enum value)
      */
-    void Log_UpdateO2SCell(uint8_t cellNum, float ppo2);
+    void Log_UpdateO2SCell(uint8_t cellNum, float ppo2, CellStatus_t status);
 
     /**
      * @brief Update analog cell data in the binary state vector accumulator
      * @param cellNum Cell number (0-2)
      * @param ppo2 PPO2 in float
      * @param raw Raw ADC value
+     * @param status Cell status (CellStatus_t enum value)
      */
-    void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw);
+    void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, CellStatus_t status);
 
     /**
      * @brief Update PPO2 state in the binary state vector accumulator

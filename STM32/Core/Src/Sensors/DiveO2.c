@@ -347,7 +347,7 @@ static void decodeCellMessage(void *arg)
                 cell->status = cellErrorCheck(err_str);
 
                 float precisionPPO2 = (float)cell->cellSample / cell->calibrationCoefficient;
-                DiveO2CellSample(cell->cellNumber, precisionPPO2, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), 0, 0, 0, 0, 0);
+                DiveO2CellSample(cell->cellNumber, precisionPPO2, cell->status, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), 0, 0, 0, 0, 0);
 
                 cell->ticksOfLastPPO2 = HAL_GetTick();
             }
@@ -373,7 +373,7 @@ static void decodeCellMessage(void *arg)
                 int32_t ambientLight = strtol(ambientLight_str, NULL, PPO2_BASE);
 
                 float precisionPPO2 = (float)cell->cellSample / cell->calibrationCoefficient;
-                DiveO2CellSample(cell->cellNumber, precisionPPO2, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), phase, intensity, ambientLight, cell->pressure, cell->humidity);
+                DiveO2CellSample(cell->cellNumber, precisionPPO2, cell->status, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), phase, intensity, ambientLight, cell->pressure, cell->humidity);
 
                 cell->ticksOfLastPPO2 = HAL_GetTick();
             }

@@ -140,7 +140,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     uint32_t ticks = HAL_GetTick();
     handle->lastCounts = GetInputValue(handle->adcInputIndex);
 
-    AnalogCellSample(handle->cellNumber, handle->lastCounts);
+    AnalogCellSample(handle->cellNumber, handle->lastCounts, handle->status);
 
     if (ticks < ticksOfLastPPO2)
     { /* If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out*/

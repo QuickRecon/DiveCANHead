@@ -469,10 +469,7 @@
     <h2>Stream Status</h2>
     <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
       <span class="status disconnected" id="streamStatus">Inactive</span>
-      <div class="stats-bar">
-        <span>Events: <span class="value" id="eventCount">0</span></span>
-        <span>Rate: <span class="value" id="eventRate">--</span> events/s</span>
-      </div>
+      <span id="streamStatusDetail" style="color: #888; font-size: 13px;"></span>
     </div>
   </div>
 
@@ -588,10 +585,6 @@
         <div class="summary-label">Threshold</div>
         <div class="summary-value" id="threshold-voltage">--</div>
         <div class="summary-unit">V</div>
-        <div class="plot-buttons">
-          <button class="plot-btn plot-left" onclick="plotToLeftAxis('threshold_voltage', 'Threshold')">L</button>
-          <button class="plot-btn plot-right" onclick="plotToRightAxis('threshold_voltage', 'Threshold')">R</button>
-        </div>
       </div>
       <div class="summary-item">
         <div class="summary-label">VCC Source</div>
@@ -660,7 +653,7 @@
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
-    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_TYPE_DIVEO2, CELL_TYPE_ANALOG } from '../src/uds/constants.js';
+    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_TYPE_DIVEO2, CELL_TYPE_ANALOG, CELL_STATUS_NAMES } from '../src/uds/constants.js';
 
     // Reduce logging to improve performance - only show warnings and errors
     Logger.setGlobalLevel('debug');
@@ -680,8 +673,6 @@
     let dataStore = new DataStore({ maxPoints: 1000, maxAge: 300 }); // 1000 points, 5 min max age
     let plotManager = null;
     let cellUIAdapter = null;
-    let eventCount = 0;
-    let eventTimes = [];
 
     // UI Elements
     const elements = {
@@ -690,8 +681,7 @@
       connectionStatus: document.getElementById('connectionStatus'),
       deviceInfo: document.getElementById('deviceInfo'),
       streamStatus: document.getElementById('streamStatus'),
-      eventCount: document.getElementById('eventCount'),
-      eventRate: document.getElementById('eventRate'),
+      streamStatusDetail: document.getElementById('streamStatusDetail'),
       logMessages: document.getElementById('logMessages'),
       clearLogMessages: document.getElementById('clearLogMessages'),
       leftAxisLabel: document.getElementById('leftAxisLabel'),
@@ -744,18 +734,34 @@
         elements.deviceInfo.textContent = '';
         elements.streamStatus.textContent = 'Inactive';
         elements.streamStatus.className = 'status disconnected';
+        elements.streamStatusDetail.textContent = '';
       }
     };
 
     // Update stream status
-    const updateStreamStatus = (active) => {
-      if (active) {
-        elements.streamStatus.textContent = 'Streaming';
-        elements.streamStatus.className = 'status streaming';
-      } else {
-        elements.streamStatus.textContent = 'Inactive';
-        elements.streamStatus.className = 'status disconnected';
+    const updateStreamStatus = (status, detail = '') => {
+      switch (status) {
+        case 'initializing':
+          elements.streamStatus.textContent = 'Initializing';
+          elements.streamStatus.className = 'status';
+          elements.streamStatus.style.background = '#ff9800';
+          elements.streamStatus.style.color = '#1a1a1a';
+          break;
+        case 'streaming':
+          elements.streamStatus.textContent = 'Streaming';
+          elements.streamStatus.className = 'status streaming';
+          elements.streamStatus.style.background = '';
+          elements.streamStatus.style.color = '';
+          break;
+        case 'inactive':
+        default:
+          elements.streamStatus.textContent = 'Inactive';
+          elements.streamStatus.className = 'status disconnected';
+          elements.streamStatus.style.background = '';
+          elements.streamStatus.style.color = '';
+          break;
       }
+      elements.streamStatusDetail.textContent = detail;
     };
 
     // Add to log messages (text logs only)
@@ -771,18 +777,6 @@
       }
 
       elements.logMessages.scrollTop = elements.logMessages.scrollHeight;
-    };
-
-    // Update event rate
-    const updateEventRate = () => {
-      const now = Date.now();
-      eventTimes.push(now);
-
-      // Keep only events from last second
-      eventTimes = eventTimes.filter(t => now - t < 1000);
-
-      elements.eventCount.textContent = eventCount;
-      elements.eventRate.textContent = eventTimes.length.toFixed(0);
     };
 
     // Update summary values from DID values
@@ -832,46 +826,53 @@
     const buildCellFieldsHTML = (cellNum, cellType) => {
       const typeNames = { 0: 'DiveO2', 1: 'Analog', 2: 'O2S' };
 
-      let fields = [];
+      // Universal fields for all cell types
+      const universalFields = [
+        { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3, plottable: true },
+        { field: 'status', label: 'Status', unit: '', decimals: 0, plottable: false }
+      ];
+
+      let typeSpecificFields = [];
       switch (cellType) {
         case 0: // DiveO2
-          fields = [
-            { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3 },
-            { field: 'temperature', label: 'Temp', unit: 'mC', decimals: 0 },
-            { field: 'error', label: 'Error', unit: '', decimals: 0 },
-            { field: 'phase', label: 'Phase', unit: '', decimals: 0 },
-            { field: 'intensity', label: 'Intensity', unit: '', decimals: 0 },
-            { field: 'ambientLight', label: 'Ambient', unit: '', decimals: 0 },
-            { field: 'pressure', label: 'Pressure', unit: 'ubar', decimals: 0 },
-            { field: 'humidity', label: 'Humidity', unit: 'mRH', decimals: 0 }
+          typeSpecificFields = [
+            { field: 'temperature', label: 'Temp', unit: 'mC', decimals: 0, plottable: true },
+            { field: 'error', label: 'Error', unit: '', decimals: 0, plottable: false },
+            { field: 'phase', label: 'Phase', unit: '', decimals: 0, plottable: true },
+            { field: 'intensity', label: 'Intensity', unit: '', decimals: 0, plottable: true },
+            { field: 'ambientLight', label: 'Ambient', unit: '', decimals: 0, plottable: true },
+            { field: 'pressure', label: 'Pressure', unit: 'ubar', decimals: 0, plottable: true },
+            { field: 'humidity', label: 'Humidity', unit: 'mRH', decimals: 0, plottable: true }
           ];
           break;
         case 1: // Analog
-          fields = [
-            { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3 },
-            { field: 'rawAdc', label: 'ADC', unit: '', decimals: 0 },
-            { field: 'millivolts', label: 'mV', unit: 'mV', decimals: 0 }
+          typeSpecificFields = [
+            { field: 'rawAdc', label: 'ADC', unit: '', decimals: 0, plottable: true },
+            { field: 'millivolts', label: 'mV', unit: 'mV', decimals: 0, plottable: true }
           ];
           break;
         case 2: // O2S
-          fields = [
-            { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3 }
-          ];
+          typeSpecificFields = [];
           break;
         default:
           return '<div class="field-inactive">(No data)</div>';
       }
 
+      const fields = [...universalFields, ...typeSpecificFields];
+
       return fields.map(f => {
         const seriesKey = `cell${cellNum}.${f.field}`;
         const label = `Cell ${cellNum} ${f.label}`;
+        const plotButtons = f.plottable ? `
+            <button class="plot-btn plot-left" data-series-key="${seriesKey}" data-label="${label}" title="Plot on left axis">L</button>
+            <button class="plot-btn plot-right" data-series-key="${seriesKey}" data-label="${label}" title="Plot on right axis">R</button>
+        ` : '';
         return `
           <div class="field-row" data-cell="${cellNum}" data-field="${f.field}">
             <span class="field-label">${f.label}:</span>
             <span class="field-value" data-decimals="${f.decimals}">--</span>
             <span class="field-unit">${f.unit}</span>
-            <button class="plot-btn plot-left" data-series-key="${seriesKey}" data-label="${label}" title="Plot on left axis">L</button>
-            <button class="plot-btn plot-right" data-series-key="${seriesKey}" data-label="${label}" title="Plot on right axis">R</button>
+            ${plotButtons}
           </div>
         `;
       }).join('');
@@ -915,6 +916,7 @@
           // Map field name to DID key
           const fieldToDID = {
             'ppo2': `CELL${cellNum}_PPO2`,
+            'status': `CELL${cellNum}_STATUS`,
             'temperature': `CELL${cellNum}_TEMPERATURE`,
             'error': `CELL${cellNum}_ERROR`,
             'phase': `CELL${cellNum}_PHASE`,
@@ -930,6 +932,17 @@
           if (!didKey) return;
 
           const value = dataStore.getDIDValue(didKey);
+
+          // Special handling for status field - display as enum string
+          if (field === 'status') {
+            if (value !== undefined && value !== null) {
+              valueEl.textContent = CELL_STATUS_NAMES[value] || `Unknown (${value})`;
+            } else {
+              valueEl.textContent = '--';
+            }
+            return;
+          }
+
           const decimals = parseInt(valueEl.dataset.decimals || '0', 10);
 
           if (value !== undefined && value !== null && !isNaN(value)) {
@@ -1058,6 +1071,12 @@
         return;
       }
 
+      // Special handling for cell status DIDs
+      if (didKey.endsWith('_STATUS')) {
+        valueEl.textContent = CELL_STATUS_NAMES[value] || `Unknown (${value})`;
+        return;
+      }
+
       // Format based on type
       switch (info.type) {
         case 'float32':
@@ -1128,8 +1147,13 @@
           pollInterval: 200
         });
 
-        // Fetch all DIDs initially
-        await newDataStore.initialize();
+        // Show initializing status
+        updateStreamStatus('initializing', 'Fetching DIDs...');
+
+        // Fetch all DIDs initially with progress callback
+        await newDataStore.initialize((current, total) => {
+          updateStreamStatus('initializing', `Fetching DIDs... ${current}/${total}`);
+        });
 
         // Update dataStore reference
         dataStore = newDataStore;
@@ -1142,9 +1166,13 @@
           updateDIDValueDisplay(key, value);
         }
 
+        // Show streaming status
+        updateStreamStatus('streaming');
+
         return true;
       } catch (error) {
         console.error('DID polling initialization failed:', error);
+        updateStreamStatus('inactive', 'Initialization failed');
         return false;
       }
     };
@@ -1247,7 +1275,6 @@
             // Enable log streaming for log/event messages
             try {
               await stack.enableLogStreaming();
-              updateStreamStatus(true);
             } catch (error) {
               console.error('Failed to enable log streaming:', error);
             }
@@ -1256,7 +1283,7 @@
 
         stack.on('disconnected', () => {
           updateUIState(false);
-          updateStreamStatus(false);
+          updateStreamStatus('inactive');
 
           // Clean up subscriptions and polling
           if (dataStore) {

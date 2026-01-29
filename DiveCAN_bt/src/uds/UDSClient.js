@@ -814,9 +814,10 @@ export class UDSClient extends EventEmitter {
 
   /**
    * Fetch all state DIDs (control + all cells with type filtering)
+   * @param {Function} progressCallback - Optional callback (current, total) => void
    * @returns {Promise<Object>} Complete state object
    */
-  async fetchAllState() {
+  async fetchAllState(progressCallback = null) {
     // Get cell types first
     const cellTypes = await this.getCellTypes();
 
@@ -842,8 +843,14 @@ export class UDSClient extends EventEmitter {
     // Safe limit: (20-1)/2 = 9 DIDs max per request, use 8 to be safe
     const DIDS_PER_REQUEST = 4;
     const result = {};
+    const totalChunks = Math.ceil(allDIDs.length / DIDS_PER_REQUEST);
 
     for (let i = 0; i < allDIDs.length; i += DIDS_PER_REQUEST) {
+      const chunkIndex = Math.floor(i / DIDS_PER_REQUEST);
+      if (progressCallback) {
+        progressCallback(chunkIndex + 1, totalChunks);
+      }
+
       const chunk = allDIDs.slice(i, i + DIDS_PER_REQUEST);
       const chunkResult = await this.readDIDsParsed(chunk);
       Object.assign(result, chunkResult);

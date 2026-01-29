@@ -284,10 +284,10 @@ static void decodeCellMessage(void *arg)
                 else
                 {
                     cell->cellSample = strtof(PPO2_str, NULL);
-
-                    O2SCellSample(cell->cellNumber, cell->cellSample);
-
                     cell->status = CELL_OK;
+
+                    O2SCellSample(cell->cellNumber, cell->cellSample, cell->status);
+
                     cell->ticksOfLastPPO2 = HAL_GetTick();
                     O2S_broadcastPPO2(cell);
 

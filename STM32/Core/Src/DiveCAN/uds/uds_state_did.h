@@ -92,12 +92,13 @@ typedef struct __attribute__((packed))
     uint16_t timestamp_sec;    /**< Seconds since boot (wraps at ~18 hours) */
     uint16_t saturation_count; /**< PID saturation event counter */
 
-    /* 1-byte fields (2 bytes) */
+    /* 1-byte fields (5 bytes) */
     uint8_t version;           /**< Protocol version (for client compatibility) */
     uint8_t cellsValid;        /**< Bit flags: which cells included in voting (bits 0-2) */
+    uint8_t cell_status[3];    /**< Per-cell status (CellStatus_t enum values) */
 } BinaryStateVector_t;
 
-_Static_assert(sizeof(BinaryStateVector_t) == 122, "BinaryStateVector_t size must be 122 bytes");
+_Static_assert(sizeof(BinaryStateVector_t) == 125, "BinaryStateVector_t size must be 125 bytes");
 
 /**
  * @brief Check if a DID is handled by the state DID module

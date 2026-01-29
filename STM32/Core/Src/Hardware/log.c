@@ -417,10 +417,10 @@ void LogMsg(const char *msg)
     }
 }
 
-void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity)
+void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, CellStatus_t status, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity)
 {
     /* Update binary state vector accumulator */
-    Log_UpdateDiveO2Cell(cellNumber, precisionPPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity);
+    Log_UpdateDiveO2Cell(cellNumber, precisionPPO2, status, temperature, err, phase, intensity, ambientLight, pressure, humidity);
 
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
@@ -448,10 +448,10 @@ void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, int32_t PPO2, int
     }
 }
 
-void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
+void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2, CellStatus_t status)
 {
     /* Update binary state vector accumulator */
-    Log_UpdateO2SCell(cellNumber, (float)PPO2);
+    Log_UpdateO2SCell(cellNumber, (float)PPO2, status);
 
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
@@ -479,12 +479,12 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
     }
 }
 
-void AnalogCellSample(uint8_t cellNumber, int16_t sample)
+void AnalogCellSample(uint8_t cellNumber, int16_t sample, CellStatus_t status)
 {
     /* Update binary state vector accumulator
      * Note: PPO2 is not available here - it's calculated elsewhere.
      * For analog cells, we store the raw sample and PPO2 is set via LogPPO2State. */
-    Log_UpdateAnalogCell(cellNumber, 0.0f, sample);
+    Log_UpdateAnalogCell(cellNumber, 0.0f, sample, status);
 
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
@@ -657,15 +657,16 @@ void LogTXDiveCANMessage(const DiveCANMessage_t *const message)
 /* Exposed for UDS state DID reads - accessed via extern in uds_state_did.c */
 BinaryStateVector_t stateVectorAccumulator = {0};
 
-void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, int32_t temp, int32_t err,
-                          int32_t phase, int32_t intensity, int32_t ambientLight,
-                          int32_t pressure, int32_t humidity)
+void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, CellStatus_t status,
+                          int32_t temp, int32_t err, int32_t phase, int32_t intensity,
+                          int32_t ambientLight, int32_t pressure, int32_t humidity)
 {
     if (cellNum >= 3U)
     {
         return;
     }
     stateVectorAccumulator.cell_ppo2[cellNum] = precisionPPO2;
+    stateVectorAccumulator.cell_status[cellNum] = (uint8_t)status;
     stateVectorAccumulator.cell_detail[cellNum][0] = (uint32_t)temp;
     stateVectorAccumulator.cell_detail[cellNum][1] = (uint32_t)err;
     stateVectorAccumulator.cell_detail[cellNum][2] = (uint32_t)phase;
@@ -675,23 +676,25 @@ void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, int32_t temp, in
     stateVectorAccumulator.cell_detail[cellNum][6] = (uint32_t)humidity;
 }
 
-void Log_UpdateO2SCell(uint8_t cellNum, float ppo2)
+void Log_UpdateO2SCell(uint8_t cellNum, float ppo2, CellStatus_t status)
 {
     if (cellNum >= 3U)
     {
         return;
     }
     stateVectorAccumulator.cell_ppo2[cellNum] = ppo2;
+    stateVectorAccumulator.cell_status[cellNum] = (uint8_t)status;
     /* O2S cells have no additional detail fields - leave as zero */
 }
 
-void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw)
+void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, CellStatus_t status)
 {
     if (cellNum >= 3U)
     {
         return;
     }
     stateVectorAccumulator.cell_ppo2[cellNum] = ppo2;
+    stateVectorAccumulator.cell_status[cellNum] = (uint8_t)status;
     /* Store raw ADC value in detail[0], rest unused */
     stateVectorAccumulator.cell_detail[cellNum][0] = (uint32_t)(uint16_t)raw;
 }

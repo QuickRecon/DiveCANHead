@@ -58,6 +58,15 @@ export const CELL_TYPE_DIVEO2 = 0;  // Note: firmware uses 0 for DiveO2
 export const CELL_TYPE_ANALOG = 1;
 export const CELL_TYPE_O2S = 2;
 
+// Cell status constants (CellStatus_t enum)
+export const CELL_STATUS_OK = 0;
+export const CELL_STATUS_DEGRADED = 1;
+export const CELL_STATUS_FAIL = 2;
+export const CELL_STATUS_NEED_CAL = 3;
+
+// Cell status names for display
+export const CELL_STATUS_NAMES = ['OK', 'Degraded', 'Fail', 'Need Cal'];
+
 // Settings DIDs
 export const DID_SETTING_COUNT = 0x9100;
 export const DID_SETTING_INFO_BASE = 0x9110;
