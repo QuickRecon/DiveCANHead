@@ -13,6 +13,7 @@
 #include "../../Hardware/hw_version.h"
 #include "../../Hardware/flash.h"
 #include <string.h>
+#include <assert.h>
 
 // Forward declarations of service handlers
 static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
@@ -260,7 +261,8 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
             return false;
         }
 
-        uint16_t labelLen = strlen(setting->label);
+        uint16_t labelLen = 9;
+        assert(strlen(setting->label) <= labelLen);
         uint16_t needed = labelLen + 5U; /* label + null + kind + editable + (optional maxValue + optionCount) */
         if (setting->kind == SETTING_KIND_TEXT)
         {
@@ -271,7 +273,9 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
             return false; /* Response too long */
         }
 
-        memcpy(&buf[dataOffset], setting->label, labelLen);
+        // Label len always needs to be the same length (9 bytes), 0 padded if needed
+        memset(&buf[dataOffset], 0, labelLen);
+        memcpy(&buf[dataOffset], setting->label,  strlen(setting->label));
         buf[dataOffset + labelLen] = 0; /* Null terminator */
         buf[dataOffset + labelLen + 1] = (uint8_t)setting->kind;
         buf[dataOffset + labelLen + 2] = setting->editable ? 1 : 0;
@@ -309,10 +313,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
             buf[dataOffset + i] = (uint8_t)(maxValue >> (56 - i * 8));
             buf[dataOffset + 8 + i] = (uint8_t)(currentValue >> (56 - i * 8));
         }
-        /* Add 2 padding bytes for gateway compatibility */
-        buf[dataOffset + 16] = 0;
-        buf[dataOffset + 17] = 0;
-        *bytesWritten = dataOffset + 18U;
+        *bytesWritten = dataOffset + 16U;
         return true;
     }
     else if (did >= UDS_DID_SETTING_LABEL_BASE && did < 0x9200)
