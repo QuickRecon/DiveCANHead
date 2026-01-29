@@ -221,7 +221,7 @@ export class UDSClient extends EventEmitter {
     const did = ByteUtils.beToUint16(data.slice(1, 3));
     const payload = data.slice(3);
 
-    this.logger.debug(`Unsolicited WDBI: DID=0x${did.toString(16).padStart(4, '0')}`);
+    this.logger.debug(`Unsolicited WDBI: DID=0x${did.toString(16).padStart(4, '0')}, len=${payload.length}`);
 
     if (did === constants.DID_LOG_MESSAGE) {
       const message = new TextDecoder('utf-8').decode(payload);
@@ -229,6 +229,9 @@ export class UDSClient extends EventEmitter {
     } else if (did === constants.DID_EVENT_MESSAGE) {
       const message = new TextDecoder('utf-8').decode(payload);
       this.emit('eventMessage', message);
+    } else if (did === constants.DID_STATE_VECTOR) {
+      // Binary state vector (122 bytes) - emit raw payload for parsing
+      this.emit('stateVector', payload);
     } else {
       this.emit('unsolicitedMessage', { did, payload });
     }

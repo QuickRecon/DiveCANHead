@@ -409,23 +409,23 @@
     <div style="margin-top: 10px; display: flex; gap: 15px; flex-wrap: wrap;">
       <span>
         Duty Cycle:
-        <button class="small plot-left" onclick="plotToLeftAxis('PID.dutyCycle', 'Duty Cycle')">L</button>
-        <button class="small plot-right" onclick="plotToRightAxis('PID.dutyCycle', 'Duty Cycle')">R</button>
+        <button class="small plot-left" onclick="plotToLeftAxis('duty_cycle', 'Duty Cycle')">L</button>
+        <button class="small plot-right" onclick="plotToRightAxis('duty_cycle', 'Duty Cycle')">R</button>
       </span>
       <span>
         Consensus:
-        <button class="small plot-left" onclick="plotToLeftAxis('PPO2STATE.consensus', 'Consensus')">L</button>
-        <button class="small plot-right" onclick="plotToRightAxis('PPO2STATE.consensus', 'Consensus')">R</button>
+        <button class="small plot-left" onclick="plotToLeftAxis('consensus_ppo2', 'Consensus')">L</button>
+        <button class="small plot-right" onclick="plotToRightAxis('consensus_ppo2', 'Consensus')">R</button>
       </span>
       <span>
         Setpoint:
-        <button class="small plot-left" onclick="plotToLeftAxis('PID.setpoint', 'Setpoint')">L</button>
-        <button class="small plot-right" onclick="plotToRightAxis('PID.setpoint', 'Setpoint')">R</button>
+        <button class="small plot-left" onclick="plotToLeftAxis('setpoint', 'Setpoint')">L</button>
+        <button class="small plot-right" onclick="plotToRightAxis('setpoint', 'Setpoint')">R</button>
       </span>
       <span>
         Integral:
-        <button class="small plot-left" onclick="plotToLeftAxis('PID.integralState', 'Integral')">L</button>
-        <button class="small plot-right" onclick="plotToRightAxis('PID.integralState', 'Integral')">R</button>
+        <button class="small plot-left" onclick="plotToLeftAxis('integral_state', 'Integral')">L</button>
+        <button class="small plot-right" onclick="plotToRightAxis('integral_state', 'Integral')">R</button>
       </span>
     </div>
   </div>
@@ -466,13 +466,12 @@
 
   <script type="module">
     import { DiveCANProtocolStack, DeviceManager, ByteUtils, Logger } from '../src/index.js';
-    import { EventParser } from '../src/diagnostics/EventParser.js';
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
 
     // Reduce logging to improve performance - only show warnings and errors
-    Logger.setGlobalLevel('warn');
+    Logger.setGlobalLevel('debug');
 
     // Check browser support
     const checkBrowserSupport = () => {
@@ -584,21 +583,16 @@
       elements.eventRate.textContent = eventTimes.length.toFixed(0);
     };
 
-    // Update summary values
+    // Update summary values from state vector
     const updateSummary = () => {
-      const pid = dataStore.getLatestEvent('PID');
-      const ppo2state = dataStore.getLatestEvent('PPO2STATE');
+      const sv = dataStore.getLatestStateVector();
+      if (!sv) return;
 
-      if (pid) {
-        elements.summarySetpoint.textContent = pid.setpoint.toFixed(2);
-        elements.summaryDutyCycle.textContent = (pid.dutyCycle * 100).toFixed(1) + '%';
-        elements.summaryIntegral.textContent = pid.integralState.toFixed(4);
-        elements.summarySaturation.textContent = pid.saturationCount;
-      }
-
-      if (ppo2state) {
-        elements.summaryConsensus.textContent = ppo2state.consensus.toFixed(3);
-      }
+      elements.summarySetpoint.textContent = sv.setpoint.toFixed(2);
+      elements.summaryConsensus.textContent = sv.consensus_ppo2.toFixed(3);
+      elements.summaryDutyCycle.textContent = (sv.duty_cycle * 100).toFixed(1) + '%';
+      elements.summaryIntegral.textContent = sv.integral_state.toFixed(4);
+      elements.summarySaturation.textContent = sv.saturation_count;
     };
 
     // Current axis selection mode: 'left' or 'right'
@@ -695,15 +689,13 @@
           console.error('Stack error:', error);
         });
 
-        // Handle event messages (structured CSV data - for parsing only, not displayed)
-        stack.on('eventMessage', (message) => {
+        // Handle binary state vectors (primary data source - 122-byte binary format)
+        stack.on('stateVector', (data) => {
           eventCount++;
           updateEventRate();
 
-          // Parse and store
-          const event = EventParser.parse(message);
-          if (event) {
-            dataStore.addEvent(event);
+          const stateVector = dataStore.addStateVector(data);
+          if (stateVector) {
             cellUIAdapter.update();
             updateSummary();
           }

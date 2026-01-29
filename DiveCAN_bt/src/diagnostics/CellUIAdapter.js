@@ -1,10 +1,15 @@
 /**
- * CellUIAdapter - Dynamically update cell UI based on detected cell types
+ * CellUIAdapter - Dynamically update cell UI based on state vector data
  *
- * Each cell panel adapts to show type-appropriate fields.
+ * Reads directly from state vector for current values and DataStore series for plots.
  */
 
-import { DataStore } from './DataStore.js';
+import {
+  CELL_TYPE_NONE,
+  CELL_TYPE_ANALOG,
+  CELL_TYPE_O2S,
+  CELL_TYPE_DIVEO2
+} from '../uds/constants.js';
 
 export class CellUIAdapter {
   /**
@@ -17,11 +22,11 @@ export class CellUIAdapter {
     this.dataStore = dataStore;
     this.onPlotLeftRequest = onPlotLeftRequest;
     this.onPlotRightRequest = onPlotRightRequest;
-    this.previousCellTypes = new Map();
+    this.previousCellTypes = [CELL_TYPE_NONE, CELL_TYPE_NONE, CELL_TYPE_NONE];
   }
 
   /**
-   * Update all cell panels based on latest data
+   * Update all cell panels based on latest state vector
    */
   update() {
     for (let cellNum = 0; cellNum < 3; cellNum++) {
@@ -38,17 +43,25 @@ export class CellUIAdapter {
     if (!panel) return;
 
     const cellType = this.dataStore.getCellType(cellNum);
-    const previousType = this.previousCellTypes.get(cellNum);
+    const previousType = this.previousCellTypes[cellNum];
 
     // Update header
     const header = panel.querySelector('.cell-header');
     if (header) {
-      if (cellType) {
-        header.textContent = `Cell ${cellNum}: ${cellType}`;
+      const typeName = this.dataStore.getCellTypeName(cellNum);
+      const included = this.dataStore.isCellIncluded(cellNum);
+
+      if (cellType !== CELL_TYPE_NONE) {
+        header.textContent = `Cell ${cellNum}: ${typeName}${included ? '' : ' (excluded)'}`;
         header.classList.add('active');
+        if (!included) {
+          header.classList.add('excluded');
+        } else {
+          header.classList.remove('excluded');
+        }
       } else {
         header.textContent = `Cell ${cellNum}: --`;
-        header.classList.remove('active');
+        header.classList.remove('active', 'excluded');
       }
     }
 
@@ -56,10 +69,10 @@ export class CellUIAdapter {
     const fieldsContainer = panel.querySelector('.cell-fields');
     if (fieldsContainer && cellType !== previousType) {
       fieldsContainer.innerHTML = this._buildFieldsHTML(cellNum, cellType);
-      this.previousCellTypes.set(cellNum, cellType);
+      this.previousCellTypes[cellNum] = cellType;
     }
 
-    // Update field values
+    // Update field values from state vector
     this._updateFieldValues(cellNum, cellType);
   }
 
@@ -68,12 +81,12 @@ export class CellUIAdapter {
    * @private
    */
   _buildFieldsHTML(cellNum, cellType) {
-    if (!cellType) {
+    if (cellType === CELL_TYPE_NONE) {
       return '<div class="field-inactive">(No data)</div>';
     }
 
     const fields = this._getFieldDefinitions(cellType);
-    return fields.map(f => this._fieldRowHTML(cellNum, cellType, f)).join('');
+    return fields.map(f => this._fieldRowHTML(cellNum, f)).join('');
   }
 
   /**
@@ -82,24 +95,25 @@ export class CellUIAdapter {
    */
   _getFieldDefinitions(cellType) {
     switch (cellType) {
-      case 'DIVEO2':
+      case CELL_TYPE_DIVEO2:
         return [
-          { field: 'ppo2', label: 'PPO2', unit: 'mbar', decimals: 0 },
-          { field: 'temperature', label: 'Temp', unit: '', decimals: 0 },
+          { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3 },
+          { field: 'temperature', label: 'Temp', unit: 'mC', decimals: 0 },
           { field: 'error', label: 'Error', unit: '', decimals: 0 },
           { field: 'phase', label: 'Phase', unit: '', decimals: 0 },
           { field: 'intensity', label: 'Intensity', unit: '', decimals: 0 },
           { field: 'ambientLight', label: 'Ambient', unit: '', decimals: 0 },
-          { field: 'pressure', label: 'Pressure', unit: '', decimals: 0 },
-          { field: 'humidity', label: 'Humidity', unit: '', decimals: 0 }
+          { field: 'pressure', label: 'Pressure', unit: 'ubar', decimals: 0 },
+          { field: 'humidity', label: 'Humidity', unit: 'mRH', decimals: 0 }
         ];
-      case 'O2S':
+      case CELL_TYPE_O2S:
         return [
           { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3 }
         ];
-      case 'ANALOGCELL':
+      case CELL_TYPE_ANALOG:
         return [
-          { field: 'sample', label: 'ADC', unit: '', decimals: 0 }
+          { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3 },
+          { field: 'rawAdc', label: 'ADC', unit: '', decimals: 0 }
         ];
       default:
         return [];
@@ -110,11 +124,11 @@ export class CellUIAdapter {
    * Generate HTML for a single field row
    * @private
    */
-  _fieldRowHTML(cellNum, cellType, fieldDef) {
-    const seriesKey = DataStore.key(cellType, fieldDef.field, cellNum);
-    const label = `${fieldDef.label} (Cell ${cellNum})`;
+  _fieldRowHTML(cellNum, fieldDef) {
+    const seriesKey = `cell${cellNum}.${fieldDef.field}`;
+    const label = `Cell ${cellNum} ${fieldDef.label}`;
     return `
-      <div class="field-row" data-series-key="${seriesKey}" data-cell="${cellNum}" data-field="${fieldDef.field}">
+      <div class="field-row" data-cell="${cellNum}" data-field="${fieldDef.field}">
         <span class="field-label">${fieldDef.label}:</span>
         <span class="field-value" data-decimals="${fieldDef.decimals}">--</span>
         <span class="field-unit">${fieldDef.unit}</span>
@@ -125,26 +139,29 @@ export class CellUIAdapter {
   }
 
   /**
-   * Update field values from latest data
+   * Update field values from state vector
    * @private
    */
   _updateFieldValues(cellNum, cellType) {
-    if (!cellType) return;
+    if (cellType === CELL_TYPE_NONE) return;
 
     const panel = document.getElementById(`cell-panel-${cellNum}`);
     if (!panel) return;
 
+    const cell = this.dataStore.getCell(cellNum);
+    if (!cell) return;
+
     const fieldRows = panel.querySelectorAll('.field-row');
     fieldRows.forEach(row => {
-      const seriesKey = row.dataset.seriesKey;
+      const field = row.dataset.field;
       const valueEl = row.querySelector('.field-value');
-      if (!valueEl) return;
+      if (!valueEl || !field) return;
 
-      const latest = this.dataStore.getLatest(seriesKey);
+      const value = cell[field];
       const decimals = parseInt(valueEl.dataset.decimals || '0', 10);
 
-      if (latest) {
-        valueEl.textContent = latest.value.toFixed(decimals);
+      if (value !== undefined && value !== null && !isNaN(value)) {
+        valueEl.textContent = value.toFixed(decimals);
       } else {
         valueEl.textContent = '--';
       }

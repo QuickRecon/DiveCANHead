@@ -51,6 +51,13 @@ export const DID_ERROR_STATUS = 0xF300;
 export const DID_LOG_STREAM_ENABLE = 0xA000;  // Read/Write: enable log push (1 byte)
 export const DID_LOG_MESSAGE = 0xA100;         // Push: log message (ECU -> Tester)
 export const DID_EVENT_MESSAGE = 0xA200;       // Push: event message (ECU -> Tester)
+export const DID_STATE_VECTOR = 0xA203;        // Push: binary state vector (ECU -> Tester)
+
+// Cell type constants (from Configuration_t bits 8-13)
+export const CELL_TYPE_NONE = 0;
+export const CELL_TYPE_ANALOG = 1;
+export const CELL_TYPE_O2S = 2;
+export const CELL_TYPE_DIVEO2 = 3;
 
 // Settings DIDs
 export const DID_SETTING_COUNT = 0x9100;

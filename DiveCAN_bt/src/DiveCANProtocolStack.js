@@ -162,6 +162,7 @@ export class DiveCANProtocolStack extends EventEmitter {
     // Forward log streaming events
     this._uds.on('logMessage', (message) => this.emit('logMessage', message));
     this._uds.on('eventMessage', (message) => this.emit('eventMessage', message));
+    this._uds.on('stateVector', (data) => this.emit('stateVector', data));
     this._uds.on('unsolicitedMessage', (data) => this.emit('unsolicitedMessage', data));
   }
 

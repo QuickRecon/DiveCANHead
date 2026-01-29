@@ -87,13 +87,32 @@ export class DirectTransport extends EventEmitter {
   /**
    * Process received DiveCAN payload
    * @param {Uint8Array|Array} payload - Received payload (UDS data)
+   *
+   * Note: DiveCAN ISO-TP uses a padding byte at the start of multi-frame messages.
+   * The First Frame format is [PCI][len][0x00 pad][data...], and when reassembled,
+   * the padding byte appears at the start of the payload. We detect and strip it
+   * by checking if byte[0] is 0x00 and byte[1] is a valid UDS SID.
    */
   processFrame(payload) {
-    const data = ByteUtils.toUint8Array(payload);
+    let data = ByteUtils.toUint8Array(payload);
 
     this.logger.debug(`Received: ${data.length} bytes`, {
       data: ByteUtils.toHexString(data)
     });
+
+    // Strip DiveCAN ISO-TP padding byte if present
+    // Multi-frame messages have 0x00 padding at byte 0, followed by UDS SID
+    // Valid UDS SIDs are in range 0x10-0x3E (requests) or 0x50-0x7F (responses/negative)
+    if (data.length > 1 && data[0] === 0x00) {
+      const possibleSid = data[1];
+      // Check if next byte looks like a UDS SID (requests 0x10-0x3E, responses 0x50-0x7F)
+      const isValidSid = (possibleSid >= 0x10 && possibleSid <= 0x3E) ||
+                         (possibleSid >= 0x50 && possibleSid <= 0x7F);
+      if (isValidSid) {
+        this.logger.debug('Stripping ISO-TP padding byte');
+        data = data.slice(1);
+      }
+    }
 
     // Emit as complete message
     this.emit('message', data);

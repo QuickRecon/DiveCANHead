@@ -15,8 +15,8 @@
 #include "../Transciever.h"
 
 /* Queue configuration */
-#define ISOTP_TX_QUEUE_SIZE 4U       /**< Max pending ISO-TP TX requests */
-#define ISOTP_TX_BUFFER_SIZE 128U    /**< Same as ISOTP_MAX_PAYLOAD */
+#define ISOTP_TX_QUEUE_SIZE 2U       /**< Max pending ISO-TP TX requests */
+#define ISOTP_TX_BUFFER_SIZE 256U    /**< TX buffer size - matches ISOTP_MAX_PAYLOAD */
 
 /**
  * @brief Initialize the centralized TX queue
@@ -35,7 +35,7 @@ void ISOTP_TxQueue_Init(void);
  * @param target Target device type (e.g., DIVECAN_CONTROLLER)
  * @param messageId Base CAN message ID (e.g., MENU_ID)
  * @param data Data to transmit
- * @param length Data length (1-128 bytes)
+ * @param length Data length (1-4096 bytes)
  * @return true if enqueued successfully, false if queue full or invalid params
  */
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,

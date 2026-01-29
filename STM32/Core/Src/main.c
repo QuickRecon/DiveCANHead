@@ -398,6 +398,9 @@ int main(void)
   serial_printf("Last fatal error: %d\r\n", getLastFatalError());
   serial_printf("Configuration: 0x%lx\r\n", getConfigBytes(&deviceConfig));
 
+  /* Set configuration in the binary state vector accumulator for UDS log push */
+  Log_SetConfig(getConfigBytes(&deviceConfig));
+
   /* Set our power bus */
   SetVBusMode(deviceConfig.powerMode);
   HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);

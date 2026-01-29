@@ -19,7 +19,7 @@
 #define WDBI_HEADER_SIZE 3U
 
 /* Queue configuration */
-#define UDS_LOG_QUEUE_LENGTH 8U
+#define UDS_LOG_QUEUE_LENGTH 4U
 
 /**
  * @brief Message type for queue items
@@ -27,7 +27,8 @@
 typedef enum
 {
     UDS_LOG_TYPE_LOG = 0,
-    UDS_LOG_TYPE_EVENT = 1
+    UDS_LOG_TYPE_EVENT = 1,
+    UDS_LOG_TYPE_STATE_VECTOR = 2
 } UDSLogType_t;
 
 /**
@@ -57,6 +58,11 @@ static struct
 /* Static allocation for queue (per NASA rules - no heap) */
 static uint8_t logPushQueueStorage[UDS_LOG_QUEUE_LENGTH * sizeof(UDSLogQueueItem_t)];
 static StaticQueue_t logPushQueueControlBlock;
+
+/* Static buffers for queue operations to avoid large stack allocations
+ * (UDSLogQueueItem_t is ~4KB with UDS_LOG_MAX_PAYLOAD=4093) */
+static UDSLogQueueItem_t txItemBuffer;    /**< Buffer for enqueue (SendLogMessage/SendEventMessage/SendStateVector) */
+static UDSLogQueueItem_t rxItemBuffer;    /**< Buffer for dequeue (Poll) and discarding items */
 
 void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
 {
@@ -118,26 +124,25 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
         return false;
     }
 
-    /* Prepare queue item - log messages are always high priority */
-    UDSLogQueueItem_t item = {0};
-    item.type = UDS_LOG_TYPE_LOG;
-    item.priority = UDS_LOG_PRIORITY_HIGH;
-    item.length = length;
-    if (item.length > UDS_LOG_MAX_PAYLOAD)
+    /* Prepare queue item using static buffer - log messages are always high priority */
+    (void)memset(&txItemBuffer, 0, sizeof(txItemBuffer));
+    txItemBuffer.type = UDS_LOG_TYPE_LOG;
+    txItemBuffer.priority = UDS_LOG_PRIORITY_HIGH;
+    txItemBuffer.length = length;
+    if (txItemBuffer.length > UDS_LOG_MAX_PAYLOAD)
     {
-        item.length = UDS_LOG_MAX_PAYLOAD;
+        txItemBuffer.length = UDS_LOG_MAX_PAYLOAD;
     }
-    (void)memcpy(item.data, message, item.length);
+    (void)memcpy(txItemBuffer.data, message, txItemBuffer.length);
 
     /* Check if queue is full - high priority drops front item to make room */
     if (osMessageQueueGetSpace(logPushState.queueHandle) == 0)
     {
-        UDSLogQueueItem_t discardItem;
-        (void)osMessageQueueGet(logPushState.queueHandle, &discardItem, NULL, 0);
+        (void)osMessageQueueGet(logPushState.queueHandle, &rxItemBuffer, NULL, 0);
     }
 
     /* Enqueue with high priority */
-    osStatus_t status = osMessageQueuePut(logPushState.queueHandle, &item, (uint8_t)UDS_LOG_PRIORITY_HIGH, 0);
+    osStatus_t status = osMessageQueuePut(logPushState.queueHandle, &txItemBuffer, (uint8_t)UDS_LOG_PRIORITY_HIGH, 0);
 
     return (status == osOK);
 }
@@ -166,16 +171,16 @@ bool UDS_LogPush_SendEventMessagePrio(const char *message, uint16_t length, UDSL
         return false;
     }
 
-    /* Prepare queue item */
-    UDSLogQueueItem_t item = {0};
-    item.type = UDS_LOG_TYPE_EVENT;
-    item.priority = priority;
-    item.length = length;
-    if (item.length > UDS_LOG_MAX_PAYLOAD)
+    /* Prepare queue item using static buffer */
+    (void)memset(&txItemBuffer, 0, sizeof(txItemBuffer));
+    txItemBuffer.type = UDS_LOG_TYPE_EVENT;
+    txItemBuffer.priority = priority;
+    txItemBuffer.length = length;
+    if (txItemBuffer.length > UDS_LOG_MAX_PAYLOAD)
     {
-        item.length = UDS_LOG_MAX_PAYLOAD;
+        txItemBuffer.length = UDS_LOG_MAX_PAYLOAD;
     }
-    (void)memcpy(item.data, message, item.length);
+    (void)memcpy(txItemBuffer.data, message, txItemBuffer.length);
 
     /* Check if queue is full */
     if (osMessageQueueGetSpace(logPushState.queueHandle) == 0)
@@ -183,8 +188,7 @@ bool UDS_LogPush_SendEventMessagePrio(const char *message, uint16_t length, UDSL
         if (priority == UDS_LOG_PRIORITY_HIGH)
         {
             /* High priority: drop a low priority message to make room */
-            UDSLogQueueItem_t discardItem;
-            (void)osMessageQueueGet(logPushState.queueHandle, &discardItem, NULL, 0);
+            (void)osMessageQueueGet(logPushState.queueHandle, &rxItemBuffer, NULL, 0);
             /* Note: We drop whatever is at the front. A more sophisticated
              * approach would scan for low priority items, but that's not
              * supported by the CMSIS queue API without significant overhead. */
@@ -197,7 +201,7 @@ bool UDS_LogPush_SendEventMessagePrio(const char *message, uint16_t length, UDSL
     }
 
     /* Enqueue with priority (higher value = higher priority in CMSIS-RTOS2) */
-    osStatus_t status = osMessageQueuePut(logPushState.queueHandle, &item, (uint8_t)priority, 0);
+    osStatus_t status = osMessageQueuePut(logPushState.queueHandle, &txItemBuffer, (uint8_t)priority, 0);
 
     return (status == osOK);
 }
@@ -211,6 +215,10 @@ static bool sendQueuedItem(const UDSLogQueueItem_t *item)
     if (item->type == UDS_LOG_TYPE_LOG)
     {
         did = UDS_DID_LOG_MESSAGE;
+    }
+    else if (item->type == UDS_LOG_TYPE_STATE_VECTOR)
+    {
+        did = UDS_DID_STATE_VECTOR;
     }
     else
     {
@@ -274,8 +282,7 @@ void UDS_LogPush_Poll(void)
     /* If not enabled, drain queue without sending */
     if (!logPushState.enabled)
     {
-        UDSLogQueueItem_t item;
-        while (osMessageQueueGet(logPushState.queueHandle, &item, NULL, 0) == osOK)
+        while (osMessageQueueGet(logPushState.queueHandle, &rxItemBuffer, NULL, 0) == osOK)
         {
             /* Discard */
         }
@@ -296,11 +303,10 @@ void UDS_LogPush_Poll(void)
         return; /* Queue busy, try again on next poll */
     }
 
-    /* Try to dequeue and send next message */
-    UDSLogQueueItem_t item;
-    if (osMessageQueueGet(logPushState.queueHandle, &item, NULL, 0) == osOK)
+    /* Try to dequeue and send next message using static buffer */
+    if (osMessageQueueGet(logPushState.queueHandle, &rxItemBuffer, NULL, 0) == osOK)
     {
-        if (sendQueuedItem(&item))
+        if (sendQueuedItem(&rxItemBuffer))
         {
             logPushState.txPending = true;
         }
@@ -324,4 +330,41 @@ uint8_t UDS_LogPush_GetErrorCount(void)
 void UDS_LogPush_ResetErrorCount(void)
 {
     logPushState.errorCount = 0;
+}
+
+bool UDS_LogPush_SendStateVector(const BinaryStateVector_t *state)
+{
+    /* Check preconditions */
+    if (!logPushState.enabled)
+    {
+        return false;
+    }
+
+    if (logPushState.queueHandle == NULL)
+    {
+        return false;
+    }
+
+    if (state == NULL)
+    {
+        return false;
+    }
+
+    /* Prepare queue item using static buffer - state vectors are always high priority */
+    (void)memset(&txItemBuffer, 0, sizeof(txItemBuffer));
+    txItemBuffer.type = UDS_LOG_TYPE_STATE_VECTOR;
+    txItemBuffer.priority = UDS_LOG_PRIORITY_HIGH;
+    txItemBuffer.length = sizeof(BinaryStateVector_t);
+    (void)memcpy(txItemBuffer.data, state, sizeof(BinaryStateVector_t));
+
+    /* Check if queue is full - high priority drops front item to make room */
+    if (osMessageQueueGetSpace(logPushState.queueHandle) == 0)
+    {
+        (void)osMessageQueueGet(logPushState.queueHandle, &rxItemBuffer, NULL, 0);
+    }
+
+    /* Enqueue with high priority */
+    osStatus_t status = osMessageQueuePut(logPushState.queueHandle, &txItemBuffer, (uint8_t)UDS_LOG_PRIORITY_HIGH, 0);
+
+    return (status == osOK);
 }

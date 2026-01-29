@@ -47,6 +47,10 @@ void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source, DiveCANType_t target,
 
 /**
  * @brief Reset context to IDLE state
+ *
+ * Resets state machine and in-progress transfer fields while preserving:
+ * - Addressing (source, target, messageId)
+ * - Completion flags and completed data (rxComplete, txComplete, rxBuffer, rxDataLength)
  */
 void ISOTP_Reset(ISOTPContext_t *ctx)
 {
@@ -55,33 +59,29 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
         return;
     }
 
-    // Preserve addressing, completion flags, and completed transfer data across reset
-    DiveCANType_t source = ctx->source;
-    DiveCANType_t target = ctx->target;
-    uint32_t messageId = ctx->messageId;
-    bool rxComplete = ctx->rxComplete;
-    bool txComplete = ctx->txComplete;
-    uint16_t rxDataLength = ctx->rxDataLength;
-    uint8_t rxBuffer[ISOTP_MAX_PAYLOAD];
-    if (rxComplete)
-    {
-        memcpy(rxBuffer, ctx->rxBuffer, rxDataLength);
-    }
+    // Reset state machine to IDLE
+    ctx->state = ISOTP_IDLE;
 
-    // Reset all state
-    memset(ctx, 0, sizeof(ISOTPContext_t));
-
-    // Restore preserved values
-    ctx->source = source;
-    ctx->target = target;
-    ctx->messageId = messageId;
-    ctx->rxComplete = rxComplete;
-    ctx->txComplete = txComplete;
-    ctx->rxDataLength = rxDataLength;
-    if (rxComplete)
+    // Reset in-progress RX state (but preserve completed data if rxComplete is set)
+    if (!ctx->rxComplete)
     {
-        memcpy(ctx->rxBuffer, rxBuffer, rxDataLength);
+        ctx->rxDataLength = 0;
+        // Don't clear rxBuffer - large and unnecessary if not complete
     }
+    ctx->rxBytesReceived = 0;
+    ctx->rxSequenceNumber = 0;
+    ctx->rxLastFrameTime = 0;
+
+    // Reset TX state (txDataPtr points to caller data, don't need to clear)
+    ctx->txDataLength = 0;
+    ctx->txBytesSent = 0;
+    ctx->txSequenceNumber = 0;
+    ctx->txDataPtr = NULL;
+    ctx->txBlockSize = 0;
+    ctx->txSTmin = 0;
+    ctx->txBlockCounter = 0;
+    ctx->txLastFrameTime = 0;
+    // Note: txComplete preserved across reset
 }
 
 /**

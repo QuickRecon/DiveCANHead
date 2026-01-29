@@ -106,6 +106,10 @@ export class DiveCANFramer {
    * Parse DiveCAN datagram
    * @param {Uint8Array|Array} datagram - DiveCAN datagram
    * @returns {Object} Parsed datagram {source, target, length, chunk, payload}
+   *
+   * Note: The Petrel BLE bridge prepends a 2-byte header [type, 0x00] to SLIP packets.
+   * Type 0x01 is used for outbound, type 0x02 for inbound CAN frames.
+   * We detect and strip this header by checking for the pattern.
    */
   parse(datagram) {
     if (!datagram || datagram.length < 4) {
@@ -116,20 +120,32 @@ export class DiveCANFramer {
       );
     }
 
-    const source = datagram[0];
-    const target = datagram[1];
-    const lenLow = datagram[2];
-    const lenHigh = datagram[3];
+    // Check for Petrel bridge header [0x01, 0x00] or [0x02, 0x00]
+    // These are prepended to SLIP packets by the bridge
+    let offset = 0;
+    if (datagram.length >= 6 &&
+        (datagram[0] === 0x01 || datagram[0] === 0x02) &&
+        datagram[1] === 0x00) {
+      // Skip the 2-byte bridge header
+      this.logger.debug(`Stripping bridge header: 0x${datagram[0].toString(16).padStart(2, '0')} 0x00`);
+      offset = 2;
+    }
+
+    const source = datagram[offset];
+    const target = datagram[offset + 1];
+    const lenLow = datagram[offset + 2];
+    const lenHigh = datagram[offset + 3];
 
     // Reconstruct length
-    const length = lenLow | (lenHigh << 8);
+    let length = lenLow | (lenHigh << 8);
 
     // Extract payload (exclude header)
-    const payload = ByteUtils.slice(datagram, 4);
+    let payload = ByteUtils.slice(datagram, offset + 4);
 
-    // Validate length
-    if (payload.length !== length && payload.length !== length - 1) {
-      this.logger.warn(`Length mismatch: header=${length}, actual=${payload.length}`);
+    // Sanity check: if declared length is way off (>1000), the header might be wrong
+    if (length > 1000 || Math.abs(payload.length - length) > 10) {
+      this.logger.warn(`Length mismatch: header=${length}, actual=${payload.length}. Using actual payload length.`);
+      length = payload.length;
     }
 
     const result = {

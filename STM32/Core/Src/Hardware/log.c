@@ -417,8 +417,11 @@ void LogMsg(const char *msg)
     }
 }
 
-void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity)
+void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity)
 {
+    /* Update binary state vector accumulator */
+    Log_UpdateDiveO2Cell(cellNumber, precisionPPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity);
+
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
@@ -435,9 +438,6 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
     }
     if ((printedChars > 0))
     {
-        /* Send to the UDS stack - low priority cell sample */
-        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_LOW);
-
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
             (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
@@ -450,6 +450,9 @@ void DiveO2CellSample(uint8_t cellNumber, int32_t PPO2, int32_t temperature, int
 
 void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
 {
+    /* Update binary state vector accumulator */
+    Log_UpdateO2SCell(cellNumber, (float)PPO2);
+
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
@@ -466,9 +469,6 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
     }
     if ((printedChars > 0))
     {
-        /* Send to the UDS stack - low priority cell sample */
-        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_LOW);
-
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
             (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
@@ -481,6 +481,11 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2)
 
 void AnalogCellSample(uint8_t cellNumber, int16_t sample)
 {
+    /* Update binary state vector accumulator
+     * Note: PPO2 is not available here - it's calculated elsewhere.
+     * For analog cells, we store the raw sample and PPO2 is set via LogPPO2State. */
+    Log_UpdateAnalogCell(cellNumber, 0.0f, sample);
+
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
@@ -497,9 +502,6 @@ void AnalogCellSample(uint8_t cellNumber, int16_t sample)
     }
     if ((printedChars > 0))
     {
-        /* Send to the UDS stack - low priority cell sample */
-        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_LOW);
-
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
             (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
@@ -564,6 +566,10 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
 
 void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDNumeric_t setpoint)
 {
+    /* Update binary state vector accumulator */
+    Log_UpdateControlState((float)dutyCycle, (float)pid_state->integralState, pid_state->saturationCount);
+    (void)setpoint; /* Setpoint is updated via LogPPO2State */
+
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
@@ -580,9 +586,6 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
     }
     if ((printedChars > 0))
     {
-        /* Send to the UDS stack - high priority state message */
-        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_HIGH);
-
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
             (0 != osMessageQueueGetSpace(*(getQueueHandle()))))
@@ -595,6 +598,12 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
 
 void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus)
 {
+    /* Update binary state vector accumulator */
+    uint8_t cellsValid = (c1_included ? 0x01U : 0U) |
+                         (c2_included ? 0x02U : 0U) |
+                         (c3_included ? 0x04U : 0U);
+    Log_UpdatePPO2State(cellsValid, (float)consensus, 0.0f); /* Setpoint updated separately */
+
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
      * This is necessary to save literal kilobytes of ram*/
@@ -611,9 +620,6 @@ void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumer
     }
     if ((printedChars > 0))
     {
-        /* Send to the UDS stack - high priority state message */
-        (void)UDS_LogPush_SendEventMessagePrio(enQueueItem.string, printedChars, UDS_LOG_PRIORITY_HIGH);
-
         if (logRunning())
         {
             /* High priority, clear old items to make room */
@@ -638,4 +644,88 @@ void LogTXDiveCANMessage(const DiveCANMessage_t *const message)
     (void)message;
     /* Don't because its very very expensive*/
     /* LogDiveCANMessage(message, false) */
+}
+
+/* ============================================================================
+ * Binary State Vector Accumulator
+ * ============================================================================
+ * Accumulates system state for efficient binary transmission via UDS.
+ * Updated by cell sample functions and control loops.
+ * Sent once per second from PPO2TransmitterTask.
+ */
+
+#define STATE_VECTOR_VERSION 1U
+
+static BinaryStateVector_t stateVectorAccumulator = {0};
+
+void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, int32_t temp, int32_t err,
+                          int32_t phase, int32_t intensity, int32_t ambientLight,
+                          int32_t pressure, int32_t humidity)
+{
+    if (cellNum >= 3U)
+    {
+        return;
+    }
+    stateVectorAccumulator.cell_ppo2[cellNum] = precisionPPO2;
+    stateVectorAccumulator.cell_detail[cellNum][0] = (uint32_t)temp;
+    stateVectorAccumulator.cell_detail[cellNum][1] = (uint32_t)err;
+    stateVectorAccumulator.cell_detail[cellNum][2] = (uint32_t)phase;
+    stateVectorAccumulator.cell_detail[cellNum][3] = (uint32_t)intensity;
+    stateVectorAccumulator.cell_detail[cellNum][4] = (uint32_t)ambientLight;
+    stateVectorAccumulator.cell_detail[cellNum][5] = (uint32_t)pressure;
+    stateVectorAccumulator.cell_detail[cellNum][6] = (uint32_t)humidity;
+}
+
+void Log_UpdateO2SCell(uint8_t cellNum, float ppo2)
+{
+    if (cellNum >= 3U)
+    {
+        return;
+    }
+    stateVectorAccumulator.cell_ppo2[cellNum] = ppo2;
+    /* O2S cells have no additional detail fields - leave as zero */
+}
+
+void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw)
+{
+    if (cellNum >= 3U)
+    {
+        return;
+    }
+    stateVectorAccumulator.cell_ppo2[cellNum] = ppo2;
+    /* Store raw ADC value in detail[0], rest unused */
+    stateVectorAccumulator.cell_detail[cellNum][0] = (uint32_t)(uint16_t)raw;
+}
+
+void Log_UpdatePPO2State(uint8_t cellsValid, float consensus, float setpoint)
+{
+    stateVectorAccumulator.cellsValid = cellsValid;
+    stateVectorAccumulator.consensus_ppo2 = consensus;
+    stateVectorAccumulator.setpoint = setpoint;
+}
+
+void Log_UpdateControlState(float duty, float integral, uint16_t satCount)
+{
+    stateVectorAccumulator.duty_cycle = duty;
+    stateVectorAccumulator.integral_state = integral;
+    stateVectorAccumulator.saturation_count = satCount;
+}
+
+void Log_SetConfig(uint32_t config)
+{
+    stateVectorAccumulator.config = config;
+}
+
+void Log_SendStateVectorIfEnabled(void)
+{
+    if (!UDS_LogPush_IsEnabled())
+    {
+        return;
+    }
+
+    /* Update timestamp (seconds since boot, wraps at ~18 hours) */
+    stateVectorAccumulator.timestamp_sec = (uint16_t)(HAL_GetTick() / 1000U);
+    stateVectorAccumulator.version = STATE_VECTOR_VERSION;
+
+    (void)UDS_LogPush_SendStateVector(&stateVectorAccumulator);
 }

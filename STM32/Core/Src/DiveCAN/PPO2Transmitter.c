@@ -74,6 +74,7 @@ void PPO2TXTask(void *arg)
 {
     PPO2TXTask_params_t *params = (PPO2TXTask_params_t *)arg;
     const DiveCANDevice_t *const dev = params->device;
+    uint8_t stateVectorCounter = 0U; /* Counter for 1-second state vector send */
     do
     {
         (void)osDelay(TIMEOUT_500MS_TICKS);
@@ -95,6 +96,14 @@ void PPO2TXTask(void *arg)
         txPPO2(dev->type, consensus.ppo2Array[CELL_1], consensus.ppo2Array[CELL_2], consensus.ppo2Array[CELL_3]);
         txMillivolts(dev->type, consensus.milliArray[CELL_1], consensus.milliArray[CELL_2], consensus.milliArray[CELL_3]);
         txCellState(dev->type, consensus.includeArray[CELL_1], consensus.includeArray[CELL_2], consensus.includeArray[CELL_3], consensus.consensus);
+
+        /* Send binary state vector once per second (every 2nd iteration at 500ms period) */
+        stateVectorCounter++;
+        if (stateVectorCounter >= 2U)
+        {
+            stateVectorCounter = 0U;
+            Log_SendStateVectorIfEnabled();
+        }
     } while (RTOS_LOOP_FOREVER);
 }
 

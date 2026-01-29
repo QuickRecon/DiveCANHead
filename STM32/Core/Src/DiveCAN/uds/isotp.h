@@ -12,7 +12,7 @@
  * - Shearwater quirk: Accept FC frames with dst=0xFF (broadcast)
  *
  * Memory constraints:
- * - Buffer limited to 128 bytes (STM32L4 RAM constraints)
+ * - Buffer size configurable via ISOTP_MAX_PAYLOAD (default 4096 bytes)
  * - Larger messages rejected with FC Overflow
  *
  * @note Designed for STM32L4 with FreeRTOS
@@ -27,7 +27,7 @@
 #include "../Transciever.h" // For DiveCANMessage_t, DiveCANType_t
 
 // ISO-TP Configuration
-#define ISOTP_MAX_PAYLOAD 128      // Maximum payload size (reduced from 4095 for STM32L4)
+#define ISOTP_MAX_PAYLOAD 256      // Maximum payload size (sized for binary state vector + overhead)
 #define ISOTP_TIMEOUT_N_BS 1000    // ms - Timeout waiting for FC after sending FF
 #define ISOTP_TIMEOUT_N_CR 1000    // ms - Timeout waiting for CF after FC or previous CF
 #define ISOTP_DEFAULT_BLOCK_SIZE 0 // 0 = infinite (no additional FC frames needed)
@@ -65,7 +65,7 @@ typedef enum
  * Contains all state for an ISO-TP session including RX/TX buffers,
  * sequence tracking, flow control parameters, and addressing.
  *
- * @note Total size ~150 bytes (fits in CANTask stack budget)
+ * @note Total size ~4.1KB with 4096 byte buffer
  * @note txDataPtr must remain valid until txCompleteCallback is called
  */
 typedef struct
@@ -76,7 +76,7 @@ typedef struct
     uint16_t rxDataLength;               ///< Total expected length for multi-frame RX
     uint16_t rxBytesReceived;            ///< Bytes received so far
     uint8_t rxSequenceNumber;            ///< Expected next CF sequence number (0-15)
-    uint8_t rxBuffer[ISOTP_MAX_PAYLOAD]; ///< Reassembly buffer (128 bytes)
+    uint8_t rxBuffer[ISOTP_MAX_PAYLOAD]; ///< Reassembly buffer
     uint32_t rxLastFrameTime;            ///< ms timestamp of last received frame
     bool rxComplete;                     ///< RX transfer complete flag (caller must clear)
 
@@ -141,7 +141,7 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
  *
  * @param ctx ISO-TP context
  * @param data Data to send (must remain valid until txCompleteCallback)
- * @param length Data length (1-128 bytes, rejects >128)
+ * @param length Data length (1-4096 bytes)
  * @return true if transmission started successfully, false if invalid length
  *
  * @note For multi-frame: sends FF, transitions to WAIT_FC state

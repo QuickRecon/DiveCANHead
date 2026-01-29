@@ -58,6 +58,10 @@ static osMessageQueueId_t txQueueHandle = NULL;
 static uint8_t txQueueStorage[ISOTP_TX_QUEUE_SIZE * sizeof(ISOTPTxRequest_t)];
 static StaticQueue_t txQueueControlBlock;
 
+/* Static buffers for queue operations to avoid large stack allocations
+ * (ISOTPTxRequest_t is ~4KB with ISOTP_TX_BUFFER_SIZE=4096) */
+static ISOTPTxRequest_t txRequestBuffer;    /**< Buffer for enqueue and dequeue operations */
+
 /* Forward declarations */
 static void StartNextTx(void);
 static void SendConsecutiveFrames(void);
@@ -98,15 +102,16 @@ bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
         return false;
     }
 
-    ISOTPTxRequest_t req = {0};
-    (void)memcpy(req.data, data, length);
-    req.length = length;
-    req.source = source;
-    req.target = target;
-    req.messageId = messageId;
+    /* Use static buffer to avoid large stack allocation */
+    (void)memset(&txRequestBuffer, 0, sizeof(txRequestBuffer));
+    (void)memcpy(txRequestBuffer.data, data, length);
+    txRequestBuffer.length = length;
+    txRequestBuffer.source = source;
+    txRequestBuffer.target = target;
+    txRequestBuffer.messageId = messageId;
 
     /* Non-blocking put - returns osOK on success, osErrorResource if full */
-    osStatus_t status = osMessageQueuePut(txQueueHandle, &req, 0, 0);
+    osStatus_t status = osMessageQueuePut(txQueueHandle, &txRequestBuffer, 0, 0);
     return (status == osOK);
 }
 
@@ -125,14 +130,14 @@ static void StartNextTx(void)
         return;
     }
 
-    /* Non-blocking get from queue */
-    ISOTPTxRequest_t req = {0};
-    if (osMessageQueueGet(txQueueHandle, &req, NULL, 0) != osOK)
+    /* Non-blocking get from queue using static buffer to avoid large stack allocation */
+    (void)memset(&txRequestBuffer, 0, sizeof(txRequestBuffer));
+    if (osMessageQueueGet(txQueueHandle, &txRequestBuffer, NULL, 0) != osOK)
     {
         return; /* Queue empty */
     }
 
-    (void)memcpy(&txState.current, &req, sizeof(ISOTPTxRequest_t));
+    (void)memcpy(&txState.current, &txRequestBuffer, sizeof(ISOTPTxRequest_t));
     txState.txActive = true;
     txState.txBytesSent = 0;
     txState.txSequenceNumber = 0;
@@ -157,13 +162,18 @@ static void StartNextTx(void)
         return;
     }
 
-    /* Multi-frame: Send First Frame */
+    /* Multi-frame: Send First Frame
+     * DiveCAN uses non-standard ISO-TP format with padding byte at offset 2.
+     * Frame format: [PCI_hi][len_lo][0x00 pad][5 data bytes]
+     * Length field includes the padding byte (tx->length + 1). */
+    uint16_t totalLength = tx->length + 1U; /* +1 for padding byte */
     DiveCANMessage_t ff = {0};
     ff.id = tx->messageId | ((uint32_t)tx->target << 8) | (uint32_t)tx->source;
     ff.length = 8;
-    ff.data[0] = 0x10U | ((tx->length >> 8) & 0x0FU);
-    ff.data[1] = (uint8_t)(tx->length & 0xFFU);
-    (void)memcpy(&ff.data[3], tx->data, 5); /* Client quirk: 5 bytes at offset 3 */
+    ff.data[0] = 0x10U | ((totalLength >> 8) & 0x0FU);
+    ff.data[1] = (uint8_t)(totalLength & 0xFFU);
+    ff.data[2] = 0x00U; /* DiveCAN padding byte */
+    (void)memcpy(&ff.data[3], tx->data, 5);
 
     txState.txBytesSent = 5;
     txState.txLastFrameTime = HAL_GetTick();

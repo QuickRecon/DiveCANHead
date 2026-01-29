@@ -1,8 +1,17 @@
 /**
- * DataStore - Time-series data storage for real-time plotting
+ * DataStore - Time-series data storage for real-time diagnostics
  *
- * Stores event data with rolling window and provides access for plotting.
+ * Primary data source is the binary state vector received once per second.
+ * Stores time series for plotting and provides access to latest values.
  */
+
+import { parseStateVector, getCellTypeName } from './StateVectorParser.js';
+import {
+  CELL_TYPE_NONE,
+  CELL_TYPE_ANALOG,
+  CELL_TYPE_O2S,
+  CELL_TYPE_DIVEO2
+} from '../uds/constants.js';
 
 export class DataStore {
   /**
@@ -10,93 +19,64 @@ export class DataStore {
    * @param {number} maxPoints - Maximum data points per series
    * @param {number} maxAge - Maximum age in seconds
    */
-  constructor(maxPoints = 500, maxAge = 60) {
+  constructor(maxPoints = 500, maxAge = 300) {
     this.maxPoints = maxPoints;
     this.maxAge = maxAge;
     this.series = new Map();
-    this.cellTypes = new Map();
-    this.latestEvents = new Map();
+    this.latestStateVector = null;
   }
 
   /**
-   * Generate series key for a field
-   * @param {string} eventType - Event type
-   * @param {string} field - Field name
-   * @param {number} cellNumber - Optional cell number
-   * @returns {string} Series key
+   * Add a binary state vector to the store
+   * @param {Uint8Array} data - Raw binary state vector (122 bytes)
+   * @returns {Object|null} Parsed state vector or null if invalid
    */
-  static key(eventType, field, cellNumber = null) {
-    if (cellNumber !== null) {
-      return `${eventType}.${cellNumber}.${field}`;
-    }
-    return `${eventType}.${field}`;
-  }
-
-  /**
-   * Add a parsed event to the store
-   * @param {Object} event - Parsed event from EventParser
-   */
-  addEvent(event) {
-    if (!event || !event.type) return;
-
-    // Track cell types for UI adaptation
-    if (['DIVEO2', 'O2S', 'ANALOGCELL'].includes(event.type)) {
-      this.cellTypes.set(event.cellNumber, event.type);
+  addStateVector(data) {
+    const sv = parseStateVector(data);
+    if (!sv) {
+      return null;
     }
 
-    // Store latest event for quick access
-    if (event.cellNumber !== undefined) {
-      this.latestEvents.set(`${event.type}.${event.cellNumber}`, event);
-    } else {
-      this.latestEvents.set(event.type, event);
+    this.latestStateVector = sv;
+    const ts = sv.timestamp;
+
+    // Store global fields as time series
+    this._addPoint('consensus_ppo2', ts, sv.consensus_ppo2);
+    this._addPoint('setpoint', ts, sv.setpoint);
+    this._addPoint('duty_cycle', ts, sv.duty_cycle);
+    this._addPoint('integral_state', ts, sv.integral_state);
+    this._addPoint('saturation_count', ts, sv.saturation_count);
+
+    // Store per-cell fields
+    for (const cell of sv.cells) {
+      const prefix = `cell${cell.cellNumber}`;
+
+      // PPO2 is always available
+      this._addPoint(`${prefix}.ppo2`, ts, cell.ppo2);
+
+      // Type-specific fields
+      switch (cell.cellType) {
+        case CELL_TYPE_DIVEO2:
+          this._addPoint(`${prefix}.temperature`, ts, cell.temperature);
+          this._addPoint(`${prefix}.error`, ts, cell.error);
+          this._addPoint(`${prefix}.phase`, ts, cell.phase);
+          this._addPoint(`${prefix}.intensity`, ts, cell.intensity);
+          this._addPoint(`${prefix}.ambientLight`, ts, cell.ambientLight);
+          this._addPoint(`${prefix}.pressure`, ts, cell.pressure);
+          this._addPoint(`${prefix}.humidity`, ts, cell.humidity);
+          break;
+
+        case CELL_TYPE_ANALOG:
+          this._addPoint(`${prefix}.rawAdc`, ts, cell.rawAdc);
+          break;
+
+        case CELL_TYPE_O2S:
+          // O2S only has PPO2, already stored above
+          break;
+      }
     }
 
-    // Store each numeric field as a time series
-    const fields = this._getPlottableFields(event);
-    for (const [field, value] of Object.entries(fields)) {
-      const key = DataStore.key(event.type, field, event.cellNumber);
-      this._addPoint(key, event.timestamp, value);
-    }
-  }
-
-  /**
-   * Get plottable fields from an event
-   * @private
-   */
-  _getPlottableFields(event) {
-    switch (event.type) {
-      case 'DIVEO2':
-        return {
-          ppo2: event.ppo2,
-          temperature: event.temperature,
-          error: event.error,
-          phase: event.phase,
-          intensity: event.intensity,
-          ambientLight: event.ambientLight,
-          pressure: event.pressure,
-          humidity: event.humidity
-        };
-      case 'O2S':
-        return { ppo2: event.ppo2 };
-      case 'ANALOGCELL':
-        return { sample: event.sample };
-      case 'PID':
-        return {
-          integralState: event.integralState,
-          saturationCount: event.saturationCount,
-          dutyCycle: event.dutyCycle,
-          setpoint: event.setpoint
-        };
-      case 'PPO2STATE':
-        return {
-          c1_value: event.c1_value,
-          c2_value: event.c2_value,
-          c3_value: event.c3_value,
-          consensus: event.consensus
-        };
-      default:
-        return {};
-    }
+    return sv;
   }
 
   /**
@@ -144,16 +124,50 @@ export class DataStore {
   }
 
   /**
-   * Get latest event of a specific type (optionally for a cell)
-   * @param {string} eventType - Event type
-   * @param {number} cellNumber - Optional cell number
-   * @returns {Object|null}
+   * Get latest state vector
+   * @returns {Object|null} Parsed state vector or null
    */
-  getLatestEvent(eventType, cellNumber = null) {
-    if (cellNumber !== null) {
-      return this.latestEvents.get(`${eventType}.${cellNumber}`) || null;
-    }
-    return this.latestEvents.get(eventType) || null;
+  getLatestStateVector() {
+    return this.latestStateVector;
+  }
+
+  /**
+   * Get cell data from latest state vector
+   * @param {number} cellNumber - Cell number (0, 1, or 2)
+   * @returns {Object|null} Cell data or null
+   */
+  getCell(cellNumber) {
+    if (!this.latestStateVector) return null;
+    return this.latestStateVector.cells[cellNumber] || null;
+  }
+
+  /**
+   * Get cell type from latest state vector
+   * @param {number} cellNumber - Cell number (0, 1, or 2)
+   * @returns {number} Cell type constant (CELL_TYPE_*)
+   */
+  getCellType(cellNumber) {
+    if (!this.latestStateVector) return CELL_TYPE_NONE;
+    return this.latestStateVector.cellTypes[cellNumber] || CELL_TYPE_NONE;
+  }
+
+  /**
+   * Get human-readable cell type name
+   * @param {number} cellNumber - Cell number (0, 1, or 2)
+   * @returns {string} Cell type name
+   */
+  getCellTypeName(cellNumber) {
+    return getCellTypeName(this.getCellType(cellNumber));
+  }
+
+  /**
+   * Check if a cell is included in voting
+   * @param {number} cellNumber - Cell number (0, 1, or 2)
+   * @returns {boolean}
+   */
+  isCellIncluded(cellNumber) {
+    if (!this.latestStateVector) return false;
+    return (this.latestStateVector.cellsValid & (1 << cellNumber)) !== 0;
   }
 
   /**
@@ -165,28 +179,10 @@ export class DataStore {
   }
 
   /**
-   * Get detected cell type for a cell number
-   * @param {number} cellNumber - Cell number (0, 1, or 2)
-   * @returns {string|null}
-   */
-  getCellType(cellNumber) {
-    return this.cellTypes.get(cellNumber) || null;
-  }
-
-  /**
-   * Get all detected cell types
-   * @returns {Map<number, string>}
-   */
-  getAllCellTypes() {
-    return new Map(this.cellTypes);
-  }
-
-  /**
    * Clear all stored data
    */
   clear() {
     this.series.clear();
-    this.cellTypes.clear();
-    this.latestEvents.clear();
+    this.latestStateVector = null;
   }
 }
