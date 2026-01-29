@@ -659,6 +659,37 @@ export class UDSClient extends EventEmitter {
   }
 
   // ============================================================
+  // Control Methods (Setpoint, Calibration)
+  // ============================================================
+
+  /**
+   * Write setpoint value
+   * @param {number} ppo2 - Setpoint in centibar (0-255 = 0.00-2.55 bar)
+   * @returns {Promise<void>}
+   */
+  async writeSetpoint(ppo2) {
+    if (ppo2 < 0 || ppo2 > 255) {
+      throw new Error('Setpoint must be 0-255 (centibar)');
+    }
+    await this.writeDataByIdentifier(constants.DID_SETPOINT_WRITE, [Math.round(ppo2)]);
+    this.logger.info(`Set setpoint to ${ppo2} centibar (${(ppo2 / 100).toFixed(2)} bar)`);
+  }
+
+  /**
+   * Trigger calibration with specified fO2
+   * Uses current atmospheric pressure from device
+   * @param {number} fO2 - Oxygen fraction percentage (0-100)
+   * @returns {Promise<void>}
+   */
+  async triggerCalibration(fO2) {
+    if (fO2 < 0 || fO2 > 100) {
+      throw new Error('fO2 must be 0-100 (percentage)');
+    }
+    await this.writeDataByIdentifier(constants.DID_CALIBRATION_TRIGGER, [Math.round(fO2)]);
+    this.logger.info(`Triggered calibration with fO2=${fO2}%`);
+  }
+
+  // ============================================================
   // Multi-DID Read Methods (State DID Support)
   // ============================================================
 

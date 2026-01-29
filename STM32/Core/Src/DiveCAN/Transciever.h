@@ -189,6 +189,7 @@ extern "C"
   void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, uint8_t firmwareVersion);
   void txName(const DiveCANType_t deviceType, const char *name);
   void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, const PPO2_t setpoint, const DiveCANError_t error, bool showBattery);
+  void txSetpoint(const DiveCANType_t deviceType, const PPO2_t setpoint);
   void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error);
 
   /* PPO2 Messages */

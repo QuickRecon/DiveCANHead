@@ -13,6 +13,7 @@ This document provides a complete reference for all Data Identifiers (DIDs) used
 | 0xF1xx | Configuration DIDs |
 | 0xF2xx | PPO2 control state DIDs |
 | 0xF23x | Power monitoring DIDs |
+| 0xF24x | Control DIDs (setpoint, calibration) |
 | 0xF4Nx | Per-cell data DIDs (N = cell number) |
 
 ## Source Files
@@ -56,6 +57,57 @@ This document provides a complete reference for all Data Identifiers (DIDs) used
 | 0xF233 | 4 | float32 | CAN bus voltage | V | R |
 | 0xF234 | 4 | float32 | Low-voltage threshold | V | R |
 | 0xF235 | 1 | uint8 | Power sources (VCC: bits 0-1, VBUS: bits 2-3) | - | R |
+
+## Control DIDs (0xF24x)
+
+These DIDs allow writing control values to the device. They are write-only (Service 0x2E).
+
+| DID | Size | Type | Description | W |
+|-----|------|------|-------------|---|
+| 0xF240 | 1 | uint8 | Setpoint (0-255 = 0.00-2.55 bar) | W |
+| 0xF241 | 1 | uint8 | Calibration trigger (fO2 0-100%) | W |
+
+### Setpoint Write (0xF240)
+
+Write a new setpoint value. The value is in centibar (0-255 maps to 0.00-2.55 bar).
+
+**Note:** This only updates the internal setpoint state. Shearwater dive computers do not respect setpoint broadcasts from the head, so the dive computer will not see the change. Useful for testing the solenoid control loop.
+
+**Request:**
+```
+[0x2E] [0xF2] [0x40] [value]
+```
+
+**Response:**
+```
+[0x6E] [0xF2] [0x40]  // Positive response
+```
+
+**NRCs:**
+- 0x13 (INCORRECT_MESSAGE_LENGTH) - Wrong data length
+
+### Calibration Trigger (0xF241)
+
+Trigger oxygen cell calibration with specified fO2 percentage. Uses current atmospheric pressure from device. Calibration runs asynchronously (4-5 seconds).
+
+**Request:**
+```
+[0x2E] [0xF2] [0x41] [fO2]  // fO2: 0-100 (percentage)
+```
+
+**Response:**
+```
+[0x6E] [0xF2] [0x41]  // Positive response (calibration started)
+```
+
+**NRCs:**
+- 0x13 (INCORRECT_MESSAGE_LENGTH) - Wrong data length
+- 0x31 (REQUEST_OUT_OF_RANGE) - fO2 > 100
+- 0x22 (CONDITIONS_NOT_CORRECT) - Calibration already in progress
+
+**Common fO2 Values:**
+- 21 = Air
+- 100 = Pure O2
 
 ## Per-Cell DIDs (0xF4Nx)
 

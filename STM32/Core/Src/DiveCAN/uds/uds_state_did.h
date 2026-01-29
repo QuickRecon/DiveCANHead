@@ -36,6 +36,10 @@
 #define UDS_DID_THRESHOLD_VOLTAGE   0xF234U  /**< float32: Low-voltage threshold (V) */
 #define UDS_DID_POWER_SOURCES       0xF235U  /**< uint8: VCC src (0-1) | VBUS src (2-3) */
 
+/* Control DIDs (writable) - 0xF24x */
+#define UDS_DID_SETPOINT_WRITE      0xF240U  /**< uint8: Write setpoint (0-255 = 0.00-2.55 bar) */
+#define UDS_DID_CALIBRATION_TRIGGER 0xF241U  /**< uint8: Trigger calibration with fO2 (0-100%) */
+
 /* ============================================================================
  * Cell DIDs (0xF4Nx where N = cell number 0-2)
  * ============================================================================ */

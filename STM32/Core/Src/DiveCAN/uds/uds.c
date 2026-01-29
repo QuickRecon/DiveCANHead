@@ -12,6 +12,8 @@
 #include "../../errors.h"
 #include "../../Hardware/hw_version.h"
 #include "../../Hardware/flash.h"
+#include "../../PPO2Control/PPO2Control.h"
+#include "../../Sensors/OxygenCell.h"
 #include <string.h>
 #include <assert.h>
 
@@ -470,6 +472,78 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
         UDS_SendResponse(ctx);
         break;
+    }
+
+    case UDS_DID_SETPOINT_WRITE:
+    {
+        // Write setpoint: 1 byte (0-255 = 0.00-2.55 bar)
+        // Note: Shearwater does not respect setpoint broadcasts from the head,
+        // so this only updates internal state. Useful for testing.
+        if (requestLength != 5) // pad(1) + SID(1) + DID(2) + value(1)
+        {
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
+            return;
+        }
+
+        uint8_t ppo2Raw = requestData[4];
+        PPO2_t ppo2 = ppo2Raw; // PPO2_t is centibar (0-255)
+        setSetpoint(ppo2);
+
+        // Build positive response: [0x6E, DID_high, DID_low]
+        ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->responseBuffer[1] = requestData[2]; // DID high
+        ctx->responseBuffer[2] = requestData[3]; // DID low
+        ctx->responseLength = 3;
+
+        UDS_SendResponse(ctx);
+        return;
+    }
+
+    case UDS_DID_CALIBRATION_TRIGGER:
+    {
+        // Trigger calibration: 1 byte fO2 (0-100%)
+        if (requestLength != 5) // pad(1) + SID(1) + DID(2) + value(1)
+        {
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
+            return;
+        }
+
+        uint8_t fO2 = requestData[4];
+
+        // Validate fO2 range
+        if (fO2 > 100)
+        {
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+            return;
+        }
+
+        // Check if calibration is already in progress
+        if (isCalibrating())
+        {
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+            return;
+        }
+
+        // Get current atmospheric pressure
+        uint16_t atmoPressure = getAtmoPressure();
+
+        // Start calibration task with parameters from configuration
+        RunCalibrationTask(
+            DIVECAN_SOLO,
+            fO2,
+            atmoPressure,
+            ctx->configuration->calibrationMode,
+            ctx->configuration->powerMode
+        );
+
+        // Build positive response: [0x6E, DID_high, DID_low]
+        ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->responseBuffer[1] = requestData[2]; // DID high
+        ctx->responseBuffer[2] = requestData[3]; // DID low
+        ctx->responseLength = 3;
+
+        UDS_SendResponse(ctx);
+        return;
     }
 
     default:

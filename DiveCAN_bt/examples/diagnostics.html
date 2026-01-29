@@ -805,6 +805,7 @@
   <!-- Tab Navigation -->
   <div class="tab-bar">
     <button class="tab-button active" data-tab="main">Main</button>
+    <button class="tab-button" data-tab="control">Control</button>
     <button class="tab-button" data-tab="config">Configuration</button>
     <button class="tab-button" data-tab="dids">DID Subscriptions</button>
   </div>
@@ -969,6 +970,24 @@
     <!-- End Main Tab -->
     </div>
 
+    <!-- Control Tab -->
+    <div class="tab-content" id="tab-control">
+      <!-- Calibration Section -->
+      <div class="tab-section">
+        <h2>Calibration</h2>
+        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">fO2 (%)</label>
+            <input type="number" id="cal-fo2-input" min="0" max="100" step="1" value="98"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 80px; font-size: 14px;">
+          </div>
+          <button id="triggerCalButton" disabled class="danger">Trigger Calibration</button>
+        </div>
+        <div id="cal-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+    <!-- End Control Tab -->
+    </div>
+
     <!-- Configuration Tab -->
     <div class="tab-content" id="tab-config">
       <h2>Configuration Settings</h2>
@@ -1093,7 +1112,11 @@
       writeConfigButton: document.getElementById('writeConfigButton'),
       configStatus: document.getElementById('configStatus'),
       configFieldsContainer: document.getElementById('configFieldsContainer'),
-      configRawHex: document.getElementById('configRawHex')
+      configRawHex: document.getElementById('configRawHex'),
+      // Control tab elements
+      calFo2Input: document.getElementById('cal-fo2-input'),
+      triggerCalButton: document.getElementById('triggerCalButton'),
+      calMessage: document.getElementById('cal-message')
     };
 
     // Subscription state
@@ -1817,6 +1840,66 @@
       }
     };
 
+    // ============================================================
+    // Control Tab Functions (Calibration)
+    // ============================================================
+
+    // Trigger calibration via UDS
+    const triggerCalibration = async () => {
+      if (!stack || !stack._uds) {
+        elements.calMessage.textContent = 'Not connected';
+        return;
+      }
+
+      const fO2 = parseInt(elements.calFo2Input.value, 10);
+      if (isNaN(fO2) || fO2 < 0 || fO2 > 100) {
+        elements.calMessage.textContent = 'Invalid fO2 (must be 0-100)';
+        return;
+      }
+
+      // Confirm with user
+      if (!confirm(`Trigger calibration with fO2 = ${fO2}%?\n\nThis will calibrate all cells.`)) {
+        return;
+      }
+
+      elements.triggerCalButton.disabled = true;
+      elements.calMessage.textContent = 'Calibration triggered...';
+
+      try {
+        await stack._uds.triggerCalibration(fO2);
+        elements.calMessage.textContent = `Calibration triggered with fO2 = ${fO2}%`;
+
+        // Re-enable button after typical calibration time
+        setTimeout(() => {
+          elements.triggerCalButton.disabled = false;
+          elements.calMessage.textContent = '';
+        }, 6000);
+
+      } catch (error) {
+        console.error('Failed to trigger calibration:', error);
+        const nrcDesc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        if (error.nrc === 0x22) {
+          elements.calMessage.textContent = 'Calibration already in progress';
+        } else if (error.nrc === 0x31) {
+          elements.calMessage.textContent = 'Invalid fO2 value';
+        } else {
+          elements.calMessage.textContent = 'Failed: ' + nrcDesc;
+        }
+        elements.triggerCalButton.disabled = false;
+      }
+    };
+
+    // Reset control tab UI on disconnect
+    const resetControlUI = () => {
+      elements.triggerCalButton.disabled = true;
+      elements.calMessage.textContent = '';
+    };
+
+    // Enable control tab UI on connect
+    const enableControlUI = () => {
+      elements.triggerCalButton.disabled = false;
+    };
+
     // Current axis selection mode: 'left' or 'right'
     let currentAxisTarget = 'left';
 
@@ -1910,6 +1993,9 @@
           elements.readConfigButton.disabled = false;
           elements.configStatus.textContent = 'Ready to read configuration';
 
+          // Enable control tab
+          enableControlUI();
+
           // Set target to SOLO (0x04)
           stack.setTargetAddress(0x04);
 
@@ -1946,6 +2032,9 @@
 
           // Reset configuration UI
           resetConfigUI();
+
+          // Reset control tab UI
+          resetControlUI();
         });
 
         stack.on('error', (error) => {
@@ -2005,6 +2094,9 @@
     // Configuration buttons
     elements.readConfigButton.addEventListener('click', loadConfigFromDevice);
     elements.writeConfigButton.addEventListener('click', saveConfigToDevice);
+
+    // Control tab buttons
+    elements.triggerCalButton.addEventListener('click', triggerCalibration);
 
     // Periodic UI update for cell values
     setInterval(() => {

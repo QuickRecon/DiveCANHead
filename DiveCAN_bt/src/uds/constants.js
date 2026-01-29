@@ -47,6 +47,10 @@ export const DID_CELL_VOLTAGES = 0xF200;
 export const DID_PPO2_VALUES = 0xF201;
 export const DID_ERROR_STATUS = 0xF300;
 
+// Control DIDs (writable)
+export const DID_SETPOINT_WRITE = 0xF240;      // Write setpoint (0-255 = 0.00-2.55 bar)
+export const DID_CALIBRATION_TRIGGER = 0xF241; // Trigger calibration with fO2 (0-100%)
+
 // Log streaming DIDs (0xAxxx range)
 export const DID_LOG_STREAM_ENABLE = 0xA000;  // Read/Write: enable log push (1 byte)
 export const DID_LOG_MESSAGE = 0xA100;         // Push: log message (ECU -> Tester)
