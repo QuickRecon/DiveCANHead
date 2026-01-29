@@ -479,12 +479,10 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2, CellStatus_t status)
     }
 }
 
-void AnalogCellSample(uint8_t cellNumber, int16_t sample, CellStatus_t status)
+void AnalogCellSample(uint8_t cellNumber, float precisionPPO2, int16_t sample, uint16_t millivolts, CellStatus_t status)
 {
-    /* Update binary state vector accumulator
-     * Note: PPO2 is not available here - it's calculated elsewhere.
-     * For analog cells, we store the raw sample and PPO2 is set via LogPPO2State. */
-    Log_UpdateAnalogCell(cellNumber, 0.0f, sample, status);
+    /* Update binary state vector accumulator */
+    Log_UpdateAnalogCell(cellNumber, precisionPPO2, sample, millivolts, status);
 
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
@@ -596,13 +594,13 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
     }
 }
 
-void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus)
+void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus, PIDNumeric_t setpoint)
 {
     /* Update binary state vector accumulator */
     uint8_t cellsValid = (c1_included ? 0x01U : 0U) |
                          (c2_included ? 0x02U : 0U) |
                          (c3_included ? 0x04U : 0U);
-    Log_UpdatePPO2State(cellsValid, (float)consensus, 0.0f); /* Setpoint updated separately */
+    Log_UpdatePPO2State(cellsValid, (float)consensus, (float)setpoint);
 
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
@@ -687,7 +685,7 @@ void Log_UpdateO2SCell(uint8_t cellNum, float ppo2, CellStatus_t status)
     /* O2S cells have no additional detail fields - leave as zero */
 }
 
-void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, CellStatus_t status)
+void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, uint16_t millivolts, CellStatus_t status)
 {
     if (cellNum >= 3U)
     {
@@ -695,8 +693,9 @@ void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, CellStatus_t
     }
     stateVectorAccumulator.cell_ppo2[cellNum] = ppo2;
     stateVectorAccumulator.cell_status[cellNum] = (uint8_t)status;
-    /* Store raw ADC value in detail[0], rest unused */
+    /* Store raw ADC value in detail[0], millivolts in detail[1] */
     stateVectorAccumulator.cell_detail[cellNum][0] = (uint32_t)(uint16_t)raw;
+    stateVectorAccumulator.cell_detail[cellNum][1] = (uint32_t)millivolts;
 }
 
 void Log_UpdatePPO2State(uint8_t cellsValid, float consensus, float setpoint)

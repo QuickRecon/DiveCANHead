@@ -229,8 +229,7 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
             return true;
 
         case CELL_DID_MILLIVOLTS:
-            /* Millivolts not stored in accumulator currently - return 0 */
-            writeUint16(buf, 0U);
+            writeUint16(buf, (uint16_t)stateVectorAccumulator.cell_detail[cellNum][1]);
             *len = 2U;
             return true;
 

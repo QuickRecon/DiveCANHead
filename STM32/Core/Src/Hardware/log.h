@@ -25,11 +25,11 @@ extern "C"
     void LogMsg(const char *msg);
     void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, CellStatus_t status, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity);
     void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2, CellStatus_t status);
-    void AnalogCellSample(uint8_t cellNumber, int16_t sample, CellStatus_t status);
+    void AnalogCellSample(uint8_t cellNumber, float precisionPPO2, int16_t sample, uint16_t millivolts, CellStatus_t status);
     void LogRXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogTXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDNumeric_t setpoint);
-    void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus);
+    void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus, PIDNumeric_t setpoint);
 
     /* Binary state vector accumulator functions */
 
@@ -63,9 +63,10 @@ extern "C"
      * @param cellNum Cell number (0-2)
      * @param ppo2 PPO2 in float
      * @param raw Raw ADC value
+     * @param millivolts Millivolts from cell
      * @param status Cell status (CellStatus_t enum value)
      */
-    void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, CellStatus_t status);
+    void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, uint16_t millivolts, CellStatus_t status);
 
     /**
      * @brief Update PPO2 state in the binary state vector accumulator

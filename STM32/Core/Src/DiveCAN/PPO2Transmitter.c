@@ -86,7 +86,8 @@ void PPO2TXTask(void *arg)
                      consensus.precisionPPO2Array[CELL_1],
                      consensus.precisionPPO2Array[CELL_2],
                      consensus.precisionPPO2Array[CELL_3],
-                     consensus.precisionConsensus);
+                     consensus.precisionConsensus,
+                     (PIDNumeric_t)getSetpoint() / 100.0f);
 
         /* Go through each cell and if any need cal, flag cal
          Also check for fail and mark the cell value as fail */

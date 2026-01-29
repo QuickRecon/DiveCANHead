@@ -140,8 +140,6 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     uint32_t ticks = HAL_GetTick();
     handle->lastCounts = GetInputValue(handle->adcInputIndex);
 
-    AnalogCellSample(handle->cellNumber, handle->lastCounts, handle->status);
-
     if (ticks < ticksOfLastPPO2)
     { /* If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out*/
         ticksOfLastPPO2 = 0;
@@ -168,13 +166,18 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     }
     PPO2 = (PPO2_t)(calPPO2);
 
+    Millivolts_t millivolts = getMillivolts(handle);
+
+    /* Log the cell sample with calculated PPO2 and millivolts */
+    AnalogCellSample(handle->cellNumber, calPPO2 / 100.0f, handle->lastCounts, millivolts, handle->status);
+
     /* Lodge the cell data*/
     OxygenCell_t cellData = {
         .cellNumber = handle->cellNumber,
         .type = CELL_ANALOG,
         .ppo2 = PPO2,
         .precisionPPO2 = calPPO2 / 100.0f,
-        .millivolts = getMillivolts(handle),
+        .millivolts = millivolts,
         .status = handle->status,
         .dataTime = HAL_GetTick()};
 
