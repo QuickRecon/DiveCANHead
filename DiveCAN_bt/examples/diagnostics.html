@@ -453,6 +453,34 @@
       border-radius: 4px;
     }
 
+    /* Axis controls */
+    .axis-controls {
+      display: flex;
+      gap: 20px;
+      justify-content: flex-start;
+    }
+
+    .axis-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .axis-group.axis-left label,
+    .axis-group.axis-left span {
+      color: #00bcd4;
+    }
+
+    .axis-group.axis-right label,
+    .axis-group.axis-right span {
+      color: #4caf50;
+    }
+
+    .axis-group span {
+      font-family: 'Courier New', monospace;
+      min-width: 80px;
+    }
+
     /* Stats bar */
     .stats-bar {
       display: flex;
@@ -564,6 +592,195 @@
       color: #00bcd4;
       font-family: 'Courier New', monospace;
     }
+
+    /* Tab System */
+    .tab-bar {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0;
+      border-bottom: 2px solid #3a3a3a;
+    }
+
+    .tab-button {
+      background: #252525;
+      color: #888;
+      border: none;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      margin-right: 2px;
+      transition: all 0.2s;
+    }
+
+    .tab-button:hover {
+      background: #333;
+      color: #e0e0e0;
+    }
+
+    .tab-button.active {
+      background: #2a2a2a;
+      color: #00bcd4;
+      border-bottom: 2px solid #00bcd4;
+      margin-bottom: -2px;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .tab-container {
+      background: #2a2a2a;
+      border-radius: 0 8px 8px 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      border: 1px solid #3a3a3a;
+      border-top: none;
+    }
+
+    /* Connection status with streaming indicator */
+    .status.connected.streaming {
+      background: #00bcd4;
+      color: #1a1a1a;
+    }
+
+    .status.connected.initializing {
+      background: #ff9800;
+      color: #1a1a1a;
+    }
+
+    /* Sections within tabs - no background since container provides it */
+    .tab-section {
+      margin-bottom: 20px;
+    }
+
+    .tab-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .tab-section h2 {
+      margin-top: 0;
+    }
+
+    /* Mobile responsive styles */
+    @media (max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+
+      .tab-bar {
+        flex-wrap: wrap;
+      }
+
+      .tab-button {
+        flex: 1 1 auto;
+        padding: 10px 12px;
+        font-size: 12px;
+        text-align: center;
+        min-width: 80px;
+      }
+
+      .tab-container {
+        padding: 10px;
+        border-radius: 0 0 8px 8px;
+      }
+
+      .button-group {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .button-group button {
+        width: 100%;
+      }
+
+      .button-group .status {
+        margin-left: 0;
+        margin-top: 10px;
+        text-align: center;
+      }
+
+      .cell-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .config-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .did-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .chart-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+
+      .axis-controls {
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .axis-group {
+        justify-content: space-between;
+        padding: 8px;
+        background: #252525;
+        border-radius: 4px;
+      }
+
+      .axis-group span {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .chart-container {
+        height: 250px;
+      }
+
+      .subscription-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+
+      .subscription-stats {
+        margin-left: 0;
+        text-align: center;
+      }
+
+      .config-buttons {
+        flex-direction: column;
+      }
+
+      .config-buttons button {
+        width: 100%;
+      }
+
+      .config-status {
+        margin-left: 0;
+        margin-top: 8px;
+        display: block;
+        text-align: center;
+      }
+    }
   </style>
 </head>
 <body>
@@ -580,22 +797,25 @@
       <button id="scanButton">Scan & Connect</button>
       <button id="disconnectButton" disabled>Disconnect</button>
       <span class="status disconnected" id="connectionStatus">Disconnected</span>
+      <span id="streamStatusDetail" style="color: #888; font-size: 13px;"></span>
     </div>
     <div id="deviceInfo" style="margin-top: 10px; font-size: 14px; color: #888;"></div>
   </div>
 
-  <!-- Stream Status -->
-  <div class="section">
-    <h2>Stream Status</h2>
-    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-      <span class="status disconnected" id="streamStatus">Inactive</span>
-      <span id="streamStatusDetail" style="color: #888; font-size: 13px;"></span>
-    </div>
+  <!-- Tab Navigation -->
+  <div class="tab-bar">
+    <button class="tab-button active" data-tab="main">Main</button>
+    <button class="tab-button" data-tab="config">Configuration</button>
+    <button class="tab-button" data-tab="dids">DID Subscriptions</button>
   </div>
 
-  <!-- Cell Panels -->
-  <div class="section">
-    <h2>Oxygen Cells</h2>
+  <!-- Tab Container -->
+  <div class="tab-container">
+    <!-- Main Tab -->
+    <div class="tab-content active" id="tab-main">
+      <!-- Cell Panels -->
+      <div class="tab-section">
+        <h2>Oxygen Cells</h2>
     <div class="cell-grid">
       <div class="cell-panel" id="cell-panel-0">
         <div class="cell-header">Cell 0: --</div>
@@ -613,14 +833,14 @@
         <div class="cell-header">Cell 2: --</div>
         <div class="cell-fields">
           <div class="field-inactive">(No data)</div>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
+      </div>
 
-  <!-- PID / Consensus Summary -->
-  <div class="section">
-    <h2>Controller State</h2>
+      <!-- PID / Consensus Summary -->
+      <div class="tab-section">
+        <h2>Controller State</h2>
     <div class="summary-grid">
       <div class="summary-item">
         <div class="summary-label">Setpoint</div>
@@ -654,16 +874,16 @@
           <button class="plot-btn plot-right" onclick="plotToRightAxis('integral_state', 'Integral')">R</button>
         </div>
       </div>
-      <div class="summary-item">
-        <div class="summary-label">Saturation</div>
-        <div class="summary-value" id="summary-saturation">--</div>
+        <div class="summary-item">
+          <div class="summary-label">Saturation</div>
+          <div class="summary-value" id="summary-saturation">--</div>
+        </div>
+        </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Power Status -->
-  <div class="section">
-    <h2>Power Status</h2>
+      <!-- Power Status -->
+      <div class="tab-section">
+        <h2>Power Status</h2>
     <div class="summary-grid" id="power-summary">
       <div class="summary-item">
         <div class="summary-label">VBus</div>
@@ -710,24 +930,27 @@
         <div class="summary-label">VCC Source</div>
         <div class="summary-value" id="vcc-source">--</div>
       </div>
-      <div class="summary-item">
-        <div class="summary-label">VBus Source</div>
-        <div class="summary-value" id="vbus-source">--</div>
+        <div class="summary-item">
+          <div class="summary-label">VBus Source</div>
+          <div class="summary-value" id="vbus-source">--</div>
+        </div>
+        </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Real-Time Plot -->
-  <div class="section">
-    <h2>Real-Time Plot</h2>
-    <div class="chart-controls">
-      <label style="color: #00bcd4;">Left Axis:</label>
-      <span id="leftAxisLabel" style="color: #00bcd4; min-width: 100px;">--</span>
-      <button class="small" onclick="clearLeftAxis()">Clear</button>
-      <span style="margin: 0 10px; color: #555;">|</span>
-      <label style="color: #4caf50;">Right Axis:</label>
-      <span id="rightAxisLabel" style="color: #4caf50; min-width: 100px;">--</span>
-      <button class="small" onclick="clearRightAxis()">Clear</button>
+      <!-- Real-Time Plot -->
+      <div class="tab-section">
+        <h2>Real-Time Plot</h2>
+    <div class="chart-controls axis-controls">
+      <div class="axis-group axis-left">
+        <label>Left:</label>
+        <span id="leftAxisLabel">--</span>
+        <button class="small" onclick="clearLeftAxis()">Clear</button>
+      </div>
+      <div class="axis-group axis-right">
+        <label>Right:</label>
+        <span id="rightAxisLabel">--</span>
+        <button class="small" onclick="clearRightAxis()">Clear</button>
+      </div>
     </div>
     <div class="chart-controls">
       <label>Window:</label>
@@ -737,16 +960,18 @@
         <option value="120">2 minutes</option>
         <option value="300">5 minutes</option>
       </select>
-      <button class="small" onclick="clearPlot()">Clear All</button>
+        <button class="small" onclick="clearPlot()">Clear All</button>
+        </div>
+        <div class="chart-container">
+          <canvas id="realtimeChart"></canvas>
+        </div>
+      </div>
+    <!-- End Main Tab -->
     </div>
-    <div class="chart-container">
-      <canvas id="realtimeChart"></canvas>
-    </div>
-  </div>
 
-  <!-- Configuration Settings -->
-  <div class="section">
-    <h2>Configuration Settings</h2>
+    <!-- Configuration Tab -->
+    <div class="tab-content" id="tab-config">
+      <h2>Configuration Settings</h2>
     <div class="config-buttons">
       <button id="readConfigButton" disabled>Read from Device</button>
       <button id="writeConfigButton" disabled class="danger">Write to Device</button>
@@ -755,15 +980,16 @@
     <div id="configFieldsContainer" class="config-grid">
       <!-- Dynamically populated -->
     </div>
-    <div class="config-raw">
-      <span class="label">Raw Config Bytes:</span>
-      <span class="value" id="configRawHex">--</span>
+      <div class="config-raw">
+        <span class="label">Raw Config Bytes:</span>
+        <span class="value" id="configRawHex">--</span>
+      </div>
+    <!-- End Configuration Tab -->
     </div>
-  </div>
 
-  <!-- DID Subscriptions -->
-  <div class="section">
-    <h2>DID Subscriptions</h2>
+    <!-- DID Subscriptions Tab -->
+    <div class="tab-content" id="tab-dids">
+      <h2>DID Subscriptions</h2>
     <div class="subscription-controls">
       <button class="small" id="subscribeAll">Subscribe All</button>
       <button class="small" id="unsubscribeAll">Unsubscribe All</button>
@@ -773,9 +999,12 @@
         Poll Rate: <span class="value" id="pollRate">--</span>
       </div>
     </div>
-    <div id="didSubscriptionList">
-      <div class="field-inactive">(Connect to device to see available DIDs)</div>
+      <div id="didSubscriptionList">
+        <div class="field-inactive">(Connect to device to see available DIDs)</div>
+      </div>
+    <!-- End DID Subscriptions Tab -->
     </div>
+  <!-- End Tab Container -->
   </div>
 
   <!-- Log Messages -->
@@ -812,13 +1041,36 @@
     let plotManager = null;
     let cellUIAdapter = null;
 
+    // Tab switching
+    const initTabs = () => {
+      const tabButtons = document.querySelectorAll('.tab-button');
+      const tabContents = document.querySelectorAll('.tab-content');
+
+      tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          const targetTab = button.dataset.tab;
+
+          // Update button states
+          tabButtons.forEach(btn => btn.classList.remove('active'));
+          button.classList.add('active');
+
+          // Update content visibility
+          tabContents.forEach(content => {
+            content.classList.remove('active');
+            if (content.id === `tab-${targetTab}`) {
+              content.classList.add('active');
+            }
+          });
+        });
+      });
+    };
+
     // UI Elements
     const elements = {
       scanButton: document.getElementById('scanButton'),
       disconnectButton: document.getElementById('disconnectButton'),
       connectionStatus: document.getElementById('connectionStatus'),
       deviceInfo: document.getElementById('deviceInfo'),
-      streamStatus: document.getElementById('streamStatus'),
       streamStatusDetail: document.getElementById('streamStatusDetail'),
       logMessages: document.getElementById('logMessages'),
       clearLogMessages: document.getElementById('clearLogMessages'),
@@ -869,6 +1121,9 @@
     );
     cellUIAdapter.initPlotButtons();
 
+    // Track current stream state for combined status display
+    let currentStreamState = 'inactive';
+
     // Update UI state
     const updateUIState = (connected) => {
       elements.scanButton.disabled = connected;
@@ -877,38 +1132,46 @@
       if (connected) {
         elements.connectionStatus.textContent = 'Connected';
         elements.connectionStatus.className = 'status connected';
+        // Re-apply stream state if still streaming
+        if (currentStreamState === 'streaming') {
+          elements.connectionStatus.classList.add('streaming');
+        } else if (currentStreamState === 'initializing') {
+          elements.connectionStatus.classList.add('initializing');
+        }
       } else {
         elements.connectionStatus.textContent = 'Disconnected';
         elements.connectionStatus.className = 'status disconnected';
         elements.deviceInfo.textContent = '';
-        elements.streamStatus.textContent = 'Inactive';
-        elements.streamStatus.className = 'status disconnected';
         elements.streamStatusDetail.textContent = '';
+        currentStreamState = 'inactive';
       }
     };
 
-    // Update stream status
+    // Update stream status - now integrated into connection status
     const updateStreamStatus = (status, detail = '') => {
-      switch (status) {
-        case 'initializing':
-          elements.streamStatus.textContent = 'Initializing';
-          elements.streamStatus.className = 'status';
-          elements.streamStatus.style.background = '#ff9800';
-          elements.streamStatus.style.color = '#1a1a1a';
-          break;
-        case 'streaming':
-          elements.streamStatus.textContent = 'Streaming';
-          elements.streamStatus.className = 'status streaming';
-          elements.streamStatus.style.background = '';
-          elements.streamStatus.style.color = '';
-          break;
-        case 'inactive':
-        default:
-          elements.streamStatus.textContent = 'Inactive';
-          elements.streamStatus.className = 'status disconnected';
-          elements.streamStatus.style.background = '';
-          elements.streamStatus.style.color = '';
-          break;
+      currentStreamState = status;
+
+      // Only update if we're connected
+      if (elements.connectionStatus.classList.contains('connected') ||
+          elements.connectionStatus.classList.contains('disconnected') === false) {
+
+        // Remove previous stream state classes
+        elements.connectionStatus.classList.remove('streaming', 'initializing');
+
+        switch (status) {
+          case 'initializing':
+            elements.connectionStatus.textContent = 'Initializing';
+            elements.connectionStatus.classList.add('initializing');
+            break;
+          case 'streaming':
+            elements.connectionStatus.textContent = 'Streaming';
+            elements.connectionStatus.classList.add('streaming');
+            break;
+          case 'inactive':
+          default:
+            elements.connectionStatus.textContent = 'Connected';
+            break;
+        }
       }
       elements.streamStatusDetail.textContent = detail;
     };
@@ -1760,6 +2023,9 @@
 
     // Build configuration UI on load
     buildConfigUI();
+
+    // Initialize tabs
+    initTabs();
 
     // Initialize
     if (checkBrowserSupport()) {
