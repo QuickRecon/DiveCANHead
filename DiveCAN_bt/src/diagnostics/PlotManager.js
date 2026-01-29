@@ -20,6 +20,7 @@ export class PlotManager {
     this.updateInterval = options.updateInterval || 100;
     this.windowSize = options.windowSize || 60;
     this.updateTimer = null;
+    this.referenceTime = null;  // Time offset for X axis (set on first data or clear)
 
     // Color palette - first color for left axis, second for right axis
     this.colors = {
@@ -178,6 +179,7 @@ export class PlotManager {
     this.chart.options.scales.y.title.text = '';
     this.chart.options.scales.y1.display = false;
     this.chart.options.scales.y1.title.text = '';
+    this.referenceTime = null;  // Reset reference time on clear
     this.chart.update('none');
   }
 
@@ -224,39 +226,53 @@ export class PlotManager {
   _updateChart() {
     if (!this.dataStore || this.activeSeries.length === 0) return;
 
-    // First pass: find the latest timestamp across all series
+    // First pass: find the earliest and latest timestamps across all series
+    let earliestTimestamp = Infinity;
     let latestTimestamp = 0;
     for (let i = 0; i < this.activeSeries.length; i++) {
       const series = this.activeSeries[i];
       const data = this.dataStore.getSeries(series.key);
       if (data.length > 0) {
+        const seriesEarliest = data[0].timestamp;
         const seriesLatest = data[data.length - 1].timestamp;
+        if (seriesEarliest < earliestTimestamp) {
+          earliestTimestamp = seriesEarliest;
+        }
         if (seriesLatest > latestTimestamp) {
           latestTimestamp = seriesLatest;
         }
       }
     }
 
-    // Calculate window bounds
-    const windowMin = latestTimestamp - this.windowSize;
+    // Set reference time on first data if not already set
+    if (this.referenceTime === null && earliestTimestamp !== Infinity) {
+      this.referenceTime = earliestTimestamp;
+    }
+
+    const refTime = this.referenceTime || 0;
+
+    // Calculate window bounds (relative to reference time)
+    const relativeLatest = latestTimestamp - refTime;
+    const windowMin = relativeLatest - this.windowSize;
+    const absoluteWindowMin = latestTimestamp - this.windowSize;
 
     // Second pass: filter data to only include points within the window
     for (let i = 0; i < this.activeSeries.length; i++) {
       const series = this.activeSeries[i];
       const data = this.dataStore.getSeries(series.key);
 
-      // Filter to only points within the visible window
+      // Filter to only points within the visible window, offset by reference time
       const filteredData = data
-        .filter(p => p.timestamp >= windowMin)
-        .map(p => ({ x: p.timestamp, y: p.value }));
+        .filter(p => p.timestamp >= absoluteWindowMin)
+        .map(p => ({ x: p.timestamp - refTime, y: p.value }));
 
       this.chart.data.datasets[i].data = filteredData;
     }
 
-    // Set X axis bounds
+    // Set X axis bounds (relative to reference time)
     if (latestTimestamp > 0) {
-      this.chart.options.scales.x.min = windowMin;
-      this.chart.options.scales.x.max = latestTimestamp;
+      this.chart.options.scales.x.min = Math.max(0, windowMin);
+      this.chart.options.scales.x.max = relativeLatest;
     }
 
     this.chart.update('none');

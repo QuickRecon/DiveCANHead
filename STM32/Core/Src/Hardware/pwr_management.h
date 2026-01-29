@@ -27,6 +27,8 @@ extern "C"
     ADCV_t getVoltage(PowerSource_t powerSource);
     ADCV_t getVBusVoltage(void);
     ADCV_t getVCCVoltage(void);
+    ADCV_t getBatteryVoltage(void);
+    ADCV_t getCANVoltage(void);
     ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode);
 
 #ifdef __cplusplus

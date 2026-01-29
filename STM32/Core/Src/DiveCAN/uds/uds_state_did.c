@@ -8,6 +8,7 @@
 
 #include "uds_state_did.h"
 #include "../../Hardware/log.h"
+#include "../../Hardware/pwr_management.h"
 #include "../../common.h"
 #include "main.h"
 #include <string.h>
@@ -90,7 +91,7 @@ static void writeInt16(uint8_t *buf, int16_t value)
  * PPO2 Control State DID Handlers (0xF2xx)
  * ============================================================================ */
 
-static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
+static bool handleControlStateDID(uint16_t did, const Configuration_t *config, uint8_t *buf, uint16_t *len)
 {
     switch (did)
     {
@@ -128,6 +129,40 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
         writeUint32(buf, HAL_GetTick() / 1000U);
         *len = 4U;
         return true;
+
+    /* Power Monitoring DIDs */
+    case UDS_DID_VBUS_VOLTAGE:
+        writeFloat32(buf, getVBusVoltage());
+        *len = 4U;
+        return true;
+
+    case UDS_DID_VCC_VOLTAGE:
+        writeFloat32(buf, getVCCVoltage());
+        *len = 4U;
+        return true;
+
+    case UDS_DID_BATTERY_VOLTAGE:
+        writeFloat32(buf, getBatteryVoltage());
+        *len = 4U;
+        return true;
+
+    case UDS_DID_CAN_VOLTAGE:
+        writeFloat32(buf, getCANVoltage());
+        *len = 4U;
+        return true;
+
+    case UDS_DID_THRESHOLD_VOLTAGE:
+        writeFloat32(buf, getThresholdVoltage(config->dischargeThresholdMode));
+        *len = 4U;
+        return true;
+
+    case UDS_DID_POWER_SOURCES:
+    {
+        uint8_t sources = (uint8_t)GetVCCSource() | ((uint8_t)GetVBusSource() << 2);
+        buf[0] = sources;
+        *len = 1U;
+        return true;
+    }
 
     default:
         return false;
@@ -291,7 +326,7 @@ bool UDS_StateDID_HandleRead(uint16_t did, const Configuration_t *config,
     /* PPO2 Control State DIDs (0xF2xx) */
     if ((did >= 0xF200U) && (did <= 0xF2FFU))
     {
-        return handleControlStateDID(did, responseBuffer, responseLength);
+        return handleControlStateDID(did, config, responseBuffer, responseLength);
     }
 
     /* Cell DIDs (0xF4Nx) */
@@ -322,9 +357,15 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
     case UDS_DID_DUTY_CYCLE:
     case UDS_DID_INTEGRAL_STATE:
     case UDS_DID_UPTIME_SEC:
+    case UDS_DID_VBUS_VOLTAGE:
+    case UDS_DID_VCC_VOLTAGE:
+    case UDS_DID_BATTERY_VOLTAGE:
+    case UDS_DID_CAN_VOLTAGE:
+    case UDS_DID_THRESHOLD_VOLTAGE:
         return 4U;
 
     case UDS_DID_CELLS_VALID:
+    case UDS_DID_POWER_SOURCES:
         return 1U;
 
     case UDS_DID_SATURATION_COUNT:

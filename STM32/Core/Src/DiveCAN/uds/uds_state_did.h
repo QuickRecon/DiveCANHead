@@ -28,6 +28,14 @@
 #define UDS_DID_SATURATION_COUNT    0xF212U  /**< uint16: PID saturation events */
 #define UDS_DID_UPTIME_SEC          0xF220U  /**< uint32: Seconds since boot */
 
+/* Power Monitoring DIDs (0xF23x) */
+#define UDS_DID_VBUS_VOLTAGE        0xF230U  /**< float32: VBus rail voltage (V) */
+#define UDS_DID_VCC_VOLTAGE         0xF231U  /**< float32: VCC rail voltage (V) */
+#define UDS_DID_BATTERY_VOLTAGE     0xF232U  /**< float32: Battery voltage (V) */
+#define UDS_DID_CAN_VOLTAGE         0xF233U  /**< float32: CAN bus voltage (V) */
+#define UDS_DID_THRESHOLD_VOLTAGE   0xF234U  /**< float32: Low-voltage threshold (V) */
+#define UDS_DID_POWER_SOURCES       0xF235U  /**< uint8: VCC src (0-1) | VBUS src (2-3) */
+
 /* ============================================================================
  * Cell DIDs (0xF4Nx where N = cell number 0-2)
  * ============================================================================ */

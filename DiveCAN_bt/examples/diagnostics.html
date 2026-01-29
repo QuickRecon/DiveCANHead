@@ -267,6 +267,48 @@
       font-family: 'Courier New', monospace;
     }
 
+    .summary-unit {
+      color: #666;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .summary-item .plot-buttons {
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+      justify-content: center;
+    }
+
+    .summary-item .plot-btn {
+      padding: 2px 8px;
+      font-size: 10px;
+      background: #3a3a3a;
+      border: 1px solid;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    .summary-item .plot-btn.plot-left {
+      color: #00bcd4;
+      border-color: #00bcd4;
+    }
+
+    .summary-item .plot-btn.plot-left:hover {
+      background: #00bcd4;
+      color: #1a1a1a;
+    }
+
+    .summary-item .plot-btn.plot-right {
+      color: #4caf50;
+      border-color: #4caf50;
+    }
+
+    .summary-item .plot-btn.plot-right:hover {
+      background: #4caf50;
+      color: #1a1a1a;
+    }
+
     /* Chart container */
     .chart-container {
       position: relative;
@@ -466,45 +508,99 @@
       <div class="summary-item">
         <div class="summary-label">Setpoint</div>
         <div class="summary-value" id="summary-setpoint">--</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('setpoint', 'Setpoint')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('setpoint', 'Setpoint')">R</button>
+        </div>
       </div>
       <div class="summary-item">
         <div class="summary-label">Consensus PPO2</div>
         <div class="summary-value" id="summary-consensus">--</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('consensus_ppo2', 'Consensus')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('consensus_ppo2', 'Consensus')">R</button>
+        </div>
       </div>
       <div class="summary-item">
         <div class="summary-label">Duty Cycle</div>
         <div class="summary-value" id="summary-dutyCycle">--</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('duty_cycle', 'Duty Cycle')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('duty_cycle', 'Duty Cycle')">R</button>
+        </div>
       </div>
       <div class="summary-item">
         <div class="summary-label">Integral</div>
         <div class="summary-value" id="summary-integral">--</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('integral_state', 'Integral')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('integral_state', 'Integral')">R</button>
+        </div>
       </div>
       <div class="summary-item">
         <div class="summary-label">Saturation</div>
         <div class="summary-value" id="summary-saturation">--</div>
       </div>
     </div>
-    <div style="margin-top: 10px; display: flex; gap: 15px; flex-wrap: wrap;">
-      <span>
-        Duty Cycle:
-        <button class="small plot-left" onclick="plotToLeftAxis('duty_cycle', 'Duty Cycle')">L</button>
-        <button class="small plot-right" onclick="plotToRightAxis('duty_cycle', 'Duty Cycle')">R</button>
-      </span>
-      <span>
-        Consensus:
-        <button class="small plot-left" onclick="plotToLeftAxis('consensus_ppo2', 'Consensus')">L</button>
-        <button class="small plot-right" onclick="plotToRightAxis('consensus_ppo2', 'Consensus')">R</button>
-      </span>
-      <span>
-        Setpoint:
-        <button class="small plot-left" onclick="plotToLeftAxis('setpoint', 'Setpoint')">L</button>
-        <button class="small plot-right" onclick="plotToRightAxis('setpoint', 'Setpoint')">R</button>
-      </span>
-      <span>
-        Integral:
-        <button class="small plot-left" onclick="plotToLeftAxis('integral_state', 'Integral')">L</button>
-        <button class="small plot-right" onclick="plotToRightAxis('integral_state', 'Integral')">R</button>
-      </span>
+  </div>
+
+  <!-- Power Status -->
+  <div class="section">
+    <h2>Power Status</h2>
+    <div class="summary-grid" id="power-summary">
+      <div class="summary-item">
+        <div class="summary-label">VBus</div>
+        <div class="summary-value" id="vbus-voltage">--</div>
+        <div class="summary-unit">V</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('vbus_voltage', 'VBus')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('vbus_voltage', 'VBus')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">VCC</div>
+        <div class="summary-value" id="vcc-voltage">--</div>
+        <div class="summary-unit">V</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('vcc_voltage', 'VCC')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('vcc_voltage', 'VCC')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Battery</div>
+        <div class="summary-value" id="battery-voltage">--</div>
+        <div class="summary-unit">V</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('battery_voltage', 'Battery')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('battery_voltage', 'Battery')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">CAN</div>
+        <div class="summary-value" id="can-voltage">--</div>
+        <div class="summary-unit">V</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('can_voltage', 'CAN')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('can_voltage', 'CAN')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Threshold</div>
+        <div class="summary-value" id="threshold-voltage">--</div>
+        <div class="summary-unit">V</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('threshold_voltage', 'Threshold')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('threshold_voltage', 'Threshold')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">VCC Source</div>
+        <div class="summary-value" id="vcc-source">--</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">VBus Source</div>
+        <div class="summary-value" id="vbus-source">--</div>
+      </div>
     </div>
   </div>
 
@@ -702,6 +798,31 @@
       elements.summaryDutyCycle.textContent = duty !== undefined ? (duty * 100).toFixed(1) + '%' : '--';
       elements.summaryIntegral.textContent = integral !== undefined ? integral.toFixed(4) : '--';
       elements.summarySaturation.textContent = saturation !== undefined ? saturation : '--';
+    };
+
+    // Update power status values from DID values
+    const updatePowerStatus = () => {
+      const voltageKeys = ['VBUS_VOLTAGE', 'VCC_VOLTAGE', 'BATTERY_VOLTAGE', 'CAN_VOLTAGE', 'THRESHOLD_VOLTAGE'];
+      const voltageIds = ['vbus-voltage', 'vcc-voltage', 'battery-voltage', 'can-voltage', 'threshold-voltage'];
+
+      voltageKeys.forEach((key, i) => {
+        const val = dataStore.getDIDValue(key);
+        const el = document.getElementById(voltageIds[i]);
+        if (el) {
+          el.textContent = val !== undefined && val !== null ? val.toFixed(2) : '--';
+        }
+      });
+
+      const sources = dataStore.getDIDValue('POWER_SOURCES');
+      if (sources !== undefined && sources !== null) {
+        const vccSrc = sources & 0x03;
+        const vbusSrc = (sources >> 2) & 0x03;
+        const sourceNames = ['Default', 'Battery', 'CAN'];
+        const vccEl = document.getElementById('vcc-source');
+        const vbusEl = document.getElementById('vbus-source');
+        if (vccEl) vccEl.textContent = sourceNames[vccSrc] || '?';
+        if (vbusEl) vbusEl.textContent = sourceNames[vbusSrc] || '?';
+      }
     };
 
     // Track cell types for rebuilding panels
@@ -1204,6 +1325,7 @@
     setInterval(() => {
       updateCellPanelsFromDIDs();
       updateSummary();
+      updatePowerStatus();
 
       // Update poll rate display
       if (dataStore.isPolling) {

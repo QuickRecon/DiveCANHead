@@ -303,8 +303,9 @@ export class DataStore {
     if (didsToRead.length === 0) return;
 
     // Read DIDs (chunked to fit BLE MTU)
-    // Request: 1 (SID) + N*2 (DID bytes) must fit in ~20 byte MTU
-    const DIDS_PER_REQUEST = 8;
+    // Request: 1 (SID) + N*2 (DID bytes) + ~5 bytes protocol overhead must fit in 20-byte MTU
+    // Max safe: (20 - 5 - 1) / 2 = 7 DIDs, use 4 to be conservative
+    const DIDS_PER_REQUEST = 4;
     const timestamp = Date.now() / 1000;
 
     for (let i = 0; i < didsToRead.length; i += DIDS_PER_REQUEST) {

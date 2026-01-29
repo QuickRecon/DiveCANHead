@@ -111,6 +111,11 @@ export const CELL_DID_HUMIDITY = 0x0C;
 /**
  * State DID registry with metadata for automatic parsing
  */
+// Power source constants
+export const POWER_SOURCE_DEFAULT = 0;
+export const POWER_SOURCE_BATTERY = 1;
+export const POWER_SOURCE_CAN = 2;
+
 export const STATE_DIDS = {
   // PPO2 Control State DIDs (0xF2xx)
   CONSENSUS_PPO2:    { did: 0xF200, size: 4, type: 'float32', label: 'Consensus PPO2' },
@@ -120,6 +125,14 @@ export const STATE_DIDS = {
   INTEGRAL_STATE:    { did: 0xF211, size: 4, type: 'float32', label: 'Integral State' },
   SATURATION_COUNT:  { did: 0xF212, size: 2, type: 'uint16',  label: 'Saturation Count' },
   UPTIME_SEC:        { did: 0xF220, size: 4, type: 'uint32',  label: 'Uptime (sec)' },
+
+  // Power Monitoring DIDs (0xF23x)
+  VBUS_VOLTAGE:      { did: 0xF230, size: 4, type: 'float32', label: 'VBus Voltage', unit: 'V' },
+  VCC_VOLTAGE:       { did: 0xF231, size: 4, type: 'float32', label: 'VCC Voltage', unit: 'V' },
+  BATTERY_VOLTAGE:   { did: 0xF232, size: 4, type: 'float32', label: 'Battery Voltage', unit: 'V' },
+  CAN_VOLTAGE:       { did: 0xF233, size: 4, type: 'float32', label: 'CAN Voltage', unit: 'V' },
+  THRESHOLD_VOLTAGE: { did: 0xF234, size: 4, type: 'float32', label: 'Threshold Voltage', unit: 'V' },
+  POWER_SOURCES:     { did: 0xF235, size: 1, type: 'uint8',   label: 'Power Sources' },
 
   // Cell 0 DIDs (0xF400-0xF40F)
   CELL0_PPO2:          { did: 0xF400, size: 4, type: 'float32', label: 'Cell 0 PPO2' },
