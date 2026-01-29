@@ -95,10 +95,6 @@ void CANTask(void *arg)
     const DiveCANDevice_t *const deviceSpec = &(task_params->deviceSpec);
     Configuration_t *configuration = &(task_params->configuration);
 
-#ifdef UDS_ENABLED
-    uint32_t lastPollTime = HAL_GetTick();
-#endif
-
     while (true)
     {
         DiveCANMessage_t message = {0};
@@ -263,20 +259,15 @@ void CANTask(void *arg)
             /* We didn't get a message, soldier forth */
         }
 
-        // Poll ISO-TP for timeouts every 100ms
+        // Poll ISO-TP
         uint32_t now = HAL_GetTick();
-        if ((now - lastPollTime) >= ISOTP_POLL_INTERVAL)
+        ISOTP_Poll(&isotpContext, now);
+
+        // Also poll log push ISO-TP and module
+        if (logPushInitialized)
         {
-            ISOTP_Poll(&isotpContext, now);
-
-            // Also poll log push ISO-TP and module
-            if (logPushInitialized)
-            {
-                ISOTP_Poll(&logPushIsoTpContext, now);
-                UDS_LogPush_Poll();
-            }
-
-            lastPollTime = now;
+            ISOTP_Poll(&logPushIsoTpContext, now);
+            UDS_LogPush_Poll();
         }
 
         // Poll TX queue every iteration - minimizes latency between

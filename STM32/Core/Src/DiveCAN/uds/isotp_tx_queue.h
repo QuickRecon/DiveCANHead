@@ -55,7 +55,7 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc);
 /**
  * @brief Poll TX queue - sends pending frames and checks timeouts
  *
- * Must be called regularly from CANTask main loop (every ISOTP_POLL_INTERVAL).
+ * Must be called regularly from CANTask main loop.
  * Handles:
  * - Starting transmission of next queued message when idle
  * - Timeout detection for Flow Control wait
