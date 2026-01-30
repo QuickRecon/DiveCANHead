@@ -8,12 +8,10 @@
 #include "../configuration.h"
 #include "../Hardware/log.h"
 
-#ifdef UDS_ENABLED
 #include "uds/isotp.h"
 #include "uds/isotp_tx_queue.h"
 #include "uds/uds.h"
 #include "uds/uds_log_push.h"
-#endif
 
 void CANTask(void *arg);
 void RespBusInit(const DiveCANMessage_t *const message, const DiveCANDevice_t *const deviceSpec, const Configuration_t *const configuration /*  */);
@@ -28,24 +26,34 @@ void RespDiving(const DiveCANMessage_t *const message);
 void updatePIDPGain(const DiveCANMessage_t *const message);
 void updatePIDIGain(const DiveCANMessage_t *const message);
 void updatePIDDGain(const DiveCANMessage_t *const message);
+static void LogUnknownMessage(uint32_t message_id, const DiveCANMessage_t *message);
 
 static const uint8_t DIVECAN_TYPE_MASK = 0xF;
 static const uint8_t BATTERY_FLOAT_TO_INT_SCALER = 10;
 
-#ifdef UDS_ENABLED
-/* ISO-TP and UDS contexts (file scope for single-session constraint) */
-static ISOTPContext_t isotpContext = {0};
-static UDSContext_t udsContext = {0};
-static bool isotpInitialized = false;
+/* UDS state encapsulation - groups all UDS/ISO-TP state into single struct */
+typedef struct {
+    ISOTPContext_t isotpContext;
+    UDSContext_t udsContext;
+    bool isotpInitialized;
+    ISOTPContext_t logPushIsoTpContext;
+    bool logPushInitialized;
+} DiveCANUDSState_t;
 
-/* Second ISO-TP context for log push (Head -> bluetooth client) */
-static ISOTPContext_t logPushIsoTpContext = {0};
-static bool logPushInitialized = false;
+/* Static accessor for UDS state (encapsulates global state) */
+static DiveCANUDSState_t *getUDSState(void)
+{
+    static DiveCANUDSState_t state = {0};
+    return &state;
+}
 
-/* UDS message handlers */
+/* UDS initialization and message handlers */
+static void InitializeUDSContexts(void);
+static bool ProcessMenuMessage(const DiveCANMessage_t *message, const DiveCANDevice_t *deviceSpec, Configuration_t *configuration);
+static void PollISOTPContexts(uint32_t now);
+static void ProcessISOTPCompletion(uint32_t now);
 static void HandleUDSMessage(const uint8_t *data, uint16_t length);
 static void HandleUDSTxComplete(void);
-#endif
 
 /* FreeRTOS tasks */
 
@@ -95,15 +103,7 @@ void CANTask(void *arg)
     const DiveCANDevice_t *const deviceSpec = &(task_params->deviceSpec);
     Configuration_t *configuration = &(task_params->configuration);
 
-#ifdef UDS_ENABLED
-    /* Initialize TX queue and log push at startup (before any messages arrive).
-     * This prevents NULL queueHandle errors if PrinterTask sends logs early.
-     * The main isotpContext is still initialized on first MENU message since
-     * it needs the target address from the incoming message. */
-    ISOTP_TxQueue_Init();
-    UDS_LogPush_Init(&logPushIsoTpContext);
-    logPushInitialized = true;
-#endif
+    InitializeUDSContexts();
 
     while (true)
     {
@@ -139,38 +139,7 @@ void CANTask(void *arg)
                 break;
             case MENU_ID:
                 message.type = "MENU";
-#ifdef UDS_ENABLED
-                /* Initialize ISO-TP context on first MENU message (needs target from message) */
-                if (!isotpInitialized)
-                {
-                    uint8_t targetType = message.id & 0xFF;
-                    ISOTP_Init(&isotpContext, deviceSpec->type, targetType, MENU_ID);
-                    UDS_Init(&udsContext, configuration, &isotpContext);
-                    isotpInitialized = true;
-                }
-
-                /* Check if this is a Flow Control frame for our TX queue.
-                 * FC frames have PCI type 0x30 (upper nibble). */
-                if ((message.data[0] & ISOTP_PCI_MASK) == ISOTP_PCI_FC)
-                {
-                    if (ISOTP_TxQueue_ProcessFC(&message))
-                    {
-                        break; /* FC consumed by TX queue */
-                    }
-                }
-
-                /* Try ISO-TP RX processing - returns true if consumed */
-                if (ISOTP_ProcessRxFrame(&isotpContext, &message))
-                {
-                    break; /* ISO-TP handled it */
-                }
-
-                /* Also check log push ISO-TP for Flow Control frames from bluetooth client */
-                if (logPushInitialized && ISOTP_ProcessRxFrame(&logPushIsoTpContext, &message))
-                {
-                    break; /* Log push ISO-TP handled it (likely FC) */
-                }
-#endif
+                (void)ProcessMenuMessage(&message, deviceSpec, configuration);
                 break;
             case TANK_PRESSURE_ID:
                 message.type = "TANK_PRESSURE";
@@ -247,8 +216,7 @@ void CANTask(void *arg)
                 break;
             default:
                 message.type = "UNKNOWN";
-                serial_printf("Unknown message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r", message_id,
-                              message.data[0], message.data[1], message.data[2], message.data[3], message.data[4], message.data[5], message.data[6], message.data[7]);
+                LogUnknownMessage(message_id, &message);
             }
             LogRXDiveCANMessage(&message);
         }
@@ -257,35 +225,10 @@ void CANTask(void *arg)
             /* We didn't get a message, soldier forth */
         }
 
-        // Poll ISO-TP
+        /* Poll ISO-TP and process completed transfers */
         uint32_t now = HAL_GetTick();
-        ISOTP_Poll(&isotpContext, now);
-
-        // Also poll log push ISO-TP and module
-        if (logPushInitialized)
-        {
-            ISOTP_Poll(&logPushIsoTpContext, now);
-            UDS_LogPush_Poll();
-        }
-
-        // Check for completed ISO-TP RX transfers BEFORE polling TX queue
-        // so that responses are enqueued before we try to send them
-        if (isotpContext.rxComplete)
-        {
-            HandleUDSMessage(isotpContext.rxBuffer, isotpContext.rxDataLength);
-            isotpContext.rxComplete = false; // Clear flag
-        }
-
-        // Check for completed ISO-TP TX transfers
-        if (isotpContext.txComplete)
-        {
-            HandleUDSTxComplete();
-            isotpContext.txComplete = false; // Clear flag
-        }
-
-        // Poll TX queue AFTER processing RX - ensures responses enqueued
-        // by HandleUDSMessage are sent immediately in the same iteration
-        ISOTP_TxQueue_Poll(now);
+        PollISOTPContexts(now);
+        ProcessISOTPCompletion(now);
     }
 }
 
@@ -376,7 +319,115 @@ void RespSerialNumber(const DiveCANMessage_t *const message, const DiveCANDevice
     serial_printf("Received Serial Number of device %d: %s", origin, serial_number);
 }
 
-#ifdef UDS_ENABLED
+/**
+ * @brief Poll all ISO-TP contexts for timeout handling and state updates
+ * @param now Current HAL tick count
+ */
+static void PollISOTPContexts(uint32_t now)
+{
+    DiveCANUDSState_t *udsState = getUDSState();
+
+    /* Poll main ISO-TP context */
+    ISOTP_Poll(&udsState->isotpContext, now);
+
+    /* Also poll log push ISO-TP and module */
+    if (udsState->logPushInitialized)
+    {
+        ISOTP_Poll(&udsState->logPushIsoTpContext, now);
+        UDS_LogPush_Poll();
+    }
+}
+
+/**
+ * @brief Process completed ISO-TP RX/TX transfers and poll TX queue
+ * @param now Current HAL tick count
+ */
+static void ProcessISOTPCompletion(uint32_t now)
+{
+    DiveCANUDSState_t *udsState = getUDSState();
+
+    /* Check for completed ISO-TP RX transfers BEFORE polling TX queue
+     * so that responses are enqueued before we try to send them */
+    if (udsState->isotpContext.rxComplete)
+    {
+        HandleUDSMessage(udsState->isotpContext.rxBuffer, udsState->isotpContext.rxDataLength);
+        udsState->isotpContext.rxComplete = false; /* Clear flag */
+    }
+
+    /* Check for completed ISO-TP TX transfers */
+    if (udsState->isotpContext.txComplete)
+    {
+        HandleUDSTxComplete();
+        udsState->isotpContext.txComplete = false; /* Clear flag */
+    }
+
+    /* Poll TX queue AFTER processing RX - ensures responses enqueued
+     * by HandleUDSMessage are sent immediately in the same iteration */
+    ISOTP_TxQueue_Poll(now);
+}
+
+/**
+ * @brief Process MENU_ID message - handles ISO-TP frame routing and context initialization
+ * @param message Pointer to received CAN message
+ * @param deviceSpec Device specification (for ISO-TP init)
+ * @param configuration Current device configuration (for UDS init)
+ * @return true if message was consumed by ISO-TP, false if needs further processing
+ */
+static bool ProcessMenuMessage(const DiveCANMessage_t *message, const DiveCANDevice_t *deviceSpec, Configuration_t *configuration)
+{
+    DiveCANUDSState_t *udsState = getUDSState();
+    bool consumed = false;
+
+    /* Initialize ISO-TP context on first MENU message (needs target from message) */
+    if (!udsState->isotpInitialized)
+    {
+        uint8_t targetType = message->id & 0xFF;
+        ISOTP_Init(&udsState->isotpContext, deviceSpec->type, targetType, MENU_ID);
+        UDS_Init(&udsState->udsContext, configuration, &udsState->isotpContext);
+        udsState->isotpInitialized = true;
+    }
+
+    /* Check if this is a Flow Control frame for our TX queue.
+     * FC frames have PCI type 0x30 (upper nibble). */
+    if (((message->data[0] & ISOTP_PCI_MASK) == ISOTP_PCI_FC) && ISOTP_TxQueue_ProcessFC(message))
+    {
+        consumed = true; /* FC consumed by TX queue */
+    }
+    /* Try ISO-TP RX processing - returns true if consumed */
+    else if (ISOTP_ProcessRxFrame(&udsState->isotpContext, message))
+    {
+        consumed = true; /* ISO-TP handled it */
+    }
+    /* Also check log push ISO-TP for Flow Control frames from bluetooth client */
+    else if (udsState->logPushInitialized && ISOTP_ProcessRxFrame(&udsState->logPushIsoTpContext, message))
+    {
+        consumed = true; /* Log push ISO-TP handled it (likely FC) */
+    }
+    else
+    {
+        /* Message not consumed by any ISO-TP context */
+    }
+
+    return consumed;
+}
+
+/**
+ * @brief Initialize UDS contexts at task startup
+ *
+ * Initializes TX queue and log push ISO-TP context before message processing begins.
+ * This prevents NULL queueHandle errors if PrinterTask sends logs early.
+ * The main isotpContext is initialized on first MENU message since it needs
+ * the target address from the incoming message.
+ */
+static void InitializeUDSContexts(void)
+{
+    DiveCANUDSState_t *udsState = getUDSState();
+
+    ISOTP_TxQueue_Init();
+    UDS_LogPush_Init(&udsState->logPushIsoTpContext);
+    udsState->logPushInitialized = true;
+}
+
 /**
  * @brief Process completed UDS message - called from main loop when rxComplete flag is set
  * @param data Pointer to received data
@@ -384,14 +435,8 @@ void RespSerialNumber(const DiveCANMessage_t *const message, const DiveCANDevice
  */
 static void HandleUDSMessage(const uint8_t *data, uint16_t length)
 {
-    // serial_printf("UDS RX: [");
-    // for (uint16_t i = 0; i < length; i++) {
-    //     serial_printf("0x%02x%s", data[i], (i < length - 1) ? ", " : "");
-    // }
-    // serial_printf("]\n\r");
-
-    // Process UDS request
-    UDS_ProcessRequest(&udsContext, data, length);
+    DiveCANUDSState_t *udsState = getUDSState();
+    UDS_ProcessRequest(&udsState->udsContext, data, length);
 }
 
 /**
@@ -399,9 +444,8 @@ static void HandleUDSMessage(const uint8_t *data, uint16_t length)
  */
 static void HandleUDSTxComplete(void)
 {
-    // serial_printf("UDS TX complete\n\r");
+    /* Transmission complete - no action required */
 }
-#endif
 
 void updatePIDPGain(const DiveCANMessage_t *const message)
 {
@@ -420,4 +464,19 @@ void updatePIDDGain(const DiveCANMessage_t *const message)
     PIDNumeric_t gain = 0;
     (void)memcpy(&gain, message->data, sizeof(PIDNumeric_t));
     setDerivativeGain(gain);
+}
+
+/**
+ * @brief Log an unknown CAN message with all data bytes
+ * @param message_id The message ID that was not recognized
+ * @param message Pointer to the CAN message
+ */
+static void LogUnknownMessage(uint32_t message_id, const DiveCANMessage_t *message)
+{
+    serial_printf("Unknown message 0x%x: [0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x]\n\r",
+                  message_id,
+                  message->data[CAN_DATA_BYTE_0], message->data[CAN_DATA_BYTE_1],
+                  message->data[CAN_DATA_BYTE_2], message->data[CAN_DATA_BYTE_3],
+                  message->data[CAN_DATA_BYTE_4], message->data[CAN_DATA_BYTE_5],
+                  message->data[CAN_DATA_BYTE_6], message->data[CAN_DATA_BYTE_7]);
 }

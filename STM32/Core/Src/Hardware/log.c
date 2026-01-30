@@ -417,7 +417,7 @@ void LogMsg(const char *msg)
     }
 }
 
-void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, CellStatus_t status, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity)
+void DiveO2CellSample(uint8_t cellNumber, PrecisionPPO2_t precisionPPO2, CellStatus_t status, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity)
 {
     /* Update binary state vector accumulator */
     Log_UpdateDiveO2Cell(cellNumber, precisionPPO2, status, temperature, err, phase, intensity, ambientLight, pressure, humidity);
@@ -430,13 +430,13 @@ void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, CellStatus_t stat
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,DIVEO2,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity);
+    int32_t printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,DIVEO2,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2, temperature, err, phase, intensity, ambientLight, pressure, humidity);
     if (printedChars > LOG_LINE_LENGTH)
     {
         printedChars = LOG_LINE_LENGTH;
         NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
     }
-    if ((printedChars > 0))
+    if (printedChars > 0)
     {
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
@@ -451,7 +451,7 @@ void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, CellStatus_t stat
 void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2, CellStatus_t status)
 {
     /* Update binary state vector accumulator */
-    Log_UpdateO2SCell(cellNumber, (float)PPO2, status);
+    Log_UpdateO2SCell(cellNumber, (Numeric_t)PPO2, status);
 
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
@@ -461,13 +461,13 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2, CellStatus_t status)
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,O2S,%u,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2);
+    int32_t printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,O2S,%u,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, PPO2);
     if (printedChars > LOG_LINE_LENGTH)
     {
         printedChars = LOG_LINE_LENGTH;
         NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
     }
-    if ((printedChars > 0))
+    if (printedChars > 0)
     {
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
@@ -479,7 +479,7 @@ void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2, CellStatus_t status)
     }
 }
 
-void AnalogCellSample(uint8_t cellNumber, float precisionPPO2, int16_t sample, uint16_t millivolts, CellStatus_t status)
+void AnalogCellSample(uint8_t cellNumber, PrecisionPPO2_t precisionPPO2, int16_t sample, uint16_t millivolts, CellStatus_t status)
 {
     /* Update binary state vector accumulator */
     Log_UpdateAnalogCell(cellNumber, precisionPPO2, sample, millivolts, status);
@@ -492,13 +492,13 @@ void AnalogCellSample(uint8_t cellNumber, float precisionPPO2, int16_t sample, u
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,ANALOGCELL,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, sample);
+    int32_t printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,ANALOGCELL,%u,%d\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, cellNumber, sample);
     if (printedChars > LOG_LINE_LENGTH)
     {
         printedChars = LOG_LINE_LENGTH;
         NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
     }
-    if ((printedChars > 0))
+    if (printedChars > 0)
     {
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
@@ -565,7 +565,7 @@ void LogDiveCANMessage(const DiveCANMessage_t *const message, bool rx)
 void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDNumeric_t setpoint)
 {
     /* Update binary state vector accumulator */
-    Log_UpdateControlState((float)dutyCycle, (float)pid_state->integralState, pid_state->saturationCount);
+    Log_UpdateControlState((Numeric_t)dutyCycle, (Numeric_t)pid_state->integralState, pid_state->saturationCount);
     (void)setpoint; /* Setpoint is updated via LogPPO2State */
 
     /* Single CPU with cooperative multitasking means that this is
@@ -576,13 +576,13 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PID,%f,%d,%f,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, (Numeric_t)pid_state->integralState, pid_state->saturationCount, (Numeric_t)dutyCycle, (Numeric_t)setpoint);
+    int32_t printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PID,%f,%d,%f,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, (Numeric_t)pid_state->integralState, pid_state->saturationCount, (Numeric_t)dutyCycle, (Numeric_t)setpoint);
     if (printedChars > LOG_LINE_LENGTH)
     {
         printedChars = LOG_LINE_LENGTH;
         NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
     }
-    if ((printedChars > 0))
+    if (printedChars > 0)
     {
         /* Lower priority message, only enqueue if the log task is running AND we have room in the queue */
         if (logRunning() &&
@@ -597,10 +597,20 @@ void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDN
 void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus, PIDNumeric_t setpoint)
 {
     /* Update binary state vector accumulator */
-    uint8_t cellsValid = (c1_included ? 0x01U : 0U) |
-                         (c2_included ? 0x02U : 0U) |
-                         (c3_included ? 0x04U : 0U);
-    Log_UpdatePPO2State(cellsValid, (float)consensus, (float)setpoint);
+    uint8_t cellsValid = 0U;
+    if (c1_included)
+    {
+        cellsValid |= 0x01U;
+    }
+    if (c2_included)
+    {
+        cellsValid |= 0x02U;
+    }
+    if (c3_included)
+    {
+        cellsValid |= 0x04U;
+    }
+    Log_UpdatePPO2State(cellsValid, (Numeric_t)consensus, (Numeric_t)setpoint);
 
     /* Single CPU with cooperative multitasking means that this is
      * valid until we've enqueued (and hence no longer care)
@@ -610,13 +620,13 @@ void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumer
     (void)memset(enQueueItem.string, 0, LOG_LINE_LENGTH);
     enQueueItem.eventType = LOG_EVENT;
     checkQueueStarvation(enQueueItem.eventType);
-    int printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2STATE,%d,%f,%d,%f,%d,%f,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, c1_included, (Numeric_t)c1, c2_included, (Numeric_t)c2, c3_included, (Numeric_t)c3, (Numeric_t)consensus);
+    int32_t printedChars = snprintf(enQueueItem.string, LOG_LINE_LENGTH, "%0.4f,%lu,PPO2STATE,%d,%f,%d,%f,%d,%f,%f\r\n", (timestamp_t)osKernelGetTickCount() / (timestamp_t)osKernelGetTickFreq(), logMsgIndex, c1_included, (Numeric_t)c1, c2_included, (Numeric_t)c2, c3_included, (Numeric_t)c3, (Numeric_t)consensus);
     if (printedChars > LOG_LINE_LENGTH)
     {
         printedChars = LOG_LINE_LENGTH;
         NON_FATAL_ERROR_DETAIL(LOG_MSG_TRUNCATED_ERR, printedChars);
     }
-    if ((printedChars > 0))
+    if (printedChars > 0)
     {
         if (logRunning())
         {
@@ -655,7 +665,7 @@ void LogTXDiveCANMessage(const DiveCANMessage_t *const message)
 /* Exposed for UDS state DID reads - accessed via extern in uds_state_did.c */
 BinaryStateVector_t stateVectorAccumulator = {0};
 
-void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, CellStatus_t status,
+void Log_UpdateDiveO2Cell(uint8_t cellNum, PrecisionPPO2_t precisionPPO2, CellStatus_t status,
                           int32_t temp, int32_t err, int32_t phase, int32_t intensity,
                           int32_t ambientLight, int32_t pressure, int32_t humidity)
 {
@@ -674,7 +684,7 @@ void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, CellStatus_t sta
     stateVectorAccumulator.cellDetail[cellNum][6] = (uint32_t)humidity;
 }
 
-void Log_UpdateO2SCell(uint8_t cellNum, float ppo2, CellStatus_t status)
+void Log_UpdateO2SCell(uint8_t cellNum, PrecisionPPO2_t ppo2, CellStatus_t status)
 {
     if (cellNum >= 3U)
     {
@@ -685,7 +695,7 @@ void Log_UpdateO2SCell(uint8_t cellNum, float ppo2, CellStatus_t status)
     /* O2S cells have no additional detail fields - leave as zero */
 }
 
-void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, uint16_t millivolts, CellStatus_t status)
+void Log_UpdateAnalogCell(uint8_t cellNum, PrecisionPPO2_t ppo2, int16_t raw, uint16_t millivolts, CellStatus_t status)
 {
     if (cellNum >= 3U)
     {
@@ -698,14 +708,14 @@ void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, uint16_t mil
     stateVectorAccumulator.cellDetail[cellNum][1] = (uint32_t)millivolts;
 }
 
-void Log_UpdatePPO2State(uint8_t cellsValid, float consensus, float setpoint)
+void Log_UpdatePPO2State(uint8_t cellsValid, PrecisionPPO2_t consensus, PrecisionPPO2_t setpoint)
 {
     stateVectorAccumulator.cellsValid = cellsValid;
     stateVectorAccumulator.consensusPpo2 = consensus;
     stateVectorAccumulator.setpoint = setpoint;
 }
 
-void Log_UpdateControlState(float duty, float integral, uint16_t satCount)
+void Log_UpdateControlState(Percent_t duty, PIDHalfNumeric_t integral, uint16_t satCount)
 {
     stateVectorAccumulator.dutyCycle = duty;
     stateVectorAccumulator.integralState = integral;

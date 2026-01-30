@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "../common.h"
 #include "../DiveCAN/Transciever.h"
 #include "../PPO2Control/PPO2Control.h"
 #include "../Sensors/OxygenScientific.h"
@@ -23,9 +24,9 @@ extern "C"
     void DeInitLog(void);
     void StartLogTask(void);
     void LogMsg(const char *msg);
-    void DiveO2CellSample(uint8_t cellNumber, float precisionPPO2, CellStatus_t status, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity);
+    void DiveO2CellSample(uint8_t cellNumber, PrecisionPPO2_t precisionPPO2, CellStatus_t status, int32_t PPO2, int32_t temperature, int32_t err, int32_t phase, int32_t intensity, int32_t ambientLight, int32_t pressure, int32_t humidity);
     void O2SCellSample(uint8_t cellNumber, O2SNumeric_t PPO2, CellStatus_t status);
-    void AnalogCellSample(uint8_t cellNumber, float precisionPPO2, int16_t sample, uint16_t millivolts, CellStatus_t status);
+    void AnalogCellSample(uint8_t cellNumber, PrecisionPPO2_t precisionPPO2, int16_t sample, uint16_t millivolts, CellStatus_t status);
     void LogRXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogTXDiveCANMessage(const DiveCANMessage_t *const message);
     void LogPIDState(const PIDState_t *const pid_state, PIDNumeric_t dutyCycle, PIDNumeric_t setpoint);
@@ -46,7 +47,7 @@ extern "C"
      * @param pressure Pressure in microbar
      * @param humidity Humidity in milliRH
      */
-    void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, CellStatus_t status,
+    void Log_UpdateDiveO2Cell(uint8_t cellNum, PrecisionPPO2_t precisionPPO2, CellStatus_t status,
                               int32_t temp, int32_t err, int32_t phase, int32_t intensity,
                               int32_t ambientLight, int32_t pressure, int32_t humidity);
 
@@ -56,7 +57,7 @@ extern "C"
      * @param ppo2 PPO2 in float
      * @param status Cell status (CellStatus_t enum value)
      */
-    void Log_UpdateO2SCell(uint8_t cellNum, float ppo2, CellStatus_t status);
+    void Log_UpdateO2SCell(uint8_t cellNum, PrecisionPPO2_t ppo2, CellStatus_t status);
 
     /**
      * @brief Update analog cell data in the binary state vector accumulator
@@ -66,7 +67,7 @@ extern "C"
      * @param millivolts Millivolts from cell
      * @param status Cell status (CellStatus_t enum value)
      */
-    void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, uint16_t millivolts, CellStatus_t status);
+    void Log_UpdateAnalogCell(uint8_t cellNum, PrecisionPPO2_t ppo2, int16_t raw, uint16_t millivolts, CellStatus_t status);
 
     /**
      * @brief Update PPO2 state in the binary state vector accumulator
@@ -74,7 +75,7 @@ extern "C"
      * @param consensus Consensus PPO2 value
      * @param setpoint Current setpoint
      */
-    void Log_UpdatePPO2State(uint8_t cellsValid, float consensus, float setpoint);
+    void Log_UpdatePPO2State(uint8_t cellsValid, PrecisionPPO2_t consensus, PrecisionPPO2_t setpoint);
 
     /**
      * @brief Update control state in the binary state vector accumulator
@@ -82,7 +83,7 @@ extern "C"
      * @param integral PID integral state
      * @param satCount PID saturation counter
      */
-    void Log_UpdateControlState(float duty, float integral, uint16_t satCount);
+    void Log_UpdateControlState(Percent_t duty, PIDHalfNumeric_t integral, uint16_t satCount);
 
     /**
      * @brief Set configuration in the binary state vector accumulator

@@ -202,8 +202,19 @@ void sendCANMessageBlocking(const DiveCANMessage_t message)
     /* Wait for this specific mailbox to complete transmission.
      * This ensures the frame is actually on the bus before we return,
      * preventing out-of-order transmission with auto-retransmit enabled. */
-    uint32_t mailboxMask = (mailboxNumber == CAN_TX_MAILBOX0) ? CAN_TSR_TME0 : (mailboxNumber == CAN_TX_MAILBOX1) ? CAN_TSR_TME1
-                                                                                                                  : CAN_TSR_TME2;
+    uint32_t mailboxMask = CAN_TSR_TME2;
+    if (mailboxNumber == CAN_TX_MAILBOX0)
+    {
+        mailboxMask = CAN_TSR_TME0;
+    }
+    else if (mailboxNumber == CAN_TX_MAILBOX1)
+    {
+        mailboxMask = CAN_TSR_TME1;
+    }
+    else
+    {
+        /* Default to mailbox 2 */
+    }
 
     /* Busy-wait until mailbox is empty (transmission complete).
      * Using busy-wait instead of osDelay(1) because CAN frame transmission

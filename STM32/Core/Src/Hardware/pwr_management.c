@@ -17,9 +17,9 @@ extern ADC_HandleTypeDef hadc1;
 
 extern CAN_HandleTypeDef hcan1;
 
-static const ADCV_t POWER_RESISTOR_DIVIDER = ((12.0f + 75.0f) / 12.0f);
-static const ADCV_t VBUS_RESISTOR_DIVIDER = ((10.0f + 100.0f) / 10.0f);
-static const ADCV_t VCC_RESISTOR_DIVIDER = (3.0f);
+static const ADCV_t POWER_RESISTOR_DIVIDER = (12.0f + 75.0f) / 12.0f;
+static const ADCV_t VBUS_RESISTOR_DIVIDER = (10.0f + 100.0f) / 10.0f;
+static const ADCV_t VCC_RESISTOR_DIVIDER = 3.0f;
 
 ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode)
 {

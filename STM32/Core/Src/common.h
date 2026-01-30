@@ -49,6 +49,17 @@ extern "C"
     static const uint8_t BYTE_MASK = 0xFFU;      /* Mask for extracting a byte */
     static const CalCoeff_t EPS = 0.00001f;      /* Small value for float comparisons */
 
+    /* CAN frame byte indices (8-byte frame structure) */
+    static const uint8_t CAN_DATA_BYTE_0 = 0U;
+    static const uint8_t CAN_DATA_BYTE_1 = 1U;
+    static const uint8_t CAN_DATA_BYTE_2 = 2U;
+    static const uint8_t CAN_DATA_BYTE_3 = 3U;
+    static const uint8_t CAN_DATA_BYTE_4 = 4U;
+    static const uint8_t CAN_DATA_BYTE_5 = 5U;
+    static const uint8_t CAN_DATA_BYTE_6 = 6U;
+    static const uint8_t CAN_DATA_BYTE_7 = 7U;
+    static const uint8_t CAN_DATA_FRAME_SIZE = 8U;
+
     /* Data type sizes for DID responses */
     static const uint16_t DATA_SIZE_UINT8 = 1U;   /* Size of uint8_t in bytes */
     static const uint16_t DATA_SIZE_UINT16 = 2U;  /* Size of uint16_t in bytes */

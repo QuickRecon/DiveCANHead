@@ -77,7 +77,7 @@ static const size_t UDS_POS_RESP_HDR = 3U;    /**< Positive response header: [SI
 static const size_t UDS_MIN_REQ_LEN = 4U;     /**< Minimum request: pad + SID + DID (2 bytes) */
 static const size_t UDS_DID_SIZE = 2U;        /**< DID field size (2 bytes) */
 
-/* Setting value response: max(u64) + current(u64) */
+/* Setting value response length: max value (uint64) followed by current value (uint64) */
 #define SETTING_VALUE_RESP_LEN (2U * sizeof(uint64_t))
 
 /* Settings DID range limits */

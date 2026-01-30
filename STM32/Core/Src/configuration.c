@@ -145,7 +145,14 @@ bool saveConfiguration(const Configuration_t *const config, HW_Version_t hw_vers
         valid = valid && SetCalibration(CELL_2, 0);
         valid = valid && SetCalibration(CELL_3, 0);
 
-        serial_printf("Config saved %s\r\n", valid ? "successfully" : "with errors");
+        if (valid)
+        {
+            serial_printf("Config saved successfully\r\n");
+        }
+        else
+        {
+            serial_printf("Config saved with errors\r\n");
+        }
     }
     return valid;
 }
