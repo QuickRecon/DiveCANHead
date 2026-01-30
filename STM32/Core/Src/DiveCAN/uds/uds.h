@@ -34,15 +34,16 @@ enum
     UDS_SID_NEGATIVE_RESPONSE = 0x7F
 };
 
-/* UDS Negative Response Codes (NRC) */
+/* UDS Negative Response Codes (NRC)
+ * Note: Names shortened to <=31 chars for MISRA compliance (c:S799) */
 typedef enum
 {
     UDS_NRC_SERVICE_NOT_SUPPORTED = 0x11,
-    UDS_NRC_INCORRECT_MESSAGE_LENGTH = 0x13,
+    UDS_NRC_INCORRECT_MSG_LEN = 0x13,      /**< Incorrect message length or format */
     UDS_NRC_RESPONSE_TOO_LONG = 0x14,
     UDS_NRC_CONDITIONS_NOT_CORRECT = 0x22,
     UDS_NRC_REQUEST_OUT_OF_RANGE = 0x31,
-    UDS_NRC_GENERAL_PROGRAMMING_FAILURE = 0x72
+    UDS_NRC_GENERAL_PROG_FAIL = 0x72       /**< General programming failure */
 } UDS_NRC_t;
 
 /* UDS Data Identifiers (DID) - custom for DiveCAN */

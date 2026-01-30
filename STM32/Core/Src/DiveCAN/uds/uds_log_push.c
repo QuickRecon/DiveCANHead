@@ -15,8 +15,12 @@
 #include "cmsis_os.h"
 #include <string.h>
 
+/* External functions from isotp_tx_queue.c */
+extern bool ISOTP_TxQueue_IsBusy(void);
+extern uint8_t ISOTP_TxQueue_GetPendingCount(void);
+
 /* Queue configuration - #define required for array size */
-#define UDS_LOG_QUEUE_LENGTH 4U
+#define UDS_LOG_QUEUE_LENGTH 10U
 
 /* WDBI header size (SID + DID high + DID low) - #define required for array size */
 #define WDBI_HEADER_SIZE 3U
@@ -37,13 +41,17 @@ typedef struct
 
 /**
  * @brief Module state structure (file scope, static allocation per NASA rules)
+ *
+ * NOTE: Pointers are placed BEFORE the large buffer to prevent corruption
+ * if txBuffer overflows. This is defensive ordering.
  */
 static struct
 {
     ISOTPContext_t *isotpContext;                             /**< Dedicated context for push */
-    bool txPending;                                           /**< TX in progress flag */
-    uint8_t txBuffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE]; /**< WDBI frame buffer */
     osMessageQueueId_t queueHandle;                           /**< Message queue handle */
+    bool txPending;                                           /**< TX in progress flag */
+    bool inSendLogMessage;                                    /**< Reentrancy guard for SendLogMessage */
+    uint8_t txBuffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE]; /**< WDBI frame buffer (last to contain overflow) */
 } logPushState = {0};
 
 /* Static allocation for queue (per NASA rules - no heap) */
@@ -51,7 +59,7 @@ static uint8_t logPushQueueStorage[UDS_LOG_QUEUE_LENGTH * sizeof(UDSLogQueueItem
 static StaticQueue_t logPushQueueControlBlock;
 
 /* Static buffers for queue operations to avoid large stack allocations
- * (UDSLogQueueItem_t is ~4KB with UDS_LOG_MAX_PAYLOAD=4093) */
+ * (UDSLogQueueItem_t is ~256 bytes with UDS_LOG_MAX_PAYLOAD=253) */
 static UDSLogQueueItem_t txItemBuffer;    /**< Buffer for enqueue (SendLogMessage/SendEventMessage/SendStateVector) */
 static UDSLogQueueItem_t rxItemBuffer;    /**< Buffer for dequeue (Poll) and discarding items */
 
@@ -65,6 +73,7 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
 
     logPushState.isotpContext = isotpCtx;
     logPushState.txPending = false;
+    logPushState.inSendLogMessage = false;
 
     /* Create message queue with static allocation */
     const osMessageQueueAttr_t queueAttr = {
@@ -88,16 +97,27 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
 
 bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
 {
+    /* Reentrancy guard: NON_FATAL_ERROR -> print -> SendLogMessage -> NON_FATAL_ERROR...
+     * Silently drop message if we're already in this function to break the loop.
+     * Do NOT call NON_FATAL_ERROR here as that would defeat the purpose. */
+    if (logPushState.inSendLogMessage)
+    {
+        return false;
+    }
+    logPushState.inSendLogMessage = true;
+
     /* Check preconditions */
     if (logPushState.queueHandle == NULL)
     {
         NON_FATAL_ERROR(QUEUEING_ERR);
+        logPushState.inSendLogMessage = false;
         return false;
     }
 
     if ((message == NULL) || (length == 0))
     {
         NON_FATAL_ERROR(NULL_PTR_ERR);
+        logPushState.inSendLogMessage = false;
         return false;
     }
 
@@ -124,6 +144,7 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
         NON_FATAL_ERROR(QUEUEING_ERR);
     }
 
+    logPushState.inSendLogMessage = false;
     return (status == osOK);
 }
 
@@ -190,8 +211,6 @@ void UDS_LogPush_Poll(void)
     }
 
     /* Check if centralized TX queue is busy - wait for it to drain */
-    extern bool ISOTP_TxQueue_IsBusy(void);
-    extern uint8_t ISOTP_TxQueue_GetPendingCount(void);
     if (ISOTP_TxQueue_IsBusy() || (ISOTP_TxQueue_GetPendingCount() > 0))
     {
         /* Expected: TX queue busy, try again on next poll */
@@ -199,12 +218,10 @@ void UDS_LogPush_Poll(void)
     }
 
     /* Try to dequeue and send next message using static buffer */
-    if (osMessageQueueGet(logPushState.queueHandle, &rxItemBuffer, NULL, 0) == osOK)
+    if ((osMessageQueueGet(logPushState.queueHandle, &rxItemBuffer, NULL, 0) == osOK) &&
+        sendQueuedItem(&rxItemBuffer))
     {
-        if (sendQueuedItem(&rxItemBuffer))
-        {
-            logPushState.txPending = true;
-        }
-        /* Send failed - message lost, continue with next on next poll */
+        logPushState.txPending = true;
     }
+    /* Send failed - message lost, continue with next on next poll */
 }

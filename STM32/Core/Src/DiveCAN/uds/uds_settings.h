@@ -49,7 +49,7 @@ typedef struct
     SettingKind_t kind;   /**< Setting type */
     bool editable;        /**< Can be modified via UDS */
     uint8_t maxValue;     /**< Maximum value (for NUMBER/SELECTION) */
-    const char **options; /**< Option labels (for SELECTION, NULL-terminated) */
+    const char * const *options; /**< Option labels (for SELECTION, NULL-terminated) */
     uint8_t optionCount;  /**< Number of options (for SELECTION) */
 } SettingDefinition_t;
 

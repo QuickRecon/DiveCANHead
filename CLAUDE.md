@@ -426,3 +426,189 @@ case ISOTP_PCI_SF:  /* Works */
     break;
 }
 ```
+
+### Nested If-Else for Error Handling (c:S1005, c:S1142)
+
+**Rule:** Functions should have a single return statement. Use nested if-else where error paths are in `if` and success paths are in `else`.
+
+**Bad:**
+```c
+bool foo(Context_t *ctx) {
+    if (ctx == NULL) {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
+        return false;
+    }
+    /* ... success path ... */
+    return true;
+}
+```
+
+**Good:**
+```c
+bool foo(Context_t *ctx) {
+    bool result = false;
+    if (ctx == NULL)
+    {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
+    }
+    else
+    {
+        /* ... success path ... */
+        result = true;
+    }
+    return result;
+}
+```
+
+### Static Accessor Methods for Module State (c:M23_388)
+
+**Rule:** Global state should be scoped to file via static accessor functions. This encapsulates state and satisfies the rule about non-const globals.
+
+**Bad:**
+```c
+static ISOTPTxState_t txState = {0};
+static osMessageQueueId_t txQueueHandle = NULL;
+```
+
+**Good:**
+```c
+static ISOTPTxState_t *getTxState(void)
+{
+    static ISOTPTxState_t txState = {0};
+    return &txState;
+}
+
+static osMessageQueueId_t *getTxQueueHandle(void)
+{
+    static osMessageQueueId_t handle = NULL;
+    return &handle;
+}
+
+/* Usage */
+ISOTPTxState_t *state = getTxState();
+state->txActive = true;
+```
+
+### Struct Initialization (c:S6871)
+
+**Rule:** When initializing structs, explicitly initialize all fields rather than relying on default initialization.
+
+**Bad:**
+```c
+const osMessageQueueAttr_t queueAttr = {
+    .name = "MyQueue",
+    .cb_mem = &controlBlock,
+    .cb_size = sizeof(controlBlock),
+    .mq_mem = storage,
+    .mq_size = sizeof(storage)};
+```
+
+**Good:**
+```c
+const osMessageQueueAttr_t queueAttr = {
+    .name = "MyQueue",
+    .attr_bits = 0,
+    .cb_mem = &controlBlock,
+    .cb_size = sizeof(controlBlock),
+    .mq_mem = storage,
+    .mq_size = sizeof(storage)};
+```
+
+### If-Else-If Chains (c:M23_112, c:S126)
+
+**Rule:** All if-else-if chains must be terminated with a final else clause.
+
+**Bad:**
+```c
+if (condition1)
+{
+    /* ... */
+}
+else if (condition2)
+{
+    /* ... */
+}
+```
+
+**Good:**
+```c
+if (condition1)
+{
+    /* ... */
+}
+else if (condition2)
+{
+    /* ... */
+}
+else
+{
+    /* No action required */
+}
+```
+
+### Merge Collapsible If Statements (c:S1066)
+
+**Rule:** When an if statement is the only statement inside another if, merge them with `&&`.
+
+**Bad:**
+```c
+if (condition1)
+{
+    if (condition2)
+    {
+        /* ... */
+    }
+}
+```
+
+**Good:**
+```c
+if (condition1 && condition2)
+{
+    /* ... */
+}
+```
+
+### Extern Declarations (c:S824)
+
+**Rule:** Function declarations with `extern` should be placed at file scope (top of file, after includes), not inside function bodies.
+
+**Bad:**
+```c
+void MyFunction(void)
+{
+    extern bool OtherModule_IsBusy(void);
+    if (OtherModule_IsBusy())
+    {
+        /* ... */
+    }
+}
+```
+
+**Good:**
+```c
+/* At file top, after includes */
+extern bool OtherModule_IsBusy(void);
+
+void MyFunction(void)
+{
+    if (OtherModule_IsBusy())
+    {
+        /* ... */
+    }
+}
+```
+
+### Identifier Length (c:S799)
+
+**Rule:** Identifiers must be <=31 characters for portability.
+
+**Bad:**
+```c
+UDS_NRC_INCORRECT_MESSAGE_LENGTH = 0x13,  /* 32 chars */
+```
+
+**Good:**
+```c
+UDS_NRC_INCORRECT_MSG_LEN = 0x13,  /* 25 chars */
+```

@@ -20,56 +20,66 @@
 #define SETTING_INDEX_CONFIG3   3U
 #define SETTING_INDEX_CONFIG4   4U
 
+/* Total settings count - #define required for array size declaration */
+#define SETTING_COUNT 5U
+
 /* Option labels for selection-type settings */
-static const char *FW_CommitOptions[] = {
+static const char * const FW_CommitOptions[2] = {
     COMMIT_HASH,
     NULL};
 
-static const char *NumericOptions[] = {
-    0,
+static const char * const NumericOptions[1] = {
+    NULL,
 };
 
 /* Settings definitions array (maps Configuration_t fields to UDS settings) */
-static const SettingDefinition_t settings[] = {
-    /* Index 0: Cell 1 Type */
+static const SettingDefinition_t settings[SETTING_COUNT] = {
+    /* Index 0: FW Commit (read-only) */
     {
         .label = "FW Commit",
         .kind = SETTING_KIND_TEXT,
         .editable = false,
         .maxValue = 1,
         .options = FW_CommitOptions,
-        .optionCount = 1},
+        .optionCount = 1
+    },
+    /* Index 1: Config byte 1 */
     {
         .label = "Config 1",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .options = NumericOptions,
         .maxValue = 0xFF,
+        .options = NumericOptions,
+        .optionCount = 0
     },
+    /* Index 2: Config byte 2 */
     {
         .label = "Config 2",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .options = NumericOptions,
         .maxValue = 0xFF,
+        .options = NumericOptions,
+        .optionCount = 0
     },
+    /* Index 3: Config byte 3 */
     {
         .label = "Config 3",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .options = NumericOptions,
         .maxValue = 0xFF,
+        .options = NumericOptions,
+        .optionCount = 0
     },
+    /* Index 4: Config byte 4 */
     {
         .label = "Config 4",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .options = NumericOptions,
         .maxValue = 0xFF,
-    },
+        .options = NumericOptions,
+        .optionCount = 0
+    }
 };
-
-#define SETTING_COUNT 5U
 
 /**
  * @brief Get total number of settings

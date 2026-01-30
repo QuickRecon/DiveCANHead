@@ -95,6 +95,16 @@ void CANTask(void *arg)
     const DiveCANDevice_t *const deviceSpec = &(task_params->deviceSpec);
     Configuration_t *configuration = &(task_params->configuration);
 
+#ifdef UDS_ENABLED
+    /* Initialize TX queue and log push at startup (before any messages arrive).
+     * This prevents NULL queueHandle errors if PrinterTask sends logs early.
+     * The main isotpContext is still initialized on first MENU message since
+     * it needs the target address from the incoming message. */
+    ISOTP_TxQueue_Init();
+    UDS_LogPush_Init(&logPushIsoTpContext);
+    logPushInitialized = true;
+#endif
+
     while (true)
     {
         DiveCANMessage_t message = {0};
@@ -130,47 +140,35 @@ void CANTask(void *arg)
             case MENU_ID:
                 message.type = "MENU";
 #ifdef UDS_ENABLED
-                // Initialize ISO-TP on first MENU message
+                /* Initialize ISO-TP context on first MENU message (needs target from message) */
                 if (!isotpInitialized)
                 {
                     uint8_t targetType = message.id & 0xFF;
                     ISOTP_Init(&isotpContext, deviceSpec->type, targetType, MENU_ID);
-
                     UDS_Init(&udsContext, configuration, &isotpContext);
-
-                    // Initialize centralized TX queue for serialized message transmission
-                    ISOTP_TxQueue_Init();
-
                     isotpInitialized = true;
                 }
 
-                // Initialize log push ISO-TP context (separate from request/response)
-                if (!logPushInitialized)
-                {
-                    UDS_LogPush_Init(&logPushIsoTpContext);
-                    logPushInitialized = true;
-                }
-
-                // Check if this is a Flow Control frame for our TX queue
-                // FC frames have PCI type 0x30 (upper nibble)
+                /* Check if this is a Flow Control frame for our TX queue.
+                 * FC frames have PCI type 0x30 (upper nibble). */
                 if ((message.data[0] & ISOTP_PCI_MASK) == ISOTP_PCI_FC)
                 {
                     if (ISOTP_TxQueue_ProcessFC(&message))
                     {
-                        break; // FC consumed by TX queue
+                        break; /* FC consumed by TX queue */
                     }
                 }
 
-                // Try ISO-TP RX processing - returns true if consumed
+                /* Try ISO-TP RX processing - returns true if consumed */
                 if (ISOTP_ProcessRxFrame(&isotpContext, &message))
                 {
-                    break; // ISO-TP handled it
+                    break; /* ISO-TP handled it */
                 }
 
-                // Also check log push ISO-TP for Flow Control frames from bluetooth client
+                /* Also check log push ISO-TP for Flow Control frames from bluetooth client */
                 if (logPushInitialized && ISOTP_ProcessRxFrame(&logPushIsoTpContext, &message))
                 {
-                    break; // Log push ISO-TP handled it (likely FC)
+                    break; /* Log push ISO-TP handled it (likely FC) */
                 }
 #endif
                 break;

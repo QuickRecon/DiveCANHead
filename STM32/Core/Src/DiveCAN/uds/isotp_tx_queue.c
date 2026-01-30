@@ -214,7 +214,7 @@ static void SendConsecutiveFrames(void)
     while (txState.txBytesSent < tx->length)
     {
         /* STmin delay handling */
-        uint32_t stminMs;
+        uint32_t stminMs = 0;
         if (txState.txSTmin <= ISOTP_STMIN_MS_MAX)
         {
             stminMs = txState.txSTmin;
@@ -238,7 +238,7 @@ static void SendConsecutiveFrames(void)
         cf.data[ISOTP_FC_STATUS_IDX] = ISOTP_PCI_CF | ((txState.txSequenceNumber + 1U) & ISOTP_SEQ_MASK);
 
         uint16_t remaining = tx->length - txState.txBytesSent;
-        uint8_t bytesToCopy;
+        uint8_t bytesToCopy = 0;
         if (remaining > ISOTP_CF_DATA_BYTES)
         {
             bytesToCopy = ISOTP_CF_DATA_BYTES;
@@ -257,7 +257,7 @@ static void SendConsecutiveFrames(void)
         txState.txSequenceNumber = (txState.txSequenceNumber + 1U) & ISOTP_SEQ_MASK;
 
         /* Block size handling */
-        txState.txBlockCounter++;
+        ++txState.txBlockCounter;
         if ((txState.txBlockSize != 0) &&
             (txState.txBlockCounter >= txState.txBlockSize))
         {
@@ -286,10 +286,9 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
     }
 
     /* Verify FC is for our current TX
-     * Accept FC addressed to us, or broadcast FC (Shearwater quirk: source=0xFF) */
+     * Accept FC addressed to us, or broadcast FC (Shearwater quirk) */
     uint8_t fcTarget = (fc->id >> BYTE_WIDTH) & ISOTP_PCI_LEN_MASK;
-    uint8_t fcSource = fc->id & BYTE_MASK;
-    if ((fcTarget != txState.current.source) && (fcSource != ISOTP_BROADCAST_ADDR))
+    if ((fcTarget != txState.current.source) && (fcTarget != ISOTP_BROADCAST_ADDR))
     {
         /* Expected: FC addressed to another node on the bus */
         return false;
@@ -330,14 +329,12 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
 void ISOTP_TxQueue_Poll(Timestamp_t currentTime)
 {
     /* Check for timeout */
-    if ((txState.txActive) && (txState.txState == ISOTP_WAIT_FC))
+    if ((txState.txActive) &&
+        (txState.txState == ISOTP_WAIT_FC) &&
+        ((currentTime - txState.txLastFrameTime) > ISOTP_TIMEOUT_N_BS))
     {
-        if ((currentTime - txState.txLastFrameTime) > ISOTP_TIMEOUT_N_BS)
-        {
-            NON_FATAL_ERROR_DETAIL(ISOTP_TIMEOUT_ERR, ISOTP_WAIT_FC);
-            txState.txActive = false;
-            txState.txState = ISOTP_IDLE;
-        }
+        txState.txActive = false;
+        txState.txState = ISOTP_IDLE;
     }
 
     /* If not busy, start next TX */

@@ -36,7 +36,7 @@ void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source, DiveCANType_t target,
     }
 
     /* Zero out entire structure */
-    memset(ctx, 0, sizeof(ISOTPContext_t));
+    (void)memset(ctx, 0, sizeof(ISOTPContext_t));
 
     /* Set addressing */
     ctx->source = source;
@@ -167,7 +167,7 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
     }
 
     /* Copy data to RX buffer */
-    memcpy(ctx->rxBuffer, &message->data[1], length);
+    (void)memcpy(ctx->rxBuffer, &message->data[1], length);
 
     /* Set received length and completion flag for caller to check */
     ctx->rxDataLength = length;
@@ -185,8 +185,8 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
 static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
     /* Extract 12-bit length from first two bytes */
-    uint16_t dataLength = ((uint16_t)(message->data[0] & ISOTP_PCI_LEN_MASK) << 8) |
-                          message->data[1];
+    uint16_t dataLength = (uint16_t)((uint16_t)((uint16_t)(message->data[0] & ISOTP_PCI_LEN_MASK) << BYTE_WIDTH) |
+                          message->data[1]);
 
     /* Validate length */
     if ((dataLength == 0) || (dataLength > ISOTP_MAX_PAYLOAD))
@@ -204,7 +204,7 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
     ctx->rxSequenceNumber = ISOTP_FF_SEQ_START; /* Expecting CF with seq=1 (per ISO 15765-2) */
 
     /* Copy first 6 data bytes (bytes 2-7 of CAN frame) */
-    memcpy(ctx->rxBuffer, &message->data[ISOTP_FF_DATA_START], ISOTP_FF_DATA_BYTES);
+    (void)memcpy(ctx->rxBuffer, &message->data[ISOTP_FF_DATA_START], ISOTP_FF_DATA_BYTES);
     ctx->rxBytesReceived = ISOTP_FF_DATA_BYTES;
 
     /* Transition to RECEIVING state */
@@ -245,7 +245,7 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
 
     /* Calculate bytes to copy (7 bytes or remaining) */
     uint16_t bytesRemaining = ctx->rxDataLength - ctx->rxBytesReceived;
-    uint8_t bytesToCopy;
+    uint8_t bytesToCopy = 0;
     if (bytesRemaining > ISOTP_CF_DATA_BYTES)
     {
         bytesToCopy = ISOTP_CF_DATA_BYTES;
@@ -256,7 +256,7 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
     }
 
     /* Copy data */
-    memcpy(&ctx->rxBuffer[ctx->rxBytesReceived], &message->data[ISOTP_CF_DATA_START], bytesToCopy);
+    (void)memcpy(&ctx->rxBuffer[ctx->rxBytesReceived], &message->data[ISOTP_CF_DATA_START], bytesToCopy);
     ctx->rxBytesReceived += bytesToCopy;
 
     /* Update timestamp */
@@ -346,13 +346,11 @@ void ISOTP_Poll(ISOTPContext_t *ctx, Timestamp_t currentTime)
     }
 
     /* Only RX timeout checking - TX is handled by ISOTP_TxQueue_Poll */
-    if (ctx->state == ISOTP_RECEIVING)
+    if ((ctx->state == ISOTP_RECEIVING) &&
+        ((currentTime - ctx->rxLastFrameTime) > ISOTP_TIMEOUT_N_CR))
     {
-        /* Check N_Cr timeout (waiting for CF) */
-        if ((currentTime - ctx->rxLastFrameTime) > ISOTP_TIMEOUT_N_CR)
-        {
-            NON_FATAL_ERROR_DETAIL(ISOTP_TIMEOUT_ERR, ctx->state);
-            ISOTP_Reset(ctx);
-        }
+        /* N_Cr timeout (waiting for CF) */
+        NON_FATAL_ERROR_DETAIL(ISOTP_TIMEOUT_ERR, ctx->state);
+        ISOTP_Reset(ctx);
     }
 }
