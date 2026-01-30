@@ -103,6 +103,7 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
         StaticQueue_t *controlBlock = getLogPushQueueControlBlock();
         const osMessageQueueAttr_t queueAttr = {
             .name = "UDSLogQueue",
+            .attr_bits = 0,
             .cb_mem = controlBlock,
             .cb_size = sizeof(StaticQueue_t),
             .mq_mem = getLogPushQueueStorage(),

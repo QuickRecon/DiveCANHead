@@ -22,7 +22,7 @@ extern uint32_t HAL_GetTick(void);
 static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
 static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
 static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
-static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blockSize, uint8_t stmin);
+static void SendFlowControl(const ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blockSize, uint8_t stmin);
 
 /**
  * @brief Initialize ISO-TP context
@@ -305,7 +305,7 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
 /**
  * @brief Send Flow Control frame
  */
-static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blockSize, uint8_t stmin)
+static void SendFlowControl(const ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blockSize, uint8_t stmin)
 {
     DiveCANMessage_t fc = {0};
 

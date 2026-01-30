@@ -376,7 +376,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
         uint16_t requestOffset = UDS_DID_HI_IDX; /* Start after pad + SID */
         while (processingOk && ((requestOffset + UDS_DID_SIZE) <= requestLength))
         {
-            uint16_t did = (uint16_t)(((uint16_t)requestData[requestOffset] << BYTE_WIDTH) | requestData[requestOffset + 1U]);
+            uint16_t did = (uint16_t)((uint16_t)((uint16_t)requestData[requestOffset] << BYTE_WIDTH) | (uint16_t)requestData[requestOffset + 1U]);
             requestOffset += UDS_DID_SIZE;
 
             uint16_t bytesWritten = 0U;
@@ -596,7 +596,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     else
     {
         /* Extract DID (big-endian) */
-        uint16_t did = (uint16_t)(((uint16_t)requestData[UDS_DID_HI_IDX] << BYTE_WIDTH) | requestData[UDS_DID_LO_IDX]);
+        uint16_t did = (uint16_t)((uint16_t)((uint16_t)requestData[UDS_DID_HI_IDX] << BYTE_WIDTH) | (uint16_t)requestData[UDS_DID_LO_IDX]);
 
         /* Dispatch based on DID - delegate to helper functions */
         if (did == UDS_DID_SETPOINT_WRITE)

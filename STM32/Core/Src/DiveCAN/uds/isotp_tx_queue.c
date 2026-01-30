@@ -85,6 +85,7 @@ static ISOTPTxRequest_t *getTxRequestBuffer(void)
 /* Forward declarations */
 static void StartNextTx(void);
 static void SendConsecutiveFrames(void);
+static void handleFlowControlCTS(ISOTPTxState_t *state, const DiveCANMessage_t *fc);
 
 void ISOTP_TxQueue_Init(void)
 {
@@ -102,6 +103,7 @@ void ISOTP_TxQueue_Init(void)
     static uint8_t queueStorage[ISOTP_TX_QUEUE_SIZE * sizeof(ISOTPTxRequest_t)];
     const osMessageQueueAttr_t queueAttr = {
         .name = "ISOTPTxQueue",
+        .attr_bits = 0,
         .cb_mem = &controlBlock,
         .cb_size = sizeof(StaticQueue_t),
         .mq_mem = queueStorage,
@@ -168,67 +170,69 @@ static void StartNextTx(void)
     if (state->txActive)
     {
         /* Expected: Already transmitting, caller will retry on next poll */
-        return;
     }
-
-    if (queueHandle == NULL)
+    else if (queueHandle == NULL)
     {
         /* Expected: Init not yet called or failed - caller will retry on next poll */
-        return;
     }
-
-    /* Non-blocking get from queue using static buffer to avoid large stack allocation */
-    ISOTPTxRequest_t *reqBuffer = getTxRequestBuffer();
-    (void)memset(reqBuffer, 0, sizeof(ISOTPTxRequest_t));
-    if (osMessageQueueGet(queueHandle, reqBuffer, NULL, 0) != osOK)
+    else
     {
-        /* Expected: Queue empty - nothing to transmit */
-        return;
+        /* Non-blocking get from queue using static buffer to avoid large stack allocation */
+        ISOTPTxRequest_t *reqBuffer = getTxRequestBuffer();
+        (void)memset(reqBuffer, 0, sizeof(ISOTPTxRequest_t));
+
+        if (osMessageQueueGet(queueHandle, reqBuffer, NULL, 0) != osOK)
+        {
+            /* Expected: Queue empty - nothing to transmit */
+        }
+        else
+        {
+            (void)memcpy(&state->current, reqBuffer, sizeof(ISOTPTxRequest_t));
+            state->txActive = true;
+            state->txBytesSent = 0;
+            state->txSequenceNumber = 0;
+
+            const ISOTPTxRequest_t *tx = &state->current;
+
+            /* Single frame (<=6 bytes with DiveCAN padding) - send immediately */
+            if (tx->length <= ISOTP_SF_MAX_WITH_PAD)
+            {
+                DiveCANMessage_t sf = {0};
+                sf.id = tx->messageId | ((uint32_t)tx->target << BYTE_WIDTH) | (uint32_t)tx->source;
+                sf.length = CAN_FRAME_LENGTH;
+                sf.data[DIVECAN_SF_PCI_IDX] = (uint8_t)tx->length + DIVECAN_PAD_BYTE_SIZE; /* SF PCI */
+                sf.data[DIVECAN_SF_PAD_IDX] = 0;
+                (void)memcpy(&sf.data[DIVECAN_SF_DATA_START], tx->data, tx->length);
+
+                sendCANMessageBlocking(sf);
+
+                /* Single frame complete */
+                state->txActive = false;
+                state->txState = ISOTP_IDLE;
+            }
+            else
+            {
+                /* Multi-frame: Send First Frame
+                 * DiveCAN uses non-standard ISO-TP format with padding byte at offset 2.
+                 * Frame format: [PCI_hi][len_lo][0x00 pad][5 data bytes]
+                 * Length field includes the padding byte (tx->length + 1). */
+                uint16_t totalLength = tx->length + DIVECAN_PAD_BYTE_SIZE; /* +1 for padding byte */
+                DiveCANMessage_t ff = {0};
+                ff.id = tx->messageId | ((uint32_t)tx->target << BYTE_WIDTH) | (uint32_t)tx->source;
+                ff.length = CAN_FRAME_LENGTH;
+                ff.data[DIVECAN_FF_PCI_HI_IDX] = ISOTP_PCI_FF | ((totalLength >> BYTE_WIDTH) & ISOTP_PCI_LEN_MASK);
+                ff.data[DIVECAN_FF_LEN_LO_IDX] = (uint8_t)(totalLength & BYTE_MASK);
+                ff.data[DIVECAN_FF_PAD_IDX] = 0x00U; /* DiveCAN padding byte */
+                (void)memcpy(&ff.data[DIVECAN_FF_DATA_START], tx->data, ISOTP_FF_DATA_WITH_PAD);
+
+                state->txBytesSent = ISOTP_FF_DATA_WITH_PAD;
+                state->txLastFrameTime = HAL_GetTick();
+                state->txState = ISOTP_WAIT_FC;
+
+                sendCANMessageBlocking(ff);
+            }
+        }
     }
-
-    (void)memcpy(&state->current, reqBuffer, sizeof(ISOTPTxRequest_t));
-    state->txActive = true;
-    state->txBytesSent = 0;
-    state->txSequenceNumber = 0;
-
-    ISOTPTxRequest_t *tx = &state->current;
-
-    /* Single frame (<=6 bytes with DiveCAN padding) - send immediately */
-    if (tx->length <= ISOTP_SF_MAX_WITH_PAD)
-    {
-        DiveCANMessage_t sf = {0};
-        sf.id = tx->messageId | ((uint32_t)tx->target << BYTE_WIDTH) | (uint32_t)tx->source;
-        sf.length = CAN_FRAME_LENGTH;
-        sf.data[DIVECAN_SF_PCI_IDX] = (uint8_t)tx->length + DIVECAN_PAD_BYTE_SIZE; /* SF PCI */
-        sf.data[DIVECAN_SF_PAD_IDX] = 0;
-        (void)memcpy(&sf.data[DIVECAN_SF_DATA_START], tx->data, tx->length);
-
-        sendCANMessageBlocking(sf);
-
-        /* Single frame complete */
-        state->txActive = false;
-        state->txState = ISOTP_IDLE;
-        return;
-    }
-
-    /* Multi-frame: Send First Frame
-     * DiveCAN uses non-standard ISO-TP format with padding byte at offset 2.
-     * Frame format: [PCI_hi][len_lo][0x00 pad][5 data bytes]
-     * Length field includes the padding byte (tx->length + 1). */
-    uint16_t totalLength = tx->length + DIVECAN_PAD_BYTE_SIZE; /* +1 for padding byte */
-    DiveCANMessage_t ff = {0};
-    ff.id = tx->messageId | ((uint32_t)tx->target << BYTE_WIDTH) | (uint32_t)tx->source;
-    ff.length = CAN_FRAME_LENGTH;
-    ff.data[DIVECAN_FF_PCI_HI_IDX] = ISOTP_PCI_FF | ((totalLength >> BYTE_WIDTH) & ISOTP_PCI_LEN_MASK);
-    ff.data[DIVECAN_FF_LEN_LO_IDX] = (uint8_t)(totalLength & BYTE_MASK);
-    ff.data[DIVECAN_FF_PAD_IDX] = 0x00U; /* DiveCAN padding byte */
-    (void)memcpy(&ff.data[DIVECAN_FF_DATA_START], tx->data, ISOTP_FF_DATA_WITH_PAD);
-
-    state->txBytesSent = ISOTP_FF_DATA_WITH_PAD;
-    state->txLastFrameTime = HAL_GetTick();
-    state->txState = ISOTP_WAIT_FC;
-
-    sendCANMessageBlocking(ff);
 }
 
 /**
@@ -237,9 +241,10 @@ static void StartNextTx(void)
 static void SendConsecutiveFrames(void)
 {
     ISOTPTxState_t *state = getTxState();
-    ISOTPTxRequest_t *tx = &state->current;
+    const ISOTPTxRequest_t *tx = &state->current;
+    bool waitingForFC = false;
 
-    while (state->txBytesSent < tx->length)
+    while ((state->txBytesSent < tx->length) && (!waitingForFC))
     {
         /* STmin delay handling */
         uint32_t stminMs = 0;
@@ -290,13 +295,37 @@ static void SendConsecutiveFrames(void)
             (state->txBlockCounter >= state->txBlockSize))
         {
             state->txState = ISOTP_WAIT_FC;
-            return;
+            waitingForFC = true;
         }
     }
 
-    /* TX complete */
-    state->txActive = false;
-    state->txState = ISOTP_IDLE;
+    /* TX complete (unless waiting for next FC) */
+    if (!waitingForFC)
+    {
+        state->txActive = false;
+        state->txState = ISOTP_IDLE;
+    }
+}
+
+/**
+ * @brief Handle Flow Control CTS (Continue to Send) status
+ *
+ * @param state TX state structure
+ * @param fc Flow control message
+ */
+static void handleFlowControlCTS(ISOTPTxState_t *state, const DiveCANMessage_t *fc)
+{
+    state->txBlockSize = fc->data[ISOTP_FC_BS_IDX];
+    state->txSTmin = fc->data[ISOTP_FC_STMIN_IDX];
+    state->txBlockCounter = 0;
+    state->txState = ISOTP_TRANSMITTING;
+    SendConsecutiveFrames();
+
+    /* If TX completed, immediately start next queued message */
+    if (!state->txActive)
+    {
+        StartNextTx();
+    }
 }
 
 bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
@@ -328,16 +357,7 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
             switch (flowStatus)
             {
             case ISOTP_FC_CTS:
-                state->txBlockSize = fc->data[ISOTP_FC_BS_IDX];
-                state->txSTmin = fc->data[ISOTP_FC_STMIN_IDX];
-                state->txBlockCounter = 0;
-                state->txState = ISOTP_TRANSMITTING;
-                SendConsecutiveFrames();
-                /* If TX completed, immediately start next queued message */
-                if (!state->txActive)
-                {
-                    StartNextTx();
-                }
+                handleFlowControlCTS(state, fc);
                 break;
 
             case ISOTP_FC_WAIT: /* Not implemented - abort */
@@ -381,7 +401,7 @@ void ISOTP_TxQueue_Poll(Timestamp_t currentTime)
 
 bool ISOTP_TxQueue_IsBusy(void)
 {
-    ISOTPTxState_t *state = getTxState();
+    const ISOTPTxState_t *state = getTxState();
     return state->txActive;
 }
 

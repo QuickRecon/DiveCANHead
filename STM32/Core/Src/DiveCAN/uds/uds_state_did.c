@@ -194,7 +194,7 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
 
     case UDS_DID_POWER_SOURCES:
     {
-        uint8_t sources = (uint8_t)((uint8_t)GetVCCSource() | ((uint8_t)GetVBusSource() << VBUS_SOURCE_BIT_OFFSET));
+        uint8_t sources = (uint8_t)((uint8_t)GetVCCSource() | (uint8_t)((uint8_t)GetVBusSource() << VBUS_SOURCE_BIT_OFFSET));
         buf[0] = sources;
         *len = DATA_SIZE_UINT8;
         break;
@@ -214,26 +214,21 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
  * ============================================================================ */
 
 /**
- * @brief Handle a cell DID read request
+ * @brief Handle universal cell DIDs (applicable to all cell types)
  *
  * @param cellNum Cell number (0-2)
- * @param offset DID offset within cell range (0x00-0x0F)
+ * @param offset DID offset within cell range
  * @param cellType Configured cell type
  * @param buf Output buffer
  * @param len Output: bytes written
- * @return true if handled, false if invalid offset or type mismatch
+ * @return true if handled, false if not a universal DID
  */
-static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
-                          uint8_t *buf, uint16_t *len)
+static bool handleUniversalCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
+                                   uint8_t *buf, uint16_t *len)
 {
     bool result = false;
 
-    if ((cellNum >= CELL_COUNT) || (offset > CELL_DID_MAX_OFFSET))
-    {
-        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
-    }
-    /* Universal cell DIDs (all types) */
-    else if (offset == CELL_DID_PPO2)
+    if (offset == CELL_DID_PPO2)
     {
         writeFloat32(buf, stateVectorAccumulator.cellPpo2[cellNum]);
         *len = DATA_SIZE_FLOAT32;
@@ -264,60 +259,139 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
         *len = DATA_SIZE_UINT8;
         result = true;
     }
-    /* ANALOG-specific DIDs */
-    else if ((cellType == CELL_ANALOG) && (offset == CELL_DID_RAW_ADC))
+    else
+    {
+        /* Not a universal DID */
+    }
+
+    return result;
+}
+
+/**
+ * @brief Handle analog cell-specific DIDs
+ *
+ * @param cellNum Cell number (0-2)
+ * @param offset DID offset within cell range
+ * @param buf Output buffer
+ * @param len Output: bytes written
+ * @return true if handled, false if not an analog-specific DID
+ */
+static bool handleAnalogCellDID(uint8_t cellNum, uint8_t offset, uint8_t *buf, uint16_t *len)
+{
+    bool result = false;
+
+    if (offset == CELL_DID_RAW_ADC)
     {
         writeInt16(buf, (int16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_RAW_ADC]);
         *len = DATA_SIZE_UINT16;
         result = true;
     }
-    else if ((cellType == CELL_ANALOG) && (offset == CELL_DID_MILLIVOLTS))
+    else if (offset == CELL_DID_MILLIVOLTS)
     {
         writeUint16(buf, (uint16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_MILLIVOLTS]);
         *len = DATA_SIZE_UINT16;
         result = true;
     }
-    /* DIVEO2-specific DIDs */
-    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_TEMPERATURE))
+    else
+    {
+        /* Not an analog-specific DID */
+    }
+
+    return result;
+}
+
+/**
+ * @brief Handle DiveO2 cell-specific DIDs
+ *
+ * @param cellNum Cell number (0-2)
+ * @param offset DID offset within cell range
+ * @param buf Output buffer
+ * @param len Output: bytes written
+ * @return true if handled, false if not a DiveO2-specific DID
+ */
+static bool handleDiveO2CellDID(uint8_t cellNum, uint8_t offset, uint8_t *buf, uint16_t *len)
+{
+    bool result = false;
+
+    if (offset == CELL_DID_TEMPERATURE)
     {
         writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_TEMPERATURE]);
         *len = DATA_SIZE_FLOAT32;
         result = true;
     }
-    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_ERROR))
+    else if (offset == CELL_DID_ERROR)
     {
         writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_ERROR]);
         *len = DATA_SIZE_FLOAT32;
         result = true;
     }
-    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_PHASE))
+    else if (offset == CELL_DID_PHASE)
     {
         writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PHASE]);
         *len = DATA_SIZE_FLOAT32;
         result = true;
     }
-    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_INTENSITY))
+    else if (offset == CELL_DID_INTENSITY)
     {
         writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_INTENSITY]);
         *len = DATA_SIZE_FLOAT32;
         result = true;
     }
-    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_AMBIENT_LIGHT))
+    else if (offset == CELL_DID_AMBIENT_LIGHT)
     {
         writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_AMBIENT_LIGHT]);
         *len = DATA_SIZE_FLOAT32;
         result = true;
     }
-    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_PRESSURE))
+    else if (offset == CELL_DID_PRESSURE)
     {
         writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PRESSURE]);
         *len = DATA_SIZE_FLOAT32;
         result = true;
     }
-    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_HUMIDITY))
+    else if (offset == CELL_DID_HUMIDITY)
     {
         writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_HUMIDITY]);
         *len = DATA_SIZE_FLOAT32;
+        result = true;
+    }
+    else
+    {
+        /* Not a DiveO2-specific DID */
+    }
+
+    return result;
+}
+
+/**
+ * @brief Handle a cell DID read request
+ *
+ * @param cellNum Cell number (0-2)
+ * @param offset DID offset within cell range (0x00-0x0F)
+ * @param cellType Configured cell type
+ * @param buf Output buffer
+ * @param len Output: bytes written
+ * @return true if handled, false if invalid offset or type mismatch
+ */
+static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
+                          uint8_t *buf, uint16_t *len)
+{
+    bool result = false;
+
+    if ((cellNum >= CELL_COUNT) || (offset > CELL_DID_MAX_OFFSET))
+    {
+        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
+    }
+    else if (handleUniversalCellDID(cellNum, offset, cellType, buf, len))
+    {
+        result = true;
+    }
+    else if ((cellType == CELL_ANALOG) && handleAnalogCellDID(cellNum, offset, buf, len))
+    {
+        result = true;
+    }
+    else if ((cellType == CELL_DIVEO2) && handleDiveO2CellDID(cellNum, offset, buf, len))
+    {
         result = true;
     }
     else
@@ -397,6 +471,77 @@ bool UDS_StateDID_HandleRead(uint16_t did, const Configuration_t *config,
     return result;
 }
 
+/**
+ * @brief Get the size of a cell DID's data
+ *
+ * @param offset DID offset within cell range
+ * @param cellType Configured cell type
+ * @return Size in bytes, or 0 if invalid offset or type mismatch
+ */
+static uint16_t getCellDIDSize(uint8_t offset, CellType_t cellType)
+{
+    uint16_t result = 0U;
+
+    /* Universal offsets */
+    if (offset == CELL_DID_PPO2)
+    {
+        result = DATA_SIZE_FLOAT32;
+    }
+    else if ((offset == CELL_DID_TYPE) || (offset == CELL_DID_INCLUDED) || (offset == CELL_DID_STATUS))
+    {
+        result = DATA_SIZE_UINT8;
+    }
+    /* Analog-specific offsets */
+    else if ((cellType == CELL_ANALOG) &&
+             ((offset == CELL_DID_RAW_ADC) || (offset == CELL_DID_MILLIVOLTS)))
+    {
+        result = DATA_SIZE_UINT16;
+    }
+    /* DiveO2-specific offsets */
+    else if ((cellType == CELL_DIVEO2) &&
+             ((offset >= CELL_DID_TEMPERATURE) && (offset <= CELL_DID_HUMIDITY)))
+    {
+        result = DATA_SIZE_FLOAT32;
+    }
+    else
+    {
+        /* Invalid offset or type mismatch - result remains 0 */
+    }
+
+    return result;
+}
+
+/**
+ * @brief Get the size of a Cell DID by parsing the DID value
+ *
+ * @param did Data identifier
+ * @param config Pointer to current configuration
+ * @return Size in bytes, or 0 if invalid
+ */
+static uint16_t getStateCellDIDSize(uint16_t did, const Configuration_t *config)
+{
+    uint16_t result = 0U;
+    uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
+    uint8_t offset = (uint8_t)((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE);
+
+    if (cellNum >= CELL_COUNT)
+    {
+        NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, cellNum);
+    }
+    else
+    {
+        CellType_t cellType = getCellTypeFromConfig(config, cellNum);
+        result = getCellDIDSize(offset, cellType);
+
+        if (result == 0U)
+        {
+            NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, did);
+        }
+    }
+
+    return result;
+}
+
 uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
 {
     uint16_t result = 0U;
@@ -430,42 +575,7 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
         /* Check Cell DIDs */
         if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
         {
-            uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
-            uint8_t offset = (uint8_t)((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE);
-
-            if (cellNum >= CELL_COUNT)
-            {
-                NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, cellNum);
-            }
-            else
-            {
-                CellType_t cellType = getCellTypeFromConfig(config, cellNum);
-
-                /* Universal offsets */
-                if (offset == CELL_DID_PPO2)
-                {
-                    result = DATA_SIZE_FLOAT32;
-                }
-                else if ((offset == CELL_DID_TYPE) || (offset == CELL_DID_INCLUDED) || (offset == CELL_DID_STATUS))
-                {
-                    result = DATA_SIZE_UINT8;
-                }
-                /* Type-specific offsets */
-                else if ((cellType == CELL_ANALOG) &&
-                         ((offset == CELL_DID_RAW_ADC) || (offset == CELL_DID_MILLIVOLTS)))
-                {
-                    result = DATA_SIZE_UINT16;
-                }
-                else if ((cellType == CELL_DIVEO2) &&
-                         ((offset >= CELL_DID_TEMPERATURE) && (offset <= CELL_DID_HUMIDITY)))
-                {
-                    result = DATA_SIZE_FLOAT32;
-                }
-                else
-                {
-                    NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, did);
-                }
-            }
+            result = getStateCellDIDSize(did, config);
         }
         /* else: Invalid DID - result remains 0 */
         break;
