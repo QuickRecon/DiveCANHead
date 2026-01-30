@@ -266,18 +266,12 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
         }
         break;
 
-    case ISOTP_FC_WAIT:
-        /* Not implemented - abort */
-        txState.txActive = false;
-        txState.txState = ISOTP_IDLE;
-        break;
-
-    case ISOTP_FC_OVFLW:
-        /* Receiver rejected - abort */
-        txState.txActive = false;
-        txState.txState = ISOTP_IDLE;
-        break;
-
+    case ISOTP_FC_WAIT:  /* Not implemented - abort */
+        NON_FATAL_ERROR_DETAIL(ISOTP_UNSUPPORTED_ERR, ISOTP_FC_WAIT);
+        __attribute__ ((fallthrough));
+    case ISOTP_FC_OVFLW: /* Receiver rejected - abort */
+        NON_FATAL_ERROR_DETAIL(ISOTP_RX_ABORT_ERR, flowStatus);
+        __attribute__ ((fallthrough));
     default:
         txState.txActive = false;
         txState.txState = ISOTP_IDLE;

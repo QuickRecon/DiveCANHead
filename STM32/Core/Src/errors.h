@@ -126,8 +126,14 @@ extern "C"
         /** @brief ISO-TP invalid state transition **/
         ISOTP_STATE_ERR = 34,
 
+        /** @brief ISO-TP unsupported operation */
+        ISOTP_UNSUPPORTED_ERR = 35,
+
+        /** @brief ISO-TP RX aborted by other end */
+        ISOTP_RX_ABORT_ERR = 36,
+
         /** @brief A log message wasn't going to fit in the buffer */
-        LOG_MSG_TRUNCATED_ERR = 35,
+        LOG_MSG_TRUNCATED_ERR = 37,
 
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
         MAX_ERR = LOG_MSG_TRUNCATED_ERR
