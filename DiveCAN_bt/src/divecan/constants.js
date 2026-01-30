@@ -3,7 +3,7 @@
  */
 
 // Device addresses
-export const TESTER_ADDRESS = 0xFF;
+export const BT_CLIENT_ADDRESS = 0xFF;
 export const CONTROLLER_ADDRESS = 0x80;  // Petrel dive computer
 export const SOLO_ADDRESS = 0x04;        // SOLO board
 export const HUD_ADDRESS = 0x02;         // HUD display

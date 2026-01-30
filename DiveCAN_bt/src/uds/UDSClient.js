@@ -143,7 +143,7 @@ export class UDSClient extends EventEmitter {
       response: ByteUtils.toHexString(data)
     });
 
-    // Check for unsolicited WDBI (push from ECU) - handle BEFORE checking pending
+    // Check for unsolicited WDBI (push from Head) - handle BEFORE checking pending
     if (sid === constants.SID_WRITE_DATA_BY_ID) {
       this._handleUnsolicitedWDBI(data);
       return;  // Don't process as response
@@ -213,7 +213,7 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
-   * Handle unsolicited WDBI messages (push from ECU)
+   * Handle unsolicited WDBI messages (push from Head)
    * @param {Uint8Array} data - Raw message [SID, DID_hi, DID_lo, payload...]
    * @private
    */
@@ -226,9 +226,6 @@ export class UDSClient extends EventEmitter {
     if (did === constants.DID_LOG_MESSAGE) {
       const message = new TextDecoder('utf-8').decode(payload);
       this.emit('logMessage', message);
-    } else if (did === constants.DID_EVENT_MESSAGE) {
-      const message = new TextDecoder('utf-8').decode(payload);
-      this.emit('eventMessage', message);
     } else {
       this.emit('unsolicitedMessage', { did, payload });
     }
@@ -435,30 +432,30 @@ export class UDSClient extends EventEmitter {
   // ============================================================
 
   /**
-   * Enable log streaming from ECU
+   * Enable log streaming from Head
+   * @deprecated Log streaming is now always enabled - this method is a no-op
    * @returns {Promise<void>}
    */
   async enableLogStreaming() {
-    await this.writeDataByIdentifier(constants.DID_LOG_STREAM_ENABLE, [0x01]);
-    this.logger.info('Log streaming enabled');
+    this.logger.info('Log streaming is always enabled');
   }
 
   /**
-   * Disable log streaming from ECU
+   * Disable log streaming from Head
+   * @deprecated Log streaming is now always enabled - this method is a no-op
    * @returns {Promise<void>}
    */
   async disableLogStreaming() {
-    await this.writeDataByIdentifier(constants.DID_LOG_STREAM_ENABLE, [0x00]);
-    this.logger.info('Log streaming disabled');
+    this.logger.info('Log streaming cannot be disabled');
   }
 
   /**
    * Check if log streaming is enabled
-   * @returns {Promise<boolean>}
+   * @deprecated Log streaming is now always enabled
+   * @returns {Promise<boolean>} Always returns true
    */
   async isLogStreamingEnabled() {
-    const data = await this.readDataByIdentifier(constants.DID_LOG_STREAM_ENABLE);
-    return data[0] !== 0;
+    return true;
   }
 
   // ============================================================

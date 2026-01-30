@@ -55,7 +55,7 @@ class EventEmitter {
 export class DirectTransport extends EventEmitter {
   /**
    * Create direct transport
-   * @param {number} sourceAddress - Source address (e.g., 0xFF for tester)
+   * @param {number} sourceAddress - Source address (e.g., 0xFF for bluetooth client)
    * @param {number} targetAddress - Target address (e.g., 0x80 for controller)
    * @param {Object} options - Options
    */

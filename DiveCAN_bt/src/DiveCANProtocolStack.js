@@ -8,7 +8,7 @@
 
 import { BLEConnection } from './ble/BLEConnection.js';
 import { SLIPCodec } from './slip/SLIPCodec.js';
-import { DiveCANFramer, TESTER_ADDRESS, CONTROLLER_ADDRESS } from './divecan/DiveCANFramer.js';
+import { DiveCANFramer, BT_CLIENT_ADDRESS, CONTROLLER_ADDRESS } from './divecan/DiveCANFramer.js';
 import { DirectTransport } from './transport/DirectTransport.js';
 import { UDSClient } from './uds/UDSClient.js';
 import { Logger } from './utils/Logger.js';
@@ -65,12 +65,12 @@ export class DiveCANProtocolStack extends EventEmitter {
     this._ble = new BLEConnection(options.ble);
     this._slip = new SLIPCodec();
     this._divecan = new DiveCANFramer(
-      options.sourceAddress || TESTER_ADDRESS,
+      options.sourceAddress || BT_CLIENT_ADDRESS,
       options.targetAddress || CONTROLLER_ADDRESS
     );
     // Use DirectTransport - Petrel handles ISO-TP
     this._transport = new DirectTransport(
-      options.sourceAddress || TESTER_ADDRESS,
+      options.sourceAddress || BT_CLIENT_ADDRESS,
       options.targetAddress || CONTROLLER_ADDRESS,
       options.transport
     );
@@ -382,7 +382,8 @@ export class DiveCANProtocolStack extends EventEmitter {
   // ============================================================
 
   /**
-   * Enable log streaming from ECU
+   * Enable log streaming from Head
+   * @deprecated Log streaming is now always enabled
    * @returns {Promise<void>}
    */
   async enableLogStreaming() {
@@ -390,7 +391,8 @@ export class DiveCANProtocolStack extends EventEmitter {
   }
 
   /**
-   * Disable log streaming from ECU
+   * Disable log streaming from Head
+   * @deprecated Log streaming is now always enabled
    * @returns {Promise<void>}
    */
   async disableLogStreaming() {

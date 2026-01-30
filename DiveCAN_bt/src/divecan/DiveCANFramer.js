@@ -14,10 +14,10 @@ import * as constants from './constants.js';
 export class DiveCANFramer {
   /**
    * Create a DiveCAN framer
-   * @param {number} sourceAddress - Source address (default: TESTER_ADDRESS)
+   * @param {number} sourceAddress - Source address (default: BT_CLIENT_ADDRESS)
    * @param {number} targetAddress - Target address (default: CONTROLLER_ADDRESS)
    */
-  constructor(sourceAddress = constants.TESTER_ADDRESS, targetAddress = constants.CONTROLLER_ADDRESS) {
+  constructor(sourceAddress = constants.BT_CLIENT_ADDRESS, targetAddress = constants.CONTROLLER_ADDRESS) {
     this.logger = new Logger('DiveCAN', 'debug');
     this._sourceAddress = sourceAddress;
     this._targetAddress = targetAddress;

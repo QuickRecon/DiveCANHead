@@ -33,9 +33,8 @@ export const DID_SETPOINT_WRITE = 0xF240;      // Write setpoint (0-255 = 0.00-2
 export const DID_CALIBRATION_TRIGGER = 0xF241; // Trigger calibration with fO2 (0-100%)
 
 // Log streaming DIDs (0xAxxx range)
-export const DID_LOG_STREAM_ENABLE = 0xA000;  // Read/Write: enable log push (1 byte)
-export const DID_LOG_MESSAGE = 0xA100;         // Push: log message (ECU -> Tester)
-export const DID_EVENT_MESSAGE = 0xA200;       // Push: event message (ECU -> Tester)
+// Note: Log streaming is always enabled, no enable/disable DID needed
+export const DID_LOG_MESSAGE = 0xA100;         // Push: log message (Head -> bluetooth client)
 
 // Cell type constants (from Configuration_t bits 8-13)
 export const CELL_TYPE_NONE = 0;

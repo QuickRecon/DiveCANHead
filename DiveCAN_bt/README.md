@@ -225,8 +225,8 @@ DiveCAN_bt/
 
 ### DiveCAN Layer
 - **Datagram format**: `[source, target, len_low, len_high, payload...]`
-- **Source**: `0xFF` (tester)
-- **Target**: `0x80` (controller/Petrel)
+- **Source**: `0xFF` (bluetooth client)
+- **Target**: `0x80` (controller/Petrel bluetooth side of bridge)
 
 ### ISO-TP Layer
 - **ISO 15765-2** with extended addressing

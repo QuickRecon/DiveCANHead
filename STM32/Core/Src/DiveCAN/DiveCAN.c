@@ -38,7 +38,7 @@ static ISOTPContext_t isotpContext = {0};
 static UDSContext_t udsContext = {0};
 static bool isotpInitialized = false;
 
-/* Second ISO-TP context for log push (ECU -> Tester) */
+/* Second ISO-TP context for log push (Head -> bluetooth client) */
 static ISOTPContext_t logPushIsoTpContext = {0};
 static bool logPushInitialized = false;
 
@@ -167,7 +167,7 @@ void CANTask(void *arg)
                     break; // ISO-TP handled it
                 }
 
-                // Also check log push ISO-TP for Flow Control frames from tester
+                // Also check log push ISO-TP for Flow Control frames from bluetooth client
                 if (logPushInitialized && ISOTP_ProcessRxFrame(&logPushIsoTpContext, &message))
                 {
                     break; // Log push ISO-TP handled it (likely FC)

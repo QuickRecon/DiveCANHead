@@ -51,10 +51,8 @@ typedef enum
     UDS_DID_FIRMWARE_VERSION = 0xF000,    // Read firmware commit hash
     UDS_DID_HARDWARE_VERSION = 0xF001,    // Read hardware version
 
-    // Log/Event push DIDs (0xAxxx range) - unsolicited ECU -> Tester messages
-    UDS_DID_LOG_STREAM_ENABLE = 0xA000,  // Read/Write: enable log/event push (1 byte)
-    UDS_DID_LOG_MESSAGE = 0xA100,        // Push: log message (ECU -> Tester)
-    UDS_DID_EVENT_MESSAGE = 0xA200       // Push: event message (ECU -> Tester)
+    // Log push DIDs (0xAxxx range) - unsolicited Head -> Handset messages
+    UDS_DID_LOG_MESSAGE = 0xA100         // Push: log message (Head -> Handset)
 } UDS_DID_t;
 
 // UDS maximum message sizes

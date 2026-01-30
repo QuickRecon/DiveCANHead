@@ -136,15 +136,13 @@ typedef struct
 
 ## Log Push Subsystem
 
-The ECU can push unsolicited messages to the tester using WDBI (0x2E) frames:
+The Head pushes unsolicited log messages to the bluetooth client using WDBI (0x2E) frames. Log streaming is always enabled.
 
 | DID | Purpose |
 |-----|---------|
-| 0xA000 | Enable/disable streaming (WDBI) |
-| 0xA100 | Log message push (ECU -> Tester) |
-| 0xA200 | Event message push (ECU -> Tester) |
+| 0xA100 | Log message push (Head -> bluetooth client) |
 
-These are handled specially - the tester receives them as unsolicited WDBI frames rather than responses.
+These are handled specially - the bluetooth client receives them as unsolicited WDBI frames rather than responses.
 
 ## Response Format
 

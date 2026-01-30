@@ -202,11 +202,11 @@ DID = 0x9150 + (optionIndex << 4) + settingIndex
 
 ## Log Streaming DIDs (0xAxxx)
 
+Log streaming is always enabled. Messages are pushed to the bluetooth client automatically.
+
 | DID | Size | Type | Description | R/W |
 |-----|------|------|-------------|-----|
-| 0xA000 | 1 | uint8 | Log stream enable (0=off, 1=on) | R/W |
-| 0xA100 | Variable | string | Log message (ECU -> Tester push) | - |
-| 0xA200 | Variable | string | Event message (ECU -> Tester push) | - |
+| 0xA100 | Variable | string | Log message (Head -> bluetooth client push) | - |
 
 ## BinaryStateVector_t Structure
 
