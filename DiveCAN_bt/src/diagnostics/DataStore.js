@@ -161,9 +161,23 @@ export class DataStore {
       throw new Error('UDSClient required for fetchAllDIDs');
     }
 
-    const state = await this.udsClient.fetchAllState(progressCallback);
+    // First fetch cell type DIDs to determine what type each cell is
+    const typeDIDs = [
+      STATE_DIDS.CELL0_TYPE.did,
+      STATE_DIDS.CELL1_TYPE.did,
+      STATE_DIDS.CELL2_TYPE.did
+    ];
+    const typeResult = await this.udsClient.readDIDsParsed(typeDIDs);
+    this.cellTypes = [
+      typeResult.CELL0_TYPE ?? 0,
+      typeResult.CELL1_TYPE ?? 0,
+      typeResult.CELL2_TYPE ?? 0
+    ];
 
-    // Update cached cell types
+    // Now fetch all DIDs with correct cell types
+    const state = await this.udsClient.fetchAllState(this.cellTypes, progressCallback);
+
+    // Update cached cell types from result (should match what we just set)
     if (state._cellTypes) {
       this.cellTypes = state._cellTypes;
     }
@@ -439,7 +453,17 @@ export class DataStore {
     if (!this.udsClient) {
       throw new Error('UDSClient required');
     }
-    this.cellTypes = await this.udsClient.getCellTypes();
+    const typeDIDs = [
+      STATE_DIDS.CELL0_TYPE.did,
+      STATE_DIDS.CELL1_TYPE.did,
+      STATE_DIDS.CELL2_TYPE.did
+    ];
+    const typeResult = await this.udsClient.readDIDsParsed(typeDIDs);
+    this.cellTypes = [
+      typeResult.CELL0_TYPE ?? 0,
+      typeResult.CELL1_TYPE ?? 0,
+      typeResult.CELL2_TYPE ?? 0
+    ];
     return this.cellTypes;
   }
 }
