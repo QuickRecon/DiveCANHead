@@ -89,7 +89,7 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
  */
 bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
-    if (ctx == NULL || message == NULL)
+    if ((ctx == NULL) || (message == NULL))
     {
         return false;
     }
@@ -111,7 +111,7 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
     bool isShearwaterFC = (pci == ISOTP_PCI_FC) && (msgSource == 0xFF);
 
     /* Check if message is from expected peer (or Shearwater FC broadcast) */
-    if (msgSource != ctx->target && !isShearwaterFC)
+    if ((msgSource != ctx->target) && (!isShearwaterFC))
     {
         ctx->target = msgSource; /* Update target to sender */
     }
@@ -147,7 +147,7 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
     uint8_t length = message->data[0] & ISOTP_PCI_LEN_MASK;
 
     /* Validate length (1-7 bytes for SF) */
-    if (length == 0 || length > 7)
+    if ((length == 0) || (length > 7))
     {
         return false; /* Invalid SF length */
     }
@@ -181,7 +181,7 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
                           message->data[1];
 
     /* Validate length */
-    if (dataLength == 0 || dataLength > ISOTP_MAX_PAYLOAD)
+    if ((dataLength == 0) || (dataLength > ISOTP_MAX_PAYLOAD))
     {
         /* Send FC Overflow */
         SendFlowControl(ctx, ISOTP_FC_OVFLW, 0, 0);
@@ -293,13 +293,13 @@ static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blo
  */
 bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 {
-    if (ctx == NULL || data == NULL)
+    if ((ctx == NULL) || (data == NULL))
     {
         return false;
     }
 
     /* Validate length */
-    if (length == 0 || length > ISOTP_MAX_PAYLOAD)
+    if ((length == 0) || (length > ISOTP_MAX_PAYLOAD))
     {
         return false; /* Invalid length */
     }

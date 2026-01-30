@@ -55,7 +55,7 @@ void UDS_Init(UDSContext_t *ctx, Configuration_t *config, ISOTPContext_t *isotpC
  */
 void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
-    if (ctx == NULL || requestData == NULL || requestLength == 0)
+    if ((ctx == NULL) || (requestData == NULL) || (requestLength == 0))
     {
         return;
     }
@@ -86,7 +86,7 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData, uint16_t 
  */
 void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID, uint8_t nrc)
 {
-    if (ctx == NULL || ctx->isotpContext == NULL)
+    if ((ctx == NULL) || (ctx->isotpContext == NULL))
     {
         return;
     }
@@ -106,7 +106,7 @@ void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID, uint8_t n
  */
 void UDS_SendResponse(UDSContext_t *ctx)
 {
-    if (ctx == NULL || ctx->isotpContext == NULL || ctx->responseLength == 0)
+    if ((ctx == NULL) || (ctx->isotpContext == NULL) || (ctx->responseLength == 0))
     {
         return;
     }
@@ -184,7 +184,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
     }
 
     /* Check settings DIDs */
-    if (did >= UDS_DID_SETTING_INFO_BASE && did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount()))
+    if ((did >= UDS_DID_SETTING_INFO_BASE) && (did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount())))
     {
         uint8_t index = did - UDS_DID_SETTING_INFO_BASE;
         const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
@@ -231,7 +231,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         }
         return true;
     }
-    else if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
+    else if ((did >= UDS_DID_SETTING_VALUE_BASE) && (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())))
     {
         uint8_t index = did - UDS_DID_SETTING_VALUE_BASE;
         const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
@@ -256,7 +256,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         *bytesWritten = dataOffset + SETTING_VALUE_RESP_LEN;
         return true;
     }
-    else if (did >= UDS_DID_SETTING_LABEL_BASE && did < UDS_DID_SETTING_LABEL_END)
+    else if ((did >= UDS_DID_SETTING_LABEL_BASE) && (did < UDS_DID_SETTING_LABEL_END))
     {
         uint16_t offset = did - UDS_DID_SETTING_LABEL_BASE;
         uint8_t settingIndex = (uint8_t)(offset & ISOTP_SEQ_MASK);
@@ -435,13 +435,13 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     default:
         /* Check if DID is in setting save range (0x9350 + index)
          * This is the primary save mechanism - handset sends value with this DID to update and persist */
-        if (did >= UDS_DID_SETTING_SAVE_BASE && did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))
+        if ((did >= UDS_DID_SETTING_SAVE_BASE) && (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount())))
         {
             uint8_t index = did - UDS_DID_SETTING_SAVE_BASE;
             const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
 
             /* Check if setting exists and is editable */
-            if (setting == NULL || !setting->editable)
+            if ((setting == NULL) || (!setting->editable))
             {
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 return;
@@ -483,7 +483,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         }
 
         /* Check if DID is in settings value range (0x9130 + index) - update without save */
-        if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
+        if ((did >= UDS_DID_SETTING_VALUE_BASE) && (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())))
         {
             /* Write setting value: expect 8-byte big-endian u64 */
             if (requestLength != SETTING_VALUE_WRITE_LEN)

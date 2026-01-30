@@ -88,7 +88,7 @@ void ISOTP_TxQueue_Init(void)
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
                            uint32_t messageId, const uint8_t *data, uint16_t length)
 {
-    if (data == NULL || length == 0 || length > ISOTP_TX_BUFFER_SIZE)
+    if ((data == NULL) || (length == 0) || (length > ISOTP_TX_BUFFER_SIZE))
     {
         return false;
     }
@@ -216,8 +216,8 @@ static void SendConsecutiveFrames(void)
 
         /* Block size handling */
         txState.txBlockCounter++;
-        if (txState.txBlockSize != 0 &&
-            txState.txBlockCounter >= txState.txBlockSize)
+        if ((txState.txBlockSize != 0) &&
+            (txState.txBlockCounter >= txState.txBlockSize))
         {
             txState.txState = ISOTP_WAIT_FC;
             return;
@@ -236,7 +236,7 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
         return false;
     }
 
-    if (!txState.txActive || txState.txState != ISOTP_WAIT_FC)
+    if ((!txState.txActive) || (txState.txState != ISOTP_WAIT_FC))
     {
         return false;
     }
@@ -244,7 +244,7 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
     /* Verify FC is for our current TX
      * Accept FC addressed to us, or broadcast FC (Shearwater quirk) */
     uint8_t fcTarget = (fc->id >> 8) & 0x0FU;
-    if (fcTarget != txState.current.source && fcTarget != 0xFFU)
+    if ((fcTarget != txState.current.source) && (fcTarget != 0xFFU))
     {
         return false;
     }
@@ -284,7 +284,7 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
 void ISOTP_TxQueue_Poll(Timestamp_t currentTime)
 {
     /* Check for timeout */
-    if (txState.txActive && txState.txState == ISOTP_WAIT_FC)
+    if ((txState.txActive) && (txState.txState == ISOTP_WAIT_FC))
     {
         if ((currentTime - txState.txLastFrameTime) > ISOTP_TIMEOUT_N_BS)
         {

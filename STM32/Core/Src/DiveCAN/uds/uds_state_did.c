@@ -25,7 +25,7 @@ extern BinaryStateVector_t stateVectorAccumulator;
  */
 static CellType_t getCellTypeFromConfig(const Configuration_t *config, uint8_t cellNum)
 {
-    if (config == NULL || cellNum > 2U)
+    if ((config == NULL) || (cellNum > 2U))
     {
         return CELL_ANALOG; /* Safe default */
     }
@@ -186,7 +186,7 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
 static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
                           uint8_t *buf, uint16_t *len)
 {
-    if (cellNum > 2U || offset > CELL_DID_MAX_OFFSET)
+    if ((cellNum > 2U) || (offset > CELL_DID_MAX_OFFSET))
     {
         return false;
     }
@@ -321,7 +321,7 @@ bool UDS_StateDID_IsStateDID(uint16_t did)
 bool UDS_StateDID_HandleRead(uint16_t did, const Configuration_t *config,
                               uint8_t *responseBuffer, uint16_t *responseLength)
 {
-    if (responseBuffer == NULL || responseLength == NULL)
+    if ((responseBuffer == NULL) || (responseLength == NULL))
     {
         return false;
     }
@@ -409,14 +409,14 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
         /* Type-specific offsets */
         if (cellType == CELL_ANALOG)
         {
-            if (offset == CELL_DID_RAW_ADC || offset == CELL_DID_MILLIVOLTS)
+            if ((offset == CELL_DID_RAW_ADC) || (offset == CELL_DID_MILLIVOLTS))
             {
                 return 2U;
             }
         }
         else if (cellType == CELL_DIVEO2)
         {
-            if (offset >= CELL_DID_TEMPERATURE && offset <= CELL_DID_HUMIDITY)
+            if ((offset >= CELL_DID_TEMPERATURE) && (offset <= CELL_DID_HUMIDITY))
             {
                 return 4U;
             }
