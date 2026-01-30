@@ -58,7 +58,6 @@ Core/Src/DiveCAN/uds/isotp.c \
 Core/Src/DiveCAN/uds/isotp_tx_queue.c \
 Core/Src/DiveCAN/uds/uds.c \
 Core/Src/DiveCAN/uds/uds_settings.c \
-Core/Src/DiveCAN/uds/uds_memory.c \
 Core/Src/DiveCAN/uds/uds_log_push.c \
 Core/Src/DiveCAN/uds/uds_state_did.c \
 Core/Src/PPO2Control/PPO2Control.c \

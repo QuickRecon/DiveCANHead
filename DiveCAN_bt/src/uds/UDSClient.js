@@ -274,186 +274,6 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
-   * Request upload (read from device memory)
-   * Service 0x35: RequestUpload
-   * @param {number} address - Memory address
-   * @param {number} length - Number of bytes to read
-   * @returns {Promise<number>} Maximum block length
-   */
-  async requestUpload(address, length) {
-    const addressBytes = ByteUtils.uint32ToBE(address);
-    const lengthBytes = ByteUtils.uint32ToBE(length);
-
-    const request = ByteUtils.concat(
-      [constants.SID_REQUEST_UPLOAD, constants.DATA_FORMAT_UNCOMPRESSED, constants.ADDRESS_AND_LENGTH_FORMAT],
-      addressBytes,
-      lengthBytes
-    );
-
-    const response = await this._sendRequest(request);
-
-    // Response: [0x75, lengthFormatIdentifier, maxBlockLength...]
-    const lengthFormat = response[1];
-    const maxBlockLength = ByteUtils.beToUint16(response.slice(2, 4));
-
-    this.logger.info(`Upload request accepted: maxBlockLength=${maxBlockLength}`);
-    return maxBlockLength;
-  }
-
-  /**
-   * Request download (write to device memory)
-   * Service 0x34: RequestDownload
-   * @param {number} address - Memory address
-   * @param {number} length - Number of bytes to write
-   * @returns {Promise<number>} Maximum block length
-   */
-  async requestDownload(address, length) {
-    const addressBytes = ByteUtils.uint32ToBE(address);
-    const lengthBytes = ByteUtils.uint32ToBE(length);
-
-    const request = ByteUtils.concat(
-      [constants.SID_REQUEST_DOWNLOAD, constants.DATA_FORMAT_UNCOMPRESSED, constants.ADDRESS_AND_LENGTH_FORMAT],
-      addressBytes,
-      lengthBytes
-    );
-
-    const response = await this._sendRequest(request);
-
-    // Response: [0x74, lengthFormatIdentifier, maxBlockLength...]
-    const maxBlockLength = ByteUtils.beToUint16(response.slice(2, 4));
-
-    this.logger.info(`Download request accepted: maxBlockLength=${maxBlockLength}`);
-    return maxBlockLength;
-  }
-
-  /**
-   * Transfer data block
-   * Service 0x36: TransferData
-   * @param {number} sequence - Block sequence counter (1-255)
-   * @param {Uint8Array|Array} data - Data to transfer (for download) or null (for upload)
-   * @returns {Promise<Uint8Array>} Transferred data (for upload) or empty (for download)
-   */
-  async transferData(sequence, data = null) {
-    if (sequence < 1 || sequence > 255) {
-      throw new ValidationError('Sequence must be 1-255', 'UDS', { sequence });
-    }
-
-    let request;
-    if (data !== null) {
-      // Download (write)
-      const dataArray = ByteUtils.toUint8Array(data);
-      request = ByteUtils.concat([constants.SID_TRANSFER_DATA, sequence], dataArray);
-    } else {
-      // Upload (read)
-      request = [constants.SID_TRANSFER_DATA, sequence];
-    }
-
-    const response = await this._sendRequest(request);
-
-    // Response: [0x76, sequence, ...data]
-    const responseSeq = response[1];
-    if (responseSeq !== sequence) {
-      throw new UDSError('Sequence mismatch', constants.SID_TRANSFER_DATA, null, {
-        expectedSeq: sequence,
-        receivedSeq: responseSeq
-      });
-    }
-
-    return response.slice(2);  // Return data (empty for download, payload for upload)
-  }
-
-  /**
-   * Request transfer exit
-   * Service 0x37: RequestTransferExit
-   * @returns {Promise<void>}
-   */
-  async requestTransferExit() {
-    const request = [constants.SID_REQUEST_TRANSFER_EXIT];
-    await this._sendRequest(request);
-    this.logger.info('Transfer exit complete');
-  }
-
-  /**
-   * High-level: Upload memory from device
-   * @param {number} address - Memory address
-   * @param {number} length - Number of bytes
-   * @param {Function} progressCallback - Progress callback (bytesRead, totalBytes)
-   * @returns {Promise<Uint8Array>} Memory data
-   */
-  async uploadMemory(address, length, progressCallback = null) {
-    this.logger.info(`Uploading ${length} bytes from 0x${address.toString(16).padStart(8, '0')}`);
-
-    // Request upload
-    const maxBlockLength = await this.requestUpload(address, length);
-
-    // Transfer data in blocks
-    const buffer = new Uint8Array(length);
-    let offset = 0;
-    let sequence = 1;
-
-    while (offset < length) {
-      const blockSize = Math.min(maxBlockLength, length - offset);
-      const data = await this.transferData(sequence);
-
-      buffer.set(data, offset);
-      offset += data.length;
-
-      if (progressCallback) {
-        progressCallback(offset, length);
-      }
-
-      sequence = (sequence % 255) + 1;  // Wrap at 255, skip 0
-    }
-
-    // Exit transfer
-    await this.requestTransferExit();
-
-    this.logger.info(`Upload complete: ${offset} bytes`);
-    return buffer;
-  }
-
-  /**
-   * High-level: Download memory to device
-   * @param {number} address - Memory address
-   * @param {Uint8Array|Array} data - Data to write
-   * @param {Function} progressCallback - Progress callback (bytesWritten, totalBytes)
-   * @returns {Promise<void>}
-   */
-  async downloadMemory(address, data, progressCallback = null) {
-    const dataArray = ByteUtils.toUint8Array(data);
-    const length = dataArray.length;
-
-    this.logger.info(`Downloading ${length} bytes to 0x${address.toString(16).padStart(8, '0')}`);
-
-    // Request download
-    const maxBlockLength = await this.requestDownload(address, length);
-
-    // Transfer data in blocks
-    let offset = 0;
-    let sequence = 1;
-
-    while (offset < length) {
-      const blockSize = Math.min(maxBlockLength, length - offset);
-      const block = dataArray.slice(offset, offset + blockSize);
-
-      await this.transferData(sequence, block);
-
-      offset += blockSize;
-
-      if (progressCallback) {
-        progressCallback(offset, length);
-      }
-
-      sequence = (sequence % 255) + 1;  // Wrap at 255, skip 0
-    }
-
-    // Exit transfer
-    await this.requestTransferExit();
-
-    this.logger.info(`Download complete: ${offset} bytes`);
-  }
-
-  /**
    * High-level: Read serial number
    * @returns {Promise<string>} Serial number string
    */
@@ -498,23 +318,6 @@ export class UDSClient extends EventEmitter {
   async readHardwareVersion() {
     const data = await this.readDataByIdentifier(constants.DID_HARDWARE_VERSION);
     return data[0];
-  }
-
-  /**
-   * High-level: Read configuration
-   * @returns {Promise<Uint8Array>} Configuration data
-   */
-  async readConfiguration() {
-    return await this.readDataByIdentifier(constants.DID_CONFIGURATION_BLOCK);
-  }
-
-  /**
-   * High-level: Write configuration
-   * @param {Uint8Array|Array} config - Configuration data
-   * @returns {Promise<void>}
-   */
-  async writeConfiguration(config) {
-    await this.writeDataByIdentifier(constants.DID_CONFIGURATION_BLOCK, config);
   }
 
   // ============================================================
@@ -827,31 +630,12 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
-   * Get cell types from configuration
-   * @returns {Promise<Array<number>>} Array of 3 cell types
-   */
-  async getCellTypes() {
-    const data = await this.readDataByIdentifier(constants.DID_CONFIGURATION_BLOCK);
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    const config = view.getUint32(0, true);
-
-    // Extract cell types from config bits 8-13 (2 bits per cell)
-    return [
-      (config >> 8) & 0x03,
-      (config >> 10) & 0x03,
-      (config >> 12) & 0x03
-    ];
-  }
-
-  /**
-   * Fetch all state DIDs (control + all cells with type filtering)
+   * Fetch all state DIDs (control + all cells)
+   * @param {Array<number>} cellTypes - Array of 3 cell types (from settings)
    * @param {Function} progressCallback - Optional callback (current, total) => void
    * @returns {Promise<Object>} Complete state object
    */
-  async fetchAllState(progressCallback = null) {
-    // Get cell types first
-    const cellTypes = await this.getCellTypes();
-
+  async fetchAllState(cellTypes, progressCallback = null) {
     // Collect all DIDs to read
     const allDIDs = [];
 
