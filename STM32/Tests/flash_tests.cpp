@@ -495,7 +495,12 @@ TEST(flash, SetOptionBytes_NoChange)
     UnlockReturnCode = HAL_OK;
 
     // Set mock option bytes to match what setOptionBytes will configure
-    MockOptionBytes = 227440255;
+    // Value 0x098EFFFF has all required bits set/cleared:
+    // - nBOOT0(27)=1, nSWBOOT0(26)=0, SRAM2_RST(25)=0, SRAM2_PE(24)=1
+    // - nBOOT1(23)=1, WWDG_SW(19)=1, IWDG_STDBY(18)=1, IWDG_STOP(17)=1
+    // - IWDG_SW(16)=0, nRST_SHDW(14)=1, nRST_STDBY(13)=1, nRST_STOP(12)=1
+    // - BOR_LEV(10-8)=111
+    MockOptionBytes = 0x098EFFFF;
 
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
@@ -540,9 +545,9 @@ TEST(flash, SetOptionBytes_LockFail)
     UnlockReturnCode = HAL_OK;
     LockReturnCode = HAL_ERROR;
 
-    // Set mock option bytes to match what setOptionBytes will configure
-    MockOptionBytes = 227440255;
-    
+    // Set mock option bytes to match what setOptionBytes will configure (no OBProgram needed)
+    MockOptionBytes = 0x098EFFFF;
+
     mock().expectOneCall("HAL_FLASH_Unlock");
     mock().expectOneCall("HAL_FLASHEx_OBGetConfig");
     mock().expectOneCall("HAL_FLASH_Lock");

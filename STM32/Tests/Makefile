@@ -33,10 +33,11 @@ SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Sensors/OxygenCell.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/flash.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/hw_version.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/configuration.c
-SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/menu.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/isotp.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/isotp_tx_queue.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/uds.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/uds_settings.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/uds_state_did.c
 
 # --- TEST_SRC_FILES and TEST_SRC_DIRS ---
 # Test files are always included in the build.
@@ -160,6 +161,9 @@ CPPUTEST_USE_GCOV=Y
 # --- LD_LIBRARIES -- Additional needed libraries can be added here.
 # commented out example specifies math library
 #LD_LIBRARIES += -lm
+
+# Allow test mocks to override library symbols (e.g. getSetpoint in PPO2Transmitter_tests)
+CPPUTEST_LDFLAGS += -Wl,--allow-multiple-definition
 
 # Look at $(CPPUTEST_HOME)/build/MakefileWorker.mk for more controls
 LD_LIBRARIES = -L$(CPPUTEST_HOME)/lib -lCppUTest -lCppUTestExt

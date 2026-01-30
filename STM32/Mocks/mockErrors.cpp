@@ -12,8 +12,8 @@ static void PrintERR(NonFatalError_t error, uint32_t additionalInfo, uint32_t li
 
 void cppNonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName)
 {
-    mock().actualCall("NonFatalError_Detail").withParameter("error", error).withParameter("detail", additionalInfo);
     PrintERR(error, additionalInfo, lineNumber, fileName);
+    mock().actualCall("NonFatalError_Detail").withParameter("error", error).withParameter("detail", additionalInfo);
 }
 void cppNonFatalErrorISR_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName)
 {
