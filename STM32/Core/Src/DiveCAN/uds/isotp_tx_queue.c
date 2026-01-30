@@ -21,14 +21,14 @@
 /* Frame byte indices for DiveCAN ISO-TP with padding (non-standard format)
  * DiveCAN SF format: [PCI+len][pad][data...]
  * DiveCAN FF format: [PCI_hi][len_lo][pad][5 data bytes] */
-static const size_t DIVECAN_SF_PCI_IDX = 0U;       /**< SF PCI+length byte position */
-static const size_t DIVECAN_SF_PAD_IDX = 1U;       /**< SF padding byte position */
-static const size_t DIVECAN_SF_DATA_START = 2U;    /**< SF data start position */
-static const size_t DIVECAN_FF_PCI_HI_IDX = 0U;    /**< FF PCI high nibble position */
-static const size_t DIVECAN_FF_LEN_LO_IDX = 1U;    /**< FF length low byte position */
-static const size_t DIVECAN_FF_PAD_IDX = 2U;       /**< FF padding byte position */
-static const size_t DIVECAN_FF_DATA_START = 3U;    /**< FF data start position (after padding) */
-static const size_t DIVECAN_PAD_BYTE_SIZE = 1U;    /**< Size of DiveCAN padding byte */
+static const size_t DIVECAN_SF_PCI_IDX = 0U;    /**< SF PCI+length byte position */
+static const size_t DIVECAN_SF_PAD_IDX = 1U;    /**< SF padding byte position */
+static const size_t DIVECAN_SF_DATA_START = 2U; /**< SF data start position */
+static const size_t DIVECAN_FF_PCI_HI_IDX = 0U; /**< FF PCI high nibble position */
+static const size_t DIVECAN_FF_LEN_LO_IDX = 1U; /**< FF length low byte position */
+static const size_t DIVECAN_FF_PAD_IDX = 2U;    /**< FF padding byte position */
+static const size_t DIVECAN_FF_DATA_START = 3U; /**< FF data start position (after padding) */
+static const size_t DIVECAN_PAD_BYTE_SIZE = 1U; /**< Size of DiveCAN padding byte */
 
 /* External functions */
 extern void sendCANMessageBlocking(const DiveCANMessage_t message);
@@ -98,7 +98,7 @@ void ISOTP_TxQueue_Init(void)
     state->txBlockCounter = 0;
     state->txLastFrameTime = 0;
 
-    static StaticQueue_t controlBlock= {};
+    static StaticQueue_t controlBlock = {};
     static uint8_t queueStorage[ISOTP_TX_QUEUE_SIZE * sizeof(ISOTPTxRequest_t)];
     const osMessageQueueAttr_t queueAttr = {
         .name = "ISOTPTxQueue",
@@ -109,8 +109,8 @@ void ISOTP_TxQueue_Init(void)
 
     osMessageQueueId_t *queueHandle = getTxQueueHandle();
     *queueHandle = osMessageQueueNew(ISOTP_TX_QUEUE_SIZE,
-                                      sizeof(ISOTPTxRequest_t),
-                                      &queueAttr);
+                                     sizeof(ISOTPTxRequest_t),
+                                     &queueAttr);
     if (*queueHandle == NULL)
     {
         NON_FATAL_ERROR(QUEUEING_ERR);
@@ -336,12 +336,12 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
         }
         break;
 
-    case ISOTP_FC_WAIT:  /* Not implemented - abort */
+    case ISOTP_FC_WAIT: /* Not implemented - abort */
         NON_FATAL_ERROR_DETAIL(ISOTP_UNSUPPORTED_ERR, ISOTP_FC_WAIT);
-        __attribute__ ((fallthrough));
+        __attribute__((fallthrough));
     case ISOTP_FC_OVFLW: /* Receiver rejected - abort */
         NON_FATAL_ERROR_DETAIL(ISOTP_RX_ABORT_ERR, flowStatus);
-        __attribute__ ((fallthrough));
+        __attribute__((fallthrough));
     default:
         state->txActive = false;
         state->txState = ISOTP_IDLE;
