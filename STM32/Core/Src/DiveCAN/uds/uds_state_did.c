@@ -51,24 +51,30 @@ static const uint8_t BYTE_IDX_3 = 3U;
  */
 static CellType_t getCellTypeFromConfig(const Configuration_t *config, uint8_t cellNum)
 {
+    CellType_t result = CELL_ANALOG; /* Safe default */
+
     if ((config == NULL) || (cellNum >= CELL_COUNT))
     {
         NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
-        return CELL_ANALOG; /* Safe default */
+    }
+    else if (cellNum == CELL_1)
+    {
+        result = config->cell1;
+    }
+    else if (cellNum == CELL_2)
+    {
+        result = config->cell2;
+    }
+    else if (cellNum == CELL_3)
+    {
+        result = config->cell3;
+    }
+    else
+    {
+        /* Unreachable: cellNum bounds checked above */
     }
 
-    switch (cellNum)
-    {
-    case CELL_1:
-        return config->cell1;
-    case CELL_2:
-        return config->cell2;
-    case CELL_3:
-        return config->cell3;
-    default:
-        /* Unreachable: cellNum bounds checked above */
-        return CELL_ANALOG;
-    }
+    return result;
 }
 
 /**
@@ -121,81 +127,86 @@ static void writeInt16(uint8_t *buf, int16_t value)
 
 static bool handleControlStateDID(uint16_t did, const Configuration_t *config, uint8_t *buf, uint16_t *len)
 {
+    bool result = true;
+
     switch (did)
     {
     case UDS_DID_CONSENSUS_PPO2:
         writeFloat32(buf, stateVectorAccumulator.consensusPpo2);
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     case UDS_DID_SETPOINT:
         writeFloat32(buf, stateVectorAccumulator.setpoint);
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     case UDS_DID_CELLS_VALID:
         buf[0] = stateVectorAccumulator.cellsValid;
         *len = DATA_SIZE_UINT8;
-        return true;
+        break;
 
     case UDS_DID_DUTY_CYCLE:
         writeFloat32(buf, stateVectorAccumulator.dutyCycle);
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     case UDS_DID_INTEGRAL_STATE:
         writeFloat32(buf, stateVectorAccumulator.integralState);
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     case UDS_DID_SATURATION_COUNT:
         writeUint16(buf, stateVectorAccumulator.saturationCount);
         *len = DATA_SIZE_UINT16;
-        return true;
+        break;
 
     case UDS_DID_UPTIME_SEC:
         writeUint32(buf, HAL_GetTick() / MS_PER_SECOND);
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     /* Power Monitoring DIDs */
     case UDS_DID_VBUS_VOLTAGE:
         writeFloat32(buf, getVBusVoltage());
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     case UDS_DID_VCC_VOLTAGE:
         writeFloat32(buf, getVCCVoltage());
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     case UDS_DID_BATTERY_VOLTAGE:
         writeFloat32(buf, getBatteryVoltage());
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     case UDS_DID_CAN_VOLTAGE:
         writeFloat32(buf, getCANVoltage());
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     case UDS_DID_THRESHOLD_VOLTAGE:
         writeFloat32(buf, getThresholdVoltage(config->dischargeThresholdMode));
         *len = DATA_SIZE_FLOAT32;
-        return true;
+        break;
 
     case UDS_DID_POWER_SOURCES:
     {
         uint8_t sources = (uint8_t)((uint8_t)GetVCCSource() | ((uint8_t)GetVBusSource() << VBUS_SOURCE_BIT_OFFSET));
         buf[0] = sources;
         *len = DATA_SIZE_UINT8;
-        return true;
+        break;
     }
 
     default:
         /* Expected: Unknown DID within control state range - caller handles NRC */
-        return false;
+        result = false;
+        break;
     }
+
+    return result;
 }
 
 /* ============================================================================
@@ -215,26 +226,27 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
 static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
                           uint8_t *buf, uint16_t *len)
 {
+    bool result = false;
+
     if ((cellNum >= CELL_COUNT) || (offset > CELL_DID_MAX_OFFSET))
     {
         NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
-        return false;
     }
-
     /* Universal cell DIDs (all types) */
-    switch (offset)
+    else if (offset == CELL_DID_PPO2)
     {
-    case CELL_DID_PPO2:
         writeFloat32(buf, stateVectorAccumulator.cellPpo2[cellNum]);
         *len = DATA_SIZE_FLOAT32;
-        return true;
-
-    case CELL_DID_TYPE:
+        result = true;
+    }
+    else if (offset == CELL_DID_TYPE)
+    {
         buf[0] = (uint8_t)cellType;
         *len = DATA_SIZE_UINT8;
-        return true;
-
-    case CELL_DID_INCLUDED:
+        result = true;
+    }
+    else if (offset == CELL_DID_INCLUDED)
+    {
         if ((stateVectorAccumulator.cellsValid & (1U << cellNum)) != 0U)
         {
             buf[0] = 1U;
@@ -244,87 +256,76 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
             buf[0] = 0U;
         }
         *len = DATA_SIZE_UINT8;
-        return true;
-
-    case CELL_DID_STATUS:
+        result = true;
+    }
+    else if (offset == CELL_DID_STATUS)
+    {
         buf[0] = stateVectorAccumulator.cellStatus[cellNum];
         *len = DATA_SIZE_UINT8;
-        return true;
-
-    default:
-        break; /* Fall through to type-specific handling */
+        result = true;
     }
-
     /* ANALOG-specific DIDs */
-    if (cellType == CELL_ANALOG)
+    else if ((cellType == CELL_ANALOG) && (offset == CELL_DID_RAW_ADC))
     {
-        switch (offset)
-        {
-        case CELL_DID_RAW_ADC:
-            writeInt16(buf, (int16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_RAW_ADC]);
-            *len = DATA_SIZE_UINT16;
-            return true;
-
-        case CELL_DID_MILLIVOLTS:
-            writeUint16(buf, (uint16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_MILLIVOLTS]);
-            *len = DATA_SIZE_UINT16;
-            return true;
-
-        default:
-            /* Expected: Invalid offset for ANALOG cell - caller handles NRC */
-            return false;
-        }
+        writeInt16(buf, (int16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_RAW_ADC]);
+        *len = DATA_SIZE_UINT16;
+        result = true;
     }
-
+    else if ((cellType == CELL_ANALOG) && (offset == CELL_DID_MILLIVOLTS))
+    {
+        writeUint16(buf, (uint16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_MILLIVOLTS]);
+        *len = DATA_SIZE_UINT16;
+        result = true;
+    }
     /* DIVEO2-specific DIDs */
-    if (cellType == CELL_DIVEO2)
+    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_TEMPERATURE))
     {
-        switch (offset)
-        {
-        case CELL_DID_TEMPERATURE:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_TEMPERATURE]);
-            *len = DATA_SIZE_FLOAT32;
-            return true;
-
-        case CELL_DID_ERROR:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_ERROR]);
-            *len = DATA_SIZE_FLOAT32;
-            return true;
-
-        case CELL_DID_PHASE:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PHASE]);
-            *len = DATA_SIZE_FLOAT32;
-            return true;
-
-        case CELL_DID_INTENSITY:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_INTENSITY]);
-            *len = DATA_SIZE_FLOAT32;
-            return true;
-
-        case CELL_DID_AMBIENT_LIGHT:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_AMBIENT_LIGHT]);
-            *len = DATA_SIZE_FLOAT32;
-            return true;
-
-        case CELL_DID_PRESSURE:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PRESSURE]);
-            *len = DATA_SIZE_FLOAT32;
-            return true;
-
-        case CELL_DID_HUMIDITY:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_HUMIDITY]);
-            *len = DATA_SIZE_FLOAT32;
-            return true;
-
-        default:
-            /* Expected: Invalid offset for DIVEO2 cell - caller handles NRC */
-            return false;
-        }
+        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_TEMPERATURE]);
+        *len = DATA_SIZE_FLOAT32;
+        result = true;
+    }
+    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_ERROR))
+    {
+        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_ERROR]);
+        *len = DATA_SIZE_FLOAT32;
+        result = true;
+    }
+    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_PHASE))
+    {
+        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PHASE]);
+        *len = DATA_SIZE_FLOAT32;
+        result = true;
+    }
+    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_INTENSITY))
+    {
+        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_INTENSITY]);
+        *len = DATA_SIZE_FLOAT32;
+        result = true;
+    }
+    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_AMBIENT_LIGHT))
+    {
+        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_AMBIENT_LIGHT]);
+        *len = DATA_SIZE_FLOAT32;
+        result = true;
+    }
+    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_PRESSURE))
+    {
+        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PRESSURE]);
+        *len = DATA_SIZE_FLOAT32;
+        result = true;
+    }
+    else if ((cellType == CELL_DIVEO2) && (offset == CELL_DID_HUMIDITY))
+    {
+        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_HUMIDITY]);
+        *len = DATA_SIZE_FLOAT32;
+        result = true;
+    }
+    else
+    {
+        /* Expected: Invalid offset or O2S cells with non-universal DID - caller handles NRC */
     }
 
-    /* Expected: O2S cells only support universal DIDs (already handled above).
-     * Any other offset for O2S is invalid - caller handles NRC */
-    return false;
+    return result;
 }
 
 /* ============================================================================
@@ -333,60 +334,73 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
 
 bool UDS_StateDID_IsStateDID(uint16_t did)
 {
+    bool result = false;
+
     /* PPO2 Control State DIDs (0xF2xx) */
     if ((did >= UDS_DID_CONTROL_BASE) && (did <= UDS_DID_CONTROL_END))
     {
-        return true;
+        result = true;
     }
-
     /* Cell DIDs (0xF400-0xF42F) */
-    if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
+    else if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
     {
-        return true;
+        result = true;
+    }
+    else
+    {
+        /* DID not in state DID range */
     }
 
-    return false;
+    return result;
 }
 
 bool UDS_StateDID_HandleRead(uint16_t did, const Configuration_t *config,
                               uint8_t *responseBuffer, uint16_t *responseLength)
 {
+    bool result = false;
+
     if ((responseBuffer == NULL) || (responseLength == NULL))
     {
         NON_FATAL_ERROR(NULL_PTR_ERR);
-        return false;
     }
-
-    *responseLength = 0U;
-
-    /* PPO2 Control State DIDs (0xF2xx) */
-    if ((did >= UDS_DID_CONTROL_BASE) && (did <= UDS_DID_CONTROL_END))
+    else
     {
-        return handleControlStateDID(did, config, responseBuffer, responseLength);
-    }
+        *responseLength = 0U;
 
-    /* Cell DIDs (0xF4Nx) */
-    if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
-    {
-        uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
-        uint8_t offset = (uint8_t)((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE);
-
-        if (cellNum >= CELL_COUNT)
+        /* PPO2 Control State DIDs (0xF2xx) */
+        if ((did >= UDS_DID_CONTROL_BASE) && (did <= UDS_DID_CONTROL_END))
         {
-            NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, cellNum);
-            return false;
+            result = handleControlStateDID(did, config, responseBuffer, responseLength);
         }
+        /* Cell DIDs (0xF4Nx) */
+        else if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
+        {
+            uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
+            uint8_t offset = (uint8_t)((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE);
 
-        CellType_t cellType = getCellTypeFromConfig(config, cellNum);
-        return handleCellDID(cellNum, offset, cellType, responseBuffer, responseLength);
+            if (cellNum >= CELL_COUNT)
+            {
+                NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, cellNum);
+            }
+            else
+            {
+                CellType_t cellType = getCellTypeFromConfig(config, cellNum);
+                result = handleCellDID(cellNum, offset, cellType, responseBuffer, responseLength);
+            }
+        }
+        else
+        {
+            /* Expected: DID not in state DID range - caller handles NRC */
+        }
     }
 
-    /* Expected: DID not in state DID range - caller handles NRC */
-    return false;
+    return result;
 }
 
 uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
 {
+    uint16_t result = 0U;
+
     /* PPO2 Control State DIDs */
     switch (did)
     {
@@ -400,63 +414,62 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
     case UDS_DID_BATTERY_VOLTAGE:
     case UDS_DID_CAN_VOLTAGE:
     case UDS_DID_THRESHOLD_VOLTAGE:
-        return DATA_SIZE_FLOAT32;
+        result = DATA_SIZE_FLOAT32;
+        break;
 
     case UDS_DID_CELLS_VALID:
     case UDS_DID_POWER_SOURCES:
-        return DATA_SIZE_UINT8;
+        result = DATA_SIZE_UINT8;
+        break;
 
     case UDS_DID_SATURATION_COUNT:
-        return DATA_SIZE_UINT16;
+        result = DATA_SIZE_UINT16;
+        break;
 
     default:
+        /* Check Cell DIDs */
+        if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
+        {
+            uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
+            uint8_t offset = (uint8_t)((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE);
+
+            if (cellNum >= CELL_COUNT)
+            {
+                NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, cellNum);
+            }
+            else
+            {
+                CellType_t cellType = getCellTypeFromConfig(config, cellNum);
+
+                /* Universal offsets */
+                if (offset == CELL_DID_PPO2)
+                {
+                    result = DATA_SIZE_FLOAT32;
+                }
+                else if ((offset == CELL_DID_TYPE) || (offset == CELL_DID_INCLUDED) || (offset == CELL_DID_STATUS))
+                {
+                    result = DATA_SIZE_UINT8;
+                }
+                /* Type-specific offsets */
+                else if ((cellType == CELL_ANALOG) &&
+                         ((offset == CELL_DID_RAW_ADC) || (offset == CELL_DID_MILLIVOLTS)))
+                {
+                    result = DATA_SIZE_UINT16;
+                }
+                else if ((cellType == CELL_DIVEO2) &&
+                         ((offset >= CELL_DID_TEMPERATURE) && (offset <= CELL_DID_HUMIDITY)))
+                {
+                    result = DATA_SIZE_FLOAT32;
+                }
+                else
+                {
+                    NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, did);
+                }
+            }
+        }
+        /* else: Invalid DID - result remains 0 */
         break;
     }
 
-    /* Cell DIDs */
-    if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
-    {
-        uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
-        uint8_t offset = (uint8_t)((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE);
-
-        if (cellNum >= CELL_COUNT)
-        {
-            NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, cellNum);
-            return 0U;
-        }
-
-        CellType_t cellType = getCellTypeFromConfig(config, cellNum);
-
-        /* Universal offsets */
-        switch (offset)
-        {
-        case CELL_DID_PPO2:
-            return DATA_SIZE_FLOAT32;
-        case CELL_DID_TYPE:
-        case CELL_DID_INCLUDED:
-        case CELL_DID_STATUS:
-            return DATA_SIZE_UINT8;
-        default:
-            break;
-        }
-
-        /* Type-specific offsets */
-        if ((cellType == CELL_ANALOG) &&
-            ((offset == CELL_DID_RAW_ADC) || (offset == CELL_DID_MILLIVOLTS)))
-        {
-            return DATA_SIZE_UINT16;
-        }
-        else if ((cellType == CELL_DIVEO2) &&
-                 ((offset >= CELL_DID_TEMPERATURE) && (offset <= CELL_DID_HUMIDITY)))
-        {
-            return DATA_SIZE_FLOAT32;
-        }
-        else
-        {
-            NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, did);
-        }
-    }
-
-    /* Expected: Invalid DID or type mismatch - return 0 to indicate unknown size */
-    return 0U;
+    return result;
 }

@@ -91,37 +91,39 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
     if (isotpCtx == NULL)
     {
         NON_FATAL_ERROR(NULL_PTR_ERR);
-        return;
     }
-
-    LogPushState_t *state = getLogPushState();
-    state->isotpContext = isotpCtx;
-    state->txPending = false;
-    state->inSendLogMessage = false;
-
-    /* Create message queue with static allocation */
-    StaticQueue_t *controlBlock = getLogPushQueueControlBlock();
-    const osMessageQueueAttr_t queueAttr = {
-        .name = "UDSLogQueue",
-        .cb_mem = controlBlock,
-        .cb_size = sizeof(StaticQueue_t),
-        .mq_mem = getLogPushQueueStorage(),
-        .mq_size = UDS_LOG_QUEUE_LENGTH * sizeof(UDSLogQueueItem_t)};
-    state->queueHandle = osMessageQueueNew(UDS_LOG_QUEUE_LENGTH,
-                                            sizeof(UDSLogQueueItem_t),
-                                            &queueAttr);
-    if (state->queueHandle == NULL)
+    else
     {
-        NON_FATAL_ERROR(QUEUEING_ERR);
-    }
+        LogPushState_t *state = getLogPushState();
+        state->isotpContext = isotpCtx;
+        state->txPending = false;
+        state->inSendLogMessage = false;
 
-    /* Initialize ISO-TP context for push (SOLO -> bluetooth client)
-     * Source is SOLO (0x04), Target is bluetooth client (0xFF) */
-    ISOTP_Init(isotpCtx, DIVECAN_SOLO, ISOTP_BROADCAST_ADDR, MENU_ID);
+        /* Create message queue with static allocation */
+        StaticQueue_t *controlBlock = getLogPushQueueControlBlock();
+        const osMessageQueueAttr_t queueAttr = {
+            .name = "UDSLogQueue",
+            .cb_mem = controlBlock,
+            .cb_size = sizeof(StaticQueue_t),
+            .mq_mem = getLogPushQueueStorage(),
+            .mq_size = UDS_LOG_QUEUE_LENGTH * sizeof(UDSLogQueueItem_t)};
+        state->queueHandle = osMessageQueueNew(UDS_LOG_QUEUE_LENGTH,
+                                                sizeof(UDSLogQueueItem_t),
+                                                &queueAttr);
+        if (state->queueHandle == NULL)
+        {
+            NON_FATAL_ERROR(QUEUEING_ERR);
+        }
+
+        /* Initialize ISO-TP context for push (SOLO -> bluetooth client)
+         * Source is SOLO (0x04), Target is bluetooth client (0xFF) */
+        ISOTP_Init(isotpCtx, DIVECAN_SOLO, ISOTP_BROADCAST_ADDR, MENU_ID);
+    }
 }
 
 bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
 {
+    bool result = false;
     LogPushState_t *state = getLogPushState();
 
     /* Reentrancy guard: NON_FATAL_ERROR -> print -> SendLogMessage -> NON_FATAL_ERROR...
@@ -129,51 +131,56 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
      * Do NOT call NON_FATAL_ERROR here as that would defeat the purpose. */
     if (state->inSendLogMessage)
     {
-        return false;
+        /* Expected: Reentrancy detected - silently drop to break recursion */
     }
-    state->inSendLogMessage = true;
-
-    /* Check preconditions */
-    if (state->queueHandle == NULL)
+    else
     {
-        NON_FATAL_ERROR(QUEUEING_ERR);
+        state->inSendLogMessage = true;
+
+        /* Check preconditions */
+        if (state->queueHandle == NULL)
+        {
+            NON_FATAL_ERROR(QUEUEING_ERR);
+        }
+        else if ((message == NULL) || (length == 0))
+        {
+            NON_FATAL_ERROR(NULL_PTR_ERR);
+        }
+        else
+        {
+            /* Prepare queue item using static buffer */
+            UDSLogQueueItem_t *txBuffer = getTxItemBuffer();
+            (void)memset(txBuffer, 0, sizeof(UDSLogQueueItem_t));
+            txBuffer->length = length;
+            if (txBuffer->length > UDS_LOG_MAX_PAYLOAD)
+            {
+                txBuffer->length = UDS_LOG_MAX_PAYLOAD;
+            }
+            (void)memcpy(txBuffer->data, message, txBuffer->length);
+
+            /* Check if queue is full - drop oldest to make room */
+            if (osMessageQueueGetSpace(state->queueHandle) == 0)
+            {
+                NON_FATAL_ERROR(LOG_MSG_TRUNCATED_ERR);
+                (void)osMessageQueueGet(state->queueHandle, getRxItemBuffer(), NULL, 0);
+            }
+
+            /* Enqueue */
+            osStatus_t status = osMessageQueuePut(state->queueHandle, txBuffer, 0, 0);
+            if (status != osOK)
+            {
+                NON_FATAL_ERROR(QUEUEING_ERR);
+            }
+            else
+            {
+                result = true;
+            }
+        }
+
         state->inSendLogMessage = false;
-        return false;
     }
 
-    if ((message == NULL) || (length == 0))
-    {
-        NON_FATAL_ERROR(NULL_PTR_ERR);
-        state->inSendLogMessage = false;
-        return false;
-    }
-
-    /* Prepare queue item using static buffer */
-    UDSLogQueueItem_t *txBuffer = getTxItemBuffer();
-    (void)memset(txBuffer, 0, sizeof(UDSLogQueueItem_t));
-    txBuffer->length = length;
-    if (txBuffer->length > UDS_LOG_MAX_PAYLOAD)
-    {
-        txBuffer->length = UDS_LOG_MAX_PAYLOAD;
-    }
-    (void)memcpy(txBuffer->data, message, txBuffer->length);
-
-    /* Check if queue is full - drop oldest to make room */
-    if (osMessageQueueGetSpace(state->queueHandle) == 0)
-    {
-        NON_FATAL_ERROR(LOG_MSG_TRUNCATED_ERR);
-        (void)osMessageQueueGet(state->queueHandle, getRxItemBuffer(), NULL, 0);
-    }
-
-    /* Enqueue */
-    osStatus_t status = osMessageQueuePut(state->queueHandle, txBuffer, 0, 0);
-    if (status != osOK)
-    {
-        NON_FATAL_ERROR(QUEUEING_ERR);
-    }
-
-    state->inSendLogMessage = false;
-    return (status == osOK);
+    return result;
 }
 
 /**
@@ -204,57 +211,60 @@ void UDS_LogPush_Poll(void)
     if (state->isotpContext == NULL)
     {
         /* Expected: Init not yet called */
-        return;
     }
-
-    if (state->queueHandle == NULL)
+    else if (state->queueHandle == NULL)
     {
         /* Expected: Queue creation failed during init */
-        return;
     }
-
-    /* If TX is pending, check for completion */
-    if (state->txPending)
+    else
     {
-        /* Check for TX completion */
-        if (state->isotpContext->txComplete)
+        bool canTransmit = true;
+
+        /* If TX is pending, check for completion */
+        if (state->txPending)
         {
-            state->txPending = false;
-            state->isotpContext->txComplete = false;
+            /* Check for TX completion */
+            if (state->isotpContext->txComplete)
+            {
+                state->txPending = false;
+                state->isotpContext->txComplete = false;
+            }
+            /* Check for timeout/failure (ISO-TP returned to IDLE without completing) */
+            else if (state->isotpContext->state == ISOTP_IDLE)
+            {
+                /* TX failed (timeout or error) - message lost, continue with next */
+                state->txPending = false;
+            }
+            else
+            {
+                /* Expected: TX still in progress, nothing to do */
+                canTransmit = false;
+            }
         }
-        /* Check for timeout/failure (ISO-TP returned to IDLE without completing) */
-        else if (state->isotpContext->state == ISOTP_IDLE)
+
+        if (canTransmit)
         {
-            /* TX failed (timeout or error) - message lost, continue with next */
-            state->txPending = false;
+            /* Check if ISO-TP is ready for new transmission */
+            if (state->isotpContext->state != ISOTP_IDLE)
+            {
+                /* Expected: Context busy with other operations */
+            }
+            /* Check if centralized TX queue is busy - wait for it to drain */
+            else if (ISOTP_TxQueue_IsBusy() || (ISOTP_TxQueue_GetPendingCount() > 0))
+            {
+                /* Expected: TX queue busy, try again on next poll */
+            }
+            else
+            {
+                /* Try to dequeue and send next message using static buffer */
+                UDSLogQueueItem_t *rxBuffer = getRxItemBuffer();
+                if ((osMessageQueueGet(state->queueHandle, rxBuffer, NULL, 0) == osOK) &&
+                    sendQueuedItem(rxBuffer))
+                {
+                    state->txPending = true;
+                }
+                /* Send failed - message lost, continue with next on next poll */
+            }
         }
-        else
-        {
-            /* Expected: TX still in progress, nothing to do */
-            return;
-        }
     }
-
-    /* Check if ISO-TP is ready for new transmission */
-    if (state->isotpContext->state != ISOTP_IDLE)
-    {
-        /* Expected: Context busy with other operations */
-        return;
-    }
-
-    /* Check if centralized TX queue is busy - wait for it to drain */
-    if (ISOTP_TxQueue_IsBusy() || (ISOTP_TxQueue_GetPendingCount() > 0))
-    {
-        /* Expected: TX queue busy, try again on next poll */
-        return;
-    }
-
-    /* Try to dequeue and send next message using static buffer */
-    UDSLogQueueItem_t *rxBuffer = getRxItemBuffer();
-    if ((osMessageQueueGet(state->queueHandle, rxBuffer, NULL, 0) == osOK) &&
-        sendQueuedItem(rxBuffer))
-    {
-        state->txPending = true;
-    }
-    /* Send failed - message lost, continue with next on next poll */
 }

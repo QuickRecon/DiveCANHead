@@ -54,12 +54,13 @@ void UDS_Init(UDSContext_t *ctx, Configuration_t *config, ISOTPContext_t *isotpC
     if (ctx == NULL)
     {
         NON_FATAL_ERROR(NULL_PTR_ERR);
-        return;
     }
-
-    (void)memset(ctx, 0, sizeof(UDSContext_t));
-    ctx->configuration = config;
-    ctx->isotpContext = isotpCtx;
+    else
+    {
+        (void)memset(ctx, 0, sizeof(UDSContext_t));
+        ctx->configuration = config;
+        ctx->isotpContext = isotpCtx;
+    }
 }
 
 /**
@@ -70,28 +71,29 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData, uint16_t 
     if ((ctx == NULL) || (requestData == NULL) || (requestLength == 0))
     {
         NON_FATAL_ERROR(NULL_PTR_ERR);
-        return;
     }
-
-    /* Extract Service ID */
-    uint8_t sid = requestData[UDS_SID_IDX];
-
-    /* Dispatch to appropriate service handler */
-    switch (sid)
+    else
     {
-    case UDS_SID_READ_DATA_BY_ID:
-        HandleReadDataByIdentifier(ctx, requestData, requestLength);
-        break;
+        /* Extract Service ID */
+        uint8_t sid = requestData[UDS_SID_IDX];
 
-    case UDS_SID_WRITE_DATA_BY_ID:
-        HandleWriteDataByIdentifier(ctx, requestData, requestLength);
-        break;
+        /* Dispatch to appropriate service handler */
+        switch (sid)
+        {
+        case UDS_SID_READ_DATA_BY_ID:
+            HandleReadDataByIdentifier(ctx, requestData, requestLength);
+            break;
 
-    default:
-        /* Service not supported */
-        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_SERVICE_NOT_SUPPORTED);
-        UDS_SendNegativeResponse(ctx, sid, UDS_NRC_SERVICE_NOT_SUPPORTED);
-        break;
+        case UDS_SID_WRITE_DATA_BY_ID:
+            HandleWriteDataByIdentifier(ctx, requestData, requestLength);
+            break;
+
+        default:
+            /* Service not supported */
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_SERVICE_NOT_SUPPORTED);
+            UDS_SendNegativeResponse(ctx, sid, UDS_NRC_SERVICE_NOT_SUPPORTED);
+            break;
+        }
     }
 }
 
@@ -103,17 +105,18 @@ void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID, uint8_t n
     if ((ctx == NULL) || (ctx->isotpContext == NULL))
     {
         NON_FATAL_ERROR(NULL_PTR_ERR);
-        return;
     }
+    else
+    {
+        /* Build negative response: [0x7F, requestedSID, NRC] */
+        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_NEGATIVE_RESPONSE;
+        ctx->responseBuffer[UDS_SID_IDX] = requestedSID;
+        ctx->responseBuffer[UDS_DID_HI_IDX] = nrc;
+        ctx->responseLength = UDS_NEG_RESP_LEN;
 
-    /* Build negative response: [0x7F, requestedSID, NRC] */
-    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_NEGATIVE_RESPONSE;
-    ctx->responseBuffer[UDS_SID_IDX] = requestedSID;
-    ctx->responseBuffer[UDS_DID_HI_IDX] = nrc;
-    ctx->responseLength = UDS_NEG_RESP_LEN;
-
-    /* Send via ISO-TP */
-    (void)ISOTP_Send(ctx->isotpContext, ctx->responseBuffer, ctx->responseLength);
+        /* Send via ISO-TP */
+        (void)ISOTP_Send(ctx->isotpContext, ctx->responseBuffer, ctx->responseLength);
+    }
 }
 
 /**
@@ -124,11 +127,12 @@ void UDS_SendResponse(UDSContext_t *ctx)
     if ((ctx == NULL) || (ctx->isotpContext == NULL) || (ctx->responseLength == 0))
     {
         NON_FATAL_ERROR(NULL_PTR_ERR);
-        return;
     }
-
-    /* Send via ISO-TP */
-    (void)ISOTP_Send(ctx->isotpContext, ctx->responseBuffer, ctx->responseLength);
+    else
+    {
+        /* Send via ISO-TP */
+        (void)ISOTP_Send(ctx->isotpContext, ctx->responseBuffer, ctx->responseLength);
+    }
 }
 
 /**
@@ -136,50 +140,57 @@ void UDS_SendResponse(UDSContext_t *ctx)
  */
 static bool readSettingInfoDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten)
 {
+    bool result = false;
     uint8_t index = (uint8_t)(did - UDS_DID_SETTING_INFO_BASE);
     const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
+
     if (setting == NULL)
     {
         NON_FATAL_ERROR_DETAIL(MENU_ERR, index);
-        return false;
-    }
-
-    uint16_t labelLen = SETTING_LABEL_MAX_LEN;
-    uint16_t needed = labelLen + SETTING_INFO_BASE_LEN;
-    if (setting->kind == SETTING_KIND_TEXT)
-    {
-        needed += SETTING_INFO_TEXT_EXTRA;
-    }
-    if (needed > (maxAvailable - dataOffset))
-    {
-        NON_FATAL_ERROR_DETAIL(UDS_TOO_FULL, index);
-        return false;
-    }
-
-    /* Label len always needs to be the same length (9 bytes), 0 padded if needed */
-    (void)memset(&buf[dataOffset], 0, labelLen);
-    (void)memcpy(&buf[dataOffset], setting->label, strnlen(setting->label, labelLen));
-    buf[dataOffset + labelLen + SI_NULL_OFF] = 0;
-    buf[dataOffset + labelLen + SI_KIND_OFF] = (uint8_t)setting->kind;
-    if (setting->editable)
-    {
-        buf[dataOffset + labelLen + SI_EDIT_OFF] = 1U;
     }
     else
     {
-        buf[dataOffset + labelLen + SI_EDIT_OFF] = 0U;
+        uint16_t labelLen = SETTING_LABEL_MAX_LEN;
+        uint16_t needed = labelLen + SETTING_INFO_BASE_LEN;
+        if (setting->kind == SETTING_KIND_TEXT)
+        {
+            needed += SETTING_INFO_TEXT_EXTRA;
+        }
+
+        if (needed > (maxAvailable - dataOffset))
+        {
+            NON_FATAL_ERROR_DETAIL(UDS_TOO_FULL, index);
+        }
+        else
+        {
+            /* Label len always needs to be the same length (9 bytes), 0 padded if needed */
+            (void)memset(&buf[dataOffset], 0, labelLen);
+            (void)memcpy(&buf[dataOffset], setting->label, strnlen(setting->label, labelLen));
+            buf[dataOffset + labelLen + SI_NULL_OFF] = 0;
+            buf[dataOffset + labelLen + SI_KIND_OFF] = (uint8_t)setting->kind;
+            if (setting->editable)
+            {
+                buf[dataOffset + labelLen + SI_EDIT_OFF] = 1U;
+            }
+            else
+            {
+                buf[dataOffset + labelLen + SI_EDIT_OFF] = 0U;
+            }
+            if (setting->kind == SETTING_KIND_TEXT)
+            {
+                buf[dataOffset + labelLen + SI_MAX_OFF] = setting->maxValue;
+                buf[dataOffset + labelLen + SI_COUNT_OFF] = setting->optionCount;
+                *bytesWritten = dataOffset + labelLen + SETTING_INFO_BASE_LEN + SETTING_INFO_TEXT_EXTRA;
+            }
+            else
+            {
+                *bytesWritten = dataOffset + labelLen + SETTING_INFO_BASE_LEN;
+            }
+            result = true;
+        }
     }
-    if (setting->kind == SETTING_KIND_TEXT)
-    {
-        buf[dataOffset + labelLen + SI_MAX_OFF] = setting->maxValue;
-        buf[dataOffset + labelLen + SI_COUNT_OFF] = setting->optionCount;
-        *bytesWritten = dataOffset + labelLen + SETTING_INFO_BASE_LEN + SETTING_INFO_TEXT_EXTRA;
-    }
-    else
-    {
-        *bytesWritten = dataOffset + labelLen + SETTING_INFO_BASE_LEN;
-    }
-    return true;
+
+    return result;
 }
 
 /**
@@ -187,30 +198,33 @@ static bool readSettingInfoDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, 
  */
 static bool readSettingValueDID(uint16_t did, const Configuration_t *config, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten)
 {
+    bool result = false;
     uint8_t index = (uint8_t)(did - UDS_DID_SETTING_VALUE_BASE);
     const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
+
     if (setting == NULL)
     {
         NON_FATAL_ERROR_DETAIL(MENU_ERR, index);
-        return false;
     }
-
-    if (maxAvailable < (dataOffset + SETTING_VALUE_RESP_LEN))
+    else if (maxAvailable < (dataOffset + SETTING_VALUE_RESP_LEN))
     {
         NON_FATAL_ERROR_DETAIL(UDS_TOO_FULL, index);
-        return false;
     }
-
-    uint64_t maxValue = setting->maxValue;
-    uint64_t currentValue = UDS_GetSettingValue(index, config);
-
-    for (uint8_t i = 0; i < sizeof(uint64_t); ++i)
+    else
     {
-        buf[dataOffset + i] = (uint8_t)(maxValue >> (SEVEN_BYTE_WIDTH - (i * BYTE_WIDTH)));
-        buf[dataOffset + sizeof(uint64_t) + i] = (uint8_t)(currentValue >> (SEVEN_BYTE_WIDTH - (i * BYTE_WIDTH)));
+        uint64_t maxValue = setting->maxValue;
+        uint64_t currentValue = UDS_GetSettingValue(index, config);
+
+        for (uint8_t i = 0; i < sizeof(uint64_t); ++i)
+        {
+            buf[dataOffset + i] = (uint8_t)(maxValue >> (SEVEN_BYTE_WIDTH - (i * BYTE_WIDTH)));
+            buf[dataOffset + sizeof(uint64_t) + i] = (uint8_t)(currentValue >> (SEVEN_BYTE_WIDTH - (i * BYTE_WIDTH)));
+        }
+        *bytesWritten = dataOffset + SETTING_VALUE_RESP_LEN;
+        result = true;
     }
-    *bytesWritten = dataOffset + SETTING_VALUE_RESP_LEN;
-    return true;
+
+    return result;
 }
 
 /**
@@ -218,6 +232,7 @@ static bool readSettingValueDID(uint16_t did, const Configuration_t *config, uin
  */
 static bool readSettingLabelDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten)
 {
+    bool result = false;
     uint16_t offset = did - UDS_DID_SETTING_LABEL_BASE;
     uint8_t settingIndex = (uint8_t)(offset & ISOTP_SEQ_MASK);
     uint8_t optionIndex = (uint8_t)((offset >> HALF_BYTE_WIDTH) & ISOTP_SEQ_MASK);
@@ -226,18 +241,21 @@ static bool readSettingLabelDID(uint16_t did, uint8_t *buf, uint16_t dataOffset,
     if (label == NULL)
     {
         NON_FATAL_ERROR_DETAIL(MENU_ERR, did);
-        return false;
+    }
+    else
+    {
+        uint16_t optLabelLen = (uint16_t)strnlen(label, SETTING_LABEL_MAX_LEN);
+        if (optLabelLen > (maxAvailable - dataOffset - 1U))
+        {
+            optLabelLen = maxAvailable - dataOffset - 1U;
+        }
+        (void)memcpy(&buf[dataOffset], label, optLabelLen);
+        buf[dataOffset + optLabelLen] = 0; /* Null terminator */
+        *bytesWritten = dataOffset + optLabelLen + 1U;
+        result = true;
     }
 
-    uint16_t optLabelLen = (uint16_t)strnlen(label, SETTING_LABEL_MAX_LEN);
-    if (optLabelLen > (maxAvailable - dataOffset - 1U))
-    {
-        optLabelLen = maxAvailable - dataOffset - 1U;
-    }
-    (void)memcpy(&buf[dataOffset], label, optLabelLen);
-    buf[dataOffset + optLabelLen] = 0; /* Null terminator */
-    *bytesWritten = dataOffset + optLabelLen + 1U;
-    return true;
+    return result;
 }
 
 /**
@@ -251,6 +269,7 @@ static bool readSettingLabelDID(uint16_t did, uint8_t *buf, uint16_t dataOffset,
  */
 static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffset, uint16_t *bytesWritten)
 {
+    bool result = false;
     uint8_t *buf = &ctx->responseBuffer[responseOffset];
     uint16_t maxAvailable = UDS_MAX_RESPONSE_LENGTH - responseOffset;
     *bytesWritten = 0U;
@@ -259,76 +278,70 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
     if (maxAvailable < (UDS_DID_SIZE + 1U))
     {
         NON_FATAL_ERROR_DETAIL(UDS_TOO_FULL, did);
-        return false;
-    }
-
-    /* Write DID header (big-endian) */
-    buf[0] = (uint8_t)(did >> BYTE_WIDTH);
-    buf[1] = (uint8_t)(did);
-    uint16_t dataOffset = UDS_DID_SIZE;
-
-    /* Try state DID handler first (0xF2xx, 0xF4xx) */
-    if (UDS_StateDID_IsStateDID(did))
-    {
-        uint16_t dataLen = 0U;
-        if (UDS_StateDID_HandleRead(did, ctx->configuration, &buf[dataOffset], &dataLen))
-        {
-            *bytesWritten = dataOffset + dataLen;
-            return true;
-        }
-        /* Caller handles NRC - state DID handler indicated read failure */
-        return false;
-    }
-
-    /* Handle existing DIDs */
-    switch (did)
-    {
-    case UDS_DID_FIRMWARE_VERSION:
-    {
-        const char *commitHash = getCommitHash();
-        uint16_t hashLen = (uint16_t)strnlen(commitHash, 10);
-        if (hashLen > (maxAvailable - dataOffset))
-        {
-            hashLen = maxAvailable - dataOffset;
-        }
-        (void)memcpy(&buf[dataOffset], commitHash, hashLen);
-        *bytesWritten = dataOffset + hashLen;
-        return true;
-    }
-
-    case UDS_DID_HARDWARE_VERSION:
-        buf[dataOffset] = (uint8_t)get_hardware_version();
-        *bytesWritten = dataOffset + 1U;
-        return true;
-
-    case UDS_DID_SETTING_COUNT:
-        buf[dataOffset] = UDS_GetSettingCount();
-        *bytesWritten = dataOffset + 1U;
-        return true;
-
-    default:
-        break;
-    }
-
-    /* Check settings DIDs - delegate to helper functions */
-    if ((did >= UDS_DID_SETTING_INFO_BASE) && (did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount())))
-    {
-        return readSettingInfoDID(did, buf, dataOffset, maxAvailable, bytesWritten);
-    }
-    else if ((did >= UDS_DID_SETTING_VALUE_BASE) && (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())))
-    {
-        return readSettingValueDID(did, ctx->configuration, buf, dataOffset, maxAvailable, bytesWritten);
-    }
-    else if ((did >= UDS_DID_SETTING_LABEL_BASE) && (did < UDS_DID_SETTING_LABEL_END))
-    {
-        return readSettingLabelDID(did, buf, dataOffset, maxAvailable, bytesWritten);
     }
     else
     {
-        /* Caller handles NRC - DID not found */
+        /* Write DID header (big-endian) */
+        buf[0] = (uint8_t)(did >> BYTE_WIDTH);
+        buf[1] = (uint8_t)(did);
+        uint16_t dataOffset = UDS_DID_SIZE;
+
+        /* Try state DID handler first (0xF2xx, 0xF4xx) */
+        if (UDS_StateDID_IsStateDID(did))
+        {
+            uint16_t dataLen = 0U;
+            if (UDS_StateDID_HandleRead(did, ctx->configuration, &buf[dataOffset], &dataLen))
+            {
+                *bytesWritten = dataOffset + dataLen;
+                result = true;
+            }
+            /* Caller handles NRC - state DID handler indicated read failure */
+        }
+        /* Handle existing DIDs */
+        else if (did == UDS_DID_FIRMWARE_VERSION)
+        {
+            const char *commitHash = getCommitHash();
+            uint16_t hashLen = (uint16_t)strnlen(commitHash, 10);
+            if (hashLen > (maxAvailable - dataOffset))
+            {
+                hashLen = maxAvailable - dataOffset;
+            }
+            (void)memcpy(&buf[dataOffset], commitHash, hashLen);
+            *bytesWritten = dataOffset + hashLen;
+            result = true;
+        }
+        else if (did == UDS_DID_HARDWARE_VERSION)
+        {
+            buf[dataOffset] = (uint8_t)get_hardware_version();
+            *bytesWritten = dataOffset + 1U;
+            result = true;
+        }
+        else if (did == UDS_DID_SETTING_COUNT)
+        {
+            buf[dataOffset] = UDS_GetSettingCount();
+            *bytesWritten = dataOffset + 1U;
+            result = true;
+        }
+        /* Check settings DIDs - delegate to helper functions */
+        else if ((did >= UDS_DID_SETTING_INFO_BASE) && (did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount())))
+        {
+            result = readSettingInfoDID(did, buf, dataOffset, maxAvailable, bytesWritten);
+        }
+        else if ((did >= UDS_DID_SETTING_VALUE_BASE) && (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())))
+        {
+            result = readSettingValueDID(did, ctx->configuration, buf, dataOffset, maxAvailable, bytesWritten);
+        }
+        else if ((did >= UDS_DID_SETTING_LABEL_BASE) && (did < UDS_DID_SETTING_LABEL_END))
+        {
+            result = readSettingLabelDID(did, buf, dataOffset, maxAvailable, bytesWritten);
+        }
+        else
+        {
+            /* Caller handles NRC - DID not found */
+        }
     }
 
-    return false;
+    return result;
 }
 
 /**
@@ -345,51 +358,55 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
     {
         NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
-        return;
     }
-
     /* Check that we have complete DID pairs (requestLength - 2 must be even) */
-    uint16_t didBytesCount = requestLength - UDS_DID_SIZE; /* Subtract pad + SID */
-    if ((didBytesCount % UDS_DID_SIZE) != 0U)
+    else if (((requestLength - UDS_DID_SIZE) % UDS_DID_SIZE) != 0U)
     {
         NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
-        return;
     }
-
-    /* Build response header */
-    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    uint16_t responseOffset = UDS_SID_IDX;
-
-    /* Process each DID in the request */
-    uint16_t requestOffset = UDS_DID_HI_IDX; /* Start after pad + SID */
-    while ((requestOffset + UDS_DID_SIZE) <= requestLength)
+    else
     {
-        uint16_t did = (uint16_t)(((uint16_t)requestData[requestOffset] << BYTE_WIDTH) | requestData[requestOffset + 1U]);
-        requestOffset += UDS_DID_SIZE;
+        /* Build response header */
+        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        uint16_t responseOffset = UDS_SID_IDX;
+        bool processingOk = true;
 
-        uint16_t bytesWritten = 0U;
-        if (!ReadSingleDID(ctx, did, responseOffset, &bytesWritten))
+        /* Process each DID in the request */
+        uint16_t requestOffset = UDS_DID_HI_IDX; /* Start after pad + SID */
+        while (processingOk && ((requestOffset + UDS_DID_SIZE) <= requestLength))
         {
-            /* DID read failed - send NRC for this DID */
-            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
-            UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
-            return;
+            uint16_t did = (uint16_t)(((uint16_t)requestData[requestOffset] << BYTE_WIDTH) | requestData[requestOffset + 1U]);
+            requestOffset += UDS_DID_SIZE;
+
+            uint16_t bytesWritten = 0U;
+            if (!ReadSingleDID(ctx, did, responseOffset, &bytesWritten))
+            {
+                /* DID read failed - send NRC for this DID */
+                NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
+                UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+                processingOk = false;
+            }
+            else
+            {
+                responseOffset += bytesWritten;
+
+                /* Check if response would overflow */
+                if (responseOffset >= UDS_MAX_RESPONSE_LENGTH)
+                {
+                    NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_RESPONSE_TOO_LONG);
+                    UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_RESPONSE_TOO_LONG);
+                    processingOk = false;
+                }
+            }
         }
 
-        responseOffset += bytesWritten;
-
-        /* Check if response would overflow */
-        if (responseOffset >= UDS_MAX_RESPONSE_LENGTH)
+        if (processingOk)
         {
-            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_RESPONSE_TOO_LONG);
-            UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_RESPONSE_TOO_LONG);
-            return;
+            ctx->responseLength = responseOffset;
+            UDS_SendResponse(ctx);
         }
     }
-
-    ctx->responseLength = responseOffset;
-    UDS_SendResponse(ctx);
 }
 
 /**
@@ -402,19 +419,21 @@ static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData, uint
     {
         NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
-        return true;
+    }
+    else
+    {
+        uint8_t ppo2Raw = requestData[UDS_DATA_IDX];
+        PPO2_t ppo2 = ppo2Raw;
+        setSetpoint(ppo2);
+
+        /* Build positive response */
+        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+        ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+        ctx->responseLength = UDS_POS_RESP_HDR;
+        UDS_SendResponse(ctx);
     }
 
-    uint8_t ppo2Raw = requestData[UDS_DATA_IDX];
-    PPO2_t ppo2 = ppo2Raw;
-    setSetpoint(ppo2);
-
-    /* Build positive response */
-    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-    ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-    ctx->responseLength = UDS_POS_RESP_HDR;
-    UDS_SendResponse(ctx);
     return true;
 }
 
@@ -428,40 +447,41 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx, const uint8_t *request
     {
         NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
-        return true;
     }
-
-    FO2_t fO2 = requestData[UDS_DATA_IDX];
-
-    if (fO2 > FO2_MAX_PERCENT)
+    else
     {
-        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
-        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
-        return true;
+        FO2_t fO2 = requestData[UDS_DATA_IDX];
+
+        if (fO2 > FO2_MAX_PERCENT)
+        {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        }
+        else if (isCalibrating())
+        {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_CONDITIONS_NOT_CORRECT);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+        }
+        else
+        {
+            uint16_t atmoPressure = getAtmoPressure();
+            RunCalibrationTask(
+                DIVECAN_SOLO,
+                fO2,
+                atmoPressure,
+                ctx->configuration->calibrationMode,
+                ctx->configuration->powerMode
+            );
+
+            /* Build positive response */
+            ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+            ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+            ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+            ctx->responseLength = UDS_POS_RESP_HDR;
+            UDS_SendResponse(ctx);
+        }
     }
 
-    if (isCalibrating())
-    {
-        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_CONDITIONS_NOT_CORRECT);
-        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
-        return true;
-    }
-
-    uint16_t atmoPressure = getAtmoPressure();
-    RunCalibrationTask(
-        DIVECAN_SOLO,
-        fO2,
-        atmoPressure,
-        ctx->configuration->calibrationMode,
-        ctx->configuration->powerMode
-    );
-
-    /* Build positive response */
-    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-    ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-    ctx->responseLength = UDS_POS_RESP_HDR;
-    UDS_SendResponse(ctx);
     return true;
 }
 
@@ -478,39 +498,43 @@ static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, const uint8_t *
     {
         NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
-        return true;
     }
-
-    /* Extract value from message data */
-    uint64_t value = 0;
-    uint16_t dataLen = requestLength - UDS_MIN_REQ_LEN;
-    for (uint16_t i = 0; (i < dataLen) && (i < sizeof(uint64_t)); ++i)
+    else
     {
-        value = (value << BYTE_WIDTH) | requestData[UDS_DATA_IDX + i];
+        /* Extract value from message data */
+        uint64_t value = 0;
+        uint16_t dataLen = requestLength - UDS_MIN_REQ_LEN;
+        for (uint16_t i = 0; (i < dataLen) && (i < sizeof(uint64_t)); ++i)
+        {
+            value = (value << BYTE_WIDTH) | requestData[UDS_DATA_IDX + i];
+        }
+
+        if (!UDS_SetSettingValue(index, value, ctx->configuration))
+        {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        }
+        else
+        {
+            /* Save to flash */
+            HW_Version_t hw_ver = get_hardware_version();
+            if (!saveConfiguration(ctx->configuration, hw_ver))
+            {
+                NON_FATAL_ERROR(FLASH_LOCK_ERR);
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_GENERAL_PROG_FAIL);
+            }
+            else
+            {
+                /* Build positive response */
+                ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+                ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+                ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+                ctx->responseLength = UDS_POS_RESP_HDR;
+                UDS_SendResponse(ctx);
+            }
+        }
     }
 
-    if (!UDS_SetSettingValue(index, value, ctx->configuration))
-    {
-        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
-        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
-        return true;
-    }
-
-    /* Save to flash */
-    HW_Version_t hw_ver = get_hardware_version();
-    if (!saveConfiguration(ctx->configuration, hw_ver))
-    {
-        NON_FATAL_ERROR(FLASH_LOCK_ERR);
-        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_GENERAL_PROG_FAIL);
-        return true;
-    }
-
-    /* Build positive response */
-    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-    ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-    ctx->responseLength = UDS_POS_RESP_HDR;
-    UDS_SendResponse(ctx);
     return true;
 }
 
@@ -524,31 +548,34 @@ static bool writeSettingValueDID(UDSContext_t *ctx, uint16_t did, const uint8_t 
     {
         NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
-        return true;
     }
-
-    uint8_t index = (uint8_t)(did - UDS_DID_SETTING_VALUE_BASE);
-
-    /* Decode big-endian u64 */
-    uint64_t value = 0;
-    for (uint8_t i = 0; i < sizeof(uint64_t); ++i)
+    else
     {
-        value = (value << BYTE_WIDTH) | requestData[UDS_DATA_IDX + i];
+        uint8_t index = (uint8_t)(did - UDS_DID_SETTING_VALUE_BASE);
+
+        /* Decode big-endian u64 */
+        uint64_t value = 0;
+        for (uint8_t i = 0; i < sizeof(uint64_t); ++i)
+        {
+            value = (value << BYTE_WIDTH) | requestData[UDS_DATA_IDX + i];
+        }
+
+        if (!UDS_SetSettingValue(index, value, ctx->configuration))
+        {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        }
+        else
+        {
+            /* Build positive response */
+            ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+            ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+            ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+            ctx->responseLength = UDS_POS_RESP_HDR;
+            UDS_SendResponse(ctx);
+        }
     }
 
-    if (!UDS_SetSettingValue(index, value, ctx->configuration))
-    {
-        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
-        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
-        return true;
-    }
-
-    /* Build positive response */
-    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-    ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-    ctx->responseLength = UDS_POS_RESP_HDR;
-    UDS_SendResponse(ctx);
     return true;
 }
 
@@ -565,40 +592,35 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     {
         NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
-        return;
     }
-
-    /* Extract DID (big-endian) */
-    uint16_t did = (uint16_t)(((uint16_t)requestData[UDS_DID_HI_IDX] << BYTE_WIDTH) | requestData[UDS_DID_LO_IDX]);
-
-    /* Dispatch based on DID - delegate to helper functions */
-    switch (did)
+    else
     {
-    case UDS_DID_SETPOINT_WRITE:
-        (void)writeSetpointDID(ctx, requestData, requestLength);
-        return;
+        /* Extract DID (big-endian) */
+        uint16_t did = (uint16_t)(((uint16_t)requestData[UDS_DID_HI_IDX] << BYTE_WIDTH) | requestData[UDS_DID_LO_IDX]);
 
-    case UDS_DID_CALIBRATION_TRIGGER:
-        (void)writeCalibrationTriggerDID(ctx, requestData, requestLength);
-        return;
-
-    default:
+        /* Dispatch based on DID - delegate to helper functions */
+        if (did == UDS_DID_SETPOINT_WRITE)
+        {
+            (void)writeSetpointDID(ctx, requestData, requestLength);
+        }
+        else if (did == UDS_DID_CALIBRATION_TRIGGER)
+        {
+            (void)writeCalibrationTriggerDID(ctx, requestData, requestLength);
+        }
         /* Check setting save DID range (0x9350+) */
-        if ((did >= UDS_DID_SETTING_SAVE_BASE) && (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount())))
+        else if ((did >= UDS_DID_SETTING_SAVE_BASE) && (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount())))
         {
             (void)writeSettingSaveDID(ctx, did, requestData, requestLength);
-            return;
         }
-
         /* Check setting value DID range (0x9130+) */
-        if ((did >= UDS_DID_SETTING_VALUE_BASE) && (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())))
+        else if ((did >= UDS_DID_SETTING_VALUE_BASE) && (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())))
         {
             (void)writeSettingValueDID(ctx, did, requestData, requestLength);
-            return;
         }
-
-        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
-        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
-        break;
+        else
+        {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        }
     }
 }

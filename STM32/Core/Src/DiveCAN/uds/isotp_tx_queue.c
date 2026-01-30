@@ -120,36 +120,41 @@ void ISOTP_TxQueue_Init(void)
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
                            uint32_t messageId, const uint8_t *data, uint16_t length)
 {
+    bool result = false;
     osMessageQueueId_t queueHandle = *getTxQueueHandle();
 
     if ((data == NULL) || (length == 0) || (length > ISOTP_TX_BUFFER_SIZE))
     {
         NON_FATAL_ERROR(NULL_PTR_ERR);
-        return false;
     }
-
-    if (queueHandle == NULL)
-    {
-        NON_FATAL_ERROR(QUEUEING_ERR);
-        return false;
-    }
-
-    /* Use static buffer to avoid large stack allocation */
-    ISOTPTxRequest_t *reqBuffer = getTxRequestBuffer();
-    (void)memset(reqBuffer, 0, sizeof(ISOTPTxRequest_t));
-    (void)memcpy(reqBuffer->data, data, length);
-    reqBuffer->length = length;
-    reqBuffer->source = source;
-    reqBuffer->target = target;
-    reqBuffer->messageId = messageId;
-
-    /* Non-blocking put - returns osOK on success, osErrorResource if full */
-    osStatus_t status = osMessageQueuePut(queueHandle, reqBuffer, 0, 0);
-    if (status != osOK)
+    else if (queueHandle == NULL)
     {
         NON_FATAL_ERROR(QUEUEING_ERR);
     }
-    return (status == osOK);
+    else
+    {
+        /* Use static buffer to avoid large stack allocation */
+        ISOTPTxRequest_t *reqBuffer = getTxRequestBuffer();
+        (void)memset(reqBuffer, 0, sizeof(ISOTPTxRequest_t));
+        (void)memcpy(reqBuffer->data, data, length);
+        reqBuffer->length = length;
+        reqBuffer->source = source;
+        reqBuffer->target = target;
+        reqBuffer->messageId = messageId;
+
+        /* Non-blocking put - returns osOK on success, osErrorResource if full */
+        osStatus_t status = osMessageQueuePut(queueHandle, reqBuffer, 0, 0);
+        if (status != osOK)
+        {
+            NON_FATAL_ERROR(QUEUEING_ERR);
+        }
+        else
+        {
+            result = true;
+        }
+    }
+
+    return result;
 }
 
 /**
@@ -296,59 +301,62 @@ static void SendConsecutiveFrames(void)
 
 bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
 {
+    bool result = false;
     ISOTPTxState_t *state = getTxState();
 
     if (fc == NULL)
     {
         NON_FATAL_ERROR(NULL_PTR_ERR);
-        return false;
     }
-
-    if ((!state->txActive) || (state->txState != ISOTP_WAIT_FC))
+    else if ((!state->txActive) || (state->txState != ISOTP_WAIT_FC))
     {
         /* Expected: FC received when not awaiting one - spurious or for another context */
-        return false;
     }
-
-    /* Verify FC is for our current TX
-     * Accept FC addressed to us, or broadcast FC (Shearwater quirk) */
-    uint8_t fcTarget = (fc->id >> BYTE_WIDTH) & ISOTP_PCI_LEN_MASK;
-    if ((fcTarget != state->current.source) && (fcTarget != ISOTP_BROADCAST_ADDR))
+    else
     {
-        /* Expected: FC addressed to another node on the bus */
-        return false;
-    }
-
-    uint8_t flowStatus = fc->data[ISOTP_FC_STATUS_IDX];
-
-    switch (flowStatus)
-    {
-    case ISOTP_FC_CTS:
-        state->txBlockSize = fc->data[ISOTP_FC_BS_IDX];
-        state->txSTmin = fc->data[ISOTP_FC_STMIN_IDX];
-        state->txBlockCounter = 0;
-        state->txState = ISOTP_TRANSMITTING;
-        SendConsecutiveFrames();
-        /* If TX completed, immediately start next queued message */
-        if (!state->txActive)
+        /* Verify FC is for our current TX
+         * Accept FC addressed to us, or broadcast FC (Shearwater quirk) */
+        uint8_t fcTarget = (fc->id >> BYTE_WIDTH) & ISOTP_PCI_LEN_MASK;
+        if ((fcTarget != state->current.source) && (fcTarget != ISOTP_BROADCAST_ADDR))
         {
-            StartNextTx();
+            /* Expected: FC addressed to another node on the bus */
         }
-        break;
+        else
+        {
+            uint8_t flowStatus = fc->data[ISOTP_FC_STATUS_IDX];
 
-    case ISOTP_FC_WAIT: /* Not implemented - abort */
-        NON_FATAL_ERROR_DETAIL(ISOTP_UNSUPPORTED_ERR, ISOTP_FC_WAIT);
-        __attribute__((fallthrough));
-    case ISOTP_FC_OVFLW: /* Receiver rejected - abort */
-        NON_FATAL_ERROR_DETAIL(ISOTP_RX_ABORT_ERR, flowStatus);
-        __attribute__((fallthrough));
-    default:
-        state->txActive = false;
-        state->txState = ISOTP_IDLE;
-        break;
+            switch (flowStatus)
+            {
+            case ISOTP_FC_CTS:
+                state->txBlockSize = fc->data[ISOTP_FC_BS_IDX];
+                state->txSTmin = fc->data[ISOTP_FC_STMIN_IDX];
+                state->txBlockCounter = 0;
+                state->txState = ISOTP_TRANSMITTING;
+                SendConsecutiveFrames();
+                /* If TX completed, immediately start next queued message */
+                if (!state->txActive)
+                {
+                    StartNextTx();
+                }
+                break;
+
+            case ISOTP_FC_WAIT: /* Not implemented - abort */
+                NON_FATAL_ERROR_DETAIL(ISOTP_UNSUPPORTED_ERR, ISOTP_FC_WAIT);
+                __attribute__((fallthrough));
+            case ISOTP_FC_OVFLW: /* Receiver rejected - abort */
+                NON_FATAL_ERROR_DETAIL(ISOTP_RX_ABORT_ERR, flowStatus);
+                __attribute__((fallthrough));
+            default:
+                state->txActive = false;
+                state->txState = ISOTP_IDLE;
+                break;
+            }
+
+            result = true;
+        }
     }
 
-    return true;
+    return result;
 }
 
 void ISOTP_TxQueue_Poll(Timestamp_t currentTime)
@@ -379,13 +387,17 @@ bool ISOTP_TxQueue_IsBusy(void)
 
 uint8_t ISOTP_TxQueue_GetPendingCount(void)
 {
+    uint8_t count = 0;
     osMessageQueueId_t queueHandle = *getTxQueueHandle();
 
     if (queueHandle == NULL)
     {
         /* Expected: Init not yet called - return 0 as safe default */
-        return 0;
+    }
+    else
+    {
+        count = (uint8_t)osMessageQueueGetCount(queueHandle);
     }
 
-    return (uint8_t)osMessageQueueGetCount(queueHandle);
+    return count;
 }

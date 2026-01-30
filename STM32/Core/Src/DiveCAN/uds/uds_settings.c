@@ -94,12 +94,18 @@ uint8_t UDS_GetSettingCount(void)
  */
 const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
 {
+    const SettingDefinition_t *result = NULL;
+
     if (index >= SETTING_COUNT)
     {
         NON_FATAL_ERROR_DETAIL(CONFIG_ERR, index);
-        return NULL;
     }
-    return &settings[index];
+    else
+    {
+        result = &settings[index];
+    }
+
+    return result;
 }
 
 /**
@@ -107,29 +113,40 @@ const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
  */
 uint64_t UDS_GetSettingValue(uint8_t index, const Configuration_t *config)
 {
+    uint64_t result = 0U;
+
     if ((index >= SETTING_COUNT) || (config == NULL))
     {
         NON_FATAL_ERROR_DETAIL(CONFIG_ERR, index);
-        return 0;
     }
-
-    uint32_t configBits = getConfigBytes(config);
-
-    switch (index)
+    else
     {
-    case SETTING_INDEX_FW_COMMIT:
-        return 0;
-    case SETTING_INDEX_CONFIG1:
-        return (uint8_t)(configBits);
-    case SETTING_INDEX_CONFIG2:
-        return (uint8_t)(configBits >> BYTE_WIDTH);
-    case SETTING_INDEX_CONFIG3:
-        return (uint8_t)(configBits >> TWO_BYTE_WIDTH);
-    case SETTING_INDEX_CONFIG4:
-        return (uint8_t)(configBits >> THREE_BYTE_WIDTH);
-    default:
-        return 0;
+        uint32_t configBits = getConfigBytes(config);
+
+        switch (index)
+        {
+        case SETTING_INDEX_FW_COMMIT:
+            result = 0U;
+            break;
+        case SETTING_INDEX_CONFIG1:
+            result = (uint8_t)(configBits);
+            break;
+        case SETTING_INDEX_CONFIG2:
+            result = (uint8_t)(configBits >> BYTE_WIDTH);
+            break;
+        case SETTING_INDEX_CONFIG3:
+            result = (uint8_t)(configBits >> TWO_BYTE_WIDTH);
+            break;
+        case SETTING_INDEX_CONFIG4:
+            result = (uint8_t)(configBits >> THREE_BYTE_WIDTH);
+            break;
+        default:
+            /* Invalid index - result remains 0 */
+            break;
+        }
     }
+
+    return result;
 }
 
 /**
@@ -137,50 +154,52 @@ uint64_t UDS_GetSettingValue(uint8_t index, const Configuration_t *config)
  */
 bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
 {
+    bool result = false;
+
     if ((index >= SETTING_COUNT) || (config == NULL))
     {
         NON_FATAL_ERROR_DETAIL(CONFIG_ERR, index);
-        return false;
     }
-
-    const SettingDefinition_t *setting = &settings[index];
-
-    /* Validate editable */
-    if (!setting->editable)
+    else
     {
-        NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, index);
-        return false;
+        const SettingDefinition_t *setting = &settings[index];
+
+        /* Validate editable */
+        if (!setting->editable)
+        {
+            NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, index);
+        }
+        /* Validate range */
+        else if (value > setting->maxValue)
+        {
+            NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, index);
+        }
+        /* Guard against index 0 (FW_COMMIT) - would cause array underflow below.
+         * This should already be prevented by !editable check, but guard explicitly.
+         * Expected: Should never reach here since FW_COMMIT is !editable */
+        else if (index == 0U)
+        {
+            NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, index);
+        }
+        else
+        {
+            /* Update configuration field */
+            uint32_t configBits = getConfigBytes(config);
+            uint8_t configBytes[4] = {(uint8_t)(configBits),
+                                      (uint8_t)(configBits >> BYTE_WIDTH),
+                                      (uint8_t)(configBits >> TWO_BYTE_WIDTH),
+                                      (uint8_t)(configBits >> THREE_BYTE_WIDTH)};
+
+            configBytes[index - 1U] = (uint8_t)(value & BYTE_MASK);
+
+            uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_WIDTH) | ((uint32_t)configBytes[2] << TWO_BYTE_WIDTH) | ((uint32_t)configBytes[3] << THREE_BYTE_WIDTH));
+            *config = setConfigBytes(newBytes);
+
+            result = true;
+        }
     }
 
-    /* Validate range */
-    if (value > setting->maxValue)
-    {
-        NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, index);
-        return false;
-    }
-
-    /* Guard against index 0 (FW_COMMIT) - would cause array underflow below.
-     * This should already be prevented by !editable check, but guard explicitly.
-     * Expected: Should never reach here since FW_COMMIT is !editable */
-    if (index == 0U)
-    {
-        NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, index);
-        return false;
-    }
-
-    /* Update configuration field */
-    uint32_t configBits = getConfigBytes(config);
-    uint8_t configBytes[4] = {(uint8_t)(configBits),
-                              (uint8_t)(configBits >> BYTE_WIDTH),
-                              (uint8_t)(configBits >> TWO_BYTE_WIDTH),
-                              (uint8_t)(configBits >> THREE_BYTE_WIDTH)};
-
-    configBytes[index - 1U] = value & BYTE_MASK;
-
-    uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_WIDTH) | ((uint32_t)configBytes[2] << TWO_BYTE_WIDTH) | ((uint32_t)configBytes[3] << THREE_BYTE_WIDTH));
-    *config = setConfigBytes(newBytes);
-
-    return true;
+    return result;
 }
 
 /**
@@ -188,19 +207,25 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
  */
 const char *UDS_GetSettingOptionLabel(uint8_t settingIndex, uint8_t optionIndex)
 {
+    const char *result = NULL;
+
     if (settingIndex >= SETTING_COUNT)
     {
         NON_FATAL_ERROR_DETAIL(CONFIG_ERR, settingIndex);
-        return NULL;
     }
-
-    const SettingDefinition_t *setting = &settings[settingIndex];
-
-    if (optionIndex >= setting->optionCount)
+    else
     {
-        NON_FATAL_ERROR_DETAIL(CONFIG_ERR, optionIndex);
-        return NULL;
+        const SettingDefinition_t *setting = &settings[settingIndex];
+
+        if (optionIndex >= setting->optionCount)
+        {
+            NON_FATAL_ERROR_DETAIL(CONFIG_ERR, optionIndex);
+        }
+        else
+        {
+            result = setting->options[optionIndex];
+        }
     }
 
-    return setting->options[optionIndex];
+    return result;
 }
