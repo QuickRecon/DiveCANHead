@@ -89,7 +89,6 @@ See [DATA_IDENTIFIERS.md](DATA_IDENTIFIERS.md) for available DIDs.
 **Response:** `[0x6E, DID_hi, DID_lo]`
 
 Writable DIDs:
-- `0xA000` - Log stream enable (1 byte: 0=disable, non-zero=enable)
 - `0xF100` - Configuration block (4 bytes)
 - `0x9130+N` - Setting value (8 bytes, temporary)
 - `0x9350+N` - Setting save (8 bytes, persisted to flash)

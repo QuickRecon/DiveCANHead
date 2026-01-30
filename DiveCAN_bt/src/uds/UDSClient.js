@@ -428,37 +428,6 @@ export class UDSClient extends EventEmitter {
   }
 
   // ============================================================
-  // Log Streaming Methods
-  // ============================================================
-
-  /**
-   * Enable log streaming from Head
-   * @deprecated Log streaming is now always enabled - this method is a no-op
-   * @returns {Promise<void>}
-   */
-  async enableLogStreaming() {
-    this.logger.info('Log streaming is always enabled');
-  }
-
-  /**
-   * Disable log streaming from Head
-   * @deprecated Log streaming is now always enabled - this method is a no-op
-   * @returns {Promise<void>}
-   */
-  async disableLogStreaming() {
-    this.logger.info('Log streaming cannot be disabled');
-  }
-
-  /**
-   * Check if log streaming is enabled
-   * @deprecated Log streaming is now always enabled
-   * @returns {Promise<boolean>} Always returns true
-   */
-  async isLogStreamingEnabled() {
-    return true;
-  }
-
-  // ============================================================
   // Control Methods (Setpoint, Calibration)
   // ============================================================
 

@@ -144,7 +144,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
     case UDS_DID_FIRMWARE_VERSION:
     {
         const char *commitHash = getCommitHash();
-        uint16_t hashLen = strlen(commitHash);
+        uint16_t hashLen = strnlen(commitHash, 10);
         if (hashLen > (maxAvailable - dataOffset))
         {
             hashLen = maxAvailable - dataOffset;
@@ -179,7 +179,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         }
 
         uint16_t labelLen = 9;
-        assert(strlen(setting->label) <= labelLen);
+        assert(strnlen(setting->label, labelLen) <= labelLen);
         uint16_t needed = labelLen + 5U; /* label + null + kind + editable + (optional maxValue + optionCount) */
         if (setting->kind == SETTING_KIND_TEXT)
         {
@@ -192,7 +192,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
 
         // Label len always needs to be the same length (9 bytes), 0 padded if needed
         memset(&buf[dataOffset], 0, labelLen);
-        memcpy(&buf[dataOffset], setting->label,  strlen(setting->label));
+        memcpy(&buf[dataOffset], setting->label,  strnlen(setting->label, labelLen));
         buf[dataOffset + labelLen] = 0; /* Null terminator */
         buf[dataOffset + labelLen + 1] = (uint8_t)setting->kind;
         buf[dataOffset + labelLen + 2] = setting->editable ? 1 : 0;
@@ -245,7 +245,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
             return false;
         }
 
-        uint16_t labelLen = strlen(label);
+        uint16_t labelLen = strnlen(label,9);
         if (labelLen > (maxAvailable - dataOffset - 1U))
         {
             labelLen = maxAvailable - dataOffset - 1U;

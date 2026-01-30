@@ -127,7 +127,7 @@ startup_stm32l431xx.s
 #######################################
 # binaries
 #######################################
-PREFIX = arm-none-eabi-
+PREFIX = /usr/bin/arm-none-eabi-
 # The gcc compiler bin path can be either defined in make command via GCC_PATH variable (> make GCC_PATH=xxx)
 # either it can be added to the PATH environment variable.
 ifdef GCC_PATH

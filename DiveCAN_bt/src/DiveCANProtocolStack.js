@@ -377,36 +377,6 @@ export class DiveCANProtocolStack extends EventEmitter {
     return await this._uds.enumerateSettings();
   }
 
-  // ============================================================
-  // Log Streaming Convenience Methods
-  // ============================================================
-
-  /**
-   * Enable log streaming from Head
-   * @deprecated Log streaming is now always enabled
-   * @returns {Promise<void>}
-   */
-  async enableLogStreaming() {
-    await this._uds.enableLogStreaming();
-  }
-
-  /**
-   * Disable log streaming from Head
-   * @deprecated Log streaming is now always enabled
-   * @returns {Promise<void>}
-   */
-  async disableLogStreaming() {
-    await this._uds.disableLogStreaming();
-  }
-
-  /**
-   * Check if log streaming is enabled
-   * @returns {Promise<boolean>}
-   */
-  async isLogStreamingEnabled() {
-    return await this._uds.isLogStreamingEnabled();
-  }
-
   // Layer accessors
   get ble() { return this._ble; }
   get slip() { return this._slip; }

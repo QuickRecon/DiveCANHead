@@ -2002,13 +2002,6 @@
           // Initialize DID-based polling
           const success = await initDIDPolling();
           if (success) {
-            // Enable log streaming for log/event messages
-            try {
-              await stack.enableLogStreaming();
-            } catch (error) {
-              console.error('Failed to enable log streaming:', error);
-            }
-
             // Auto-load configuration after DID polling is ready
             try {
               await loadConfigFromDevice();
@@ -2057,11 +2050,6 @@
     // Disconnect
     elements.disconnectButton.addEventListener('click', async () => {
       if (stack) {
-        try {
-          await stack.disableLogStreaming();
-        } catch (e) {
-          // Ignore errors on disconnect
-        }
         await stack.disconnect();
         stack = null;
       }
