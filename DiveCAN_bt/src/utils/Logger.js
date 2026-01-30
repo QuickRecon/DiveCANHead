@@ -81,10 +81,10 @@ export class Logger {
    */
   info(msg, data) {
     if (this._effectiveLevel() <= Logger.LEVELS.INFO) {
-      if (data !== undefined) {
-        console.info(this._format('INFO', msg, data), data);
-      } else {
+      if (data === undefined) {
         console.info(this._format('INFO', msg, data));
+      } else {
+        console.info(this._format('INFO', msg, data), data);
       }
     }
   }
@@ -96,10 +96,10 @@ export class Logger {
    */
   warn(msg, data) {
     if (this._effectiveLevel() <= Logger.LEVELS.WARN) {
-      if (data !== undefined) {
-        console.warn(this._format('WARN', msg, data), data);
-      } else {
+      if (data === undefined) {
         console.warn(this._format('WARN', msg, data));
+      } else {
+        console.warn(this._format('WARN', msg, data), data);
       }
     }
   }
@@ -111,10 +111,10 @@ export class Logger {
    */
   error(msg, data) {
     if (this._effectiveLevel() <= Logger.LEVELS.ERROR) {
-      if (data !== undefined) {
-        console.error(this._format('ERROR', msg, data), data);
-      } else {
+      if (data === undefined) {
         console.error(this._format('ERROR', msg, data));
+      } else {
+        console.error(this._format('ERROR', msg, data), data);
       }
     }
   }

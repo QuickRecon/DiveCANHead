@@ -53,7 +53,7 @@ export class Timeout {
    * @returns {Promise} Promise that rejects on timeout
    */
   get promise() {
-    if (!this._promise) {
+    if (this._promise === null) {
       throw new Error('Timeout not started');
     }
     return this._promise;

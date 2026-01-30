@@ -4,7 +4,7 @@
  */
 
 import { ByteUtils } from '../utils/ByteUtils.js';
-import { DiveCANError, ValidationError } from '../errors/ProtocolErrors.js';
+import { ValidationError } from '../errors/ProtocolErrors.js';
 import { Logger } from '../utils/Logger.js';
 import * as constants from './constants.js';
 

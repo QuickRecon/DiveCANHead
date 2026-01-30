@@ -21,10 +21,10 @@ export class ByteUtils {
    * @returns {Uint8Array} Byte array
    */
   static fromHexString(hex) {
-    const cleaned = hex.replace(/[^0-9a-fA-F]/g, '');
+    const cleaned = hex.replaceAll(/[^0-9a-fA-F]/g, '');
     const bytes = new Uint8Array(cleaned.length / 2);
     for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = parseInt(cleaned.substr(i * 2, 2), 16);
+      bytes[i] = Number.parseInt(cleaned.slice(i * 2, i * 2 + 2), 16);
     }
     return bytes;
   }

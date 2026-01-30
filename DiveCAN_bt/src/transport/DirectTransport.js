@@ -12,7 +12,6 @@
 
 import { ByteUtils } from '../utils/ByteUtils.js';
 import { Logger } from '../utils/Logger.js';
-import { TimeoutError } from '../errors/ProtocolErrors.js';
 
 /**
  * Simple EventEmitter

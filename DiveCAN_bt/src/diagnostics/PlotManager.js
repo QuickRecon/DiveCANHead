@@ -229,8 +229,7 @@ export class PlotManager {
     // First pass: find the earliest and latest timestamps across all series
     let earliestTimestamp = Infinity;
     let latestTimestamp = 0;
-    for (let i = 0; i < this.activeSeries.length; i++) {
-      const series = this.activeSeries[i];
+    for (const series of this.activeSeries) {
       const data = this.dataStore.getSeries(series.key);
       if (data.length > 0) {
         const seriesEarliest = data[0].timestamp;

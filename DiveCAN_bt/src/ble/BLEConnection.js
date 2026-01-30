@@ -189,7 +189,8 @@ export class BLEConnection extends EventEmitter {
         const modelNumber = new TextDecoder().decode(modelValue);
         this.logger.info(`Connected to: ${modelNumber}`);
       } catch (e) {
-        this.logger.debug('Could not read model number');
+        // Intentionally ignored: model number is optional, not all devices support it
+        this.logger.debug(`Could not read model number: ${e.message}`);
       }
 
       this._isConnected = true;
@@ -222,7 +223,7 @@ export class BLEConnection extends EventEmitter {
     this.logger.info('Disconnecting...');
 
     try {
-      if (this.server && this.server.connected) {
+      if (this.server?.connected) {
         this.server.disconnect();
       }
     } catch (error) {
@@ -324,7 +325,7 @@ export class BLEConnection extends EventEmitter {
    * @returns {boolean} True if connected
    */
   get isConnected() {
-    return this._isConnected && this.server && this.server.connected;
+    return this._isConnected && this.server?.connected;
   }
 
   /**

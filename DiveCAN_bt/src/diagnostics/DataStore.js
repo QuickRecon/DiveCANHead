@@ -9,13 +9,7 @@
 
 import {
   CELL_TYPE_NONE,
-  CELL_TYPE_ANALOG,
-  CELL_TYPE_O2S,
-  CELL_TYPE_DIVEO2,
-  STATE_DIDS,
-  getControlStateDIDs,
-  getValidCellDIDs,
-  getDIDInfo
+  STATE_DIDS
 } from '../uds/constants.js';
 
 export class DataStore {
@@ -48,7 +42,7 @@ export class DataStore {
    * @private
    */
   _addPoint(key, timestamp, value) {
-    if (value === undefined || value === null || isNaN(value)) return;
+    if (value === undefined || value === null || Number.isNaN(value)) return;
 
     if (!this.series.has(key)) {
       this.series.set(key, []);
@@ -280,29 +274,66 @@ export class DataStore {
   }
 
   /**
+   * Check if a DID is valid for current cell configuration
+   * @private
+   */
+  _isValidDIDForCell(didKey, didInfo) {
+    if (didInfo.cellType === undefined) {
+      return true;
+    }
+    const cellNum = this._extractCellNum(didKey);
+    if (cellNum === null) {
+      return true;
+    }
+    return didInfo.cellType === this.cellTypes[cellNum];
+  }
+
+  /**
+   * Collect DIDs to poll from active subscriptions
+   * @private
+   */
+  _collectSubscribedDIDs() {
+    const didsToRead = [];
+    for (const didKey of this.subscriptions.keys()) {
+      const didInfo = STATE_DIDS[didKey];
+      if (didInfo && this._isValidDIDForCell(didKey, didInfo)) {
+        didsToRead.push(didInfo.did);
+      }
+    }
+    return didsToRead;
+  }
+
+  /**
+   * Update DID values from poll result
+   * @private
+   */
+  _updateDIDValues(result, timestamp) {
+    for (const [key, value] of Object.entries(result)) {
+      const oldValue = this.didValues.get(key);
+      this.didValues.set(key, value);
+
+      const seriesKey = this._didKeyToSeriesKey(key);
+      this._addPoint(seriesKey, timestamp, value);
+
+      if (oldValue !== value) {
+        this._notifySubscribers(key, value, oldValue);
+      }
+    }
+  }
+
+  /**
    * Poll only subscribed DIDs
    * @private
    */
   async _pollSubscribedDIDs() {
-    if (!this.udsClient || this.subscriptions.size === 0) return;
-
-    // Collect DIDs to poll (only those with active subscriptions)
-    const didsToRead = [];
-    for (const didKey of this.subscriptions.keys()) {
-      const didInfo = STATE_DIDS[didKey];
-      if (didInfo) {
-        // Check if DID is valid for current cell type
-        if (didInfo.cellType !== undefined) {
-          const cellNum = this._extractCellNum(didKey);
-          if (cellNum !== null && didInfo.cellType !== this.cellTypes[cellNum]) {
-            continue;  // Skip - cell type mismatch
-          }
-        }
-        didsToRead.push(didInfo.did);
-      }
+    if (!this.udsClient || this.subscriptions.size === 0) {
+      return;
     }
 
-    if (didsToRead.length === 0) return;
+    const didsToRead = this._collectSubscribedDIDs();
+    if (didsToRead.length === 0) {
+      return;
+    }
 
     // Read DIDs (chunked to fit BLE MTU)
     // Request: 1 (SID) + N*2 (DID bytes) + ~5 bytes protocol overhead must fit in 20-byte MTU
@@ -313,21 +344,7 @@ export class DataStore {
     for (let i = 0; i < didsToRead.length; i += DIDS_PER_REQUEST) {
       const chunk = didsToRead.slice(i, i + DIDS_PER_REQUEST);
       const result = await this.udsClient.readDIDsParsed(chunk);
-
-      // Update values and notify
-      for (const [key, value] of Object.entries(result)) {
-        const oldValue = this.didValues.get(key);
-        this.didValues.set(key, value);
-
-        // Add to time series using normalized key for charting compatibility
-        const seriesKey = this._didKeyToSeriesKey(key);
-        this._addPoint(seriesKey, timestamp, value);
-
-        // Notify if changed
-        if (oldValue !== value) {
-          this._notifySubscribers(key, value, oldValue);
-        }
-      }
+      this._updateDIDValues(result, timestamp);
     }
   }
 
@@ -354,7 +371,7 @@ export class DataStore {
    */
   _extractCellNum(didKey) {
     const match = didKey.match(/^CELL(\d)_/);
-    return match ? parseInt(match[1]) : null;
+    return match ? Number.parseInt(match[1], 10) : null;
   }
 
   /**
@@ -389,7 +406,7 @@ export class DataStore {
    */
   seriesKeyToDIDKey(seriesKey) {
     // Cell series: cell0.ppo2 -> CELL0_PPO2
-    const cellMatch = seriesKey.match(/^cell(\d)\.(.+)$/);
+    const cellMatch = /^cell(\d)\.(.+)$/.exec(seriesKey);
     if (cellMatch) {
       const cellNum = cellMatch[1];
       const field = cellMatch[2];

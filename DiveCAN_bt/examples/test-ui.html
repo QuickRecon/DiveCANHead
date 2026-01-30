@@ -68,7 +68,7 @@
 
     button:disabled {
       background: #555;
-      color: #888;
+      color: #ccc;
       cursor: not-allowed;
     }
 
@@ -90,7 +90,7 @@
 
     .status.connected {
       background: #4caf50;
-      color: white;
+      color: #1a1a1a;
     }
 
     .status.disconnected {
@@ -231,7 +231,7 @@
 
     .setting-row input:disabled {
       background: #333;
-      color: #888;
+      color: #aaa;
     }
 
     .setting-row button {
@@ -309,7 +309,7 @@
   <div class="section">
     <h2>Raw UDS Command</h2>
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-      <label>DID (hex):</label>
+      <label for="didInput">DID (hex):</label>
       <input type="text" id="didInput" placeholder="F000" disabled>
       <button id="sendRawRead" disabled>Send Read</button>
     </div>
@@ -347,7 +347,7 @@
   </div>
 
   <script type="module">
-    import { DiveCANProtocolStack, DeviceManager, UDSConstants, ByteUtils } from '../src/index.js';
+    import { DeviceManager, ByteUtils } from '../src/index.js';
 
     // Check browser support
     const checkBrowserSupport = () => {
@@ -444,7 +444,7 @@
       } else if (data instanceof Uint8Array || Array.isArray(data)) {
         const hex = ByteUtils.toHexString(data);
         const ascii = Array.from(data)
-          .map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.')
+          .map(b => (b >= 32 && b < 127) ? String.fromCodePoint(b) : '.')
           .join('');
         formatted = `${label}:\nHex: ${hex}\nASCII: ${ascii}\nLength: ${data.length} bytes`;
       } else {
@@ -580,7 +580,7 @@
             log(`Device 0x${id.toString(16).padStart(2, '0')}: ${name}`, 'info');
           } catch (e) {
             deviceListHtml += `<div>0x${id.toString(16).padStart(2, '0')} - (unknown)</div>`;
-            log(`Device 0x${id.toString(16).padStart(2, '0')}: failed to get name`, 'error');
+            log(`Device 0x${id.toString(16).padStart(2, '0')}: failed to get name - ${e.message}`, 'error');
           }
         }
         elements.deviceList.innerHTML = deviceListHtml || 'No devices found';
@@ -594,7 +594,7 @@
 
     // Target selection
     elements.targetSelect.addEventListener('change', () => {
-      const address = parseInt(elements.targetSelect.value);
+      const address = Number.parseInt(elements.targetSelect.value);
       stack.setTargetAddress(address);
       elements.currentTarget.textContent = `Target: 0x${address.toString(16).padStart(2, '0')}`;
       log(`Target changed to 0x${address.toString(16).padStart(2, '0')}`, 'info');
@@ -652,7 +652,7 @@
     }
 
     // Read single setting value (make global for onclick)
-    window.readSetting = async function(index) {
+    globalThis.readSetting = async function(index) {
       try {
         log(`Reading setting ${index}...`, 'info');
         const value = await stack.getSettingValue(index);
@@ -666,7 +666,7 @@
     };
 
     // Write setting value (temporary, not saved to flash)
-    window.writeSetting = async function(index) {
+    globalThis.writeSetting = async function(index) {
       try {
         const inputValue = document.getElementById(`setting-${index}`).value;
         const value = BigInt(inputValue);
@@ -681,7 +681,7 @@
     };
 
     // Save setting to flash (persistent)
-    window.saveSetting = async function(index) {
+    globalThis.saveSetting = async function(index) {
       try {
         const inputValue = document.getElementById(`setting-${index}`).value;
         const value = BigInt(inputValue);
@@ -704,8 +704,8 @@
           return;
         }
 
-        const did = parseInt(didHex, 16);
-        if (isNaN(did)) {
+        const did = Number.parseInt(didHex, 16);
+        if (Number.isNaN(did)) {
           alert('Invalid DID (must be hex)');
           return;
         }

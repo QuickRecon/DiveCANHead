@@ -39,9 +39,7 @@ export class SLIPCodec {
   encode(data) {
     const encoded = [];
 
-    for (let i = 0; i < data.length; i++) {
-      const byte = data[i];
-
+    for (const byte of data) {
       if (byte === SLIP_END) {
         // Escape END byte
         encoded.push(SLIP_ESC, SLIP_ESC_END);

@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DiveCANHead Diagnostics</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.js"
+          integrity="sha256-OFBlarvcMZFB5ujOjqzeJiL8dnww4g2BcEryvzFZ+S0="
+          crossorigin="anonymous"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -69,7 +71,7 @@
 
     button:disabled {
       background: #555;
-      color: #888;
+      color: #ccc;
       cursor: not-allowed;
     }
 
@@ -96,7 +98,7 @@
 
     .status.connected {
       background: #4caf50;
-      color: white;
+      color: #1a1a1a;
     }
 
     .status.disconnected {
@@ -603,7 +605,7 @@
 
     .tab-button {
       background: #252525;
-      color: #888;
+      color: #a0a0a0;
       border: none;
       padding: 12px 24px;
       font-size: 14px;
@@ -943,18 +945,18 @@
         <h2>Real-Time Plot</h2>
     <div class="chart-controls axis-controls">
       <div class="axis-group axis-left">
-        <label>Left:</label>
+        <span class="axis-label">Left:</span>
         <span id="leftAxisLabel">--</span>
         <button class="small" onclick="clearLeftAxis()">Clear</button>
       </div>
       <div class="axis-group axis-right">
-        <label>Right:</label>
+        <span class="axis-label">Right:</span>
         <span id="rightAxisLabel">--</span>
         <button class="small" onclick="clearRightAxis()">Clear</button>
       </div>
     </div>
     <div class="chart-controls">
-      <label>Window:</label>
+      <label for="windowSelect">Window:</label>
       <select id="windowSelect" onchange="setPlotWindow(this.value)">
         <option value="30">30 seconds</option>
         <option value="60" selected>60 seconds</option>
@@ -977,7 +979,7 @@
         <h2>Calibration</h2>
         <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
           <div>
-            <label style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">fO2 (%)</label>
+            <label for="cal-fo2-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">fO2 (%)</label>
             <input type="number" id="cal-fo2-input" min="0" max="100" step="1" value="98"
               style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 80px; font-size: 14px;">
           </div>
@@ -1034,11 +1036,11 @@
   </div>
 
   <script type="module">
-    import { DiveCANProtocolStack, DeviceManager, ByteUtils, Logger } from '../src/index.js';
+    import { DeviceManager, Logger } from '../src/index.js';
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
-    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_TYPE_DIVEO2, CELL_TYPE_ANALOG, CELL_STATUS_NAMES } from '../src/uds/constants.js';
+    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES } from '../src/uds/constants.js';
     import { ConfigurationDecoder, CONFIG_FIELDS } from '../src/config/ConfigurationDecoder.js';
 
     // Reduce logging to improve performance - only show warnings and errors
@@ -1208,7 +1210,7 @@
 
       // Keep only last 500 entries
       while (elements.logMessages.children.length > 500) {
-        elements.logMessages.removeChild(elements.logMessages.firstChild);
+        elements.logMessages.firstChild.remove();
       }
 
       elements.logMessages.scrollTop = elements.logMessages.scrollHeight;
@@ -1235,11 +1237,11 @@
       const integral = dataStore.getDIDValue('INTEGRAL_STATE');
       const saturation = dataStore.getDIDValue('SATURATION_COUNT');
 
-      elements.summarySetpoint.textContent = setpoint !== undefined ? setpoint.toFixed(2) : '--';
-      elements.summaryConsensus.textContent = consensus !== undefined ? consensus.toFixed(3) : '--';
-      elements.summaryDutyCycle.textContent = duty !== undefined ? (duty * 100).toFixed(1) + '%' : '--';
-      elements.summaryIntegral.textContent = integral !== undefined ? integral.toFixed(4) : '--';
-      elements.summarySaturation.textContent = saturation !== undefined ? saturation : '--';
+      elements.summarySetpoint.textContent = setpoint === undefined ? '--' : setpoint.toFixed(2);
+      elements.summaryConsensus.textContent = consensus === undefined ? '--' : consensus.toFixed(3);
+      elements.summaryDutyCycle.textContent = duty === undefined ? '--' : (duty * 100).toFixed(1) + '%';
+      elements.summaryIntegral.textContent = integral === undefined ? '--' : integral.toFixed(4);
+      elements.summarySaturation.textContent = saturation === undefined ? '--' : saturation;
 
       // Update stale indicators
       updateStaleClass(elements.summarySetpoint, 'SETPOINT');
@@ -1283,8 +1285,6 @@
 
     // Build cell panel fields HTML for a given type
     const buildCellFieldsHTML = (cellNum, cellType) => {
-      const typeNames = { 0: 'DiveO2', 1: 'Analog', 2: 'O2S' };
-
       // Universal fields for all cell types
       const universalFields = [
         { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3, plottable: true },
@@ -1295,13 +1295,13 @@
       switch (cellType) {
         case 0: // DiveO2
           typeSpecificFields = [
-            { field: 'temperature', label: 'Temp', unit: 'mC', decimals: 0, plottable: true },
+            { field: 'temperature', label: 'Temp', unit: '°C', decimals: 1, scale: 0.001, plottable: true },
             { field: 'error', label: 'Error', unit: '', decimals: 0, plottable: false },
             { field: 'phase', label: 'Phase', unit: '', decimals: 0, plottable: true },
             { field: 'intensity', label: 'Intensity', unit: '', decimals: 0, plottable: true },
             { field: 'ambientLight', label: 'Ambient', unit: '', decimals: 0, plottable: true },
-            { field: 'pressure', label: 'Pressure', unit: 'ubar', decimals: 0, plottable: true },
-            { field: 'humidity', label: 'Humidity', unit: 'mRH', decimals: 0, plottable: true }
+            { field: 'pressure', label: 'Pressure', unit: 'bar', decimals: 3, scale: 0.000001, plottable: true },
+            { field: 'humidity', label: 'Humidity', unit: '%', decimals: 1, scale: 0.001, plottable: true }
           ];
           break;
         case 1: // Analog
@@ -1326,10 +1326,11 @@
             <button class="plot-btn plot-left" data-series-key="${seriesKey}" data-label="${label}" title="Plot on left axis">L</button>
             <button class="plot-btn plot-right" data-series-key="${seriesKey}" data-label="${label}" title="Plot on right axis">R</button>
         ` : '';
+        const scale = f.scale || 1;
         return `
           <div class="field-row" data-cell="${cellNum}" data-field="${f.field}">
             <span class="field-label">${f.label}:</span>
-            <span class="field-value" data-decimals="${f.decimals}">--</span>
+            <span class="field-value" data-decimals="${f.decimals}" data-scale="${scale}">--</span>
             <span class="field-unit">${f.unit}</span>
             ${plotButtons}
           </div>
@@ -1403,10 +1404,11 @@
             return;
           }
 
-          const decimals = parseInt(valueEl.dataset.decimals || '0', 10);
+          const decimals = Number.parseInt(valueEl.dataset.decimals || '0', 10);
+          const scale = Number.parseFloat(valueEl.dataset.scale || '1');
 
-          if (value !== undefined && value !== null && !isNaN(value)) {
-            valueEl.textContent = value.toFixed(decimals);
+          if (value !== undefined && value !== null && !Number.isNaN(value)) {
+            valueEl.textContent = (value * scale).toFixed(decimals);
           } else {
             valueEl.textContent = '--';
           }
@@ -1759,7 +1761,7 @@
       if (field.type === 'bool') {
         newValue = el.checked ? 1 : 0;
       } else {
-        newValue = parseInt(el.value, 10);
+        newValue = Number.parseInt(el.value, 10);
       }
 
       configDecoder.setField(fieldName, newValue);
@@ -1769,10 +1771,10 @@
       const byteIndex = field.byte;
       const fieldEl = el.closest('.config-field');
 
-      if (currentBytes[byteIndex] !== originalConfigBytes[byteIndex]) {
-        fieldEl.classList.add('config-dirty');
-      } else {
+      if (currentBytes[byteIndex] === originalConfigBytes[byteIndex]) {
         fieldEl.classList.remove('config-dirty');
+      } else {
+        fieldEl.classList.add('config-dirty');
       }
 
       elements.configRawHex.textContent = configDecoder.toHexString();
@@ -1851,8 +1853,8 @@
         return;
       }
 
-      const fO2 = parseInt(elements.calFo2Input.value, 10);
-      if (isNaN(fO2) || fO2 < 0 || fO2 > 100) {
+      const fO2 = Number.parseInt(elements.calFo2Input.value, 10);
+      if (Number.isNaN(fO2) || fO2 < 0 || fO2 > 100) {
         elements.calMessage.textContent = 'Invalid fO2 (must be 0-100)';
         return;
       }
@@ -1917,53 +1919,55 @@
     };
 
     // Plot a series - adds to left axis by default, or right if left is occupied
-    window.plotSeries = (seriesKey, label) => {
+    globalThis.plotSeries = (seriesKey, label) => {
       ensureSubscribed(seriesKey);
       // If left axis is empty, use it; otherwise use right axis
-      if (!plotManager.getLeftAxisKey()) {
-        plotManager.setLeftAxis(seriesKey, label);
-        elements.leftAxisLabel.textContent = label || seriesKey;
-      } else if (!plotManager.getRightAxisKey()) {
-        plotManager.setRightAxis(seriesKey, label);
-        elements.rightAxisLabel.textContent = label || seriesKey;
+      if (plotManager.getLeftAxisKey()) {
+        if (plotManager.getRightAxisKey()) {
+          // Both axes occupied - replace left axis
+          plotManager.setLeftAxis(seriesKey, label);
+          elements.leftAxisLabel.textContent = label || seriesKey;
+        } else {
+          plotManager.setRightAxis(seriesKey, label);
+          elements.rightAxisLabel.textContent = label || seriesKey;
+        }
       } else {
-        // Both axes occupied - replace left axis
         plotManager.setLeftAxis(seriesKey, label);
         elements.leftAxisLabel.textContent = label || seriesKey;
       }
     };
 
     // Plot to specific axis
-    window.plotToLeftAxis = (seriesKey, label) => {
+    globalThis.plotToLeftAxis = (seriesKey, label) => {
       ensureSubscribed(seriesKey);
       plotManager.setLeftAxis(seriesKey, label);
       elements.leftAxisLabel.textContent = label || seriesKey;
     };
 
-    window.plotToRightAxis = (seriesKey, label) => {
+    globalThis.plotToRightAxis = (seriesKey, label) => {
       ensureSubscribed(seriesKey);
       plotManager.setRightAxis(seriesKey, label);
       elements.rightAxisLabel.textContent = label || seriesKey;
     };
 
     // Clear individual axes
-    window.clearLeftAxis = () => {
+    globalThis.clearLeftAxis = () => {
       plotManager.setLeftAxis(null);
       elements.leftAxisLabel.textContent = '--';
     };
 
-    window.clearRightAxis = () => {
+    globalThis.clearRightAxis = () => {
       plotManager.setRightAxis(null);
       elements.rightAxisLabel.textContent = '--';
     };
 
     // Set plot window
-    window.setPlotWindow = (seconds) => {
-      plotManager.setWindowSize(parseInt(seconds, 10));
+    globalThis.setPlotWindow = (seconds) => {
+      plotManager.setWindowSize(Number.parseInt(seconds, 10));
     };
 
     // Clear plot
-    window.clearPlot = () => {
+    globalThis.clearPlot = () => {
       plotManager.clearSeries();
       elements.leftAxisLabel.textContent = '--';
       elements.rightAxisLabel.textContent = '--';
