@@ -184,6 +184,64 @@ The system outputs debug information via SWD, which is done using the cortex-deb
 
 Stack analysis available via `STM32/stackAnalysis.sh`.
 
+### SonarQube Integration
+
+This project uses SonarQube Cloud for static analysis. Issues are available through two channels:
+
+**1. IDE Diagnostics (Real-time)**
+When editing files, SonarQube warnings appear in `<new-diagnostics>` tags within `<system-reminder>` blocks attached to tool results. These reflect the current state of open files.
+
+**2. MCP Server (Project-wide)**
+Use the SonarQube MCP tools to query the server directly:
+
+```
+# List available projects
+mcp__sonarqube__search_my_sonarqube_projects
+
+# Search for issues (project key: QuickRecon_DiveCANHead)
+mcp__sonarqube__search_sonar_issues_in_projects with projects: ["QuickRecon_DiveCANHead"]
+
+# Get details about a specific rule
+mcp__sonarqube__show_rule with key: "c:S109"
+```
+
+**3. IDE MCP Diagnostics (Comprehensive)**
+Get all current diagnostics including SonarQube warnings via the IDE MCP tool:
+
+```
+mcp__ide__getDiagnostics
+```
+
+This returns diagnostics for all open/analyzed files. Filter for specific files using jq:
+```bash
+# Extract UDS-related diagnostics
+cat <output_file> | jq -r '.[0].text' | jq '[.[] | select(.uri | test("uds"))]'
+
+# Count issues by rule type
+cat <output_file> | jq -r '.[] | .diagnostics[] | select(.source == "sonarqube") | .code' | sort | uniq -c
+```
+
+**Common Rule IDs:**
+| Rule | Description | Fix |
+|------|-------------|-----|
+| c:S109 | Magic number | Define named constant |
+| c:S787 | C99-style comment | Use `/* */` not `//` |
+| c:S868 | Complex operand | Add parentheses |
+| c:S813 | Raw float type | Use typedef (e.g., `PPO2_t`) |
+| c:S116 | Field naming | Use camelCase for struct fields |
+| c:S1774 | Ternary operator | Use if/else |
+| c:M23_007 | Unused return value | Assign or cast to `(void)` |
+| c:M23_388 | Non-const global | Make const or pass as parameter |
+
+**Important Workflow Notes:**
+- SonarCloud only analyzes pushed commits. Local changes show in IDE diagnostics but won't appear in server queries until pushed.
+- **Diagnostics disappear after first read:** When `mcp__ide__getDiagnostics` is called, the diagnostics are consumed and won't appear in `<new-diagnostics>` tags on subsequent tool calls. Save results to a persistent file immediately:
+  ```bash
+  # Save to .sonarqube-diagnostics.json in the relevant directory
+  cat <output_file> | jq '.[0].text' > path/to/.sonarqube-diagnostics.json
+  ```
+- During long sessions or before context compaction, re-run `mcp__ide__getDiagnostics` and save fresh results to ensure diagnostics remain available.
+
 ## Subsystem Documentation
 
 Detailed documentation for key subsystems is available in the `docs/` directory.
