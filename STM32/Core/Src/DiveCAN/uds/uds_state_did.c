@@ -3,7 +3,7 @@
  * @brief UDS State Data Identifier (DID) handler implementation
  *
  * Provides read access to system state via individual DIDs.
- * Data is sourced from the stateVectorAccumulator in log.c.
+ * Data is sourced from Log_GetStateVector() in log.c.
  */
 
 #include "uds_state_did.h"
@@ -13,9 +13,6 @@
 #include "../../errors.h"
 #include "main.h"
 #include <string.h>
-
-/* External reference to state vector accumulator from log.c */
-extern BinaryStateVector_t stateVectorAccumulator;
 
 /* Time conversion constant */
 static const uint32_t MS_PER_SECOND = 1000U;
@@ -132,71 +129,71 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
     switch (did)
     {
     case UDS_DID_CONSENSUS_PPO2:
-        writeFloat32(buf, stateVectorAccumulator.consensusPpo2);
-        *len = DATA_SIZE_FLOAT32;
+        writeFloat32(buf, Log_GetStateVector()->consensusPpo2);
+        *len = sizeof(PrecisionPPO2_t);
         break;
 
     case UDS_DID_SETPOINT:
-        writeFloat32(buf, stateVectorAccumulator.setpoint);
-        *len = DATA_SIZE_FLOAT32;
+        writeFloat32(buf, Log_GetStateVector()->setpoint);
+        *len = sizeof(PrecisionPPO2_t);
         break;
 
     case UDS_DID_CELLS_VALID:
-        buf[0] = stateVectorAccumulator.cellsValid;
-        *len = DATA_SIZE_UINT8;
+        buf[0] = Log_GetStateVector()->cellsValid;
+        *len = sizeof(uint8_t);
         break;
 
     case UDS_DID_DUTY_CYCLE:
-        writeFloat32(buf, stateVectorAccumulator.dutyCycle);
-        *len = DATA_SIZE_FLOAT32;
+        writeFloat32(buf, Log_GetStateVector()->dutyCycle);
+        *len = sizeof(float);
         break;
 
     case UDS_DID_INTEGRAL_STATE:
-        writeFloat32(buf, stateVectorAccumulator.integralState);
-        *len = DATA_SIZE_FLOAT32;
+        writeFloat32(buf, Log_GetStateVector()->integralState);
+        *len = sizeof(Numeric_t);
         break;
 
     case UDS_DID_SATURATION_COUNT:
-        writeUint16(buf, stateVectorAccumulator.saturationCount);
-        *len = DATA_SIZE_UINT16;
+        writeUint16(buf, Log_GetStateVector()->saturationCount);
+        *len = sizeof(uint16_t);
         break;
 
     case UDS_DID_UPTIME_SEC:
         writeUint32(buf, HAL_GetTick() / MS_PER_SECOND);
-        *len = DATA_SIZE_FLOAT32;
+        *len = sizeof(uint32_t);
         break;
 
     /* Power Monitoring DIDs */
     case UDS_DID_VBUS_VOLTAGE:
         writeFloat32(buf, getVBusVoltage());
-        *len = DATA_SIZE_FLOAT32;
+        *len = sizeof(ADCV_t);
         break;
 
     case UDS_DID_VCC_VOLTAGE:
         writeFloat32(buf, getVCCVoltage());
-        *len = DATA_SIZE_FLOAT32;
+        *len = sizeof(ADCV_t);
         break;
 
     case UDS_DID_BATTERY_VOLTAGE:
         writeFloat32(buf, getBatteryVoltage());
-        *len = DATA_SIZE_FLOAT32;
+        *len = sizeof(ADCV_t);
         break;
 
     case UDS_DID_CAN_VOLTAGE:
         writeFloat32(buf, getCANVoltage());
-        *len = DATA_SIZE_FLOAT32;
+        *len = sizeof(ADCV_t);
         break;
 
     case UDS_DID_THRESHOLD_VOLTAGE:
         writeFloat32(buf, getThresholdVoltage(config->dischargeThresholdMode));
-        *len = DATA_SIZE_FLOAT32;
+        *len = sizeof(ADCV_t);
         break;
 
     case UDS_DID_POWER_SOURCES:
     {
         uint8_t sources = (uint8_t)((uint8_t)GetVCCSource() | (uint8_t)((uint8_t)GetVBusSource() << VBUS_SOURCE_BIT_OFFSET));
         buf[0] = sources;
-        *len = DATA_SIZE_UINT8;
+        *len = sizeof(uint8_t);
         break;
     }
 
@@ -230,19 +227,19 @@ static bool handleUniversalCellDID(uint8_t cellNum, uint8_t offset, CellType_t c
 
     if (offset == CELL_DID_PPO2)
     {
-        writeFloat32(buf, stateVectorAccumulator.cellPpo2[cellNum]);
-        *len = DATA_SIZE_FLOAT32;
+        writeFloat32(buf, Log_GetStateVector()->cellPpo2[cellNum]);
+        *len = sizeof(float);
         result = true;
     }
     else if (offset == CELL_DID_TYPE)
     {
         buf[0] = (uint8_t)cellType;
-        *len = DATA_SIZE_UINT8;
+        *len = sizeof(uint8_t);
         result = true;
     }
     else if (offset == CELL_DID_INCLUDED)
     {
-        if ((stateVectorAccumulator.cellsValid & (1U << cellNum)) != 0U)
+        if ((Log_GetStateVector()->cellsValid & (1U << cellNum)) != 0U)
         {
             buf[0] = 1U;
         }
@@ -250,13 +247,13 @@ static bool handleUniversalCellDID(uint8_t cellNum, uint8_t offset, CellType_t c
         {
             buf[0] = 0U;
         }
-        *len = DATA_SIZE_UINT8;
+        *len = sizeof(uint8_t);
         result = true;
     }
     else if (offset == CELL_DID_STATUS)
     {
-        buf[0] = stateVectorAccumulator.cellStatus[cellNum];
-        *len = DATA_SIZE_UINT8;
+        buf[0] = Log_GetStateVector()->cellStatus[cellNum];
+        *len = sizeof(uint8_t);
         result = true;
     }
     else
@@ -282,14 +279,14 @@ static bool handleAnalogCellDID(uint8_t cellNum, uint8_t offset, uint8_t *buf, u
 
     if (offset == CELL_DID_RAW_ADC)
     {
-        writeInt16(buf, (int16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_RAW_ADC]);
-        *len = DATA_SIZE_UINT16;
+        writeInt16(buf, (int16_t)Log_GetStateVector()->cellDetail[cellNum][ANALOG_DETAIL_RAW_ADC]);
+        *len = sizeof(uint16_t);
         result = true;
     }
     else if (offset == CELL_DID_MILLIVOLTS)
     {
-        writeUint16(buf, (uint16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_MILLIVOLTS]);
-        *len = DATA_SIZE_UINT16;
+        writeUint16(buf, (uint16_t)Log_GetStateVector()->cellDetail[cellNum][ANALOG_DETAIL_MILLIVOLTS]);
+        *len = sizeof(uint16_t);
         result = true;
     }
     else
@@ -315,44 +312,44 @@ static bool handleDiveO2CellDID(uint8_t cellNum, uint8_t offset, uint8_t *buf, u
 
     if (offset == CELL_DID_TEMPERATURE)
     {
-        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_TEMPERATURE]);
-        *len = DATA_SIZE_FLOAT32;
+        writeInt32(buf, (int32_t)Log_GetStateVector()->cellDetail[cellNum][DIVEO2_DETAIL_TEMPERATURE]);
+        *len = sizeof(float);
         result = true;
     }
     else if (offset == CELL_DID_ERROR)
     {
-        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_ERROR]);
-        *len = DATA_SIZE_FLOAT32;
+        writeInt32(buf, (int32_t)Log_GetStateVector()->cellDetail[cellNum][DIVEO2_DETAIL_ERROR]);
+        *len = sizeof(float);
         result = true;
     }
     else if (offset == CELL_DID_PHASE)
     {
-        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PHASE]);
-        *len = DATA_SIZE_FLOAT32;
+        writeInt32(buf, (int32_t)Log_GetStateVector()->cellDetail[cellNum][DIVEO2_DETAIL_PHASE]);
+        *len = sizeof(float);
         result = true;
     }
     else if (offset == CELL_DID_INTENSITY)
     {
-        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_INTENSITY]);
-        *len = DATA_SIZE_FLOAT32;
+        writeInt32(buf, (int32_t)Log_GetStateVector()->cellDetail[cellNum][DIVEO2_DETAIL_INTENSITY]);
+        *len = sizeof(float);
         result = true;
     }
     else if (offset == CELL_DID_AMBIENT_LIGHT)
     {
-        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_AMBIENT_LIGHT]);
-        *len = DATA_SIZE_FLOAT32;
+        writeInt32(buf, (int32_t)Log_GetStateVector()->cellDetail[cellNum][DIVEO2_DETAIL_AMBIENT_LIGHT]);
+        *len = sizeof(float);
         result = true;
     }
     else if (offset == CELL_DID_PRESSURE)
     {
-        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PRESSURE]);
-        *len = DATA_SIZE_FLOAT32;
+        writeInt32(buf, (int32_t)Log_GetStateVector()->cellDetail[cellNum][DIVEO2_DETAIL_PRESSURE]);
+        *len = sizeof(float);
         result = true;
     }
     else if (offset == CELL_DID_HUMIDITY)
     {
-        writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_HUMIDITY]);
-        *len = DATA_SIZE_FLOAT32;
+        writeInt32(buf, (int32_t)Log_GetStateVector()->cellDetail[cellNum][DIVEO2_DETAIL_HUMIDITY]);
+        *len = sizeof(float);
         result = true;
     }
     else
@@ -485,23 +482,23 @@ static uint16_t getCellDIDSize(uint8_t offset, CellType_t cellType)
     /* Universal offsets */
     if (offset == CELL_DID_PPO2)
     {
-        result = DATA_SIZE_FLOAT32;
+        result = sizeof(float);
     }
     else if ((offset == CELL_DID_TYPE) || (offset == CELL_DID_INCLUDED) || (offset == CELL_DID_STATUS))
     {
-        result = DATA_SIZE_UINT8;
+        result = sizeof(uint8_t);
     }
     /* Analog-specific offsets */
     else if ((cellType == CELL_ANALOG) &&
              ((offset == CELL_DID_RAW_ADC) || (offset == CELL_DID_MILLIVOLTS)))
     {
-        result = DATA_SIZE_UINT16;
+        result = sizeof(uint16_t);
     }
     /* DiveO2-specific offsets */
     else if ((cellType == CELL_DIVEO2) &&
              ((offset >= CELL_DID_TEMPERATURE) && (offset <= CELL_DID_HUMIDITY)))
     {
-        result = DATA_SIZE_FLOAT32;
+        result = sizeof(float);
     }
     else
     {
@@ -559,16 +556,16 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
     case UDS_DID_BATTERY_VOLTAGE:
     case UDS_DID_CAN_VOLTAGE:
     case UDS_DID_THRESHOLD_VOLTAGE:
-        result = DATA_SIZE_FLOAT32;
+        result = sizeof(float);
         break;
 
     case UDS_DID_CELLS_VALID:
     case UDS_DID_POWER_SOURCES:
-        result = DATA_SIZE_UINT8;
+        result = sizeof(uint8_t);
         break;
 
     case UDS_DID_SATURATION_COUNT:
-        result = DATA_SIZE_UINT16;
+        result = sizeof(uint16_t);
         break;
 
     default:

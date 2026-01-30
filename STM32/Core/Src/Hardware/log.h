@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "../common.h"
 #include "../DiveCAN/Transciever.h"
+#include "../DiveCAN/uds/uds_state_did.h"
 #include "../PPO2Control/PPO2Control.h"
 #include "../Sensors/OxygenScientific.h"
 
@@ -90,6 +91,12 @@ extern "C"
      * @param config Full configuration as uint32_t from getConfigBytes()
      */
     void Log_SetConfig(uint32_t config);
+
+    /**
+     * @brief Get pointer to the binary state vector accumulator
+     * @return Pointer to the state vector (never NULL)
+     */
+    BinaryStateVector_t *Log_GetStateVector(void);
 
 #ifdef __cplusplus
 }

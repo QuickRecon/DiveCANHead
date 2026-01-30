@@ -108,7 +108,11 @@ typedef struct __attribute__((packed))
 
 /* Expected size of BinaryStateVector_t for protocol compatibility */
 #define BINARY_STATE_VECTOR_SIZE 125U
+#ifndef __cplusplus
 _Static_assert(sizeof(BinaryStateVector_t) == BINARY_STATE_VECTOR_SIZE, "BinaryStateVector_t size must be 125 bytes");
+#else
+static_assert(sizeof(BinaryStateVector_t) == BINARY_STATE_VECTOR_SIZE, "BinaryStateVector_t size must be 125 bytes");
+#endif
 
 /**
  * @brief Check if a DID is handled by the state DID module

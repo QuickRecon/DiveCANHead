@@ -14,34 +14,18 @@ extern "C"
 #include "common.h"
 #include "Transciever.h"
 #include "cmsis_os.h"
+#include "uds_state_did.h"
 
     /* ========================================================================
      * State vector accumulator - global storage for cell/system state
+     * Accessed via Log_GetStateVector() function
      * ======================================================================== */
-    struct StateVector
-    {
-        PPO2_t ppo2[3];
-        Millivolts_t millivolts[3];
-        uint16_t rawAdc[3];
-        CellStatus_t status[3];
-        CellType_t type[3];
-        bool included[3];
-        int32_t temperature[3];
-        int32_t pressure[3];
-        float humidity[3];
-    };
+    static BinaryStateVector_t mockStateVector = {0};
 
-    StateVector stateVectorAccumulator = {
-        .ppo2 = {100, 100, 100},
-        .millivolts = {10, 10, 10},
-        .rawAdc = {32767, 32767, 32767},
-        .status = {CELL_OK, CELL_OK, CELL_OK},
-        .type = {CELL_ANALOG, CELL_ANALOG, CELL_ANALOG},
-        .included = {true, true, true},
-        .temperature = {25000, 25000, 25000},
-        .pressure = {101325000, 101325000, 101325000},
-        .humidity = {0.5f, 0.5f, 0.5f},
-    };
+    BinaryStateVector_t *Log_GetStateVector(void)
+    {
+        return &mockStateVector;
+    }
 
     /* ========================================================================
      * ISO-TP TX Queue dependency - CAN transmission

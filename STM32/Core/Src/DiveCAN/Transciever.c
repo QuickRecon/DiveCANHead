@@ -7,6 +7,7 @@
 #include "../Hardware/printer.h"
 #include "../Hardware/log.h"
 #include "../Sensors/OxygenCell.h"
+#include "../common.h"
 
 #define BUS_NAME_LEN 8
 
@@ -18,6 +19,42 @@
 #define MENU_SAVE_FIELD_ACK_LEN 5
 
 #define TX_WAIT_DELAY 10
+
+/* Data availability queue size (single-element peek queue pattern) */
+static const uint8_t DATA_AVAIL_QUEUE_SIZE = 1U;
+
+/* Transmission completion timeout in milliseconds */
+static const uint32_t TX_COMPLETION_TIMEOUT_MS = 10U;
+
+/* Transmission timeout error code */
+static const uint8_t CAN_TX_TIMEOUT_ERR = 0xFFU;
+
+/* Battery status bytes for HUD */
+static const uint8_t BAT_STATUS_OK = 0x01U;
+static const uint8_t BAT_STATUS_LOW = 0x00U;
+
+/* HUD stat magic bytes (protocol-defined) */
+static const uint8_t HUD_STAT_BYTE1 = 0x23U;
+static const uint8_t HUD_STAT_BYTE4 = 0x1EU;
+
+/* Bus init magic bytes (protocol-defined) */
+static const uint8_t BUS_INIT_BYTE0 = 0x8AU;
+static const uint8_t BUS_INIT_BYTE1 = 0xF3U;
+static const uint8_t BUS_INIT_LEN = 3U;
+
+/* Calibration response final byte */
+static const uint8_t CAL_RESP_FINAL_BYTE = 0x07U;
+
+/* Timeout for waiting on CAN mailbox availability.
+ * 100ms chosen because:
+ * - STM32 CAN has 3 TX mailboxes
+ * - At 250kbps, a CAN frame takes ~500us to transmit
+ * - 100ms = 200 frame times, allowing for arbitration loss and retries
+ * - Short enough to fail fast if bus is truly stuck */
+static const uint32_t MAILBOX_TIMEOUT_MS = 100U;
+
+/* Error detail code for mailbox timeout */
+static const uint8_t CAN_TX_MAILBOX_TIMEOUT = 0xFEU;
 
 extern CAN_HandleTypeDef hcan1;
 
@@ -50,7 +87,7 @@ void InitRXQueue(void)
         static StaticQueue_t QDataAvail_QueueStruct = {0};
         static uint8_t QDataAvail_Storage[sizeof(bool)];
 
-        *dataAvail = xQueueCreateStatic(1, sizeof(bool), QDataAvail_Storage, &QDataAvail_QueueStruct);
+        *dataAvail = xQueueCreateStatic(DATA_AVAIL_QUEUE_SIZE, sizeof(bool), QDataAvail_Storage, &QDataAvail_QueueStruct);
     }
 }
 
@@ -130,32 +167,46 @@ void rxInterrupt(const uint32_t id, const uint8_t length, const uint8_t *const d
  * @param dataLength Size of the data to send */
 void sendCANMessage(const DiveCANMessage_t message)
 {
-    /* This isn't super time critical so if we're still waiting on stuff to tx then we can quite happily just wait */
-    while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))
+    /* Wait for a free mailbox with timeout */
+    uint32_t startTime = HAL_GetTick();
+    bool timedOut = false;
+
+    while ((0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1)) && (!timedOut))
     {
-        (void)osDelay(TX_WAIT_DELAY);
+        if ((HAL_GetTick() - startTime) > MAILBOX_TIMEOUT_MS)
+        {
+            NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, CAN_TX_MAILBOX_TIMEOUT);
+            timedOut = true;
+        }
+        else
+        {
+            (void)osDelay(TX_WAIT_DELAY);
+        }
     }
 
-    /* Don't log messages that would cause a recursion*/
-    if ((message.id & ID_MASK) != LOG_TEXT_ID)
+    if (!timedOut)
     {
-        LogTXDiveCANMessage(&message);
-    }
+        /* Don't log messages that would cause a recursion*/
+        if ((message.id & ID_MASK) != LOG_TEXT_ID)
+        {
+            LogTXDiveCANMessage(&message);
+        }
 
-    CAN_TxHeaderTypeDef header = {0};
-    header.StdId = 0x0;
-    header.ExtId = message.id;
-    header.RTR = CAN_RTR_DATA;
-    header.IDE = CAN_ID_EXT;
-    header.DLC = message.length;
-    header.TransmitGlobalTime = DISABLE;
+        CAN_TxHeaderTypeDef header = {0};
+        header.StdId = 0x0U;
+        header.ExtId = message.id;
+        header.RTR = CAN_RTR_DATA;
+        header.IDE = CAN_ID_EXT;
+        header.DLC = message.length;
+        header.TransmitGlobalTime = DISABLE;
 
-    uint32_t mailboxNumber = 0;
+        uint32_t mailboxNumber = 0;
 
-    HAL_StatusTypeDef err = HAL_CAN_AddTxMessage(&hcan1, &header, message.data, &mailboxNumber);
-    if (HAL_OK != err)
-    {
-        NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, err);
+        HAL_StatusTypeDef err = HAL_CAN_AddTxMessage(&hcan1, &header, message.data, &mailboxNumber);
+        if (HAL_OK != err)
+        {
+            NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, err);
+        }
     }
 }
 
@@ -170,66 +221,88 @@ void sendCANMessage(const DiveCANMessage_t message)
  */
 void sendCANMessageBlocking(const DiveCANMessage_t message)
 {
-    /* Wait for a free mailbox */
-    while (0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1))
-    {
-        (void)osDelay(TX_WAIT_DELAY);
-    }
-
-    /* Don't log messages that would cause a recursion */
-    if ((message.id & ID_MASK) != LOG_TEXT_ID)
-    {
-        LogTXDiveCANMessage(&message);
-    }
-
-    CAN_TxHeaderTypeDef header = {0};
-    header.StdId = 0x0;
-    header.ExtId = message.id;
-    header.RTR = CAN_RTR_DATA;
-    header.IDE = CAN_ID_EXT;
-    header.DLC = message.length;
-    header.TransmitGlobalTime = DISABLE;
-
-    uint32_t mailboxNumber = 0;
-
-    HAL_StatusTypeDef err = HAL_CAN_AddTxMessage(&hcan1, &header, message.data, &mailboxNumber);
-    if (HAL_OK != err)
-    {
-        NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, err);
-        return;
-    }
-
-    /* Wait for this specific mailbox to complete transmission.
-     * This ensures the frame is actually on the bus before we return,
-     * preventing out-of-order transmission with auto-retransmit enabled. */
-    uint32_t mailboxMask = CAN_TSR_TME2;
-    if (mailboxNumber == CAN_TX_MAILBOX0)
-    {
-        mailboxMask = CAN_TSR_TME0;
-    }
-    else if (mailboxNumber == CAN_TX_MAILBOX1)
-    {
-        mailboxMask = CAN_TSR_TME1;
-    }
-    else
-    {
-        /* Default to mailbox 2 */
-    }
-
-    /* Busy-wait until mailbox is empty (transmission complete).
-     * Using busy-wait instead of osDelay(1) because CAN frame transmission
-     * at 250kbps takes ~500us max, and osDelay has 1ms tick resolution
-     * which would add unnecessary latency to multi-frame ISO-TP transfers.
-     * Timeout after 10ms to prevent infinite loop on bus errors. */
+    /* Wait for a free mailbox with timeout */
     uint32_t startTime = HAL_GetTick();
-    while ((hcan1.Instance->TSR & mailboxMask) == 0U)
+    bool txSuccess = false;
+    bool timedOut = false;
+
+    while ((0 == HAL_CAN_GetTxMailboxesFreeLevel(&hcan1)) && (!timedOut))
     {
-        if ((HAL_GetTick() - startTime) > 10U)
+        if ((HAL_GetTick() - startTime) > MAILBOX_TIMEOUT_MS)
         {
-            NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, 0xFFU); /* Timeout */
-            break;
+            NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, CAN_TX_MAILBOX_TIMEOUT);
+            timedOut = true;
+        }
+        else
+        {
+            (void)osDelay(TX_WAIT_DELAY);
         }
     }
+
+    if (!timedOut)
+    {
+        /* Don't log messages that would cause a recursion */
+        if ((message.id & ID_MASK) != LOG_TEXT_ID)
+        {
+            LogTXDiveCANMessage(&message);
+        }
+
+        CAN_TxHeaderTypeDef header = {0};
+        header.StdId = 0x0U;
+        header.ExtId = message.id;
+        header.RTR = CAN_RTR_DATA;
+        header.IDE = CAN_ID_EXT;
+        header.DLC = message.length;
+        header.TransmitGlobalTime = DISABLE;
+
+        uint32_t mailboxNumber = 0;
+
+        HAL_StatusTypeDef err = HAL_CAN_AddTxMessage(&hcan1, &header, message.data, &mailboxNumber);
+        if (HAL_OK != err)
+        {
+            NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, err);
+        }
+        else
+        {
+            txSuccess = true;
+
+            /* Wait for this specific mailbox to complete transmission.
+             * This ensures the frame is actually on the bus before we return,
+             * preventing out-of-order transmission with auto-retransmit enabled. */
+            uint32_t mailboxMask = CAN_TSR_TME2;
+            if (mailboxNumber == CAN_TX_MAILBOX0)
+            {
+                mailboxMask = CAN_TSR_TME0;
+            }
+            else if (mailboxNumber == CAN_TX_MAILBOX1)
+            {
+                mailboxMask = CAN_TSR_TME1;
+            }
+            else
+            {
+                /* Default to mailbox 2 */
+            }
+
+            /* Busy-wait until mailbox is empty (transmission complete).
+             * Using busy-wait instead of osDelay(1) because CAN frame transmission
+             * at 250kbps takes ~500us max, and osDelay has 1ms tick resolution
+             * which would add unnecessary latency to multi-frame ISO-TP transfers.
+             * Timeout after TX_COMPLETION_TIMEOUT_MS to prevent infinite loop on bus errors. */
+            uint32_t txStartTime = HAL_GetTick();
+            uint32_t txCurrTime = HAL_GetTick();
+            while (((hcan1.Instance->TSR & mailboxMask) == 0U) &&
+                  ((txCurrTime - txStartTime) < TX_COMPLETION_TIMEOUT_MS))
+            {
+                /* Busy blocking loop */
+                txCurrTime = HAL_GetTick();
+            }
+            if ((txCurrTime - txStartTime) >= TX_COMPLETION_TIMEOUT_MS)
+            {
+                NON_FATAL_ERROR_DETAIL(CAN_TX_ERR, CAN_TX_TIMEOUT_ERR);
+            }
+        }
+    }
+    (void)txSuccess; /* Suppress unused variable warning - used for code structure */
 }
 
 /*-----------------------------------------------------------------------------------*/
@@ -241,9 +314,9 @@ void sendCANMessageBlocking(const DiveCANMessage_t message)
 void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t deviceType)
 {
     const DiveCANMessage_t message = {
-        .id = BUS_INIT_ID | (deviceType << 8) | targetDeviceType,
-        .data = {0x8a, 0xf3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        .length = 3,
+        .id = BUS_INIT_ID | ((uint32_t)deviceType << BYTE_WIDTH) | targetDeviceType,
+        .data = {BUS_INIT_BYTE0, BUS_INIT_BYTE1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+        .length = BUS_INIT_LEN,
         .type = "BUS_INIT"};
     sendCANMessage(message);
 }
@@ -255,10 +328,11 @@ void txStartDevice(const DiveCANType_t targetDeviceType, const DiveCANType_t dev
  */
 void txID(const DiveCANType_t deviceType, const DiveCANManufacturer_t manufacturerID, const uint8_t firmwareVersion)
 {
+    static const uint8_t BUS_ID_MSG_LEN = 3U;
     const DiveCANMessage_t message = {
         .id = BUS_ID_ID | deviceType,
         .data = {(uint8_t)manufacturerID, 0x00, firmwareVersion, 0x00, 0x00, 0x00, 0x00, 0x00},
-        .length = 3,
+        .length = BUS_ID_MSG_LEN,
         .type = "BUS_ID"};
     sendCANMessage(message);
 }
@@ -280,7 +354,7 @@ void txName(const DiveCANType_t deviceType, const char *const name)
         DiveCANMessage_t message = {
             .id = BUS_NAME_ID | deviceType,
             .data = {0},
-            .length = 8,
+            .length = BUS_NAME_LEN,
             .type = "BUS_NAME"};
         (void)memcpy(message.data, data, BUS_NAME_LEN);
         sendCANMessage(message);
@@ -298,24 +372,27 @@ void txStatus(const DiveCANType_t deviceType, const BatteryV_t batteryVoltage, c
 {
     uint8_t errByte = (uint8_t)error;
     /* Only send the battery info if there aren't error */
-    if (error != DIVECAN_ERR_BAT_LOW && showBattery)
+    if ((error != DIVECAN_ERR_BAT_LOW) && showBattery)
     {
         errByte = DIVECAN_ERR_BAT_NORM;
     }
+    static const uint8_t STATUS_BYTE_MASK = 0xFFU;
+    static const uint8_t STATUS_MSG_LEN = 8U;
     const DiveCANMessage_t message = {
         .id = BUS_STATUS_ID | deviceType,
-        .data = {batteryVoltage, 0x00, 0x00, 0x00, 0x00, setpoint, 0xFF, errByte},
-        .length = 8,
+        .data = {batteryVoltage, 0x00, 0x00, 0x00, 0x00, setpoint, STATUS_BYTE_MASK, errByte},
+        .length = STATUS_MSG_LEN,
         .type = "BUS_STATUS"};
     sendCANMessage(message);
 }
 
 void txSetpoint(const DiveCANType_t deviceType, const PPO2_t setpoint)
 {
+    static const uint8_t SETPOINT_MSG_LEN = 1U;
     const DiveCANMessage_t message = {
         .id = PPO2_SETPOINT_ID | deviceType,
-        .data = {setpoint},
-        .length = 1,
+        .data = {setpoint,0,0,0,0,0,0,0},
+        .length = SETPOINT_MSG_LEN,
         .type = "PPO2_SETPOINT"};
     sendCANMessage(message);
 }
@@ -327,16 +404,17 @@ void txSetpoint(const DiveCANType_t deviceType, const PPO2_t setpoint)
  */
 void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error)
 {
-    uint8_t batByte = 0x1;
+    uint8_t batByte = BAT_STATUS_OK;
     if (error == DIVECAN_ERR_BAT_LOW)
     {
-        batByte = 0x0;
+        batByte = BAT_STATUS_LOW;
     }
 
+    static const uint8_t HUD_STAT_MSG_LEN = 5U;
     const DiveCANMessage_t message = {
         .id = HUD_STAT_ID | deviceType,
-        .data = {batByte, 0x23, 0x0, 0x0, 0x1e, 0x00, 0x00, 0x00},
-        .length = 5,
+        .data = {batByte, HUD_STAT_BYTE1, 0x00, 0x00, HUD_STAT_BYTE4, 0x00, 0x00, 0x00},
+        .length = HUD_STAT_MSG_LEN,
         .type = "OBOE_STAT"};
     sendCANMessage(message);
 }
@@ -351,10 +429,11 @@ void txOBOEStat(const DiveCANType_t deviceType, const DiveCANError_t error)
  */
 void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cell2, const PPO2_t cell3)
 {
+    static const uint8_t PPO2_MSG_LEN = 4U;
     const DiveCANMessage_t message = {
         .id = PPO2_PPO2_ID | deviceType,
         .data = {0x00, cell1, cell2, cell3, 0x00, 0x00, 0x00, 0x00},
-        .length = 4,
+        .length = PPO2_MSG_LEN,
         .type = "PPO2_PPO2"};
     sendCANMessage(message);
 }
@@ -367,15 +446,16 @@ void txPPO2(const DiveCANType_t deviceType, const PPO2_t cell1, const PPO2_t cel
  */
 void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, const Millivolts_t cell2, const Millivolts_t cell3)
 {
-    /* Make the cell millis the proper endianness */
-    uint8_t cell1bytes[2] = {(uint8_t)(cell1 >> 8), (uint8_t)cell1};
-    uint8_t cell2bytes[2] = {(uint8_t)(cell2 >> 8), (uint8_t)cell2};
-    uint8_t cell3bytes[2] = {(uint8_t)(cell3 >> 8), (uint8_t)cell3};
+    /* Make the cell millis the proper endianness (big-endian for DiveCAN) */
+    uint8_t cell1bytes[2] = {(uint8_t)((cell1 >> BYTE_WIDTH) & BYTE_MASK), (uint8_t)(cell1 & BYTE_MASK)};
+    uint8_t cell2bytes[2] = {(uint8_t)((cell2 >> BYTE_WIDTH) & BYTE_MASK), (uint8_t)(cell2 & BYTE_MASK)};
+    uint8_t cell3bytes[2] = {(uint8_t)((cell3 >> BYTE_WIDTH) & BYTE_MASK), (uint8_t)(cell3 & BYTE_MASK)};
 
+    static const uint8_t MILLIS_MSG_LEN = 7U;
     const DiveCANMessage_t message = {
         .id = PPO2_MILLIS_ID | deviceType,
         .data = {cell1bytes[0], cell1bytes[1], cell2bytes[0], cell2bytes[1], cell3bytes[0], cell3bytes[1], 0x00, 0x00},
-        .length = 7,
+        .length = MILLIS_MSG_LEN,
         .type = "PPO2_MILLIS"};
 
     sendCANMessage(message);
@@ -390,12 +470,13 @@ void txMillivolts(const DiveCANType_t deviceType, const Millivolts_t cell1, cons
  */
 void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool cell2, const bool cell3, const PPO2_t PPO2)
 {
-    uint8_t cellMask = (uint8_t)((uint8_t)cell1 | (uint8_t)((uint8_t)cell2 << 1) | (uint8_t)((uint8_t)cell3 << 2));
+    uint8_t cellMask = (uint8_t)((uint8_t)cell1 | (uint8_t)((uint8_t)cell2 << CELL_2) | (uint8_t)((uint8_t)cell3 << CELL_3));
 
+    static const uint8_t CELL_STATE_MSG_LEN = 2U;
     const DiveCANMessage_t message = {
         .id = PPO2_STATUS_ID | deviceType,
         .data = {cellMask, PPO2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        .length = 2,
+        .length = CELL_STATE_MSG_LEN,
         .type = "PPO2_STATUS"};
 
     sendCANMessage(message);
@@ -408,10 +489,12 @@ void txCellState(const DiveCANType_t deviceType, const bool cell1, const bool ce
  */
 void txCalAck(DiveCANType_t deviceType)
 {
+    static const uint8_t CAL_ACK_FILL_BYTE = 0xFFU;
+    static const uint8_t CAL_ACK_MSG_LEN = 8U;
     const DiveCANMessage_t message = {
         .id = CAL_ID | deviceType,
-        .data = {(uint8_t)DIVECAN_CAL_ACK, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00},
-        .length = 8,
+        .data = {(uint8_t)DIVECAN_CAL_ACK, 0x00, 0x00, 0x00, CAL_ACK_FILL_BYTE, CAL_ACK_FILL_BYTE, CAL_ACK_FILL_BYTE, 0x00},
+        .length = CAL_ACK_MSG_LEN,
         .type = "CAL_ACK"};
 
     sendCANMessage(message);
@@ -427,34 +510,36 @@ void txCalAck(DiveCANType_t deviceType)
  */
 void txCalResponse(DiveCANType_t deviceType, DiveCANCalResponse_t response, ShortMillivolts_t cell1, ShortMillivolts_t cell2, ShortMillivolts_t cell3, FO2_t FO2, uint16_t atmosphericPressure)
 {
-    uint8_t atmosBytes[2] = {(uint8_t)(atmosphericPressure >> 8), (uint8_t)atmosphericPressure};
+    uint8_t atmosBytes[2] = {(uint8_t)((atmosphericPressure >> BYTE_WIDTH) & BYTE_MASK), (uint8_t)(atmosphericPressure & BYTE_MASK)};
 
+    static const uint8_t CAL_RESP_MSG_LEN = 8U;
     const DiveCANMessage_t message = {
         .id = CAL_ID | deviceType,
-        .data = {(uint8_t)response, cell1, cell2, cell3, FO2, atmosBytes[0], atmosBytes[1], 0x07},
-        .length = 8,
+        .data = {(uint8_t)response, cell1, cell2, cell3, FO2, atmosBytes[0], atmosBytes[1], CAL_RESP_FINAL_BYTE},
+        .length = CAL_RESP_MSG_LEN,
         .type = "CAL_RESP"};
 
     sendCANMessage(message);
 }
 
-static const uint8_t MAX_MSG_FRAGMENT = 8;
+/* CAN frame data field size */
+#define CAN_DATA_SIZE 8U
 void txLogText(const DiveCANType_t deviceType, const char *msg, uint16_t length)
 {
     uint16_t remainingLength = length;
     uint8_t bytesToWrite = 0;
 
-    for (uint8_t i = 0; i < length; i += MAX_MSG_FRAGMENT)
+    for (uint8_t i = 0; i < length; i += CAN_DATA_SIZE)
     {
-        if (remainingLength < MAX_MSG_FRAGMENT)
+        if (remainingLength < CAN_DATA_SIZE)
         {
             bytesToWrite = (uint8_t)remainingLength;
         }
         else
         {
-            bytesToWrite = MAX_MSG_FRAGMENT;
+            bytesToWrite = CAN_DATA_SIZE;
         }
-        uint8_t msgBuf[8] = {0};
+        uint8_t msgBuf[CAN_DATA_SIZE] = {0};
         (void)memcpy(msgBuf, msg + i, bytesToWrite);
         const DiveCANMessage_t message = {
             .id = LOG_TEXT_ID | deviceType,

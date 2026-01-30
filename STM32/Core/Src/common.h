@@ -60,19 +60,12 @@ extern "C"
     static const uint8_t CAN_DATA_BYTE_7 = 7U;
     static const uint8_t CAN_DATA_FRAME_SIZE = 8U;
 
-    /* Data type sizes for DID responses */
-    static const uint16_t DATA_SIZE_UINT8 = 1U;   /* Size of uint8_t in bytes */
-    static const uint16_t DATA_SIZE_UINT16 = 2U;  /* Size of uint16_t in bytes */
-    static const uint16_t DATA_SIZE_UINT32 = 4U;  /* Size of uint32_t/float32 in bytes */
-    static const uint16_t DATA_SIZE_FLOAT32 = 4U; /* Size of float (IEEE 754) in bytes */
-
     /* PPO2 values */
     static const PPO2_t PPO2_FAIL = 0xFF;
     static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
 
     /* fO2 limits */
     static const FO2_t FO2_MAX_PERCENT = 100U; /**< Maximum valid fO2 percentage */
-
     typedef enum
     {
         CELL_OK,
@@ -92,7 +85,12 @@ extern "C"
 #define CELL_1 0
 #define CELL_2 1
 #define CELL_3 2
-#define CELL_CONT 3
+
+    /* Cell validity bit masks (for cellsValid bitmask) */
+    static const uint8_t CELL_1_MASK = 0x01U;
+    static const uint8_t CELL_2_MASK = 0x02U;
+    static const uint8_t CELL_3_MASK = 0x04U;
+    static const uint8_t CELL_COUNT = 3U;
 
     /* Define some priority levels */
     /* The general rules are that data consumers should have a higher priority than data sources
