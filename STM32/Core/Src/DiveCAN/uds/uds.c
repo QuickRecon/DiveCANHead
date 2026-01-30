@@ -16,7 +16,7 @@
 #include <string.h>
 #include <assert.h>
 
-// Forward declarations of service handlers
+/* Forward declarations of service handlers */
 static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 
@@ -45,10 +45,10 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData, uint16_t 
         return;
     }
 
-    // Extract Service ID (first byte)
+    /* Extract Service ID (first byte) */
     uint8_t sid = requestData[1];
 
-    // Dispatch to appropriate service handler
+    /* Dispatch to appropriate service handler */
     switch (sid)
     {
     case UDS_SID_READ_DATA_BY_ID:
@@ -60,7 +60,7 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData, uint16_t 
         break;
 
     default:
-        // Service not supported
+        /* Service not supported */
         UDS_SendNegativeResponse(ctx, sid, UDS_NRC_SERVICE_NOT_SUPPORTED);
         break;
     }
@@ -76,13 +76,13 @@ void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID, uint8_t n
         return;
     }
 
-    // Build negative response: [0x7F, requestedSID, NRC]
+    /* Build negative response: [0x7F, requestedSID, NRC] */
     ctx->responseBuffer[0] = UDS_SID_NEGATIVE_RESPONSE;
     ctx->responseBuffer[1] = requestedSID;
     ctx->responseBuffer[2] = nrc;
     ctx->responseLength = 3;
 
-    // Send via ISO-TP
+    /* Send via ISO-TP */
     ISOTP_Send(ctx->isotpContext, ctx->responseBuffer, ctx->responseLength);
 }
 
@@ -96,7 +96,7 @@ void UDS_SendResponse(UDSContext_t *ctx)
         return;
     }
 
-    // Send via ISO-TP
+    /* Send via ISO-TP */
     ISOTP_Send(ctx->isotpContext, ctx->responseBuffer, ctx->responseLength);
 }
 
@@ -190,12 +190,19 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
             return false; /* Response too long */
         }
 
-        // Label len always needs to be the same length (9 bytes), 0 padded if needed
+        /* Label len always needs to be the same length (9 bytes), 0 padded if needed */
         memset(&buf[dataOffset], 0, labelLen);
         memcpy(&buf[dataOffset], setting->label,  strnlen(setting->label, labelLen));
         buf[dataOffset + labelLen] = 0; /* Null terminator */
         buf[dataOffset + labelLen + 1] = (uint8_t)setting->kind;
-        buf[dataOffset + labelLen + 2] = setting->editable ? 1 : 0;
+        if (setting->editable)
+        {
+            buf[dataOffset + labelLen + 2] = 1;
+        }
+        else
+        {
+            buf[dataOffset + labelLen + 2] = 0;
+        }
         if (setting->kind == SETTING_KIND_TEXT)
         {
             buf[dataOffset + labelLen + 3] = setting->maxValue;
@@ -324,38 +331,38 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
  */
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
-    // Validate message length (minimum: SID + 2-byte DID + 1 byte data)
+    /* Validate message length (minimum: SID + 2-byte DID + 1 byte data) */
     if (requestLength < 4)
     {
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
 
-    // Extract DID (big-endian)
+    /* Extract DID (big-endian) */
     uint16_t did = (requestData[2] << 8) | requestData[3];
 
-    // Dispatch based on DID
+    /* Dispatch based on DID */
     switch (did)
     {
     case UDS_DID_SETPOINT_WRITE:
     {
-        // Write setpoint: 1 byte (0-255 = 0.00-2.55 bar)
-        // Note: Shearwater does not respect setpoint broadcasts from the head,
-        // so this only updates internal state. Useful for testing.
-        if (requestLength != 5) // pad(1) + SID(1) + DID(2) + value(1)
+        /* Write setpoint: 1 byte (0-255 = 0.00-2.55 bar)
+         * Note: Shearwater does not respect setpoint broadcasts from the head,
+         * so this only updates internal state. Useful for testing. */
+        if (requestLength != 5) /* pad(1) + SID(1) + DID(2) + value(1) */
         {
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             return;
         }
 
         uint8_t ppo2Raw = requestData[4];
-        PPO2_t ppo2 = ppo2Raw; // PPO2_t is centibar (0-255)
+        PPO2_t ppo2 = ppo2Raw; /* PPO2_t is centibar (0-255) */
         setSetpoint(ppo2);
 
-        // Build positive response: [0x6E, DID_high, DID_low]
+        /* Build positive response: [0x6E, DID_high, DID_low] */
         ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[1] = requestData[2]; // DID high
-        ctx->responseBuffer[2] = requestData[3]; // DID low
+        ctx->responseBuffer[1] = requestData[2]; /* DID high */
+        ctx->responseBuffer[2] = requestData[3]; /* DID low */
         ctx->responseLength = 3;
 
         UDS_SendResponse(ctx);
@@ -364,8 +371,8 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
     case UDS_DID_CALIBRATION_TRIGGER:
     {
-        // Trigger calibration: 1 byte fO2 (0-100%)
-        if (requestLength != 5) // pad(1) + SID(1) + DID(2) + value(1)
+        /* Trigger calibration: 1 byte fO2 (0-100%) */
+        if (requestLength != 5) /* pad(1) + SID(1) + DID(2) + value(1) */
         {
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             return;
@@ -373,24 +380,24 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
         uint8_t fO2 = requestData[4];
 
-        // Validate fO2 range
+        /* Validate fO2 range */
         if (fO2 > 100)
         {
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
             return;
         }
 
-        // Check if calibration is already in progress
+        /* Check if calibration is already in progress */
         if (isCalibrating())
         {
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
             return;
         }
 
-        // Get current atmospheric pressure
+        /* Get current atmospheric pressure */
         uint16_t atmoPressure = getAtmoPressure();
 
-        // Start calibration task with parameters from configuration
+        /* Start calibration task with parameters from configuration */
         RunCalibrationTask(
             DIVECAN_SOLO,
             fO2,
@@ -399,10 +406,10 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             ctx->configuration->powerMode
         );
 
-        // Build positive response: [0x6E, DID_high, DID_low]
+        /* Build positive response: [0x6E, DID_high, DID_low] */
         ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[1] = requestData[2]; // DID high
-        ctx->responseBuffer[2] = requestData[3]; // DID low
+        ctx->responseBuffer[1] = requestData[2]; /* DID high */
+        ctx->responseBuffer[2] = requestData[3]; /* DID low */
         ctx->responseLength = 3;
 
         UDS_SendResponse(ctx);
@@ -410,37 +417,37 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     }
 
     default:
-        // Check if DID is in setting save range (0x9350 + index)
-        // This is the primary save mechanism - handset sends value with this DID to update and persist
+        /* Check if DID is in setting save range (0x9350 + index)
+         * This is the primary save mechanism - handset sends value with this DID to update and persist */
         if (did >= UDS_DID_SETTING_SAVE_BASE && did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))
         {
             uint8_t index = did - UDS_DID_SETTING_SAVE_BASE;
             const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
 
-            // Check if setting exists and is editable
+            /* Check if setting exists and is editable */
             if (setting == NULL || !setting->editable)
             {
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 return;
             }
 
-            // Extract value from message data (starts at requestData[4] after pad+SID+DID)
-            // Value format depends on message length
+            /* Extract value from message data (starts at requestData[4] after pad+SID+DID)
+             * Value format depends on message length */
             uint64_t value = 0;
-            uint16_t dataLen = requestLength - 4; // Subtract pad(1) + SID(1) + DID(2)
+            uint16_t dataLen = requestLength - 4; /* Subtract pad(1) + SID(1) + DID(2) */
             for (uint16_t i = 0; i < dataLen && i < 8; i++)
             {
                 value = (value << 8) | requestData[4 + i];
             }
 
-            // Update setting in memory
+            /* Update setting in memory */
             if (!UDS_SetSettingValue(index, value, ctx->configuration))
             {
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 return;
             }
 
-            // Save to flash
+            /* Save to flash */
             extern HW_Version_t get_hardware_version(void);
             HW_Version_t hw_ver = get_hardware_version();
 
@@ -450,21 +457,21 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
                 return;
             }
 
-            // Build positive response
+            /* Build positive response */
             ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[1] = requestData[2]; // DID high
-            ctx->responseBuffer[2] = requestData[3]; // DID low
+            ctx->responseBuffer[1] = requestData[2]; /* DID high */
+            ctx->responseBuffer[2] = requestData[3]; /* DID low */
             ctx->responseLength = 3;
 
             UDS_SendResponse(ctx);
             return;
         }
 
-        // Check if DID is in settings value range (0x9130 + index) - update without save
+        /* Check if DID is in settings value range (0x9130 + index) - update without save */
         if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
         {
-            // Write setting value: expect 8-byte big-endian u64
-            if (requestLength != 12) // pad(1) + SID(1) + DID(2) + value(8)
+            /* Write setting value: expect 8-byte big-endian u64 */
+            if (requestLength != 12) /* pad(1) + SID(1) + DID(2) + value(8) */
             {
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
                 return;
@@ -472,24 +479,24 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
             uint8_t index = did - UDS_DID_SETTING_VALUE_BASE;
 
-            // Decode big-endian u64
+            /* Decode big-endian u64 */
             uint64_t value = 0;
             for (int i = 0; i < 8; i++)
             {
                 value = (value << 8) | requestData[4 + i];
             }
 
-            // Update setting
+            /* Update setting */
             if (!UDS_SetSettingValue(index, value, ctx->configuration))
             {
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 return;
             }
 
-            // Build positive response
+            /* Build positive response */
             ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[1] = requestData[2]; // DID high
-            ctx->responseBuffer[2] = requestData[3]; // DID low
+            ctx->responseBuffer[1] = requestData[2]; /* DID high */
+            ctx->responseBuffer[2] = requestData[3]; /* DID low */
             ctx->responseLength = 3;
 
             UDS_SendResponse(ctx);

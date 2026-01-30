@@ -12,12 +12,12 @@
 #include "../../errors.h"
 #include <string.h>
 
-// External functions
+/* External functions */
 extern void sendCANMessage(const DiveCANMessage_t message);
 extern uint32_t HAL_GetTick(void);
-// osDelay is defined in cmsis_os.h (FreeRTOS wrapper)
+/* osDelay is defined in cmsis_os.h (FreeRTOS wrapper) */
 
-// Forward declarations of internal functions
+/* Forward declarations of internal functions */
 static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
 static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
 static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
@@ -33,16 +33,16 @@ void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source, DiveCANType_t target,
         return;
     }
 
-    // Zero out entire structure
+    /* Zero out entire structure */
     memset(ctx, 0, sizeof(ISOTPContext_t));
 
-    // Set addressing
+    /* Set addressing */
     ctx->source = source;
     ctx->target = target;
     ctx->messageId = messageId;
 
-    // State is already ISOTP_IDLE (0) from memset
-    // Completion flags are false (caller must poll rxComplete/txComplete)
+    /* State is already ISOTP_IDLE (0) from memset
+     * Completion flags are false (caller must poll rxComplete/txComplete) */
 }
 
 /**
@@ -59,20 +59,20 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
         return;
     }
 
-    // Reset state machine to IDLE
+    /* Reset state machine to IDLE */
     ctx->state = ISOTP_IDLE;
 
-    // Reset in-progress RX state (but preserve completed data if rxComplete is set)
+    /* Reset in-progress RX state (but preserve completed data if rxComplete is set) */
     if (!ctx->rxComplete)
     {
         ctx->rxDataLength = 0;
-        // Don't clear rxBuffer - large and unnecessary if not complete
+        /* Don't clear rxBuffer - large and unnecessary if not complete */
     }
     ctx->rxBytesReceived = 0;
     ctx->rxSequenceNumber = 0;
     ctx->rxLastFrameTime = 0;
 
-    // Reset TX state (txDataPtr points to caller data, don't need to clear)
+    /* Reset TX state (txDataPtr points to caller data, don't need to clear) */
     ctx->txDataLength = 0;
     ctx->txBytesSent = 0;
     ctx->txSequenceNumber = 0;
@@ -81,7 +81,7 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
     ctx->txSTmin = 0;
     ctx->txBlockCounter = 0;
     ctx->txLastFrameTime = 0;
-    // Note: txComplete preserved across reset
+    /* Note: txComplete preserved across reset */
 }
 
 /**
@@ -94,47 +94,47 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
         return false;
     }
 
-    // Extract addressing from CAN ID
-    uint8_t msgTarget = (message->id >> 8) & 0x0F; // Bits 11-8
-    uint8_t msgSource = message->id & 0xFF;        // Bits 7-0
+    /* Extract addressing from CAN ID */
+    uint8_t msgTarget = (message->id >> 8) & 0x0F; /* Bits 11-8 */
+    uint8_t msgSource = message->id & 0xFF;        /* Bits 7-0 */
 
-    // Check if message is for us
+    /* Check if message is for us */
     if (msgTarget != ctx->source)
     {
-        return false; // Not addressed to us
+        return false; /* Not addressed to us */
     }
 
-    // Extract PCI byte
+    /* Extract PCI byte */
     uint8_t pci = message->data[0] & ISOTP_PCI_MASK;
 
-    // Special case: Shearwater FC quirk (accept FC with source=0xFF)
+    /* Special case: Shearwater FC quirk (accept FC with source=0xFF) */
     bool isShearwaterFC = (pci == ISOTP_PCI_FC) && (msgSource == 0xFF);
 
-    // Check if message is from expected peer (or Shearwater FC broadcast)
+    /* Check if message is from expected peer (or Shearwater FC broadcast) */
     if (msgSource != ctx->target && !isShearwaterFC)
     {
-        ctx->target = msgSource; // Update target to sender
+        ctx->target = msgSource; /* Update target to sender */
     }
 
-    // Route based on PCI type
+    /* Route based on PCI type */
     switch (pci)
     {
-    case ISOTP_PCI_SF: // Single frame
+    case ISOTP_PCI_SF: /* Single frame */
         return HandleSingleFrame(ctx, message);
 
-    case ISOTP_PCI_FF: // First frame
+    case ISOTP_PCI_FF: /* First frame */
         return HandleFirstFrame(ctx, message);
 
-    case ISOTP_PCI_CF: // Consecutive frame
+    case ISOTP_PCI_CF: /* Consecutive frame */
         return HandleConsecutiveFrame(ctx, message);
 
-    case ISOTP_PCI_FC: // Flow control
-        // FC frames are handled by the centralized TX queue (ISOTP_TxQueue_ProcessFC)
-        // Individual contexts no longer do TX, so ignore FC here
+    case ISOTP_PCI_FC: /* Flow control */
+        /* FC frames are handled by the centralized TX queue (ISOTP_TxQueue_ProcessFC)
+         * Individual contexts no longer do TX, so ignore FC here */
         return false;
 
     default:
-        return false; // Unknown PCI
+        return false; /* Unknown PCI */
     }
 }
 
@@ -143,32 +143,32 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
  */
 static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
-    // Extract length from PCI byte
+    /* Extract length from PCI byte */
     uint8_t length = message->data[0] & ISOTP_PCI_LEN_MASK;
 
-    // Validate length (1-7 bytes for SF)
+    /* Validate length (1-7 bytes for SF) */
     if (length == 0 || length > 7)
     {
-        return false; // Invalid SF length
+        return false; /* Invalid SF length */
     }
 
-    // Validate message has enough bytes
+    /* Validate message has enough bytes */
     if (message->length < (length + 1))
     {
-        return false; // Message too short
+        return false; /* Message too short */
     }
 
-    // Copy data to RX buffer
+    /* Copy data to RX buffer */
     memcpy(ctx->rxBuffer, &message->data[1], length);
 
-    // Set received length and completion flag for caller to check
+    /* Set received length and completion flag for caller to check */
     ctx->rxDataLength = length;
     ctx->rxComplete = true;
 
-    // Remain in IDLE state (or reset if we were in another state)
+    /* Remain in IDLE state (or reset if we were in another state) */
     ctx->state = ISOTP_IDLE;
 
-    return true; // Message consumed
+    return true; /* Message consumed */
 }
 
 /**
@@ -176,41 +176,41 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
  */
 static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
-    // Extract 12-bit length from first two bytes
+    /* Extract 12-bit length from first two bytes */
     uint16_t dataLength = ((uint16_t)(message->data[0] & ISOTP_PCI_LEN_MASK) << 8) |
                           message->data[1];
 
-    // Validate length
+    /* Validate length */
     if (dataLength == 0 || dataLength > ISOTP_MAX_PAYLOAD)
     {
-        // Send FC Overflow
+        /* Send FC Overflow */
         SendFlowControl(ctx, ISOTP_FC_OVFLW, 0, 0);
         ISOTP_Reset(ctx);
         NON_FATAL_ERROR_DETAIL(ISOTP_OVERFLOW_ERR, dataLength);
-        return true; // Message consumed (but rejected)
+        return true; /* Message consumed (but rejected) */
     }
 
-    // Reset RX state
+    /* Reset RX state */
     ctx->rxDataLength = dataLength;
     ctx->rxBytesReceived = 0;
-    ctx->rxSequenceNumber = 1; // Expecting CF with seq=1 (per ISO 15765-2)
+    ctx->rxSequenceNumber = 1; /* Expecting CF with seq=1 (per ISO 15765-2) */
 
-    // Copy first 6 data bytes (bytes 2-7 of CAN frame)
+    /* Copy first 6 data bytes (bytes 2-7 of CAN frame) */
     uint8_t firstFrameBytes = 6;
     memcpy(ctx->rxBuffer, &message->data[2], firstFrameBytes);
     ctx->rxBytesReceived = firstFrameBytes;
 
-    // Transition to RECEIVING state
+    /* Transition to RECEIVING state */
     ctx->state = ISOTP_RECEIVING;
 
-    // Update timestamp
+    /* Update timestamp */
     extern uint32_t HAL_GetTick(void);
     ctx->rxLastFrameTime = HAL_GetTick();
 
-    // Send Flow Control (CTS, BS=0, STmin=0)
+    /* Send Flow Control (CTS, BS=0, STmin=0) */
     SendFlowControl(ctx, ISOTP_FC_CTS, ISOTP_DEFAULT_BLOCK_SIZE, ISOTP_DEFAULT_STMIN);
 
-    return true; // Message consumed
+    return true; /* Message consumed */
 }
 
 /**
@@ -218,50 +218,50 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
  */
 static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
-    // Must be in RECEIVING state
+    /* Must be in RECEIVING state */
     if (ctx->state != ISOTP_RECEIVING)
     {
-        return false; // Not expecting CF
+        return false; /* Not expecting CF */
     }
 
-    // Extract sequence number
+    /* Extract sequence number */
     uint8_t seqNum = message->data[0] & ISOTP_PCI_LEN_MASK;
 
-    // Validate sequence number
+    /* Validate sequence number */
     if (seqNum != ctx->rxSequenceNumber)
     {
-        // Sequence error - abort reception
+        /* Sequence error - abort reception */
         NON_FATAL_ERROR_DETAIL(ISOTP_SEQ_ERR, (ctx->rxSequenceNumber << 4) | seqNum);
         ISOTP_Reset(ctx);
-        return true; // Message consumed (but error)
+        return true; /* Message consumed (but error) */
     }
 
-    // Calculate bytes to copy (7 bytes or remaining)
+    /* Calculate bytes to copy (7 bytes or remaining) */
     uint16_t bytesRemaining = ctx->rxDataLength - ctx->rxBytesReceived;
     uint8_t bytesToCopy = (bytesRemaining > 7) ? 7 : (uint8_t)bytesRemaining;
 
-    // Copy data
+    /* Copy data */
     memcpy(&ctx->rxBuffer[ctx->rxBytesReceived], &message->data[1], bytesToCopy);
     ctx->rxBytesReceived += bytesToCopy;
 
-    // Update timestamp
+    /* Update timestamp */
     extern uint32_t HAL_GetTick(void);
     ctx->rxLastFrameTime = HAL_GetTick();
 
-    // Increment sequence number (wraps at 16)
+    /* Increment sequence number (wraps at 16) */
     ctx->rxSequenceNumber = (ctx->rxSequenceNumber + 1) & 0x0F;
 
-    // Check if reception complete
+    /* Check if reception complete */
     if (ctx->rxBytesReceived >= ctx->rxDataLength)
     {
-        // Set completion flag for caller to check
+        /* Set completion flag for caller to check */
         ctx->rxComplete = true;
 
-        // Return to IDLE
+        /* Return to IDLE */
         ISOTP_Reset(ctx);
     }
 
-    return true; // Message consumed
+    return true; /* Message consumed */
 }
 
 /**
@@ -271,7 +271,7 @@ static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blo
 {
     DiveCANMessage_t fc = {0};
 
-    // Build CAN ID: messageId | (target << 8) | source
+    /* Build CAN ID: messageId | (target << 8) | source */
     fc.id = ctx->messageId | (ctx->target << 8) | ctx->source;
     fc.length = 3;
     fc.data[0] = flowStatus;
@@ -298,20 +298,20 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
         return false;
     }
 
-    // Validate length
+    /* Validate length */
     if (length == 0 || length > ISOTP_MAX_PAYLOAD)
     {
-        return false; // Invalid length
+        return false; /* Invalid length */
     }
 
-    // Enqueue to centralized TX queue instead of direct send
-    // This ensures all ISO-TP messages are serialized
+    /* Enqueue to centralized TX queue instead of direct send.
+     * This ensures all ISO-TP messages are serialized. */
     bool queued = ISOTP_TxQueue_Enqueue(ctx->source, ctx->target,
                                          ctx->messageId, data, length);
 
     if (queued)
     {
-        // Set completion flag - message is queued and will be sent in order
+        /* Set completion flag - message is queued and will be sent in order */
         ctx->txComplete = true;
     }
 
@@ -328,10 +328,10 @@ void ISOTP_Poll(ISOTPContext_t *ctx, uint32_t currentTime)
         return;
     }
 
-    // Only RX timeout checking - TX is handled by ISOTP_TxQueue_Poll
+    /* Only RX timeout checking - TX is handled by ISOTP_TxQueue_Poll */
     if (ctx->state == ISOTP_RECEIVING)
     {
-        // Check N_Cr timeout (waiting for CF)
+        /* Check N_Cr timeout (waiting for CF) */
         if ((currentTime - ctx->rxLastFrameTime) > ISOTP_TIMEOUT_N_CR)
         {
             NON_FATAL_ERROR_DETAIL(ISOTP_TIMEOUT_ERR, ctx->state);

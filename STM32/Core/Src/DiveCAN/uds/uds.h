@@ -20,21 +20,21 @@
 #include "../Transciever.h"
 #include "../../configuration.h"
 
-// UDS Service IDs (SID)
+/* UDS Service IDs (SID) */
 typedef enum
 {
     UDS_SID_READ_DATA_BY_ID = 0x22,
     UDS_SID_WRITE_DATA_BY_ID = 0x2E
 } UDS_SID_t;
 
-// UDS Response SIDs (positive response = request + 0x40)
+/* UDS Response SIDs (positive response = request + 0x40) */
 enum
 {
     UDS_RESPONSE_SID_OFFSET = 0x40,
     UDS_SID_NEGATIVE_RESPONSE = 0x7F
 };
 
-// UDS Negative Response Codes (NRC)
+/* UDS Negative Response Codes (NRC) */
 typedef enum
 {
     UDS_NRC_SERVICE_NOT_SUPPORTED = 0x11,
@@ -45,21 +45,21 @@ typedef enum
     UDS_NRC_GENERAL_PROGRAMMING_FAILURE = 0x72
 } UDS_NRC_t;
 
-// UDS Data Identifiers (DID) - custom for DiveCAN
+/* UDS Data Identifiers (DID) - custom for DiveCAN */
 typedef enum
 {
-    UDS_DID_FIRMWARE_VERSION = 0xF000,    // Read firmware commit hash
-    UDS_DID_HARDWARE_VERSION = 0xF001,    // Read hardware version
+    UDS_DID_FIRMWARE_VERSION = 0xF000,    /**< Read firmware commit hash */
+    UDS_DID_HARDWARE_VERSION = 0xF001,    /**< Read hardware version */
 
-    // Log push DIDs (0xAxxx range) - unsolicited Head -> Handset messages
-    UDS_DID_LOG_MESSAGE = 0xA100         // Push: log message (Head -> Handset)
+    /* Log push DIDs (0xAxxx range) - unsolicited Head -> Handset messages */
+    UDS_DID_LOG_MESSAGE = 0xA100         /**< Push: log message (Head -> Handset) */
 } UDS_DID_t;
 
-// UDS maximum message sizes
+/* UDS maximum message sizes */
 enum
 {
-    UDS_MAX_REQUEST_LENGTH = 128, // Matches ISOTP_MAX_PAYLOAD
-    UDS_MAX_RESPONSE_LENGTH = 128 // Matches ISOTP_MAX_PAYLOAD
+    UDS_MAX_REQUEST_LENGTH = 128, /**< Matches ISOTP_MAX_PAYLOAD */
+    UDS_MAX_RESPONSE_LENGTH = 128 /**< Matches ISOTP_MAX_PAYLOAD */
 };
 
 /**
@@ -69,14 +69,14 @@ enum
  */
 typedef struct
 {
-    // Response buffer
+    /* Response buffer */
     uint8_t responseBuffer[UDS_MAX_RESPONSE_LENGTH];
     uint16_t responseLength;
 
-    // Reference to configuration (not owned)
+    /* Reference to configuration (not owned) */
     Configuration_t *configuration;
 
-    // Reference to ISO-TP context for sending responses
+    /* Reference to ISO-TP context for sending responses */
     ISOTPContext_t *isotpContext;
 } UDSContext_t;
 
@@ -128,4 +128,4 @@ void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID, uint8_t n
  */
 void UDS_SendResponse(UDSContext_t *ctx);
 
-#endif // UDS_H
+#endif /* UDS_H */

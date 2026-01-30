@@ -21,14 +21,14 @@
 #include <stdbool.h>
 #include "../../configuration.h"
 
-// Settings DIDs
+/* Settings DIDs */
 typedef enum
 {
-    UDS_DID_SETTING_COUNT = 0x9100,      ///< Read: number of settings
-    UDS_DID_SETTING_INFO_BASE = 0x9110,  ///< Read: setting metadata (0x9110 + setting_index)
-    UDS_DID_SETTING_VALUE_BASE = 0x9130, ///< Read/Write: setting value (0x9130 + setting_index)
-    UDS_DID_SETTING_LABEL_BASE = 0x9150, ///< Read: option labels (0x9150 + setting_index + (option_index << 4))
-    UDS_DID_SETTING_SAVE_BASE = 0x9350   ///< Write: save setting to flash (0x9350 + setting_index)
+    UDS_DID_SETTING_COUNT = 0x9100,      /**< Read: number of settings */
+    UDS_DID_SETTING_INFO_BASE = 0x9110,  /**< Read: setting metadata (0x9110 + setting_index) */
+    UDS_DID_SETTING_VALUE_BASE = 0x9130, /**< Read/Write: setting value (0x9130 + setting_index) */
+    UDS_DID_SETTING_LABEL_BASE = 0x9150, /**< Read: option labels (0x9150 + setting_index + (option_index << 4)) */
+    UDS_DID_SETTING_SAVE_BASE = 0x9350   /**< Write: save setting to flash (0x9350 + setting_index) */
 } UDS_SettingsDID_t;
 
 /**
@@ -36,8 +36,8 @@ typedef enum
  */
 typedef enum
 {
-    SETTING_KIND_NUMBER = 0, ///< Multiple choice (enum-based)
-    SETTING_KIND_TEXT = 1,   ///< On/off (1-bit)
+    SETTING_KIND_NUMBER = 0, /**< Multiple choice (enum-based) */
+    SETTING_KIND_TEXT = 1,   /**< On/off (1-bit) */
 } SettingKind_t;
 
 /**
@@ -45,12 +45,12 @@ typedef enum
  */
 typedef struct
 {
-    const char *label;    ///< Setting name (e.g., "Cell 1 Type")
-    SettingKind_t kind;   ///< Setting type
-    bool editable;        ///< Can be modified via UDS
-    uint8_t maxValue;     ///< Maximum value (for NUMBER/SELECTION)
-    const char **options; ///< Option labels (for SELECTION, NULL-terminated)
-    uint8_t optionCount;  ///< Number of options (for SELECTION)
+    const char *label;    /**< Setting name (e.g., "Cell 1 Type") */
+    SettingKind_t kind;   /**< Setting type */
+    bool editable;        /**< Can be modified via UDS */
+    uint8_t maxValue;     /**< Maximum value (for NUMBER/SELECTION) */
+    const char **options; /**< Option labels (for SELECTION, NULL-terminated) */
+    uint8_t optionCount;  /**< Number of options (for SELECTION) */
 } SettingDefinition_t;
 
 /**
@@ -91,4 +91,4 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
  */
 const char *UDS_GetSettingOptionLabel(uint8_t settingIndex, uint8_t optionIndex);
 
-#endif // UDS_SETTINGS_H
+#endif /* UDS_SETTINGS_H */

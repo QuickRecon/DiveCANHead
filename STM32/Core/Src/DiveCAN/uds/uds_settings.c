@@ -13,7 +13,7 @@
 #define BYTE_2_OFFSET 16
 #define BYTE_3_OFFSET 24
 
-// Option labels for selection-type settings
+/* Option labels for selection-type settings */
 static const char *FW_CommitOptions[] = {
     COMMIT_HASH,
     NULL};
@@ -22,9 +22,9 @@ static const char *NumericOptions[] = {
     0,
 };
 
-// Settings definitions array (maps Configuration_t fields to UDS settings)
+/* Settings definitions array (maps Configuration_t fields to UDS settings) */
 static const SettingDefinition_t settings[] = {
-    // Index 0: Cell 1 Type
+    /* Index 0: Cell 1 Type */
     {
         .label = "FW Commit",
         .kind = SETTING_KIND_TEXT,
@@ -125,19 +125,19 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
 
     const SettingDefinition_t *setting = &settings[index];
 
-    // Validate editable
+    /* Validate editable */
     if (!setting->editable)
     {
         return false;
     }
 
-    // Validate range
+    /* Validate range */
     if (value > setting->maxValue)
     {
         return false;
     }
 
-    // Update configuration field
+    /* Update configuration field */
     uint32_t configBits = getConfigBytes(config);
     uint8_t configBytes[4] = {(uint8_t)(configBits),
                               (uint8_t)(configBits >> BYTE_1_OFFSET),
@@ -148,15 +148,6 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
 
     uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
     *config = setConfigBytes(newBytes);
-    // bool valid = saveConfiguration(config, deviceSpec->hardwareVersion);
-    // if (valid)
-    // {
-    //     serial_printf("Config accepted\r\n");
-    // }
-    // else
-    // {
-    //     serial_printf("Config rejected\r\n");
-    // }
 
     return true;
 }
