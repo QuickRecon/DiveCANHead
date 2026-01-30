@@ -10,6 +10,7 @@
 #include "../../Hardware/log.h"
 #include "../../Hardware/pwr_management.h"
 #include "../../common.h"
+#include "../../errors.h"
 #include "main.h"
 #include <string.h>
 
@@ -43,6 +44,7 @@ static CellType_t getCellTypeFromConfig(const Configuration_t *config, uint8_t c
 {
     if ((config == NULL) || (cellNum >= CELL_COUNT))
     {
+        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
         return CELL_ANALOG; /* Safe default */
     }
 
@@ -55,6 +57,7 @@ static CellType_t getCellTypeFromConfig(const Configuration_t *config, uint8_t c
     case 2: /* CELL_3 */
         return config->cell3;
     default:
+        /* Unreachable: cellNum bounds checked above */
         return CELL_ANALOG;
     }
 }
@@ -181,6 +184,7 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
     }
 
     default:
+        /* Expected: Unknown DID within control state range - caller handles NRC */
         return false;
     }
 }
@@ -204,6 +208,7 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
 {
     if ((cellNum >= CELL_COUNT) || (offset > CELL_DID_MAX_OFFSET))
     {
+        NON_FATAL_ERROR_DETAIL(INVALID_CELL_NUMBER_ERR, cellNum);
         return false;
     }
 
@@ -257,7 +262,7 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
             return true;
 
         default:
-            /* Invalid offset for ANALOG cell - return NRC */
+            /* Expected: Invalid offset for ANALOG cell - caller handles NRC */
             return false;
         }
     }
@@ -303,13 +308,13 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
             return true;
 
         default:
-            /* Invalid offset for DIVEO2 cell - return NRC */
+            /* Expected: Invalid offset for DIVEO2 cell - caller handles NRC */
             return false;
         }
     }
 
-    /* O2S cells only support universal DIDs (already handled above) */
-    /* Any other offset for O2S is invalid */
+    /* Expected: O2S cells only support universal DIDs (already handled above).
+     * Any other offset for O2S is invalid - caller handles NRC */
     return false;
 }
 
@@ -339,6 +344,7 @@ bool UDS_StateDID_HandleRead(uint16_t did, const Configuration_t *config,
 {
     if ((responseBuffer == NULL) || (responseLength == NULL))
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return false;
     }
 
@@ -358,6 +364,7 @@ bool UDS_StateDID_HandleRead(uint16_t did, const Configuration_t *config,
 
         if (cellNum >= CELL_COUNT)
         {
+            NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, cellNum);
             return false;
         }
 
@@ -365,6 +372,7 @@ bool UDS_StateDID_HandleRead(uint16_t did, const Configuration_t *config,
         return handleCellDID(cellNum, offset, cellType, responseBuffer, responseLength);
     }
 
+    /* Expected: DID not in state DID range - caller handles NRC */
     return false;
 }
 
@@ -404,6 +412,7 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
 
         if (cellNum >= CELL_COUNT)
         {
+            NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, cellNum);
             return 0U;
         }
 
@@ -439,5 +448,6 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
         }
     }
 
-    return 0U; /* Invalid DID or type mismatch */
+    /* Expected: Invalid DID or type mismatch - return 0 to indicate unknown size */
+    return 0U;
 }

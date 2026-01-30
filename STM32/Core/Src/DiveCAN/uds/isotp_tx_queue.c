@@ -96,6 +96,10 @@ void ISOTP_TxQueue_Init(void)
     txQueueHandle = osMessageQueueNew(ISOTP_TX_QUEUE_SIZE,
                                       sizeof(ISOTPTxRequest_t),
                                       &queueAttr);
+    if (txQueueHandle == NULL)
+    {
+        NON_FATAL_ERROR(QUEUEING_ERR);
+    }
 }
 
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
@@ -103,11 +107,13 @@ bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
 {
     if ((data == NULL) || (length == 0) || (length > ISOTP_TX_BUFFER_SIZE))
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return false;
     }
 
     if (txQueueHandle == NULL)
     {
+        NON_FATAL_ERROR(QUEUEING_ERR);
         return false;
     }
 
@@ -121,6 +127,10 @@ bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
 
     /* Non-blocking put - returns osOK on success, osErrorResource if full */
     osStatus_t status = osMessageQueuePut(txQueueHandle, &txRequestBuffer, 0, 0);
+    if (status != osOK)
+    {
+        NON_FATAL_ERROR(QUEUEING_ERR);
+    }
     return (status == osOK);
 }
 
@@ -131,11 +141,13 @@ static void StartNextTx(void)
 {
     if (txState.txActive)
     {
+        /* Expected: Already transmitting, caller will retry on next poll */
         return;
     }
 
     if (txQueueHandle == NULL)
     {
+        /* Expected: Init not yet called or failed - caller will retry on next poll */
         return;
     }
 
@@ -143,7 +155,8 @@ static void StartNextTx(void)
     (void)memset(&txRequestBuffer, 0, sizeof(txRequestBuffer));
     if (osMessageQueueGet(txQueueHandle, &txRequestBuffer, NULL, 0) != osOK)
     {
-        return; /* Queue empty */
+        /* Expected: Queue empty - nothing to transmit */
+        return;
     }
 
     (void)memcpy(&txState.current, &txRequestBuffer, sizeof(ISOTPTxRequest_t));
@@ -262,19 +275,23 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
 {
     if (fc == NULL)
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return false;
     }
 
     if ((!txState.txActive) || (txState.txState != ISOTP_WAIT_FC))
     {
+        /* Expected: FC received when not awaiting one - spurious or for another context */
         return false;
     }
 
     /* Verify FC is for our current TX
-     * Accept FC addressed to us, or broadcast FC (Shearwater quirk) */
+     * Accept FC addressed to us, or broadcast FC (Shearwater quirk: source=0xFF) */
     uint8_t fcTarget = (fc->id >> BYTE_WIDTH) & ISOTP_PCI_LEN_MASK;
-    if ((fcTarget != txState.current.source) && (fcTarget != ISOTP_BROADCAST_ADDR))
+    uint8_t fcSource = fc->id & BYTE_MASK;
+    if ((fcTarget != txState.current.source) && (fcSource != ISOTP_BROADCAST_ADDR))
     {
+        /* Expected: FC addressed to another node on the bus */
         return false;
     }
 
@@ -339,6 +356,7 @@ uint8_t ISOTP_TxQueue_GetPendingCount(void)
 {
     if (txQueueHandle == NULL)
     {
+        /* Expected: Init not yet called - return 0 as safe default */
         return 0;
     }
 

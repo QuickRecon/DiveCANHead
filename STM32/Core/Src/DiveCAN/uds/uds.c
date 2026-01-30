@@ -42,6 +42,7 @@ void UDS_Init(UDSContext_t *ctx, Configuration_t *config, ISOTPContext_t *isotpC
 {
     if (ctx == NULL)
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return;
     }
 
@@ -57,6 +58,7 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData, uint16_t 
 {
     if ((ctx == NULL) || (requestData == NULL) || (requestLength == 0))
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return;
     }
 
@@ -76,6 +78,7 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData, uint16_t 
 
     default:
         /* Service not supported */
+        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_SERVICE_NOT_SUPPORTED);
         UDS_SendNegativeResponse(ctx, sid, UDS_NRC_SERVICE_NOT_SUPPORTED);
         break;
     }
@@ -88,6 +91,7 @@ void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID, uint8_t n
 {
     if ((ctx == NULL) || (ctx->isotpContext == NULL))
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return;
     }
 
@@ -108,6 +112,7 @@ void UDS_SendResponse(UDSContext_t *ctx)
 {
     if ((ctx == NULL) || (ctx->isotpContext == NULL) || (ctx->responseLength == 0))
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return;
     }
 
@@ -133,6 +138,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
     /* Need at least DID (2 bytes) + 1 byte data */
     if (maxAvailable < (UDS_DID_SIZE + 1U))
     {
+        NON_FATAL_ERROR_DETAIL(UDS_TOO_FULL, did);
         return false;
     }
 
@@ -150,7 +156,8 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
             *bytesWritten = dataOffset + dataLen;
             return true;
         }
-        return false; /* State DID handler returned NRC */
+        /* Caller handles NRC - state DID handler indicated read failure */
+        return false;
     }
 
     /* Handle existing DIDs */
@@ -190,6 +197,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
         if (setting == NULL)
         {
+            NON_FATAL_ERROR_DETAIL(MENU_ERR, index);
             return false;
         }
 
@@ -203,7 +211,8 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         }
         if (needed > (maxAvailable - dataOffset))
         {
-            return false; /* Response too long */
+            NON_FATAL_ERROR_DETAIL(UDS_TOO_FULL, index);
+            return false;
         }
 
         /* Label len always needs to be the same length (9 bytes), 0 padded if needed */
@@ -237,11 +246,13 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
         if (setting == NULL)
         {
+            NON_FATAL_ERROR_DETAIL(MENU_ERR, index);
             return false;
         }
 
         if (maxAvailable < (dataOffset + SETTING_VALUE_RESP_LEN))
         {
+            NON_FATAL_ERROR_DETAIL(UDS_TOO_FULL, index);
             return false;
         }
 
@@ -265,6 +276,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         const char *label = UDS_GetSettingOptionLabel(settingIndex, optionIndex);
         if (label == NULL)
         {
+            NON_FATAL_ERROR_DETAIL(MENU_ERR, did);
             return false;
         }
 
@@ -279,7 +291,8 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         return true;
     }
 
-    return false; /* DID not found */
+    /* Caller handles NRC - DID not found */
+    return false;
 }
 
 /**
@@ -294,6 +307,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
     /* Validate message length (minimum: pad + SID + 2-byte DID) */
     if (requestLength < UDS_MIN_REQ_LEN)
     {
+        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
@@ -302,6 +316,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
     uint16_t didBytesCount = requestLength - UDS_DID_SIZE; /* Subtract pad + SID */
     if ((didBytesCount % UDS_DID_SIZE) != 0U)
     {
+        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
@@ -321,6 +336,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
         if (!ReadSingleDID(ctx, did, responseOffset, &bytesWritten))
         {
             /* DID read failed - send NRC for this DID */
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
             return;
         }
@@ -330,6 +346,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
         /* Check if response would overflow */
         if (responseOffset >= UDS_MAX_RESPONSE_LENGTH)
         {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_RESPONSE_TOO_LONG);
             UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_RESPONSE_TOO_LONG);
             return;
         }
@@ -350,6 +367,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     /* Validate message length (minimum: pad + SID + 2-byte DID) */
     if (requestLength < UDS_MIN_REQ_LEN)
     {
+        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
@@ -367,6 +385,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
          * so this only updates internal state. Useful for testing. */
         if (requestLength != UDS_SINGLE_VALUE_LEN)
         {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             return;
         }
@@ -390,6 +409,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         /* Trigger calibration: 1 byte fO2 (0-100%) */
         if (requestLength != UDS_SINGLE_VALUE_LEN)
         {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             return;
         }
@@ -399,6 +419,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         /* Validate fO2 range */
         if (fO2 > FO2_MAX_PERCENT)
         {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
             return;
         }
@@ -406,6 +427,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         /* Check if calibration is already in progress */
         if (isCalibrating())
         {
+            NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_CONDITIONS_NOT_CORRECT);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
             return;
         }
@@ -443,6 +465,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             /* Check if setting exists and is editable */
             if ((setting == NULL) || (!setting->editable))
             {
+                NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 return;
             }
@@ -459,6 +482,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             /* Update setting in memory */
             if (!UDS_SetSettingValue(index, value, ctx->configuration))
             {
+                NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 return;
             }
@@ -468,6 +492,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
             if (!saveConfiguration(ctx->configuration, hw_ver))
             {
+                NON_FATAL_ERROR(FLASH_LOCK_ERR);
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_GENERAL_PROGRAMMING_FAILURE);
                 return;
             }
@@ -488,6 +513,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             /* Write setting value: expect 8-byte big-endian u64 */
             if (requestLength != SETTING_VALUE_WRITE_LEN)
             {
+                NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
                 return;
             }
@@ -504,6 +530,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             /* Update setting */
             if (!UDS_SetSettingValue(index, value, ctx->configuration))
             {
+                NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 return;
             }
@@ -518,6 +545,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             return;
         }
 
+        NON_FATAL_ERROR_DETAIL(UDS_NRC_ERR, UDS_NRC_REQUEST_OUT_OF_RANGE);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
         break;
     }

@@ -31,6 +31,7 @@ void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source, DiveCANType_t target,
 {
     if (ctx == NULL)
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return;
     }
 
@@ -57,6 +58,7 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
 {
     if (ctx == NULL)
     {
+        /* Expected: Reset may be called during cleanup with NULL context */
         return;
     }
 
@@ -92,6 +94,7 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
     if ((ctx == NULL) || (message == NULL))
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return false;
     }
 
@@ -102,7 +105,8 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
     /* Check if message is for us */
     if (msgTarget != ctx->source)
     {
-        return false; /* Not addressed to us */
+        /* Expected: Normal CAN bus filtering - message addressed to another node */
+        return false;
     }
 
     /* Extract PCI byte */
@@ -130,12 +134,13 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
         return HandleConsecutiveFrame(ctx, message);
 
     case ISOTP_PCI_FC: /* Flow control */
-        /* FC frames are handled by the centralized TX queue (ISOTP_TxQueue_ProcessFC)
-         * Individual contexts no longer do TX, so ignore FC here */
+        /* Expected: FC frames are handled by the centralized TX queue (ISOTP_TxQueue_ProcessFC).
+         * Individual contexts no longer do TX, so ignore FC here. */
         return false;
 
     default:
-        return false; /* Unknown PCI */
+        NON_FATAL_ERROR_DETAIL(ISOTP_UNSUPPORTED_ERR, pci);
+        return false;
     }
 }
 
@@ -150,13 +155,15 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
     /* Validate length (1-7 bytes for SF) */
     if ((length == 0) || (length > ISOTP_SF_MAX_DATA))
     {
-        return false; /* Invalid SF length */
+        NON_FATAL_ERROR_DETAIL(ISOTP_OVERFLOW_ERR, length);
+        return false;
     }
 
     /* Validate message has enough bytes */
     if (message->length < (length + 1))
     {
-        return false; /* Message too short */
+        NON_FATAL_ERROR_DETAIL(ISOTP_MALFORMED_ERR, message->length);
+        return false;
     }
 
     /* Copy data to RX buffer */
@@ -220,7 +227,8 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
     /* Must be in RECEIVING state */
     if (ctx->state != ISOTP_RECEIVING)
     {
-        return false; /* Not expecting CF */
+        NON_FATAL_ERROR_DETAIL(ISOTP_STATE_ERR, ctx->state);
+        return false;
     }
 
     /* Extract sequence number */
@@ -301,13 +309,15 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 {
     if ((ctx == NULL) || (data == NULL))
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return false;
     }
 
     /* Validate length */
     if ((length == 0) || (length > ISOTP_MAX_PAYLOAD))
     {
-        return false; /* Invalid length */
+        NON_FATAL_ERROR_DETAIL(ISOTP_OVERFLOW_ERR, length);
+        return false;
     }
 
     /* Enqueue to centralized TX queue instead of direct send.
@@ -331,6 +341,7 @@ void ISOTP_Poll(ISOTPContext_t *ctx, Timestamp_t currentTime)
 {
     if (ctx == NULL)
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return;
     }
 

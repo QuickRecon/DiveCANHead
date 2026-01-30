@@ -132,11 +132,23 @@ extern "C"
         /** @brief ISO-TP RX aborted by other end */
         ISOTP_RX_ABORT_ERR = 36,
 
+        /** @brief The ISOTP packet was malformed in some way */
+        ISOTP_MALFORMED_ERR = 37,
+
         /** @brief A log message wasn't going to fit in the buffer */
-        LOG_MSG_TRUNCATED_ERR = 37,
+        LOG_MSG_TRUNCATED_ERR = 38,
+
+        /** @brief UDS sent a negative response - log NRC for debugging */
+        UDS_NRC_ERR = 39,
+
+        /** @brief UDS response buffer too full to fit data */
+        UDS_TOO_FULL = 40,
+
+        /** @brief An invalid operation was attempted **/
+        UDS_INVALID_OPTION_ERR = 41,
 
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        MAX_ERR = LOG_MSG_TRUNCATED_ERR
+        MAX_ERR = UDS_INVALID_OPTION_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

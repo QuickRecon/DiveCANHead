@@ -8,6 +8,7 @@
 #include "uds_settings.h"
 #include "../../configuration.h"
 #include "../../common.h"
+#include "../../errors.h"
 #include <string.h>
 
 /* Setting indices (must match settings[] array order)
@@ -85,6 +86,7 @@ const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
 {
     if (index >= SETTING_COUNT)
     {
+        NON_FATAL_ERROR_DETAIL(CONFIG_ERR, index);
         return NULL;
     }
     return &settings[index];
@@ -95,8 +97,9 @@ const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
  */
 uint64_t UDS_GetSettingValue(uint8_t index, const Configuration_t *config)
 {
-    if (index >= SETTING_COUNT || config == NULL)
+    if ((index >= SETTING_COUNT) || (config == NULL))
     {
+        NON_FATAL_ERROR_DETAIL(CONFIG_ERR, index);
         return 0;
     }
 
@@ -124,8 +127,9 @@ uint64_t UDS_GetSettingValue(uint8_t index, const Configuration_t *config)
  */
 bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
 {
-    if (index >= SETTING_COUNT || config == NULL)
+    if ((index >= SETTING_COUNT) || (config == NULL))
     {
+        NON_FATAL_ERROR_DETAIL(CONFIG_ERR, index);
         return false;
     }
 
@@ -134,12 +138,23 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
     /* Validate editable */
     if (!setting->editable)
     {
+        NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, index);
         return false;
     }
 
     /* Validate range */
     if (value > setting->maxValue)
     {
+        NON_FATAL_ERROR_DETAIL(UDS_INVALID_OPTION_ERR, index);
+        return false;
+    }
+
+    /* Guard against index 0 (FW_COMMIT) - would cause array underflow below.
+     * This should already be prevented by !editable check, but guard explicitly.
+     * Expected: Should never reach here since FW_COMMIT is !editable */
+    if (index == 0U)
+    {
+        NON_FATAL_ERROR_DETAIL(UNREACHABLE_ERR, index);
         return false;
     }
 
@@ -150,7 +165,7 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
                               (uint8_t)(configBits >> TWO_BYTE_WIDTH),
                               (uint8_t)(configBits >> THREE_BYTE_WIDTH)};
 
-    configBytes[index - 1] = value & BYTE_MASK;
+    configBytes[index - 1U] = value & BYTE_MASK;
 
     uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_WIDTH) | ((uint32_t)configBytes[2] << TWO_BYTE_WIDTH) | ((uint32_t)configBytes[3] << THREE_BYTE_WIDTH));
     *config = setConfigBytes(newBytes);
@@ -165,6 +180,7 @@ const char *UDS_GetSettingOptionLabel(uint8_t settingIndex, uint8_t optionIndex)
 {
     if (settingIndex >= SETTING_COUNT)
     {
+        NON_FATAL_ERROR_DETAIL(CONFIG_ERR, settingIndex);
         return NULL;
     }
 
@@ -172,6 +188,7 @@ const char *UDS_GetSettingOptionLabel(uint8_t settingIndex, uint8_t optionIndex)
 
     if (optionIndex >= setting->optionCount)
     {
+        NON_FATAL_ERROR_DETAIL(CONFIG_ERR, optionIndex);
         return NULL;
     }
 

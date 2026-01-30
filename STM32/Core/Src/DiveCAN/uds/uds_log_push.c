@@ -11,6 +11,7 @@
 #include "isotp.h"
 #include "../Transciever.h"
 #include "../../common.h"
+#include "../../errors.h"
 #include "cmsis_os.h"
 #include <string.h>
 
@@ -58,6 +59,7 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
 {
     if (isotpCtx == NULL)
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return;
     }
 
@@ -74,6 +76,10 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
     logPushState.queueHandle = osMessageQueueNew(UDS_LOG_QUEUE_LENGTH,
                                                   sizeof(UDSLogQueueItem_t),
                                                   &queueAttr);
+    if (logPushState.queueHandle == NULL)
+    {
+        NON_FATAL_ERROR(QUEUEING_ERR);
+    }
 
     /* Initialize ISO-TP context for push (SOLO -> bluetooth client)
      * Source is SOLO (0x04), Target is bluetooth client (0xFF) */
@@ -85,11 +91,13 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
     /* Check preconditions */
     if (logPushState.queueHandle == NULL)
     {
+        NON_FATAL_ERROR(QUEUEING_ERR);
         return false;
     }
 
     if ((message == NULL) || (length == 0))
     {
+        NON_FATAL_ERROR(NULL_PTR_ERR);
         return false;
     }
 
@@ -105,11 +113,16 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
     /* Check if queue is full - drop oldest to make room */
     if (osMessageQueueGetSpace(logPushState.queueHandle) == 0)
     {
+        NON_FATAL_ERROR(LOG_MSG_TRUNCATED_ERR);
         (void)osMessageQueueGet(logPushState.queueHandle, &rxItemBuffer, NULL, 0);
     }
 
     /* Enqueue */
     osStatus_t status = osMessageQueuePut(logPushState.queueHandle, &txItemBuffer, 0, 0);
+    if (status != osOK)
+    {
+        NON_FATAL_ERROR(QUEUEING_ERR);
+    }
 
     return (status == osOK);
 }
@@ -137,11 +150,13 @@ void UDS_LogPush_Poll(void)
 {
     if (logPushState.isotpContext == NULL)
     {
+        /* Expected: Init not yet called */
         return;
     }
 
     if (logPushState.queueHandle == NULL)
     {
+        /* Expected: Queue creation failed during init */
         return;
     }
 
@@ -162,7 +177,7 @@ void UDS_LogPush_Poll(void)
         }
         else
         {
-            /* TX still in progress, nothing to do */
+            /* Expected: TX still in progress, nothing to do */
             return;
         }
     }
@@ -170,15 +185,17 @@ void UDS_LogPush_Poll(void)
     /* Check if ISO-TP is ready for new transmission */
     if (logPushState.isotpContext->state != ISOTP_IDLE)
     {
+        /* Expected: Context busy with other operations */
         return;
     }
 
     /* Check if centralized TX queue is busy - wait for it to drain */
     extern bool ISOTP_TxQueue_IsBusy(void);
     extern uint8_t ISOTP_TxQueue_GetPendingCount(void);
-    if (ISOTP_TxQueue_IsBusy() || ISOTP_TxQueue_GetPendingCount() > 0)
+    if (ISOTP_TxQueue_IsBusy() || (ISOTP_TxQueue_GetPendingCount() > 0))
     {
-        return; /* Queue busy, try again on next poll */
+        /* Expected: TX queue busy, try again on next poll */
+        return;
     }
 
     /* Try to dequeue and send next message using static buffer */
