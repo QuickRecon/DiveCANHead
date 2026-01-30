@@ -13,6 +13,7 @@ fp-info-cache
 prof
 .idea
 cov-int
+coverage/
 STM32-cov-int.tgz
 __pycache__
 log_backup

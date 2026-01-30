@@ -6,7 +6,9 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "python3 -m http.server 8000",
-    "test": "echo \"No tests configured yet\" && exit 0"
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "divecan",
@@ -29,6 +31,10 @@
     "url": "https://github.com/yourusername/DiveCANHeadRev2/issues"
   },
   "homepage": "https://github.com/yourusername/DiveCANHeadRev2#readme",
-  "devDependencies": {},
+  "devDependencies": {
+    "vitest": "^1.2.0",
+    "jsdom": "^24.0.0",
+    "@vitest/coverage-v8": "^1.2.0"
+  },
   "dependencies": {}
 }
