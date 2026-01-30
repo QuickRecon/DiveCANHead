@@ -663,15 +663,15 @@ void Log_UpdateDiveO2Cell(uint8_t cellNum, float precisionPPO2, CellStatus_t sta
     {
         return;
     }
-    stateVectorAccumulator.cell_ppo2[cellNum] = precisionPPO2;
-    stateVectorAccumulator.cell_status[cellNum] = (uint8_t)status;
-    stateVectorAccumulator.cell_detail[cellNum][0] = (uint32_t)temp;
-    stateVectorAccumulator.cell_detail[cellNum][1] = (uint32_t)err;
-    stateVectorAccumulator.cell_detail[cellNum][2] = (uint32_t)phase;
-    stateVectorAccumulator.cell_detail[cellNum][3] = (uint32_t)intensity;
-    stateVectorAccumulator.cell_detail[cellNum][4] = (uint32_t)ambientLight;
-    stateVectorAccumulator.cell_detail[cellNum][5] = (uint32_t)pressure;
-    stateVectorAccumulator.cell_detail[cellNum][6] = (uint32_t)humidity;
+    stateVectorAccumulator.cellPpo2[cellNum] = precisionPPO2;
+    stateVectorAccumulator.cellStatus[cellNum] = (uint8_t)status;
+    stateVectorAccumulator.cellDetail[cellNum][0] = (uint32_t)temp;
+    stateVectorAccumulator.cellDetail[cellNum][1] = (uint32_t)err;
+    stateVectorAccumulator.cellDetail[cellNum][2] = (uint32_t)phase;
+    stateVectorAccumulator.cellDetail[cellNum][3] = (uint32_t)intensity;
+    stateVectorAccumulator.cellDetail[cellNum][4] = (uint32_t)ambientLight;
+    stateVectorAccumulator.cellDetail[cellNum][5] = (uint32_t)pressure;
+    stateVectorAccumulator.cellDetail[cellNum][6] = (uint32_t)humidity;
 }
 
 void Log_UpdateO2SCell(uint8_t cellNum, float ppo2, CellStatus_t status)
@@ -680,8 +680,8 @@ void Log_UpdateO2SCell(uint8_t cellNum, float ppo2, CellStatus_t status)
     {
         return;
     }
-    stateVectorAccumulator.cell_ppo2[cellNum] = ppo2;
-    stateVectorAccumulator.cell_status[cellNum] = (uint8_t)status;
+    stateVectorAccumulator.cellPpo2[cellNum] = ppo2;
+    stateVectorAccumulator.cellStatus[cellNum] = (uint8_t)status;
     /* O2S cells have no additional detail fields - leave as zero */
 }
 
@@ -691,25 +691,25 @@ void Log_UpdateAnalogCell(uint8_t cellNum, float ppo2, int16_t raw, uint16_t mil
     {
         return;
     }
-    stateVectorAccumulator.cell_ppo2[cellNum] = ppo2;
-    stateVectorAccumulator.cell_status[cellNum] = (uint8_t)status;
-    /* Store raw ADC value in detail[0], millivolts in detail[1] */
-    stateVectorAccumulator.cell_detail[cellNum][0] = (uint32_t)(uint16_t)raw;
-    stateVectorAccumulator.cell_detail[cellNum][1] = (uint32_t)millivolts;
+    stateVectorAccumulator.cellPpo2[cellNum] = ppo2;
+    stateVectorAccumulator.cellStatus[cellNum] = (uint8_t)status;
+    /* Store raw ADC value in cellDetail[0], millivolts in cellDetail[1] */
+    stateVectorAccumulator.cellDetail[cellNum][0] = (uint32_t)(uint16_t)raw;
+    stateVectorAccumulator.cellDetail[cellNum][1] = (uint32_t)millivolts;
 }
 
 void Log_UpdatePPO2State(uint8_t cellsValid, float consensus, float setpoint)
 {
     stateVectorAccumulator.cellsValid = cellsValid;
-    stateVectorAccumulator.consensus_ppo2 = consensus;
+    stateVectorAccumulator.consensusPpo2 = consensus;
     stateVectorAccumulator.setpoint = setpoint;
 }
 
 void Log_UpdateControlState(float duty, float integral, uint16_t satCount)
 {
-    stateVectorAccumulator.duty_cycle = duty;
-    stateVectorAccumulator.integral_state = integral;
-    stateVectorAccumulator.saturation_count = satCount;
+    stateVectorAccumulator.dutyCycle = duty;
+    stateVectorAccumulator.integralState = integral;
+    stateVectorAccumulator.saturationCount = satCount;
 }
 
 void Log_SetConfig(uint32_t config)

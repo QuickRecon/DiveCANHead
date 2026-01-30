@@ -89,21 +89,21 @@ typedef struct __attribute__((packed))
 {
     /* 4-byte aligned fields (112 bytes) */
     uint32_t config;               /**< Full Configuration_t bitfield (cell types in bits 8-13) */
-    PrecisionPPO2_t consensus_ppo2; /**< Voted PPO2 value */
+    PrecisionPPO2_t consensusPpo2; /**< Voted PPO2 value */
     PrecisionPPO2_t setpoint;       /**< Current setpoint */
-    Percent_t duty_cycle;           /**< Solenoid duty cycle (0.0-1.0) */
-    PIDHalfNumeric_t integral_state; /**< PID integral accumulator */
-    PrecisionPPO2_t cell_ppo2[3];   /**< Per-cell PPO2 (float precision from precisionPPO2) */
-    uint32_t cell_detail[3][7]; /**< Per-cell detail fields (interpretation depends on cell type) */
+    Percent_t dutyCycle;           /**< Solenoid duty cycle (0.0-1.0) */
+    PIDHalfNumeric_t integralState; /**< PID integral accumulator */
+    PrecisionPPO2_t cellPpo2[3];   /**< Per-cell PPO2 (float precision from precisionPPO2) */
+    uint32_t cellDetail[3][7]; /**< Per-cell detail fields (interpretation depends on cell type) */
 
     /* 2-byte aligned fields (4 bytes) */
-    uint16_t timestamp_sec;    /**< Seconds since boot (wraps at ~18 hours) */
-    uint16_t saturation_count; /**< PID saturation event counter */
+    uint16_t timestampSec;    /**< Seconds since boot (wraps at ~18 hours) */
+    uint16_t saturationCount; /**< PID saturation event counter */
 
     /* 1-byte fields (5 bytes) */
     uint8_t version;           /**< Protocol version (for client compatibility) */
     uint8_t cellsValid;        /**< Bit flags: which cells included in voting (bits 0-2) */
-    uint8_t cell_status[3];    /**< Per-cell status (CellStatus_t enum values) */
+    uint8_t cellStatus[3];    /**< Per-cell status (CellStatus_t enum values) */
 } BinaryStateVector_t;
 
 /* Expected size of BinaryStateVector_t for protocol compatibility */

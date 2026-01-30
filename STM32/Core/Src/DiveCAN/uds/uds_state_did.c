@@ -115,7 +115,7 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
     switch (did)
     {
     case UDS_DID_CONSENSUS_PPO2:
-        writeFloat32(buf, stateVectorAccumulator.consensus_ppo2);
+        writeFloat32(buf, stateVectorAccumulator.consensusPpo2);
         *len = DATA_SIZE_FLOAT32;
         return true;
 
@@ -130,17 +130,17 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
         return true;
 
     case UDS_DID_DUTY_CYCLE:
-        writeFloat32(buf, stateVectorAccumulator.duty_cycle);
+        writeFloat32(buf, stateVectorAccumulator.dutyCycle);
         *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_INTEGRAL_STATE:
-        writeFloat32(buf, stateVectorAccumulator.integral_state);
+        writeFloat32(buf, stateVectorAccumulator.integralState);
         *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_SATURATION_COUNT:
-        writeUint16(buf, stateVectorAccumulator.saturation_count);
+        writeUint16(buf, stateVectorAccumulator.saturationCount);
         *len = DATA_SIZE_UINT16;
         return true;
 
@@ -216,7 +216,7 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
     switch (offset)
     {
     case CELL_DID_PPO2:
-        writeFloat32(buf, stateVectorAccumulator.cell_ppo2[cellNum]);
+        writeFloat32(buf, stateVectorAccumulator.cellPpo2[cellNum]);
         *len = DATA_SIZE_FLOAT32;
         return true;
 
@@ -238,7 +238,7 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
         return true;
 
     case CELL_DID_STATUS:
-        buf[0] = stateVectorAccumulator.cell_status[cellNum];
+        buf[0] = stateVectorAccumulator.cellStatus[cellNum];
         *len = DATA_SIZE_UINT8;
         return true;
 
@@ -252,12 +252,12 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
         switch (offset)
         {
         case CELL_DID_RAW_ADC:
-            writeInt16(buf, (int16_t)stateVectorAccumulator.cell_detail[cellNum][ANALOG_DETAIL_RAW_ADC]);
+            writeInt16(buf, (int16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_RAW_ADC]);
             *len = DATA_SIZE_UINT16;
             return true;
 
         case CELL_DID_MILLIVOLTS:
-            writeUint16(buf, (uint16_t)stateVectorAccumulator.cell_detail[cellNum][ANALOG_DETAIL_MILLIVOLTS]);
+            writeUint16(buf, (uint16_t)stateVectorAccumulator.cellDetail[cellNum][ANALOG_DETAIL_MILLIVOLTS]);
             *len = DATA_SIZE_UINT16;
             return true;
 
@@ -273,37 +273,37 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
         switch (offset)
         {
         case CELL_DID_TEMPERATURE:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_TEMPERATURE]);
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_TEMPERATURE]);
             *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_ERROR:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_ERROR]);
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_ERROR]);
             *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_PHASE:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_PHASE]);
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PHASE]);
             *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_INTENSITY:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_INTENSITY]);
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_INTENSITY]);
             *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_AMBIENT_LIGHT:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_AMBIENT_LIGHT]);
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_AMBIENT_LIGHT]);
             *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_PRESSURE:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_PRESSURE]);
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_PRESSURE]);
             *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_HUMIDITY:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_HUMIDITY]);
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cellDetail[cellNum][DIVEO2_DETAIL_HUMIDITY]);
             *len = DATA_SIZE_FLOAT32;
             return true;
 

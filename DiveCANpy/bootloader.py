@@ -252,7 +252,7 @@ class STMBootloader(object):
         assert(all(0 <= byte < 256 for byte in data)), "Data must be a sequence of bytes (0-255)"
 
         complete = False
-        startTime = time.time()
+        start_time = time.time()
         sm = BootloaderStateMachine(self, address, length, data, warm)
         while not complete:
             msg = self.reader.get_message(0.5)
@@ -281,7 +281,7 @@ class STMBootloader(object):
             
             if sm.FINAL.is_active:
                 complete = True
-            elif time.time() - startTime > 0.05 and sm.IDLE.is_active and not complete:
+            elif time.time() - start_time > 0.05 and sm.IDLE.is_active and not complete:
                 self.flush_rx()
                 sm.send("bytes_ready")
             elif msg is None:
@@ -367,8 +367,8 @@ class STMBootloader(object):
                 print("Erase memory request timed out")
                 continue
 
-    def send_erase_memory_page(self, pageNumber: int) -> None:
-        assert(0 <= pageNumber < 127), "Page number must be between 0 and 127"
+    def send_erase_memory_page(self, page_number: int) -> None:
+        assert(0 <= page_number < 127), "Page number must be between 0 and 127"
         success = False
         while not success:
             self.flush_rx()
@@ -382,7 +382,7 @@ class STMBootloader(object):
                 assert(len(msg.data) == 1), "Wrong length"
                 assert(msg.data[0] == 0x79), "Not ack"
 
-                tx_msg = can.Message(arbitration_id = 0x43, data=[pageNumber], is_extended_id = False)
+                tx_msg = can.Message(arbitration_id = 0x43, data=[page_number], is_extended_id = False)
                 self._bus.send(tx_msg)
 
                 msg = self.reader.get_message(5) 
@@ -405,12 +405,12 @@ class STMBootloader(object):
 
         self.flush_rx()
         # Verify that reading back the page returns all 0xFF
-        pageStartAddress = 0x08000000+(pageNumber*2048)
-        readback = self.send_read_memory(pageStartAddress, 256)
+        page_start_address = 0x08000000+(page_number*2048)
+        readback = self.send_read_memory(page_start_address, 256)
         if not all(byte == 0xFF for byte in readback):
-            print(f"Error erasing page {pageNumber}, readback did not return all 0xFF, retrying...")
+            print(f"Error erasing page {page_number}, readback did not return all 0xFF, retrying...")
             time.sleep(0.5)
-            self.send_erase_memory_page(pageNumber)
+            self.send_erase_memory_page(page_number)
             return
 
 
@@ -520,7 +520,7 @@ class BootloaderStateMachine(StateMachine):
         #print("had successfully written a byte")
         del self._data_queue[:8]
         
-def writePage(k, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time):
+def write_page(k, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time):
     readback_ok = False
     while not readback_ok:
         page_number = k // page_length
@@ -579,9 +579,9 @@ def main():
         # Write the firmware to the device
         start_time = time.time()
         for k in range(page_length, len(file_bytes), page_length):
-            writePage(k, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time)
+            write_page(k, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time)
 
-        writePage(0, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time)
+        write_page(0, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time)
 
         # Read the whole firmware back to verify, infill busted pages
         validated = False
@@ -606,7 +606,7 @@ def main():
                     if not readback_ok:
                         print(f"Error reading back page {k // page_length}, erasing and retrying...")
                         bootloader.send_erase_memory_page(k // page_length)
-                        writePage(k, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time)
+                        write_page(k, page_length, file_bytes, bootloader, base_address, firmware_chunksize, start_time)
     # HURRAY WE MADE IT
     bootloader.send_go()  # Send the go command to start the application
 # Test code for flashing the app
