@@ -4,7 +4,7 @@
  */
 
 import { ByteUtils } from '../utils/ByteUtils.js';
-import { UDSError, ValidationError } from '../errors/ProtocolErrors.js';
+import { UDSError } from '../errors/ProtocolErrors.js';
 import { Logger } from '../utils/Logger.js';
 import * as constants from './constants.js';
 
@@ -105,7 +105,7 @@ export class UDSClient extends EventEmitter {
       request: ByteUtils.toHexString(requestArray)
     });
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       this.pendingRequest = requestArray;
       this.pendingResolve = resolve;
       this.pendingReject = reject;
@@ -119,16 +119,15 @@ export class UDSClient extends EventEmitter {
         reject(new UDSError('Request timeout', sid, null, { timeout }));
       }, timeout);
 
-      try {
-        await this.transport.send(requestArray);
-      } catch (error) {
+      // Send request - handle rejection via promise chain
+      this.transport.send(requestArray).catch(error => {
         clearTimeout(this.pendingTimer);
         this.pendingTimer = null;
         this.pendingRequest = null;
         this.pendingResolve = null;
         this.pendingReject = null;
         reject(new UDSError('Failed to send request', sid, null, { cause: error }));
-      }
+      });
     });
   }
 
@@ -151,25 +150,54 @@ export class UDSClient extends EventEmitter {
 
     if (!this.pendingRequest) {
       this.logger.warn('Received response but no pending request');
+      return;
     }
 
     // Check for negative response
     if (sid === constants.SID_NEGATIVE_RESPONSE) {
-      const requestedSid = data[1];
-      const nrc = data[2];
+      this._handleNegativeResponse(data);
+      return;
+    }
 
-      this.logger.warn(`Negative response: SID=0x${requestedSid.toString(16)}, NRC=0x${nrc.toString(16)}`);
+    // Positive response
+    this._handlePositiveResponse(data, sid);
+  }
 
-      const error = new UDSError('Negative response', requestedSid, nrc);
-      this.emit('negativeResponse', { sid: requestedSid, nrc, description: error.getNRCDescription() });
+  /**
+   * Handle negative response
+   * @private
+   */
+  _handleNegativeResponse(data) {
+    const requestedSid = data[1];
+    const nrc = data[2];
 
-      if (this.pendingTimer) {
-        clearTimeout(this.pendingTimer);
-        this.pendingTimer = null;
-      }
+    this.logger.warn(`Negative response: SID=0x${requestedSid.toString(16)}, NRC=0x${nrc.toString(16)}`);
+
+    const error = new UDSError('Negative response', requestedSid, nrc);
+    this.emit('negativeResponse', { sid: requestedSid, nrc, description: error.getNRCDescription() });
+
+    this._clearPendingRequest();
+    if (this.pendingReject) {
+      this.lastRequestTime = Date.now();
+      this.pendingReject(error);
+      this.pendingResolve = null;
+      this.pendingReject = null;
+      this.pendingRequest = null;
+    }
+  }
+
+  /**
+   * Handle positive response
+   * @private
+   */
+  _handlePositiveResponse(data, sid) {
+    const expectedSid = this.pendingRequest[0] + constants.RESPONSE_SID_OFFSET;
+    if (sid !== expectedSid) {
+      this.logger.error(`Unexpected response SID: expected 0x${expectedSid.toString(16)}, got 0x${sid.toString(16)}`);
+      this._clearPendingRequest();
       if (this.pendingReject) {
-        this.lastRequestTime = Date.now();  // Track completion time for inter-request delay
-        this.pendingReject(error);
+        this.lastRequestTime = Date.now();
+        this.pendingReject(new UDSError('Unexpected response SID', sid));
         this.pendingResolve = null;
         this.pendingReject = null;
         this.pendingRequest = null;
@@ -177,38 +205,26 @@ export class UDSClient extends EventEmitter {
       return;
     }
 
-    // Positive response
-    if (this.pendingRequest) {
-      const expectedSid = this.pendingRequest[0] + constants.RESPONSE_SID_OFFSET;
-      if (sid !== expectedSid) {
-        this.logger.error(`Unexpected response SID: expected 0x${expectedSid.toString(16)}, got 0x${sid.toString(16)}`);
-        if (this.pendingTimer) {
-          clearTimeout(this.pendingTimer);
-          this.pendingTimer = null;
-        }
-        if (this.pendingReject) {
-          this.lastRequestTime = Date.now();  // Track completion time for inter-request delay
-          this.pendingReject(new UDSError('Unexpected response SID', sid));
-          this.pendingResolve = null;
-          this.pendingReject = null;
-          this.pendingRequest = null;
-        }
-        return;
-      }
-    }
-
     this.emit('response', data);
 
-    if (this.pendingTimer) {
-      clearTimeout(this.pendingTimer);
-      this.pendingTimer = null;
-    }
+    this._clearPendingRequest();
     if (this.pendingResolve) {
-      this.lastRequestTime = Date.now();  // Track completion time for inter-request delay
+      this.lastRequestTime = Date.now();
       this.pendingResolve(data);
       this.pendingResolve = null;
       this.pendingReject = null;
       this.pendingRequest = null;
+    }
+  }
+
+  /**
+   * Clear pending request timer
+   * @private
+   */
+  _clearPendingRequest() {
+    if (this.pendingTimer) {
+      clearTimeout(this.pendingTimer);
+      this.pendingTimer = null;
     }
   }
 
