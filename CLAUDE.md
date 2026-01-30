@@ -270,3 +270,159 @@ Documentation should stay in sync with the implementation to reduce future explo
 ### External References
 
 - [DiveCAN Protocol](https://github.com/QuickRecon/DiveCAN) - Base protocol documentation and message format
+
+## Code Style Guide
+
+**Maintenance Directive:** When fixing SonarQube issues, add new patterns to this style guide to prevent recurrence. This guide should grow based on actual findings - if you fix an issue pattern not documented here, add it.
+
+### Constants and Magic Numbers (c:S109)
+
+**Rule:** All numeric literals (except 0, 1, and -1) must be named constants.
+
+**Implementation:**
+- Use `static const` for constants (not `#define`) unless the value is needed in:
+  - Switch case statements (must be compile-time constant in C)
+  - Array size declarations
+  - Preprocessor conditionals
+- Place constants in the most appropriate scope:
+  - `common.h` for project-wide constants (byte widths, masks, cell counts)
+  - Module header for module-specific constants (e.g., `isotp.h` for ISO-TP frame sizes)
+  - Source file for file-local constants (setting indices, queue sizes)
+
+**Existing Constants (always check before defining new ones):**
+```c
+/* In common.h */
+static const uint32_t BYTE_WIDTH = 8;        /* For bit shifts */
+static const uint32_t TWO_BYTE_WIDTH = 16;   /* For bit shifts */
+static const uint32_t THREE_BYTE_WIDTH = 24; /* For bit shifts */
+static const uint8_t BYTE_MASK = 0xFFU;      /* Byte extraction mask */
+static const uint8_t CELL_COUNT = 3;         /* Number of oxygen cells */
+
+/* In isotp.h */
+static const size_t CAN_FRAME_LENGTH = 8U;
+static const size_t ISOTP_SF_MAX_DATA = 7U;
+static const size_t ISOTP_FF_DATA_BYTES = 6U;
+static const size_t ISOTP_CF_DATA_BYTES = 7U;
+static const uint8_t ISOTP_SEQ_MASK = 0x0FU;
+static const uint8_t ISOTP_BROADCAST_ADDR = 0xFFU;
+```
+
+**Naming conventions for new constants:**
+- Byte sizes/widths: `*_SIZE`, `*_LENGTH`, `*_WIDTH`
+- Array indices: `*_IDX`
+- Bit masks: `*_MASK`
+- Start positions: `*_START`, `*_OFFSET`
+
+### Ternary Operators (c:S1774)
+
+**Rule:** Avoid ternary operators. Use explicit if/else blocks.
+
+**Bad:**
+```c
+uint8_t val = (condition) ? 7 : 0;
+```
+
+**Good:**
+```c
+uint8_t val;
+if (condition)
+{
+    val = SOME_CONSTANT;
+}
+else
+{
+    val = 0;
+}
+```
+
+### Variable Initialization (c:M23_321)
+
+**Rule:** Initialize local variables at declaration when possible.
+
+**Bad:**
+```c
+uint8_t bytesToCopy;
+if (remaining > 7)
+{
+    bytesToCopy = 7;
+}
+```
+
+**Good:**
+```c
+uint8_t bytesToCopy = 0;
+if (remaining > ISOTP_CF_DATA_BYTES)
+{
+    bytesToCopy = ISOTP_CF_DATA_BYTES;
+}
+```
+
+### Return Value Handling (c:M23_007)
+
+**Rule:** All return values must be used or explicitly cast to `(void)`.
+
+```c
+(void)memcpy(dest, src, len);
+(void)memset(buf, 0, sizeof(buf));
+```
+
+### Global Variables (c:M23_388)
+
+**Rule:** Global variables should be `const` where possible. If state must be mutable, encapsulate in a static struct.
+
+**Bad:**
+```c
+uint8_t globalBuffer[256];
+```
+
+**Good:**
+```c
+static struct {
+    uint8_t buffer[256];
+    uint16_t length;
+} moduleState = {0};
+```
+
+### Complex Operands (c:S868)
+
+**Rule:** Add explicit parentheses around complex bitwise expressions.
+
+**Bad:**
+```c
+value = a << 8 | b;
+```
+
+**Good:**
+```c
+value = (a << BYTE_WIDTH) | b;
+```
+
+### Include Order
+
+1. Module's own header (e.g., `uds_settings.h`)
+2. Other module headers (e.g., `isotp.h`)
+3. Project common headers (e.g., `../../common.h`)
+4. External library headers (e.g., `cmsis_os.h`)
+5. Standard library headers (e.g., `<string.h>`)
+
+### Type Widths
+
+- Always use explicit width types: `uint8_t`, `uint16_t`, `uint32_t`, `int16_t`, etc.
+- Use typedefs from `common.h` for domain values: `PPO2_t`, `Millivolts_t`, `Timestamp_t`
+- Add `U` suffix to unsigned literals: `0xFFU`, `8U`, `256U`
+
+### Switch Case Labels
+
+PCI values and other switch case labels must use `#define` (not `static const`) because C requires compile-time constant expressions in case labels:
+
+```c
+/* Must be #define for switch cases */
+#define ISOTP_PCI_SF 0x00U
+#define ISOTP_PCI_FF 0x10U
+
+switch (pci)
+{
+case ISOTP_PCI_SF:  /* Works */
+    break;
+}
+```

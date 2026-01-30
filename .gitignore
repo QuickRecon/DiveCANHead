@@ -18,3 +18,4 @@ __pycache__
 log_backup
 STM32.bin
 .sonarqube-diagnostics.json
+.sonarqube*-diagnostics.json

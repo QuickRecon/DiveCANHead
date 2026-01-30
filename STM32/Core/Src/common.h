@@ -12,7 +12,7 @@ extern "C"
     /* Value types */
     typedef uint8_t PPO2_t;
     typedef float PrecisionPPO2_t; /* Float-precision PPO2 in bar (for telemetry/logging, vs uint8 centibar for protocol) */
-    typedef float Numeric_t; /* A generic numeric type for when we want to do floating point calculations, for easy choosing between size of floats */
+    typedef float Numeric_t;       /* A generic numeric type for when we want to do floating point calculations, for easy choosing between size of floats */
     typedef uint8_t FO2_t;
     typedef uint16_t Millivolts_t;
     typedef uint8_t ShortMillivolts_t;
@@ -46,7 +46,14 @@ extern "C"
     static const uint32_t SIX_BYTE_WIDTH = 48;   /* Bitshift operations */
     static const uint32_t SEVEN_BYTE_WIDTH = 56; /* Bitshift operations */
     static const uint32_t HALF_BYTE_WIDTH = 4;   /* Bitshift operations */
+    static const uint8_t BYTE_MASK = 0xFFU;      /* Mask for extracting a byte */
     static const CalCoeff_t EPS = 0.00001f;      /* Small value for float comparisons */
+
+    /* Data type sizes for DID responses */
+    static const uint16_t DATA_SIZE_UINT8 = 1U;   /* Size of uint8_t in bytes */
+    static const uint16_t DATA_SIZE_UINT16 = 2U;  /* Size of uint16_t in bytes */
+    static const uint16_t DATA_SIZE_UINT32 = 4U;  /* Size of uint32_t/float32 in bytes */
+    static const uint16_t DATA_SIZE_FLOAT32 = 4U; /* Size of float (IEEE 754) in bytes */
 
     /* PPO2 values */
     static const PPO2_t PPO2_FAIL = 0xFF;
@@ -70,11 +77,11 @@ extern "C"
         CELL_O2S = 2
     } CellType_t;
 
-    /* Provide names for the cell numbers */
-    static const uint8_t CELL_1 = 0;
-    static const uint8_t CELL_2 = 1;
-    static const uint8_t CELL_3 = 2;
-    static const uint8_t CELL_COUNT = 3;
+/* Provide names for the cell numbers , #defines to allow for use in case statments*/
+#define CELL_1 0
+#define CELL_2 1
+#define CELL_3 2
+#define CELL_CONT 3
 
     /* Define some priority levels */
     /* The general rules are that data consumers should have a higher priority than data sources

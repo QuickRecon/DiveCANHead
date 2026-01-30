@@ -8,18 +8,22 @@
 
 #include "uds_log_push.h"
 #include "uds.h"
+#include "isotp.h"
 #include "../Transciever.h"
+#include "../../common.h"
 #include "cmsis_os.h"
 #include <string.h>
 
-/* bluetooth client address (bluetooth client) */
-#define BT_CLIENT_ADDRESS 0xFFU
+/* Queue configuration - #define required for array size */
+#define UDS_LOG_QUEUE_LENGTH 4U
 
-/* WDBI frame header size: SID (1) + DID (2) */
+/* WDBI header size (SID + DID high + DID low) - #define required for array size */
 #define WDBI_HEADER_SIZE 3U
 
-/* Queue configuration */
-#define UDS_LOG_QUEUE_LENGTH 4U
+/* WDBI frame byte positions (no padding byte unlike UDS request format) */
+static const size_t WDBI_SID_IDX = 0U;     /**< Service ID position in WDBI frame */
+static const size_t WDBI_DID_HI_IDX = 1U;  /**< DID high byte position in WDBI frame */
+static const size_t WDBI_DID_LO_IDX = 2U;  /**< DID low byte position in WDBI frame */
 
 /**
  * @brief Queue item structure
@@ -73,7 +77,7 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
 
     /* Initialize ISO-TP context for push (SOLO -> bluetooth client)
      * Source is SOLO (0x04), Target is bluetooth client (0xFF) */
-    ISOTP_Init(isotpCtx, DIVECAN_SOLO, BT_CLIENT_ADDRESS, MENU_ID);
+    ISOTP_Init(isotpCtx, DIVECAN_SOLO, ISOTP_BROADCAST_ADDR, MENU_ID);
 }
 
 bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
@@ -116,9 +120,9 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
 static bool sendQueuedItem(const UDSLogQueueItem_t *item)
 {
     /* Build WDBI frame: [SID, DID_high, DID_low, data...] */
-    logPushState.txBuffer[0] = UDS_SID_WRITE_DATA_BY_ID;
-    logPushState.txBuffer[1] = (uint8_t)(UDS_DID_LOG_MESSAGE >> 8);
-    logPushState.txBuffer[2] = (uint8_t)(UDS_DID_LOG_MESSAGE & 0xFFU);
+    logPushState.txBuffer[WDBI_SID_IDX] = UDS_SID_WRITE_DATA_BY_ID;
+    logPushState.txBuffer[WDBI_DID_HI_IDX] = (uint8_t)(UDS_DID_LOG_MESSAGE >> BYTE_WIDTH);
+    logPushState.txBuffer[WDBI_DID_LO_IDX] = (uint8_t)(UDS_DID_LOG_MESSAGE & BYTE_MASK);
     (void)memcpy(&logPushState.txBuffer[WDBI_HEADER_SIZE], item->data, item->length);
 
     /* Send via ISO-TP */

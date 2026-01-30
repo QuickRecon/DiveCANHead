@@ -10,6 +10,7 @@
 #include "isotp_tx_queue.h"
 #include "../Transciever.h"
 #include "../../errors.h"
+#include "../../common.h"
 #include <string.h>
 
 /* External functions */
@@ -147,7 +148,7 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
     uint8_t length = message->data[0] & ISOTP_PCI_LEN_MASK;
 
     /* Validate length (1-7 bytes for SF) */
-    if ((length == 0) || (length > 7))
+    if ((length == 0) || (length > ISOTP_SF_MAX_DATA))
     {
         return false; /* Invalid SF length */
     }
@@ -193,18 +194,16 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
     /* Reset RX state */
     ctx->rxDataLength = dataLength;
     ctx->rxBytesReceived = 0;
-    ctx->rxSequenceNumber = 1; /* Expecting CF with seq=1 (per ISO 15765-2) */
+    ctx->rxSequenceNumber = ISOTP_FF_SEQ_START; /* Expecting CF with seq=1 (per ISO 15765-2) */
 
     /* Copy first 6 data bytes (bytes 2-7 of CAN frame) */
-    uint8_t firstFrameBytes = 6;
-    memcpy(ctx->rxBuffer, &message->data[2], firstFrameBytes);
-    ctx->rxBytesReceived = firstFrameBytes;
+    memcpy(ctx->rxBuffer, &message->data[ISOTP_FF_DATA_START], ISOTP_FF_DATA_BYTES);
+    ctx->rxBytesReceived = ISOTP_FF_DATA_BYTES;
 
     /* Transition to RECEIVING state */
     ctx->state = ISOTP_RECEIVING;
 
     /* Update timestamp */
-    extern uint32_t HAL_GetTick(void);
     ctx->rxLastFrameTime = HAL_GetTick();
 
     /* Send Flow Control (CTS, BS=0, STmin=0) */
@@ -238,18 +237,25 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
 
     /* Calculate bytes to copy (7 bytes or remaining) */
     uint16_t bytesRemaining = ctx->rxDataLength - ctx->rxBytesReceived;
-    uint8_t bytesToCopy = (bytesRemaining > 7) ? 7 : (uint8_t)bytesRemaining;
+    uint8_t bytesToCopy;
+    if (bytesRemaining > ISOTP_CF_DATA_BYTES)
+    {
+        bytesToCopy = ISOTP_CF_DATA_BYTES;
+    }
+    else
+    {
+        bytesToCopy = (uint8_t)bytesRemaining;
+    }
 
     /* Copy data */
-    memcpy(&ctx->rxBuffer[ctx->rxBytesReceived], &message->data[1], bytesToCopy);
+    memcpy(&ctx->rxBuffer[ctx->rxBytesReceived], &message->data[ISOTP_CF_DATA_START], bytesToCopy);
     ctx->rxBytesReceived += bytesToCopy;
 
     /* Update timestamp */
-    extern uint32_t HAL_GetTick(void);
     ctx->rxLastFrameTime = HAL_GetTick();
 
     /* Increment sequence number (wraps at 16) */
-    ctx->rxSequenceNumber = (ctx->rxSequenceNumber + 1) & 0x0F;
+    ctx->rxSequenceNumber = (ctx->rxSequenceNumber + 1U) & ISOTP_SEQ_MASK;
 
     /* Check if reception complete */
     if (ctx->rxBytesReceived >= ctx->rxDataLength)
@@ -272,11 +278,11 @@ static void SendFlowControl(ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blo
     DiveCANMessage_t fc = {0};
 
     /* Build CAN ID: messageId | (target << 8) | source */
-    fc.id = ctx->messageId | (ctx->target << 8) | ctx->source;
-    fc.length = 3;
-    fc.data[0] = flowStatus;
-    fc.data[1] = blockSize;
-    fc.data[2] = stmin;
+    fc.id = ctx->messageId | ((uint32_t)ctx->target << BYTE_WIDTH) | ctx->source;
+    fc.length = ISOTP_FC_LENGTH;
+    fc.data[ISOTP_FC_STATUS_IDX] = flowStatus;
+    fc.data[ISOTP_FC_BS_IDX] = blockSize;
+    fc.data[ISOTP_FC_STMIN_IDX] = stmin;
 
     sendCANMessage(fc);
 }

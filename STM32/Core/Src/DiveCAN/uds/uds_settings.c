@@ -7,11 +7,17 @@
 
 #include "uds_settings.h"
 #include "../../configuration.h"
+#include "../../common.h"
 #include <string.h>
 
-#define BYTE_1_OFFSET 8
-#define BYTE_2_OFFSET 16
-#define BYTE_3_OFFSET 24
+/* Setting indices (must match settings[] array order)
+ * Note: These are #defines because they're used in switch case labels,
+ * which require compile-time constant expressions in C. */
+#define SETTING_INDEX_FW_COMMIT 0U
+#define SETTING_INDEX_CONFIG1   1U
+#define SETTING_INDEX_CONFIG2   2U
+#define SETTING_INDEX_CONFIG3   3U
+#define SETTING_INDEX_CONFIG4   4U
 
 /* Option labels for selection-type settings */
 static const char *FW_CommitOptions[] = {
@@ -62,7 +68,7 @@ static const SettingDefinition_t settings[] = {
     },
 };
 
-#define SETTING_COUNT 5
+#define SETTING_COUNT 5U
 
 /**
  * @brief Get total number of settings
@@ -98,16 +104,16 @@ uint64_t UDS_GetSettingValue(uint8_t index, const Configuration_t *config)
 
     switch (index)
     {
-    case 0:
+    case SETTING_INDEX_FW_COMMIT:
         return 0;
-    case 1:
+    case SETTING_INDEX_CONFIG1:
         return (uint8_t)(configBits);
-    case 2:
-        return (uint8_t)(configBits >> BYTE_1_OFFSET);
-    case 3:
-        return (uint8_t)(configBits >> BYTE_2_OFFSET);
-    case 4:
-        return (uint8_t)(configBits >> BYTE_3_OFFSET);
+    case SETTING_INDEX_CONFIG2:
+        return (uint8_t)(configBits >> BYTE_WIDTH);
+    case SETTING_INDEX_CONFIG3:
+        return (uint8_t)(configBits >> TWO_BYTE_WIDTH);
+    case SETTING_INDEX_CONFIG4:
+        return (uint8_t)(configBits >> THREE_BYTE_WIDTH);
     default:
         return 0;
     }
@@ -140,13 +146,13 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value, Configuration_t *config)
     /* Update configuration field */
     uint32_t configBits = getConfigBytes(config);
     uint8_t configBytes[4] = {(uint8_t)(configBits),
-                              (uint8_t)(configBits >> BYTE_1_OFFSET),
-                              (uint8_t)(configBits >> BYTE_2_OFFSET),
-                              (uint8_t)(configBits >> BYTE_3_OFFSET)};
+                              (uint8_t)(configBits >> BYTE_WIDTH),
+                              (uint8_t)(configBits >> TWO_BYTE_WIDTH),
+                              (uint8_t)(configBits >> THREE_BYTE_WIDTH)};
 
-    configBytes[index - 1] = value & 0xFF;
+    configBytes[index - 1] = value & BYTE_MASK;
 
-    uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_1_OFFSET) | ((uint32_t)configBytes[2] << BYTE_2_OFFSET) | ((uint32_t)configBytes[3] << BYTE_3_OFFSET));
+    uint32_t newBytes = (configBytes[0] | ((uint32_t)configBytes[1] << BYTE_WIDTH) | ((uint32_t)configBytes[2] << TWO_BYTE_WIDTH) | ((uint32_t)configBytes[3] << THREE_BYTE_WIDTH));
     *config = setConfigBytes(newBytes);
 
     return true;

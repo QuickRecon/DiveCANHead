@@ -16,6 +16,22 @@
 /* External reference to state vector accumulator from log.c */
 extern BinaryStateVector_t stateVectorAccumulator;
 
+/* Cell detail array indices for ANALOG cells */
+#define ANALOG_DETAIL_RAW_ADC    0U
+#define ANALOG_DETAIL_MILLIVOLTS 1U
+
+/* Cell detail array indices for DIVEO2 cells */
+#define DIVEO2_DETAIL_TEMPERATURE   0U
+#define DIVEO2_DETAIL_ERROR         1U
+#define DIVEO2_DETAIL_PHASE         2U
+#define DIVEO2_DETAIL_INTENSITY     3U
+#define DIVEO2_DETAIL_AMBIENT_LIGHT 4U
+#define DIVEO2_DETAIL_PRESSURE      5U
+#define DIVEO2_DETAIL_HUMIDITY      6U
+
+/* Power sources bitfield layout: VCC source in bits 0-1, VBUS source in bits 2-3 */
+#define VBUS_SOURCE_BIT_OFFSET 2U
+
 /* ============================================================================
  * Helper Functions
  * ============================================================================ */
@@ -25,18 +41,18 @@ extern BinaryStateVector_t stateVectorAccumulator;
  */
 static CellType_t getCellTypeFromConfig(const Configuration_t *config, uint8_t cellNum)
 {
-    if ((config == NULL) || (cellNum > 2U))
+    if ((config == NULL) || (cellNum >= CELL_COUNT))
     {
         return CELL_ANALOG; /* Safe default */
     }
 
     switch (cellNum)
     {
-    case 0:
+    case CELL_1: /* CELL_1 */
         return config->cell1;
-    case 1:
+    case 1: /* CELL_2 */
         return config->cell2;
-    case 2:
+    case 2: /* CELL_3 */
         return config->cell3;
     default:
         return CELL_ANALOG;
@@ -57,9 +73,9 @@ static void writeFloat32(uint8_t *buf, Numeric_t value)
 static void writeUint32(uint8_t *buf, uint32_t value)
 {
     buf[0] = (uint8_t)(value);
-    buf[1] = (uint8_t)(value >> 8);
-    buf[2] = (uint8_t)(value >> 16);
-    buf[3] = (uint8_t)(value >> 24);
+    buf[1] = (uint8_t)(value >> BYTE_WIDTH);
+    buf[2] = (uint8_t)(value >> TWO_BYTE_WIDTH);
+    buf[3] = (uint8_t)(value >> THREE_BYTE_WIDTH);
 }
 
 /**
@@ -76,7 +92,7 @@ static void writeInt32(uint8_t *buf, int32_t value)
 static void writeUint16(uint8_t *buf, uint16_t value)
 {
     buf[0] = (uint8_t)(value);
-    buf[1] = (uint8_t)(value >> 8);
+    buf[1] = (uint8_t)(value >> BYTE_WIDTH);
 }
 
 /**
@@ -97,70 +113,70 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
     {
     case UDS_DID_CONSENSUS_PPO2:
         writeFloat32(buf, stateVectorAccumulator.consensus_ppo2);
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_SETPOINT:
         writeFloat32(buf, stateVectorAccumulator.setpoint);
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_CELLS_VALID:
         buf[0] = stateVectorAccumulator.cellsValid;
-        *len = 1U;
+        *len = DATA_SIZE_UINT8;
         return true;
 
     case UDS_DID_DUTY_CYCLE:
         writeFloat32(buf, stateVectorAccumulator.duty_cycle);
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_INTEGRAL_STATE:
         writeFloat32(buf, stateVectorAccumulator.integral_state);
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_SATURATION_COUNT:
         writeUint16(buf, stateVectorAccumulator.saturation_count);
-        *len = 2U;
+        *len = DATA_SIZE_UINT16;
         return true;
 
     case UDS_DID_UPTIME_SEC:
         writeUint32(buf, HAL_GetTick() / 1000U);
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     /* Power Monitoring DIDs */
     case UDS_DID_VBUS_VOLTAGE:
         writeFloat32(buf, getVBusVoltage());
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_VCC_VOLTAGE:
         writeFloat32(buf, getVCCVoltage());
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_BATTERY_VOLTAGE:
         writeFloat32(buf, getBatteryVoltage());
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_CAN_VOLTAGE:
         writeFloat32(buf, getCANVoltage());
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_THRESHOLD_VOLTAGE:
         writeFloat32(buf, getThresholdVoltage(config->dischargeThresholdMode));
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case UDS_DID_POWER_SOURCES:
     {
-        uint8_t sources = (uint8_t)GetVCCSource() | ((uint8_t)GetVBusSource() << 2);
+        uint8_t sources = (uint8_t)GetVCCSource() | ((uint8_t)GetVBusSource() << VBUS_SOURCE_BIT_OFFSET);
         buf[0] = sources;
-        *len = 1U;
+        *len = DATA_SIZE_UINT8;
         return true;
     }
 
@@ -186,7 +202,7 @@ static bool handleControlStateDID(uint16_t did, const Configuration_t *config, u
 static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
                           uint8_t *buf, uint16_t *len)
 {
-    if ((cellNum > 2U) || (offset > CELL_DID_MAX_OFFSET))
+    if ((cellNum >= CELL_COUNT) || (offset > CELL_DID_MAX_OFFSET))
     {
         return false;
     }
@@ -196,12 +212,12 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
     {
     case CELL_DID_PPO2:
         writeFloat32(buf, stateVectorAccumulator.cell_ppo2[cellNum]);
-        *len = 4U;
+        *len = DATA_SIZE_FLOAT32;
         return true;
 
     case CELL_DID_TYPE:
         buf[0] = (uint8_t)cellType;
-        *len = 1U;
+        *len = DATA_SIZE_UINT8;
         return true;
 
     case CELL_DID_INCLUDED:
@@ -213,12 +229,12 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
         {
             buf[0] = 0U;
         }
-        *len = 1U;
+        *len = DATA_SIZE_UINT8;
         return true;
 
     case CELL_DID_STATUS:
         buf[0] = stateVectorAccumulator.cell_status[cellNum];
-        *len = 1U;
+        *len = DATA_SIZE_UINT8;
         return true;
 
     default:
@@ -231,13 +247,13 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
         switch (offset)
         {
         case CELL_DID_RAW_ADC:
-            writeInt16(buf, (int16_t)stateVectorAccumulator.cell_detail[cellNum][0]);
-            *len = 2U;
+            writeInt16(buf, (int16_t)stateVectorAccumulator.cell_detail[cellNum][ANALOG_DETAIL_RAW_ADC]);
+            *len = DATA_SIZE_UINT16;
             return true;
 
         case CELL_DID_MILLIVOLTS:
-            writeUint16(buf, (uint16_t)stateVectorAccumulator.cell_detail[cellNum][1]);
-            *len = 2U;
+            writeUint16(buf, (uint16_t)stateVectorAccumulator.cell_detail[cellNum][ANALOG_DETAIL_MILLIVOLTS]);
+            *len = DATA_SIZE_UINT16;
             return true;
 
         default:
@@ -252,38 +268,38 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
         switch (offset)
         {
         case CELL_DID_TEMPERATURE:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][0]);
-            *len = 4U;
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_TEMPERATURE]);
+            *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_ERROR:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][1]);
-            *len = 4U;
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_ERROR]);
+            *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_PHASE:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][2]);
-            *len = 4U;
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_PHASE]);
+            *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_INTENSITY:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][3]);
-            *len = 4U;
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_INTENSITY]);
+            *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_AMBIENT_LIGHT:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][4]);
-            *len = 4U;
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_AMBIENT_LIGHT]);
+            *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_PRESSURE:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][5]);
-            *len = 4U;
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_PRESSURE]);
+            *len = DATA_SIZE_FLOAT32;
             return true;
 
         case CELL_DID_HUMIDITY:
-            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][6]);
-            *len = 4U;
+            writeInt32(buf, (int32_t)stateVectorAccumulator.cell_detail[cellNum][DIVEO2_DETAIL_HUMIDITY]);
+            *len = DATA_SIZE_FLOAT32;
             return true;
 
         default:
@@ -310,7 +326,7 @@ bool UDS_StateDID_IsStateDID(uint16_t did)
     }
 
     /* Cell DIDs (0xF400-0xF42F) */
-    if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (3U * UDS_DID_CELL_RANGE))))
+    if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
     {
         return true;
     }
@@ -335,12 +351,12 @@ bool UDS_StateDID_HandleRead(uint16_t did, const Configuration_t *config,
     }
 
     /* Cell DIDs (0xF4Nx) */
-    if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (3U * UDS_DID_CELL_RANGE))))
+    if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
     {
         uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
         uint8_t offset = (uint8_t)((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE);
 
-        if (cellNum > 2U)
+        if (cellNum >= CELL_COUNT)
         {
             return false;
         }
@@ -367,26 +383,26 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
     case UDS_DID_BATTERY_VOLTAGE:
     case UDS_DID_CAN_VOLTAGE:
     case UDS_DID_THRESHOLD_VOLTAGE:
-        return 4U;
+        return DATA_SIZE_FLOAT32;
 
     case UDS_DID_CELLS_VALID:
     case UDS_DID_POWER_SOURCES:
-        return 1U;
+        return DATA_SIZE_UINT8;
 
     case UDS_DID_SATURATION_COUNT:
-        return 2U;
+        return DATA_SIZE_UINT16;
 
     default:
         break;
     }
 
     /* Cell DIDs */
-    if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (3U * UDS_DID_CELL_RANGE))))
+    if ((did >= UDS_DID_CELL_BASE) && (did < (UDS_DID_CELL_BASE + (CELL_COUNT * UDS_DID_CELL_RANGE))))
     {
         uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
         uint8_t offset = (uint8_t)((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE);
 
-        if (cellNum > 2U)
+        if (cellNum >= CELL_COUNT)
         {
             return 0U;
         }
@@ -397,11 +413,11 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
         switch (offset)
         {
         case CELL_DID_PPO2:
-            return 4U;
+            return DATA_SIZE_FLOAT32;
         case CELL_DID_TYPE:
         case CELL_DID_INCLUDED:
         case CELL_DID_STATUS:
-            return 1U;
+            return DATA_SIZE_UINT8;
         default:
             break;
         }
@@ -411,14 +427,14 @@ uint16_t UDS_StateDID_GetSize(uint16_t did, const Configuration_t *config)
         {
             if ((offset == CELL_DID_RAW_ADC) || (offset == CELL_DID_MILLIVOLTS))
             {
-                return 2U;
+                return DATA_SIZE_UINT16;
             }
         }
         else if (cellType == CELL_DIVEO2)
         {
             if ((offset >= CELL_DID_TEMPERATURE) && (offset <= CELL_DID_HUMIDITY))
             {
-                return 4U;
+                return DATA_SIZE_FLOAT32;
             }
         }
     }

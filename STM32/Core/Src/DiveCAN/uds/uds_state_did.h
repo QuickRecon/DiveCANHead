@@ -106,7 +106,9 @@ typedef struct __attribute__((packed))
     uint8_t cell_status[3];    /**< Per-cell status (CellStatus_t enum values) */
 } BinaryStateVector_t;
 
-_Static_assert(sizeof(BinaryStateVector_t) == 125, "BinaryStateVector_t size must be 125 bytes");
+/* Expected size of BinaryStateVector_t for protocol compatibility */
+#define BINARY_STATE_VECTOR_SIZE 125U
+_Static_assert(sizeof(BinaryStateVector_t) == BINARY_STATE_VECTOR_SIZE, "BinaryStateVector_t size must be 125 bytes");
 
 /**
  * @brief Check if a DID is handled by the state DID module

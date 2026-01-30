@@ -14,8 +14,21 @@
 #include "isotp.h"
 #include "../Transciever.h"
 #include "../../errors.h"
+#include "../../common.h"
 #include "cmsis_os.h"
 #include <string.h>
+
+/* Frame byte indices for DiveCAN ISO-TP with padding (non-standard format)
+ * DiveCAN SF format: [PCI+len][pad][data...]
+ * DiveCAN FF format: [PCI_hi][len_lo][pad][5 data bytes] */
+static const size_t DIVECAN_SF_PCI_IDX = 0U;       /**< SF PCI+length byte position */
+static const size_t DIVECAN_SF_PAD_IDX = 1U;       /**< SF padding byte position */
+static const size_t DIVECAN_SF_DATA_START = 2U;    /**< SF data start position */
+static const size_t DIVECAN_FF_PCI_HI_IDX = 0U;    /**< FF PCI high nibble position */
+static const size_t DIVECAN_FF_LEN_LO_IDX = 1U;    /**< FF length low byte position */
+static const size_t DIVECAN_FF_PAD_IDX = 2U;       /**< FF padding byte position */
+static const size_t DIVECAN_FF_DATA_START = 3U;    /**< FF data start position (after padding) */
+static const size_t DIVECAN_PAD_BYTE_SIZE = 1U;    /**< Size of DiveCAN padding byte */
 
 /* External functions */
 extern void sendCANMessageBlocking(const DiveCANMessage_t message);
@@ -140,15 +153,15 @@ static void StartNextTx(void)
 
     ISOTPTxRequest_t *tx = &txState.current;
 
-    /* Single frame (<=7 bytes) - send immediately */
-    if (tx->length <= 6U)
+    /* Single frame (<=6 bytes with DiveCAN padding) - send immediately */
+    if (tx->length <= ISOTP_SF_MAX_WITH_PAD)
     {
         DiveCANMessage_t sf = {0};
-        sf.id = tx->messageId | ((uint32_t)tx->target << 8) | (uint32_t)tx->source;
-        sf.length = 8;
-        sf.data[0] = (uint8_t)tx->length + 1U; /* SF PCI */
-        sf.data[1] = 0;
-        (void)memcpy(&sf.data[2], tx->data, tx->length);
+        sf.id = tx->messageId | ((uint32_t)tx->target << BYTE_WIDTH) | (uint32_t)tx->source;
+        sf.length = CAN_FRAME_LENGTH;
+        sf.data[DIVECAN_SF_PCI_IDX] = (uint8_t)tx->length + DIVECAN_PAD_BYTE_SIZE; /* SF PCI */
+        sf.data[DIVECAN_SF_PAD_IDX] = 0;
+        (void)memcpy(&sf.data[DIVECAN_SF_DATA_START], tx->data, tx->length);
 
         sendCANMessageBlocking(sf);
 
@@ -162,16 +175,16 @@ static void StartNextTx(void)
      * DiveCAN uses non-standard ISO-TP format with padding byte at offset 2.
      * Frame format: [PCI_hi][len_lo][0x00 pad][5 data bytes]
      * Length field includes the padding byte (tx->length + 1). */
-    uint16_t totalLength = tx->length + 1U; /* +1 for padding byte */
+    uint16_t totalLength = tx->length + DIVECAN_PAD_BYTE_SIZE; /* +1 for padding byte */
     DiveCANMessage_t ff = {0};
-    ff.id = tx->messageId | ((uint32_t)tx->target << 8) | (uint32_t)tx->source;
-    ff.length = 8;
-    ff.data[0] = 0x10U | ((totalLength >> 8) & 0x0FU);
-    ff.data[1] = (uint8_t)(totalLength & 0xFFU);
-    ff.data[2] = 0x00U; /* DiveCAN padding byte */
-    (void)memcpy(&ff.data[3], tx->data, 5);
+    ff.id = tx->messageId | ((uint32_t)tx->target << BYTE_WIDTH) | (uint32_t)tx->source;
+    ff.length = CAN_FRAME_LENGTH;
+    ff.data[DIVECAN_FF_PCI_HI_IDX] = ISOTP_PCI_FF | ((totalLength >> BYTE_WIDTH) & ISOTP_PCI_LEN_MASK);
+    ff.data[DIVECAN_FF_LEN_LO_IDX] = (uint8_t)(totalLength & BYTE_MASK);
+    ff.data[DIVECAN_FF_PAD_IDX] = 0x00U; /* DiveCAN padding byte */
+    (void)memcpy(&ff.data[DIVECAN_FF_DATA_START], tx->data, ISOTP_FF_DATA_WITH_PAD);
 
-    txState.txBytesSent = 5;
+    txState.txBytesSent = ISOTP_FF_DATA_WITH_PAD;
     txState.txLastFrameTime = HAL_GetTick();
     txState.txState = ISOTP_WAIT_FC;
 
@@ -188,7 +201,15 @@ static void SendConsecutiveFrames(void)
     while (txState.txBytesSent < tx->length)
     {
         /* STmin delay handling */
-        uint32_t stminMs = (txState.txSTmin <= 0x7FU) ? txState.txSTmin : 0;
+        uint32_t stminMs;
+        if (txState.txSTmin <= ISOTP_STMIN_MS_MAX)
+        {
+            stminMs = txState.txSTmin;
+        }
+        else
+        {
+            stminMs = 0;
+        }
         if (stminMs > 0)
         {
             while ((HAL_GetTick() - txState.txLastFrameTime) < stminMs)
@@ -199,20 +220,28 @@ static void SendConsecutiveFrames(void)
 
         /* Build CF */
         DiveCANMessage_t cf = {0};
-        cf.id = tx->messageId | ((uint32_t)tx->target << 8) | (uint32_t)tx->source;
-        cf.length = 8;
-        cf.data[0] = 0x20U | ((txState.txSequenceNumber + 1U) & 0x0FU);
+        cf.id = tx->messageId | ((uint32_t)tx->target << BYTE_WIDTH) | (uint32_t)tx->source;
+        cf.length = CAN_FRAME_LENGTH;
+        cf.data[ISOTP_FC_STATUS_IDX] = ISOTP_PCI_CF | ((txState.txSequenceNumber + 1U) & ISOTP_SEQ_MASK);
 
         uint16_t remaining = tx->length - txState.txBytesSent;
-        uint8_t bytesToCopy = (remaining > 7U) ? 7U : (uint8_t)remaining;
-        (void)memcpy(&cf.data[1], &tx->data[txState.txBytesSent], bytesToCopy);
+        uint8_t bytesToCopy;
+        if (remaining > ISOTP_CF_DATA_BYTES)
+        {
+            bytesToCopy = ISOTP_CF_DATA_BYTES;
+        }
+        else
+        {
+            bytesToCopy = (uint8_t)remaining;
+        }
+        (void)memcpy(&cf.data[ISOTP_CF_DATA_START], &tx->data[txState.txBytesSent], bytesToCopy);
 
         txState.txBytesSent += bytesToCopy;
         txState.txLastFrameTime = HAL_GetTick();
 
         sendCANMessageBlocking(cf);
 
-        txState.txSequenceNumber = (txState.txSequenceNumber + 1U) & 0x0FU;
+        txState.txSequenceNumber = (txState.txSequenceNumber + 1U) & ISOTP_SEQ_MASK;
 
         /* Block size handling */
         txState.txBlockCounter++;
@@ -243,19 +272,19 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
 
     /* Verify FC is for our current TX
      * Accept FC addressed to us, or broadcast FC (Shearwater quirk) */
-    uint8_t fcTarget = (fc->id >> 8) & 0x0FU;
-    if ((fcTarget != txState.current.source) && (fcTarget != 0xFFU))
+    uint8_t fcTarget = (fc->id >> BYTE_WIDTH) & ISOTP_PCI_LEN_MASK;
+    if ((fcTarget != txState.current.source) && (fcTarget != ISOTP_BROADCAST_ADDR))
     {
         return false;
     }
 
-    uint8_t flowStatus = fc->data[0];
+    uint8_t flowStatus = fc->data[ISOTP_FC_STATUS_IDX];
 
     switch (flowStatus)
     {
     case ISOTP_FC_CTS:
-        txState.txBlockSize = fc->data[1];
-        txState.txSTmin = fc->data[2];
+        txState.txBlockSize = fc->data[ISOTP_FC_BS_IDX];
+        txState.txSTmin = fc->data[ISOTP_FC_STMIN_IDX];
         txState.txBlockCounter = 0;
         txState.txState = ISOTP_TRANSMITTING;
         SendConsecutiveFrames();

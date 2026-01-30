@@ -34,14 +34,18 @@
 #define ISOTP_DEFAULT_BLOCK_SIZE 0 /**< 0 = infinite (no additional FC frames needed) */
 #define ISOTP_DEFAULT_STMIN 0      /**< 0 ms minimum separation time between CF frames */
 
-/* PCI (Protocol Control Information) byte masks */
-#define ISOTP_PCI_SF 0x00 /**< Single frame: 0x0N (N = length) */
-#define ISOTP_PCI_FF 0x10 /**< First frame: 0x1N (N = upper nibble of length) */
-#define ISOTP_PCI_CF 0x20 /**< Consecutive frame: 0x2N (N = sequence number 0-15) */
-#define ISOTP_PCI_FC 0x30 /**< Flow control: 0x3N (N = flow status) */
+/* PCI (Protocol Control Information) byte values and masks
+ * Note: These remain as #defines because they are used in switch case statements,
+ * which require compile-time constant expressions in C. */
+#define ISOTP_PCI_SF 0x00U       /**< Single frame: 0x0N (N = length) */
+#define ISOTP_PCI_FF 0x10U       /**< First frame: 0x1N (N = upper nibble of length) */
+#define ISOTP_PCI_CF 0x20U       /**< Consecutive frame: 0x2N (N = sequence number 0-15) */
+#define ISOTP_PCI_FC 0x30U       /**< Flow control: 0x3N (N = flow status) */
+#define ISOTP_PCI_MASK 0xF0U     /**< Mask for PCI type */
+#define ISOTP_PCI_LEN_MASK 0x0FU /**< Mask for length/sequence in PCI byte */
 
-#define ISOTP_PCI_MASK 0xF0     /**< Mask for PCI type */
-#define ISOTP_PCI_LEN_MASK 0x0F /**< Mask for length/sequence in PCI byte */
+/* STmin limits per ISO 15765-2 */
+static const uint8_t ISOTP_STMIN_MS_MAX = 0x7FU;  /**< Max STmin in milliseconds (values 0x80-0xF0 are microseconds) */
 
 /* Flow control status values */
 #define ISOTP_FC_CTS 0x30   /**< Continue to send (0x30 | 0x00) */
@@ -58,6 +62,19 @@ static const size_t ISOTP_CF_DATA_BYTES = 7U;    /**< Payload bytes per Consecut
 static const size_t ISOTP_FC_LENGTH = 3U;        /**< Flow Control frame length */
 static const uint8_t ISOTP_SEQ_MASK = 0x0FU;     /**< Sequence number mask (0-15) */
 static const uint8_t ISOTP_BROADCAST_ADDR = 0xFFU; /**< Broadcast address (Shearwater FC quirk) */
+
+/* Flow Control frame field indices */
+static const size_t ISOTP_FC_STATUS_IDX = 0U;    /**< Flow status byte index in FC frame */
+static const size_t ISOTP_FC_BS_IDX = 1U;        /**< Block size byte index in FC frame */
+static const size_t ISOTP_FC_STMIN_IDX = 2U;     /**< STmin byte index in FC frame */
+
+/* First frame sequence number - per ISO 15765-2 */
+static const uint8_t ISOTP_FF_SEQ_START = 1U;    /**< First CF sequence number after FF */
+
+/* Frame data start indices */
+static const size_t ISOTP_SF_DATA_START = 1U;    /**< Payload start index in Single Frame (after PCI) */
+static const size_t ISOTP_FF_DATA_START = 2U;    /**< Payload start index in First Frame (after PCI+len) */
+static const size_t ISOTP_CF_DATA_START = 1U;    /**< Payload start index in Consecutive Frame (after PCI) */
 
 /**
  * @brief ISO-TP state machine states
