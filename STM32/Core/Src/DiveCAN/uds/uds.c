@@ -232,7 +232,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         uint64_t maxValue = setting->maxValue;
         uint64_t currentValue = UDS_GetSettingValue(index, ctx->configuration);
 
-        for (int i = 0; i < 8; i++)
+        for (uint8_t i = 0; i < 8; i++)
         {
             buf[dataOffset + i] = (uint8_t)(maxValue >> (56 - i * 8));
             buf[dataOffset + 8 + i] = (uint8_t)(currentValue >> (56 - i * 8));
@@ -378,7 +378,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             return;
         }
 
-        uint8_t fO2 = requestData[4];
+        FO2_t fO2 = requestData[4];
 
         /* Validate fO2 range */
         if (fO2 > 100)
@@ -481,7 +481,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 
             /* Decode big-endian u64 */
             uint64_t value = 0;
-            for (int i = 0; i < 8; i++)
+            for (uint8_t i = 0; i < 8; i++)
             {
                 value = (value << 8) | requestData[4 + i];
             }

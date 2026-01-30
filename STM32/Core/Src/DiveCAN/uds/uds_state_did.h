@@ -16,10 +16,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "../../configuration.h"
+#include "../../common.h"
 
 /* ============================================================================
  * PPO2 Control State DIDs (0xF2xx)
  * ============================================================================ */
+#define UDS_DID_CONTROL_BASE        0xF200U  /**< Base address for control state DIDs */
+#define UDS_DID_CONTROL_END         0xF2FFU  /**< End address for control state DIDs */
+
 #define UDS_DID_CONSENSUS_PPO2      0xF200U  /**< float32: Voted PPO2 (bar) */
 #define UDS_DID_SETPOINT            0xF202U  /**< float32: Current setpoint (bar) */
 #define UDS_DID_CELLS_VALID         0xF203U  /**< uint8: Bitfield - cells in voting */
@@ -84,12 +88,12 @@
 typedef struct __attribute__((packed))
 {
     /* 4-byte aligned fields (112 bytes) */
-    uint32_t config;           /**< Full Configuration_t bitfield (cell types in bits 8-13) */
-    float consensus_ppo2;      /**< Voted PPO2 value */
-    float setpoint;            /**< Current setpoint */
-    float duty_cycle;          /**< Solenoid duty cycle (0.0-1.0) */
-    float integral_state;      /**< PID integral accumulator */
-    float cell_ppo2[3];        /**< Per-cell PPO2 (float precision from precisionPPO2) */
+    uint32_t config;               /**< Full Configuration_t bitfield (cell types in bits 8-13) */
+    PrecisionPPO2_t consensus_ppo2; /**< Voted PPO2 value */
+    PrecisionPPO2_t setpoint;       /**< Current setpoint */
+    Percent_t duty_cycle;           /**< Solenoid duty cycle (0.0-1.0) */
+    PIDHalfNumeric_t integral_state; /**< PID integral accumulator */
+    PrecisionPPO2_t cell_ppo2[3];   /**< Per-cell PPO2 (float precision from precisionPPO2) */
     uint32_t cell_detail[3][7]; /**< Per-cell detail fields (interpretation depends on cell type) */
 
     /* 2-byte aligned fields (4 bytes) */

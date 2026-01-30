@@ -46,9 +46,9 @@ static CellType_t getCellTypeFromConfig(const Configuration_t *config, uint8_t c
 /**
  * @brief Write a float32 to buffer in little-endian format
  */
-static void writeFloat32(uint8_t *buf, float value)
+static void writeFloat32(uint8_t *buf, Numeric_t value)
 {
-    memcpy(buf, &value, sizeof(float));
+    memcpy(buf, &value, sizeof(Numeric_t));
 }
 
 /**
@@ -205,7 +205,14 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
         return true;
 
     case CELL_DID_INCLUDED:
-        buf[0] = ((stateVectorAccumulator.cellsValid & (1U << cellNum)) != 0U) ? 1U : 0U;
+        if ((stateVectorAccumulator.cellsValid & (1U << cellNum)) != 0U)
+        {
+            buf[0] = 1U;
+        }
+        else
+        {
+            buf[0] = 0U;
+        }
         *len = 1U;
         return true;
 
@@ -297,7 +304,7 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset, CellType_t cellType,
 bool UDS_StateDID_IsStateDID(uint16_t did)
 {
     /* PPO2 Control State DIDs (0xF2xx) */
-    if ((did >= 0xF200U) && (did <= 0xF2FFU))
+    if ((did >= UDS_DID_CONTROL_BASE) && (did <= UDS_DID_CONTROL_END))
     {
         return true;
     }
@@ -322,7 +329,7 @@ bool UDS_StateDID_HandleRead(uint16_t did, const Configuration_t *config,
     *responseLength = 0U;
 
     /* PPO2 Control State DIDs (0xF2xx) */
-    if ((did >= 0xF200U) && (did <= 0xF2FFU))
+    if ((did >= UDS_DID_CONTROL_BASE) && (did <= UDS_DID_CONTROL_END))
     {
         return handleControlStateDID(did, config, responseBuffer, responseLength);
     }

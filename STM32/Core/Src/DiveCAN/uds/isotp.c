@@ -321,7 +321,7 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 /**
  * @brief Poll for timeouts (RX only - TX is handled by centralized queue)
  */
-void ISOTP_Poll(ISOTPContext_t *ctx, uint32_t currentTime)
+void ISOTP_Poll(ISOTPContext_t *ctx, Timestamp_t currentTime)
 {
     if (ctx == NULL)
     {

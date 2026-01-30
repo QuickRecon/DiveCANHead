@@ -25,6 +25,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "../Transciever.h" /* For DiveCANMessage_t, DiveCANType_t */
+#include "../../common.h"   /* For Timestamp_t */
 
 /* ISO-TP Configuration */
 #define ISOTP_MAX_PAYLOAD 256      /**< Maximum payload size (sized for binary state vector + overhead) */
@@ -166,7 +167,7 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length);
  * @note On timeout: logs error via NON_FATAL_ERROR, resets to IDLE
  * @note Does NOT call completion callbacks on timeout (incomplete data)
  */
-void ISOTP_Poll(ISOTPContext_t *ctx, uint32_t currentTime);
+void ISOTP_Poll(ISOTPContext_t *ctx, Timestamp_t currentTime);
 
 /**
  * @brief Reset context to IDLE state (error recovery)

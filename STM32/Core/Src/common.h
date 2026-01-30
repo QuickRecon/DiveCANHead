@@ -11,6 +11,7 @@ extern "C"
 #endif
     /* Value types */
     typedef uint8_t PPO2_t;
+    typedef float PrecisionPPO2_t; /* Float-precision PPO2 in bar (for telemetry/logging, vs uint8 centibar for protocol) */
     typedef float Numeric_t; /* A generic numeric type for when we want to do floating point calculations, for easy choosing between size of floats */
     typedef uint8_t FO2_t;
     typedef uint16_t Millivolts_t;
@@ -20,6 +21,7 @@ extern "C"
     typedef float ADCV_t;
     typedef uint32_t Timestamp_t; /* Internal tick count used for tracking timeouts */
     typedef double PIDNumeric_t;
+    typedef float PIDHalfNumeric_t; /* Float32 PID value for serialization (vs double for calculation) */
     typedef float Percent_t;
     typedef unsigned long RuntimeCounter_t;
 

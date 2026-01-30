@@ -287,7 +287,7 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
     return true;
 }
 
-void ISOTP_TxQueue_Poll(uint32_t currentTime)
+void ISOTP_TxQueue_Poll(Timestamp_t currentTime)
 {
     /* Check for timeout */
     if (txState.txActive && txState.txState == ISOTP_WAIT_FC)

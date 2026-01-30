@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "../Transciever.h"
+#include "../../common.h"   /* For Timestamp_t */
 
 /* Queue configuration */
 #define ISOTP_TX_QUEUE_SIZE 2U       /**< Max pending ISO-TP TX requests */
@@ -62,7 +63,7 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc);
  *
  * @param currentTime Current time in ms (from HAL_GetTick)
  */
-void ISOTP_TxQueue_Poll(uint32_t currentTime);
+void ISOTP_TxQueue_Poll(Timestamp_t currentTime);
 
 /**
  * @brief Check if TX queue is currently transmitting
