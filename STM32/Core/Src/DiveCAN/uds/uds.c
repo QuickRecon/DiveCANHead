@@ -16,6 +16,21 @@
 #include <string.h>
 #include <assert.h>
 
+/* Setting info field sizes */
+static const uint16_t SETTING_INFO_BASE_LEN = 3U;   /* null + kind + editable */
+static const uint16_t SETTING_INFO_TEXT_EXTRA = 2U; /* maxValue + optionCount */
+
+/* Setting info field offsets from label end */
+static const size_t SI_NULL_OFF = 0U;  /* null terminator */
+static const size_t SI_KIND_OFF = 1U;  /* kind byte */
+static const size_t SI_EDIT_OFF = 2U;  /* editable byte */
+static const size_t SI_MAX_OFF = 3U;   /* maxValue (TEXT only) */
+static const size_t SI_COUNT_OFF = 4U; /* optionCount (TEXT only) */
+
+/* UDS write message lengths */
+static const uint16_t UDS_SINGLE_VALUE_LEN = 5U;   /* pad + SID + DID + value(1) */
+static const uint16_t SETTING_VALUE_WRITE_LEN = 12U; /* pad + SID + DID + u64(8) */
+
 /* Forward declarations of service handlers */
 static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
@@ -45,8 +60,8 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData, uint16_t 
         return;
     }
 
-    /* Extract Service ID (first byte) */
-    uint8_t sid = requestData[1];
+    /* Extract Service ID */
+    uint8_t sid = requestData[UDS_SID_IDX];
 
     /* Dispatch to appropriate service handler */
     switch (sid)
@@ -77,10 +92,10 @@ void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID, uint8_t n
     }
 
     /* Build negative response: [0x7F, requestedSID, NRC] */
-    ctx->responseBuffer[0] = UDS_SID_NEGATIVE_RESPONSE;
-    ctx->responseBuffer[1] = requestedSID;
-    ctx->responseBuffer[2] = nrc;
-    ctx->responseLength = 3;
+    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_NEGATIVE_RESPONSE;
+    ctx->responseBuffer[UDS_SID_IDX] = requestedSID;
+    ctx->responseBuffer[UDS_DID_HI_IDX] = nrc;
+    ctx->responseLength = UDS_NEG_RESP_LEN;
 
     /* Send via ISO-TP */
     ISOTP_Send(ctx->isotpContext, ctx->responseBuffer, ctx->responseLength);
@@ -115,16 +130,16 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
     uint16_t maxAvailable = UDS_MAX_RESPONSE_LENGTH - responseOffset;
     *bytesWritten = 0U;
 
-    /* Need at least 3 bytes for DID header + 1 byte data */
-    if (maxAvailable < 3U)
+    /* Need at least DID (2 bytes) + 1 byte data */
+    if (maxAvailable < (UDS_DID_SIZE + 1U))
     {
         return false;
     }
 
     /* Write DID header (big-endian) */
-    buf[0] = (uint8_t)(did >> 8);
+    buf[0] = (uint8_t)(did >> BYTE_WIDTH);
     buf[1] = (uint8_t)(did);
-    uint16_t dataOffset = 2U;
+    uint16_t dataOffset = UDS_DID_SIZE;
 
     /* Try state DID handler first (0xF2xx, 0xF4xx) */
     if (UDS_StateDID_IsStateDID(did))
@@ -178,12 +193,13 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
             return false;
         }
 
-        uint16_t labelLen = 9;
+        uint16_t labelLen = SETTING_LABEL_MAX_LEN;
         assert(strnlen(setting->label, labelLen) <= labelLen);
-        uint16_t needed = labelLen + 5U; /* label + null + kind + editable + (optional maxValue + optionCount) */
+        /* label(9) + null(1) + kind(1) + editable(1) + (optional maxValue(1) + optionCount(1)) */
+        uint16_t needed = labelLen + SETTING_INFO_BASE_LEN;
         if (setting->kind == SETTING_KIND_TEXT)
         {
-            needed += 2U;
+            needed += SETTING_INFO_TEXT_EXTRA;
         }
         if (needed > (maxAvailable - dataOffset))
         {
@@ -191,27 +207,27 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         }
 
         /* Label len always needs to be the same length (9 bytes), 0 padded if needed */
-        memset(&buf[dataOffset], 0, labelLen);
-        memcpy(&buf[dataOffset], setting->label,  strnlen(setting->label, labelLen));
-        buf[dataOffset + labelLen] = 0; /* Null terminator */
-        buf[dataOffset + labelLen + 1] = (uint8_t)setting->kind;
+        (void)memset(&buf[dataOffset], 0, labelLen);
+        (void)memcpy(&buf[dataOffset], setting->label, strnlen(setting->label, labelLen));
+        buf[dataOffset + labelLen + SI_NULL_OFF] = 0;
+        buf[dataOffset + labelLen + SI_KIND_OFF] = (uint8_t)setting->kind;
         if (setting->editable)
         {
-            buf[dataOffset + labelLen + 2] = 1;
+            buf[dataOffset + labelLen + SI_EDIT_OFF] = 1U;
         }
         else
         {
-            buf[dataOffset + labelLen + 2] = 0;
+            buf[dataOffset + labelLen + SI_EDIT_OFF] = 0U;
         }
         if (setting->kind == SETTING_KIND_TEXT)
         {
-            buf[dataOffset + labelLen + 3] = setting->maxValue;
-            buf[dataOffset + labelLen + 4] = setting->optionCount;
-            *bytesWritten = dataOffset + labelLen + 5U;
+            buf[dataOffset + labelLen + SI_MAX_OFF] = setting->maxValue;
+            buf[dataOffset + labelLen + SI_COUNT_OFF] = setting->optionCount;
+            *bytesWritten = dataOffset + labelLen + SETTING_INFO_BASE_LEN + SETTING_INFO_TEXT_EXTRA;
         }
         else
         {
-            *bytesWritten = dataOffset + labelLen + 3U;
+            *bytesWritten = dataOffset + labelLen + SETTING_INFO_BASE_LEN;
         }
         return true;
     }
@@ -224,7 +240,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
             return false;
         }
 
-        if (maxAvailable < (dataOffset + 18U)) /* 8 + 8 + 2 padding */
+        if (maxAvailable < (dataOffset + SETTING_VALUE_RESP_LEN))
         {
             return false;
         }
@@ -232,19 +248,19 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
         uint64_t maxValue = setting->maxValue;
         uint64_t currentValue = UDS_GetSettingValue(index, ctx->configuration);
 
-        for (uint8_t i = 0; i < 8; i++)
+        for (uint8_t i = 0; i < sizeof(uint64_t); ++i)
         {
-            buf[dataOffset + i] = (uint8_t)(maxValue >> (56 - i * 8));
-            buf[dataOffset + 8 + i] = (uint8_t)(currentValue >> (56 - i * 8));
+            buf[dataOffset + i] = (uint8_t)(maxValue >> (SEVEN_BYTE_WIDTH - (i * BYTE_WIDTH)));
+            buf[dataOffset + sizeof(uint64_t) + i] = (uint8_t)(currentValue >> (SEVEN_BYTE_WIDTH - (i * BYTE_WIDTH)));
         }
-        *bytesWritten = dataOffset + 16U;
+        *bytesWritten = dataOffset + SETTING_VALUE_RESP_LEN;
         return true;
     }
-    else if (did >= UDS_DID_SETTING_LABEL_BASE && did < 0x9200)
+    else if (did >= UDS_DID_SETTING_LABEL_BASE && did < UDS_DID_SETTING_LABEL_END)
     {
         uint16_t offset = did - UDS_DID_SETTING_LABEL_BASE;
-        uint8_t settingIndex = offset & 0x0F;
-        uint8_t optionIndex = (offset >> 4) & 0x0F;
+        uint8_t settingIndex = (uint8_t)(offset & ISOTP_SEQ_MASK);
+        uint8_t optionIndex = (uint8_t)((offset >> HALF_BYTE_WIDTH) & ISOTP_SEQ_MASK);
 
         const char *label = UDS_GetSettingOptionLabel(settingIndex, optionIndex);
         if (label == NULL)
@@ -252,14 +268,14 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
             return false;
         }
 
-        uint16_t labelLen = strnlen(label,9);
-        if (labelLen > (maxAvailable - dataOffset - 1U))
+        uint16_t optLabelLen = (uint16_t)strnlen(label, SETTING_LABEL_MAX_LEN);
+        if (optLabelLen > (maxAvailable - dataOffset - 1U))
         {
-            labelLen = maxAvailable - dataOffset - 1U;
+            optLabelLen = maxAvailable - dataOffset - 1U;
         }
-        memcpy(&buf[dataOffset], label, labelLen);
-        buf[dataOffset + labelLen] = 0; /* Null terminator */
-        *bytesWritten = dataOffset + labelLen + 1U;
+        (void)memcpy(&buf[dataOffset], label, optLabelLen);
+        buf[dataOffset + optLabelLen] = 0; /* Null terminator */
+        *bytesWritten = dataOffset + optLabelLen + 1U;
         return true;
     }
 
@@ -275,31 +291,31 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did, uint16_t responseOffs
  */
 static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
-    /* Validate message length (minimum: pad + SID + 2-byte DID = 4 bytes) */
-    if (requestLength < 4U)
+    /* Validate message length (minimum: pad + SID + 2-byte DID) */
+    if (requestLength < UDS_MIN_REQ_LEN)
     {
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
 
     /* Check that we have complete DID pairs (requestLength - 2 must be even) */
-    uint16_t didBytesCount = requestLength - 2U; /* Subtract pad + SID */
-    if ((didBytesCount % 2U) != 0U)
+    uint16_t didBytesCount = requestLength - UDS_DID_SIZE; /* Subtract pad + SID */
+    if ((didBytesCount % UDS_DID_SIZE) != 0U)
     {
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
 
     /* Build response header */
-    ctx->responseBuffer[0] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    uint16_t responseOffset = 1U;
+    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+    uint16_t responseOffset = UDS_SID_IDX;
 
     /* Process each DID in the request */
-    uint16_t requestOffset = 2U; /* Start after pad + SID */
-    while (requestOffset + 2U <= requestLength)
+    uint16_t requestOffset = UDS_DID_HI_IDX; /* Start after pad + SID */
+    while ((requestOffset + UDS_DID_SIZE) <= requestLength)
     {
-        uint16_t did = ((uint16_t)requestData[requestOffset] << 8) | requestData[requestOffset + 1U];
-        requestOffset += 2U;
+        uint16_t did = ((uint16_t)requestData[requestOffset] << BYTE_WIDTH) | requestData[requestOffset + 1U];
+        requestOffset += UDS_DID_SIZE;
 
         uint16_t bytesWritten = 0U;
         if (!ReadSingleDID(ctx, did, responseOffset, &bytesWritten))
@@ -331,15 +347,15 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request
  */
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength)
 {
-    /* Validate message length (minimum: SID + 2-byte DID + 1 byte data) */
-    if (requestLength < 4)
+    /* Validate message length (minimum: pad + SID + 2-byte DID) */
+    if (requestLength < UDS_MIN_REQ_LEN)
     {
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
         return;
     }
 
     /* Extract DID (big-endian) */
-    uint16_t did = (requestData[2] << 8) | requestData[3];
+    uint16_t did = ((uint16_t)requestData[UDS_DID_HI_IDX] << BYTE_WIDTH) | requestData[UDS_DID_LO_IDX];
 
     /* Dispatch based on DID */
     switch (did)
@@ -349,21 +365,21 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         /* Write setpoint: 1 byte (0-255 = 0.00-2.55 bar)
          * Note: Shearwater does not respect setpoint broadcasts from the head,
          * so this only updates internal state. Useful for testing. */
-        if (requestLength != 5) /* pad(1) + SID(1) + DID(2) + value(1) */
+        if (requestLength != UDS_SINGLE_VALUE_LEN)
         {
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             return;
         }
 
-        uint8_t ppo2Raw = requestData[4];
+        uint8_t ppo2Raw = requestData[UDS_DATA_IDX];
         PPO2_t ppo2 = ppo2Raw; /* PPO2_t is centibar (0-255) */
         setSetpoint(ppo2);
 
         /* Build positive response: [0x6E, DID_high, DID_low] */
-        ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[1] = requestData[2]; /* DID high */
-        ctx->responseBuffer[2] = requestData[3]; /* DID low */
-        ctx->responseLength = 3;
+        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+        ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+        ctx->responseLength = UDS_POS_RESP_HDR;
 
         UDS_SendResponse(ctx);
         return;
@@ -372,16 +388,16 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
     case UDS_DID_CALIBRATION_TRIGGER:
     {
         /* Trigger calibration: 1 byte fO2 (0-100%) */
-        if (requestLength != 5) /* pad(1) + SID(1) + DID(2) + value(1) */
+        if (requestLength != UDS_SINGLE_VALUE_LEN)
         {
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
             return;
         }
 
-        FO2_t fO2 = requestData[4];
+        FO2_t fO2 = requestData[UDS_DATA_IDX];
 
         /* Validate fO2 range */
-        if (fO2 > 100)
+        if (fO2 > FO2_MAX_PERCENT)
         {
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
             return;
@@ -407,10 +423,10 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         );
 
         /* Build positive response: [0x6E, DID_high, DID_low] */
-        ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[1] = requestData[2]; /* DID high */
-        ctx->responseBuffer[2] = requestData[3]; /* DID low */
-        ctx->responseLength = 3;
+        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+        ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+        ctx->responseLength = UDS_POS_RESP_HDR;
 
         UDS_SendResponse(ctx);
         return;
@@ -431,13 +447,13 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
                 return;
             }
 
-            /* Extract value from message data (starts at requestData[4] after pad+SID+DID)
+            /* Extract value from message data (starts after pad+SID+DID)
              * Value format depends on message length */
             uint64_t value = 0;
-            uint16_t dataLen = requestLength - 4; /* Subtract pad(1) + SID(1) + DID(2) */
-            for (uint16_t i = 0; i < dataLen && i < 8; i++)
+            uint16_t dataLen = requestLength - UDS_MIN_REQ_LEN;
+            for (uint16_t i = 0; (i < dataLen) && (i < sizeof(uint64_t)); ++i)
             {
-                value = (value << 8) | requestData[4 + i];
+                value = (value << BYTE_WIDTH) | requestData[UDS_DATA_IDX + i];
             }
 
             /* Update setting in memory */
@@ -448,7 +464,6 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             }
 
             /* Save to flash */
-            extern HW_Version_t get_hardware_version(void);
             HW_Version_t hw_ver = get_hardware_version();
 
             if (!saveConfiguration(ctx->configuration, hw_ver))
@@ -458,10 +473,10 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             }
 
             /* Build positive response */
-            ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[1] = requestData[2]; /* DID high */
-            ctx->responseBuffer[2] = requestData[3]; /* DID low */
-            ctx->responseLength = 3;
+            ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+            ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+            ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+            ctx->responseLength = UDS_POS_RESP_HDR;
 
             UDS_SendResponse(ctx);
             return;
@@ -471,19 +486,19 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
         if (did >= UDS_DID_SETTING_VALUE_BASE && did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))
         {
             /* Write setting value: expect 8-byte big-endian u64 */
-            if (requestLength != 12) /* pad(1) + SID(1) + DID(2) + value(8) */
+            if (requestLength != SETTING_VALUE_WRITE_LEN)
             {
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MESSAGE_LENGTH);
                 return;
             }
 
-            uint8_t index = did - UDS_DID_SETTING_VALUE_BASE;
+            uint8_t index = (uint8_t)(did - UDS_DID_SETTING_VALUE_BASE);
 
             /* Decode big-endian u64 */
             uint64_t value = 0;
-            for (uint8_t i = 0; i < 8; i++)
+            for (uint8_t i = 0; i < sizeof(uint64_t); ++i)
             {
-                value = (value << 8) | requestData[4 + i];
+                value = (value << BYTE_WIDTH) | requestData[UDS_DATA_IDX + i];
             }
 
             /* Update setting */
@@ -494,10 +509,10 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
             }
 
             /* Build positive response */
-            ctx->responseBuffer[0] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[1] = requestData[2]; /* DID high */
-            ctx->responseBuffer[2] = requestData[3]; /* DID low */
-            ctx->responseLength = 3;
+            ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+            ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+            ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+            ctx->responseLength = UDS_POS_RESP_HDR;
 
             UDS_SendResponse(ctx);
             return;

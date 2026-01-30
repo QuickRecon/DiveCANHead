@@ -235,12 +235,12 @@ cat <output_file> | jq -r '.[] | .diagnostics[] | select(.source == "sonarqube")
 
 **Important Workflow Notes:**
 - SonarCloud only analyzes pushed commits. Local changes show in IDE diagnostics but won't appear in server queries until pushed.
-- **Diagnostics disappear after first read:** When `mcp__ide__getDiagnostics` is called, the diagnostics are consumed and won't appear in `<new-diagnostics>` tags on subsequent tool calls. Save results to a persistent file immediately:
+- **Diagnostics disappear after first read:** When `<new-diagnostics>` is called, the diagnostics are consumed and won't appear in `<new-diagnostics>` tags on subsequent tool calls. Save results to a persistent file immediately:
   ```bash
   # Save to .sonarqube-diagnostics.json in the relevant directory
   cat <output_file> | jq '.[0].text' > path/to/.sonarqube-diagnostics.json
   ```
-- During long sessions or before context compaction, re-run `mcp__ide__getDiagnostics` and save fresh results to ensure diagnostics remain available.
+- During long sessions or before context compaction, re-run `mcp__ide__getDiagnostics` and save fresh results to ensure diagnostics remain available. Compare with existing issues to detect duplicates/non-existant old issues.
 
 ## Subsystem Documentation
 

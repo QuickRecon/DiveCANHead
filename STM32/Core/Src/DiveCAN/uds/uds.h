@@ -62,6 +62,27 @@ enum
     UDS_MAX_RESPONSE_LENGTH = 128 /**< Matches ISOTP_MAX_PAYLOAD */
 };
 
+/* UDS message byte positions (indices into request/response arrays)
+ * Request format: [pad][SID][DID_hi][DID_lo][data...] */
+static const size_t UDS_PAD_IDX = 0U;     /**< Padding byte position */
+static const size_t UDS_SID_IDX = 1U;     /**< Service ID position */
+static const size_t UDS_DID_HI_IDX = 2U;  /**< DID high byte position */
+static const size_t UDS_DID_LO_IDX = 3U;  /**< DID low byte position */
+static const size_t UDS_DATA_IDX = 4U;    /**< First data byte position */
+
+/* UDS response structure sizes */
+static const size_t UDS_NEG_RESP_LEN = 3U;    /**< Negative response length: [0x7F, SID, NRC] */
+static const size_t UDS_POS_RESP_HDR = 3U;    /**< Positive response header: [SID+0x40, DID_hi, DID_lo] */
+static const size_t UDS_MIN_REQ_LEN = 4U;     /**< Minimum request: pad + SID + DID (2 bytes) */
+static const size_t UDS_DID_SIZE = 2U;        /**< DID field size (2 bytes) */
+
+/* Setting value response: max(u64) + current(u64) */
+#define SETTING_VALUE_RESP_LEN (2U * sizeof(uint64_t))
+
+/* Settings DID range limits */
+static const uint16_t UDS_DID_SETTING_LABEL_END = 0x9200U; /**< End of setting label DID range */
+static const size_t SETTING_LABEL_MAX_LEN = 9U;  /**< Max setting label length */
+
 /**
  * @brief UDS context (single instance, file-scope static)
  *

@@ -48,6 +48,17 @@
 #define ISOTP_FC_WAIT 0x31  /**< Wait (not implemented) */
 #define ISOTP_FC_OVFLW 0x32 /**< Overflow/abort */
 
+/* CAN frame structure constants */
+static const size_t CAN_FRAME_LENGTH = 8U;       /**< Standard CAN frame data length */
+static const size_t ISOTP_SF_MAX_DATA = 7U;      /**< Max payload bytes in Single Frame */
+static const size_t ISOTP_SF_MAX_WITH_PAD = 6U;  /**< Max SF payload with DiveCAN padding byte */
+static const size_t ISOTP_FF_DATA_BYTES = 6U;    /**< Payload bytes in First Frame (standard) */
+static const size_t ISOTP_FF_DATA_WITH_PAD = 5U; /**< FF payload with DiveCAN padding byte */
+static const size_t ISOTP_CF_DATA_BYTES = 7U;    /**< Payload bytes per Consecutive Frame */
+static const size_t ISOTP_FC_LENGTH = 3U;        /**< Flow Control frame length */
+static const uint8_t ISOTP_SEQ_MASK = 0x0FU;     /**< Sequence number mask (0-15) */
+static const uint8_t ISOTP_BROADCAST_ADDR = 0xFFU; /**< Broadcast address (Shearwater FC quirk) */
+
 /**
  * @brief ISO-TP state machine states
  */

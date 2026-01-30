@@ -41,12 +41,19 @@ extern "C"
     static const uint32_t BYTE_WIDTH = 8;        /* Bitshift operations */
     static const uint32_t TWO_BYTE_WIDTH = 16;   /* Bitshift operations */
     static const uint32_t THREE_BYTE_WIDTH = 24; /* Bitshift operations */
+    static const uint32_t FOUR_BYTE_WIDTH = 32;  /* Bitshift operations */
+    static const uint32_t FIVE_BYTE_WIDTH = 40;  /* Bitshift operations */
+    static const uint32_t SIX_BYTE_WIDTH = 48;   /* Bitshift operations */
+    static const uint32_t SEVEN_BYTE_WIDTH = 56; /* Bitshift operations */
     static const uint32_t HALF_BYTE_WIDTH = 4;   /* Bitshift operations */
     static const CalCoeff_t EPS = 0.00001f;      /* Small value for float comparisons */
 
     /* PPO2 values */
     static const PPO2_t PPO2_FAIL = 0xFF;
     static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
+
+    /* fO2 limits */
+    static const FO2_t FO2_MAX_PERCENT = 100U; /**< Maximum valid fO2 percentage */
 
     typedef enum
     {
