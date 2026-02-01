@@ -14,6 +14,7 @@ This directory contains detailed subsystem documentation for the DiveCANHead fir
 | [CONFIGURATION_SYSTEM.md](CONFIGURATION_SYSTEM.md) | Configuration_t bitfield, persistence |
 | [TESTING_ARCHITECTURE.md](TESTING_ARCHITECTURE.md) | DiveCANpy, pytest fixtures, HWShim |
 | [DIVECAN_BT.md](DIVECAN_BT.md) | Browser JS client, SLIP, UDSClient |
+| [FLASHING_FIRMWARE.md](FLASHING_FIRMWARE.md) | SWD flashing via STM32CubeProgrammer |
 
 ## External References
 
