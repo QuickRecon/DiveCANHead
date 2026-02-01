@@ -246,41 +246,261 @@ static void Digital_broadcastPPO2(DiveO2State_t *handle)
     }
 }
 
-static CellStatus_t cellErrorCheck(const char *err_str)
+/**
+ * @brief Parse DiveO2 error code string to cell status
+ * @param err_str Error code string from cell (decimal number)
+ * @return CellStatus_t indicating cell health
+ * @note Non-static to allow unit testing via extern declaration
+ */
+CellStatus_t DiveO2_ParseErrorCode(const char *err_str)
 {
-    uint32_t errCode = (uint16_t)(strtol(err_str, NULL, PPO2_BASE));
     CellStatus_t status = CELL_OK;
-    /* Check for error states*/
-    if ((errCode &
-         (ERR_LOW_INTENSITY |
-          ERR_HIGH_SIGNAL |
-          ERR_LOW_SIGNAL |
-          ERR_HIGH_REF |
-          ERR_TEMP)) != 0)
+    if (err_str != NULL)
     {
-        /* Fatal errors*/
-        status = CELL_FAIL;
-    }
-    else if ((errCode &
-              (WARN_HUMIDITY_FAIL |
-               WARN_PRESSURE |
-               WARN_HUMIDITY_HIGH |
-               WARN_NEAR_SAT)) != 0)
-    {
-        /* Nonfatal errors*/
-        status = CELL_DEGRADED;
-    }
-    else if (errCode > 0)
-    {
-        /* Unknown error*/
-        NON_FATAL_ERROR_DETAIL(UNKNOWN_ERROR_ERR, errCode);
-        status = CELL_FAIL;
+        uint32_t errCode = (uint16_t)(strtol(err_str, NULL, PPO2_BASE));
+        /* Check for error states*/
+        if ((errCode &
+             (ERR_LOW_INTENSITY |
+              ERR_HIGH_SIGNAL |
+              ERR_LOW_SIGNAL |
+              ERR_HIGH_REF |
+              ERR_TEMP)) != 0U)
+        {
+            /* Fatal errors*/
+            status = CELL_FAIL;
+        }
+        else if ((errCode &
+                  (WARN_HUMIDITY_FAIL |
+                   WARN_PRESSURE |
+                   WARN_HUMIDITY_HIGH |
+                   WARN_NEAR_SAT)) != 0U)
+        {
+            /* Nonfatal errors*/
+            status = CELL_DEGRADED;
+        }
+        else if (errCode > 0U)
+        {
+            /* Unknown error*/
+            NON_FATAL_ERROR_DETAIL(UNKNOWN_ERROR_ERR, errCode);
+            status = CELL_FAIL;
+        }
+        else
+        {
+            /* No action - status already CELL_OK */
+        }
     }
     else
     {
-        status = CELL_OK; /* Everything is fine*/
+        status = CELL_FAIL;
     }
     return status;
+}
+
+/**
+ * @brief Prepare message buffer for parsing by skipping leading junk
+ * @param rawBuffer Raw input buffer (may contain leading nulls/newlines)
+ * @param outBuffer Output buffer for cleaned message
+ * @param outBufferLen Size of output buffer
+ * @return Number of bytes skipped from start of rawBuffer
+ * @note Non-static to allow unit testing via extern declaration
+ */
+size_t DiveO2_PrepareMessageBuffer(const char *rawBuffer, char *outBuffer, size_t outBufferLen)
+{
+    size_t skipped = 0;
+    if ((rawBuffer != NULL) && (outBuffer != NULL) && (outBufferLen > 0U))
+    {
+        const char *msgBuf = rawBuffer;
+
+        /* Skip leading junk (nulls and newlines) */
+        while (((0 == msgBuf[0]) || (NEWLINE == (uint8_t)msgBuf[0])) &&
+               (skipped < (outBufferLen - 1U)))
+        {
+            ++msgBuf;
+            ++skipped;
+        }
+
+        /* Copy to output buffer */
+        size_t copyLen = outBufferLen - skipped;
+        if (copyLen > outBufferLen)
+        {
+            copyLen = outBufferLen;
+        }
+        (void)strncpy(outBuffer, msgBuf, copyLen);
+        outBuffer[outBufferLen - 1U] = '\0'; /* Ensure null termination */
+
+        /* Null-terminate at first newline */
+        outBuffer[strcspn(outBuffer, "\r\n")] = '\0';
+    }
+    else
+    {
+        if (outBuffer != NULL)
+        {
+            outBuffer[0] = '\0';
+        }
+    }
+
+    return skipped;
+}
+
+/**
+ * @brief Parse #DOXY simple response message
+ * @param message Cleaned message buffer
+ * @param ppo2 Output: PPO2 value in raw cell units
+ * @param temperature Output: Temperature in millicelsius
+ * @param status Output: Cell status from error code
+ * @return true if parsing succeeded, false otherwise
+ * @note Non-static to allow unit testing via extern declaration
+ */
+bool DiveO2_ParseSimpleResponse(const char *message,
+                                 int32_t *ppo2,
+                                 int32_t *temperature,
+                                 CellStatus_t *status)
+{
+    bool success = false;
+
+    if ((message != NULL) && (ppo2 != NULL) && (temperature != NULL) && (status != NULL))
+    {
+        char msgCopy[DIVEO2_RX_BUFFER_LENGTH];
+        (void)strncpy(msgCopy, message, sizeof(msgCopy) - 1U);
+        msgCopy[sizeof(msgCopy) - 1U] = '\0';
+
+        const char *const sep = " ";
+        char *saveptr = NULL;
+        const char *cmdName = strtok_r(msgCopy, sep, &saveptr);
+
+        if ((cmdName != NULL) && (0 == strcmp(cmdName, GET_OXY_COMMAND)))
+        {
+            const char *ppo2Str = strtok_r(NULL, sep, &saveptr);
+            const char *tempStr = strtok_r(NULL, sep, &saveptr);
+            const char *errStr = strtok_r(NULL, sep, &saveptr);
+
+            if ((ppo2Str != NULL) && (tempStr != NULL) && (errStr != NULL))
+            {
+                *ppo2 = strtol(ppo2Str, NULL, PPO2_BASE);
+                *temperature = strtol(tempStr, NULL, PPO2_BASE);
+                *status = DiveO2_ParseErrorCode(errStr);
+                success = true;
+            }
+            else
+            {
+                /* Missing fields */
+            }
+        }
+        else
+        {
+            /* Wrong command or null */
+        }
+    }
+    else
+    {
+        /* Null arguments */
+    }
+
+    return success;
+}
+
+/**
+ * @brief Parse #DRAW detailed response message
+ * @param message Cleaned message buffer
+ * @param ppo2 Output: PPO2 value in raw cell units
+ * @param temperature Output: Temperature in millicelsius
+ * @param errCode Output: Raw error code value
+ * @param phase Output: Phase value
+ * @param intensity Output: Intensity value
+ * @param ambientLight Output: Ambient light value
+ * @param pressure Output: Pressure in microbar
+ * @param humidity Output: Humidity in milliRH
+ * @param status Output: Cell status from error code
+ * @return true if parsing succeeded, false otherwise
+ * @note Non-static to allow unit testing via extern declaration
+ */
+bool DiveO2_ParseDetailedResponse(const char *message,
+                                   int32_t *ppo2,
+                                   int32_t *temperature,
+                                   int32_t *errCode,
+                                   int32_t *phase,
+                                   int32_t *intensity,
+                                   int32_t *ambientLight,
+                                   int32_t *pressure,
+                                   int32_t *humidity,
+                                   CellStatus_t *status)
+{
+    bool success = false;
+
+    if ((message != NULL) && (ppo2 != NULL) && (temperature != NULL) &&
+        (errCode != NULL) && (phase != NULL) && (intensity != NULL) &&
+        (ambientLight != NULL) && (pressure != NULL) && (humidity != NULL) &&
+        (status != NULL))
+    {
+        char msgCopy[DIVEO2_RX_BUFFER_LENGTH];
+        (void)strncpy(msgCopy, message, sizeof(msgCopy) - 1U);
+        msgCopy[sizeof(msgCopy) - 1U] = '\0';
+
+        const char *const sep = " ";
+        char *saveptr = NULL;
+        const char *cmdName = strtok_r(msgCopy, sep, &saveptr);
+
+        if ((cmdName != NULL) && (0 == strcmp(cmdName, GET_DETAIL_COMMAND)))
+        {
+            const char *ppo2Str = strtok_r(NULL, sep, &saveptr);
+            const char *tempStr = strtok_r(NULL, sep, &saveptr);
+            const char *errStr = strtok_r(NULL, sep, &saveptr);
+            const char *phaseStr = strtok_r(NULL, sep, &saveptr);
+            const char *intensityStr = strtok_r(NULL, sep, &saveptr);
+            const char *ambientStr = strtok_r(NULL, sep, &saveptr);
+            const char *pressureStr = strtok_r(NULL, sep, &saveptr);
+            const char *humidityStr = strtok_r(NULL, sep, &saveptr);
+
+            if ((ppo2Str != NULL) && (tempStr != NULL) && (errStr != NULL) &&
+                (phaseStr != NULL) && (intensityStr != NULL) && (ambientStr != NULL) &&
+                (pressureStr != NULL) && (humidityStr != NULL))
+            {
+                *ppo2 = strtol(ppo2Str, NULL, PPO2_BASE);
+                *temperature = strtol(tempStr, NULL, PPO2_BASE);
+                *errCode = strtol(errStr, NULL, PPO2_BASE);
+                *phase = strtol(phaseStr, NULL, PPO2_BASE);
+                *intensity = strtol(intensityStr, NULL, PPO2_BASE);
+                *ambientLight = strtol(ambientStr, NULL, PPO2_BASE);
+                *pressure = strtol(pressureStr, NULL, PPO2_BASE);
+                *humidity = strtol(humidityStr, NULL, PPO2_BASE);
+                *status = DiveO2_ParseErrorCode(errStr);
+                success = true;
+            }
+            else
+            {
+                /* Missing fields */
+            }
+        }
+        else
+        {
+            /* Wrong command or null */
+        }
+    }
+    else
+    {
+        /* Null arguments */
+    }
+
+    return success;
+}
+
+/**
+ * @brief Format command into TX buffer with CR terminator
+ * @param command Command string (e.g., "#DOXY")
+ * @param txBuf Output buffer for formatted command
+ * @param bufLen Size of output buffer
+ * @note Non-static to allow unit testing via extern declaration
+ */
+void DiveO2_FormatTxCommand(const char *command, uint8_t *txBuf, size_t bufLen)
+{
+    if ((command != NULL) && (txBuf != NULL) && (bufLen > 0U))
+    {
+        (void)memset(txBuf, 0, bufLen);
+
+        /* Copy the string into the all-zero buffer, then replace the first zero with a newline */
+        (void)strncpy((char *)txBuf, command, bufLen - 1U);
+        txBuf[strcspn((char *)txBuf, "\0")] = NEWLINE;
+    }
 }
 
 static void decodeCellMessage(void *arg)
@@ -307,73 +527,52 @@ static void decodeCellMessage(void *arg)
     /* Do the wait for cell startup*/
     (void)osDelay(TIMEOUT_1S_TICKS);
 
-    while (true)
+    while (RTOS_LOOP_FOREVER)
     {
         sendCellCommand(GET_DETAIL_COMMAND, cell);
         uint32_t lastTicks = cell->ticksOfLastPPO2;
         if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, TIMEOUT_2S_TICKS))
         {
-            char *msgBuf = cell->lastMessage;
-            uint32_t skipped = 0;
-            /* Scroll past any junk in the start of the buffer */
-            while (((0 == msgBuf[0]) || (NEWLINE == msgBuf[0])) &&
-                   (skipped < (DIVEO2_RX_BUFFER_LENGTH - 1)))
-            {
-                ++msgBuf;
-                ++skipped;
-            }
-
             char msgArray[DIVEO2_RX_BUFFER_LENGTH] = {0};
-            (void)strncpy(msgArray, msgBuf, DIVEO2_RX_BUFFER_LENGTH - skipped);
+            (void)DiveO2_PrepareMessageBuffer(cell->lastMessage, msgArray, sizeof(msgArray));
 
-            msgBuf = msgArray;
+            int32_t ppo2 = 0;
+            int32_t temp = 0;
+            int32_t errCode = 0;
+            int32_t phase = 0;
+            int32_t intensity = 0;
+            int32_t ambient = 0;
+            int32_t pressure = 0;
+            int32_t humidity = 0;
+            CellStatus_t status = CELL_FAIL;
 
-            /* Null terminate the end newline, interferes with logging */
-            msgBuf[strcspn(msgBuf, "\r\n")] = 0;
-
-            const char *const sep = " ";
-            char *saveptr = NULL;
-            const char *const CMD_Name = strtok_r(msgBuf, sep, &saveptr);
-
-            /* Decode either a #DRAW or a #DOXY, we don't care about anything else yet*/
-            if (0 == strcmp(CMD_Name, GET_OXY_COMMAND))
+            /* Try detailed response first (preferred), then simple */
+            if (DiveO2_ParseDetailedResponse(msgArray, &ppo2, &temp, &errCode,
+                                              &phase, &intensity, &ambient,
+                                              &pressure, &humidity, &status))
             {
-                const char *const PPO2_str = strtok_r(NULL, sep, &saveptr);
-                const char *const temperature_str = strtok_r(NULL, sep, &saveptr);
-                const char *const err_str = strtok_r(NULL, sep, &saveptr);
-
-                cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
-                cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
-                cell->status = cellErrorCheck(err_str);
+                cell->cellSample = ppo2;
+                cell->temperature = temp;
+                cell->pressure = pressure;
+                cell->humidity = humidity;
+                cell->status = status;
 
                 PrecisionPPO2_t precisionPPO2 = (PrecisionPPO2_t)cell->cellSample / cell->calibrationCoefficient;
-                DiveO2CellSample(cell->cellNumber, precisionPPO2, cell->status, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), 0, 0, 0, 0, 0);
+                DiveO2CellSample(cell->cellNumber, precisionPPO2, cell->status, cell->cellSample,
+                                 cell->temperature, errCode, phase, intensity, ambient,
+                                 cell->pressure, cell->humidity);
 
                 cell->ticksOfLastPPO2 = HAL_GetTick();
             }
-            else if (0 == strcmp(CMD_Name, GET_DETAIL_COMMAND))
+            else if (DiveO2_ParseSimpleResponse(msgArray, &ppo2, &temp, &status))
             {
-                const char *const PPO2_str = strtok_r(NULL, sep, &saveptr);
-                const char *const temperature_str = strtok_r(NULL, sep, &saveptr);
-                const char *const err_str = strtok_r(NULL, sep, &saveptr);
-                const char *const phase_str = strtok_r(NULL, sep, &saveptr);
-                const char *const intensity_str = strtok_r(NULL, sep, &saveptr);
-                const char *const ambientLight_str = strtok_r(NULL, sep, &saveptr);
-                const char *const pressure_str = strtok_r(NULL, sep, &saveptr);
-                const char *const humidity_str = strtok_r(NULL, sep, &saveptr);
-
-                cell->cellSample = strtol(PPO2_str, NULL, PPO2_BASE);
-                cell->temperature = strtol(temperature_str, NULL, PPO2_BASE);
-                cell->pressure = strtol(pressure_str, NULL, PPO2_BASE);
-                cell->humidity = strtol(humidity_str, NULL, PPO2_BASE);
-                cell->status = cellErrorCheck(err_str);
-
-                int32_t phase = strtol(phase_str, NULL, PPO2_BASE);
-                int32_t intensity = strtol(intensity_str, NULL, PPO2_BASE);
-                int32_t ambientLight = strtol(ambientLight_str, NULL, PPO2_BASE);
+                cell->cellSample = ppo2;
+                cell->temperature = temp;
+                cell->status = status;
 
                 PrecisionPPO2_t precisionPPO2 = (PrecisionPPO2_t)cell->cellSample / cell->calibrationCoefficient;
-                DiveO2CellSample(cell->cellNumber, precisionPPO2, cell->status, cell->cellSample, cell->temperature, strtol(err_str, NULL, PPO2_BASE), phase, intensity, ambientLight, cell->pressure, cell->humidity);
+                DiveO2CellSample(cell->cellNumber, precisionPPO2, cell->status, cell->cellSample,
+                                 cell->temperature, 0, 0, 0, 0, 0, 0);
 
                 cell->ticksOfLastPPO2 = HAL_GetTick();
             }
@@ -457,11 +656,7 @@ static void sendCellCommand(const char *const commandStr, DiveO2State_t *cell)
     }
     else
     {
-        (void)memset(cell->txBuf, 0, DIVEO2_TX_BUFFER_LENGTH);
-
-        /* Copy the string into the all-zero buffer, then replace the first zero with a newline*/
-        (void)strncpy((char *)cell->txBuf, commandStr, DIVEO2_TX_BUFFER_LENGTH - 1);
-        cell->txBuf[strcspn((char *)cell->txBuf, "\0")] = NEWLINE;
+        DiveO2_FormatTxCommand(commandStr, cell->txBuf, DIVEO2_TX_BUFFER_LENGTH);
 
         /* Make sure our RX buffer is clear*/
         (void)memset(cell->lastMessage, 0, DIVEO2_RX_BUFFER_LENGTH);
@@ -474,6 +669,10 @@ static void sendCellCommand(const char *const commandStr, DiveO2State_t *cell)
             if (HAL_OK != txStatus)
             {
                 NON_FATAL_ERROR_DETAIL(UART_ERR, txStatus);
+            }
+            else
+            {
+                /* TX started successfully */
             }
         }
         else
