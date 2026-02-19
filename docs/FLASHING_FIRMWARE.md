@@ -14,7 +14,6 @@ The hardware chain for SWD flashing is: **PC** (running STM32CubeProgrammer) →
 | Adafruit SWD to Cortex Debug Adapter | Converts ST-Link 20-pin header to ARM 10-pin SWD | ~$5 | [Adafruit](https://www.adafruit.com/product/2094) |
 | 10-pin SWD ribbon cable | Connects adapter to target board | ~$2 | Often included with adapter |
 
-**Note:** Clone ST-Link V2 devices work fine for flashing. The official version provides better reliability and faster speeds for debugging.
 
 ## Connecting the ST-Link to the Adapter
 

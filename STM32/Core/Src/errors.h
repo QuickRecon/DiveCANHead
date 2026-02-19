@@ -147,8 +147,11 @@ extern "C"
         /** @brief An invalid operation was attempted **/
         UDS_INVALID_OPTION_ERR = 41,
 
+        /** @brief A cell has reported an error **/
+        CELL_ERR = 42,
+
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        MAX_ERR = UDS_INVALID_OPTION_ERR
+        MAX_ERR = CELL_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

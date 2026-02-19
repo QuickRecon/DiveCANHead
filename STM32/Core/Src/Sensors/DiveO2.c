@@ -266,7 +266,7 @@ CellStatus_t DiveO2_ParseErrorCode(const char *err_str)
               ERR_HIGH_REF |
               ERR_TEMP)) != 0U)
         {
-            /* Fatal errors*/
+            NON_FATAL_ERROR_DETAIL(CELL_ERR, errCode);
             status = CELL_FAIL;
         }
         else if ((errCode &
@@ -275,7 +275,7 @@ CellStatus_t DiveO2_ParseErrorCode(const char *err_str)
                    WARN_HUMIDITY_HIGH |
                    WARN_NEAR_SAT)) != 0U)
         {
-            /* Nonfatal errors*/
+            NON_FATAL_ERROR_DETAIL(CELL_ERR, errCode);
             status = CELL_DEGRADED;
         }
         else if (errCode > 0U)
@@ -384,16 +384,19 @@ bool DiveO2_ParseSimpleResponse(const char *message,
             else
             {
                 /* Missing fields */
+                NON_FATAL_ERROR(CELL_ERR);
             }
         }
         else
         {
             /* Wrong command or null */
+            NON_FATAL_ERROR(CELL_ERR);
         }
     }
     else
     {
         /* Null arguments */
+        NON_FATAL_ERROR(NULL_PTR_ERR);
     }
 
     return success;
@@ -469,16 +472,19 @@ bool DiveO2_ParseDetailedResponse(const char *message,
             else
             {
                 /* Missing fields */
+                NON_FATAL_ERROR(CELL_ERR);
             }
         }
         else
         {
             /* Wrong command or null */
+            NON_FATAL_ERROR(CELL_ERR);
         }
     }
     else
     {
         /* Null arguments */
+        NON_FATAL_ERROR(NULL_PTR_ERR);
     }
 
     return success;

@@ -71,7 +71,7 @@ size_t O2S_PrepareMessageBuffer(const char *rawBuffer, char *outBuffer, size_t o
         const char *msgBuf = rawBuffer;
 
         /* Skip leading junk (nulls and newlines) */
-        while (((0 == msgBuf[0]) || (NEWLINE == (uint8_t)msgBuf[0])) &&
+        while (((0 == msgBuf[0]) || (NEWLINE == msgBuf[0])) &&
                (skipped < (outBufferLen - 1U)))
         {
             ++msgBuf;
