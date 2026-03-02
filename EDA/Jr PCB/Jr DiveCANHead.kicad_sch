@@ -8803,7 +8803,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 254.762 54.61 90)
 			(effects
 				(font
@@ -8830,7 +8830,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "C163460"
+		(property "MPN" "C23204"
 			(at 256.54 54.61 0)
 			(effects
 				(font
