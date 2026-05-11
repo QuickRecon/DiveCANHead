@@ -5,7 +5,7 @@
   (paper "A4")
 
   (lib_symbols
-    (symbol "Connector:Conn_01x05_Socket" (pin_names (offset 1.016) hide) (in_bom yes) (on_board yes)
+    (symbol "Library:Conn_01x05_Socket" (pin_names (offset 1.016) hide) (in_bom yes) (on_board yes)
       (property "Reference" "J" (at 0 7.62 0)
         (effects (font (size 1.27 1.27)))
       )
@@ -113,7 +113,7 @@
         )
       )
     )
-    (symbol "Connector:TestPoint" (pin_numbers hide) (pin_names (offset 0.762) hide) (in_bom yes) (on_board yes)
+    (symbol "Library:TestPoint" (pin_numbers hide) (pin_names (offset 0.762) hide) (in_bom yes) (on_board yes)
       (property "Reference" "TP" (at 0 6.858 0)
         (effects (font (size 1.27 1.27)))
       )
@@ -148,7 +148,7 @@
         )
       )
     )
-    (symbol "Device:C" (pin_numbers hide) (pin_names (offset 0.254)) (in_bom yes) (on_board yes)
+    (symbol "Library:C" (pin_numbers hide) (pin_names (offset 0.254)) (in_bom yes) (on_board yes)
       (property "Reference" "C" (at 0.635 2.54 0)
         (effects (font (size 1.27 1.27)) (justify left))
       )
@@ -199,7 +199,7 @@
         )
       )
     )
-    (symbol "Project:AVR64EA28" (in_bom yes) (on_board yes)
+    (symbol "Library:AVR64EA28" (in_bom yes) (on_board yes)
       (property "Reference" "U" (at -17.78 24.13 0)
         (effects (font (size 1.27 1.27)) (justify left bottom))
       )
@@ -342,7 +342,7 @@
         )
       )
     )
-    (symbol "Project:MCP2515" (in_bom yes) (on_board yes)
+    (symbol "Library:MCP2515" (in_bom yes) (on_board yes)
       (property "Reference" "U" (at -10.16 19.685 0)
         (effects (font (size 1.27 1.27)) (justify right))
       )
@@ -448,7 +448,7 @@
         )
       )
     )
-    (symbol "Project:R" (pin_numbers hide) (pin_names (offset 0)) (in_bom yes) (on_board yes)
+    (symbol "Library:R" (pin_numbers hide) (pin_names (offset 0)) (in_bom yes) (on_board yes)
       (property "Reference" "R" (at 2.032 0 90)
         (effects (font (size 1.27 1.27)))
       )
@@ -487,7 +487,7 @@
         )
       )
     )
-    (symbol "Project:TCAN330" (in_bom yes) (on_board yes)
+    (symbol "Library:TCAN330" (in_bom yes) (on_board yes)
       (property "Reference" "U" (at -10.16 8.89 0)
         (effects (font (size 1.27 1.27)) (justify left))
       )
@@ -553,7 +553,7 @@
         )
       )
     )
-    (symbol "power:GNDREF" (power) (pin_names (offset 0)) (in_bom yes) (on_board yes)
+    (symbol "Library:GNDREF" (power) (pin_names (offset 0)) (in_bom yes) (on_board yes)
       (property "Reference" "#PWR" (at 0 -6.35 0)
         (effects (font (size 1.27 1.27)) hide)
       )
@@ -975,7 +975,7 @@
     (uuid ff82a976-ff1e-49e2-a84a-abb1a1aea654)
   )
 
-  (symbol (lib_id "Connector:Conn_01x05_Socket") (at 236.22 100.33 0) (unit 1)
+  (symbol (lib_id "Library:Conn_01x05_Socket") (at 236.22 100.33 0) (unit 1)
     (in_bom no) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 22dd0d6e-e614-4e95-b729-5de1f3bfddcc)
     (property "Reference" "J6" (at 236.9312 99.306 0)
@@ -1004,7 +1004,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 143.51 132.08 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 143.51 132.08 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 2a306306-97c9-48c4-a213-9025bc9c8432)
     (property "Reference" "#PWR023" (at 143.51 138.43 0)
@@ -1032,7 +1032,7 @@
     )
   )
 
-  (symbol (lib_id "Device:C") (at 45.72 68.58 180) (unit 1)
+  (symbol (lib_id "Library:C") (at 45.72 68.58 180) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 3e67fda3-3d1b-46ac-ab04-c15a11d52b1b)
     (property "Reference" "C5" (at 39.981 68.58 90)
@@ -1064,7 +1064,7 @@
     )
   )
 
-  (symbol (lib_id "Project:TCAN330") (at 189.23 101.6 0) (unit 1)
+  (symbol (lib_id "Library:TCAN330") (at 189.23 101.6 0) (unit 1)
     (in_bom no) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 3e904027-7db5-4c35-ac70-81e69d12e178)
     (property "Reference" "U9" (at 191.1859 88.352 0)
@@ -1099,7 +1099,7 @@
     )
   )
 
-  (symbol (lib_id "Connector:TestPoint") (at 35.56 156.21 270) (unit 1)
+  (symbol (lib_id "Library:TestPoint") (at 35.56 156.21 270) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 43e23288-4983-4ee1-9040-5decbba97292)
     (property "Reference" "TP3" (at 40.259 155.186 90)
@@ -1124,7 +1124,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 231.14 95.25 270) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 231.14 95.25 270) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 4f657168-20d4-4c72-ba61-ac8a2217736c)
     (property "Reference" "#PWR023" (at 224.79 95.25 0)
@@ -1152,7 +1152,7 @@
     )
   )
 
-  (symbol (lib_id "Project:R") (at 120.65 81.28 90) (unit 1)
+  (symbol (lib_id "Library:R") (at 120.65 81.28 90) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 5597a030-6a4a-4857-b0b4-e514929be391)
     (property "Reference" "R25" (at 120.65 76.684 90)
@@ -1184,7 +1184,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 35.56 106.68 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 35.56 106.68 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 608a0a78-62bd-4717-b01a-e7fe14f7bb7e)
     (property "Reference" "#PWR024" (at 35.56 113.03 0)
@@ -1212,7 +1212,7 @@
     )
   )
 
-  (symbol (lib_id "Project:R") (at 116.84 85.09 0) (unit 1)
+  (symbol (lib_id "Library:R") (at 116.84 85.09 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 689ec42f-560f-47b1-bf02-bab9ddba09d1)
     (property "Reference" "R25" (at 118.618 84.066 0)
@@ -1244,7 +1244,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 80.01 128.27 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 80.01 128.27 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 6c401785-679b-48d8-b2ad-b5eeb749fc11)
     (property "Reference" "#PWR023" (at 80.01 134.62 0)
@@ -1272,7 +1272,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 176.53 104.14 270) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 176.53 104.14 270) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 704bce38-1f48-4b5f-b427-34e07d83f811)
     (property "Reference" "#PWR023" (at 170.18 104.14 0)
@@ -1300,7 +1300,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 116.84 88.9 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 116.84 88.9 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 717525c3-8725-4bd5-9c4a-4a411c6518c2)
     (property "Reference" "#PWR023" (at 116.84 95.25 0)
@@ -1328,7 +1328,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 189.23 111.76 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 189.23 111.76 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 71a3ad42-8599-4450-be76-7100da1051c6)
     (property "Reference" "#PWR023" (at 189.23 118.11 0)
@@ -1356,7 +1356,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 74.93 128.27 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 74.93 128.27 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 910a52b5-70b9-46b7-9cc6-261620e31b79)
     (property "Reference" "#PWR022" (at 74.93 134.62 0)
@@ -1384,7 +1384,7 @@
     )
   )
 
-  (symbol (lib_id "Connector:TestPoint") (at 35.56 151.13 270) (unit 1)
+  (symbol (lib_id "Library:TestPoint") (at 35.56 151.13 270) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 94f2df12-969a-4198-b194-6e351cc1ff21)
     (property "Reference" "TP2" (at 40.259 150.106 90)
@@ -1409,7 +1409,7 @@
     )
   )
 
-  (symbol (lib_id "Project:MCP2515") (at 143.51 111.76 0) (unit 1)
+  (symbol (lib_id "Library:MCP2515") (at 143.51 111.76 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid a3718042-22d6-440e-83a5-10530fe1ae00)
     (property "Reference" "U9" (at 145.4659 90.4 0)
@@ -1457,7 +1457,7 @@
     )
   )
 
-  (symbol (lib_id "Project:R") (at 209.55 101.6 0) (unit 1)
+  (symbol (lib_id "Library:R") (at 209.55 101.6 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid b1513656-6422-4652-b17a-132a841a8531)
     (property "Reference" "R34" (at 211.328 100.576 0)
@@ -1486,7 +1486,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 45.72 72.39 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 45.72 72.39 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid ca4c0306-1577-4721-bd6f-96324e7ba0d4)
     (property "Reference" "#PWR027" (at 45.72 78.74 0)
@@ -1514,7 +1514,7 @@
     )
   )
 
-  (symbol (lib_id "Project:R") (at 35.56 95.25 0) (unit 1)
+  (symbol (lib_id "Library:R") (at 35.56 95.25 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid cd386dbe-ed4b-4f95-9979-c453647f95be)
     (property "Reference" "R25" (at 37.338 94.226 0)
@@ -1546,7 +1546,7 @@
     )
   )
 
-  (symbol (lib_id "Project:R") (at 35.56 102.87 0) (unit 1)
+  (symbol (lib_id "Library:R") (at 35.56 102.87 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid db619ed4-cab3-4f49-98da-7b94f24b5d71)
     (property "Reference" "R26" (at 37.338 101.846 0)
@@ -1578,7 +1578,7 @@
     )
   )
 
-  (symbol (lib_id "Project:AVR64EA28") (at 77.47 102.87 0) (unit 1)
+  (symbol (lib_id "Library:AVR64EA28") (at 77.47 102.87 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid f59f6245-371e-4066-9c45-71c2bfee2d6a)
     (property "Reference" "U7" (at 81.9659 74.382 0)

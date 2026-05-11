@@ -250,7 +250,7 @@
         )
       )
     )
-    (symbol "power:GNDREF" (power) (pin_names (offset 0)) (in_bom yes) (on_board yes)
+    (symbol "Library:GNDREF" (power) (pin_names (offset 0)) (in_bom yes) (on_board yes)
       (property "Reference" "#PWR" (at 0 -6.35 0)
         (effects (font (size 1.27 1.27)) hide)
       )
@@ -466,7 +466,7 @@
     (uuid f4a6cd5e-e47c-4369-834b-2f6258727ec2)
   )
 
-  (symbol (lib_id "power:GNDREF") (at 162.56 113.03 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 162.56 113.03 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 0422be80-5039-45b9-a827-5d1d65839a70)
     (property "Reference" "#PWR020" (at 162.56 119.38 0)
@@ -526,7 +526,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 119.38 91.44 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 119.38 91.44 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 1602e704-c9a2-453d-b8d6-d6b349ae6e8e)
     (property "Reference" "#PWR012" (at 119.38 97.79 0)
@@ -586,7 +586,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 123.19 106.68 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 123.19 106.68 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 33b13cec-f758-45b7-9bed-12ec9c096088)
     (property "Reference" "#PWR013" (at 123.19 113.03 0)
@@ -722,7 +722,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 200.66 92.71 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 200.66 92.71 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 69893337-40c9-4053-9ef3-a5615cf60476)
     (property "Reference" "#PWR020" (at 200.66 99.06 0)
@@ -823,7 +823,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 142.24 110.49 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 142.24 110.49 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 99e0aa37-baa2-465d-947c-976bc7f5c3e4)
     (property "Reference" "#PWR017" (at 142.24 116.84 0)
@@ -883,7 +883,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 113.03 106.68 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 113.03 106.68 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid dac1b044-ad18-42ff-98d2-24a3b0e4685d)
     (property "Reference" "#PWR011" (at 113.03 113.03 0)
@@ -990,7 +990,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 184.15 102.87 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 184.15 102.87 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid eda37b89-c282-4b60-b0cd-578ede31c2bb)
     (property "Reference" "#PWR025" (at 184.15 109.22 0)
