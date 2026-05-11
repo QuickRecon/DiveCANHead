@@ -33,6 +33,7 @@ target_sources(app PRIVATE
     src/oxygen_cell_channels.c
     src/consensus_subscriber.c
     src/calibration.c
+    src/hw_version.c
     src/power_math.c
     src/power_management.c
 )

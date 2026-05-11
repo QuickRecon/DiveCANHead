@@ -31,20 +31,20 @@
 	gpio_keys {
 		compatible = "gpio-keys";
 
-		/* Hardware version detection */
-		ver_det_1: ver_det_1 {
-			gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
-		};
-		ver_det_2: ver_det_2 {
-			gpios = <&gpioc 9 GPIO_ACTIVE_HIGH>;
-		};
-		ver_det_3: ver_det_3 {
-			gpios = <&gpioc 10 GPIO_ACTIVE_HIGH>;
-		};
-
 		can_silent: can_silent {
 			gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>;
 		};
+	};
+
+	/* Hardware version detection — halts with blink code on mismatch.
+	 * JR2: all three pins wired to ground → expected [0, 0, 0] */
+	hw_version: hw-version {
+		compatible = "quickrecon,hw-version";
+		detect-gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>,
+			       <&gpioc 9 GPIO_ACTIVE_HIGH>,
+			       <&gpioc 10 GPIO_ACTIVE_HIGH>;
+		expected-pattern = <0 0 0>;
+		error-led-gpios = <&gpiob 0 GPIO_ACTIVE_HIGH>;
 	};
 
 	solenoids: solenoids {
