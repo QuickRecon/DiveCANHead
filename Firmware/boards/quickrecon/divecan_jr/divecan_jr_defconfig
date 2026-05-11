@@ -36,6 +36,9 @@ CONFIG_SPI_NOR_SFDP_RUNTIME=y
 # Counter (solenoid deadman timer)
 CONFIG_COUNTER=y
 
+# Regulator (VBUS power rail control)
+CONFIG_REGULATOR=y
+
 # Watchdog
 CONFIG_WATCHDOG=y
 

@@ -1,0 +1,108 @@
+description: |
+  QuickRecon power management subsystem.
+
+  Describes the board's power topology — which power sources exist, how VBUS
+  is controlled, and which ADC channels monitor voltages. Optional properties
+  allow the same driver to support boards with different power architectures
+  (e.g. single-source Jr vs dual-source Rev2).
+
+  Example (Jr — single battery, simple VBUS on/off):
+
+    vbus_reg: vbus-regulator {
+        compatible = "regulator-fixed";
+        regulator-name = "vbus";
+        enable-gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>;
+        regulator-boot-on;
+    };
+
+    power: power-subsystem {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&vbus_reg>;
+        battery-sense-io-channels = <&adc1 4>;
+        battery-divider-ratio = <7250>;
+        can-enable-gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
+        can-shutdown-gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;
+    };
+
+compatible: "quickrecon,power-subsystem"
+
+properties:
+  vbus-supply:
+    type: phandle
+    required: true
+    description: |
+      Phandle to the VBUS rail regulator device (typically regulator-fixed).
+      Used for regulator_enable/disable calls to control the peripheral bus.
+
+  battery-sense-io-channels:
+    type: phandle-array
+    required: true
+    description: ADC channel for battery voltage sensing (through resistor divider).
+
+  battery-divider-ratio:
+    type: int
+    required: true
+    description: |
+      Resistor divider ratio in milli-units (e.g. 7250 for a 7.25x divider).
+      The raw ADC voltage is multiplied by this value / 1000 to get actual
+      battery voltage.
+
+  can-enable-gpios:
+    type: phandle-array
+    description: |
+      CAN bus active indicator input. When active, the DiveCAN bus is
+      powered and the dive computer is communicating. Used for wake/sleep
+      decisions and bus-active detection.
+
+  can-shutdown-gpios:
+    type: phandle-array
+    description: CAN transceiver power/shutdown control output.
+
+  # ---- Rev2 only (optional) ----
+
+  bus-select-gpios:
+    type: phandle-array
+    description: |
+      VBUS power mux select lines [sel1, sel2]. Two GPIOs that form a 2-bit
+      selector controlling which power source feeds VBUS:
+        00 = battery only
+        01 = battery then CAN fallback
+        10 = CAN only
+        11 = off (shutdown)
+      Only present on boards with dual power sources.
+
+  battery-enable-gpios:
+    type: phandle-array
+    description: |
+      Battery regulator enable output. On boards where the battery path has
+      a separate enable (Rev2), this GPIO controls it independently of the
+      VBUS regulator. On Jr, the battery regulator IS the VBUS regulator
+      (modeled via vbus-supply).
+
+  vcc-source-gpios:
+    type: phandle-array
+    description: |
+      VCC rail source indicator input (HIGH = battery, LOW = CAN).
+      Read-only — hardware determines VCC source.
+
+  vbus-source-gpios:
+    type: phandle-array
+    description: |
+      VBUS rail source indicator input (HIGH = battery, LOW = CAN).
+      Read-only — reflects which source the mux selected.
+
+  vbus-sense-io-channels:
+    type: phandle-array
+    description: ADC channel for VBUS voltage sensing (through resistor divider).
+
+  vbus-divider-ratio:
+    type: int
+    description: VBUS resistor divider ratio in milli-units.
+
+  can-sense-io-channels:
+    type: phandle-array
+    description: ADC channel for CAN bus voltage sensing (through resistor divider).
+
+  can-divider-ratio:
+    type: int
+    description: CAN bus voltage resistor divider ratio in milli-units.

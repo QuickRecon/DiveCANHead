@@ -110,12 +110,37 @@ Defined channels:
 | `chan_consensus` | `ConsensusMsg_t` | Consensus subscriber | Future: PPO2 TX, PID control |
 | `chan_cal_request` | `CalRequest_t` | Future: DiveCAN/UDS | Calibration listener |
 | `chan_cal_response` | `CalResponse_t` | Calibration thread | Future: DiveCAN/UDS |
+| `chan_battery_status` | `BatteryStatus_t` | Battery monitor thread | Future: DiveCAN status composer |
 
 `chan_cell_2` and `chan_cell_3` are conditionally compiled based on `CONFIG_CELL_COUNT`.
 
 Future channels (to be added as modules are ported):
 - Setpoint
 - Atmospheric pressure
+
+## Power Management
+
+### DTS-driven topology
+
+The power subsystem uses a custom DT binding (`quickrecon,power-subsystem`) that describes the board's power architecture. Required properties specify the VBUS regulator and battery voltage ADC. Optional properties describe Rev2-specific features (bus-select mux, dual source indicators, VBUS/CAN voltage sensing).
+
+VBUS is modeled as a `regulator-fixed` device — the idiomatic Zephyr way to represent a power rail with an enable GPIO. Application code uses `regulator_enable()` / `regulator_disable()` through the standard API.
+
+### Jr power topology
+
+- **Single power source**: Battery only
+- **VCC**: Always on, powers MCU
+- **VBUS**: Powers everything else (ADCs, CAN, UARTs, SPI flash). Controlled via `regulator-fixed` with `battery_en` (PA1) as the enable GPIO
+- **Voltage monitoring**: Battery voltage via ADC1 channel 4 (PC3) through 7.25x resistor divider. VCC readable via internal VBAT sensor (shared regulator with VBUS)
+- **On Jr, VBUS == VCC** since they share a regulator. `power_get_vbus_voltage()` returns the battery voltage as the best available VBUS estimate
+
+### Battery monitoring
+
+A dedicated thread samples battery voltage every 2 seconds and publishes `BatteryStatus_t` to `chan_battery_status`. The low-battery threshold is set by the `BATTERY_CHEMISTRY_*` Kconfig choice. Consumers (future DiveCAN status composer) subscribe for `DIVECAN_ERR_BAT_LOW` reporting.
+
+### Shutdown
+
+On boot, the firmware waits 1 second for peripherals to stabilize, then checks if the CAN bus is active. If not, it shuts down immediately — this guards against transient power glitches ("blip on in the dead of night"). The CAN bus can also command a shutdown via DiveCAN protocol (future).
 
 ## Hardening
 
@@ -126,6 +151,7 @@ Future channels (to be added as modules are ported):
 | FORTIFY_SOURCE | `CONFIG_FORTIFY_SOURCE_RUN_TIME` | Compiler |
 | Assertions in production | `CONFIG_ASSERT=y` | Runtime |
 | `-Werror` | `CONFIG_COMPILER_WARNINGS_AS_ERRORS` | Build |
+| GCC static analyzer (`-fanalyzer`) | `ZEPHYR_SCA_VARIANT=gcc` in CMakeLists.txt | Build |
 | `-fharden-compares`, `-fharden-conditional-branches` | CMakeLists.txt (app only) | Compiler |
 | `-ftrivial-auto-var-init=pattern` | CMakeLists.txt (app only) | Compiler |
 | `-fstack-clash-protection` | CMakeLists.txt (app only) | Compiler |
@@ -154,10 +180,11 @@ west build -d build -b divecan_jr/stm32l431xx . \
 Firmware/
 ├── boards/quickrecon/divecan_jr/   Board definition (DTS, defconfig, Kconfig)
 ├── drivers/solenoid/               Zephyr device driver (DT-driven)
-├── dts/bindings/                   Custom devicetree bindings
+├── dts/bindings/                   Custom DT bindings (solenoid, power-subsystem)
 ├── include/
 │   ├── calibration.h               Calibration public API
 │   ├── errors.h                    Error handling tiers 2-4, OpError_t enum
+│   ├── power_management.h          Power API, BatteryStatus_t, voltage thresholds
 │   ├── oxygen_cell_channels.h      zbus channel declarations (cell, consensus, cal)
 │   ├── oxygen_cell_math.h          Pure math: consensus voting, ADC conversion, cal math
 │   ├── oxygen_cell_types.h         Shared types: OxygenCellMsg_t, ConsensusMsg_t, etc.
@@ -174,13 +201,16 @@ Firmware/
 │   ├── oxygen_cell_diveo2.c        DiveO2 cell: UART async, parse, zbus publish
 │   ├── oxygen_cell_math.c          Pure consensus + calibration math (no OS deps)
 │   ├── oxygen_cell_o2s.c           O2S cell: UART async half-duplex, parse, zbus publish
+│   ├── power_management.c          Power driver: regulator, ADC voltage, shutdown
+│   ├── power_math.c                Pure power math (voltage conversion, thresholds)
 │   ├── runtime_settings.c          NVS load/save/validate, topology BUILD_ASSERTs
 │   └── Kconfig                     Product topology, solenoid roles, runtime defaults
 ├── tests/
 │   ├── analog_math/                ADC conversion + PPO2 calculation (17 tests)
 │   ├── calibration_math/           Cal coefficient math + bug regressions (20 tests)
 │   ├── consensus/                  Voting algorithm + permutations (19 tests)
-│   └── parsers/                    DiveO2 + O2S UART protocol parsing (76 tests)
+│   ├── parsers/                    DiveO2 + O2S UART protocol parsing (76 tests)
+│   └── power/                      Voltage math, GPIO mux, regulator, CAN detect (19 tests)
 ├── variants/
 │   └── dev_full.conf               All-features development variant
 ├── scripts/

@@ -1,0 +1,21 @@
+/ {
+	/* Emulated VBUS regulator using a GPIO on the emulated controller */
+	test_vbus_reg: test-vbus-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "test-vbus";
+		enable-gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+	};
+
+	/* Power subsystem under test — uses emulated GPIO and ADC */
+	power: test-power-subsystem {
+		compatible = "quickrecon,power-subsystem";
+		vbus-supply = <&test_vbus_reg>;
+		battery-sense-io-channels = <&adc0 0>;
+		battery-divider-ratio = <7250>;
+		can-enable-gpios = <&gpio0 1 GPIO_ACTIVE_LOW>;
+		can-shutdown-gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+		/* Rev2-style bus select mux for mux logic testing */
+		bus-select-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>,
+				   <&gpio0 4 GPIO_ACTIVE_HIGH>;
+	};
+};

@@ -11,6 +11,7 @@
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_math.h"
+#include "power_management.h"
 #include "errors.h"
 
 #include <string.h>
@@ -310,6 +311,18 @@ static void diveo2_broadcast(struct diveo2_cell_state *cell)
 		/* If we've taken longer than timeout, fail the cell, no lies here */
 		cell->status = CELL_FAIL;
 		OP_ERROR(OP_ERR_OUT_OF_DATE);
+	}
+
+	/* Check our vbus voltage to ensure we're above 3.25V.
+	 * Digital cells need a stable power supply — below this voltage
+	 * the cell readings are unreliable. On Jr, VBUS == battery voltage. */
+	static const float VBUS_MIN_VOLTAGE = 3.25f;
+	float vbus_v = power_get_vbus_voltage(POWER_DEVICE);
+
+	if ((vbus_v > 0.0f) && (vbus_v < VBUS_MIN_VOLTAGE)) {
+		cell->status = CELL_FAIL;
+		OP_ERROR_DETAIL(OP_ERR_VBUS_UNDERVOLT,
+				(uint32_t)(vbus_v * 1000.0f));
 	}
 
 	/* Our coefficient is simply the float needed to make the current sample

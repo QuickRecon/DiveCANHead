@@ -56,3 +56,28 @@ Review these periodically to see if Zephyr upstream fixes or alternative approac
 **Possible alternatives to investigate**:
 - `-Wno-error=stack-protector` (demote to warning instead of removing)
 - Check if `CONFIG_LOG_MODE_DEFERRED` vs `IMMEDIATE` affects stack allocation patterns
+
+---
+
+## 4. GCC analyzer false positives demoted from `-Werror`
+
+**What changed**: With `ZEPHYR_SCA_VARIANT=gcc` enabled in `CMakeLists.txt`, twelve `-Wanalyzer-*` categories are demoted from errors to warnings via `GCC_SCA_OPTS`. Without this list, the build fails on vendor code we do not own.
+
+**Why**: Zephyr's GCC SCA hook (`zephyr/cmake/sca/gcc/sca.cmake`) appends `-fanalyzer` to the global `TOOLCHAIN_C_FLAGS`, so the analyzer runs on every translation unit — including vendor STM32 HAL and Zephyr kernel/subsys code. Combined with Zephyr's global `-Werror` (`CONFIG_COMPILER_WARNINGS_AS_ERRORS`), any analyzer false positive in a TU we cannot modify breaks the build. Observed false positives on a clean build of `dev_full.conf`:
+
+- 13 × `-Wanalyzer-shift-count-overflow` in `stm32l4xx_ll_gpio.h` — the analyzer cannot reason about CMSIS `__CLZ`/`__RBIT` inline assembly, so it assumes `POSITION_VAL` can return values up to 128.
+- 2 × `-Wanalyzer-malloc-leak` inside Zephyr subsystems.
+- 1 × `-Wanalyzer-use-of-uninitialized-value` inside Zephyr.
+
+Zero analyzer findings currently land in `Firmware/src`, `Firmware/drivers`, or `Firmware/include`, so the analyzer still acts as a hard gate on our own code via `-Werror=...` for any analyzer category we have not explicitly demoted.
+
+**What still provides coverage**:
+- The analyzer still runs on every TU and prints warnings — they are visible in build output, just not fatal.
+- Any *new* `-Wanalyzer-*` category not in the suppression list is still promoted to an error, so future analyzer additions in GCC will break the build until triaged.
+- Categories we suppress globally are still surfaced as warnings; CI log review can catch real regressions in application code.
+
+**Possible alternatives to investigate**:
+- Per-file pragmas around the offending HAL includes (fragile across HAL versions).
+- Patch `zephyr/cmake/sca/gcc/sca.cmake` to apply `-fanalyzer` only to the `app` target — would lose coverage of our `drivers/solenoid/` and any future custom drivers unless extended.
+- Upstream-fix CMSIS so `__CLZ` is annotated with `__attribute__((const))` and a value-range hint, eliminating the shift-count false positive.
+- Re-test after each Zephyr SDK / GCC upgrade — analyzer improvements may let us shrink the suppression list.

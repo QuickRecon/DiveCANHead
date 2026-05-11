@@ -1,0 +1,5 @@
+mainmenu "power management test"
+
+rsource "../../src/Kconfig"
+
+source "Kconfig.zephyr"

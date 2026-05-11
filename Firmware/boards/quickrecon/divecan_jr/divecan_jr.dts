@@ -42,20 +42,9 @@
 			gpios = <&gpioc 10 GPIO_ACTIVE_HIGH>;
 		};
 
-		/* Power status inputs */
-		vcc_stat: vcc_stat {
-			gpios = <&gpioa 4 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
-		};
-		bus_stat: bus_stat {
-			gpios = <&gpioa 7 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
-		};
-		can_en: can_en {
-			gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
-		};
 		can_silent: can_silent {
 			gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>;
 		};
-
 	};
 
 	solenoids: solenoids {
@@ -68,21 +57,27 @@
 		max-on-time-us = <100000>;
 	};
 
-	power_ctrl {
-		compatible = "gpio-leds";
+	/* ---- Power subsystem ----
+	 * Jr: single battery source, VBUS on/off only.
+	 * battery_en (PA1) controls the VBUS regulator.
+	 * Battery voltage sensed on ADC1 channel 4 (PC3) through 7.25x divider.
+	 * VCC monitored via internal VBAT sensor (shared regulator with VBUS).
+	 */
+	vbus_reg: vbus-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vbus";
+		enable-gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>;
+		regulator-boot-on;
+		startup-delay-us = <5000>;
+	};
 
-		battery_en: battery_en {
-			gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>;
-		};
-		bus_sel1: bus_sel1 {
-			gpios = <&gpioa 6 GPIO_ACTIVE_HIGH>;
-		};
-		bus_sel2: bus_sel2 {
-			gpios = <&gpioa 5 GPIO_ACTIVE_HIGH>;
-		};
-		can_shdn: can_shdn {
-			gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;
-		};
+	power: power-subsystem {
+		compatible = "quickrecon,power-subsystem";
+		vbus-supply = <&vbus_reg>;
+		battery-sense-io-channels = <&adc1 4>;
+		battery-divider-ratio = <7250>;
+		can-enable-gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
+		can-shutdown-gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;
 	};
 };
 
@@ -251,6 +246,13 @@
 	pinctrl-names = "default";
 	st,adc-clock-source = "SYNC";
 	st,adc-prescaler = <4>;
+	status = "okay";
+};
+
+/* ---- VBAT sensor — VCC monitoring via STM32 internal 1/3 divider ----
+ * On Jr, VBUS and VCC share a regulator so this also reflects VBUS voltage.
+ */
+&vbat {
 	status = "okay";
 };
 
