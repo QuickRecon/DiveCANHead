@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiveCAN Protocol Test UI</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: #00bcd4;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+
+    h2 {
+      color: #00bcd4;
+      margin-top: 20px;
+      margin-bottom: 10px;
+      font-size: 18px;
+      border-bottom: 2px solid #00bcd4;
+      padding-bottom: 5px;
+    }
+
+    .section {
+      background: #2a2a2a;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      border: 1px solid #3a3a3a;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    button {
+      background: #00bcd4;
+      color: #1a1a1a;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #00acc1;
+    }
+
+    button:disabled {
+      background: #555;
+      color: #ccc;
+      cursor: not-allowed;
+    }
+
+    button.danger {
+      background: #f44336;
+    }
+
+    button.danger:hover {
+      background: #d32f2f;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 5px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+
+    .status.connected {
+      background: #4caf50;
+      color: #1a1a1a;
+    }
+
+    .status.disconnected {
+      background: #757575;
+      color: white;
+    }
+
+    input[type="text"] {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      color: #e0e0e0;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 14px;
+      width: 200px;
+    }
+
+    label {
+      display: inline-block;
+      margin-right: 10px;
+      font-weight: bold;
+    }
+
+    .response-box, .log-box {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .log-entry {
+      margin-bottom: 5px;
+      padding: 5px;
+      border-left: 3px solid #00bcd4;
+      padding-left: 8px;
+    }
+
+    .log-entry.error {
+      border-left-color: #f44336;
+      color: #f44336;
+    }
+
+    .log-entry.tx {
+      border-left-color: #4caf50;
+      color: #4caf50;
+    }
+
+    .log-entry.rx {
+      border-left-color: #00bcd4;
+      color: #00bcd4;
+    }
+
+    .log-entry .timestamp {
+      color: #888;
+      font-size: 10px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background: #1a1a1a;
+      border: 1px solid #555;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #00bcd4;
+      transition: width 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1a1a1a;
+      font-weight: bold;
+      font-size: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    @media (max-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+
+    .warning {
+      background: #ff9800;
+      color: #1a1a1a;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      font-weight: bold;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid #3a3a3a;
+    }
+
+    .setting-label {
+      flex: 1;
+      font-weight: 500;
+      color: #e0e0e0;
+    }
+
+    .setting-row input {
+      width: 100px;
+      background: #1a1a1a;
+      border: 1px solid #555;
+      color: #e0e0e0;
+      padding: 6px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .setting-row input:disabled {
+      background: #333;
+      color: #aaa;
+    }
+
+    .setting-row button {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .setting-info {
+      font-size: 11px;
+      color: #888;
+      margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🤿 DiveCAN Protocol Test UI</h1>
+
+  <div class="warning" id="browserWarning" style="display: none;">
+    ⚠️ Web Bluetooth not available. Please use Chrome, Edge, or Opera browser.
+  </div>
+
+  <!-- Connection Section -->
+  <div class="section">
+    <h2>Connection</h2>
+    <div class="button-group">
+      <button id="scanButton">Scan & Connect</button>
+      <button id="disconnectButton" disabled>Disconnect</button>
+      <span class="status disconnected" id="connectionStatus">Disconnected</span>
+    </div>
+    <div id="deviceInfo" style="margin-top: 10px; font-size: 14px; color: #888;"></div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="section">
+    <h2>Quick Actions</h2>
+    <div class="button-group">
+      <button id="readSerial" disabled>Read Serial Number</button>
+      <button id="readModel" disabled>Read Model</button>
+    </div>
+  </div>
+
+  <!-- Bus Enumeration -->
+  <div class="section">
+    <h2>Bus Devices</h2>
+    <div class="button-group">
+      <button id="enumDevices" disabled>Enumerate Devices</button>
+    </div>
+    <div id="deviceList" style="margin-top: 10px; font-family: monospace; font-size: 14px;"></div>
+  </div>
+
+  <!-- Target Selection -->
+  <div class="section">
+    <h2>Target Device</h2>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <select id="targetSelect" disabled style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px; border-radius: 4px; font-size: 14px;">
+        <option value="128">Controller (0x80)</option>
+        <option value="4">SOLO (0x04)</option>
+        <option value="2">HUD (0x02)</option>
+        <option value="1">NERD (0x01)</option>
+      </select>
+      <span id="currentTarget" style="color: #00bcd4; font-weight: bold;">Target: 0x80</span>
+    </div>
+  </div>
+
+  <!-- Device Settings -->
+  <div class="section">
+    <h2>Device Settings</h2>
+    <div class="button-group">
+      <button id="enumSettings" disabled>Enumerate Settings</button>
+    </div>
+    <div id="settingsList" style="margin-top: 10px;"></div>
+  </div>
+
+  <!-- Raw Command -->
+  <div class="section">
+    <h2>Raw UDS Command</h2>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <label for="didInput">DID (hex):</label>
+      <input type="text" id="didInput" placeholder="F000" disabled>
+      <button id="sendRawRead" disabled>Send Read</button>
+    </div>
+  </div>
+
+  <!-- Response Display -->
+  <div class="section">
+    <h2>Response</h2>
+    <div class="response-box" id="responseData">No response yet...</div>
+    <div class="progress-bar" id="progressBar" style="display: none;">
+      <div class="progress-fill" id="progressFill" style="width: 0%;">0%</div>
+    </div>
+  </div>
+
+  <!-- Packet Inspector -->
+  <div class="section">
+    <h2>Packet Log</h2>
+    <button id="clearLog" style="margin-bottom: 10px;">Clear Log</button>
+    <div class="log-box" id="packetLog"></div>
+  </div>
+
+  <!-- Log Messages Grid -->
+  <div class="grid">
+    <div class="section">
+      <h2>Debug Log (0xA100)</h2>
+      <button id="clearLogMessages" style="margin-bottom: 10px;">Clear</button>
+      <div class="log-box" id="logMessages" style="max-height: 200px;"></div>
+    </div>
+
+    <div class="section">
+      <h2>Event Data (0xA200)</h2>
+      <button id="clearEventMessages" style="margin-bottom: 10px;">Clear</button>
+      <div class="log-box" id="eventMessages" style="max-height: 200px;"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { DeviceManager, ByteUtils } from '../src/index.js';
+
+    // Check browser support
+    const checkBrowserSupport = () => {
+      if (!navigator.bluetooth) {
+        document.getElementById('browserWarning').style.display = 'block';
+        return false;
+      }
+      return true;
+    };
+
+    // UI Elements
+    const elements = {
+      scanButton: document.getElementById('scanButton'),
+      disconnectButton: document.getElementById('disconnectButton'),
+      connectionStatus: document.getElementById('connectionStatus'),
+      deviceInfo: document.getElementById('deviceInfo'),
+      readSerial: document.getElementById('readSerial'),
+      readModel: document.getElementById('readModel'),
+      enumDevices: document.getElementById('enumDevices'),
+      deviceList: document.getElementById('deviceList'),
+      targetSelect: document.getElementById('targetSelect'),
+      currentTarget: document.getElementById('currentTarget'),
+      enumSettings: document.getElementById('enumSettings'),
+      settingsList: document.getElementById('settingsList'),
+      didInput: document.getElementById('didInput'),
+      sendRawRead: document.getElementById('sendRawRead'),
+      responseData: document.getElementById('responseData'),
+      packetLog: document.getElementById('packetLog'),
+      clearLog: document.getElementById('clearLog'),
+      progressBar: document.getElementById('progressBar'),
+      progressFill: document.getElementById('progressFill'),
+      logMessages: document.getElementById('logMessages'),
+      eventMessages: document.getElementById('eventMessages'),
+      clearLogMessages: document.getElementById('clearLogMessages'),
+      clearEventMessages: document.getElementById('clearEventMessages')
+    };
+
+    // State
+    let stack = null;
+    let deviceManager = null;
+    let currentDevice = null;
+
+    // Logger
+    const log = (message, type = 'debug') => {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+      elements.packetLog.appendChild(entry);
+      elements.packetLog.scrollTop = elements.packetLog.scrollHeight;
+
+      console.log(`[${type}] ${message}`);
+    };
+
+    // Update UI state
+    const updateUIState = (connected) => {
+      elements.scanButton.disabled = connected;
+      elements.disconnectButton.disabled = !connected;
+      elements.readSerial.disabled = !connected;
+      elements.readModel.disabled = !connected;
+      elements.enumDevices.disabled = !connected;
+      elements.targetSelect.disabled = !connected;
+      elements.enumSettings.disabled = !connected;
+      elements.didInput.disabled = !connected;
+      elements.sendRawRead.disabled = !connected;
+
+      if (connected) {
+        elements.connectionStatus.textContent = 'Connected';
+        elements.connectionStatus.className = 'status connected';
+      } else {
+        elements.connectionStatus.textContent = 'Disconnected';
+        elements.connectionStatus.className = 'status disconnected';
+        elements.deviceInfo.textContent = '';
+        elements.deviceList.textContent = '';
+      }
+    };
+
+    // Update progress bar
+    const updateProgress = (percent) => {
+      if (percent > 0) {
+        elements.progressBar.style.display = 'block';
+        elements.progressFill.style.width = percent + '%';
+        elements.progressFill.textContent = Math.round(percent) + '%';
+      } else {
+        elements.progressBar.style.display = 'none';
+      }
+    };
+
+    // Display response
+    const displayResponse = (data, label = 'Response') => {
+      let formatted;
+      if (typeof data === 'string') {
+        formatted = data;
+      } else if (data instanceof Uint8Array || Array.isArray(data)) {
+        const hex = ByteUtils.toHexString(data);
+        const ascii = Array.from(data)
+          .map(b => (b >= 32 && b < 127) ? String.fromCodePoint(b) : '.')
+          .join('');
+        formatted = `${label}:\nHex: ${hex}\nASCII: ${ascii}\nLength: ${data.length} bytes`;
+      } else {
+        formatted = JSON.stringify(data, null, 2);
+      }
+      elements.responseData.textContent = formatted;
+    };
+
+    // Scan and connect
+    elements.scanButton.addEventListener('click', async () => {
+      try {
+        log('Starting device scan...', 'info');
+        deviceManager = new DeviceManager();
+        const devices = await deviceManager.scan();
+
+        if (devices.length === 0) {
+          log('No devices found or scan canceled', 'error');
+          return;
+        }
+
+        currentDevice = devices[0].device;
+        log(`Found device: ${devices[0].name}`, 'info');
+        elements.deviceInfo.textContent = `Device: ${devices[0].name} (${devices[0].id})`;
+
+        // Create stack and connect
+        stack = deviceManager.createStack(currentDevice);
+
+        // Set up event handlers
+        stack.on('connected', () => {
+          log('Protocol stack connected', 'info');
+          updateUIState(true);
+        });
+
+        stack.on('disconnected', () => {
+          log('Protocol stack disconnected', 'info');
+          updateUIState(false);
+        });
+
+        stack.on('frame', ({ layer, frame }) => {
+          log(`TX [${layer}]: ${ByteUtils.toHexString(frame)}`, 'tx');
+        });
+
+        stack.on('data', ({ layer, data }) => {
+          log(`RX [${layer}]: ${ByteUtils.toHexString(data)}`, 'rx');
+        });
+
+        stack.on('error', (error) => {
+          log(`Error: ${error.message}`, 'error');
+          displayResponse(`Error: ${error.message}\n${error.stack || ''}`, 'Error');
+        });
+
+        stack.on('progress', ({ current, total, percent }) => {
+          updateProgress(percent);
+        });
+
+        // Log message listener
+        stack.on('logMessage', (message) => {
+          const timestamp = new Date().toLocaleTimeString();
+          const entry = document.createElement('div');
+          entry.className = 'log-entry';
+          entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+          elements.logMessages.appendChild(entry);
+          elements.logMessages.scrollTop = elements.logMessages.scrollHeight;
+        });
+
+        // Event message listener
+        stack.on('eventMessage', (message) => {
+          const timestamp = new Date().toLocaleTimeString();
+          const entry = document.createElement('div');
+          entry.className = 'log-entry rx';
+          entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+          elements.eventMessages.appendChild(entry);
+          elements.eventMessages.scrollTop = elements.eventMessages.scrollHeight;
+        });
+
+        // Connect
+        log('Connecting to device...', 'info');
+        await stack.connect(currentDevice);
+
+      } catch (error) {
+        log(`Connection failed: ${error.message}`, 'error');
+        displayResponse(`Error: ${error.message}`, 'Error');
+      }
+    });
+
+    // Disconnect
+    elements.disconnectButton.addEventListener('click', async () => {
+      if (stack) {
+        await stack.disconnect();
+        stack = null;
+        currentDevice = null;
+      }
+    });
+
+    // Quick actions
+    elements.readSerial.addEventListener('click', async () => {
+      try {
+        log('Reading serial number...', 'info');
+        const serial = await stack.readSerialNumber();
+        log(`Serial number: ${serial}`, 'info');
+        displayResponse(`Serial Number: ${serial}`, 'Success');
+      } catch (error) {
+        log(`Read failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    elements.readModel.addEventListener('click', async () => {
+      try {
+        log('Reading model...', 'info');
+        const model = await stack.readModel();
+        log(`Model: ${model}`, 'info');
+        displayResponse(`Model: ${model}`, 'Success');
+      } catch (error) {
+        log(`Read failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    // Bus enumeration
+    elements.enumDevices.addEventListener('click', async () => {
+      try {
+        log('Enumerating bus devices...', 'info');
+        const deviceIds = await stack.enumerateBusDevices();
+        log(`Found ${deviceIds.length} device(s): ${deviceIds.map(id => '0x' + id.toString(16).padStart(2, '0')).join(', ')}`, 'info');
+
+        // Get names for each device
+        let deviceListHtml = '';
+        for (const id of deviceIds) {
+          try {
+            const name = await stack.getDeviceName(id);
+            deviceListHtml += `<div>0x${id.toString(16).padStart(2, '0')} - ${name}</div>`;
+            log(`Device 0x${id.toString(16).padStart(2, '0')}: ${name}`, 'info');
+          } catch (e) {
+            deviceListHtml += `<div>0x${id.toString(16).padStart(2, '0')} - (unknown)</div>`;
+            log(`Device 0x${id.toString(16).padStart(2, '0')}: failed to get name - ${e.message}`, 'error');
+          }
+        }
+        elements.deviceList.innerHTML = deviceListHtml || 'No devices found';
+        displayResponse(`Found ${deviceIds.length} device(s)`, 'Success');
+      } catch (error) {
+        log(`Enumeration failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+        elements.deviceList.textContent = 'Enumeration failed';
+      }
+    });
+
+    // Target selection
+    elements.targetSelect.addEventListener('change', () => {
+      const address = Number.parseInt(elements.targetSelect.value);
+      stack.setTargetAddress(address);
+      elements.currentTarget.textContent = `Target: 0x${address.toString(16).padStart(2, '0')}`;
+      log(`Target changed to 0x${address.toString(16).padStart(2, '0')}`, 'info');
+      // Clear settings list when target changes
+      elements.settingsList.innerHTML = '';
+    });
+
+    // Settings enumeration
+    elements.enumSettings.addEventListener('click', async () => {
+      try {
+        log('Enumerating settings...', 'info');
+        elements.settingsList.innerHTML = '<div style="color: #888;">Loading settings...</div>';
+        const settings = await stack.enumerateSettings();
+        log(`Found ${settings.length} setting(s)`, 'info');
+        displaySettings(settings);
+        displayResponse(`Found ${settings.length} setting(s)`, 'Success');
+      } catch (error) {
+        log(`Settings enumeration failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+        elements.settingsList.innerHTML = '<div style="color: #f44336;">Failed to enumerate settings</div>';
+      }
+    });
+
+    // Display settings with read/write/save controls
+    function displaySettings(settings) {
+      elements.settingsList.innerHTML = '';
+
+      if (settings.length === 0) {
+        elements.settingsList.innerHTML = '<div style="color: #888;">No settings found</div>';
+        return;
+      }
+
+      settings.forEach(setting => {
+        const row = document.createElement('div');
+        row.className = 'setting-row';
+
+        const kindLabel = setting.kind === 0 ? 'NUM' : 'TXT';
+        const editableIcon = setting.editable ? '' : ' (read-only)';
+
+        row.innerHTML = `
+          <span class="setting-label">${setting.label}${editableIcon}</span>
+          <span class="setting-info">[${kindLabel}, max: ${setting.maxValue}]</span>
+          <input type="number"
+                 id="setting-${setting.index}"
+                 value="${setting.currentValue}"
+                 min="0"
+                 max="${setting.maxValue}"
+                 ${setting.editable ? '' : 'disabled'}>
+          <button onclick="readSetting(${setting.index})">Read</button>
+          <button onclick="writeSetting(${setting.index})" ${setting.editable ? '' : 'disabled'}>Write</button>
+          <button onclick="saveSetting(${setting.index})" ${setting.editable ? '' : 'disabled'}>Save</button>
+        `;
+        elements.settingsList.appendChild(row);
+      });
+    }
+
+    // Read single setting value (make global for onclick)
+    globalThis.readSetting = async function(index) {
+      try {
+        log(`Reading setting ${index}...`, 'info');
+        const value = await stack.getSettingValue(index);
+        document.getElementById(`setting-${index}`).value = value.currentValue.toString();
+        log(`Setting ${index}: ${value.currentValue}`, 'info');
+        displayResponse(`Setting ${index}: ${value.currentValue} (max: ${value.maxValue})`, 'Success');
+      } catch (error) {
+        log(`Error reading setting ${index}: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    };
+
+    // Write setting value (temporary, not saved to flash)
+    globalThis.writeSetting = async function(index) {
+      try {
+        const inputValue = document.getElementById(`setting-${index}`).value;
+        const value = BigInt(inputValue);
+        log(`Writing ${value} to setting ${index}...`, 'info');
+        await stack.writeSettingValue(index, value);
+        log(`Written ${value} to setting ${index}`, 'info');
+        displayResponse(`Written ${value} to setting ${index} (not saved to flash)`, 'Success');
+      } catch (error) {
+        log(`Error writing setting ${index}: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    };
+
+    // Save setting to flash (persistent)
+    globalThis.saveSetting = async function(index) {
+      try {
+        const inputValue = document.getElementById(`setting-${index}`).value;
+        const value = BigInt(inputValue);
+        log(`Saving ${value} to setting ${index} (flash)...`, 'info');
+        await stack.saveSetting(index, value);
+        log(`Saved ${value} to setting ${index} (flash)`, 'info');
+        displayResponse(`Saved ${value} to setting ${index} (persisted to flash)`, 'Success');
+      } catch (error) {
+        log(`Error saving setting ${index}: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    };
+
+    // Raw command
+    elements.sendRawRead.addEventListener('click', async () => {
+      try {
+        const didHex = elements.didInput.value.trim();
+        if (!didHex) {
+          alert('Please enter a DID');
+          return;
+        }
+
+        const did = Number.parseInt(didHex, 16);
+        if (Number.isNaN(did)) {
+          alert('Invalid DID (must be hex)');
+          return;
+        }
+
+        log(`Reading DID 0x${did.toString(16).padStart(4, '0')}...`, 'info');
+        const data = await stack.uds.readDataByIdentifier(did);
+        log(`Read ${data.length} bytes`, 'info');
+        displayResponse(data, `DID 0x${did.toString(16).padStart(4, '0')}`);
+      } catch (error) {
+        log(`Read failed: ${error.message}`, 'error');
+        displayResponse(error.message, 'Error');
+      }
+    });
+
+    // Clear log
+    elements.clearLog.addEventListener('click', () => {
+      elements.packetLog.innerHTML = '';
+    });
+
+    // Clear log messages
+    elements.clearLogMessages.addEventListener('click', () => {
+      elements.logMessages.innerHTML = '';
+    });
+
+    // Clear event messages
+    elements.clearEventMessages.addEventListener('click', () => {
+      elements.eventMessages.innerHTML = '';
+    });
+
+    // Initialize
+    if (checkBrowserSupport()) {
+      log('DiveCAN Protocol Test UI ready', 'info');
+      updateUIState(false);
+    }
+  </script>
+</body>
+</html>

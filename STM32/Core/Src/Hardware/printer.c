@@ -9,6 +9,7 @@
 #include "../common.h"
 #include "log.h"
 #include "fatfs.h"
+#include "../DiveCAN/uds/uds_log_push.h"
 
 #define PRINTQUEUE_LENGTH 10
 
@@ -96,10 +97,16 @@ void PrinterTask(void *arg)
         /* Wait until there is an item in the queue, if there is then print it over the canbus */
         if (pdTRUE == xQueueReceive(*printQueue, &printItem, TIMEOUT_4S_TICKS))
         {
+            uint16_t msgLen = (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH);
+
             if (taskParams->printEnable)
             {
-                txLogText(DIVECAN_SOLO, printItem.string, (uint16_t)strnlen(printItem.string, LOG_LINE_LENGTH));
+                txLogText(DIVECAN_SOLO, printItem.string, msgLen);
             }
+
+            /* Also push via UDS if enabled (non-blocking, best-effort) */
+            (void)UDS_LogPush_SendLogMessage(printItem.string, msgLen);
+
             LogMsg(printItem.string);
         }
     }

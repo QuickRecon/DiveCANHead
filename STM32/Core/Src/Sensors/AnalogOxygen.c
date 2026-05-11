@@ -30,12 +30,38 @@ static AnalogOxygenState_t *getCellState(uint8_t cellNum)
 static const CalCoeff_t ANALOG_CAL_UPPER = 0.02625f;
 static const CalCoeff_t ANALOG_CAL_LOWER = 0.01428f;
 
-static const CalCoeff_t COUNTS_TO_MILLIS = ((0.256f * 100000.0f) / 32767.0f);
+/* ADC counts to millivolts conversion factor */
+/* ADC range 0.256V full scale at 100000 micro-mV/mV, 15-bit (32767) resolution */
+#define COUNTS_TO_MILLIS ((0.256f * 100000.0f) / 32767.0f)
 
 /* Time to wait on the cell to do things*/
-const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000; /* Milliseconds, how long before the cell *definitely* isn't coming back to us*/
+const uint16_t ANALOG_RESPONSE_TIMEOUT = 1000U; /* Milliseconds, how long before the cell *definitely* isn't coming back to us*/
 
 void analogProcessor(void *arg);
+
+/**
+ * @brief Convert ADC counts to millivolts
+ * @param adcCounts Raw ADC count value
+ * @return Millivolt value (in micro-millivolts units, i.e. mV * 100)
+ * @note Non-static to allow unit testing via extern declaration
+ */
+Millivolts_t Analog_CountsToMillivolts(int16_t adcCounts)
+{
+    Numeric_t adcMillis = ((Numeric_t)abs(adcCounts)) * COUNTS_TO_MILLIS;
+    return (Millivolts_t)round(adcMillis);
+}
+
+/**
+ * @brief Calculate calibrated PPO2 from ADC counts
+ * @param adcCounts Raw ADC count value
+ * @param calibrationCoefficient Cell calibration coefficient
+ * @return Calibrated PPO2 value (0-255 scale)
+ * @note Non-static to allow unit testing via extern declaration
+ */
+CalCoeff_t Analog_CalculatePPO2(int16_t adcCounts, CalCoeff_t calibrationCoefficient)
+{
+    return (CalCoeff_t)abs(adcCounts) * COUNTS_TO_MILLIS * calibrationCoefficient;
+}
 
 AnalogOxygenState_t *Analog_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
@@ -112,8 +138,7 @@ ShortMillivolts_t AnalogCalibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2
     }
     AnalogReadCalibration(handle);
 
-    if (((handle->calibrationCoefficient - newCal) > EPS) ||
-        ((handle->calibrationCoefficient - newCal) < -EPS))
+    if (fabs(handle->calibrationCoefficient - newCal) > EPS)
     {
         handle->status = CELL_FAIL;
         *calError = CAL_MISMATCH_ERR;
@@ -126,8 +151,7 @@ ShortMillivolts_t AnalogCalibrate(AnalogOxygenState_t *handle, const PPO2_t PPO2
 Millivolts_t getMillivolts(const AnalogOxygenState_t *const handle)
 {
     int16_t adcCounts = GetInputValue(handle->adcInputIndex);
-    Numeric_t adcMillis = ((Numeric_t)abs(adcCounts)) * COUNTS_TO_MILLIS;
-    return (Millivolts_t)round(adcMillis);
+    return Analog_CountsToMillivolts(adcCounts);
 }
 
 void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
@@ -139,8 +163,6 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
 
     uint32_t ticks = HAL_GetTick();
     handle->lastCounts = GetInputValue(handle->adcInputIndex);
-
-    AnalogCellSample(handle->cellNumber, handle->lastCounts);
 
     if (ticks < ticksOfLastPPO2)
     { /* If we've overflowed then reset the tick counters to zero and carry forth, worst case we get a blip of old PPO2 for a sec before another 50 days of timing out*/
@@ -160,7 +182,7 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
         /* Only get here if we're not timed out and need cal, don't really need to do anything*/
     }
 
-    CalCoeff_t calPPO2 = (CalCoeff_t)abs(handle->lastCounts) * COUNTS_TO_MILLIS * handle->calibrationCoefficient;
+    CalCoeff_t calPPO2 = Analog_CalculatePPO2(handle->lastCounts, handle->calibrationCoefficient);
     if (calPPO2 > 255.0f)
     {
         handle->status = CELL_FAIL;
@@ -168,13 +190,18 @@ void Analog_broadcastPPO2(AnalogOxygenState_t *handle)
     }
     PPO2 = (PPO2_t)(calPPO2);
 
+    Millivolts_t millivolts = getMillivolts(handle);
+
+    /* Log the cell sample with calculated PPO2 and millivolts */
+    AnalogCellSample(handle->cellNumber, calPPO2 / 100.0f, handle->lastCounts, millivolts, handle->status);
+
     /* Lodge the cell data*/
     OxygenCell_t cellData = {
         .cellNumber = handle->cellNumber,
         .type = CELL_ANALOG,
         .ppo2 = PPO2,
         .precisionPPO2 = calPPO2 / 100.0f,
-        .millivolts = getMillivolts(handle),
+        .millivolts = millivolts,
         .status = handle->status,
         .dataTime = HAL_GetTick()};
 

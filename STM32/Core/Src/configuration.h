@@ -45,16 +45,16 @@ extern "C"
 
     static const Configuration_t DEFAULT_CONFIGURATION = {
         .firmwareVersion = FIRMWARE_VERSION,
-        .cell1 = CELL_ANALOG,
+        .cell1 = CELL_DIVEO2,
         .cell2 = CELL_ANALOG,
         .cell3 = CELL_ANALOG,
         .powerMode = MODE_BATTERY,
-        .calibrationMode = CAL_TOTAL_ABSOLUTE,
+        .calibrationMode = CAL_SOLENOID_FLUSH,
         .enableUartPrinting = false,
-        .dischargeThresholdMode = V_THRESHOLD_9V,
+        .dischargeThresholdMode = V_THRESHOLD_LI2S,
         .ppo2controlMode = PPO2CONTROL_MK15,
         .extendedMessages = false,
-        .ppo2DepthCompensation = true};
+        .ppo2DepthCompensation = false};
 
 #ifdef __cplusplus
 }

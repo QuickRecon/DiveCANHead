@@ -43,6 +43,7 @@ extern "C"
     } HW_DetectionPin_t;
 
     HW_Version_t get_hardware_version(void);
+    const char *getCommitHash(void);
 
 #ifdef __cplusplus
 }

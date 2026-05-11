@@ -11,7 +11,8 @@ extern "C"
 #endif
     /* Value types */
     typedef uint8_t PPO2_t;
-    typedef float Numeric_t; /* A generic numeric type for when we want to do floating point calculations, for easy choosing between size of floats */
+    typedef float PrecisionPPO2_t; /* Float-precision PPO2 in bar (for telemetry/logging, vs uint8 centibar for protocol) */
+    typedef float Numeric_t;       /* A generic numeric type for when we want to do floating point calculations, for easy choosing between size of floats */
     typedef uint8_t FO2_t;
     typedef uint16_t Millivolts_t;
     typedef uint8_t ShortMillivolts_t;
@@ -20,6 +21,7 @@ extern "C"
     typedef float ADCV_t;
     typedef uint32_t Timestamp_t; /* Internal tick count used for tracking timeouts */
     typedef double PIDNumeric_t;
+    typedef float PIDHalfNumeric_t; /* Float32 PID value for serialization (vs double for calculation) */
     typedef float Percent_t;
     typedef unsigned long RuntimeCounter_t;
 
@@ -36,16 +38,34 @@ extern "C"
     static const TickType_t TIMEOUT_25S_TICKS = pdMS_TO_TICKS(25000);
 
     /* Handy consts */
-    static const uint32_t BYTE_WIDTH = 8;      /* Bitshift operations */
-    static const uint32_t TWO_BYTE_WIDTH = 16;      /* Bitshift operations */
-    static const uint32_t THREE_BYTE_WIDTH = 24;      /* Bitshift operations */
-    static const uint32_t HALF_BYTE_WIDTH = 4; /* Bitshift operations */
-    static const CalCoeff_t EPS = 0.00001f;    /* Small value for float comparisons */
+    static const uint32_t BYTE_WIDTH = 8;        /* Bitshift operations */
+    static const uint32_t TWO_BYTE_WIDTH = 16;   /* Bitshift operations */
+    static const uint32_t THREE_BYTE_WIDTH = 24; /* Bitshift operations */
+    static const uint32_t FOUR_BYTE_WIDTH = 32;  /* Bitshift operations */
+    static const uint32_t FIVE_BYTE_WIDTH = 40;  /* Bitshift operations */
+    static const uint32_t SIX_BYTE_WIDTH = 48;   /* Bitshift operations */
+    static const uint32_t SEVEN_BYTE_WIDTH = 56; /* Bitshift operations */
+    static const uint32_t HALF_BYTE_WIDTH = 4;   /* Bitshift operations */
+    static const uint8_t BYTE_MASK = 0xFFU;      /* Mask for extracting a byte */
+    static const CalCoeff_t EPS = 0.00001f;      /* Small value for float comparisons */
+
+    /* CAN frame byte indices (8-byte frame structure) */
+    static const uint8_t CAN_DATA_BYTE_0 = 0U;
+    static const uint8_t CAN_DATA_BYTE_1 = 1U;
+    static const uint8_t CAN_DATA_BYTE_2 = 2U;
+    static const uint8_t CAN_DATA_BYTE_3 = 3U;
+    static const uint8_t CAN_DATA_BYTE_4 = 4U;
+    static const uint8_t CAN_DATA_BYTE_5 = 5U;
+    static const uint8_t CAN_DATA_BYTE_6 = 6U;
+    static const uint8_t CAN_DATA_BYTE_7 = 7U;
+    static const uint8_t CAN_DATA_FRAME_SIZE = 8U;
 
     /* PPO2 values */
     static const PPO2_t PPO2_FAIL = 0xFF;
     static const uint8_t MAX_DEVIATION = 15; /* Max allowable deviation is 0.15 bar PPO2 */
 
+    /* fO2 limits */
+    static const FO2_t FO2_MAX_PERCENT = 100U; /**< Maximum valid fO2 percentage */
     typedef enum
     {
         CELL_OK,
@@ -61,11 +81,16 @@ extern "C"
         CELL_O2S = 2
     } CellType_t;
 
-    /* Provide names for the cell numbers */
-    static const uint8_t CELL_1 = 0;
-    static const uint8_t CELL_2 = 1;
-    static const uint8_t CELL_3 = 2;
-    static const uint8_t CELL_COUNT = 3;
+/* Provide names for the cell numbers , #defines to allow for use in case statments*/
+#define CELL_1 0
+#define CELL_2 1
+#define CELL_3 2
+
+    /* Cell validity bit masks (for cellsValid bitmask) */
+    static const uint8_t CELL_1_MASK = 0x01U;
+    static const uint8_t CELL_2_MASK = 0x02U;
+    static const uint8_t CELL_3_MASK = 0x04U;
+    static const uint8_t CELL_COUNT = 3U;
 
     /* Define some priority levels */
     /* The general rules are that data consumers should have a higher priority than data sources

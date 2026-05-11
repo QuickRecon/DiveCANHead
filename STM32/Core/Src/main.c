@@ -398,6 +398,9 @@ int main(void)
   serial_printf("Last fatal error: %d\r\n", getLastFatalError());
   serial_printf("Configuration: 0x%lx\r\n", getConfigBytes(&deviceConfig));
 
+  /* Set configuration in the binary state vector accumulator for UDS log push */
+  Log_SetConfig(getConfigBytes(&deviceConfig));
+
   /* Set our power bus */
   SetVBusMode(deviceConfig.powerMode);
   HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
@@ -561,28 +564,28 @@ void SystemClock_Config(void)
 static void MX_NVIC_Init(void)
 {
   /* SDMMC1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(SDMMC1_IRQn, IRQ_PRIORITY_DEFAULT, 0);
+  HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
   /* I2C1_EV_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(I2C1_EV_IRQn, IRQ_PRIORITY_DEFAULT, 0);
+  HAL_NVIC_SetPriority(I2C1_EV_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
   /* EXTI15_10_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, IRQ_PRIORITY_DEFAULT, 0);
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
   /* CAN1_RX0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(CAN1_RX0_IRQn, IRQ_PRIORITY_DEFAULT, 0);
+  HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
   /* CAN1_RX1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(CAN1_RX1_IRQn, IRQ_PRIORITY_DEFAULT, 0);
+  HAL_NVIC_SetPriority(CAN1_RX1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(CAN1_RX1_IRQn);
   /* USART2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART2_IRQn, IRQ_PRIORITY_DEFAULT, 0);
+  HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
   /* USART3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART3_IRQn, IRQ_PRIORITY_DEFAULT, 0);
+  HAL_NVIC_SetPriority(USART3_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(USART3_IRQn);
   /* USART1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART1_IRQn, IRQ_PRIORITY_DEFAULT, 0);
+  HAL_NVIC_SetPriority(USART1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(USART1_IRQn);
 }
 
@@ -681,7 +684,7 @@ static void MX_CAN1_Init(void)
   hcan1.Init.TimeTriggeredMode = DISABLE;
   hcan1.Init.AutoBusOff = ENABLE;
   hcan1.Init.AutoWakeUp = ENABLE;
-  hcan1.Init.AutoRetransmission = DISABLE;
+  hcan1.Init.AutoRetransmission = ENABLE;
   hcan1.Init.ReceiveFifoLocked = DISABLE;
   hcan1.Init.TransmitFifoPriority = DISABLE;
   if (HAL_CAN_Init(&hcan1) != HAL_OK)

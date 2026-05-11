@@ -11,7 +11,7 @@
 		(company "Aren Leishman")
 	)
 	(lib_symbols
-		(symbol "Jumper:SolderJumper_2_Open"
+		(symbol "Library:SolderJumper_2_Open"
 			(pin_names
 				(offset 0) hide)
 			(exclude_from_sim no)
@@ -750,7 +750,7 @@
 				)
 			)
 		)
-		(symbol "Regulator_Switching:LMR62014XMF"
+		(symbol "Library:LMR62014XMF"
 			(pin_names
 				(offset 0.254)
 			)
@@ -928,7 +928,7 @@
 				)
 			)
 		)
-		(symbol "power:GNDREF"
+		(symbol "Library:GNDREF"
 			(power)
 			(pin_names
 				(offset 0)
@@ -1552,7 +1552,7 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GNDREF")
+		(lib_id "Library:GNDREF")
 		(at 92.71 74.93 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -1849,7 +1849,7 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GNDREF")
+		(lib_id "Library:GNDREF")
 		(at 151.13 87.63 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -1915,7 +1915,7 @@
 		)
 	)
 	(symbol
-		(lib_id "Regulator_Switching:LMR62014XMF")
+		(lib_id "Library:LMR62014XMF")
 		(at 143.51 69.85 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -2082,7 +2082,7 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GNDREF")
+		(lib_id "Library:GNDREF")
 		(at 114.3 74.93 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -2303,7 +2303,7 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GNDREF")
+		(lib_id "Library:GNDREF")
 		(at 179.07 74.93 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -2368,7 +2368,7 @@
 		)
 	)
 	(symbol
-		(lib_id "Jumper:SolderJumper_2_Open")
+		(lib_id "Library:SolderJumper_2_Open")
 		(at 171.45 78.74 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -2590,7 +2590,7 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GNDREF")
+		(lib_id "Library:GNDREF")
 		(at 143.51 77.47 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -2890,7 +2890,7 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GNDREF")
+		(lib_id "Library:GNDREF")
 		(at 104.14 74.93 0)
 		(unit 1)
 		(exclude_from_sim no)

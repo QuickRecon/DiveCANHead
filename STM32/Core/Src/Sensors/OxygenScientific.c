@@ -12,15 +12,15 @@
 #include <math.h>
 
 /* Newline for terminating uart message*/
-static const uint8_t NEWLINE = 0x0A;
+#define NEWLINE 0x0AU
 
-static const uint32_t BAUD_RATE = 115200;
+static const uint32_t BAUD_RATE = 115200U;
 
-static const uint8_t ACK_LEN = 3;
+static const uint8_t ACK_LEN = 3U;
 
 /* Cell Commands*/
-static const char *const GET_OXY_COMMAND = "Mm";
-static const char *const GET_OXY_RESPONSE = "Mn";
+#define GET_OXY_COMMAND "Mm"
+#define GET_OXY_RESPONSE "Mn"
 
 /* If the value reported by the cell is more than 20% out then we need to get upset*/
 static const CalCoeff_t O2S_CAL_UPPER = 1.2f;
@@ -51,6 +51,101 @@ static OxygenScientificState_t *getCellState(uint8_t cellNum)
 
 static void decodeCellMessage(void *arg);
 static void sendCellCommand(const char *const commandStr, OxygenScientificState_t *cell);
+
+/**
+ * @brief Prepare message buffer for parsing by skipping leading junk
+ * @param rawBuffer Raw input buffer (may contain leading nulls/newlines)
+ * @param outBuffer Output buffer for cleaned message
+ * @param outBufferLen Size of output buffer
+ * @return Number of bytes skipped from start of rawBuffer
+ * @note Non-static to allow unit testing via extern declaration
+ */
+size_t O2S_PrepareMessageBuffer(const char *rawBuffer, char *outBuffer, size_t outBufferLen)
+{
+    size_t skipped = 0U;
+    if ((rawBuffer != NULL) && (outBuffer != NULL) && (outBufferLen > 0U))
+    {
+        /* Zero the output buffer first to ensure null termination */
+        (void)memset(outBuffer, 0, outBufferLen);
+
+        const char *msgBuf = rawBuffer;
+
+        /* Skip leading junk (nulls and newlines) */
+        while (((0 == msgBuf[0]) || (NEWLINE == msgBuf[0])) &&
+               (skipped < (outBufferLen - 1U)))
+        {
+            ++msgBuf;
+            ++skipped;
+        }
+
+        size_t copyLen = outBufferLen - 1U; /* Reserve space for null terminator */
+        (void)strncpy(outBuffer, msgBuf, copyLen);
+        outBuffer[outBufferLen - 1U] = '\0';
+        /* Strip trailing CR/LF */
+        outBuffer[strcspn(outBuffer, "\r\n")] = '\0';
+    }
+    else
+    {
+        if (outBuffer != NULL)
+        {
+            outBuffer[0] = '\0';
+        }
+    }
+    return skipped;
+}
+
+/**
+ * @brief Parse O2S response message (Mn:PPO2_value or Mm:PPO2_value)
+ * @param message Cleaned message buffer
+ * @param ppo2 Output: PPO2 value as float
+ * @return true if parsing succeeded, false otherwise
+ * @note Non-static to allow unit testing via extern declaration
+ */
+bool O2S_ParseResponse(const char *message, O2SNumeric_t *ppo2)
+{
+    bool success = false;
+
+    if ((message != NULL) && (ppo2 != NULL))
+    {
+        char msgCopy[O2S_RX_BUFFER_LENGTH];
+        (void)strncpy(msgCopy, message, sizeof(msgCopy) - 1U);
+        msgCopy[sizeof(msgCopy) - 1U] = '\0';
+
+        const char *const sep = ":";
+        char *saveptr = NULL;
+        const char *cmdName = strtok_r(msgCopy, sep, &saveptr);
+
+        if ((cmdName != NULL) &&
+            ((0 == strcmp(cmdName, GET_OXY_RESPONSE)) || (0 == strcmp(cmdName, GET_OXY_COMMAND))))
+        {
+            const char *ppo2Str = strtok_r(NULL, sep, &saveptr);
+            if (ppo2Str != NULL)
+            {
+                *ppo2 = strtof(ppo2Str, NULL);
+                success = true;
+            }
+            /* NULL ppo2Str means we got echo only - return false */
+        }
+    }
+    return success;
+}
+
+/**
+ * @brief Format command into TX buffer with LF terminator
+ * @param command Command string (e.g., "Mm")
+ * @param txBuf Output buffer for formatted command
+ * @param bufLen Size of output buffer
+ * @note Non-static to allow unit testing via extern declaration
+ */
+void O2S_FormatTxCommand(const char *command, uint8_t *txBuf, size_t bufLen)
+{
+    if ((command != NULL) && (txBuf != NULL) && (bufLen > 0U))
+    {
+        (void)memset(txBuf, 0, bufLen);
+        (void)strncpy((char *)txBuf, command, bufLen - 1U);
+        txBuf[strcspn((char *)txBuf, "\0")] = NEWLINE;
+    }
+}
 
 OxygenScientificState_t *O2S_InitCell(OxygenHandle_t *cell, QueueHandle_t outQueue)
 {
@@ -156,8 +251,7 @@ ShortMillivolts_t O2SCalibrate(OxygenScientificState_t *handle, const PPO2_t PPO
     }
     O2SReadCalibration(handle);
 
-    if (((handle->calibrationCoefficient - newCal) > EPS) ||
-        ((handle->calibrationCoefficient - newCal) < -EPS))
+    if (fabs(handle->calibrationCoefficient - newCal) > EPS)
     {
         handle->status = CELL_FAIL;
         *calError = CAL_MISMATCH_ERR;
@@ -248,60 +342,32 @@ static void decodeCellMessage(void *arg)
     {
         if (osFlagsErrorTimeout != osThreadFlagsWait(0x0001U, osFlagsWaitAny, TIMEOUT_1S_TICKS))
         {
-            char *msgBuf = cell->lastMessage;
-            uint32_t skipped = 0;
-            /* Scroll past any junk in the start of the buffer */
-            while (((0 == msgBuf[0]) || (NEWLINE == msgBuf[0])) &&
-                   (skipped < (O2S_RX_BUFFER_LENGTH - 1)))
-            {
-                ++msgBuf;
-                ++skipped;
-            }
-
             char msgArray[O2S_RX_BUFFER_LENGTH] = {0};
-            (void)strncpy(msgArray, msgBuf, O2S_RX_BUFFER_LENGTH - skipped);
+            (void)O2S_PrepareMessageBuffer(cell->lastMessage, msgArray, sizeof(msgArray));
 
-            msgBuf = msgArray;
+            serial_printf("O2S Cell %d Message: %s\r\n", cell->cellNumber, msgArray);
 
-            /* Null terminate the end newline, interferes with logging */
-            msgBuf[strcspn(msgBuf, "\r\n")] = 0;
-
-            serial_printf("O2S Cell %d Message: %s\r\n", cell->cellNumber, msgBuf);
-
-            const char *const sep = ":";
-            char *saveptr = NULL;
-            const char *const CMD_Name = strtok_r(msgBuf, sep, &saveptr);
-
-            /* Decode either a Mn or a Mm, we don't care about anything else yet*/
-            if ((0 == strcmp(CMD_Name, GET_OXY_RESPONSE)) || (0 == strcmp(CMD_Name, GET_OXY_COMMAND)))
+            O2SNumeric_t ppo2 = 0.0f;
+            if (O2S_ParseResponse(msgArray, &ppo2))
             {
-                const char *const PPO2_str = strtok_r(NULL, sep, &saveptr);
+                cell->cellSample = ppo2;
+                cell->status = CELL_OK;
 
-                if (PPO2_str == NULL)
-                {
-                    /* Do nothing, we just got our own echo */
-                }
-                else
-                {
-                    cell->cellSample = strtof(PPO2_str, NULL);
+                O2SCellSample(cell->cellNumber, cell->cellSample, cell->status);
 
-                    O2SCellSample(cell->cellNumber, cell->cellSample);
+                cell->ticksOfLastPPO2 = HAL_GetTick();
+                O2S_broadcastPPO2(cell);
 
-                    cell->status = CELL_OK;
-                    cell->ticksOfLastPPO2 = HAL_GetTick();
-                    O2S_broadcastPPO2(cell);
+                /* Ensure we don't sample more than once per second by waiting a second for the cell to reset itself */
+                (void)osDelay(TIMEOUT_500MS_TICKS);
 
-                    /* Ensure we don't sample more than once per second by waiting a second for the cell to reset itself */
-                    (void)osDelay(TIMEOUT_500MS_TICKS);
-
-                    sendCellCommand(GET_OXY_COMMAND, cell);
-                }
+                sendCellCommand(GET_OXY_COMMAND, cell);
             }
             else
             {
-                serial_printf("UNKNOWN CELL MESSSAGE: %s\r\n", msgBuf);
+                serial_printf("UNKNOWN CELL MESSAGE: %s\r\n", msgArray);
                 (void)osDelay(TIMEOUT_500MS_TICKS);
-                /* Not a command we care about*/
+                /* Not a command we care about, or echo only */
             }
         }
         else
@@ -387,11 +453,7 @@ static void sendCellCommand(const char *const commandStr, OxygenScientificState_
     }
     else
     {
-        (void)memset(cell->txBuf, 0, O2S_TX_BUFFER_LENGTH);
-
-        /* Copy the string into the all-zero buffer, then replace the first zero with a newline*/
-        (void)strncpy((char *)cell->txBuf, commandStr, O2S_TX_BUFFER_LENGTH - 1);
-        cell->txBuf[strcspn((char *)cell->txBuf, "\0")] = NEWLINE;
+        O2S_FormatTxCommand(commandStr, cell->txBuf, O2S_TX_BUFFER_LENGTH);
 
         /* Make sure our RX buffer is clear*/
         (void)memset(cell->lastMessage, 0, O2S_RX_BUFFER_LENGTH);

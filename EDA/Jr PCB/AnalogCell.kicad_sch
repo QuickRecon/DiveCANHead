@@ -5,7 +5,7 @@
   (paper "A4")
 
   (lib_symbols
-    (symbol "Connector:Conn_01x02_Pin" (pin_names (offset 1.016) hide) (in_bom yes) (on_board yes)
+    (symbol "Library:Conn_01x02_Pin" (pin_names (offset 1.016) hide) (in_bom yes) (on_board yes)
       (property "Reference" "J" (at 0 2.54 0)
         (effects (font (size 1.27 1.27)))
       )
@@ -65,7 +65,7 @@
         )
       )
     )
-    (symbol "Project:R" (pin_numbers hide) (pin_names (offset 0)) (in_bom yes) (on_board yes)
+    (symbol "Library:R" (pin_numbers hide) (pin_names (offset 0)) (in_bom yes) (on_board yes)
       (property "Reference" "R" (at 2.032 0 90)
         (effects (font (size 1.27 1.27)))
       )
@@ -104,7 +104,7 @@
         )
       )
     )
-    (symbol "power:GNDREF" (power) (pin_names (offset 0)) (in_bom yes) (on_board yes)
+    (symbol "Library:GNDREF" (power) (pin_names (offset 0)) (in_bom yes) (on_board yes)
       (property "Reference" "#PWR" (at 0 -6.35 0)
         (effects (font (size 1.27 1.27)) hide)
       )
@@ -218,7 +218,7 @@
     (uuid c3935a26-4728-4a7b-bce1-30e5e394e6db)
   )
 
-  (symbol (lib_id "Project:R") (at 156.21 123.19 270) (unit 1)
+  (symbol (lib_id "Library:R") (at 156.21 123.19 270) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 00a629b2-8bb4-423c-b110-83584d40feaf)
     (property "Reference" "R5" (at 156.21 125.738 90)
@@ -256,7 +256,7 @@
     )
   )
 
-  (symbol (lib_id "Connector:Conn_01x02_Pin") (at 134.62 119.38 0) (unit 1)
+  (symbol (lib_id "Library:Conn_01x02_Pin") (at 134.62 119.38 0) (unit 1)
     (in_bom no) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 22a3f19a-8196-4e83-9a70-8b63cb495217)
     (property "Reference" "J1" (at 135.255 115.7238 0)
@@ -291,7 +291,7 @@
     )
   )
 
-  (symbol (lib_id "power:GNDREF") (at 144.78 127 0) (unit 1)
+  (symbol (lib_id "Library:GNDREF") (at 144.78 127 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 60f83735-193e-4978-8e34-53270a60a218)
     (property "Reference" "#PWR01" (at 144.78 133.35 0)
@@ -325,7 +325,7 @@
     )
   )
 
-  (symbol (lib_id "Project:R") (at 144.78 123.19 180) (unit 1)
+  (symbol (lib_id "Library:R") (at 144.78 123.19 180) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 7fc338cf-51d7-4133-a0cd-5808a85247bf)
     (property "Reference" "R1" (at 146.558 122.166 0)
@@ -363,7 +363,7 @@
     )
   )
 
-  (symbol (lib_id "Project:R") (at 156.21 119.38 270) (unit 1)
+  (symbol (lib_id "Library:R") (at 156.21 119.38 270) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid ac943afe-25f2-4655-a239-d7486b9c4e5c)
     (property "Reference" "R4" (at 156.21 114.784 90)

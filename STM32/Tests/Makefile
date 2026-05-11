@@ -6,9 +6,13 @@ COMPONENT_NAME = DiveCAN
 
 #--- Inputs ----#
 PROJECT_HOME_DIR = .
-ROOT_DIR = $(shell dirname $(shell dirname $(CURDIR)))
-CPPUTEST_HOME = $(ROOT_DIR)/STM32/Tests/cpputest/
+ROOT_DIR = ../../
+CPPUTEST_HOME = ./cpputest/
 
+# Commit info used in menu test
+
+# Get the commit into a define
+COMMIT = \"$(shell git describe --always --dirty)\"
 
 # --- SRC_FILES and SRC_DIRS ---
 # Production code files are compiled and put into
@@ -20,15 +24,23 @@ CPPUTEST_HOME = $(ROOT_DIR)/STM32/Tests/cpputest/
 # SRC_FILES specifies individual production
 # code files.
 #
-# SRC_DIRS specifies directories containingSRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
+# SRC_DIRS specifies directories containing
 # production code C and CPP files.
 #
-SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/PPO2Control/PPO2Control.c 
-SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/PPO2Transmitter.c 
-SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Sensors/OxygenCell.c 
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/PPO2Control/PPO2Control.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/PPO2Transmitter.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Sensors/OxygenCell.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Sensors/DiveO2.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Sensors/OxygenScientific.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Sensors/AnalogOxygen.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/flash.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/Hardware/hw_version.c
 SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/configuration.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/isotp.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/isotp_tx_queue.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/uds.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/uds_settings.c
+SRC_FILES += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds/uds_state_did.c
 
 # --- TEST_SRC_FILES and TEST_SRC_DIRS ---
 # Test files are always included in the build.
@@ -63,6 +75,7 @@ INCLUDE_DIRS += $(CPPUTEST_HOME)/include
 INCLUDE_DIRS += $(CPPUTEST_HOME)/include/Platforms/Gcc
 INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Inc
 INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/DiveCAN
+INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/DiveCAN/uds
 INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/Hardware
 INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/Sensors
 INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/PPO2Control
@@ -84,7 +97,7 @@ INCLUDE_DIRS += $(ROOT_DIR)/STM32/Core/Src/
 #
 # This is kind of a kludge, but it causes the
 # .o and .d files to be put under objs.
-CPPUTEST_OBJS_DIR = test-obj/
+CPPUTEST_OBJS_DIR = test-obj/1/2
 
 CPPUTEST_LIB_DIR = test-lib
 
@@ -140,7 +153,8 @@ CPPUTEST_CPPFLAGS += -DRTOS_LOOP_FOREVER=false
 CPPUTEST_CXXFLAGS += -DRTOS_LOOP_FOREVER=false
 
 # Add TESTING flag for test builds
-CPPUTEST_CPPFLAGS += -DTESTING
+CPPUTEST_CPPFLAGS += -DTESTING \
+-DCOMMIT_HASH=$(COMMIT)
 
 # Coloroze output
 CPPUTEST_EXE_FLAGS += -c
@@ -150,6 +164,9 @@ CPPUTEST_USE_GCOV=Y
 # --- LD_LIBRARIES -- Additional needed libraries can be added here.
 # commented out example specifies math library
 #LD_LIBRARIES += -lm
+
+# Allow test mocks to override library symbols (e.g. getSetpoint in PPO2Transmitter_tests)
+CPPUTEST_LDFLAGS += -Wl,--allow-multiple-definition
 
 # Look at $(CPPUTEST_HOME)/build/MakefileWorker.mk for more controls
 LD_LIBRARIES = -L$(CPPUTEST_HOME)/lib -lCppUTest -lCppUTestExt

@@ -42,7 +42,7 @@ void setOptionBytes(void)
         optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nBOOT0_Pos, true);
 
         /* nSWBOOT0 true to take boot mode from pin */
-        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nSWBOOT0_Pos, true);
+        optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_nSWBOOT0_Pos, false);
 
         /* Reset SRAM2 on reset */
         optionBytes.USERConfig = set_bit(optionBytes.USERConfig, FLASH_OPTR_SRAM2_RST_Pos, false);
@@ -173,7 +173,7 @@ static bool WriteInt32(uint16_t addr, uint32_t value)
     EE_Status result = EE_OK;
     do
     {
-        if(false)/*if (checkCoreVoltage()) */ /* This causes spurious cal fails some of the time (voltage sag?)*/
+        if (false) /*if (checkCoreVoltage()) */ /* This causes spurious cal fails some of the time (voltage sag?)*/
         {
             NON_FATAL_ERROR(VCC_UNDER_VOLTAGE_ERR);
         }

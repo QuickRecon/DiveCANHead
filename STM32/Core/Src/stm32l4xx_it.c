@@ -146,20 +146,6 @@ void MemManage_Handler(void)
   }
 }
 
-void *__stack_chk_guard = (void *)0xdeadbeef;
-
-void __stack_chk_fail(void)
-{
-  /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-  FATAL_ERROR(STACK_GUARD_FERR);
-  /* USER CODE END MemoryManagement_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
-    (void)NVIC_SystemReset();
-    /* USER CODE END W1_MemoryManagement_IRQn 0 */
-  }
-}
 
 /**
  * @brief This function handles Prefetch fault, memory access fault.
@@ -395,4 +381,18 @@ void DMA2_Channel4_IRQHandler(void)
 
 /* USER CODE BEGIN 1 */
 
+void *__stack_chk_guard = (void *)0xdeadbeef;
+
+void __stack_chk_fail(void)
+{
+  /* USER CODE BEGIN MemoryManagement_IRQn 0 */
+  FATAL_ERROR(STACK_GUARD_FERR);
+  /* USER CODE END MemoryManagement_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
+    (void)NVIC_SystemReset();
+    /* USER CODE END W1_MemoryManagement_IRQn 0 */
+  }
+}
 /* USER CODE END 1 */

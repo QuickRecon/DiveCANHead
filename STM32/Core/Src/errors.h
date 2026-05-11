@@ -114,8 +114,44 @@ extern "C"
         /** @brief We tried to fire the solenoid but were inhibited */
         SOLENOID_DISABLED_ERR = 30,
 
+        /** @brief ISO-TP timeout waiting for FC or CF **/
+        ISOTP_TIMEOUT_ERR = 31,
+
+        /** @brief ISO-TP consecutive frame sequence number error **/
+        ISOTP_SEQ_ERR = 32,
+
+        /** @brief ISO-TP message exceeds ISOTP_MAX_PAYLOAD **/
+        ISOTP_OVERFLOW_ERR = 33,
+
+        /** @brief ISO-TP invalid state transition **/
+        ISOTP_STATE_ERR = 34,
+
+        /** @brief ISO-TP unsupported operation */
+        ISOTP_UNSUPPORTED_ERR = 35,
+
+        /** @brief ISO-TP RX aborted by other end */
+        ISOTP_RX_ABORT_ERR = 36,
+
+        /** @brief The ISOTP packet was malformed in some way */
+        ISOTP_MALFORMED_ERR = 37,
+
+        /** @brief A log message wasn't going to fit in the buffer */
+        LOG_MSG_TRUNCATED_ERR = 38,
+
+        /** @brief UDS sent a negative response - log NRC for debugging */
+        UDS_NRC_ERR = 39,
+
+        /** @brief UDS response buffer too full to fit data */
+        UDS_TOO_FULL = 40,
+
+        /** @brief An invalid operation was attempted **/
+        UDS_INVALID_OPTION_ERR = 41,
+
+        /** @brief A cell has reported an error **/
+        CELL_ERR = 42,
+
         /** @brief The largest nonfatal error code in use, we use this to manage the flash storage of the errors **/
-        MAX_ERR = SOLENOID_DISABLED_ERR
+        MAX_ERR = CELL_ERR
     } NonFatalError_t;
 
     void NonFatalError_Detail(NonFatalError_t error, uint32_t additionalInfo, uint32_t lineNumber, const char *fileName);

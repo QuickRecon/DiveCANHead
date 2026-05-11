@@ -1715,6 +1715,9 @@ extern "C"
   HAL_StatusTypeDef HAL_UART_AbortTransmit_IT(UART_HandleTypeDef *huart);
   HAL_StatusTypeDef HAL_UART_AbortReceive_IT(UART_HandleTypeDef *huart);
 
+  /* Extended UART receive with idle detection */
+  HAL_StatusTypeDef HAL_UARTEx_ReceiveToIdle_IT(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size);
+
   void HAL_UART_IRQHandler(UART_HandleTypeDef *huart);
   void HAL_UART_TxHalfCpltCallback(UART_HandleTypeDef *huart);
   void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);

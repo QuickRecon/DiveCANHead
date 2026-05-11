@@ -17,9 +17,9 @@ extern ADC_HandleTypeDef hadc1;
 
 extern CAN_HandleTypeDef hcan1;
 
-static const ADCV_t POWER_RESISTOR_DIVIDER = ((12.0f + 75.0f) / 12.0f);
-static const ADCV_t VBUS_RESISTOR_DIVIDER = ((10.0f + 100.0f) / 10.0f);
-static const ADCV_t VCC_RESISTOR_DIVIDER = (1.0f / 3.0f);
+static const ADCV_t POWER_RESISTOR_DIVIDER = (12.0f + 75.0f) / 12.0f;
+static const ADCV_t VBUS_RESISTOR_DIVIDER = (10.0f + 100.0f) / 10.0f;
+static const ADCV_t VCC_RESISTOR_DIVIDER = 3.0f;
 
 ADCV_t getThresholdVoltage(VoltageThreshold_t thresholdMode)
 {
@@ -41,7 +41,7 @@ void Shutdown(const Configuration_t *const config)
 {
     /* We've been asked to shut down cleanly, reset the last fatal reason so we're not logging upsets when we start back up again*/
     bool writeErrOk = SetFatalError(NONE_FERR);
-    if(!writeErrOk)
+    if (!writeErrOk)
     {
         serial_printf("Failed to reset last fatal error on shutdown");
     }
@@ -385,7 +385,7 @@ ADCV_t getVBusVoltage(void)
  */
 ADCV_t getVCCVoltage(void)
 {
-    return sampleADC(ADC_CHANNEL_18, VCC_RESISTOR_DIVIDER);
+    return sampleADC(ADC_CHANNEL_VBAT, VCC_RESISTOR_DIVIDER);
 }
 
 /**

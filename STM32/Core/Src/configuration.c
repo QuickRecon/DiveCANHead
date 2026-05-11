@@ -3,6 +3,7 @@
 #include "Hardware/flash.h"
 #include "common.h"
 #include "assert.h"
+#include "Hardware/printer.h"
 
 uint32_t getConfigBytes(const Configuration_t *const config)
 {
@@ -127,9 +128,11 @@ Configuration_t loadConfiguration(HW_Version_t hw_version)
  */
 bool saveConfiguration(const Configuration_t *const config, HW_Version_t hw_version)
 {
+    serial_printf("Trying to save configuration: %d\r\n", getConfigBytes(config));
     bool valid = ConfigurationValid(*config, hw_version);
     if (valid)
     {
+        serial_printf("Config valid. \r\n");
         valid = SetConfiguration(config);
 
         Configuration_t readbackConfig = {0};
@@ -141,6 +144,15 @@ bool saveConfiguration(const Configuration_t *const config, HW_Version_t hw_vers
         valid = valid && SetCalibration(CELL_1, 0);
         valid = valid && SetCalibration(CELL_2, 0);
         valid = valid && SetCalibration(CELL_3, 0);
+
+        if (valid)
+        {
+            serial_printf("Config saved successfully\r\n");
+        }
+        else
+        {
+            serial_printf("Config saved with errors\r\n");
+        }
     }
     return valid;
 }

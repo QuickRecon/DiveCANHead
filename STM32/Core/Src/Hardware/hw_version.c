@@ -1,6 +1,11 @@
 #include "hw_version.h"
 #include "../errors.h"
 
+// COMMIT_HASH is defined by the Makefile as a string literal
+#ifndef COMMIT_HASH
+#define COMMIT_HASH "unknown"
+#endif
+
 /* Known Versions */
 const uint16_t REV_2_2 = (uint16_t)(HW_PIN_HI_Z | (HW_PIN_HI_Z << 2) | (HW_PIN_HI_Z << 4));
 const uint16_t REV_2_3 = (uint16_t)(HW_PIN_LOW | (HW_PIN_HI_Z << 2) | (HW_PIN_HI_Z << 4));
@@ -93,4 +98,13 @@ HW_Version_t get_hardware_version(void)
         ret = HW_INVALID;
     }
     return ret;
+}
+
+/**
+ * @brief Get the firmware commit hash
+ * @return Pointer to commit hash string (defined by Makefile)
+ */
+const char *getCommitHash(void)
+{
+    return COMMIT_HASH;
 }

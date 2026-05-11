@@ -1,5 +1,6 @@
 #pragma once
 #include "../common.h"
+#include "../errors.h"
 #include "main.h"
 #include "cmsis_os.h"
 #include "stm32l4xx_hal_uart.h"

@@ -66,9 +66,15 @@ extern "C"
         return osOK;
     }
 
-    void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus)
+    PPO2_t getSetpoint(void)
     {
-        mock().actualCall("LogPPO2State").withParameter("c1_included", c1_included).withParameter("c2_included", c2_included).withParameter("c3_included", c3_included).withParameter("c1", c1).withParameter("c2", c2).withParameter("c3", c3).withParameter("consensus", consensus);
+        mock().actualCall("getSetpoint");
+        return 70; /* Default setpoint 0.70 bar */
+    }
+
+    void LogPPO2State(bool c1_included, bool c2_included, bool c3_included, PIDNumeric_t c1, PIDNumeric_t c2, PIDNumeric_t c3, PIDNumeric_t consensus, PIDNumeric_t setpoint)
+    {
+        mock().actualCall("LogPPO2State").withParameter("c1_included", c1_included).withParameter("c2_included", c2_included).withParameter("c3_included", c3_included).withParameter("c1", c1).withParameter("c2", c2).withParameter("c3", c3).withParameter("consensus", consensus).withParameter("setpoint", setpoint);
     }
 }
 
@@ -188,11 +194,12 @@ TEST(PPO2Transmitter, TaskTXsValues)
     mock().expectOneCall("osDelay");
     mock().expectOneCall("HAL_GetTick");
     mock().expectNCalls(3, "xQueuePeek");
+    mock().expectOneCall("getSetpoint");
 
     mock().expectOneCall("txPPO2").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", 95).withParameter("cell2", 105).withParameter("cell3", 100);
     mock().expectOneCall("txMillivolts").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", 11).withParameter("cell2", 12).withParameter("cell3", 13);
     mock().expectOneCall("txCellState").withParameter("deviceType", DIVECAN_SOLO).withParameter("cell1", true).withParameter("cell2", true).withParameter("cell3", true).withParameter("PPO2", 99);
-    mock().expectOneCall("LogPPO2State").withParameter("c1_included", true).withParameter("c2_included", true).withParameter("c3_included", true).withParameter("c1", 0.95f).withParameter("c2", 1.05f).withParameter("c3", 1.0f).withParameter("consensus", 1.0f);
+    mock().expectOneCall("LogPPO2State").withParameter("c1_included", true).withParameter("c2_included", true).withParameter("c3_included", true).withParameter("c1", 0.95f).withParameter("c2", 1.05f).withParameter("c3", 1.0f).withParameter("consensus", 1.0f).withParameter("setpoint", 0.7f);
     PPO2TXTask(&expectedParams);
 }
 

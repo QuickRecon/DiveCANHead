@@ -440,6 +440,13 @@ bool isCalibrating(void)
  */
 void RunCalibrationTask(DiveCANType_t deviceType, const FO2_t in_fO2, const uint16_t in_pressure_val, OxygenCalMethod_t calMethod, PowerSelectMode_t powerMode)
 {
+    /* Validate fO2 range before starting calibration */
+    if (in_fO2 > FO2_MAX_PERCENT)
+    {
+        NON_FATAL_ERROR_DETAIL(CAL_METHOD_ERR, in_fO2);
+        return;
+    }
+
     static CalParameters_t calParams;
 
     calParams.fO2 = in_fO2;

@@ -1,0 +1,2120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiveCANHead Diagnostics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.js"
+          integrity="sha256-OFBlarvcMZFB5ujOjqzeJiL8dnww4g2BcEryvzFZ+S0="
+          crossorigin="anonymous"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: #00bcd4;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+
+    h2 {
+      color: #00bcd4;
+      margin-top: 20px;
+      margin-bottom: 10px;
+      font-size: 18px;
+      border-bottom: 2px solid #00bcd4;
+      padding-bottom: 5px;
+    }
+
+    .section {
+      background: #2a2a2a;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      border: 1px solid #3a3a3a;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    button {
+      background: #00bcd4;
+      color: #1a1a1a;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #00acc1;
+    }
+
+    button:disabled {
+      background: #555;
+      color: #ccc;
+      cursor: not-allowed;
+    }
+
+    button.danger {
+      background: #f44336;
+    }
+
+    button.danger:hover {
+      background: #d32f2f;
+    }
+
+    button.small {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 5px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+
+    .status.connected {
+      background: #4caf50;
+      color: #1a1a1a;
+    }
+
+    .status.disconnected {
+      background: #757575;
+      color: white;
+    }
+
+    .status.streaming {
+      background: #00bcd4;
+      color: #1a1a1a;
+    }
+
+    .log-box {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .log-entry {
+      margin-bottom: 2px;
+      padding: 2px 5px;
+      border-left: 3px solid #00bcd4;
+      padding-left: 8px;
+    }
+
+    .log-entry.error {
+      border-left-color: #f44336;
+      color: #f44336;
+    }
+
+    .log-entry .timestamp {
+      color: #888;
+      font-size: 10px;
+    }
+
+    /* Cell panels grid */
+    .cell-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+    }
+
+    @media (max-width: 900px) {
+      .cell-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .cell-panel {
+      background: #252525;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .cell-header {
+      font-size: 14px;
+      font-weight: bold;
+      color: #888;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #3a3a3a;
+    }
+
+    .cell-header.active {
+      color: #00bcd4;
+    }
+
+    .cell-fields {
+      font-size: 13px;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      border-bottom: 1px solid #333;
+    }
+
+    .field-row:last-child {
+      border-bottom: none;
+    }
+
+    .field-label {
+      color: #888;
+      min-width: 70px;
+    }
+
+    .field-value {
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      min-width: 60px;
+    }
+
+    .field-value.stale {
+      color: #555;
+      font-style: italic;
+    }
+
+    .field-unit {
+      color: #666;
+      font-size: 11px;
+      min-width: 40px;
+    }
+
+    .field-inactive {
+      color: #555;
+      font-style: italic;
+      padding: 10px 0;
+    }
+
+    .plot-btn {
+      padding: 2px 6px;
+      font-size: 10px;
+      background: #3a3a3a;
+      min-width: 20px;
+    }
+
+    .plot-btn.plot-left {
+      margin-left: auto;
+      color: #00bcd4;
+      border: 1px solid #00bcd4;
+    }
+
+    .plot-btn.plot-left:hover {
+      background: #00bcd4;
+      color: #1a1a1a;
+    }
+
+    .plot-btn.plot-right {
+      color: #4caf50;
+      border: 1px solid #4caf50;
+    }
+
+    .plot-btn.plot-right:hover {
+      background: #4caf50;
+      color: #1a1a1a;
+    }
+
+    /* PID/Consensus section */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+    }
+
+    .summary-item {
+      text-align: center;
+      padding: 10px;
+      background: #252525;
+      border-radius: 5px;
+    }
+
+    .summary-label {
+      color: #888;
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+
+    .summary-value {
+      color: #00bcd4;
+      font-size: 18px;
+      font-weight: bold;
+      font-family: 'Courier New', monospace;
+    }
+
+    .summary-value.stale {
+      color: #555;
+      font-style: italic;
+    }
+
+    .summary-unit {
+      color: #666;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .summary-item .plot-buttons {
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+      justify-content: center;
+    }
+
+    .summary-item .plot-btn {
+      padding: 2px 8px;
+      font-size: 10px;
+      background: #3a3a3a;
+      border: 1px solid;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    .summary-item .plot-btn.plot-left {
+      color: #00bcd4;
+      border-color: #00bcd4;
+    }
+
+    .summary-item .plot-btn.plot-left:hover {
+      background: #00bcd4;
+      color: #1a1a1a;
+    }
+
+    .summary-item .plot-btn.plot-right {
+      color: #4caf50;
+      border-color: #4caf50;
+    }
+
+    .summary-item .plot-btn.plot-right:hover {
+      background: #4caf50;
+      color: #1a1a1a;
+    }
+
+    /* Configuration Settings */
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .config-field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #252525;
+      border-radius: 5px;
+      border-left: 3px solid transparent;
+    }
+
+    .config-field.readonly {
+      opacity: 0.7;
+    }
+
+    .config-field.config-dirty {
+      border-left-color: #ff9800;
+    }
+
+    .config-field label {
+      color: #888;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .config-field select {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      color: #e0e0e0;
+      padding: 5px 8px;
+      border-radius: 4px;
+      min-width: 120px;
+      font-size: 13px;
+    }
+
+    .config-field select:focus {
+      outline: none;
+      border-color: #00bcd4;
+    }
+
+    .config-field input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #00bcd4;
+      cursor: pointer;
+    }
+
+    .config-field .value-display {
+      color: #00bcd4;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .config-raw {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: #252525;
+      border-radius: 5px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .config-raw .label {
+      color: #888;
+    }
+
+    .config-raw .value {
+      color: #00bcd4;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+    }
+
+    .config-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .config-buttons button.danger {
+      background: #d32f2f;
+    }
+
+    .config-buttons button.danger:hover:not(:disabled) {
+      background: #f44336;
+    }
+
+    .config-status {
+      color: #888;
+      font-size: 13px;
+      margin-left: 10px;
+    }
+
+    /* Chart container */
+    .chart-container {
+      position: relative;
+      height: 300px;
+      background: #1a1a1a;
+      border-radius: 5px;
+      padding: 10px;
+    }
+
+    .chart-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .chart-controls label {
+      color: #888;
+      font-size: 13px;
+    }
+
+    .chart-controls select {
+      background: #1a1a1a;
+      border: 1px solid #555;
+      color: #e0e0e0;
+      padding: 5px 10px;
+      border-radius: 4px;
+    }
+
+    /* Axis controls */
+    .axis-controls {
+      display: flex;
+      gap: 20px;
+      justify-content: flex-start;
+    }
+
+    .axis-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .axis-group.axis-left label,
+    .axis-group.axis-left span {
+      color: #00bcd4;
+    }
+
+    .axis-group.axis-right label,
+    .axis-group.axis-right span {
+      color: #4caf50;
+    }
+
+    .axis-group span {
+      font-family: 'Courier New', monospace;
+      min-width: 80px;
+    }
+
+    /* Stats bar */
+    .stats-bar {
+      display: flex;
+      gap: 20px;
+      font-size: 13px;
+      color: #888;
+    }
+
+    .stats-bar span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .stats-bar .value {
+      color: #00bcd4;
+      font-family: 'Courier New', monospace;
+    }
+
+    .warning {
+      background: #ff9800;
+      color: #1a1a1a;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      font-weight: bold;
+    }
+
+    /* DID Subscription UI */
+    .did-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 8px;
+    }
+
+    .did-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: #252525;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .did-item input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #00bcd4;
+    }
+
+    .did-item .did-label {
+      color: #888;
+      min-width: 120px;
+    }
+
+    .did-item .did-value {
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      min-width: 80px;
+    }
+
+    /* Stale/unsubscribed values appear grey */
+    .did-item:not(.subscribed) .did-value {
+      color: #555;
+      font-style: italic;
+    }
+
+    .did-item .did-hex {
+      color: #555;
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .did-item.subscribed {
+      border-left: 3px solid #00bcd4;
+    }
+
+    .did-category {
+      color: #00bcd4;
+      font-size: 13px;
+      font-weight: bold;
+      margin-top: 12px;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #3a3a3a;
+    }
+
+    .did-category:first-child {
+      margin-top: 0;
+    }
+
+    .subscription-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      align-items: center;
+    }
+
+    .subscription-stats {
+      color: #888;
+      font-size: 13px;
+      margin-left: auto;
+    }
+
+    .subscription-stats .value {
+      color: #00bcd4;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Tab System */
+    .tab-bar {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0;
+      border-bottom: 2px solid #3a3a3a;
+    }
+
+    .tab-button {
+      background: #252525;
+      color: #a0a0a0;
+      border: none;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      margin-right: 2px;
+      transition: all 0.2s;
+    }
+
+    .tab-button:hover {
+      background: #333;
+      color: #e0e0e0;
+    }
+
+    .tab-button.active {
+      background: #2a2a2a;
+      color: #00bcd4;
+      border-bottom: 2px solid #00bcd4;
+      margin-bottom: -2px;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .tab-container {
+      background: #2a2a2a;
+      border-radius: 0 8px 8px 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      border: 1px solid #3a3a3a;
+      border-top: none;
+    }
+
+    /* Connection status with streaming indicator */
+    .status.connected.streaming {
+      background: #00bcd4;
+      color: #1a1a1a;
+    }
+
+    .status.connected.initializing {
+      background: #ff9800;
+      color: #1a1a1a;
+    }
+
+    /* Sections within tabs - no background since container provides it */
+    .tab-section {
+      margin-bottom: 20px;
+    }
+
+    .tab-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .tab-section h2 {
+      margin-top: 0;
+    }
+
+    /* Mobile responsive styles */
+    @media (max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+
+      .tab-bar {
+        flex-wrap: wrap;
+      }
+
+      .tab-button {
+        flex: 1 1 auto;
+        padding: 10px 12px;
+        font-size: 12px;
+        text-align: center;
+        min-width: 80px;
+      }
+
+      .tab-container {
+        padding: 10px;
+        border-radius: 0 0 8px 8px;
+      }
+
+      .button-group {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .button-group button {
+        width: 100%;
+      }
+
+      .button-group .status {
+        margin-left: 0;
+        margin-top: 10px;
+        text-align: center;
+      }
+
+      .cell-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .config-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .did-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .chart-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+
+      .axis-controls {
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .axis-group {
+        justify-content: space-between;
+        padding: 8px;
+        background: #252525;
+        border-radius: 4px;
+      }
+
+      .axis-group span {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .chart-container {
+        height: 250px;
+      }
+
+      .subscription-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+
+      .subscription-stats {
+        margin-left: 0;
+        text-align: center;
+      }
+
+      .config-buttons {
+        flex-direction: column;
+      }
+
+      .config-buttons button {
+        width: 100%;
+      }
+
+      .config-status {
+        margin-left: 0;
+        margin-top: 8px;
+        display: block;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>DiveCANHead Diagnostics</h1>
+
+  <div class="warning" id="browserWarning" style="display: none;">
+    Web Bluetooth not available. Please use Chrome, Edge, or Opera browser.
+  </div>
+
+  <!-- Connection Section -->
+  <div class="section">
+    <h2>Connection</h2>
+    <div class="button-group">
+      <button id="scanButton">Scan & Connect</button>
+      <button id="disconnectButton" disabled>Disconnect</button>
+      <span class="status disconnected" id="connectionStatus">Disconnected</span>
+      <span id="streamStatusDetail" style="color: #888; font-size: 13px;"></span>
+    </div>
+    <div id="deviceInfo" style="margin-top: 10px; font-size: 14px; color: #888;"></div>
+  </div>
+
+  <!-- Tab Navigation -->
+  <div class="tab-bar">
+    <button class="tab-button active" data-tab="main">Main</button>
+    <button class="tab-button" data-tab="control">Control</button>
+    <button class="tab-button" data-tab="config">Configuration</button>
+    <button class="tab-button" data-tab="dids">DID Subscriptions</button>
+  </div>
+
+  <!-- Tab Container -->
+  <div class="tab-container">
+    <!-- Main Tab -->
+    <div class="tab-content active" id="tab-main">
+      <!-- Cell Panels -->
+      <div class="tab-section">
+        <h2>Oxygen Cells</h2>
+    <div class="cell-grid">
+      <div class="cell-panel" id="cell-panel-0">
+        <div class="cell-header">Cell 0: --</div>
+        <div class="cell-fields">
+          <div class="field-inactive">(No data)</div>
+        </div>
+      </div>
+      <div class="cell-panel" id="cell-panel-1">
+        <div class="cell-header">Cell 1: --</div>
+        <div class="cell-fields">
+          <div class="field-inactive">(No data)</div>
+        </div>
+      </div>
+      <div class="cell-panel" id="cell-panel-2">
+        <div class="cell-header">Cell 2: --</div>
+        <div class="cell-fields">
+          <div class="field-inactive">(No data)</div>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <!-- PID / Consensus Summary -->
+      <div class="tab-section">
+        <h2>Controller State</h2>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="summary-label">Setpoint</div>
+        <div class="summary-value" id="summary-setpoint">--</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('setpoint', 'Setpoint')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('setpoint', 'Setpoint')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Consensus PPO2</div>
+        <div class="summary-value" id="summary-consensus">--</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('consensus_ppo2', 'Consensus')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('consensus_ppo2', 'Consensus')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Duty Cycle</div>
+        <div class="summary-value" id="summary-dutyCycle">--</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('duty_cycle', 'Duty Cycle')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('duty_cycle', 'Duty Cycle')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Integral</div>
+        <div class="summary-value" id="summary-integral">--</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('integral_state', 'Integral')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('integral_state', 'Integral')">R</button>
+        </div>
+      </div>
+        <div class="summary-item">
+          <div class="summary-label">Saturation</div>
+          <div class="summary-value" id="summary-saturation">--</div>
+        </div>
+        </div>
+      </div>
+
+      <!-- Power Status -->
+      <div class="tab-section">
+        <h2>Power Status</h2>
+    <div class="summary-grid" id="power-summary">
+      <div class="summary-item">
+        <div class="summary-label">VBus</div>
+        <div class="summary-value" id="vbus-voltage">--</div>
+        <div class="summary-unit">V</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('vbus_voltage', 'VBus')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('vbus_voltage', 'VBus')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">VCC</div>
+        <div class="summary-value" id="vcc-voltage">--</div>
+        <div class="summary-unit">V</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('vcc_voltage', 'VCC')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('vcc_voltage', 'VCC')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Battery</div>
+        <div class="summary-value" id="battery-voltage">--</div>
+        <div class="summary-unit">V</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('battery_voltage', 'Battery')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('battery_voltage', 'Battery')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">CAN</div>
+        <div class="summary-value" id="can-voltage">--</div>
+        <div class="summary-unit">V</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('can_voltage', 'CAN')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('can_voltage', 'CAN')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Threshold</div>
+        <div class="summary-value" id="threshold-voltage">--</div>
+        <div class="summary-unit">V</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">VCC Source</div>
+        <div class="summary-value" id="vcc-source">--</div>
+      </div>
+        <div class="summary-item">
+          <div class="summary-label">VBus Source</div>
+          <div class="summary-value" id="vbus-source">--</div>
+        </div>
+        </div>
+      </div>
+
+      <!-- Real-Time Plot -->
+      <div class="tab-section">
+        <h2>Real-Time Plot</h2>
+    <div class="chart-controls axis-controls">
+      <div class="axis-group axis-left">
+        <span class="axis-label">Left:</span>
+        <span id="leftAxisLabel">--</span>
+        <button class="small" onclick="clearLeftAxis()">Clear</button>
+      </div>
+      <div class="axis-group axis-right">
+        <span class="axis-label">Right:</span>
+        <span id="rightAxisLabel">--</span>
+        <button class="small" onclick="clearRightAxis()">Clear</button>
+      </div>
+    </div>
+    <div class="chart-controls">
+      <label for="windowSelect">Window:</label>
+      <select id="windowSelect" onchange="setPlotWindow(this.value)">
+        <option value="30">30 seconds</option>
+        <option value="60" selected>60 seconds</option>
+        <option value="120">2 minutes</option>
+        <option value="300">5 minutes</option>
+      </select>
+        <button class="small" onclick="clearPlot()">Clear All</button>
+        </div>
+        <div class="chart-container">
+          <canvas id="realtimeChart"></canvas>
+        </div>
+      </div>
+    <!-- End Main Tab -->
+    </div>
+
+    <!-- Control Tab -->
+    <div class="tab-content" id="tab-control">
+      <!-- Calibration Section -->
+      <div class="tab-section">
+        <h2>Calibration</h2>
+        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label for="cal-fo2-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">fO2 (%)</label>
+            <input type="number" id="cal-fo2-input" min="0" max="100" step="1" value="98"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 80px; font-size: 14px;">
+          </div>
+          <button id="triggerCalButton" disabled class="danger">Trigger Calibration</button>
+        </div>
+        <div id="cal-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+    <!-- End Control Tab -->
+    </div>
+
+    <!-- Configuration Tab -->
+    <div class="tab-content" id="tab-config">
+      <h2>Configuration Settings</h2>
+    <div class="config-buttons">
+      <button id="readConfigButton" disabled>Read from Device</button>
+      <button id="writeConfigButton" disabled class="danger">Write to Device</button>
+      <span id="configStatus" class="config-status">(Connect to device to read configuration)</span>
+    </div>
+    <div id="configFieldsContainer" class="config-grid">
+      <!-- Dynamically populated -->
+    </div>
+      <div class="config-raw">
+        <span class="label">Raw Config Bytes:</span>
+        <span class="value" id="configRawHex">--</span>
+      </div>
+    <!-- End Configuration Tab -->
+    </div>
+
+    <!-- DID Subscriptions Tab -->
+    <div class="tab-content" id="tab-dids">
+      <h2>DID Subscriptions</h2>
+    <div class="subscription-controls">
+      <button class="small" id="subscribeAll">Subscribe All</button>
+      <button class="small" id="unsubscribeAll">Unsubscribe All</button>
+      <button class="small" id="refreshDIDs" disabled>Refresh All DIDs</button>
+      <div class="subscription-stats">
+        Subscribed: <span class="value" id="subscriptionCount">0</span> |
+        Poll Rate: <span class="value" id="pollRate">--</span>
+      </div>
+    </div>
+      <div id="didSubscriptionList">
+        <div class="field-inactive">(Connect to device to see available DIDs)</div>
+      </div>
+    <!-- End DID Subscriptions Tab -->
+    </div>
+  <!-- End Tab Container -->
+  </div>
+
+  <!-- Log Messages -->
+  <div class="section">
+    <h2>Log Messages</h2>
+    <button class="small" id="clearLogMessages" style="margin-bottom: 10px;">Clear</button>
+    <div class="log-box" id="logMessages"></div>
+  </div>
+
+  <script type="module">
+    import { DeviceManager, Logger } from '../src/index.js';
+    import { DataStore } from '../src/diagnostics/DataStore.js';
+    import { PlotManager } from '../src/diagnostics/PlotManager.js';
+    import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
+    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES } from '../src/uds/constants.js';
+    import { ConfigurationDecoder, CONFIG_FIELDS } from '../src/config/ConfigurationDecoder.js';
+
+    // Reduce logging to improve performance - only show warnings and errors
+    Logger.setGlobalLevel('debug');
+
+    // Check browser support
+    const checkBrowserSupport = () => {
+      if (!navigator.bluetooth) {
+        document.getElementById('browserWarning').style.display = 'block';
+        return false;
+      }
+      return true;
+    };
+
+    // State
+    let stack = null;
+    let deviceManager = null;
+    let dataStore = new DataStore({ maxPoints: 1000, maxAge: 300 }); // 1000 points, 5 min max age
+    let plotManager = null;
+    let cellUIAdapter = null;
+
+    // Tab switching
+    const initTabs = () => {
+      const tabButtons = document.querySelectorAll('.tab-button');
+      const tabContents = document.querySelectorAll('.tab-content');
+
+      tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          const targetTab = button.dataset.tab;
+
+          // Update button states
+          tabButtons.forEach(btn => btn.classList.remove('active'));
+          button.classList.add('active');
+
+          // Update content visibility
+          tabContents.forEach(content => {
+            content.classList.remove('active');
+            if (content.id === `tab-${targetTab}`) {
+              content.classList.add('active');
+            }
+          });
+        });
+      });
+    };
+
+    // UI Elements
+    const elements = {
+      scanButton: document.getElementById('scanButton'),
+      disconnectButton: document.getElementById('disconnectButton'),
+      connectionStatus: document.getElementById('connectionStatus'),
+      deviceInfo: document.getElementById('deviceInfo'),
+      streamStatusDetail: document.getElementById('streamStatusDetail'),
+      logMessages: document.getElementById('logMessages'),
+      clearLogMessages: document.getElementById('clearLogMessages'),
+      leftAxisLabel: document.getElementById('leftAxisLabel'),
+      rightAxisLabel: document.getElementById('rightAxisLabel'),
+      summarySetpoint: document.getElementById('summary-setpoint'),
+      summaryConsensus: document.getElementById('summary-consensus'),
+      summaryDutyCycle: document.getElementById('summary-dutyCycle'),
+      summaryIntegral: document.getElementById('summary-integral'),
+      summarySaturation: document.getElementById('summary-saturation'),
+      // DID subscription elements
+      subscribeAll: document.getElementById('subscribeAll'),
+      unsubscribeAll: document.getElementById('unsubscribeAll'),
+      refreshDIDs: document.getElementById('refreshDIDs'),
+      subscriptionCount: document.getElementById('subscriptionCount'),
+      pollRate: document.getElementById('pollRate'),
+      didSubscriptionList: document.getElementById('didSubscriptionList'),
+      // Configuration elements
+      readConfigButton: document.getElementById('readConfigButton'),
+      writeConfigButton: document.getElementById('writeConfigButton'),
+      configStatus: document.getElementById('configStatus'),
+      configFieldsContainer: document.getElementById('configFieldsContainer'),
+      configRawHex: document.getElementById('configRawHex'),
+      // Control tab elements
+      calFo2Input: document.getElementById('cal-fo2-input'),
+      triggerCalButton: document.getElementById('triggerCalButton'),
+      calMessage: document.getElementById('cal-message')
+    };
+
+    // Subscription state
+    let activeSubscriptions = new Map();  // didKey -> unsubscribe function
+
+    // Configuration state
+    let configDecoder = new ConfigurationDecoder();
+    let originalConfigBytes = [0, 0, 0, 0];
+    let configLoaded = false;
+
+    // Initialize plot manager
+    plotManager = new PlotManager('realtimeChart', {
+      updateInterval: 100,
+      windowSize: 60
+    });
+    plotManager.init(Chart);
+    plotManager.setDataStore(dataStore);
+    plotManager.start();
+
+    // Initialize cell UI adapter with separate left/right axis callbacks
+    cellUIAdapter = new CellUIAdapter(
+      dataStore,
+      (seriesKey, label) => plotToLeftAxis(seriesKey, label),
+      (seriesKey, label) => plotToRightAxis(seriesKey, label)
+    );
+    cellUIAdapter.initPlotButtons();
+
+    // Track current stream state for combined status display
+    let currentStreamState = 'inactive';
+
+    // Update UI state
+    const updateUIState = (connected) => {
+      elements.scanButton.disabled = connected;
+      elements.disconnectButton.disabled = !connected;
+
+      if (connected) {
+        elements.connectionStatus.textContent = 'Connected';
+        elements.connectionStatus.className = 'status connected';
+        // Re-apply stream state if still streaming
+        if (currentStreamState === 'streaming') {
+          elements.connectionStatus.classList.add('streaming');
+        } else if (currentStreamState === 'initializing') {
+          elements.connectionStatus.classList.add('initializing');
+        }
+      } else {
+        elements.connectionStatus.textContent = 'Disconnected';
+        elements.connectionStatus.className = 'status disconnected';
+        elements.deviceInfo.textContent = '';
+        elements.streamStatusDetail.textContent = '';
+        currentStreamState = 'inactive';
+      }
+    };
+
+    // Update stream status - now integrated into connection status
+    const updateStreamStatus = (status, detail = '') => {
+      currentStreamState = status;
+
+      // Only update if we're connected
+      if (elements.connectionStatus.classList.contains('connected') ||
+          elements.connectionStatus.classList.contains('disconnected') === false) {
+
+        // Remove previous stream state classes
+        elements.connectionStatus.classList.remove('streaming', 'initializing');
+
+        switch (status) {
+          case 'initializing':
+            elements.connectionStatus.textContent = 'Initializing';
+            elements.connectionStatus.classList.add('initializing');
+            break;
+          case 'streaming':
+            elements.connectionStatus.textContent = 'Streaming';
+            elements.connectionStatus.classList.add('streaming');
+            break;
+          case 'inactive':
+          default:
+            elements.connectionStatus.textContent = 'Connected';
+            break;
+        }
+      }
+      elements.streamStatusDetail.textContent = detail;
+    };
+
+    // Add to log messages (text logs only)
+    const addToLogMessages = (message) => {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.textContent = message;
+      elements.logMessages.appendChild(entry);
+
+      // Keep only last 500 entries
+      while (elements.logMessages.children.length > 500) {
+        elements.logMessages.firstChild.remove();
+      }
+
+      elements.logMessages.scrollTop = elements.logMessages.scrollHeight;
+    };
+
+    // Helper to check if a DID is subscribed
+    const isDIDSubscribed = (didKey) => activeSubscriptions.has(didKey);
+
+    // Helper to apply/remove stale class based on subscription status
+    const updateStaleClass = (element, didKey) => {
+      if (!element) return;
+      if (isDIDSubscribed(didKey)) {
+        element.classList.remove('stale');
+      } else {
+        element.classList.add('stale');
+      }
+    };
+
+    // Update summary values from DID values
+    const updateSummary = () => {
+      const setpoint = dataStore.getDIDValue('SETPOINT');
+      const consensus = dataStore.getDIDValue('CONSENSUS_PPO2');
+      const duty = dataStore.getDIDValue('DUTY_CYCLE');
+      const integral = dataStore.getDIDValue('INTEGRAL_STATE');
+      const saturation = dataStore.getDIDValue('SATURATION_COUNT');
+
+      elements.summarySetpoint.textContent = setpoint === undefined ? '--' : setpoint.toFixed(2);
+      elements.summaryConsensus.textContent = consensus === undefined ? '--' : consensus.toFixed(3);
+      elements.summaryDutyCycle.textContent = duty === undefined ? '--' : (duty * 100).toFixed(1) + '%';
+      elements.summaryIntegral.textContent = integral === undefined ? '--' : integral.toFixed(4);
+      elements.summarySaturation.textContent = saturation === undefined ? '--' : saturation;
+
+      // Update stale indicators
+      updateStaleClass(elements.summarySetpoint, 'SETPOINT');
+      updateStaleClass(elements.summaryConsensus, 'CONSENSUS_PPO2');
+      updateStaleClass(elements.summaryDutyCycle, 'DUTY_CYCLE');
+      updateStaleClass(elements.summaryIntegral, 'INTEGRAL_STATE');
+      updateStaleClass(elements.summarySaturation, 'SATURATION_COUNT');
+    };
+
+    // Update power status values from DID values
+    const updatePowerStatus = () => {
+      const voltageKeys = ['VBUS_VOLTAGE', 'VCC_VOLTAGE', 'BATTERY_VOLTAGE', 'CAN_VOLTAGE', 'THRESHOLD_VOLTAGE'];
+      const voltageIds = ['vbus-voltage', 'vcc-voltage', 'battery-voltage', 'can-voltage', 'threshold-voltage'];
+
+      voltageKeys.forEach((key, i) => {
+        const val = dataStore.getDIDValue(key);
+        const el = document.getElementById(voltageIds[i]);
+        if (el) {
+          el.textContent = val !== undefined && val !== null ? val.toFixed(2) : '--';
+          updateStaleClass(el, key);
+        }
+      });
+
+      const sources = dataStore.getDIDValue('POWER_SOURCES');
+      const vccEl = document.getElementById('vcc-source');
+      const vbusEl = document.getElementById('vbus-source');
+      if (sources !== undefined && sources !== null) {
+        const vccSrc = sources & 0x03;
+        const vbusSrc = (sources >> 2) & 0x03;
+        const sourceNames = ['Default', 'Battery', 'CAN'];
+        if (vccEl) vccEl.textContent = sourceNames[vccSrc] || '?';
+        if (vbusEl) vbusEl.textContent = sourceNames[vbusSrc] || '?';
+      }
+      // Both source fields depend on POWER_SOURCES DID
+      updateStaleClass(vccEl, 'POWER_SOURCES');
+      updateStaleClass(vbusEl, 'POWER_SOURCES');
+    };
+
+    // Track cell types for rebuilding panels
+    let cachedCellTypes = [null, null, null];
+
+    // Build cell panel fields HTML for a given type
+    const buildCellFieldsHTML = (cellNum, cellType) => {
+      // Universal fields for all cell types
+      const universalFields = [
+        { field: 'ppo2', label: 'PPO2', unit: 'bar', decimals: 3, plottable: true },
+        { field: 'status', label: 'Status', unit: '', decimals: 0, plottable: false }
+      ];
+
+      let typeSpecificFields = [];
+      switch (cellType) {
+        case 0: // DiveO2
+          typeSpecificFields = [
+            { field: 'temperature', label: 'Temp', unit: '°C', decimals: 1, scale: 0.001, plottable: true },
+            { field: 'error', label: 'Error', unit: '', decimals: 0, plottable: false },
+            { field: 'phase', label: 'Phase', unit: '', decimals: 0, plottable: true },
+            { field: 'intensity', label: 'Intensity', unit: '', decimals: 0, plottable: true },
+            { field: 'ambientLight', label: 'Ambient', unit: '', decimals: 0, plottable: true },
+            { field: 'pressure', label: 'Pressure', unit: 'bar', decimals: 3, scale: 0.000001, plottable: true },
+            { field: 'humidity', label: 'Humidity', unit: '%', decimals: 1, scale: 0.001, plottable: true }
+          ];
+          break;
+        case 1: // Analog
+          typeSpecificFields = [
+            { field: 'rawAdc', label: 'ADC', unit: '', decimals: 0, plottable: true },
+            { field: 'millivolts', label: 'mV', unit: 'mV', decimals: 0, plottable: true }
+          ];
+          break;
+        case 2: // O2S
+          typeSpecificFields = [];
+          break;
+        default:
+          return '<div class="field-inactive">(No data)</div>';
+      }
+
+      const fields = [...universalFields, ...typeSpecificFields];
+
+      return fields.map(f => {
+        const seriesKey = `cell${cellNum}.${f.field}`;
+        const label = `Cell ${cellNum} ${f.label}`;
+        const plotButtons = f.plottable ? `
+            <button class="plot-btn plot-left" data-series-key="${seriesKey}" data-label="${label}" title="Plot on left axis">L</button>
+            <button class="plot-btn plot-right" data-series-key="${seriesKey}" data-label="${label}" title="Plot on right axis">R</button>
+        ` : '';
+        const scale = f.scale || 1;
+        return `
+          <div class="field-row" data-cell="${cellNum}" data-field="${f.field}">
+            <span class="field-label">${f.label}:</span>
+            <span class="field-value" data-decimals="${f.decimals}" data-scale="${scale}">--</span>
+            <span class="field-unit">${f.unit}</span>
+            ${plotButtons}
+          </div>
+        `;
+      }).join('');
+    };
+
+    // Update cell panels from DID values
+    const updateCellPanelsFromDIDs = () => {
+      for (let cellNum = 0; cellNum < 3; cellNum++) {
+        const panel = document.getElementById(`cell-panel-${cellNum}`);
+        if (!panel) continue;
+
+        // Get cell type
+        const cellType = dataStore.getDIDValue(`CELL${cellNum}_TYPE`);
+        const included = dataStore.getDIDValue(`CELL${cellNum}_INCLUDED`);
+
+        // Update header
+        const header = panel.querySelector('.cell-header');
+        if (header && cellType !== undefined) {
+          const typeNames = { 0: 'DiveO2', 1: 'Analog', 2: 'O2S' };
+          const typeName = typeNames[cellType] || '--';
+          header.textContent = `Cell ${cellNum}: ${typeName}${included ? '' : ' (excluded)'}`;
+          header.classList.add('active');
+        }
+
+        // Rebuild fields if cell type changed
+        if (cellType !== cachedCellTypes[cellNum] && cellType !== undefined) {
+          const fieldsContainer = panel.querySelector('.cell-fields');
+          if (fieldsContainer) {
+            fieldsContainer.innerHTML = buildCellFieldsHTML(cellNum, cellType);
+            cachedCellTypes[cellNum] = cellType;
+          }
+        }
+
+        // Update field values
+        const fieldRows = panel.querySelectorAll('.field-row');
+        fieldRows.forEach(row => {
+          const field = row.dataset.field;
+          const valueEl = row.querySelector('.field-value');
+          if (!valueEl || !field) return;
+
+          // Map field name to DID key
+          const fieldToDID = {
+            'ppo2': `CELL${cellNum}_PPO2`,
+            'status': `CELL${cellNum}_STATUS`,
+            'temperature': `CELL${cellNum}_TEMPERATURE`,
+            'error': `CELL${cellNum}_ERROR`,
+            'phase': `CELL${cellNum}_PHASE`,
+            'intensity': `CELL${cellNum}_INTENSITY`,
+            'ambientLight': `CELL${cellNum}_AMBIENT_LIGHT`,
+            'pressure': `CELL${cellNum}_PRESSURE`,
+            'humidity': `CELL${cellNum}_HUMIDITY`,
+            'rawAdc': `CELL${cellNum}_RAW_ADC`,
+            'millivolts': `CELL${cellNum}_MILLIVOLTS`
+          };
+
+          const didKey = fieldToDID[field];
+          if (!didKey) return;
+
+          const value = dataStore.getDIDValue(didKey);
+
+          // Special handling for status field - display as enum string
+          if (field === 'status') {
+            if (value !== undefined && value !== null) {
+              valueEl.textContent = CELL_STATUS_NAMES[value] || `Unknown (${value})`;
+            } else {
+              valueEl.textContent = '--';
+            }
+            updateStaleClass(valueEl, didKey);
+            return;
+          }
+
+          const decimals = Number.parseInt(valueEl.dataset.decimals || '0', 10);
+          const scale = Number.parseFloat(valueEl.dataset.scale || '1');
+
+          if (value !== undefined && value !== null && !Number.isNaN(value)) {
+            valueEl.textContent = (value * scale).toFixed(decimals);
+          } else {
+            valueEl.textContent = '--';
+          }
+
+          // Update stale indicator based on subscription status
+          updateStaleClass(valueEl, didKey);
+        });
+      }
+    };
+
+    // Build DID subscription list UI
+    const buildDIDSubscriptionUI = () => {
+      const container = elements.didSubscriptionList;
+      container.innerHTML = '';
+
+      // Group DIDs by category
+      const controlDIDs = getControlStateDIDs();
+      const cell0DIDs = getCellDIDs(0);
+      const cell1DIDs = getCellDIDs(1);
+      const cell2DIDs = getCellDIDs(2);
+
+      // Build control state section
+      const controlSection = document.createElement('div');
+      controlSection.innerHTML = '<div class="did-category">Control State</div>';
+      const controlGrid = document.createElement('div');
+      controlGrid.className = 'did-grid';
+      for (const [key, info] of Object.entries(controlDIDs)) {
+        controlGrid.appendChild(createDIDItem(key, info));
+      }
+      controlSection.appendChild(controlGrid);
+      container.appendChild(controlSection);
+
+      // Build cell sections
+      [cell0DIDs, cell1DIDs, cell2DIDs].forEach((cellDIDs, cellNum) => {
+        const cellSection = document.createElement('div');
+        cellSection.innerHTML = `<div class="did-category">Cell ${cellNum}</div>`;
+        const cellGrid = document.createElement('div');
+        cellGrid.className = 'did-grid';
+        for (const [key, info] of Object.entries(cellDIDs)) {
+          cellGrid.appendChild(createDIDItem(key, info));
+        }
+        cellSection.appendChild(cellGrid);
+        container.appendChild(cellSection);
+      });
+    };
+
+    // Create a single DID item element
+    const createDIDItem = (key, info) => {
+      const item = document.createElement('div');
+      item.className = 'did-item';
+      item.dataset.didKey = key;
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = `did-${key}`;
+      checkbox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          subscribeToDID(key);
+        } else {
+          unsubscribeFromDID(key);
+        }
+      });
+
+      const label = document.createElement('span');
+      label.className = 'did-label';
+      label.textContent = info.label;
+
+      const value = document.createElement('span');
+      value.className = 'did-value';
+      value.id = `did-value-${key}`;
+      value.textContent = '--';
+
+      const hex = document.createElement('span');
+      hex.className = 'did-hex';
+      hex.textContent = `0x${info.did.toString(16).toUpperCase().padStart(4, '0')}`;
+
+      item.appendChild(checkbox);
+      item.appendChild(label);
+      item.appendChild(value);
+      item.appendChild(hex);
+
+      return item;
+    };
+
+    // Subscribe to a DID
+    const subscribeToDID = (didKey) => {
+      if (activeSubscriptions.has(didKey)) return;
+
+      const unsubscribe = dataStore.subscribe(didKey, (newValue, oldValue, key) => {
+        updateDIDValueDisplay(key, newValue);
+      });
+
+      activeSubscriptions.set(didKey, unsubscribe);
+      updateSubscriptionUI(didKey, true);
+      updateSubscriptionCount();
+
+      // Update display with current value if available
+      const currentValue = dataStore.getDIDValue(didKey);
+      if (currentValue !== undefined) {
+        updateDIDValueDisplay(didKey, currentValue);
+      }
+    };
+
+    // Unsubscribe from a DID
+    const unsubscribeFromDID = (didKey) => {
+      const unsubscribe = activeSubscriptions.get(didKey);
+      if (unsubscribe) {
+        unsubscribe();
+        activeSubscriptions.delete(didKey);
+        updateSubscriptionUI(didKey, false);
+        updateSubscriptionCount();
+      }
+    };
+
+    // Update DID value display
+    const updateDIDValueDisplay = (didKey, value) => {
+      const valueEl = document.getElementById(`did-value-${didKey}`);
+      if (!valueEl) return;
+
+      const info = STATE_DIDS[didKey];
+      if (!info) return;
+
+      if (value === undefined || value === null) {
+        valueEl.textContent = '--';
+        return;
+      }
+
+      // Special handling for cell status DIDs
+      if (didKey.endsWith('_STATUS')) {
+        valueEl.textContent = CELL_STATUS_NAMES[value] || `Unknown (${value})`;
+        return;
+      }
+
+      // Format based on type
+      switch (info.type) {
+        case 'float32':
+          valueEl.textContent = value.toFixed(3);
+          break;
+        case 'bool':
+          valueEl.textContent = value ? 'Yes' : 'No';
+          break;
+        default:
+          valueEl.textContent = value.toString();
+      }
+    };
+
+    // Update subscription UI state
+    const updateSubscriptionUI = (didKey, subscribed) => {
+      const item = document.querySelector(`[data-did-key="${didKey}"]`);
+      if (item) {
+        if (subscribed) {
+          item.classList.add('subscribed');
+        } else {
+          item.classList.remove('subscribed');
+        }
+      }
+    };
+
+    // Update subscription count display
+    const updateSubscriptionCount = () => {
+      elements.subscriptionCount.textContent = activeSubscriptions.size;
+    };
+
+    // Subscribe to all DIDs
+    const subscribeToAllDIDs = () => {
+      for (const key of Object.keys(STATE_DIDS)) {
+        const checkbox = document.getElementById(`did-${key}`);
+        if (checkbox && !checkbox.checked) {
+          checkbox.checked = true;
+          subscribeToDID(key);
+        }
+      }
+    };
+
+    // Unsubscribe from all DIDs
+    const unsubscribeFromAllDIDs = () => {
+      // Copy keys to avoid modifying map while iterating
+      const keys = [...activeSubscriptions.keys()];
+      for (const key of keys) {
+        const checkbox = document.getElementById(`did-${key}`);
+        if (checkbox) {
+          checkbox.checked = false;
+        }
+        unsubscribeFromDID(key);
+      }
+    };
+
+    // Initialize DID-based polling
+    const initDIDPolling = async () => {
+      if (!stack || !stack._uds) {
+        console.warn('UDS client not available');
+        return false;
+      }
+
+      try {
+        // Create new DataStore with UDS client
+        const newDataStore = new DataStore({
+          maxPoints: 1000,
+          maxAge: 300,
+          udsClient: stack._uds,
+          pollInterval: 200
+        });
+
+        // Show initializing status
+        updateStreamStatus('initializing', 'Fetching DIDs...');
+
+        // Fetch all DIDs initially with progress callback
+        await newDataStore.initialize((current, total) => {
+          updateStreamStatus('initializing', `Fetching DIDs... ${current}/${total}`);
+        });
+
+        // Update dataStore reference
+        dataStore = newDataStore;
+        plotManager.setDataStore(dataStore);
+
+        elements.refreshDIDs.disabled = false;
+
+        // Update all DID displays with initial values
+        for (const [key, value] of Object.entries(dataStore.getAllDIDValues())) {
+          updateDIDValueDisplay(key, value);
+        }
+
+        // Show streaming status
+        updateStreamStatus('streaming');
+
+        return true;
+      } catch (error) {
+        console.error('DID polling initialization failed:', error);
+        updateStreamStatus('inactive', 'Initialization failed');
+        return false;
+      }
+    };
+
+    // ============================================================
+    // Configuration Settings Functions
+    // ============================================================
+
+    // Build configuration UI from CONFIG_FIELDS
+    const buildConfigUI = () => {
+      const container = elements.configFieldsContainer;
+      container.innerHTML = '';
+
+      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
+        const fieldEl = document.createElement('div');
+        fieldEl.className = `config-field${field.editable ? '' : ' readonly'}`;
+        fieldEl.dataset.field = fieldName;
+
+        const label = document.createElement('label');
+        label.textContent = field.label;
+        fieldEl.appendChild(label);
+
+        if (!field.editable) {
+          // Read-only display
+          const display = document.createElement('span');
+          display.className = 'value-display';
+          display.id = `config-${fieldName}`;
+          display.textContent = '--';
+          fieldEl.appendChild(display);
+        } else if (field.type === 'bool') {
+          // Checkbox
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.id = `config-${fieldName}`;
+          input.addEventListener('change', () => onConfigFieldChange(fieldName));
+          fieldEl.appendChild(input);
+        } else if (field.type === 'enum') {
+          // Dropdown
+          const select = document.createElement('select');
+          select.id = `config-${fieldName}`;
+          for (const opt of field.options) {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            select.appendChild(option);
+          }
+          select.addEventListener('change', () => onConfigFieldChange(fieldName));
+          fieldEl.appendChild(select);
+        }
+
+        container.appendChild(fieldEl);
+      }
+    };
+
+    // Load configuration from device
+    const loadConfigFromDevice = async () => {
+      if (!stack || !stack._uds) {
+        elements.configStatus.textContent = 'Not connected';
+        return;
+      }
+
+      elements.configStatus.textContent = 'Reading configuration...';
+      elements.readConfigButton.disabled = true;
+
+      try {
+        // Read 4 config bytes (settings indices 1-4)
+        const bytes = [];
+        for (let i = 1; i <= 4; i++) {
+          const result = await stack._uds.getSettingValue(i);
+          bytes.push(Number(result.currentValue) & 0xFF);
+        }
+
+        configDecoder.fromBytes(bytes);
+        originalConfigBytes = [...bytes];
+        configLoaded = true;
+
+        updateConfigUI();
+        elements.configStatus.textContent = 'Configuration loaded';
+        elements.writeConfigButton.disabled = false;
+
+      } catch (error) {
+        console.error('Failed to read config:', error);
+        elements.configStatus.textContent = 'Failed to read: ' + error.message;
+      } finally {
+        elements.readConfigButton.disabled = false;
+      }
+    };
+
+    // Update UI from decoder state
+    const updateConfigUI = () => {
+      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
+        const value = configDecoder.getField(fieldName);
+        const el = document.getElementById(`config-${fieldName}`);
+        if (!el) continue;
+
+        if (!field.editable) {
+          el.textContent = value;
+        } else if (field.type === 'bool') {
+          el.checked = !!value;
+        } else {
+          el.value = value;
+        }
+
+        // Clear dirty indicator
+        const fieldEl = el.closest('.config-field');
+        if (fieldEl) {
+          fieldEl.classList.remove('config-dirty');
+        }
+      }
+
+      elements.configRawHex.textContent = configDecoder.toHexString();
+    };
+
+    // Handle config field change
+    const onConfigFieldChange = (fieldName) => {
+      const field = CONFIG_FIELDS[fieldName];
+      const el = document.getElementById(`config-${fieldName}`);
+      if (!field || !el) return;
+
+      let newValue;
+      if (field.type === 'bool') {
+        newValue = el.checked ? 1 : 0;
+      } else {
+        newValue = Number.parseInt(el.value, 10);
+      }
+
+      configDecoder.setField(fieldName, newValue);
+
+      // Check if byte changed from original
+      const currentBytes = configDecoder.toBytes();
+      const byteIndex = field.byte;
+      const fieldEl = el.closest('.config-field');
+
+      if (currentBytes[byteIndex] === originalConfigBytes[byteIndex]) {
+        fieldEl.classList.remove('config-dirty');
+      } else {
+        fieldEl.classList.add('config-dirty');
+      }
+
+      elements.configRawHex.textContent = configDecoder.toHexString();
+    };
+
+    // Save configuration to device
+    const saveConfigToDevice = async () => {
+      if (!stack || !stack._uds || !configLoaded) {
+        elements.configStatus.textContent = 'Cannot save: not connected or config not loaded';
+        return;
+      }
+
+      elements.configStatus.textContent = 'Writing configuration...';
+      elements.writeConfigButton.disabled = true;
+
+      try {
+        const currentBytes = configDecoder.toBytes();
+
+        // Save only changed bytes
+        for (let i = 0; i < 4; i++) {
+          if (currentBytes[i] !== originalConfigBytes[i]) {
+            await stack._uds.saveSetting(i + 1, BigInt(currentBytes[i]));
+          }
+        }
+
+        originalConfigBytes = [...currentBytes];
+        updateConfigUI();  // Clear dirty indicators
+        elements.configStatus.textContent = 'Configuration saved successfully';
+
+      } catch (error) {
+        console.error('Failed to save config:', error);
+        elements.configStatus.textContent = 'Failed to save: ' + error.message;
+      } finally {
+        elements.writeConfigButton.disabled = false;
+      }
+    };
+
+    // Reset config UI state on disconnect
+    const resetConfigUI = () => {
+      configLoaded = false;
+      originalConfigBytes = [0, 0, 0, 0];
+      configDecoder = new ConfigurationDecoder();
+      elements.readConfigButton.disabled = true;
+      elements.writeConfigButton.disabled = true;
+      elements.configStatus.textContent = '(Connect to device to read configuration)';
+      elements.configRawHex.textContent = '--';
+
+      // Clear all field values
+      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
+        const el = document.getElementById(`config-${fieldName}`);
+        if (!el) continue;
+
+        if (!field.editable) {
+          el.textContent = '--';
+        } else if (field.type === 'bool') {
+          el.checked = false;
+        } else {
+          el.value = field.options ? field.options[0].value : 0;
+        }
+
+        const fieldEl = el.closest('.config-field');
+        if (fieldEl) {
+          fieldEl.classList.remove('config-dirty');
+        }
+      }
+    };
+
+    // ============================================================
+    // Control Tab Functions (Calibration)
+    // ============================================================
+
+    // Trigger calibration via UDS
+    const triggerCalibration = async () => {
+      if (!stack || !stack._uds) {
+        elements.calMessage.textContent = 'Not connected';
+        return;
+      }
+
+      const fO2 = Number.parseInt(elements.calFo2Input.value, 10);
+      if (Number.isNaN(fO2) || fO2 < 0 || fO2 > 100) {
+        elements.calMessage.textContent = 'Invalid fO2 (must be 0-100)';
+        return;
+      }
+
+      // Confirm with user
+      if (!confirm(`Trigger calibration with fO2 = ${fO2}%?\n\nThis will calibrate all cells.`)) {
+        return;
+      }
+
+      elements.triggerCalButton.disabled = true;
+      elements.calMessage.textContent = 'Calibration triggered...';
+
+      try {
+        await stack._uds.triggerCalibration(fO2);
+        elements.calMessage.textContent = `Calibration triggered with fO2 = ${fO2}%`;
+
+        // Re-enable button after typical calibration time
+        setTimeout(() => {
+          elements.triggerCalButton.disabled = false;
+          elements.calMessage.textContent = '';
+        }, 6000);
+
+      } catch (error) {
+        console.error('Failed to trigger calibration:', error);
+        const nrcDesc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        if (error.nrc === 0x22) {
+          elements.calMessage.textContent = 'Calibration already in progress';
+        } else if (error.nrc === 0x31) {
+          elements.calMessage.textContent = 'Invalid fO2 value';
+        } else {
+          elements.calMessage.textContent = 'Failed: ' + nrcDesc;
+        }
+        elements.triggerCalButton.disabled = false;
+      }
+    };
+
+    // Reset control tab UI on disconnect
+    const resetControlUI = () => {
+      elements.triggerCalButton.disabled = true;
+      elements.calMessage.textContent = '';
+    };
+
+    // Enable control tab UI on connect
+    const enableControlUI = () => {
+      elements.triggerCalButton.disabled = false;
+    };
+
+    // Current axis selection mode: 'left' or 'right'
+    let currentAxisTarget = 'left';
+
+    // Ensure a series is subscribed when plotting
+    const ensureSubscribed = (seriesKey) => {
+      const didKey = dataStore.seriesKeyToDIDKey(seriesKey);
+      if (didKey && !activeSubscriptions.has(didKey)) {
+        // Subscribe and update checkbox
+        const checkbox = document.getElementById(`did-${didKey}`);
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+        subscribeToDID(didKey);
+      }
+    };
+
+    // Plot a series - adds to left axis by default, or right if left is occupied
+    globalThis.plotSeries = (seriesKey, label) => {
+      ensureSubscribed(seriesKey);
+      // If left axis is empty, use it; otherwise use right axis
+      if (plotManager.getLeftAxisKey()) {
+        if (plotManager.getRightAxisKey()) {
+          // Both axes occupied - replace left axis
+          plotManager.setLeftAxis(seriesKey, label);
+          elements.leftAxisLabel.textContent = label || seriesKey;
+        } else {
+          plotManager.setRightAxis(seriesKey, label);
+          elements.rightAxisLabel.textContent = label || seriesKey;
+        }
+      } else {
+        plotManager.setLeftAxis(seriesKey, label);
+        elements.leftAxisLabel.textContent = label || seriesKey;
+      }
+    };
+
+    // Plot to specific axis
+    globalThis.plotToLeftAxis = (seriesKey, label) => {
+      ensureSubscribed(seriesKey);
+      plotManager.setLeftAxis(seriesKey, label);
+      elements.leftAxisLabel.textContent = label || seriesKey;
+    };
+
+    globalThis.plotToRightAxis = (seriesKey, label) => {
+      ensureSubscribed(seriesKey);
+      plotManager.setRightAxis(seriesKey, label);
+      elements.rightAxisLabel.textContent = label || seriesKey;
+    };
+
+    // Clear individual axes
+    globalThis.clearLeftAxis = () => {
+      plotManager.setLeftAxis(null);
+      elements.leftAxisLabel.textContent = '--';
+    };
+
+    globalThis.clearRightAxis = () => {
+      plotManager.setRightAxis(null);
+      elements.rightAxisLabel.textContent = '--';
+    };
+
+    // Set plot window
+    globalThis.setPlotWindow = (seconds) => {
+      plotManager.setWindowSize(Number.parseInt(seconds, 10));
+    };
+
+    // Clear plot
+    globalThis.clearPlot = () => {
+      plotManager.clearSeries();
+      elements.leftAxisLabel.textContent = '--';
+      elements.rightAxisLabel.textContent = '--';
+    };
+
+    // Scan and connect
+    elements.scanButton.addEventListener('click', async () => {
+      try {
+        deviceManager = new DeviceManager();
+        const devices = await deviceManager.scan();
+
+        if (devices.length === 0) {
+          return;
+        }
+
+        const currentDevice = devices[0].device;
+        elements.deviceInfo.textContent = `Device: ${devices[0].name}`;
+
+        // Create stack and connect
+        stack = deviceManager.createStack(currentDevice);
+
+        // Set up event handlers
+        stack.on('connected', async () => {
+          updateUIState(true);
+
+          // Enable config read button
+          elements.readConfigButton.disabled = false;
+          elements.configStatus.textContent = 'Ready to read configuration';
+
+          // Enable control tab
+          enableControlUI();
+
+          // Set target to SOLO (0x04)
+          stack.setTargetAddress(0x04);
+
+          // Initialize DID-based polling
+          const success = await initDIDPolling();
+          if (success) {
+            // Auto-load configuration after DID polling is ready
+            try {
+              await loadConfigFromDevice();
+            } catch (error) {
+              console.error('Failed to auto-load config:', error);
+            }
+          }
+        });
+
+        stack.on('disconnected', () => {
+          updateUIState(false);
+          updateStreamStatus('inactive');
+
+          // Clean up subscriptions and polling
+          if (dataStore) {
+            dataStore.stopPolling();
+          }
+          unsubscribeFromAllDIDs();
+          elements.refreshDIDs.disabled = true;
+          elements.pollRate.textContent = '--';
+
+          // Reset configuration UI
+          resetConfigUI();
+
+          // Reset control tab UI
+          resetControlUI();
+        });
+
+        stack.on('error', (error) => {
+          console.error('Stack error:', error);
+        });
+
+        // Handle log messages (text logs - displayed in log box)
+        stack.on('logMessage', (message) => {
+          addToLogMessages(message);
+        });
+
+        // Connect
+        await stack.connect(currentDevice);
+
+      } catch (error) {
+        console.error('Connection failed:', error);
+      }
+    });
+
+    // Disconnect
+    elements.disconnectButton.addEventListener('click', async () => {
+      if (stack) {
+        await stack.disconnect();
+        stack = null;
+      }
+    });
+
+    // Clear log messages
+    elements.clearLogMessages.addEventListener('click', () => {
+      elements.logMessages.innerHTML = '';
+    });
+
+    // Subscribe/unsubscribe all buttons
+    elements.subscribeAll.addEventListener('click', subscribeToAllDIDs);
+    elements.unsubscribeAll.addEventListener('click', unsubscribeFromAllDIDs);
+
+    // Refresh DIDs button
+    elements.refreshDIDs.addEventListener('click', async () => {
+      if (dataStore.udsClient) {
+        try {
+          await dataStore.fetchAllDIDs();
+          // Update all displays
+          for (const [key, value] of Object.entries(dataStore.getAllDIDValues())) {
+            updateDIDValueDisplay(key, value);
+          }
+        } catch (error) {
+          console.error('Failed to refresh DIDs:', error);
+        }
+      }
+    });
+
+    // Configuration buttons
+    elements.readConfigButton.addEventListener('click', loadConfigFromDevice);
+    elements.writeConfigButton.addEventListener('click', saveConfigToDevice);
+
+    // Control tab buttons
+    elements.triggerCalButton.addEventListener('click', triggerCalibration);
+
+    // Periodic UI update for cell values
+    setInterval(() => {
+      updateCellPanelsFromDIDs();
+      updateSummary();
+      updatePowerStatus();
+
+      // Update poll rate display
+      if (dataStore.isPolling) {
+        elements.pollRate.textContent = `${dataStore.pollInterval}ms`;
+      }
+    }, 200);
+
+    // Build DID subscription UI on load
+    buildDIDSubscriptionUI();
+
+    // Build configuration UI on load
+    buildConfigUI();
+
+    // Initialize tabs
+    initTabs();
+
+    // Initialize
+    if (checkBrowserSupport()) {
+      updateUIState(false);
+    }
+  </script>
+</body>
+</html>
