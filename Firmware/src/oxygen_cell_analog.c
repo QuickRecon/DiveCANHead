@@ -127,7 +127,7 @@ static int analog_cell_init_adc(struct analog_cell_state *cell)
 	}
 
 	cell->adc_seq.channels = BIT(cell->adc_channel_id);
-	cell->adc_seq.resolution = 15;
+	cell->adc_seq.resolution = 16;  /* ADS1115 is 16-bit in differential mode */
 	cell->adc_seq.oversampling = 0;
 	cell->adc_seq.buffer = &cell->adc_sample_buf;
 	cell->adc_seq.buffer_size = sizeof(cell->adc_sample_buf);

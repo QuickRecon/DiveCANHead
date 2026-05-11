@@ -51,6 +51,8 @@ Each entry must include: what changed, why, what still provides coverage, and po
 - VLAs are forbidden in application code (enforced by review, not compiler — see COMPROMISE.md)
 - Float literals in app code should use `f` suffix (e.g., `0.5f`) even though the compiler flag was removed
 - All fatal paths must reboot, never halt
+- **Never use `CONFIG_LOG_MODE_IMMEDIATE=y`** — causes spinlock reentry crash with RTT backend (see COMPROMISE.md #5)
+- Fatal handlers use `printk` not `LOG_ERR`/`LOG_PANIC` — the logging subsystem is not safe in fault context on this platform
 
 ## Quality Checks (SonarQube)
 

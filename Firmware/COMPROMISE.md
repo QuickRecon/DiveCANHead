@@ -81,3 +81,24 @@ Zero analyzer findings currently land in `Firmware/src`, `Firmware/drivers`, or 
 - Patch `zephyr/cmake/sca/gcc/sca.cmake` to apply `-fanalyzer` only to the `app` target — would lose coverage of our `drivers/solenoid/` and any future custom drivers unless extended.
 - Upstream-fix CMSIS so `__CLZ` is annotated with `__attribute__((const))` and a value-range hint, eliminating the shift-count false positive.
 - Re-test after each Zephyr SDK / GCC upgrade — analyzer improvements may let us shrink the suppression list.
+
+---
+
+## 5. `CONFIG_LOG_MODE_IMMEDIATE` is unsafe with RTT backend
+
+**What changed**: Must use deferred logging mode, never immediate mode.
+
+**Why**: In immediate mode, `LOG_ERR` synchronously writes to the RTT backend, which calls `k_busy_wait()` to drain the SWD transport buffer. `k_busy_wait()` reads the systick via a spinlock. If a systick interrupt fires during this window, it tries to take the same spinlock — causing a nested lock violation that triggers `__ASSERT` in `z_spin_unlock_valid`, entering the fatal handler. The fatal handler's own `printk` output then gets lost in the reboot cycle.
+
+The full reentry chain:
+```
+LOG_ERR → RTT on_write → k_busy_wait → systick spinlock
+                         ↑ systick IRQ fires here
+                         → tries same spinlock → ASSERT → k_oops → fatal handler
+```
+
+**What provides coverage**: Deferred mode (`CONFIG_LOG_MODE_DEFERRED`, the default) copies log messages into a ring buffer without touching any backend spinlocks. A separate logging thread drains the buffer at a configured priority. This is safe from any context including ISRs.
+
+**Configuration**: The logging thread priority is set to 3 (`CONFIG_LOG_PROCESS_THREAD_PRIORITY=3`) to ensure it gets CPU time at 12MHz SYSCLK, and the buffer is 2KB (`CONFIG_LOG_BUFFER_SIZE=2048`) to handle burst logging during init.
+
+**How to avoid recurrence**: Do not set `CONFIG_LOG_MODE_IMMEDIATE=y` in any prj.conf or variant overlay. If real-time log output is needed for debugging, increase the log thread priority or buffer size instead.
