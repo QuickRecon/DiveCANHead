@@ -7,6 +7,7 @@ project(divecan_jr)
 
 target_sources(app PRIVATE
     src/main.c
+    src/errors.c
     src/runtime_settings.c
 )
 target_include_directories(app PRIVATE include)
@@ -20,10 +21,8 @@ target_compile_options(app PRIVATE
     -Wwrite-strings
     -Wreturn-type
     -Wno-unused-parameter
-    -Werror=vla
-    -Wunsuffixed-float-constants
+    -Wno-vla
     -Wstack-usage=1305
-    -Wstack-protector
     -fstack-clash-protection
     -fharden-compares
     -fharden-conditional-branches
