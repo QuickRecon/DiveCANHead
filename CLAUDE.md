@@ -162,7 +162,7 @@ Emulates a DiveCAN SOLO board (JJ CCR head). The protocol is message-based over 
 
 ### NASA Rules of 10
 This codebase follows NASA's Power of 10 rules for safety-critical embedded systems:
-- No complex flow constructs (goto, recursion)
+- No complex flow constructs (goto, recursion). Note: single-return pattern (c:S1142) is the project convention — use result variables, not early returns.
 - All loops have fixed bounds
 - No heap allocation (FreeRTOS uses static allocation)
 - Functions limited to one page

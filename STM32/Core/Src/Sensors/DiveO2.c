@@ -174,8 +174,7 @@ ShortMillivolts_t DiveO2Calibrate(DiveO2State_t *handle, const PPO2_t PPO2, NonF
     }
     DiveO2ReadCalibration(handle);
 
-    if (((handle->calibrationCoefficient - newCal) > EPS) ||
-        ((handle->calibrationCoefficient - newCal) < -EPS))
+    if (fabs(handle->calibrationCoefficient - newCal) > EPS)
     {
         handle->status = CELL_FAIL;
         *calError = CAL_MISMATCH_ERR;
