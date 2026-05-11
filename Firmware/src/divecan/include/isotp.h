@@ -79,10 +79,10 @@ static const size_t ISOTP_CF_DATA_START = 1U;    /**< Payload start index in Con
  * @brief ISO-TP state machine states
  */
 typedef enum {
-	ISOTP_IDLE = 0,     /**< No active transfer */
-	ISOTP_RECEIVING,    /**< Multi-frame reception in progress */
-	ISOTP_TRANSMITTING, /**< Multi-frame transmission in progress */
-	ISOTP_WAIT_FC       /**< Sent FF, waiting for receiver FC */
+    ISOTP_IDLE = 0,     /**< No active transfer */
+    ISOTP_RECEIVING,    /**< Multi-frame reception in progress */
+    ISOTP_TRANSMITTING, /**< Multi-frame transmission in progress */
+    ISOTP_WAIT_FC       /**< Sent FF, waiting for receiver FC */
 } ISOTPState_t;
 
 /**
@@ -94,31 +94,31 @@ typedef enum {
  * @note txDataPtr must remain valid until txComplete is set
  */
 typedef struct {
-	ISOTPState_t state; /**< Current state machine state */
+    ISOTPState_t state; /**< Current state machine state */
 
-	/* RX state */
-	uint16_t rxDataLength;               /**< Total expected length for multi-frame RX */
-	uint16_t rxBytesReceived;            /**< Bytes received so far */
-	uint8_t rxSequenceNumber;            /**< Expected next CF sequence number (0-15) */
-	uint8_t rxBuffer[ISOTP_MAX_PAYLOAD]; /**< Reassembly buffer */
-	uint32_t rxLastFrameTime;            /**< ms timestamp of last received frame */
-	bool rxComplete;                     /**< RX transfer complete flag (caller must clear) */
+    /* RX state */
+    uint16_t rxDataLength;               /**< Total expected length for multi-frame RX */
+    uint16_t rxBytesReceived;            /**< Bytes received so far */
+    uint8_t rxSequenceNumber;            /**< Expected next CF sequence number (0-15) */
+    uint8_t rxBuffer[ISOTP_MAX_PAYLOAD]; /**< Reassembly buffer */
+    uint32_t rxLastFrameTime;            /**< ms timestamp of last received frame */
+    bool rxComplete;                     /**< RX transfer complete flag (caller must clear) */
 
-	/* TX state */
-	uint16_t txDataLength;    /**< Total length to send */
-	uint16_t txBytesSent;     /**< Bytes sent so far */
-	uint8_t txSequenceNumber; /**< Next CF sequence to send (0-15) */
-	const uint8_t *txDataPtr; /**< Pointer to caller's data (must stay valid!) */
-	uint8_t txBlockSize;      /**< BS from FC (0 = infinite) */
-	uint8_t txSTmin;          /**< STmin from FC (0-127 ms) */
-	uint8_t txBlockCounter;   /**< Frames sent in current block */
-	uint32_t txLastFrameTime; /**< ms timestamp of last transmitted frame */
-	bool txComplete;          /**< TX transfer complete flag (caller must clear) */
+    /* TX state */
+    uint16_t txDataLength;    /**< Total length to send */
+    uint16_t txBytesSent;     /**< Bytes sent so far */
+    uint8_t txSequenceNumber; /**< Next CF sequence to send (0-15) */
+    const uint8_t *txDataPtr; /**< Pointer to caller's data (must stay valid!) */
+    uint8_t txBlockSize;      /**< BS from FC (0 = infinite) */
+    uint8_t txSTmin;          /**< STmin from FC (0-127 ms) */
+    uint8_t txBlockCounter;   /**< Frames sent in current block */
+    uint32_t txLastFrameTime; /**< ms timestamp of last transmitted frame */
+    bool txComplete;          /**< TX transfer complete flag (caller must clear) */
 
-	/* Addressing */
-	DiveCANType_t source; /**< Our device type */
-	DiveCANType_t target; /**< Remote device type */
-	uint32_t messageId;   /**< Base CAN ID (e.g., MENU_ID = 0xD0A0000) */
+    /* Addressing */
+    DiveCANType_t source; /**< Our device type */
+    DiveCANType_t target; /**< Remote device type */
+    uint32_t messageId;   /**< Base CAN ID (e.g., MENU_ID = 0xD0A0000) */
 } ISOTPContext_t;
 
 /* Public API */
@@ -135,7 +135,7 @@ typedef struct {
  * @param messageId Base CAN message ID (e.g., MENU_ID = 0xD0A0000)
  */
 void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source,
-		DiveCANType_t target, uint32_t messageId);
+        DiveCANType_t target, uint32_t messageId);
 
 /**
  * @brief Process received CAN frame

@@ -19,6 +19,6 @@
  * @param is_calibrating true if calibration is currently in progress
  */
 void divecan_set_failed_cells(PPO2_t *ppo2, const CellStatus_t *status,
-			      uint8_t count, bool is_calibrating);
+                  uint8_t count, bool is_calibrating);
 
 #endif /* DIVECAN_PPO2_MATH_H */

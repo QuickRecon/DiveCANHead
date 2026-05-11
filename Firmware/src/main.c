@@ -5,6 +5,7 @@
 
 #include "calibration.h"
 #include "power_management.h"
+#include "common.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -12,44 +13,48 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
-int main(void)
+/* Startup delay before CAN bus check (ms) */
+static const uint32_t STARTUP_DELAY_MS = 1000U;
+
+/* Heartbeat LED blink period (ms) */
+static const uint32_t BLINK_PERIOD_MS = 500U;
+
+Status_t main(void)
 {
-	int ret;
+    Status_t ret = 0;
 
-	LOG_INF("DiveCAN Jr — Zephyr %s", KERNEL_VERSION_STRING);
+    LOG_INF("DiveCAN Jr — Zephyr %s", KERNEL_VERSION_STRING);
 
-	calibration_init();
+    calibration_init();
 
-	if (!gpio_is_ready_dt(&led)) {
-		LOG_ERR("LED device not ready");
-		return 0;
-	}
+    if (!gpio_is_ready_dt(&led)) {
+        LOG_ERR("LED device not ready");
+    } else {
+        ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+        if (ret < 0) {
+            LOG_ERR("Failed to configure LED: %d", ret);
+        } else {
+            /* Deferred bus-active check: wait 1 second for peripherals and
+             * logging to start, then verify the CAN bus is actually active.
+             * If the bus is NOT active, shut down immediately — this guards
+             * against the case where the device powered on from a transient
+             * glitch ("blip on in the dead of night"). */
+            k_msleep(STARTUP_DELAY_MS);
 
-	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-	if (ret < 0) {
-		LOG_ERR("Failed to configure LED: %d", ret);
-		return 0;
-	}
+            if (!power_is_can_active(POWER_DEVICE)) {
+                LOG_WRN("CAN bus not active — entering shutdown");
+                (void)power_shutdown(POWER_DEVICE);
+            }
 
-	/* Deferred bus-active check: wait 1 second for peripherals and
-	 * logging to start, then verify the CAN bus is actually active.
-	 * If the bus is NOT active, shut down immediately — this guards
-	 * against the case where the device powered on from a transient
-	 * glitch ("blip on in the dead of night"). */
-	k_msleep(1000);
+            /* Cell threads, consensus subscriber, and calibration listener are
+             * all auto-started by K_THREAD_DEFINE — no manual init needed.
+             * Main thread blinks the heartbeat LED. */
+            while (1) {
+                gpio_pin_toggle_dt(&led);
+                k_msleep(BLINK_PERIOD_MS);
+            }
+        }
+    }
 
-	if (!power_is_can_active(POWER_DEVICE)) {
-		LOG_WRN("CAN bus not active — entering shutdown");
-		(void)power_shutdown(POWER_DEVICE);
-	}
-
-	/* Cell threads, consensus subscriber, and calibration listener are
-	 * all auto-started by K_THREAD_DEFINE — no manual init needed.
-	 * Main thread blinks the heartbeat LED. */
-	while (1) {
-		gpio_pin_toggle_dt(&led);
-		k_msleep(500);
-	}
-
-	return 0;
+    return ret;
 }

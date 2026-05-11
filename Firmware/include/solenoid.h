@@ -20,7 +20,7 @@
  * @return 0 on success, negative errno on failure
  */
 int solenoid_fire(const struct device *dev, uint8_t channel,
-		  uint32_t duration_us);
+          uint32_t duration_us);
 
 /**
  * @brief Turn off a single solenoid immediately.

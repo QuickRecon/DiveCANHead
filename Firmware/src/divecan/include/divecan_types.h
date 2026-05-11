@@ -65,20 +65,20 @@
  *        Each value corresponds to a specific device type.
  */
 typedef enum {
-	/** @brief DiveCAN controller device (like a Petrel) */
-	DIVECAN_CONTROLLER = 1,
+    /** @brief DiveCAN controller device (like a Petrel) */
+    DIVECAN_CONTROLLER = 1,
 
-	/** @brief DiveCAN Oboe (Oxygen BOard and Electronics) device */
-	DIVECAN_OBOE = 2,
+    /** @brief DiveCAN Oboe (Oxygen BOard and Electronics) device */
+    DIVECAN_OBOE = 2,
 
-	/** @brief DiveCAN Monitor device (like a HUD) */
-	DIVECAN_MONITOR = 3,
+    /** @brief DiveCAN Monitor device (like a HUD) */
+    DIVECAN_MONITOR = 3,
 
-	/** @brief DiveCAN SOLO (SOLenoid and Oxygen) device */
-	DIVECAN_SOLO = 4,
+    /** @brief DiveCAN SOLO (SOLenoid and Oxygen) device */
+    DIVECAN_SOLO = 4,
 
-	/** @brief DiveCAN Revo (RMS/battery box) device */
-	DIVECAN_REVO = 5
+    /** @brief DiveCAN Revo (RMS/battery box) device */
+    DIVECAN_REVO = 5
 } DiveCANType_t;
 
 /**
@@ -86,26 +86,26 @@ typedef enum {
  * @brief Enum representing potential errors of a DiveCAN device.
  */
 typedef enum {
-	/** @brief Hides battery status. */
-	DIVECAN_ERR_NONE = 0,
+    /** @brief Hides battery status. */
+    DIVECAN_ERR_NONE = 0,
 
-	/** @brief Error indicating low battery status. */
-	DIVECAN_ERR_BAT_LOW = 0x01,
+    /** @brief Error indicating low battery status. */
+    DIVECAN_ERR_BAT_LOW = 0x01,
 
-	/** @brief Battery information is valid and should be shown. */
-	DIVECAN_ERR_BAT_NORM = 0x02,
+    /** @brief Battery information is valid and should be shown. */
+    DIVECAN_ERR_BAT_NORM = 0x02,
 
-	/** @brief Battery information is valid and should be shown. */
-	DIVECAN_ERR_BAT_HIGH = 0x03,
+    /** @brief Battery information is valid and should be shown. */
+    DIVECAN_ERR_BAT_HIGH = 0x03,
 
-	/** @brief Error indicating solenoid undercurrent */
-	DIVECAN_ERR_SOL_UNDERCURRENT = 0x04,
+    /** @brief Error indicating solenoid undercurrent */
+    DIVECAN_ERR_SOL_UNDERCURRENT = 0x04,
 
-	/** @brief Indicates solenoid is okay */
-	DIVECAN_ERR_SOL_NORM = 0x08,
+    /** @brief Indicates solenoid is okay */
+    DIVECAN_ERR_SOL_NORM = 0x08,
 
-	/** @brief Indicates solenoid overcurrent */
-	DIVECAN_ERR_SOL_OVERCURRENT = 0x0C,
+    /** @brief Indicates solenoid overcurrent */
+    DIVECAN_ERR_SOL_OVERCURRENT = 0x0C,
 } DiveCANError_t;
 
 /**
@@ -113,37 +113,37 @@ typedef enum {
  * @brief Enum to define different manufacturers of DiveCAN devices.
  */
 typedef enum {
-	/** @brief ISC (InnerSpace Systems Corp) manufacturer */
-	DIVECAN_MANUFACTURER_ISC = 0x00,
+    /** @brief ISC (InnerSpace Systems Corp) manufacturer */
+    DIVECAN_MANUFACTURER_ISC = 0x00,
 
-	/** @brief SRI (Shearwater Research International) manufacturer */
-	DIVECAN_MANUFACTURER_SRI = 0x01,
+    /** @brief SRI (Shearwater Research International) manufacturer */
+    DIVECAN_MANUFACTURER_SRI = 0x01,
 
-	/** @brief General/Unknown manufacturer */
-	DIVECAN_MANUFACTURER_GEN = 0x02
+    /** @brief General/Unknown manufacturer */
+    DIVECAN_MANUFACTURER_GEN = 0x02
 } DiveCANManufacturer_t;
 
 /**
  * @brief DiveCAN calibration result/response codes.
  */
 typedef enum {
-	/** @brief Acknowledgment of the start of the calibration process. */
-	DIVECAN_CAL_ACK = 0x05,
+    /** @brief Acknowledgment of the start of the calibration process. */
+    DIVECAN_CAL_ACK = 0x05,
 
-	/** @brief Calibration result/response code indicating success. */
-	DIVECAN_CAL_RESULT_OK = 0x01,
+    /** @brief Calibration result/response code indicating success. */
+    DIVECAN_CAL_RESULT_OK = 0x01,
 
-	/** @brief Calibration failed due to low external battery voltage. */
-	DIVECAN_CAL_FAIL_LOW_EXT_BAT = 0x10,
+    /** @brief Calibration failed due to low external battery voltage. */
+    DIVECAN_CAL_FAIL_LOW_EXT_BAT = 0x10,
 
-	/** @brief Calibration failed because the FO2 sensor reading was out of its valid range. */
-	DIVECAN_CAL_FAIL_FO2_RANGE = 0x20,
+    /** @brief Calibration failed because the FO2 sensor reading was out of its valid range. */
+    DIVECAN_CAL_FAIL_FO2_RANGE = 0x20,
 
-	/** @brief Calibration was rejected. */
-	DIVECAN_CAL_FAIL_REJECTED = 0x08,
+    /** @brief Calibration was rejected. */
+    DIVECAN_CAL_FAIL_REJECTED = 0x08,
 
-	/** @brief Generic calibration failure code. */
-	DIVECAN_CAL_FAIL_GEN = 0x09
+    /** @brief Generic calibration failure code. */
+    DIVECAN_CAL_FAIL_GEN = 0x09
 } DiveCANCalResponse_t;
 
 /* ---- Message struct ---- */
@@ -153,9 +153,9 @@ typedef enum {
  * @brief Internal representation of a DiveCAN CAN frame.
  */
 typedef struct {
-	uint32_t id;
-	uint8_t length;
-	uint8_t data[MAX_CAN_RX_LENGTH];
+    uint32_t id;
+    uint8_t length;
+    uint8_t data[MAX_CAN_RX_LENGTH];
 } DiveCANMessage_t;
 
 /* ---- Device spec ---- */
@@ -167,10 +167,10 @@ typedef struct {
  * @brief Contains information about this DiveCAN device.
  */
 typedef struct {
-	const char *name;
-	DiveCANType_t type;
-	DiveCANManufacturer_t manufacturer_id;
-	uint8_t firmware_version;
+    const char *name;
+    DiveCANType_t type;
+    DiveCANManufacturer_t manufacturer_id;
+    uint8_t firmware_version;
 } DiveCANDevice_t;
 
 /* ---- Bit width constants (for protocol byte assembly) ---- */
@@ -195,9 +195,9 @@ typedef uint8_t BatteryV_t;
 /* ---- Dive state (for DIVING_ID messages) ---- */
 
 typedef struct {
-	bool diving;
-	uint32_t dive_number;
-	uint32_t unix_timestamp;
+    bool diving;
+    uint32_t dive_number;
+    uint32_t unix_timestamp;
 } DiveState_t;
 
 #endif /* DIVECAN_TYPES_H */

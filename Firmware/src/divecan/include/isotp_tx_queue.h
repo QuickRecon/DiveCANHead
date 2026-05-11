@@ -40,8 +40,8 @@ void ISOTP_TxQueue_Init(void);
  * @return true if enqueued successfully, false if queue full or invalid params
  */
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
-			    uint32_t messageId, const uint8_t *data,
-			    uint16_t length);
+                uint32_t messageId, const uint8_t *data,
+                uint16_t length);
 
 /**
  * @brief Process Flow Control frame for active TX

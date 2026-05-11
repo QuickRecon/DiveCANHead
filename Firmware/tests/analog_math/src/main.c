@@ -24,63 +24,63 @@ ZTEST_SUITE(counts_to_mv, NULL, NULL, NULL, NULL, NULL);
 /* Zero counts should return zero millivolts */
 ZTEST(counts_to_mv, test_zero_counts)
 {
-	Millivolts_t mv = analog_counts_to_mv(0);
+    Millivolts_t mv = analog_counts_to_mv(0);
 
-	zassert_equal(0, mv);
+    zassert_equal(0, mv);
 }
 
 /* Positive counts conversion */
 ZTEST(counts_to_mv, test_positive_counts)
 {
-	/* 1000 counts * 0.78128 = 781.28, rounds to 781 */
-	Millivolts_t mv = analog_counts_to_mv(1000);
+    /* 1000 counts * 0.78128 = 781.28, rounds to 781 */
+    Millivolts_t mv = analog_counts_to_mv(1000);
 
-	zassert_equal(781, mv);
+    zassert_equal(781, mv);
 }
 
 /* Negative counts should use absolute value */
 ZTEST(counts_to_mv, test_negative_counts_uses_abs)
 {
-	Millivolts_t mv_pos = analog_counts_to_mv(1000);
-	Millivolts_t mv_neg = analog_counts_to_mv(-1000);
+    Millivolts_t mv_pos = analog_counts_to_mv(1000);
+    Millivolts_t mv_neg = analog_counts_to_mv(-1000);
 
-	zassert_equal(mv_pos, mv_neg);
+    zassert_equal(mv_pos, mv_neg);
 }
 
 /* Max positive counts (15-bit ADC) */
 ZTEST(counts_to_mv, test_max_positive_counts)
 {
-	/* 32767 counts * 0.78128 = 25600 (full scale) */
-	Millivolts_t mv = analog_counts_to_mv(32767);
+    /* 32767 counts * 0.78128 = 25600 (full scale) */
+    Millivolts_t mv = analog_counts_to_mv(32767);
 
-	zassert_equal(25600, mv);
+    zassert_equal(25600, mv);
 }
 
 /* Min negative counts */
 ZTEST(counts_to_mv, test_min_negative_counts)
 {
-	/* -32768 counts -> abs = 32768, * 0.78128 = 25600.78, rounds to 25601 */
-	Millivolts_t mv = analog_counts_to_mv(-32768);
+    /* -32768 counts -> abs = 32768, * 0.78128 = 25600.78, rounds to 25601 */
+    Millivolts_t mv = analog_counts_to_mv(-32768);
 
-	zassert_equal(25601, mv);
+    zassert_equal(25601, mv);
 }
 
 /* Known conversion: ~9mV in air typical for galvanic cell */
 /* 9mV = 900 in micro-mV units, so counts = 900 / 0.78128 = ~1152 counts */
 ZTEST(counts_to_mv, test_typical_air_reading)
 {
-	Millivolts_t mv = analog_counts_to_mv(1152);
-	/* 1152 * 0.78128 = 899.95, rounds to 900 */
-	zassert_equal(900, mv);
+    Millivolts_t mv = analog_counts_to_mv(1152);
+    /* 1152 * 0.78128 = 899.95, rounds to 900 */
+    zassert_equal(900, mv);
 }
 
 /* Small count value */
 ZTEST(counts_to_mv, test_small_count)
 {
-	/* 1 count * 0.78128 = 0.78, rounds to 1 */
-	Millivolts_t mv = analog_counts_to_mv(1);
+    /* 1 count * 0.78128 = 0.78, rounds to 1 */
+    Millivolts_t mv = analog_counts_to_mv(1);
 
-	zassert_equal(1, mv);
+    zassert_equal(1, mv);
 }
 
 /* ============================================================================
@@ -95,94 +95,94 @@ ZTEST_SUITE(calculate_ppo2, NULL, NULL, NULL, NULL, NULL);
 /* Zero counts should return zero PPO2 */
 ZTEST(calculate_ppo2, test_zero_counts)
 {
-	float ppo2 = analog_calculate_ppo2(0, 1.0f);
+    float ppo2 = analog_calculate_ppo2(0, 1.0f);
 
-	zassert_within(ppo2, 0.0f, 0.001f);
+    zassert_within(ppo2, 0.0f, 0.001f);
 }
 
 /* Nominal air reading with typical calibration */
 /* ~1152 counts (9mV) * 0.78128 * 0.0233 = ~21 (0.21 bar) */
 ZTEST(calculate_ppo2, test_nominal_air_reading)
 {
-	/* counts * COUNTS_TO_MILLIS gives micro-mV */
-	/* 1152 * 0.78128 = 900 micro-mV */
-	/* 900 * 0.0233 = 20.97, close to 21 */
-	float ppo2 = analog_calculate_ppo2(1152, 0.0233f);
+    /* counts * COUNTS_TO_MILLIS gives micro-mV */
+    /* 1152 * 0.78128 = 900 micro-mV */
+    /* 900 * 0.0233 = 20.97, close to 21 */
+    float ppo2 = analog_calculate_ppo2(1152, 0.0233f);
 
-	zassert_within(ppo2, 21.0f, 1.0f);
+    zassert_within(ppo2, 21.0f, 1.0f);
 }
 
 /* High O2 (1.6 PPO2) */
 /* 1.6 / 0.21 * 1152 counts = ~8777 counts at same cal */
 ZTEST(calculate_ppo2, test_high_o2_reading)
 {
-	float ppo2 = analog_calculate_ppo2(8777, 0.0233f);
-	/* 8777 * 0.78128 * 0.0233 = 159.8 */
-	zassert_within(ppo2, 160.0f, 2.0f);
+    float ppo2 = analog_calculate_ppo2(8777, 0.0233f);
+    /* 8777 * 0.78128 * 0.0233 = 159.8 */
+    zassert_within(ppo2, 160.0f, 2.0f);
 }
 
 /* Negative counts should use absolute value */
 ZTEST(calculate_ppo2, test_negative_counts_uses_abs)
 {
-	float ppo2_pos = analog_calculate_ppo2(1000, 0.02f);
-	float ppo2_neg = analog_calculate_ppo2(-1000, 0.02f);
+    float ppo2_pos = analog_calculate_ppo2(1000, 0.02f);
+    float ppo2_neg = analog_calculate_ppo2(-1000, 0.02f);
 
-	zassert_within(ppo2_pos, ppo2_neg, 0.001f);
+    zassert_within(ppo2_pos, ppo2_neg, 0.001f);
 }
 
 /* Zero calibration coefficient */
 ZTEST(calculate_ppo2, test_zero_calibration)
 {
-	float ppo2 = analog_calculate_ppo2(1000, 0.0f);
+    float ppo2 = analog_calculate_ppo2(1000, 0.0f);
 
-	zassert_within(ppo2, 0.0f, 0.001f);
+    zassert_within(ppo2, 0.0f, 0.001f);
 }
 
 /* Calibration effect: double the coefficient doubles the PPO2 */
 ZTEST(calculate_ppo2, test_calibration_scaling)
 {
-	float ppo2_1x = analog_calculate_ppo2(1000, 0.02f);
-	float ppo2_2x = analog_calculate_ppo2(1000, 0.04f);
+    float ppo2_1x = analog_calculate_ppo2(1000, 0.02f);
+    float ppo2_2x = analog_calculate_ppo2(1000, 0.04f);
 
-	zassert_within(ppo2_1x * 2.0f, ppo2_2x, 0.001f);
+    zassert_within(ppo2_1x * 2.0f, ppo2_2x, 0.001f);
 }
 
 /* Boundary: max counts with small cal coeff */
 ZTEST(calculate_ppo2, test_max_counts_small_cal)
 {
-	/* 32767 counts * 0.78128 * 0.001 = 25.6 */
-	float ppo2 = analog_calculate_ppo2(32767, 0.001f);
+    /* 32767 counts * 0.78128 * 0.001 = 25.6 */
+    float ppo2 = analog_calculate_ppo2(32767, 0.001f);
 
-	zassert_within(ppo2, 25.6f, 0.1f);
+    zassert_within(ppo2, 25.6f, 0.1f);
 }
 
 /* Verify formula matches expected: counts * 0.78128 * cal */
 ZTEST(calculate_ppo2, test_formula_verification)
 {
-	/* Using exact values to verify the formula */
-	int16_t counts = 10000;
-	CalCoeff_t cal = 0.01f;
-	/* Expected: 10000 * (0.256 * 100000 / 32767) * 0.01 = 10000 * 0.78128 * 0.01 = 78.128 */
-	float expected = 10000.0f * ((0.256f * 100000.0f) / 32767.0f) * 0.01f;
-	float ppo2 = analog_calculate_ppo2(counts, cal);
+    /* Using exact values to verify the formula */
+    int16_t counts = 10000;
+    CalCoeff_t cal = 0.01f;
+    /* Expected: 10000 * (0.256 * 100000 / 32767) * 0.01 = 10000 * 0.78128 * 0.01 = 78.128 */
+    float expected = 10000.0f * ((0.256f * 100000.0f) / 32767.0f) * 0.01f;
+    float ppo2 = analog_calculate_ppo2(counts, cal);
 
-	zassert_within(ppo2, expected, 0.01f);
+    zassert_within(ppo2, expected, 0.01f);
 }
 
 /* Typical calibration coefficient range check */
 /* Valid cal coeffs are between ANALOG_CAL_LOWER (0.01428) and ANALOG_CAL_UPPER (0.02625) */
 ZTEST(calculate_ppo2, test_typical_cal_range)
 {
-	/* With 1152 counts (~9mV) and cal at mid-range (~0.02) */
-	float ppo2 = analog_calculate_ppo2(1152, 0.02f);
-	/* 1152 * 0.78128 * 0.02 = 18.0 */
-	zassert_within(ppo2, 18.0f, 0.5f);
+    /* With 1152 counts (~9mV) and cal at mid-range (~0.02) */
+    float ppo2 = analog_calculate_ppo2(1152, 0.02f);
+    /* 1152 * 0.78128 * 0.02 = 18.0 */
+    zassert_within(ppo2, 18.0f, 0.5f);
 }
 
 /* Very small counts */
 ZTEST(calculate_ppo2, test_small_counts)
 {
-	float ppo2 = analog_calculate_ppo2(10, 0.02f);
-	/* 10 * 0.78128 * 0.02 = 0.156 */
-	zassert_within(ppo2, 0.156f, 0.01f);
+    float ppo2 = analog_calculate_ppo2(10, 0.02f);
+    /* 10 * 0.78128 * 0.02 = 0.156 */
+    zassert_within(ppo2, 0.156f, 0.01f);
 }

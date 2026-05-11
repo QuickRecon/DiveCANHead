@@ -1,6 +1,7 @@
 #ifndef OXYGEN_CELL_MATH_H
 #define OXYGEN_CELL_MATH_H
 
+#include "common.h"
 #include "oxygen_cell_types.h"
 
 /* ---- Consensus voting ---- */
@@ -18,9 +19,9 @@
  * @return Consensus result with per-cell inclusion flags and voted PPO2
  */
 ConsensusMsg_t consensus_calculate(const OxygenCellMsg_t cells[],
-				   uint8_t count,
-				   int64_t now_ticks,
-				   int64_t staleness_ticks);
+                                   uint8_t count,
+                                   int64_t now_ticks,
+                                   int64_t staleness_ticks);
 
 /**
  * Count how many cells were included in the consensus vote.
@@ -36,9 +37,9 @@ Millivolts_t analog_counts_to_mv(int16_t adc_counts);
 
 /**
  * Calculate calibrated PPO2 from raw ADC counts and calibration coefficient.
- * Returns PPO2 in centibar as a float (caller truncates to uint8_t with range check).
+ * Returns PPO2 in centibar as a Numeric_t (caller truncates to uint8_t with range check).
  */
-float analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff);
+Numeric_t analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff);
 
 /* ---- Calibration math ---- */
 
@@ -52,18 +53,18 @@ int16_t cal_compute_target_ppo2(FO2_t fo2, uint16_t pressure_mbar);
  * Compute analog calibration coefficient from ADC counts and target PPO2.
  * Returns negative value on error (zero divisor, out-of-bounds result).
  */
-float analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2);
+CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2);
 
 /**
  * Compute DiveO2 calibration coefficient from raw cell sample and target PPO2.
  * Returns negative value on error (zero divisor, out-of-bounds result).
  */
-float diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2);
+CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2);
 
 /**
  * Compute O2S calibration coefficient from cell reading and target PPO2.
  * Returns negative value on error (zero divisor, out-of-bounds result).
  */
-float o2s_cal_coefficient(float cell_sample, PPO2_t target_ppo2);
+CalCoeff_t o2s_cal_coefficient(Numeric_t cell_sample, PPO2_t target_ppo2);
 
 #endif /* OXYGEN_CELL_MATH_H */

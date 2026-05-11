@@ -26,237 +26,241 @@ LOG_MODULE_REGISTER(uds_settings, LOG_LEVEL_INF);
 
 #define SETTING_COUNT 5U
 
-/* Option labels for text-type settings */
-#ifndef APP_BUILD_VERSION
-#define APP_BUILD_VERSION dev
+/* APP_BUILD_VERSION_STR is injected as a quoted string literal by CMake;
+ * see CMakeLists.txt. No token-stringify macro is needed here. */
+#ifndef APP_BUILD_VERSION_STR
+#define APP_BUILD_VERSION_STR "dev"
 #endif
-#define UDS_STR2(x) #x
-#define UDS_STR(x) UDS_STR2(x)
 
-static const char * const fwCommitOptions[] = {
-	UDS_STR(APP_BUILD_VERSION),
-	NULL
+#define FW_COMMIT_OPTION_COUNT 2U
+#define PPO2_MODE_OPTION_COUNT 4U
+#define CAL_MODE_OPTION_COUNT  5U
+#define BOOL_OPTION_COUNT      3U
+
+static const char * const fwCommitOptions[FW_COMMIT_OPTION_COUNT] = {
+    APP_BUILD_VERSION_STR,
+    NULL
 };
 
-static const char * const ppo2ModeOptions[] = {
-	"Off",
-	"PID",
-	"MK15",
-	NULL
+static const char * const ppo2ModeOptions[PPO2_MODE_OPTION_COUNT] = {
+    "Off",
+    "PID",
+    "MK15",
+    NULL
 };
 
-static const char * const calModeOptions[] = {
-	"Dig Ref",
-	"Absolute",
-	"TotalAbs",
-	"Sol Flsh",
-	NULL
+static const char * const calModeOptions[CAL_MODE_OPTION_COUNT] = {
+    "Dig Ref",
+    "Absolute",
+    "TotalAbs",
+    "Sol Flsh",
+    NULL
 };
 
-static const char * const boolOptions[] = {
-	"Off",
-	"On",
-	NULL
+static const char * const boolOptions[BOOL_OPTION_COUNT] = {
+    "Off",
+    "On",
+    NULL
 };
 
 /* Settings definitions array */
 static const SettingDefinition_t settings[SETTING_COUNT] = {
-	/* Index 0: FW Commit (read-only) */
-	{
-		.label = "FW Commit",
-		.kind = SETTING_KIND_TEXT,
-		.editable = false,
-		.maxValue = 1,
-		.options = fwCommitOptions,
-		.optionCount = 1
-	},
-	/* Index 1: PPO2 Control Mode */
-	{
-		.label = "PPO2 Mode",
-		.kind = SETTING_KIND_TEXT,
-		.editable = true,
-		.maxValue = 2,
-		.options = ppo2ModeOptions,
-		.optionCount = 3
-	},
-	/* Index 2: Calibration Mode */
-	{
-		.label = "Cal Mode",
-		.kind = SETTING_KIND_TEXT,
-		.editable = true,
-		.maxValue = 3,
-		.options = calModeOptions,
-		.optionCount = 4
-	},
-	/* Index 3: Depth Compensation */
-	{
-		.label = "DepthComp",
-		.kind = SETTING_KIND_TEXT,
-		.editable = true,
-		.maxValue = 1,
-		.options = boolOptions,
-		.optionCount = 2
-	},
-	/* Index 4: Extended Messages */
-	{
-		.label = "Ext Msgs",
-		.kind = SETTING_KIND_TEXT,
-		.editable = true,
-		.maxValue = 1,
-		.options = boolOptions,
-		.optionCount = 2
-	}
+    /* Index 0: FW Commit (read-only) */
+    {
+        .label = "FW Commit",
+        .kind = SETTING_KIND_TEXT,
+        .editable = false,
+        .maxValue = 1,
+        .options = fwCommitOptions,
+        .optionCount = 1
+    },
+    /* Index 1: PPO2 Control Mode */
+    {
+        .label = "PPO2 Mode",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .maxValue = 2,
+        .options = ppo2ModeOptions,
+        .optionCount = 3
+    },
+    /* Index 2: Calibration Mode */
+    {
+        .label = "Cal Mode",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .maxValue = 3,
+        .options = calModeOptions,
+        .optionCount = 4
+    },
+    /* Index 3: Depth Compensation */
+    {
+        .label = "DepthComp",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .maxValue = 1,
+        .options = boolOptions,
+        .optionCount = 2
+    },
+    /* Index 4: Extended Messages */
+    {
+        .label = "Ext Msgs",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .maxValue = 1,
+        .options = boolOptions,
+        .optionCount = 2
+    }
 };
 
 uint8_t UDS_GetSettingCount(void)
 {
-	return SETTING_COUNT;
+    return SETTING_COUNT;
 }
 
 const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
 {
-	const SettingDefinition_t *result = NULL;
+    const SettingDefinition_t *result = NULL;
 
-	if (index >= SETTING_COUNT) {
-		OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
-	} else {
-		result = &settings[index];
-	}
+    if (index >= SETTING_COUNT) {
+        OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
+    } else {
+        result = &settings[index];
+    }
 
-	return result;
+    return result;
 }
 
 uint64_t UDS_GetSettingValue(uint8_t index)
 {
-	uint64_t result = 0U;
+    uint64_t result = 0U;
 
-	RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
-	(void)runtime_settings_load(&rs);
+    RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
+    (void)runtime_settings_load(&rs);
 
-	switch (index) {
-	case SETTING_INDEX_FW_COMMIT:
-		result = 0U;
-		break;
-	case SETTING_INDEX_PPO2_MODE:
-		result = (uint64_t)rs.ppo2ControlMode;
-		break;
-	case SETTING_INDEX_CAL_MODE:
-		result = (uint64_t)rs.calibrationMode;
-		break;
-	case SETTING_INDEX_DEPTH_COMP:
-		if (rs.depthCompensation) {
-			result = 1U;
-		}
-		break;
-	case SETTING_INDEX_EXT_MSGS:
-		if (rs.extendedMessages) {
-			result = 1U;
-		}
-		break;
-	default:
-		OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
-		break;
-	}
+    switch (index) {
+    case SETTING_INDEX_FW_COMMIT:
+        result = 0U;
+        break;
+    case SETTING_INDEX_PPO2_MODE:
+        result = (uint64_t)rs.ppo2ControlMode;
+        break;
+    case SETTING_INDEX_CAL_MODE:
+        result = (uint64_t)rs.calibrationMode;
+        break;
+    case SETTING_INDEX_DEPTH_COMP:
+        if (rs.depthCompensation) {
+            result = 1U;
+        }
+        break;
+    case SETTING_INDEX_EXT_MSGS:
+        if (rs.extendedMessages) {
+            result = 1U;
+        }
+        break;
+    default:
+        OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
+        break;
+    }
 
-	return result;
+    return result;
 }
 
 bool UDS_SetSettingValue(uint8_t index, uint64_t value)
 {
-	bool result = false;
+    bool result = false;
 
-	if (index >= SETTING_COUNT) {
-		OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
-	} else {
-		const SettingDefinition_t *setting = &settings[index];
+    if (index >= SETTING_COUNT) {
+        OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
+    } else {
+        const SettingDefinition_t *setting = &settings[index];
 
-		if (!setting->editable) {
-			OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, index);
-		} else if (value > setting->maxValue) {
-			OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, index);
-		} else {
-			RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
-			(void)runtime_settings_load(&rs);
+        if (!setting->editable) {
+            OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, index);
+        } else if (value > setting->maxValue) {
+            OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, index);
+        } else {
+            RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
+            (void)runtime_settings_load(&rs);
 
-			switch (index) {
-			case SETTING_INDEX_PPO2_MODE:
-				rs.ppo2ControlMode = (PPO2ControlMode_t)value;
-				break;
-			case SETTING_INDEX_CAL_MODE:
-				rs.calibrationMode = (CalibrationMode_t)value;
-				break;
-			case SETTING_INDEX_DEPTH_COMP:
-				rs.depthCompensation = (value != 0U);
-				break;
-			case SETTING_INDEX_EXT_MSGS:
-				rs.extendedMessages = (value != 0U);
-				break;
-			default:
-				break;
-			}
+            switch (index) {
+            case SETTING_INDEX_PPO2_MODE:
+                rs.ppo2ControlMode = (PPO2ControlMode_t)value;
+                break;
+            case SETTING_INDEX_CAL_MODE:
+                rs.calibrationMode = (CalibrationMode_t)value;
+                break;
+            case SETTING_INDEX_DEPTH_COMP:
+                rs.depthCompensation = (value != 0U);
+                break;
+            case SETTING_INDEX_EXT_MSGS:
+                rs.extendedMessages = (value != 0U);
+                break;
+            default:
+                break;
+            }
 
-			if (runtime_settings_validate(&rs)) {
-				result = true;
-			}
-		}
-	}
+            if (runtime_settings_validate(&rs)) {
+                result = true;
+            }
+        }
+    }
 
-	return result;
+    return result;
 }
 
 bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
 {
-	bool result = false;
+    bool result = false;
 
-	if (!UDS_SetSettingValue(index, value)) {
-		OP_ERROR_DETAIL(OP_ERR_UDS_NRC, index);
-	} else {
-		RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
-		(void)runtime_settings_load(&rs);
+    if (!UDS_SetSettingValue(index, value)) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, index);
+    } else {
+        RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
+        (void)runtime_settings_load(&rs);
 
-		switch (index) {
-		case SETTING_INDEX_PPO2_MODE:
-			rs.ppo2ControlMode = (PPO2ControlMode_t)value;
-			break;
-		case SETTING_INDEX_CAL_MODE:
-			rs.calibrationMode = (CalibrationMode_t)value;
-			break;
-		case SETTING_INDEX_DEPTH_COMP:
-			rs.depthCompensation = (value != 0U);
-			break;
-		case SETTING_INDEX_EXT_MSGS:
-			rs.extendedMessages = (value != 0U);
-			break;
-		default:
-			break;
-		}
+        switch (index) {
+        case SETTING_INDEX_PPO2_MODE:
+            rs.ppo2ControlMode = (PPO2ControlMode_t)value;
+            break;
+        case SETTING_INDEX_CAL_MODE:
+            rs.calibrationMode = (CalibrationMode_t)value;
+            break;
+        case SETTING_INDEX_DEPTH_COMP:
+            rs.depthCompensation = (value != 0U);
+            break;
+        case SETTING_INDEX_EXT_MSGS:
+            rs.extendedMessages = (value != 0U);
+            break;
+        default:
+            break;
+        }
 
-		if (runtime_settings_save(&rs) == 0) {
-			result = true;
-		} else {
-			OP_ERROR(OP_ERR_FLASH);
-		}
-	}
+        if (0 == runtime_settings_save(&rs)) {
+            result = true;
+        } else {
+            OP_ERROR(OP_ERR_FLASH);
+        }
+    }
 
-	return result;
+    return result;
 }
 
 const char *UDS_GetSettingOptionLabel(uint8_t settingIndex,
-				     uint8_t optionIndex)
+                     uint8_t optionIndex)
 {
-	const char *result = NULL;
+    const char *result = NULL;
 
-	if (settingIndex >= SETTING_COUNT) {
-		OP_ERROR_DETAIL(OP_ERR_CONFIG, settingIndex);
-	} else {
-		const SettingDefinition_t *setting = &settings[settingIndex];
+    if (settingIndex >= SETTING_COUNT) {
+        OP_ERROR_DETAIL(OP_ERR_CONFIG, settingIndex);
+    } else {
+        const SettingDefinition_t *setting = &settings[settingIndex];
 
-		if (optionIndex >= setting->optionCount) {
-			OP_ERROR_DETAIL(OP_ERR_CONFIG, optionIndex);
-		} else {
-			result = setting->options[optionIndex];
-		}
-	}
+        if (optionIndex >= setting->optionCount) {
+            OP_ERROR_DETAIL(OP_ERR_CONFIG, optionIndex);
+        } else {
+            result = setting->options[optionIndex];
+        }
+    }
 
-	return result;
+    return result;
 }

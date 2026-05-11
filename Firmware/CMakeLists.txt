@@ -61,6 +61,24 @@ target_include_directories(app PRIVATE src/divecan/include)
 
 add_subdirectory(drivers/solenoid)
 
+# Build-time version string. We pass it in as an already-quoted string literal
+# so the C code never has to stringify a token (avoids SonarCloud S958/S959/
+# S960/S967/S968/M23_042/M23_212 firings on a STRINGIFY macro chain).
+# Prefer `git describe`; fall back to "dev" outside a git checkout.
+execute_process(
+    COMMAND git -C ${CMAKE_CURRENT_SOURCE_DIR} describe --tags --always --dirty
+    OUTPUT_VARIABLE APP_BUILD_VERSION_RAW
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE APP_BUILD_VERSION_RC
+)
+if(NOT APP_BUILD_VERSION_RC EQUAL 0 OR APP_BUILD_VERSION_RAW STREQUAL "")
+    set(APP_BUILD_VERSION_RAW "dev")
+endif()
+target_compile_definitions(app PRIVATE
+    APP_BUILD_VERSION_STR="${APP_BUILD_VERSION_RAW}"
+)
+
 # App-only hardening flags (not applied to Zephyr kernel/drivers)
 target_compile_options(app PRIVATE
     -Wall

@@ -9,140 +9,151 @@
 LOG_MODULE_REGISTER(oxygen_cell_math, LOG_LEVEL_WRN);
 #endif
 
+/* ---- Local named constants ---- */
+
+static const uint8_t TWO_CELL_PAIR = 2U;     /**< Cells per two-cell consensus */
+static const uint8_t PAIRWISE_COUNT = 3U;    /**< Combinations of 3 cells choose 2 */
+static const PrecisionPPO2_t CENTIBAR_PER_BAR = 100.0;
+static const PrecisionPPO2_t HALF_DIVISOR = 2.0;
+static const PrecisionPPO2_t THIRD_DIVISOR = 3.0;
+static const Numeric_t MIN_DIVISOR = 1e-6f;
+static const Numeric_t CENTIBAR_PER_BAR_F = 100.0f;
+static const Numeric_t MIN_ANALOG_SAMPLE = 1.0f;
+static const Numeric_t ANALOG_COEFF_REPORT_SCALE = 1000000.0f;
+static const Numeric_t O2S_COEFF_REPORT_SCALE = 1000.0f;
+static const uint32_t MBAR_PER_FRACTIONAL_UNIT = 1000U;
+static const Numeric_t ERROR_RETURN = -1.0f;
+
 /* ---- Internal consensus helpers ---- */
 
 static ConsensusMsg_t two_cell_consensus(ConsensusMsg_t consensus)
 {
-	/* Find the two values that we're including */
-	double included_values[2] = {0};
-	uint8_t idx = 0;
+    /* Find the two values that we're including */
+    PrecisionPPO2_t included_values[2] = {0};
+    uint8_t idx = 0U;
 
-	for (uint8_t cellIdx = 0; cellIdx < CELL_MAX_COUNT; ++cellIdx) {
-		if (consensus.include_array[cellIdx]) {
-			if (idx < 2U) {
-				included_values[idx] =
-					consensus.precision_ppo2_array[cellIdx];
-				++idx;
-			}
-		}
-	}
+    for (uint8_t cellIdx = 0U; cellIdx < CELL_MAX_COUNT; ++cellIdx) {
+        if (consensus.include_array[cellIdx] && (idx < TWO_CELL_PAIR)) {
+            included_values[idx] =
+                consensus.precision_ppo2_array[cellIdx];
+            ++idx;
+        }
+    }
 
-	/* Check to see if they pass the sniff check */
-	if ((fabs(included_values[0] - included_values[1]) * 100.0) >
-	    MAX_DEVIATION) {
-		/* Both cells are too far apart, vote them all out */
-		consensus.include_array[0] = false;
-		consensus.include_array[1] = false;
-		consensus.include_array[2] = false;
-	} else {
-		/* Get our average */
-		double average = ((included_values[0] + included_values[1]) /
-				  2.0) *
-				 100.0;
+    /* Check to see if they pass the sniff check */
+    if ((fabs(included_values[0] - included_values[1]) * CENTIBAR_PER_BAR) >
+        MAX_DEVIATION) {
+        /* Both cells are too far apart, vote them all out */
+        for (uint8_t voteIdx = 0U; voteIdx < CELL_MAX_COUNT; ++voteIdx) {
+            consensus.include_array[voteIdx] = false;
+        }
+    } else {
+        /* Get our average */
+        PrecisionPPO2_t average = ((included_values[0] + included_values[1]) /
+                                   HALF_DIVISOR) *
+                                  CENTIBAR_PER_BAR;
 
-		/* Bug #5 fix: saturate instead of assert */
-		if (average > (double)MAX_VALID_PPO2) {
+        /* Bug #5 fix: saturate instead of assert */
+        if (average > (PrecisionPPO2_t)MAX_VALID_PPO2) {
 #ifdef CONFIG_ZBUS
-			OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)average);
+            OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)average);
 #endif
-			consensus.consensus_ppo2 = PPO2_FAIL;
-		} else {
-			consensus.consensus_ppo2 = (PPO2_t)(average);
-		}
-		consensus.precision_consensus = average / 100.0;
-	}
+            consensus.consensus_ppo2 = PPO2_FAIL;
+        } else {
+            consensus.consensus_ppo2 = (PPO2_t)(average);
+        }
+        consensus.precision_consensus = average / CENTIBAR_PER_BAR;
+    }
 
-	return consensus;
+    return consensus;
 }
 
 static ConsensusMsg_t three_cell_consensus(ConsensusMsg_t consensus)
 {
-	const double pairwise_differences[3] = {
-		fabs(consensus.precision_ppo2_array[0] -
-		     consensus.precision_ppo2_array[1]),
-		fabs(consensus.precision_ppo2_array[0] -
-		     consensus.precision_ppo2_array[2]),
-		fabs(consensus.precision_ppo2_array[1] -
-		     consensus.precision_ppo2_array[2]),
-	};
+    const PrecisionPPO2_t pairwise_differences[3] = {
+        fabs(consensus.precision_ppo2_array[0] -
+             consensus.precision_ppo2_array[1]),
+        fabs(consensus.precision_ppo2_array[0] -
+             consensus.precision_ppo2_array[2]),
+        fabs(consensus.precision_ppo2_array[1] -
+             consensus.precision_ppo2_array[2]),
+    };
 
-	const double pairwise_averages[3] = {
-		(consensus.precision_ppo2_array[0] +
-		 consensus.precision_ppo2_array[1]) /
-			2.0,
-		(consensus.precision_ppo2_array[0] +
-		 consensus.precision_ppo2_array[2]) /
-			2.0,
-		(consensus.precision_ppo2_array[1] +
-		 consensus.precision_ppo2_array[2]) /
-			2.0,
-	};
+    const PrecisionPPO2_t pairwise_averages[3] = {
+        (consensus.precision_ppo2_array[0] +
+         consensus.precision_ppo2_array[1]) /
+            HALF_DIVISOR,
+        (consensus.precision_ppo2_array[0] +
+         consensus.precision_ppo2_array[2]) /
+            HALF_DIVISOR,
+        (consensus.precision_ppo2_array[1] +
+         consensus.precision_ppo2_array[2]) /
+            HALF_DIVISOR,
+    };
 
-	/* The cell that is not in the pairwise comparison */
-	const uint8_t remainder_cell[] = {2, 1, 0};
+    /* The cell that is not in the pairwise comparison */
+    const uint8_t remainder_cell[] = {2U, 1U, 0U};
 
-	/* Find the minimum value and its index */
-	double min_difference = pairwise_differences[0];
-	uint8_t min_index = 0;
+    /* Find the minimum value and its index */
+    PrecisionPPO2_t min_difference = pairwise_differences[0];
+    uint8_t min_index = 0U;
 
-	for (uint8_t i = 0;
-	     i < (sizeof(pairwise_differences) / sizeof(pairwise_differences[0]));
-	     ++i) {
-		if (pairwise_differences[i] < min_difference) {
-			min_difference = pairwise_differences[i];
-			min_index = i;
-		}
-	}
+    for (uint8_t i = 0U; i < PAIRWISE_COUNT; ++i) {
+        if (pairwise_differences[i] < min_difference) {
+            min_difference = pairwise_differences[i];
+            min_index = i;
+        }
+    }
 
-	/* Ensure that these values are within our maximum deviation, if they're
-	 * too far apart flag them all as failed but carry forward to get a number
-	 * so we still have a guess to fly off */
-	if ((min_difference * 100.0) > MAX_DEVIATION) {
-		/* All cells are too far apart, vote them all out */
-		consensus.include_array[0] = false;
-		consensus.include_array[1] = false;
-		consensus.include_array[2] = false;
-	}
-	/* Check the remainder cell against the average of the 2 */
-	else if ((fabs(consensus.precision_ppo2_array[remainder_cell[min_index]] -
-		       pairwise_averages[min_index]) *
-		  100.0) > MAX_DEVIATION) {
-		/* Vote out the remainder cell */
-		consensus.include_array[remainder_cell[min_index]] = false;
-		double total_average = pairwise_averages[min_index] * 100.0;
+    /* Ensure that these values are within our maximum deviation, if they're
+     * too far apart flag them all as failed but carry forward to get a number
+     * so we still have a guess to fly off */
+    if ((min_difference * CENTIBAR_PER_BAR) > MAX_DEVIATION) {
+        /* All cells are too far apart, vote them all out */
+        for (uint8_t voteIdx = 0U; voteIdx < CELL_MAX_COUNT; ++voteIdx) {
+            consensus.include_array[voteIdx] = false;
+        }
+    }
+    /* Check the remainder cell against the average of the 2 */
+    else if ((fabs(consensus.precision_ppo2_array[remainder_cell[min_index]] -
+                   pairwise_averages[min_index]) *
+              CENTIBAR_PER_BAR) > MAX_DEVIATION) {
+        /* Vote out the remainder cell */
+        consensus.include_array[remainder_cell[min_index]] = false;
+        PrecisionPPO2_t total_average = pairwise_averages[min_index] * CENTIBAR_PER_BAR;
 
-		/* Bug #5 fix: saturate instead of assert */
-		if (total_average > (double)MAX_VALID_PPO2) {
+        /* Bug #5 fix: saturate instead of assert */
+        if (total_average > (PrecisionPPO2_t)MAX_VALID_PPO2) {
 #ifdef CONFIG_ZBUS
-			OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)total_average);
+            OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)total_average);
 #endif
-			consensus.consensus_ppo2 = PPO2_FAIL;
-		} else {
-			consensus.consensus_ppo2 = (PPO2_t)(total_average);
-		}
-		consensus.precision_consensus = pairwise_averages[min_index];
-	} else {
-		/* All 3 cells are within range, use all 3 */
-		double total_average =
-			((consensus.precision_ppo2_array[0] +
-			  consensus.precision_ppo2_array[1] +
-			  consensus.precision_ppo2_array[2]) /
-			 3.0) *
-			100.0;
+            consensus.consensus_ppo2 = PPO2_FAIL;
+        } else {
+            consensus.consensus_ppo2 = (PPO2_t)(total_average);
+        }
+        consensus.precision_consensus = pairwise_averages[min_index];
+    } else {
+        /* All 3 cells are within range, use all 3 */
+        PrecisionPPO2_t total_average =
+            ((consensus.precision_ppo2_array[0] +
+              consensus.precision_ppo2_array[1] +
+              consensus.precision_ppo2_array[2]) /
+             THIRD_DIVISOR) *
+            CENTIBAR_PER_BAR;
 
-		/* Bug #5 fix: saturate instead of assert */
-		if (total_average > (double)MAX_VALID_PPO2) {
+        /* Bug #5 fix: saturate instead of assert */
+        if (total_average > (PrecisionPPO2_t)MAX_VALID_PPO2) {
 #ifdef CONFIG_ZBUS
-			OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)total_average);
+            OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)total_average);
 #endif
-			consensus.consensus_ppo2 = PPO2_FAIL;
-		} else {
-			consensus.consensus_ppo2 = (PPO2_t)(total_average);
-		}
-		consensus.precision_consensus = total_average / 100.0;
-	}
+            consensus.consensus_ppo2 = PPO2_FAIL;
+        } else {
+            consensus.consensus_ppo2 = (PPO2_t)(total_average);
+        }
+        consensus.precision_consensus = total_average / CENTIBAR_PER_BAR;
+    }
 
-	return consensus;
+    return consensus;
 }
 
 /* ---- Consensus voting ---- */
@@ -153,103 +164,101 @@ static ConsensusMsg_t three_cell_consensus(ConsensusMsg_t consensus)
  * still be intact so we can still have our best guess.
  */
 ConsensusMsg_t consensus_calculate(const OxygenCellMsg_t cells[],
-				   uint8_t count,
-				   int64_t now_ticks,
-				   int64_t staleness_ticks)
+                                   uint8_t count,
+                                   int64_t now_ticks,
+                                   int64_t staleness_ticks)
 {
-	ConsensusMsg_t consensus;
+    ConsensusMsg_t consensus = {0};
 
-	(void)memset(&consensus, 0, sizeof(consensus));
-	consensus.consensus_ppo2 = PPO2_FAIL;
-	consensus.precision_consensus = (double)PPO2_FAIL;
+    (void)memset(&consensus, 0, sizeof(consensus));
+    consensus.consensus_ppo2 = PPO2_FAIL;
+    consensus.precision_consensus = (PrecisionPPO2_t)PPO2_FAIL;
 
-	/* Zeroth step, load up the millis, status and PPO2
-	 * We also load up the timestamps of each cell sample so that we can
-	 * check the other tasks haven't been sitting idle and starved us of
-	 * information */
-	for (uint8_t i = 0; i < CELL_MAX_COUNT; i++) {
-		if (i < count) {
-			consensus.status_array[i] = cells[i].status;
-			consensus.ppo2_array[i] = cells[i].ppo2;
-			consensus.precision_ppo2_array[i] =
-				cells[i].precision_ppo2;
-			consensus.milli_array[i] = cells[i].millivolts;
-			consensus.include_array[i] = true;
-		} else {
-			consensus.status_array[i] = CELL_FAIL;
-			consensus.include_array[i] = false;
-		}
-	}
+    /* Zeroth step, load up the millis, status and PPO2
+     * We also load up the timestamps of each cell sample so that we can
+     * check the other tasks haven't been sitting idle and starved us of
+     * information */
+    for (uint8_t i = 0U; i < CELL_MAX_COUNT; ++i) {
+        if (i < count) {
+            consensus.status_array[i] = cells[i].status;
+            consensus.ppo2_array[i] = cells[i].ppo2;
+            consensus.precision_ppo2_array[i] =
+                cells[i].precision_ppo2;
+            consensus.milli_array[i] = cells[i].millivolts;
+            consensus.include_array[i] = true;
+        } else {
+            consensus.status_array[i] = CELL_FAIL;
+            consensus.include_array[i] = false;
+        }
+    }
 
-	/* Do a two pass check, loop through the cells and average the "good"
-	 * cells. Then afterwards we have a few different processes depending on
-	 * how many "good" cells we have:
-	 *   0 good cells: set consensus to 0xFF so we fail safe and don't fire
-	 *                 the solenoid
-	 *   1 good cell:  use that cell but vote it out so we get a vote fail
-	 *                 alarm
-	 *   2 good cells: ensure they are within the MAX_DEVIATION, if so
-	 *                 average them, otherwise vote both out
-	 *   3 good cells: do a pairwise comparison to find the closest two,
-	 *                 average those, then check to see if the remaining cell
-	 *                 is within MAX_DEVIATION of that average, if so use all
-	 *                 three, otherwise vote out the remaining cell
-	 */
-	uint8_t includedCellCount = 0;
+    /* Do a two pass check, loop through the cells and average the "good"
+     * cells. Then afterwards we have a few different processes depending on
+     * how many "good" cells we have:
+     *   0 good cells: set consensus to 0xFF so we fail safe and don't fire
+     *                 the solenoid
+     *   1 good cell:  use that cell but vote it out so we get a vote fail
+     *                 alarm
+     *   2 good cells: ensure they are within the MAX_DEVIATION, if so
+     *                 average them, otherwise vote both out
+     *   3 good cells: do a pairwise comparison to find the closest two,
+     *                 average those, then check to see if the remaining cell
+     *                 is within MAX_DEVIATION of that average, if so use all
+     *                 three, otherwise vote out the remaining cell
+     */
+    uint8_t includedCellCount = 0U;
 
-	for (uint8_t cellIdx = 0; cellIdx < CELL_MAX_COUNT; ++cellIdx) {
-		if (!consensus.include_array[cellIdx]) {
-			continue;
-		}
+    for (uint8_t cellIdx = 0U; cellIdx < CELL_MAX_COUNT; ++cellIdx) {
+        if (consensus.include_array[cellIdx]) {
+            /* If the PPO2 is invalid (zero or max) we vote the cell out,
+             * likewise if the cell status is failed or the cell is timed
+             * out it doesn't get included */
+            if ((PPO2_FAIL == consensus.ppo2_array[cellIdx]) ||
+                (0U == consensus.ppo2_array[cellIdx])) {
+                consensus.include_array[cellIdx] = false;
+            } else if ((CELL_NEED_CAL == consensus.status_array[cellIdx]) ||
+                       (CELL_FAIL == consensus.status_array[cellIdx]) ||
+                       (CELL_DEGRADED == consensus.status_array[cellIdx]) ||
+                       ((now_ticks - cells[cellIdx].timestamp_ticks) >
+                        staleness_ticks)) {
+                consensus.include_array[cellIdx] = false;
+            } else {
+                ++includedCellCount;
+            }
+        }
+    }
 
-		/* If the PPO2 is invalid (zero or max) we vote the cell out,
-		 * likewise if the cell status is failed or the cell is timed
-		 * out it doesn't get included */
-		if ((consensus.ppo2_array[cellIdx] == PPO2_FAIL) ||
-		    (consensus.ppo2_array[cellIdx] == 0)) {
-			consensus.include_array[cellIdx] = false;
-		} else if ((consensus.status_array[cellIdx] == CELL_NEED_CAL) ||
-			   (consensus.status_array[cellIdx] == CELL_FAIL) ||
-			   (consensus.status_array[cellIdx] == CELL_DEGRADED) ||
-			   ((now_ticks - cells[cellIdx].timestamp_ticks) >
-			    staleness_ticks)) {
-			consensus.include_array[cellIdx] = false;
-		} else {
-			++includedCellCount;
-		}
-	}
+    /* In the case of no included cells, just set the consensus to FF,
+     * which will inhibit the solenoid from firing */
+    if (0U == includedCellCount) {
+        /* Do nothing as the consensus is FF by the initializer */
+    } else if (1U == includedCellCount) {
+        /* If we only have one cell, just use that cell's value, but
+         * vote it out so we still get a vote fail alarm (because we
+         * haven't actually voted) */
+        for (uint8_t cellIdx = 0U; cellIdx < CELL_MAX_COUNT; ++cellIdx) {
+            if (consensus.include_array[cellIdx]) {
+                consensus.consensus_ppo2 =
+                    consensus.ppo2_array[cellIdx];
+                consensus.precision_consensus =
+                    consensus.precision_ppo2_array[cellIdx];
+                /* Vote it out so we get a vote fail alarm */
+                consensus.include_array[cellIdx] = false;
+            }
+        }
+    } else if (TWO_CELL_PAIR == includedCellCount) {
+        /* If we have 2 cells, ensure they are within the MAX_DEVIATION
+         * (otherwise alarm) */
+        consensus = two_cell_consensus(consensus);
+    } else {
+        /* All 3 cells were valid, do a pairwise compare to find the
+         * closest two */
+        consensus = three_cell_consensus(consensus);
+    }
 
-	/* In the case of no included cells, just set the consensus to FF,
-	 * which will inhibit the solenoid from firing */
-	if (includedCellCount == 0) {
-		/* Do nothing as the consensus is FF by the initializer */
-	} else if (includedCellCount == 1) {
-		/* If we only have one cell, just use that cell's value, but
-		 * vote it out so we still get a vote fail alarm (because we
-		 * haven't actually voted) */
-		for (uint8_t cellIdx = 0; cellIdx < CELL_MAX_COUNT; ++cellIdx) {
-			if (consensus.include_array[cellIdx]) {
-				consensus.consensus_ppo2 =
-					consensus.ppo2_array[cellIdx];
-				consensus.precision_consensus =
-					consensus.precision_ppo2_array[cellIdx];
-				/* Vote it out so we get a vote fail alarm */
-				consensus.include_array[cellIdx] = false;
-			}
-		}
-	} else if (includedCellCount == 2) {
-		/* If we have 2 cells, ensure they are within the MAX_DEVIATION
-		 * (otherwise alarm) */
-		consensus = two_cell_consensus(consensus);
-	} else {
-		/* All 3 cells were valid, do a pairwise compare to find the
-		 * closest two */
-		consensus = three_cell_consensus(consensus);
-	}
+    consensus.confidence = consensus_confidence(&consensus);
 
-	consensus.confidence = consensus_confidence(&consensus);
-
-	return consensus;
+    return consensus;
 }
 
 /**
@@ -258,15 +267,15 @@ ConsensusMsg_t consensus_calculate(const OxygenCellMsg_t cells[],
  */
 uint8_t consensus_confidence(const ConsensusMsg_t *consensus)
 {
-	uint8_t confidence = 0;
+    uint8_t confidence = 0U;
 
-	for (uint8_t i = 0; i < CELL_MAX_COUNT; ++i) {
-		if (consensus->include_array[i]) {
-			++confidence;
-		}
-	}
+    for (uint8_t i = 0U; i < CELL_MAX_COUNT; ++i) {
+        if (consensus->include_array[i]) {
+            ++confidence;
+        }
+    }
 
-	return confidence;
+    return confidence;
 }
 
 /* ---- Analog cell math ---- */
@@ -277,9 +286,9 @@ uint8_t consensus_confidence(const ConsensusMsg_t *consensus)
  */
 Millivolts_t analog_counts_to_mv(int16_t adc_counts)
 {
-	float adcMillis = ((float)abs(adc_counts)) * COUNTS_TO_MILLIS;
+    Numeric_t adcMillis = ((Numeric_t)abs(adc_counts)) * COUNTS_TO_MILLIS;
 
-	return (Millivolts_t)roundf(adcMillis);
+    return (Millivolts_t)roundf(adcMillis);
 }
 
 /**
@@ -287,9 +296,9 @@ Millivolts_t analog_counts_to_mv(int16_t adc_counts)
  * Our coefficient is simply the float needed to make the current sample
  * the current PPO2.
  */
-float analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff)
+Numeric_t analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff)
 {
-	return (float)abs(adc_counts) * COUNTS_TO_MILLIS * cal_coeff;
+    return (Numeric_t)abs(adc_counts) * COUNTS_TO_MILLIS * cal_coeff;
 }
 
 /* ---- Calibration math ---- */
@@ -301,17 +310,19 @@ float analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff)
  */
 int16_t cal_compute_target_ppo2(FO2_t fo2, uint16_t pressure_mbar)
 {
-	uint32_t product = (uint32_t)fo2 * (uint32_t)pressure_mbar;
-	uint32_t ppo2 = product / 1000U;
+    uint32_t product = (uint32_t)fo2 * (uint32_t)pressure_mbar;
+    uint32_t ppo2 = product / MBAR_PER_FRACTIONAL_UNIT;
+    int16_t result = -1;
 
-	if (ppo2 > MAX_VALID_PPO2) {
+    if (ppo2 > MAX_VALID_PPO2) {
 #ifdef CONFIG_ZBUS
-		OP_ERROR_DETAIL(OP_ERR_MATH, ppo2);
+        OP_ERROR_DETAIL(OP_ERR_MATH, ppo2);
 #endif
-		return -1;
-	}
-
-	return (int16_t)ppo2;
+        result = -1;
+    } else {
+        result = (int16_t)ppo2;
+    }
+    return result;
 }
 
 /**
@@ -321,28 +332,30 @@ int16_t cal_compute_target_ppo2(FO2_t fo2, uint16_t pressure_mbar)
  * Bug #2 fix: guard against zero divisor.
  * Returns negative value if divisor is zero or coefficient is out of bounds.
  */
-float analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2)
+CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2)
 {
-	float divisor = (float)abs(adc_counts) * COUNTS_TO_MILLIS;
+    CalCoeff_t result = ERROR_RETURN;
+    Numeric_t divisor = (Numeric_t)abs(adc_counts) * COUNTS_TO_MILLIS;
 
-	if (divisor < 1e-6f) {
+    if (divisor < MIN_DIVISOR) {
 #ifdef CONFIG_ZBUS
-		OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)adc_counts);
+        OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)adc_counts);
 #endif
-		return -1.0f;
-	}
+        result = ERROR_RETURN;
+    } else {
+        Numeric_t coeff = (Numeric_t)target_ppo2 / divisor;
 
-	float coeff = (float)target_ppo2 / divisor;
-
-	/* Chosen so that 13 to 8mV in air is a valid cal coeff */
-	if ((coeff < ANALOG_CAL_LOWER) || (coeff > ANALOG_CAL_UPPER)) {
+        /* Chosen so that 13 to 8mV in air is a valid cal coeff */
+        if ((coeff < ANALOG_CAL_LOWER) || (coeff > ANALOG_CAL_UPPER)) {
 #ifdef CONFIG_ZBUS
-		OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)(coeff * 1000000.0f));
+            OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)(coeff * ANALOG_COEFF_REPORT_SCALE));
 #endif
-		return -1.0f;
-	}
-
-	return coeff;
+            result = ERROR_RETURN;
+        } else {
+            result = coeff;
+        }
+    }
+    return result;
 }
 
 /**
@@ -351,35 +364,38 @@ float analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2)
  * Bug #2 fix: guard against zero divisor.
  * Returns negative value if inputs are invalid or coefficient is out of bounds.
  */
-float diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
+CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
 {
-	if (target_ppo2 == 0U) {
+    CalCoeff_t result = ERROR_RETURN;
+
+    if (0U == target_ppo2) {
 #ifdef CONFIG_ZBUS
-		OP_ERROR_DETAIL(OP_ERR_MATH, 0U);
+        OP_ERROR_DETAIL(OP_ERR_MATH, 0U);
 #endif
-		return -1.0f;
-	}
+        result = ERROR_RETURN;
+    } else {
+        Numeric_t ppo2_bar = (Numeric_t)target_ppo2 / CENTIBAR_PER_BAR_F;
+        Numeric_t sample_abs = fabsf((Numeric_t)cell_sample);
 
-	float ppo2_bar = (float)target_ppo2 / 100.0f;
-	float sample_abs = fabsf((float)cell_sample);
-
-	if (sample_abs < 1.0f) {
+        if (sample_abs < MIN_ANALOG_SAMPLE) {
 #ifdef CONFIG_ZBUS
-		OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)cell_sample);
+            OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)cell_sample);
 #endif
-		return -1.0f;
-	}
+            result = ERROR_RETURN;
+        } else {
+            Numeric_t coeff = sample_abs / ppo2_bar;
 
-	float coeff = sample_abs / ppo2_bar;
-
-	if ((coeff < DIVEO2_CAL_LOWER) || (coeff > DIVEO2_CAL_UPPER)) {
+            if ((coeff < DIVEO2_CAL_LOWER) || (coeff > DIVEO2_CAL_UPPER)) {
 #ifdef CONFIG_ZBUS
-		OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)coeff);
+                OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)coeff);
 #endif
-		return -1.0f;
-	}
-
-	return coeff;
+                result = ERROR_RETURN;
+            } else {
+                result = coeff;
+            }
+        }
+    }
+    return result;
 }
 
 /**
@@ -388,24 +404,27 @@ float diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
  * Bug #2 fix: guard against zero divisor.
  * Returns negative value if inputs are invalid or coefficient is out of bounds.
  */
-float o2s_cal_coefficient(float cell_sample, PPO2_t target_ppo2)
+CalCoeff_t o2s_cal_coefficient(Numeric_t cell_sample, PPO2_t target_ppo2)
 {
-	if (fabsf(cell_sample) < 1e-6f) {
+    CalCoeff_t result = ERROR_RETURN;
+
+    if (fabsf(cell_sample) < MIN_DIVISOR) {
 #ifdef CONFIG_ZBUS
-		OP_ERROR_DETAIL(OP_ERR_MATH, 0U);
+        OP_ERROR_DETAIL(OP_ERR_MATH, 0U);
 #endif
-		return -1.0f;
-	}
+        result = ERROR_RETURN;
+    } else {
+        Numeric_t ppo2_bar = (Numeric_t)target_ppo2 / CENTIBAR_PER_BAR_F;
+        Numeric_t coeff = ppo2_bar / cell_sample;
 
-	float ppo2_bar = (float)target_ppo2 / 100.0f;
-	float coeff = ppo2_bar / cell_sample;
-
-	if ((coeff < O2S_CAL_LOWER) || (coeff > O2S_CAL_UPPER)) {
+        if ((coeff < O2S_CAL_LOWER) || (coeff > O2S_CAL_UPPER)) {
 #ifdef CONFIG_ZBUS
-		OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)(coeff * 1000.0f));
+            OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)(coeff * O2S_COEFF_REPORT_SCALE));
 #endif
-		return -1.0f;
-	}
-
-	return coeff;
+            result = ERROR_RETURN;
+        } else {
+            result = coeff;
+        }
+    }
+    return result;
 }

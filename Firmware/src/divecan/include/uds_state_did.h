@@ -66,6 +66,6 @@
 
 bool UDS_StateDID_IsStateDID(uint16_t did);
 bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *responseBuffer,
-			     uint16_t *responseLength);
+                 uint16_t *responseLength);
 
 #endif /* UDS_STATE_DID_H */

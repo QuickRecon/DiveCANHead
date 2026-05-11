@@ -20,37 +20,37 @@
 
 /* UDS Service IDs (SID) */
 typedef enum {
-	UDS_SID_READ_DATA_BY_ID = 0x22,
-	UDS_SID_WRITE_DATA_BY_ID = 0x2E
+    UDS_SID_READ_DATA_BY_ID = 0x22,
+    UDS_SID_WRITE_DATA_BY_ID = 0x2E
 } UDS_SID_t;
 
 /* UDS Response SIDs (positive response = request + 0x40) */
 enum {
-	UDS_RESPONSE_SID_OFFSET = 0x40,
-	UDS_SID_NEGATIVE_RESPONSE = 0x7F
+    UDS_RESPONSE_SID_OFFSET = 0x40,
+    UDS_SID_NEGATIVE_RESPONSE = 0x7F
 };
 
 /* UDS Negative Response Codes (NRC) */
 typedef enum {
-	UDS_NRC_SERVICE_NOT_SUPPORTED = 0x11,
-	UDS_NRC_INCORRECT_MSG_LEN = 0x13,
-	UDS_NRC_RESPONSE_TOO_LONG = 0x14,
-	UDS_NRC_CONDITIONS_NOT_CORRECT = 0x22,
-	UDS_NRC_REQUEST_OUT_OF_RANGE = 0x31,
-	UDS_NRC_GENERAL_PROG_FAIL = 0x72
+    UDS_NRC_SERVICE_NOT_SUPPORTED = 0x11,
+    UDS_NRC_INCORRECT_MSG_LEN = 0x13,
+    UDS_NRC_RESPONSE_TOO_LONG = 0x14,
+    UDS_NRC_CONDITIONS_NOT_CORRECT = 0x22,
+    UDS_NRC_REQUEST_OUT_OF_RANGE = 0x31,
+    UDS_NRC_GENERAL_PROG_FAIL = 0x72
 } UDS_NRC_t;
 
 /* UDS Data Identifiers (DID) - custom for DiveCAN */
 typedef enum {
-	UDS_DID_FIRMWARE_VERSION = 0xF000,
-	UDS_DID_HARDWARE_VERSION = 0xF001,
-	UDS_DID_LOG_MESSAGE = 0xA100
+    UDS_DID_FIRMWARE_VERSION = 0xF000,
+    UDS_DID_HARDWARE_VERSION = 0xF001,
+    UDS_DID_LOG_MESSAGE = 0xA100
 } UDS_DID_t;
 
 /* UDS maximum message sizes */
 enum {
-	UDS_MAX_REQUEST_LENGTH = 128,
-	UDS_MAX_RESPONSE_LENGTH = 128
+    UDS_MAX_REQUEST_LENGTH = 128,
+    UDS_MAX_RESPONSE_LENGTH = 128
 };
 
 /* UDS message byte positions
@@ -78,16 +78,16 @@ static const size_t SETTING_LABEL_MAX_LEN = 9U;
  * @brief UDS context
  */
 typedef struct {
-	uint8_t responseBuffer[UDS_MAX_RESPONSE_LENGTH];
-	uint16_t responseLength;
-	ISOTPContext_t *isotpContext;
+    uint8_t responseBuffer[UDS_MAX_RESPONSE_LENGTH];
+    uint16_t responseLength;
+    ISOTPContext_t *isotpContext;
 } UDSContext_t;
 
 void UDS_Init(UDSContext_t *ctx, ISOTPContext_t *isotpCtx);
 void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
-			uint16_t requestLength);
+            uint16_t requestLength);
 void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID,
-			      uint8_t nrc);
+                  uint8_t nrc);
 void UDS_SendResponse(UDSContext_t *ctx);
 
 #endif /* UDS_H */

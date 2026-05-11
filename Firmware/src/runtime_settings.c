@@ -1,4 +1,5 @@
 #include "runtime_settings.h"
+#include "common.h"
 #include <zephyr/settings/settings.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
@@ -9,179 +10,222 @@ LOG_MODULE_REGISTER(runtime_settings, LOG_LEVEL_INF);
 /* ---- Topology static asserts ---- */
 
 BUILD_ASSERT(IS_ENABLED(CONFIG_CELL_1_TYPE_ANALOG) +
-	     IS_ENABLED(CONFIG_CELL_1_TYPE_DIVEO2) +
-	     IS_ENABLED(CONFIG_CELL_1_TYPE_O2S) == 1,
-	     "Exactly one type must be selected for cell 1");
+         IS_ENABLED(CONFIG_CELL_1_TYPE_DIVEO2) +
+         IS_ENABLED(CONFIG_CELL_1_TYPE_O2S) == 1,
+         "Exactly one type must be selected for cell 1");
 
 #if CONFIG_CELL_COUNT >= 2
 BUILD_ASSERT(IS_ENABLED(CONFIG_CELL_2_TYPE_ANALOG) +
-	     IS_ENABLED(CONFIG_CELL_2_TYPE_DIVEO2) +
-	     IS_ENABLED(CONFIG_CELL_2_TYPE_O2S) == 1,
-	     "Exactly one type must be selected for cell 2");
+         IS_ENABLED(CONFIG_CELL_2_TYPE_DIVEO2) +
+         IS_ENABLED(CONFIG_CELL_2_TYPE_O2S) == 1,
+         "Exactly one type must be selected for cell 2");
 #endif
 
 #if CONFIG_CELL_COUNT >= 3
 BUILD_ASSERT(IS_ENABLED(CONFIG_CELL_3_TYPE_ANALOG) +
-	     IS_ENABLED(CONFIG_CELL_3_TYPE_DIVEO2) +
-	     IS_ENABLED(CONFIG_CELL_3_TYPE_O2S) == 1,
-	     "Exactly one type must be selected for cell 3");
+         IS_ENABLED(CONFIG_CELL_3_TYPE_DIVEO2) +
+         IS_ENABLED(CONFIG_CELL_3_TYPE_O2S) == 1,
+         "Exactly one type must be selected for cell 3");
 #endif
 
 BUILD_ASSERT(IS_ENABLED(CONFIG_POWER_MODE_BATTERY) +
-	     IS_ENABLED(CONFIG_POWER_MODE_BATTERY_THEN_CAN) +
-	     IS_ENABLED(CONFIG_POWER_MODE_CAN) == 1,
-	     "Exactly one power mode must be selected");
+         IS_ENABLED(CONFIG_POWER_MODE_BATTERY_THEN_CAN) +
+         IS_ENABLED(CONFIG_POWER_MODE_CAN) == 1,
+         "Exactly one power mode must be selected");
 
 #define SETTINGS_SUBTREE "rt"
 
-static RuntimeSettings_t cached = RUNTIME_SETTINGS_DEFAULT;
-
-static bool value_in_table_u8(uint8_t val, const void *table,
-			      size_t elem_size, size_t count)
+static RuntimeSettings_t *getCached(void)
 {
-	const uint8_t *p = table;
+    static RuntimeSettings_t cached = RUNTIME_SETTINGS_DEFAULT;
+    return &cached;
+}
 
-	for (size_t i = 0; i < count; i++) {
-		if (p[i * elem_size] == val) {
-			return true;
-		}
-	}
-	return false;
+static bool ppo2_mode_valid(PPO2ControlMode_t val)
+{
+    bool found = false;
+
+    for (size_t i = 0; i < ARRAY_SIZE(valid_ppo2_control_modes); ++i) {
+        if (valid_ppo2_control_modes[i] == val) {
+            found = true;
+        }
+    }
+    return found;
+}
+
+static bool cal_mode_valid(CalibrationMode_t val)
+{
+    bool found = false;
+
+    for (size_t i = 0; i < ARRAY_SIZE(valid_cal_modes); ++i) {
+        if (valid_cal_modes[i] == val) {
+            found = true;
+        }
+    }
+    return found;
 }
 
 bool runtime_settings_validate(const RuntimeSettings_t *s)
 {
-	if (!value_in_table_u8((uint8_t)s->ppo2ControlMode,
-			       valid_ppo2_control_modes,
-			       sizeof(valid_ppo2_control_modes[0]),
-			       ARRAY_SIZE(valid_ppo2_control_modes))) {
-		return false;
-	}
+    bool result = true;
 
-	if (!value_in_table_u8((uint8_t)s->calibrationMode,
-			       valid_cal_modes,
-			       sizeof(valid_cal_modes[0]),
-			       ARRAY_SIZE(valid_cal_modes))) {
-		return false;
-	}
-
+    if (!ppo2_mode_valid(s->ppo2ControlMode)) {
+        result = false;
+    }
+    else if (!cal_mode_valid(s->calibrationMode)) {
+        result = false;
+    }
+    else
+    {
 #ifndef CONFIG_HAS_O2_SOLENOID
-	if (s->depthCompensation) {
-		return false;
-	}
+        if (s->depthCompensation) {
+            result = false;
+        }
+        else
+        {
+            /* No action required */
+        }
 #endif
+    }
 
-	return true;
+    return result;
 }
 
-static int settings_set(const char *name, size_t len,
-			settings_read_cb read_cb, void *cb_arg)
+static Status_t settings_set(const char *name, size_t len,
+            settings_read_cb read_cb, void *cb_arg)
 {
-	int rc;
+    Status_t rc = 0;
+    RuntimeSettings_t *cached = getCached();
+    (void)len;
 
-	if (!strcmp(name, "ppo2")) {
-		uint8_t val;
+    if (0 == strcmp(name, "ppo2")) {
+        uint8_t val = 0U;
 
-		rc = read_cb(cb_arg, &val, sizeof(val));
-		if ((rc == sizeof(val)) &&
-		    value_in_table_u8(val, valid_ppo2_control_modes,
-				      sizeof(valid_ppo2_control_modes[0]),
-				      ARRAY_SIZE(valid_ppo2_control_modes))) {
-			cached.ppo2ControlMode = (PPO2ControlMode_t)val;
-		}
-		return 0;
-	}
-	if (!strcmp(name, "cal")) {
-		uint8_t val;
+        rc = read_cb(cb_arg, &val, sizeof(val));
+        if (((Status_t)sizeof(val) == rc) &&
+            ppo2_mode_valid((PPO2ControlMode_t)val)) {
+            cached->ppo2ControlMode = (PPO2ControlMode_t)val;
+        }
+        rc = 0;
+    }
+    else if (0 == strcmp(name, "cal")) {
+        uint8_t val = 0U;
 
-		rc = read_cb(cb_arg, &val, sizeof(val));
-		if ((rc == sizeof(val)) &&
-		    value_in_table_u8(val, valid_cal_modes,
-				      sizeof(valid_cal_modes[0]),
-				      ARRAY_SIZE(valid_cal_modes))) {
-			cached.calibrationMode = (CalibrationMode_t)val;
-		}
-		return 0;
-	}
-	if (!strcmp(name, "depth")) {
-		bool val;
+        rc = read_cb(cb_arg, &val, sizeof(val));
+        if (((Status_t)sizeof(val) == rc) &&
+            cal_mode_valid((CalibrationMode_t)val)) {
+            cached->calibrationMode = (CalibrationMode_t)val;
+        }
+        rc = 0;
+    }
+    else if (0 == strcmp(name, "depth")) {
+        bool val = false;
 
-		rc = read_cb(cb_arg, &val, sizeof(val));
-		if (rc == sizeof(val)) {
-			cached.depthCompensation = val;
-		}
-		return 0;
-	}
-	if (!strcmp(name, "ext")) {
-		bool val;
+        rc = read_cb(cb_arg, &val, sizeof(val));
+        if ((Status_t)sizeof(val) == rc) {
+            cached->depthCompensation = val;
+        }
+        rc = 0;
+    }
+    else if (0 == strcmp(name, "ext")) {
+        bool val = false;
 
-		rc = read_cb(cb_arg, &val, sizeof(val));
-		if (rc == sizeof(val)) {
-			cached.extendedMessages = val;
-		}
-		return 0;
-	}
+        rc = read_cb(cb_arg, &val, sizeof(val));
+        if ((Status_t)sizeof(val) == rc) {
+            cached->extendedMessages = val;
+        }
+        rc = 0;
+    }
+    else
+    {
+        rc = -ENOENT;
+    }
 
-	return -ENOENT;
+    return rc;
 }
 
 SETTINGS_STATIC_HANDLER_DEFINE(runtime, SETTINGS_SUBTREE, NULL,
-			       settings_set, NULL, NULL);
+                   settings_set, NULL, NULL);
 
-int runtime_settings_load(RuntimeSettings_t *out)
+Status_t runtime_settings_load(RuntimeSettings_t *out)
 {
-	cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+    RuntimeSettings_t *cached = getCached();
+    Status_t rc = 0;
 
-	int rc = settings_subsys_init();
+    *cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
 
-	if (rc != 0) {
-		LOG_ERR("settings init failed: %d", rc);
-		*out = cached;
-		return rc;
-	}
+    rc = settings_subsys_init();
+    if (0 != rc) {
+        LOG_ERR("settings init failed: %d", rc);
+        *out = *cached;
+    }
+    else
+    {
+        rc = settings_load_subtree(SETTINGS_SUBTREE);
+        if (0 != rc) {
+            LOG_WRN("settings load failed: %d, using defaults", rc);
+        }
 
-	rc = settings_load_subtree(SETTINGS_SUBTREE);
-	if (rc != 0) {
-		LOG_WRN("settings load failed: %d, using defaults", rc);
-	}
+        if (!runtime_settings_validate(cached)) {
+            LOG_WRN("stored settings invalid, reverting to defaults");
+            *cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+        }
 
-	if (!runtime_settings_validate(&cached)) {
-		LOG_WRN("stored settings invalid, reverting to defaults");
-		cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
-	}
+        *out = *cached;
+        LOG_INF("ppo2=%d cal=%d depth=%d ext=%d",
+            cached->ppo2ControlMode, cached->calibrationMode,
+            cached->depthCompensation, cached->extendedMessages);
+        rc = 0;
+    }
 
-	*out = cached;
-	LOG_INF("ppo2=%d cal=%d depth=%d ext=%d",
-		cached.ppo2ControlMode, cached.calibrationMode,
-		cached.depthCompensation, cached.extendedMessages);
-	return 0;
+    return rc;
 }
 
-int runtime_settings_save(const RuntimeSettings_t *s)
+Status_t runtime_settings_save(const RuntimeSettings_t *s)
 {
-	if (!runtime_settings_validate(s)) {
-		return -EINVAL;
-	}
+    Status_t rc = 0;
 
-	int rc = 0;
-	uint8_t val;
+    if (!runtime_settings_validate(s)) {
+        rc = -EINVAL;
+    }
+    else
+    {
+        uint8_t val = 0U;
+        Status_t rc_ppo2 = 0;
+        Status_t rc_cal = 0;
+        Status_t rc_depth = 0;
+        Status_t rc_ext = 0;
 
-	val = (uint8_t)s->ppo2ControlMode;
-	rc |= settings_save_one(SETTINGS_SUBTREE "/ppo2", &val, sizeof(val));
+        val = (uint8_t)s->ppo2ControlMode;
+        rc_ppo2 = settings_save_one(SETTINGS_SUBTREE "/ppo2", &val, sizeof(val));
 
-	val = (uint8_t)s->calibrationMode;
-	rc |= settings_save_one(SETTINGS_SUBTREE "/cal", &val, sizeof(val));
+        val = (uint8_t)s->calibrationMode;
+        rc_cal = settings_save_one(SETTINGS_SUBTREE "/cal", &val, sizeof(val));
 
-	rc |= settings_save_one(SETTINGS_SUBTREE "/depth",
-				&s->depthCompensation,
-				sizeof(s->depthCompensation));
+        rc_depth = settings_save_one(SETTINGS_SUBTREE "/depth",
+                    &s->depthCompensation,
+                    sizeof(s->depthCompensation));
 
-	rc |= settings_save_one(SETTINGS_SUBTREE "/ext",
-				&s->extendedMessages,
-				sizeof(s->extendedMessages));
+        rc_ext = settings_save_one(SETTINGS_SUBTREE "/ext",
+                    &s->extendedMessages,
+                    sizeof(s->extendedMessages));
 
-	if (rc == 0) {
-		cached = *s;
-	}
-	return rc;
+        if ((0 == rc_ppo2) && (0 == rc_cal) && (0 == rc_depth) && (0 == rc_ext)) {
+            *getCached() = *s;
+        }
+        else if (0 != rc_ppo2) {
+            rc = rc_ppo2;
+        }
+        else if (0 != rc_cal) {
+            rc = rc_cal;
+        }
+        else if (0 != rc_depth) {
+            rc = rc_depth;
+        }
+        else {
+            rc = rc_ext;
+        }
+    }
+
+    return rc;
 }
