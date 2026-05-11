@@ -282,6 +282,10 @@ static void o2s_cell_thread(void *p1, void *p2, void *p3)
 	k_msleep(CELL_STARTUP_DELAY_MS);
 
 	while (true) {
+		/* Ensure RX is stopped before starting a new cycle */
+		(void)uart_rx_disable(cell->uart_dev);
+		k_sem_reset(&cell->rx_sem);
+
 		/* Start RX before sending command (half-duplex: cell echoes
 		 * the command then sends response) */
 		(void)memset(cell->rx_buf, 0, sizeof(cell->rx_buf));

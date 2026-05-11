@@ -33,6 +33,8 @@ struct analog_cell_state {
 	const struct zbus_channel *out_chan;
 	const struct device *adc_dev;
 	uint8_t adc_channel_id;
+	uint8_t adc_input_positive;
+	uint8_t adc_input_negative;
 	int16_t adc_sample_buf;
 	struct adc_sequence adc_seq;
 };
@@ -101,13 +103,19 @@ static int analog_cell_init_adc(struct analog_cell_state *cell)
 		return -ENODEV;
 	}
 
-	/* ADS1115 differential mode: +/-0.256V PGA, 128 SPS */
+	/* ADS1115 differential mode: +/-0.256V PGA, 128 SPS.
+	 * input_positive/negative select the MUX pair on the ADS1115:
+	 *   Cell 1: AIN0-AIN1 (pos=0, neg=1)
+	 *   Cell 2: AIN2-AIN3 (pos=2, neg=3)
+	 *   Cell 3: AIN0-AIN1 on second ADS1115 (pos=0, neg=1) */
 	struct adc_channel_cfg ch_cfg = {
-		.gain = ADC_GAIN_16,
+		.gain = ADC_GAIN_8,   /* PGA ±0.256V on ADS1115 */
 		.reference = ADC_REF_INTERNAL,
 		.acquisition_time = ADC_ACQ_TIME_DEFAULT,
 		.channel_id = cell->adc_channel_id,
 		.differential = 1,
+		.input_positive = cell->adc_input_positive,
+		.input_negative = cell->adc_input_negative,
 	};
 
 	int ret = adc_channel_setup(cell->adc_dev, &ch_cfg);
@@ -210,6 +218,8 @@ static struct analog_cell_state cell_1_state = {
 	.out_chan = &chan_cell_1,
 	.adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc_ext1)),
 	.adc_channel_id = 0,
+	.adc_input_positive = 0,   /* AIN0 */
+	.adc_input_negative = 1,   /* AIN1 */
 };
 K_THREAD_DEFINE(analog_cell_1, 768,
 		analog_cell_thread, &cell_1_state, NULL, NULL,
@@ -224,6 +234,8 @@ static struct analog_cell_state cell_2_state = {
 	.out_chan = &chan_cell_2,
 	.adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc_ext1)),
 	.adc_channel_id = 1,
+	.adc_input_positive = 2,   /* AIN2 */
+	.adc_input_negative = 3,   /* AIN3 */
 };
 K_THREAD_DEFINE(analog_cell_2, 768,
 		analog_cell_thread, &cell_2_state, NULL, NULL,
@@ -238,6 +250,8 @@ static struct analog_cell_state cell_3_state = {
 	.out_chan = &chan_cell_3,
 	.adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc_ext2)),
 	.adc_channel_id = 0,
+	.adc_input_positive = 0,   /* AIN0 */
+	.adc_input_negative = 1,   /* AIN1 */
 };
 K_THREAD_DEFINE(analog_cell_3, 768,
 		analog_cell_thread, &cell_3_state, NULL, NULL,

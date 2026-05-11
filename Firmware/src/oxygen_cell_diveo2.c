@@ -423,7 +423,12 @@ static void diveo2_cell_thread(void *p1, void *p2, void *p3)
 	while (true) {
 		int64_t loop_start = k_uptime_ticks();
 
-		/* Send #DRAW command and start RX with idle timeout */
+		/* Ensure RX is stopped before starting a new cycle — avoids
+		 * "RX already enabled" if the previous cycle's idle timeout
+		 * hasn't fully completed yet */
+		(void)uart_rx_disable(cell->uart_dev);
+		k_sem_reset(&cell->rx_sem);
+
 		(void)memset(cell->rx_buf, 0, sizeof(cell->rx_buf));
 		cell->rx_len = 0;
 		(void)uart_rx_enable(cell->uart_dev, cell->rx_buf,
