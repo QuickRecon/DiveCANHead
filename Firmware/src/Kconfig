@@ -64,6 +64,18 @@ config HAS_DIGITAL_CELL
 	             CELL_2_TYPE_DIVEO2 || CELL_2_TYPE_O2S || \
 	             CELL_3_TYPE_DIVEO2 || CELL_3_TYPE_O2S
 
+config HAS_ANALOG_CELL
+	bool
+	default y if CELL_1_TYPE_ANALOG || CELL_2_TYPE_ANALOG || CELL_3_TYPE_ANALOG
+
+config HAS_DIVEO2_CELL
+	bool
+	default y if CELL_1_TYPE_DIVEO2 || CELL_2_TYPE_DIVEO2 || CELL_3_TYPE_DIVEO2
+
+config HAS_O2S_CELL
+	bool
+	default y if CELL_1_TYPE_O2S || CELL_2_TYPE_O2S || CELL_3_TYPE_O2S
+
 # ---- Power Architecture ----
 
 choice POWER_MODE

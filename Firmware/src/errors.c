@@ -111,6 +111,7 @@ void k_sys_fatal_error_handler(unsigned int reason,
 	crash_noinit.magic = CRASH_MAGIC;
 	crash_noinit.reason = reason;
 
+#if defined(CONFIG_ARM)
 	if (esf != NULL) {
 		crash_noinit.pc = esf->basic.pc;
 		crash_noinit.lr = esf->basic.lr;
@@ -118,6 +119,11 @@ void k_sys_fatal_error_handler(unsigned int reason,
 		crash_noinit.pc = 0U;
 		crash_noinit.lr = 0U;
 	}
+#else
+	ARG_UNUSED(esf);
+	crash_noinit.pc = 0U;
+	crash_noinit.lr = 0U;
+#endif
 
 #if defined(CONFIG_CPU_CORTEX_M)
 	crash_noinit.cfsr = SCB->CFSR;

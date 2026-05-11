@@ -54,6 +54,7 @@ typedef struct {
 	Millivolts_t millivolts;
 	CellStatus_t status;
 	int64_t timestamp_ticks;   /* k_uptime_ticks() — 64-bit, no overflow */
+	uint32_t pressure_uhpa;    /* pressure in units of 10^-3 hPa (DiveO2 native), 0 for analog */
 } OxygenCellMsg_t;
 
 typedef struct {

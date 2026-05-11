@@ -1,0 +1,4 @@
+tests:
+  oxygen_cell.analog_math:
+    platform_allow: native_sim
+    tags: oxygen_cell analog

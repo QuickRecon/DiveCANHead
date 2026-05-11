@@ -99,12 +99,21 @@ The system always reboots on fatal error — never halts. Transient faults may s
 
 Replaces the FreeRTOS 1-element peek queue pattern (`xQueueOverwrite`/`xQueuePeek`). zbus channels hold the latest published value; subscribers get notified on change. ISR-safe, statically allocated, no shared global state.
 
-Currently defined channels:
-- `chan_error` — Operational error events (`ErrorEvent_t`)
+Defined channels:
+
+| Channel | Type | Publisher | Subscribers |
+|---------|------|-----------|-------------|
+| `chan_error` | `ErrorEvent_t` | Any module via `OP_ERROR` | Future: DiveCAN status, flash log |
+| `chan_cell_1` | `OxygenCellMsg_t` | Cell 1 thread | Consensus subscriber |
+| `chan_cell_2` | `OxygenCellMsg_t` | Cell 2 thread | Consensus subscriber |
+| `chan_cell_3` | `OxygenCellMsg_t` | Cell 3 thread | Consensus subscriber |
+| `chan_consensus` | `ConsensusMsg_t` | Consensus subscriber | Future: PPO2 TX, PID control |
+| `chan_cal_request` | `CalRequest_t` | Future: DiveCAN/UDS | Calibration listener |
+| `chan_cal_response` | `CalResponse_t` | Calibration thread | Future: DiveCAN/UDS |
+
+`chan_cell_2` and `chan_cell_3` are conditionally compiled based on `CONFIG_CELL_COUNT`.
 
 Future channels (to be added as modules are ported):
-- Cell PPO2 readings (per-cell)
-- Consensus PPO2
 - Setpoint
 - Atmospheric pressure
 
@@ -147,20 +156,36 @@ Firmware/
 ├── drivers/solenoid/               Zephyr device driver (DT-driven)
 ├── dts/bindings/                   Custom devicetree bindings
 ├── include/
+│   ├── calibration.h               Calibration public API
 │   ├── errors.h                    Error handling tiers 2-4, OpError_t enum
+│   ├── oxygen_cell_channels.h      zbus channel declarations (cell, consensus, cal)
+│   ├── oxygen_cell_math.h          Pure math: consensus voting, ADC conversion, cal math
+│   ├── oxygen_cell_types.h         Shared types: OxygenCellMsg_t, ConsensusMsg_t, etc.
 │   ├── runtime_settings.h          NVS-backed runtime config types
 │   ├── solenoid.h                  Driver public API
 │   └── solenoid_roles.h            Kconfig role → driver channel mapping
 ├── src/
-│   ├── main.c                      Entry point, hardware init
+│   ├── main.c                      Entry point, heartbeat LED
+│   ├── calibration.c               Calibration thread, atomic guard, settings, rollback
+│   ├── consensus_subscriber.c      zbus subscriber: cell channels → vote → consensus
 │   ├── errors.c                    Fatal handler, zbus channel, crash persistence
+│   ├── oxygen_cell_analog.c        Analog cell: ADS1115 ADC read, cal, zbus publish
+│   ├── oxygen_cell_channels.c      zbus channel definitions (6 channels)
+│   ├── oxygen_cell_diveo2.c        DiveO2 cell: UART async, parse, zbus publish
+│   ├── oxygen_cell_math.c          Pure consensus + calibration math (no OS deps)
+│   ├── oxygen_cell_o2s.c           O2S cell: UART async half-duplex, parse, zbus publish
 │   ├── runtime_settings.c          NVS load/save/validate, topology BUILD_ASSERTs
 │   └── Kconfig                     Product topology, solenoid roles, runtime defaults
+├── tests/
+│   ├── analog_math/                ADC conversion + PPO2 calculation (17 tests)
+│   ├── calibration_math/           Cal coefficient math + bug regressions (20 tests)
+│   ├── consensus/                  Voting algorithm + permutations (19 tests)
+│   └── parsers/                    DiveO2 + O2S UART protocol parsing (76 tests)
 ├── variants/
 │   └── dev_full.conf               All-features development variant
 ├── scripts/
 │   └── lint_variant.sh             CI lint for duplicate Kconfig choices
-├── prj.conf                        Common Zephyr config (hardening, RTT, logging)
+├── prj.conf                        Common Zephyr config (hardening, RTT, logging, zbus)
 ├── CMakeLists.txt                  App build, compile flags
 ├── west.yml                        Workspace manifest
 ├── ARCHITECTURE.md                 This file

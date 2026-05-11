@@ -153,6 +153,11 @@
 
 /* ---- UARTs — Oxygen sensor cells ----
  * All 19200 baud, 8N1.
+ * DMA channels assigned from RM0394 Table 41 (STM32L431 DMA request mapping):
+ *   USART1: DMA1 Ch5 (RX, req 2), DMA1 Ch4 (TX, req 2)
+ *   USART2: DMA1 Ch6 (RX, req 2), DMA1 Ch7 (TX, req 2)
+ *   USART3: DMA1 Ch3 (RX, req 2), DMA1 Ch2 (TX, req 2)
+ *
  * USART2 and USART3 have TX/RX swap enabled in Rev2 .ioc
  * (ADVFEATURE_SWAP_ENABLE). For Jr, check if swap is still
  * needed — if so, use the swapped pinctrl variants.
@@ -163,6 +168,11 @@
 	pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
 	pinctrl-names = "default";
 	current-speed = <19200>;
+	dmas = <&dma1 5 2 (STM32_DMA_PERIPH_TO_MEMORY | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>,
+	       <&dma1 4 2 (STM32_DMA_MEMORY_TO_PERIPH | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>;
+	dma-names = "rx", "tx";
 	status = "okay";
 };
 
@@ -171,6 +181,11 @@
 	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
 	pinctrl-names = "default";
 	current-speed = <19200>;
+	dmas = <&dma1 6 2 (STM32_DMA_PERIPH_TO_MEMORY | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>,
+	       <&dma1 7 2 (STM32_DMA_MEMORY_TO_PERIPH | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>;
+	dma-names = "rx", "tx";
 	status = "okay";
 };
 
@@ -179,6 +194,11 @@
 	pinctrl-0 = <&usart3_tx_pc4 &usart3_rx_pc5>;
 	pinctrl-names = "default";
 	current-speed = <19200>;
+	dmas = <&dma1 3 2 (STM32_DMA_PERIPH_TO_MEMORY | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>,
+	       <&dma1 2 2 (STM32_DMA_MEMORY_TO_PERIPH | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>;
+	dma-names = "rx", "tx";
 	status = "okay";
 };
 
@@ -202,6 +222,11 @@
 		t-enter-dpd = <3000>;
 		t-exit-dpd = <30000>;
 	};
+};
+
+/* ---- DMA1 — UART async transfers for digital O2 cells ---- */
+&dma1 {
+	status = "okay";
 };
 
 /* ---- TIM7 — solenoid deadman timer ----

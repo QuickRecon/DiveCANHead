@@ -1,0 +1,4 @@
+tests:
+  oxygen_cell.calibration_math:
+    platform_allow: native_sim
+    tags: oxygen_cell calibration
