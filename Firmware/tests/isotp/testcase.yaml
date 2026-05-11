@@ -1,0 +1,4 @@
+tests:
+  divecan.isotp:
+    platform_allow: native_sim
+    tags: divecan isotp

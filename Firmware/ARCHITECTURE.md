@@ -103,20 +103,20 @@ Defined channels:
 
 | Channel | Type | Publisher | Subscribers |
 |---------|------|-----------|-------------|
-| `chan_error` | `ErrorEvent_t` | Any module via `OP_ERROR` | Future: DiveCAN status, flash log |
-| `chan_cell_1` | `OxygenCellMsg_t` | Cell 1 thread | Consensus subscriber |
-| `chan_cell_2` | `OxygenCellMsg_t` | Cell 2 thread | Consensus subscriber |
-| `chan_cell_3` | `OxygenCellMsg_t` | Cell 3 thread | Consensus subscriber |
-| `chan_consensus` | `ConsensusMsg_t` | Consensus subscriber | Future: PPO2 TX, PID control |
-| `chan_cal_request` | `CalRequest_t` | Future: DiveCAN/UDS | Calibration listener |
-| `chan_cal_response` | `CalResponse_t` | Calibration thread | Future: DiveCAN/UDS |
-| `chan_battery_status` | `BatteryStatus_t` | Battery monitor thread | Future: DiveCAN status composer |
+| `chan_error` | `ErrorEvent_t` | Any module via `OP_ERROR` | Future: flash log |
+| `chan_cell_1` | `OxygenCellMsg_t` | Cell 1 thread | Consensus subscriber, UDS state DID |
+| `chan_cell_2` | `OxygenCellMsg_t` | Cell 2 thread | Consensus subscriber, UDS state DID |
+| `chan_cell_3` | `OxygenCellMsg_t` | Cell 3 thread | Consensus subscriber, UDS state DID |
+| `chan_consensus` | `ConsensusMsg_t` | Consensus subscriber | PPO2 TX, UDS state DID, future PID |
+| `chan_cal_request` | `CalRequest_t` | DiveCAN RX, UDS write | Calibration listener |
+| `chan_cal_response` | `CalResponse_t` | Calibration thread | DiveCAN cal response listener |
+| `chan_battery_status` | `BatteryStatus_t` | Battery monitor thread | DiveCAN ping response |
+| `chan_setpoint` | `PPO2_t` | DiveCAN RX, UDS write | Future PID controller, DiveCAN ping |
+| `chan_atmos_pressure` | `uint16_t` | DiveCAN RX | UDS cal trigger, future depth comp |
+| `chan_shutdown_request` | `bool` | DiveCAN RX (BUS_OFF) | Future power management |
+| `chan_dive_state` | `DiveState_t` | DiveCAN RX (DIVING msg) | Future logging |
 
 `chan_cell_2` and `chan_cell_3` are conditionally compiled based on `CONFIG_CELL_COUNT`.
-
-Future channels (to be added as modules are ported):
-- Setpoint
-- Atmospheric pressure
 
 ## Power Management
 
@@ -140,7 +140,58 @@ A dedicated thread samples battery voltage every 2 seconds and publishes `Batter
 
 ### Shutdown
 
-On boot, the firmware waits 1 second for peripherals to stabilize, then checks if the CAN bus is active. If not, it shuts down immediately — this guards against transient power glitches ("blip on in the dead of night"). The CAN bus can also command a shutdown via DiveCAN protocol (future).
+On boot, the firmware waits 1 second for peripherals to stabilize, then checks if the CAN bus is active. If not, it shuts down immediately — this guards against transient power glitches ("blip on in the dead of night"). The CAN bus commands a shutdown via DiveCAN BUS_OFF, published to `chan_shutdown_request`.
+
+## DiveCAN Protocol
+
+The DiveCAN subsystem lives in `src/divecan/` and handles all CAN bus communication with the Shearwater dive computer and Bluetooth handset.
+
+### Layer Architecture
+
+```
+┌──────────────────────────────────────────────┐
+│  UDS Diagnostic Services (0x22, 0x2E)        │
+│  State DIDs, Settings DIDs, Log Push         │
+│  src/divecan/uds/                            │
+├──────────────────────────────────────────────┤
+│  ISO-TP Transport (custom, not Zephyr's)     │
+│  DiveCAN non-standard padding byte           │
+│  Centralized TX queue, Shearwater FC quirk   │
+│  src/divecan/isotp.c, isotp_tx_queue.c       │
+├──────────────────────────────────────────────┤
+│  DiveCAN Messages                            │
+│  TX composers + CAN driver send layer        │
+│  src/divecan/divecan_tx.c, divecan_send.c    │
+├──────────────────────────────────────────────┤
+│  Zephyr CAN Driver (bxCAN @ 250kbps)         │
+│  DTS: &can1, chosen: zephyr,canbus           │
+└──────────────────────────────────────────────┘
+```
+
+### Why Custom ISO-TP (Not Zephyr's CONFIG_ISOTP)
+
+DiveCAN uses a non-standard padding byte in Single Frame and First Frame messages that is incompatible with Zephyr's standard ISO 15765-2 implementation. Additionally: Zephyr's ISO-TP is EXPERIMENTAL with known bugs, lacks a centralized TX queue for serialization, and doesn't handle the Shearwater FC broadcast quirk (source=0xFF).
+
+### Threads
+
+| Thread | Stack | Priority | Role |
+|--------|-------|----------|------|
+| `divecan_rx` | 2048 | 5 | CAN RX dispatch, ISO-TP/UDS processing |
+| `divecan_ppo2_tx` | 1024 | 4 | PPO2 broadcast every 500ms (zbus subscriber on `chan_consensus`) |
+
+### Message Flow
+
+**Inbound (handset → head):** CAN RX callback → `k_msgq` → `divecan_rx` thread → switch dispatch. Commands (setpoint, cal, atmos, shutdown) publish to zbus channels. MENU messages route through ISO-TP → UDS dispatcher.
+
+**Outbound (head → handset):** PPO2 TX thread subscribes to `chan_consensus`, broadcasts cell data every 500ms. Calibration response listener fires on `chan_cal_response`, sends `txCalResponse`. UDS responses go through ISO-TP centralized TX queue.
+
+### Key Design Decisions vs Old Firmware
+
+- **No shared Configuration_t pointer** — all cross-module data flows through zbus channels (B1 fix)
+- **Non-blocking shutdown** — BUS_OFF publishes to `chan_shutdown_request` instead of blocking the CAN task for 2 seconds (B5 fix)
+- **FO2 validation** — calibration requests validate FO2 ≤ 100 before processing (B3 fix)
+- **TX/composer split** — `divecan_send.c` (CAN driver glue) separated from `divecan_tx.c` (protocol byte layout) for testability
+- **Pure math extraction** — `divecan_ppo2_math.c` extracted from PPO2 TX thread for testability
 
 ## Hardening
 
@@ -204,13 +255,31 @@ Firmware/
 │   ├── power_management.c          Power driver: regulator, ADC voltage, shutdown
 │   ├── power_math.c                Pure power math (voltage conversion, thresholds)
 │   ├── runtime_settings.c          NVS load/save/validate, topology BUILD_ASSERTs
-│   └── Kconfig                     Product topology, solenoid roles, runtime defaults
+│   ├── Kconfig                     Product topology, solenoid roles, runtime defaults
+│   └── divecan/                    DiveCAN protocol subsystem
+│       ├── include/                Protocol headers (types, TX, ISO-TP, UDS)
+│       ├── divecan_send.c          CAN driver glue (init, send, blocking send)
+│       ├── divecan_tx.c            Protocol message composers (all tx* functions)
+│       ├── divecan_rx.c            CAN RX thread, message dispatch, ISO-TP/UDS
+│       ├── divecan_ppo2_tx.c       PPO2 broadcast (zbus subscriber on chan_consensus)
+│       ├── divecan_ppo2_math.c     Pure PPO2 broadcast filtering logic
+│       ├── divecan_channels.c      zbus channel definitions (setpoint, atmos, etc.)
+│       ├── isotp.c                 ISO-TP RX state machine + send API
+│       ├── isotp_tx_queue.c        Centralized ISO-TP TX queue (k_msgq)
+│       └── uds/
+│           ├── uds.c               UDS service dispatcher (0x22, 0x2E)
+│           ├── uds_state_did.c     State DID handler (reads zbus channels)
+│           ├── uds_settings.c      Settings DID handler (reads NVS)
+│           └── uds_log_push.c      Log push to Bluetooth client
 ├── tests/
 │   ├── analog_math/                ADC conversion + PPO2 calculation (17 tests)
 │   ├── calibration_math/           Cal coefficient math + bug regressions (20 tests)
 │   ├── consensus/                  Voting algorithm + permutations (19 tests)
 │   ├── parsers/                    DiveO2 + O2S UART protocol parsing (76 tests)
-│   └── power/                      Voltage math, GPIO mux, regulator, CAN detect (19 tests)
+│   ├── power/                      Voltage math, GPIO mux, regulator, CAN detect (19 tests)
+│   ├── isotp/                      ISO-TP RX/TX protocol (19 tests)
+│   ├── divecan_tx/                 Message composition byte layout (15 tests)
+│   └── ppo2_broadcast/             PPO2 broadcast filtering logic (8 tests)
 ├── variants/
 │   └── dev_full.conf               All-features development variant
 ├── scripts/

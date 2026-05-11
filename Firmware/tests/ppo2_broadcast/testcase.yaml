@@ -1,0 +1,4 @@
+tests:
+  divecan.ppo2_broadcast:
+    platform_allow: native_sim
+    tags: divecan ppo2

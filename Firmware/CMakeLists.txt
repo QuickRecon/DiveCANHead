@@ -42,6 +42,23 @@ target_sources_ifdef(CONFIG_HAS_DIVEO2_CELL app PRIVATE src/oxygen_cell_diveo2.c
 target_sources_ifdef(CONFIG_HAS_O2S_CELL app PRIVATE src/oxygen_cell_o2s.c)
 target_include_directories(app PRIVATE include)
 
+# DiveCAN protocol + UDS/ISO-TP
+target_sources(app PRIVATE
+    src/divecan/divecan_channels.c
+    src/divecan/divecan_send.c
+    src/divecan/divecan_tx.c
+    src/divecan/isotp.c
+    src/divecan/isotp_tx_queue.c
+    src/divecan/divecan_rx.c
+    src/divecan/divecan_ppo2_math.c
+    src/divecan/divecan_ppo2_tx.c
+    src/divecan/uds/uds.c
+    src/divecan/uds/uds_state_did.c
+    src/divecan/uds/uds_settings.c
+    src/divecan/uds/uds_log_push.c
+)
+target_include_directories(app PRIVATE src/divecan/include)
+
 add_subdirectory(drivers/solenoid)
 
 # App-only hardening flags (not applied to Zephyr kernel/drivers)

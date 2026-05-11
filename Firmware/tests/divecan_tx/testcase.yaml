@@ -1,0 +1,4 @@
+tests:
+  divecan.tx:
+    platform_allow: native_sim
+    tags: divecan tx

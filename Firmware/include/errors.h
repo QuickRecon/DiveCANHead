@@ -159,6 +159,9 @@ typedef enum {
 	/** Logging quit due to an error */
 	OP_ERR_LOGGING,
 
+	/** Log push queue full — oldest message dropped */
+	OP_ERR_LOG_TRUNCATED,
+
 	/** Check code that should be unreachable — something strange happened */
 	OP_ERR_UNREACHABLE,
 

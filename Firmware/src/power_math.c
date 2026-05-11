@@ -13,7 +13,7 @@
 float adc_millivolts_to_voltage(int32_t adc_mv, uint16_t divider_ratio_milli)
 {
 	return ((float)adc_mv / 1000.0f) *
-	       ((float)divider_ratio_milli / 1000.0f);
+		   ((float)divider_ratio_milli / 1000.0f);
 }
 
 /* ---- Battery chemistry voltage thresholds ----
@@ -24,14 +24,14 @@ float adc_millivolts_to_voltage(int32_t adc_mv, uint16_t divider_ratio_milli)
 float power_get_low_battery_threshold(void)
 {
 #if defined(CONFIG_BATTERY_CHEMISTRY_9V)
-	return 7.7f;    /* 9V alkaline battery */
+	return 7.7f; /* 9V alkaline battery */
 #elif defined(CONFIG_BATTERY_CHEMISTRY_LI1S)
-	return 3.0f;    /* 1S Lithium Ion */
+	return 3.0f; /* 1S Lithium Ion */
 #elif defined(CONFIG_BATTERY_CHEMISTRY_LI2S)
-	return 6.0f;    /* 2S Lithium Ion */
+	return 6.0f; /* 2S Lithium Ion */
 #elif defined(CONFIG_BATTERY_CHEMISTRY_LI3S)
-	return 9.0f;    /* 3S Lithium Ion */
+	return 9.0f; /* 3S Lithium Ion */
 #else
-	return 6.0f;    /* Default to 2S */
+	return 6.0f; /* Default to 2S */
 #endif
 }
