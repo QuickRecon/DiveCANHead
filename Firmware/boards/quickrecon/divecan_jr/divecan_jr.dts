@@ -82,29 +82,27 @@
 };
 
 /* ---- Clock tree ----
- * Rev2: HSE=8MHz, PLL N=12 R=8 → 12MHz SYSCLK
- * Jr:   HSE=12MHz, PLL N=20 R=3 → 80MHz SYSCLK
- *
- * Jr runs faster to support SPI flash throughput.
- * Rev2 was 12MHz for ultra-low-power; Jr has a bigger
- * battery budget from the revised power architecture.
+ * Matches Rev2 for low power: HSE=8MHz, PLL N=12 R=8 → 12MHz SYSCLK
+ * PLL Q=4 → 24MHz for CLK48 (RNG clock source)
  */
 &clk_hse {
-	clock-frequency = <DT_FREQ_M(12)>;
+	clock-frequency = <DT_FREQ_M(8)>;
 	status = "okay";
 };
 
+
 &pll {
 	div-m = <1>;
-	mul-n = <40>;
-	div-r = <6>;
+	mul-n = <12>;
+	div-q = <4>;
+	div-r = <8>;
 	clocks = <&clk_hse>;
 	status = "okay";
 };
 
 &rcc {
 	clocks = <&pll>;
-	clock-frequency = <DT_FREQ_M(80)>;
+	clock-frequency = <DT_FREQ_M(12)>;
 	ahb-prescaler = <1>;
 	apb1-prescaler = <1>;
 	apb2-prescaler = <1>;
@@ -197,22 +195,21 @@
 	status = "okay";
 };
 
-/* ---- SPI3 — GD25Q128 external flash ----
- * Replaces SDMMC on Rev2. Uses freed PC10/PC11/PC12 pins.
- * CS pin TBD from Jr schematic — using PA4 as placeholder.
+/* ---- SPI2 — Winbond W25Q512JV external flash ----
+ * PB13 = SCK, PB14 = MISO, PB15 = MOSI, PB11 = CS
  */
-&spi3 {
-	pinctrl-0 = <&spi3_sck_pc10 &spi3_miso_pc11 &spi3_mosi_pc12>;
+&spi2 {
+	pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pb14 &spi2_mosi_pb15>;
 	pinctrl-names = "default";
-	cs-gpios = <&gpioa 4 GPIO_ACTIVE_LOW>;
+	cs-gpios = <&gpiob 11 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
-	gd25q128: gd25q128@0 {
+	spi_flash: w25q512@0 {
 		compatible = "jedec,spi-nor";
 		reg = <0>;
-		spi-max-frequency = <80000000>;
-		jedec-id = [c8 40 18];
-		size = <DT_SIZE_M(128)>;
+		spi-max-frequency = <6000000>;
+		jedec-id = [ef 40 20];
+		size = <DT_SIZE_M(512)>;
 		has-dpd;
 		t-enter-dpd = <3000>;
 		t-exit-dpd = <30000>;
@@ -229,7 +226,7 @@
  * all solenoid GPIOs are forced low regardless of app state.
  */
 &timers7 {
-	st,prescaler = <79>;
+	st,prescaler = <11>;
 	status = "okay";
 
 	sol_timer: counter {
@@ -256,14 +253,18 @@
 	status = "okay";
 };
 
-/* ---- RNG — needed for stack canaries seed ---- */
+/* ---- RNG — needed for stack canaries seed ----
+ * Clocked from PLL Q (24MHz) via the CLK48 mux, matching the Rev2 config. */
 &rng {
+	clocks = <&rcc STM32_SRC_PLL_Q CLK48_SEL(2)>;
 	status = "okay";
 };
 
-/* ---- Watchdog ---- */
+/* ---- Watchdog ----
+ * Disabled until the watchdog feeding task is ported.
+ * Enabling without a feeder causes an immediate WDT reset. */
 &iwdg {
-	status = "okay";
+	status = "disabled";
 };
 
 /* ---- Flash partitions ----
@@ -289,7 +290,7 @@
 	};
 };
 
-&gd25q128 {
+&spi_flash {
 	partitions {
 		compatible = "fixed-partitions";
 		#address-cells = <1>;

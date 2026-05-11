@@ -31,17 +31,17 @@ int main(void)
 		return 0;
 	}
 
-	/* Deferred bus-active check: wait 1 second for peripherals and
-	 * logging to start, then verify the CAN bus is actually active.
-	 * If the bus is NOT active, shut down immediately — this guards
-	 * against the case where the device powered on from a transient
-	 * glitch ("blip on in the dead of night"). */
-	k_msleep(1000);
+	// /* Deferred bus-active check: wait 1 second for peripherals and
+	//  * logging to start, then verify the CAN bus is actually active.
+	//  * If the bus is NOT active, shut down immediately — this guards
+	//  * against the case where the device powered on from a transient
+	//  * glitch ("blip on in the dead of night"). */
+	// k_msleep(1000);
 
-	if (!power_is_can_active(POWER_DEVICE)) {
-		LOG_WRN("CAN bus not active — entering shutdown");
-		(void)power_shutdown(POWER_DEVICE);
-	}
+	// if (!power_is_can_active(POWER_DEVICE)) {
+	// 	LOG_WRN("CAN bus not active — entering shutdown");
+	// 	(void)power_shutdown(POWER_DEVICE);
+	// }
 
 	/* Cell threads, consensus subscriber, and calibration listener are
 	 * all auto-started by K_THREAD_DEFINE — no manual init needed.

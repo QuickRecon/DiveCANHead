@@ -37,7 +37,10 @@ CONFIG_SPI_NOR_SFDP_RUNTIME=y
 CONFIG_COUNTER=y
 
 # Regulator (VBUS power rail control)
+# Init priority 45: after GPIO (40), before I2C/SPI/UART (50) so that
+# VBUS is powered before any bus drivers try to talk to peripherals.
 CONFIG_REGULATOR=y
+CONFIG_REGULATOR_FIXED_INIT_PRIORITY=45
 
 # Watchdog
 CONFIG_WATCHDOG=y

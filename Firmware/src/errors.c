@@ -91,7 +91,15 @@ FUNC_NORETURN void fatal_op_error(FatalOpError_t code, const char *file,
 	crash_noinit.lr = 0U;
 	crash_noinit.cfsr = 0U;
 
-	LOG_PANIC();
+	/* Don't call LOG_PANIC() here — the RTT log backend's flush path
+	 * uses k_busy_wait which touches the systick spinlock. If we're
+	 * already in a fault context that spinlock may be held, causing a
+	 * nested assert. printk goes directly to RTT without the logging
+	 * subsystem so it's safe in any context. The spin delay lets the
+	 * RTT buffer drain over SWD before we reboot. */
+	for (volatile int i = 0; i < 1000000; i++) {
+	}
+
 	sys_reboot(SYS_REBOOT_COLD);
 	CODE_UNREACHABLE;
 }
@@ -106,32 +114,37 @@ FUNC_NORETURN void fatal_op_error(FatalOpError_t code, const char *file,
 void k_sys_fatal_error_handler(unsigned int reason,
 			       const struct arch_esf *esf)
 {
-	printk("*** FATAL: reason %u ***\n", reason);
-
-	crash_noinit.magic = CRASH_MAGIC;
-	crash_noinit.reason = reason;
-
+	/* Print the crash info directly to RTT via printk (not LOG, which
+	 * can crash in fault context due to systick spinlock contention) */
 #if defined(CONFIG_ARM)
 	if (esf != NULL) {
+		printk("*** FATAL: reason %u  pc=0x%08x  lr=0x%08x ***\n",
+		       reason, esf->basic.pc, esf->basic.lr);
 		crash_noinit.pc = esf->basic.pc;
 		crash_noinit.lr = esf->basic.lr;
 	} else {
+		printk("*** FATAL: reason %u  (no ESF) ***\n", reason);
 		crash_noinit.pc = 0U;
 		crash_noinit.lr = 0U;
 	}
 #else
 	ARG_UNUSED(esf);
+	printk("*** FATAL: reason %u ***\n", reason);
 	crash_noinit.pc = 0U;
 	crash_noinit.lr = 0U;
 #endif
 
+	crash_noinit.magic = CRASH_MAGIC;
+	crash_noinit.reason = reason;
+
 #if defined(CONFIG_CPU_CORTEX_M)
 	crash_noinit.cfsr = SCB->CFSR;
-#else
-	crash_noinit.cfsr = 0U;
 #endif
 
-	LOG_PANIC();
+	/* Spin briefly to let RTT drain the fatal message before reboot */
+	for (volatile int i = 0; i < 1000000; i++) {
+	}
+
 	sys_reboot(SYS_REBOOT_COLD);
 	CODE_UNREACHABLE;
 }
