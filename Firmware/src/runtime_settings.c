@@ -1,9 +1,36 @@
 #include "runtime_settings.h"
 #include <zephyr/settings/settings.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 #include <string.h>
 
 LOG_MODULE_REGISTER(runtime_settings, LOG_LEVEL_INF);
+
+/* ---- Topology static asserts ---- */
+
+BUILD_ASSERT(IS_ENABLED(CONFIG_CELL_1_TYPE_ANALOG) +
+	     IS_ENABLED(CONFIG_CELL_1_TYPE_DIVEO2) +
+	     IS_ENABLED(CONFIG_CELL_1_TYPE_O2S) == 1,
+	     "Exactly one type must be selected for cell 1");
+
+#if CONFIG_CELL_COUNT >= 2
+BUILD_ASSERT(IS_ENABLED(CONFIG_CELL_2_TYPE_ANALOG) +
+	     IS_ENABLED(CONFIG_CELL_2_TYPE_DIVEO2) +
+	     IS_ENABLED(CONFIG_CELL_2_TYPE_O2S) == 1,
+	     "Exactly one type must be selected for cell 2");
+#endif
+
+#if CONFIG_CELL_COUNT >= 3
+BUILD_ASSERT(IS_ENABLED(CONFIG_CELL_3_TYPE_ANALOG) +
+	     IS_ENABLED(CONFIG_CELL_3_TYPE_DIVEO2) +
+	     IS_ENABLED(CONFIG_CELL_3_TYPE_O2S) == 1,
+	     "Exactly one type must be selected for cell 3");
+#endif
+
+BUILD_ASSERT(IS_ENABLED(CONFIG_POWER_MODE_BATTERY) +
+	     IS_ENABLED(CONFIG_POWER_MODE_BATTERY_THEN_CAN) +
+	     IS_ENABLED(CONFIG_POWER_MODE_CAN) == 1,
+	     "Exactly one power mode must be selected");
 
 #define SETTINGS_SUBTREE "rt"
 
