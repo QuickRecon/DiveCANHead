@@ -9,6 +9,7 @@ target_sources(app PRIVATE
     src/main.c
     src/errors.c
     src/runtime_settings.c
+    src/oxygen_cell_math.c
 )
 target_include_directories(app PRIVATE include)
 

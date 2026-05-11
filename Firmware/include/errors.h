@@ -88,6 +88,11 @@ typedef enum {
 	/** The cell number can't be mapped to an input (too high?) */
 	OP_ERR_INVALID_CELL,
 
+	/* ---- Math / Safety ---- */
+
+	/** A computation produced an out-of-range or overflow result */
+	OP_ERR_MATH,
+
 	/* ---- Calibration ---- */
 
 	/** The configured calibration method cannot complete */
