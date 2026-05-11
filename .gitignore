@@ -20,3 +20,11 @@ log_backup
 STM32.bin
 .sonarqube-diagnostics.json
 .sonarqube*-diagnostics.json
+
+# Zephyr west workspace (managed by `west init`, not source-controlled here)
+/.west/
+/bootloader/
+/modules/
+/tools/edtt/
+/tools/net-tools/
+/zephyr/

@@ -1,0 +1,21 @@
+config SOLENOID
+	bool "Solenoid driver with hardware deadman timer"
+	depends on GPIO && COUNTER
+	default y
+	help
+	  Driver for GPIO-based solenoid outputs with a hardware
+	  counter acting as a deadman timer. When the counter alarm
+	  fires, all solenoid outputs are forced low from ISR context.
+
+config SOLENOID_INIT_PRIORITY
+	int "Solenoid driver init priority"
+	depends on SOLENOID
+	default 90
+	help
+	  Must be after GPIO and counter drivers (typically 80).
+
+config SOLENOID_LOG_LEVEL
+	int "Solenoid driver log level"
+	depends on SOLENOID
+	default 3
+	range 0 4

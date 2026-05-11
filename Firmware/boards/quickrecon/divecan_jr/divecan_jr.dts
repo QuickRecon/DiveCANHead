@@ -1,0 +1,278 @@
+/dts-v1/;
+#include <st/l4/stm32l431Xc.dtsi>
+#include <st/l4/stm32l431r(b-c)tx-pinctrl.dtsi>
+
+/ {
+	model = "QuickRecon DiveCAN Jr";
+	compatible = "quickrecon,divecan-jr";
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+	};
+
+	aliases {
+		led0 = &led_0;
+		led1 = &led_5;
+		watchdog0 = &iwdg;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		led_0: led_0 {
+			gpios = <&gpiob 0 GPIO_ACTIVE_HIGH>;
+		};
+		led_5: led_5 {
+			gpios = <&gpiob 12 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+
+		/* Hardware version detection */
+		ver_det_1: ver_det_1 {
+			gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
+		};
+		ver_det_2: ver_det_2 {
+			gpios = <&gpioc 9 GPIO_ACTIVE_HIGH>;
+		};
+		ver_det_3: ver_det_3 {
+			gpios = <&gpioc 10 GPIO_ACTIVE_HIGH>;
+		};
+
+		/* Power status inputs */
+		vcc_stat: vcc_stat {
+			gpios = <&gpioa 4 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+		};
+		bus_stat: bus_stat {
+			gpios = <&gpioa 7 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+		};
+		can_en: can_en {
+			gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
+		};
+		can_silent: can_silent {
+			gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>;
+		};
+
+	};
+
+	solenoids: solenoids {
+		compatible = "quickrecon,solenoid-driver";
+		gpios = <&gpiob 4 GPIO_ACTIVE_HIGH>,
+			<&gpioc 11 GPIO_ACTIVE_HIGH>,
+			<&gpiob 5 GPIO_ACTIVE_HIGH>,
+			<&gpioa 7 GPIO_ACTIVE_HIGH>;
+		counter = <&sol_timer>;
+		max-on-time-us = <100000>;
+	};
+
+	power_ctrl {
+		compatible = "gpio-leds";
+
+		battery_en: battery_en {
+			gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>;
+		};
+		bus_sel1: bus_sel1 {
+			gpios = <&gpioa 6 GPIO_ACTIVE_HIGH>;
+		};
+		bus_sel2: bus_sel2 {
+			gpios = <&gpioa 5 GPIO_ACTIVE_HIGH>;
+		};
+		can_shdn: can_shdn {
+			gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
+
+/* ---- Clock tree ----
+ * Rev2: HSE=8MHz, PLL N=12 R=8 → 12MHz SYSCLK
+ * Jr:   HSE=12MHz, PLL N=20 R=3 → 80MHz SYSCLK
+ *
+ * Jr runs faster to support SPI flash throughput.
+ * Rev2 was 12MHz for ultra-low-power; Jr has a bigger
+ * battery budget from the revised power architecture.
+ */
+&clk_hse {
+	clock-frequency = <DT_FREQ_M(12)>;
+	status = "okay";
+};
+
+&pll {
+	div-m = <1>;
+	mul-n = <40>;
+	div-r = <6>;
+	clocks = <&clk_hse>;
+	status = "okay";
+};
+
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(80)>;
+	ahb-prescaler = <1>;
+	apb1-prescaler = <1>;
+	apb2-prescaler = <1>;
+};
+
+/* ---- CAN bus — DiveCAN @ 250kbps ----
+ * Rev2 .ioc: Prescaler=6, BS1=13TQ, BS2=2TQ, SJW=4TQ
+ * At 12MHz → 125kbps. Firmware overrides to 250kbps at runtime.
+ * Jr at 80MHz: prescaler & segments set via Zephyr bus-speed.
+ */
+&can1 {
+	pinctrl-0 = <&can1_rx_pb8 &can1_tx_pb9>;
+	pinctrl-names = "default";
+	bitrate = <250000>;
+	sample-point = <875>;
+	status = "okay";
+};
+
+/* ---- I2C1 — ADS1115 external ADCs ----
+ * Two devices: 0x48 (cells 1+2), 0x49 (cell 3 + aux)
+ * PA9 = SCL, PA10 = SDA
+ */
+&i2c1 {
+	pinctrl-0 = <&i2c1_scl_pa9 &i2c1_sda_pa10>;
+	pinctrl-names = "default";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	status = "okay";
+
+	adc_ext1: ads1115@48 {
+		compatible = "ti,ads1115";
+		reg = <0x48>;
+		#io-channel-cells = <1>;
+	};
+
+	adc_ext2: ads1115@49 {
+		compatible = "ti,ads1115";
+		reg = <0x49>;
+		#io-channel-cells = <1>;
+	};
+};
+
+/* ---- UARTs — Oxygen sensor cells ----
+ * All 19200 baud, 8N1.
+ * USART2 and USART3 have TX/RX swap enabled in Rev2 .ioc
+ * (ADVFEATURE_SWAP_ENABLE). For Jr, check if swap is still
+ * needed — if so, use the swapped pinctrl variants.
+ */
+
+/* Cell 1: PB6 (TX), PB7 (RX) — no swap */
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
+	pinctrl-names = "default";
+	current-speed = <19200>;
+	status = "okay";
+};
+
+/* Cell 2: PA2 (TX), PA3 (RX) — Rev2 has swap enabled */
+&usart2 {
+	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+	pinctrl-names = "default";
+	current-speed = <19200>;
+	status = "okay";
+};
+
+/* Cell 3: PC4 (TX), PC5 (RX) — Rev2 has swap enabled */
+&usart3 {
+	pinctrl-0 = <&usart3_tx_pc4 &usart3_rx_pc5>;
+	pinctrl-names = "default";
+	current-speed = <19200>;
+	status = "okay";
+};
+
+/* ---- SPI3 — GD25Q128 external flash ----
+ * Replaces SDMMC on Rev2. Uses freed PC10/PC11/PC12 pins.
+ * CS pin TBD from Jr schematic — using PA4 as placeholder.
+ */
+&spi3 {
+	pinctrl-0 = <&spi3_sck_pc10 &spi3_miso_pc11 &spi3_mosi_pc12>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpioa 4 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	gd25q128: gd25q128@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <80000000>;
+		jedec-id = [c8 40 18];
+		size = <DT_SIZE_M(128)>;
+		has-dpd;
+		t-enter-dpd = <3000>;
+		t-exit-dpd = <30000>;
+	};
+};
+
+/* ---- TIM7 — solenoid deadman timer ----
+ * One-shot hardware counter. When the alarm fires (ISR),
+ * all solenoid GPIOs are forced low regardless of app state.
+ */
+&timers7 {
+	st,prescaler = <79>;
+	status = "okay";
+
+	sol_timer: counter {
+		status = "okay";
+	};
+};
+
+/* ---- Internal ADC — voltage monitoring ----
+ * PA0 = IN5 (VBUS_V), PC2 = IN3 (CAN_V), PC3 = IN4 (BATT_V)
+ * Plus internal VREFINT and VBAT channels.
+ */
+&adc1 {
+	pinctrl-0 = <&adc1_in5_pa0 &adc1_in3_pc2 &adc1_in4_pc3>;
+	pinctrl-names = "default";
+	st,adc-clock-source = "SYNC";
+	st,adc-prescaler = <4>;
+	status = "okay";
+};
+
+/* ---- RNG — needed for stack canaries seed ---- */
+&rng {
+	status = "okay";
+};
+
+/* ---- Watchdog ---- */
+&iwdg {
+	status = "okay";
+};
+
+/* ---- Flash partitions ----
+ * Internal 256KB: bootloader + primary slot + NVS config
+ * External 16MB:  secondary OTA slot + scratch + data
+ */
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		boot_partition: partition@0 {
+			reg = <0x00000000 DT_SIZE_K(48)>;
+			read-only;
+		};
+		slot0_partition: partition@c000 {
+			reg = <0x0000c000 DT_SIZE_K(192)>;
+		};
+		storage_partition: partition@3c000 {
+			reg = <0x0003c000 DT_SIZE_K(16)>;
+		};
+	};
+};
+
+&gd25q128 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		slot1_partition: partition@0 {
+			reg = <0x00000000 DT_SIZE_K(192)>;
+		};
+		scratch_partition: partition@30000 {
+			reg = <0x00030000 DT_SIZE_K(64)>;
+		};
+	};
+};

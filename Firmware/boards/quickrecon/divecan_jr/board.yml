@@ -1,0 +1,6 @@
+board:
+  name: divecan_jr
+  full_name: DiveCAN Jr Head
+  vendor: quickrecon
+  socs:
+    - name: stm32l431xx

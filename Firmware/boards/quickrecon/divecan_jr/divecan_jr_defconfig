@@ -1,0 +1,45 @@
+# MPU and stack protection
+CONFIG_ARM_MPU=y
+CONFIG_HW_STACK_PROTECTION=y
+
+# GPIO
+CONFIG_GPIO=y
+
+# Console via RTT (no UART consumed)
+CONFIG_CONSOLE=y
+CONFIG_USE_SEGGER_RTT=y
+CONFIG_RTT_CONSOLE=y
+
+# CAN
+CONFIG_CAN=y
+
+# I2C
+CONFIG_I2C=y
+
+# UART (sensor cells — async needs DMA overlay per-USART when porting app code)
+CONFIG_SERIAL=y
+
+# SPI (external flash)
+CONFIG_SPI=y
+
+# External ADC (ADS1115)
+CONFIG_ADC=y
+CONFIG_ADC_ADS1X1X=y
+
+# External flash
+CONFIG_FLASH=y
+CONFIG_SPI_NOR=y
+CONFIG_SPI_NOR_SFDP_RUNTIME=y
+
+# Counter (solenoid deadman timer)
+CONFIG_COUNTER=y
+
+# Watchdog
+CONFIG_WATCHDOG=y
+
+# Settings subsystem (NVS-backed runtime config)
+CONFIG_NVS=y
+CONFIG_SETTINGS=y
+CONFIG_SETTINGS_NVS=y
+CONFIG_FLASH_MAP=y
+CONFIG_FLASH_PAGE_LAYOUT=y
