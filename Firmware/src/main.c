@@ -14,6 +14,7 @@
 
 #include "calibration.h"
 #include "power_management.h"
+#include "ppo2_control.h"
 #include "common.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
@@ -40,6 +41,10 @@ Status_t main(void)
     LOG_INF("DiveCAN Jr — Zephyr %s", KERNEL_VERSION_STRING);
 
     calibration_init();
+    /* Must run after runtime_settings has its NVS load wired (calibration_init
+     * does that today via runtime_settings_load) and before any consensus
+     * traffic so the controller's initial publishes win the race. */
+    ppo2_control_init();
 
     if (!gpio_is_ready_dt(&led)) {
         LOG_ERR("LED device not ready");

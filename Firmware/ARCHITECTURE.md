@@ -107,14 +107,16 @@ Defined channels:
 | `chan_cell_1` | `OxygenCellMsg_t` | Cell 1 thread | Consensus subscriber, UDS state DID |
 | `chan_cell_2` | `OxygenCellMsg_t` | Cell 2 thread | Consensus subscriber, UDS state DID |
 | `chan_cell_3` | `OxygenCellMsg_t` | Cell 3 thread | Consensus subscriber, UDS state DID |
-| `chan_consensus` | `ConsensusMsg_t` | Consensus subscriber | PPO2 TX, UDS state DID, future PID |
+| `chan_consensus` | `ConsensusMsg_t` | Consensus subscriber | PPO2 TX, PPO2 PID controller, UDS state DID |
 | `chan_cal_request` | `CalRequest_t` | DiveCAN RX, UDS write | Calibration listener |
 | `chan_cal_response` | `CalResponse_t` | Calibration thread | DiveCAN cal response listener |
 | `chan_battery_status` | `BatteryStatus_t` | Battery monitor thread | DiveCAN ping response |
-| `chan_setpoint` | `PPO2_t` | DiveCAN RX, UDS write | Future PID controller, DiveCAN ping |
-| `chan_atmos_pressure` | `uint16_t` | DiveCAN RX | UDS cal trigger, future depth comp |
+| `chan_setpoint` | `PPO2_t` | DiveCAN RX, UDS write | PPO2 PID controller, DiveCAN ping |
+| `chan_atmos_pressure` | `uint16_t` | DiveCAN RX | UDS cal trigger, PPO2 PID controller (depth comp) |
 | `chan_shutdown_request` | `bool` | DiveCAN RX (BUS_OFF) | Future power management |
 | `chan_dive_state` | `DiveState_t` | DiveCAN RX (DIVING msg) | Future logging |
+| `chan_duty_cycle` | `Numeric_t` | PPO2 PID controller | Solenoid fire thread |
+| `chan_solenoid_status` | `DiveCANError_t` | PPO2 PID controller | DiveCAN RespPing (OR-combined into status byte) |
 
 `chan_cell_2` and `chan_cell_3` are conditionally compiled based on `CONFIG_CELL_COUNT`.
 
@@ -178,6 +180,8 @@ DiveCAN uses a non-standard padding byte in Single Frame and First Frame message
 |--------|-------|----------|------|
 | `divecan_rx` | 2048 | 5 | CAN RX dispatch, ISO-TP/UDS processing |
 | `divecan_ppo2_tx` | 1024 | 4 | PPO2 broadcast every 500ms (zbus subscriber on `chan_consensus`) |
+| `ppo2_pid_thread` | 2048 | 6 | PPO2 PID controller — 100 ms cycle, publishes duty + solenoid status (suspends in OFF / MK15 modes) |
+| `solenoid_fire_thread` | 1024 | 6 | Solenoid fire timing — 5 s cycle (PID) or 6 s cycle (MK15), drives `sol_o2_inject_fire()` |
 
 ### Message Flow
 

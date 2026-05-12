@@ -40,6 +40,12 @@ target_sources(app PRIVATE
 target_sources_ifdef(CONFIG_HAS_ANALOG_CELL app PRIVATE src/oxygen_cell_analog.c)
 target_sources_ifdef(CONFIG_HAS_DIVEO2_CELL app PRIVATE src/oxygen_cell_diveo2.c)
 target_sources_ifdef(CONFIG_HAS_O2S_CELL app PRIVATE src/oxygen_cell_o2s.c)
+
+# PPO2 PID controller + solenoid fire timing — pure math is always built so
+# UDS state-DID handlers can call ppo2_control_get_snapshot() unconditionally,
+# but the threaded controller is only compiled in when a physical O2
+# injection solenoid is present on the variant.
+target_sources(app PRIVATE src/ppo2_control_math.c src/ppo2_control.c)
 target_include_directories(app PRIVATE include)
 
 # DiveCAN protocol + UDS/ISO-TP

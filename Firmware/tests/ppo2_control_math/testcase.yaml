@@ -1,0 +1,4 @@
+tests:
+  ppo2_control.math:
+    platform_allow: native_sim
+    tags: ppo2_control pid solenoid

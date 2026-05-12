@@ -10,6 +10,7 @@
 #include <zephyr/zbus/zbus.h>
 
 #include "divecan_types.h"
+#include "common.h"
 
 /* Setpoint from handset or UDS write (centibar, 0-255) */
 ZBUS_CHAN_DEFINE(chan_setpoint,
@@ -38,3 +39,22 @@ ZBUS_CHAN_DEFINE(chan_dive_state,
     NULL, NULL,
     ZBUS_OBSERVERS_EMPTY,
     ZBUS_MSG_INIT(0));
+
+/* Solenoid duty cycle (0.0–1.0) — published by the PPO2 PID controller,
+ * consumed by the solenoid fire timer thread. Latest-value semantics. */
+ZBUS_CHAN_DEFINE(chan_duty_cycle,
+    Numeric_t,
+    NULL, NULL,
+    ZBUS_OBSERVERS_EMPTY,
+    0.0f);
+
+/* Solenoid status reported on the DiveCAN wire (DiveCANError_t bits 2-3).
+ * Published by the PPO2 controller on transition between nominal and
+ * suppressed; consumed by RespPing in divecan_rx.c which OR-combines it
+ * with the battery field before transmission. Defaults to SOL_NORM so a
+ * variant without a controller still emits a sensible status byte. */
+ZBUS_CHAN_DEFINE(chan_solenoid_status,
+    DiveCANError_t,
+    NULL, NULL,
+    ZBUS_OBSERVERS_EMPTY,
+    DIVECAN_ERR_SOL_NORM);

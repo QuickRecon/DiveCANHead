@@ -16,7 +16,9 @@ ZBUS_CHAN_DECLARE(
     chan_setpoint,
     chan_atmos_pressure,
     chan_shutdown_request,
-    chan_dive_state
+    chan_dive_state,
+    chan_duty_cycle,
+    chan_solenoid_status
 );
 
 #endif /* DIVECAN_CHANNELS_H */

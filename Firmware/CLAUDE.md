@@ -47,6 +47,18 @@ Each entry must include: what changed, why, what still provides coverage, and po
 - When adding zbus channels, document them in ARCHITECTURE.md under the IPC section
 - The only real variant is `dev_full.conf` — verify the build passes with it after changes
 
+## Channel Semantics
+
+- **`chan_atmos_pressure` carries ambient pressure including depth**, not
+  surface atmospheric pressure. The variable name is a legacy carryover from
+  the STM32/FreeRTOS firmware (`atmoPressure`) where the same misnomer
+  applied. The system is expected to operate at depths well in excess of
+  500 m, so any value the channel carries is legitimate. **Do not impose
+  any upper bound** — not a "physical maximum", not a storage-type range
+  cap, not a "human dive limit". The only legitimate runtime check is
+  `pressure == 0` for divide-by-zero protection in code that uses the value
+  as a divisor (e.g. PPO2 depth compensation: `duty /= pressure / 1000.0f`).
+
 ## Code Style Notes
 
 - VLAs are forbidden in application code (enforced by review, not compiler — see COMPROMISE.md)

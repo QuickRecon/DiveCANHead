@@ -332,7 +332,12 @@ static bool readSettingInfoDID(uint16_t did, uint8_t *buf,
                 buf[dataOffset + labelLen + SI_EDIT_OFF] = 0U;
             }
             if (setting->kind == SETTING_KIND_TEXT) {
-                buf[dataOffset + labelLen + SI_MAX_OFF] = setting->maxValue;
+                /* SettingInfo wire format reserves 1 byte for maxValue
+                 * with TEXT settings (option index, always small); cast
+                 * keeps the truncation explicit now that the struct
+                 * field is u64 to support NUMBER settings with larger
+                 * ranges (e.g. PID gains in milliunits). */
+                buf[dataOffset + labelLen + SI_MAX_OFF] = (uint8_t)setting->maxValue;
                 buf[dataOffset + labelLen + SI_COUNT_OFF] = setting->optionCount;
                 *bytesWritten = dataOffset + labelLen + SETTING_INFO_BASE_LEN + SETTING_INFO_TEXT_EXTRA;
             } else {

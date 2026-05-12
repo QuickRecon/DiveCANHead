@@ -55,7 +55,11 @@
 			<&gpiob 5 GPIO_ACTIVE_HIGH>,
 			<&gpioa 7 GPIO_ACTIVE_HIGH>;
 		counter = <&sol_timer>;
-		max-on-time-us = <100000>;
+		/* 5.5 s deadman — safety bound on solenoid on-time if the
+		 * fire-thread stalls. Sized to comfortably exceed the PPO2
+		 * PID controller's 4.9 s per-cycle on-time (PPO2Control.c
+		 * legacy SOLENOID_MAX_FIRE_MS). See COMPROMISE.md. */
+		max-on-time-us = <5500000>;
 	};
 
 	/* ---- Power subsystem ----
@@ -225,9 +229,18 @@
 /* ---- TIM7 — solenoid deadman timer ----
  * One-shot hardware counter. When the alarm fires (ISR),
  * all solenoid GPIOs are forced low regardless of app state.
+ *
+ * Prescaler tuning (PSC=7999 → divider=8000 → 100 µs/tick) gives a
+ * 16-bit max one-shot of 65535 × 100 µs = 6.55 s. The driver clamp
+ * `max-on-time-us` is set to 5.5 s — safely under the physical
+ * counter range while comfortably above the PID controller's 4.9 s
+ * legacy maximum on-time per cycle. The deadman remains a
+ * kernel-stall safety net rather than an active control element.
+ * See COMPROMISE.md for the rationale (entry "TIM7 prescaler
+ * widened for PPO2 controller").
  */
 &timers7 {
-	st,prescaler = <11>;
+	st,prescaler = <7999>;
 	status = "okay";
 
 	sol_timer: counter {

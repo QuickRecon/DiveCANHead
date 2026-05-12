@@ -39,12 +39,18 @@ typedef enum {
 
 /**
  * @brief Setting definition (metadata)
+ *
+ * `maxValue` is the upper bound for validation in UDS_SetSettingValue and is
+ * also serialised on the wire (as the first u64 of the SettingValue payload)
+ * so the handset knows the legal range. Widened to uint64_t to accommodate
+ * scaled-numeric settings such as PID gains stored in milliunits (×1000),
+ * where the legal range exceeds the original uint8_t cap.
  */
 typedef struct {
     const char *label;
     SettingKind_t kind;
     bool editable;
-    uint8_t maxValue;
+    uint64_t maxValue;
     const char * const *options;
     uint8_t optionCount;
 } SettingDefinition_t;

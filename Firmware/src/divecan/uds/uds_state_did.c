@@ -17,6 +17,7 @@
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_types.h"
 #include "power_management.h"
+#include "ppo2_control.h"
 #include "errors.h"
 #include "common.h"
 
@@ -121,22 +122,31 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
     }
 
     case UDS_DID_DUTY_CYCLE:
-        /* TODO(aren.leishman, 2026-05-11): wire to PID controller channel when ported */
-        writeFloat32(buf, 0.0f);
+    {
+        PPO2ControlSnapshot_t snap = {0};
+        ppo2_control_get_snapshot(&snap);
+        writeFloat32(buf, snap.duty_cycle);
         *len = sizeof(Numeric_t);
         break;
+    }
 
     case UDS_DID_INTEGRAL_STATE:
-        /* TODO(aren.leishman, 2026-05-11): wire to PID controller channel when ported */
-        writeFloat32(buf, 0.0f);
+    {
+        PPO2ControlSnapshot_t snap = {0};
+        ppo2_control_get_snapshot(&snap);
+        writeFloat32(buf, snap.integral_state);
         *len = sizeof(Numeric_t);
         break;
+    }
 
     case UDS_DID_SATURATION_COUNT:
-        /* TODO(aren.leishman, 2026-05-11): wire to PID controller channel when ported */
-        writeUint16(buf, 0);
+    {
+        PPO2ControlSnapshot_t snap = {0};
+        ppo2_control_get_snapshot(&snap);
+        writeUint16(buf, snap.saturation_count);
         *len = sizeof(uint16_t);
         break;
+    }
 
     case UDS_DID_UPTIME_SEC:
         writeUint32(buf, k_uptime_get_32() / MS_PER_SECOND);

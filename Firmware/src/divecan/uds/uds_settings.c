@@ -23,8 +23,23 @@ LOG_MODULE_REGISTER(uds_settings, LOG_LEVEL_INF);
 #define SETTING_INDEX_CAL_MODE     2U
 #define SETTING_INDEX_DEPTH_COMP   3U
 #define SETTING_INDEX_EXT_MSGS     4U
+#define SETTING_INDEX_PID_KP       5U
+#define SETTING_INDEX_PID_KI       6U
+#define SETTING_INDEX_PID_KD       7U
 
-#define SETTING_COUNT 5U
+#define SETTING_COUNT 8U
+
+/* PID gains are stored as floats in NVS but exposed as uint64 milliunits
+ * over the wire (handset and SettingValue u64 BE format). The factor 1000
+ * gives 0.001 resolution — plenty for empirically-tuned PID gains.
+ *
+ * Range: PID_GAIN_MIN..PID_GAIN_MAX from runtime_settings.h, ×1000:
+ *   0.0  → 0
+ *   0.01 (default Ki) → 10
+ *   1.0  (default Kp) → 1000
+ *   100.0 (max bound) → 100000 */
+#define PID_GAIN_SCALE_TO_WIRE 1000U
+#define PID_GAIN_MAX_WIRE      ((uint64_t)(PID_GAIN_MAX * PID_GAIN_SCALE_TO_WIRE))
 
 /* APP_BUILD_VERSION_STR is injected as a quoted string literal by CMake;
  * see CMakeLists.txt. No token-stringify macro is needed here. */
@@ -109,6 +124,33 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .maxValue = 1,
         .options = boolOptions,
         .optionCount = 2
+    },
+    /* Index 5: PID Kp (milliunits, 0..100000 ⇔ 0.0..100.0) */
+    {
+        .label = "PID Kp x1k",
+        .kind = SETTING_KIND_NUMBER,
+        .editable = true,
+        .maxValue = PID_GAIN_MAX_WIRE,
+        .options = NULL,
+        .optionCount = 0
+    },
+    /* Index 6: PID Ki (milliunits, 0..100000 ⇔ 0.0..100.0) */
+    {
+        .label = "PID Ki x1k",
+        .kind = SETTING_KIND_NUMBER,
+        .editable = true,
+        .maxValue = PID_GAIN_MAX_WIRE,
+        .options = NULL,
+        .optionCount = 0
+    },
+    /* Index 7: PID Kd (milliunits, 0..100000 ⇔ 0.0..100.0) */
+    {
+        .label = "PID Kd x1k",
+        .kind = SETTING_KIND_NUMBER,
+        .editable = true,
+        .maxValue = PID_GAIN_MAX_WIRE,
+        .options = NULL,
+        .optionCount = 0
     }
 };
 
@@ -174,6 +216,15 @@ uint64_t UDS_GetSettingValue(uint8_t index)
             result = 1U;
         }
         break;
+    case SETTING_INDEX_PID_KP:
+        result = (uint64_t)((double)rs.pidKp * (double)PID_GAIN_SCALE_TO_WIRE);
+        break;
+    case SETTING_INDEX_PID_KI:
+        result = (uint64_t)((double)rs.pidKi * (double)PID_GAIN_SCALE_TO_WIRE);
+        break;
+    case SETTING_INDEX_PID_KD:
+        result = (uint64_t)((double)rs.pidKd * (double)PID_GAIN_SCALE_TO_WIRE);
+        break;
     default:
         OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
         break;
@@ -219,12 +270,27 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
             case SETTING_INDEX_EXT_MSGS:
                 rs.extendedMessages = (value != 0U);
                 break;
+            case SETTING_INDEX_PID_KP:
+                rs.pidKp = (Numeric_t)((double)value /
+                            (double)PID_GAIN_SCALE_TO_WIRE);
+                break;
+            case SETTING_INDEX_PID_KI:
+                rs.pidKi = (Numeric_t)((double)value /
+                            (double)PID_GAIN_SCALE_TO_WIRE);
+                break;
+            case SETTING_INDEX_PID_KD:
+                rs.pidKd = (Numeric_t)((double)value /
+                            (double)PID_GAIN_SCALE_TO_WIRE);
+                break;
             default:
                 break;
             }
 
             if (runtime_settings_validate(&rs)) {
                 result = true;
+            }
+            else {
+                OP_ERROR_DETAIL(OP_ERR_MATH, index);
             }
         }
     }
@@ -264,6 +330,18 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
             break;
         case SETTING_INDEX_EXT_MSGS:
             rs.extendedMessages = (value != 0U);
+            break;
+        case SETTING_INDEX_PID_KP:
+            rs.pidKp = (Numeric_t)((double)value /
+                        (double)PID_GAIN_SCALE_TO_WIRE);
+            break;
+        case SETTING_INDEX_PID_KI:
+            rs.pidKi = (Numeric_t)((double)value /
+                        (double)PID_GAIN_SCALE_TO_WIRE);
+            break;
+        case SETTING_INDEX_PID_KD:
+            rs.pidKd = (Numeric_t)((double)value /
+                        (double)PID_GAIN_SCALE_TO_WIRE);
             break;
         default:
             break;

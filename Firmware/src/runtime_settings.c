@@ -15,6 +15,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 #include <string.h>
+#include <math.h>
 
 LOG_MODULE_REGISTER(runtime_settings, LOG_LEVEL_INF);
 
@@ -94,11 +95,26 @@ static bool cal_mode_valid(CalibrationMode_t val)
 }
 
 /**
+ * @brief Check whether a candidate PID gain is finite and within bounds
+ *
+ * Used by both NVS-load validation and UDS-write validation. Bounds are
+ * deliberately loose — production tuned values live well below PID_GAIN_MAX,
+ * but the upper bound catches obvious corruption (NaN, Inf, runaway values).
+ *
+ * @param g Candidate gain value
+ * @return true if g is finite and within [PID_GAIN_MIN, PID_GAIN_MAX]
+ */
+static bool pid_gain_valid(Numeric_t g)
+{
+    return isfinite((double)g) && (g >= PID_GAIN_MIN) && (g <= PID_GAIN_MAX);
+}
+
+/**
  * @brief Validate a RuntimeSettings_t struct for internal consistency
  *
- * Checks that all enum fields are in-range and that feature flags are
+ * Checks that all enum fields are in-range, that feature flags are
  * consistent with the build configuration (e.g. depth compensation requires
- * CONFIG_HAS_O2_SOLENOID).
+ * CONFIG_HAS_O2_SOLENOID), and that PID gains are finite and bounded.
  *
  * @param s Settings struct to validate; must not be NULL
  * @return true if all fields are valid
@@ -111,6 +127,11 @@ bool runtime_settings_validate(const RuntimeSettings_t *s)
         result = false;
     }
     else if (!cal_mode_valid(s->calibrationMode)) {
+        result = false;
+    }
+    else if (!pid_gain_valid(s->pidKp) ||
+         !pid_gain_valid(s->pidKi) ||
+         !pid_gain_valid(s->pidKd)) {
         result = false;
     }
     else
@@ -187,6 +208,33 @@ static Status_t settings_set(const char *name, size_t len,
         }
         rc = 0;
     }
+    else if (0 == strcmp(name, "kp")) {
+        Numeric_t val = 0.0f;
+
+        rc = read_cb(cb_arg, &val, sizeof(val));
+        if (((Status_t)sizeof(val) == rc) && pid_gain_valid(val)) {
+            cached->pidKp = val;
+        }
+        rc = 0;
+    }
+    else if (0 == strcmp(name, "ki")) {
+        Numeric_t val = 0.0f;
+
+        rc = read_cb(cb_arg, &val, sizeof(val));
+        if (((Status_t)sizeof(val) == rc) && pid_gain_valid(val)) {
+            cached->pidKi = val;
+        }
+        rc = 0;
+    }
+    else if (0 == strcmp(name, "kd")) {
+        Numeric_t val = 0.0f;
+
+        rc = read_cb(cb_arg, &val, sizeof(val));
+        if (((Status_t)sizeof(val) == rc) && pid_gain_valid(val)) {
+            cached->pidKd = val;
+        }
+        rc = 0;
+    }
     else
     {
         rc = -ENOENT;
@@ -235,9 +283,11 @@ Status_t runtime_settings_load(RuntimeSettings_t *out)
         }
 
         *out = *cached;
-        LOG_INF("ppo2=%d cal=%d depth=%d ext=%d",
+        LOG_INF("ppo2=%d cal=%d depth=%d ext=%d kp=%.4f ki=%.4f kd=%.4f",
             cached->ppo2ControlMode, cached->calibrationMode,
-            cached->depthCompensation, cached->extendedMessages);
+            cached->depthCompensation, cached->extendedMessages,
+            (double)cached->pidKp, (double)cached->pidKi,
+            (double)cached->pidKd);
         rc = 0;
     }
 
@@ -269,6 +319,9 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
         Status_t rc_cal = 0;
         Status_t rc_depth = 0;
         Status_t rc_ext = 0;
+        Status_t rc_kp = 0;
+        Status_t rc_ki = 0;
+        Status_t rc_kd = 0;
 
         val = (uint8_t)s->ppo2ControlMode;
         rc_ppo2 = settings_save_one(SETTINGS_SUBTREE "/ppo2", &val, sizeof(val));
@@ -284,7 +337,15 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
                     &s->extendedMessages,
                     sizeof(s->extendedMessages));
 
-        if ((0 == rc_ppo2) && (0 == rc_cal) && (0 == rc_depth) && (0 == rc_ext)) {
+        rc_kp = settings_save_one(SETTINGS_SUBTREE "/kp",
+                    &s->pidKp, sizeof(s->pidKp));
+        rc_ki = settings_save_one(SETTINGS_SUBTREE "/ki",
+                    &s->pidKi, sizeof(s->pidKi));
+        rc_kd = settings_save_one(SETTINGS_SUBTREE "/kd",
+                    &s->pidKd, sizeof(s->pidKd));
+
+        if ((0 == rc_ppo2) && (0 == rc_cal) && (0 == rc_depth) &&
+            (0 == rc_ext) && (0 == rc_kp) && (0 == rc_ki) && (0 == rc_kd)) {
             *getCached() = *s;
         }
         else if (0 != rc_ppo2) {
@@ -296,8 +357,17 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
         else if (0 != rc_depth) {
             rc = rc_depth;
         }
-        else {
+        else if (0 != rc_ext) {
             rc = rc_ext;
+        }
+        else if (0 != rc_kp) {
+            rc = rc_kp;
+        }
+        else if (0 != rc_ki) {
+            rc = rc_ki;
+        }
+        else {
+            rc = rc_kd;
         }
     }
 

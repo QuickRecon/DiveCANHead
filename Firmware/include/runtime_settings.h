@@ -12,6 +12,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <autoconf.h>
+#include "common.h"
+#include "oxygen_cell_types.h"
 
 /* ---- PPO2 Control Mode ---- */
 
@@ -38,15 +40,16 @@ static const PPO2ControlMode_t valid_ppo2_control_modes[] = {
 #define PPO2_CONTROL_MODE_DEFAULT PPO2CONTROL_OFF
 #endif
 
-/* ---- Calibration Mode ---- */
+/* ---- Calibration Mode ----
+ * The enum values themselves live in `oxygen_cell_types.h` as `CalMethod_t`
+ * (the wire-format type carried in CalRequest_t).  CalibrationMode_t here
+ * is a thin alias so the runtime-settings API still reads naturally
+ * (`settings.calibrationMode`) while the four enumerator names
+ * (CAL_DIGITAL_REFERENCE, …) have a single source of truth.  Without this
+ * alias, including both headers in the same TU was a duplicate-enumerator
+ * compile error. */
 
-/** @brief Calibration method used when a cal request arrives. */
-typedef enum {
-    CAL_DIGITAL_REFERENCE = 0, /**< Use digital cell as reference for analog cells */
-    CAL_ANALOG_ABSOLUTE = 1,   /**< Absolute calibration of analog cells against known gas */
-    CAL_TOTAL_ABSOLUTE = 2,    /**< Absolute calibration of all cells together */
-    CAL_SOLENOID_FLUSH = 3,    /**< Flush loop with calibration gas then calibrate */
-} CalibrationMode_t;
+typedef CalMethod_t CalibrationMode_t;
 
 static const CalibrationMode_t valid_cal_modes[] = {
 #ifdef CONFIG_HAS_DIGITAL_CELL
@@ -69,6 +72,27 @@ static const CalibrationMode_t valid_cal_modes[] = {
 #define CAL_MODE_DEFAULT CAL_SOLENOID_FLUSH
 #endif
 
+/* ---- PID Gain bounds ----
+ * Used for both UDS write validation and post-load NVS validation.
+ * The upper bound is a sanity guard against malformed / corrupted writes —
+ * empirically-tuned production gains live well below it. */
+
+/** @brief Minimum accepted value for any PID gain (Kp/Ki/Kd). */
+#define PID_GAIN_MIN 0.0f
+/** @brief Maximum accepted value for any PID gain (Kp/Ki/Kd). */
+#define PID_GAIN_MAX 100.0f
+
+/* Defaults mirror the empirically-tuned values from the legacy STM32
+ * firmware (PPO2Control.c:91-93). Only used when the build includes
+ * HAS_O2_SOLENOID; otherwise the gains live in the struct as inert
+ * placeholders so the layout stays variant-independent. */
+/** @brief Default PID proportional gain. */
+#define PID_DEFAULT_KP 1.0f
+/** @brief Default PID integral gain. */
+#define PID_DEFAULT_KI 0.01f
+/** @brief Default PID derivative gain. */
+#define PID_DEFAULT_KD 0.0f
+
 /* ---- Runtime Settings Structure ----
  * Stored in NVS. Changeable via UDS at runtime.
  * Valid values are bounded by the compile-time tables above. */
@@ -79,6 +103,9 @@ typedef struct {
     CalibrationMode_t calibrationMode; /**< Active calibration method */
     bool depthCompensation;            /**< Enable depth-pressure compensation for setpoint */
     bool extendedMessages;             /**< Enable non-standard debug CAN messages */
+    Numeric_t pidKp;                   /**< PID proportional gain (HAS_O2_SOLENOID variants) */
+    Numeric_t pidKi;                   /**< PID integral gain (HAS_O2_SOLENOID variants) */
+    Numeric_t pidKd;                   /**< PID derivative gain (HAS_O2_SOLENOID variants) */
 } RuntimeSettings_t;
 
 #define RUNTIME_SETTINGS_DEFAULT {                                       \
@@ -86,6 +113,9 @@ typedef struct {
     .calibrationMode = CAL_MODE_DEFAULT,                             \
     .depthCompensation = IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT), \
     .extendedMessages = IS_ENABLED(CONFIG_EXTENDED_MESSAGES_DEFAULT), \
+    .pidKp = PID_DEFAULT_KP,                                         \
+    .pidKi = PID_DEFAULT_KI,                                         \
+    .pidKd = PID_DEFAULT_KD,                                         \
 }
 
 /* ---- Validation ---- */

@@ -349,9 +349,9 @@ static void RespPing(const DiveCANMessage_t *message)
              device_spec.firmware_version);
 
         Numeric_t supplyVoltage = power_get_battery_voltage(POWER_DEVICE);
-        DiveCANError_t err = DIVECAN_ERR_NONE;
+        DiveCANError_t bat_err = DIVECAN_ERR_NONE;
         if (supplyVoltage < power_get_low_battery_threshold()) {
-            err = DIVECAN_ERR_BAT_LOW;
+            bat_err = DIVECAN_ERR_BAT_LOW;
         }
 
         /* Multiply by the scaler so we're the correct "digit"
@@ -362,6 +362,19 @@ static void RespPing(const DiveCANMessage_t *message)
         /* Read current setpoint from zbus */
         PPO2_t setpoint = 0;
         (void)zbus_chan_read(&chan_setpoint, &setpoint, K_NO_WAIT);
+
+        /* Read solenoid status from zbus.  The PPO2 controller publishes
+         * DIVECAN_ERR_SOL_NORM at init and on recovery, and
+         * DIVECAN_ERR_SOL_UNDERCURRENT when it has suppressed the
+         * solenoid (e.g. on cell-failure).  Default to SOL_NORM if the
+         * channel has no published value (variant without a controller). */
+        DiveCANError_t sol_err = DIVECAN_ERR_SOL_NORM;
+        (void)zbus_chan_read(&chan_solenoid_status, &sol_err, K_NO_WAIT);
+
+        /* DiveCANError_t bits 0–1 carry battery state, bits 2–3 carry
+         * solenoid state — designed to be OR-combined into a single byte. */
+        DiveCANError_t err =
+            (DiveCANError_t)((uint8_t)bat_err | (uint8_t)sol_err);
 
         txStatus(devType, batteryV, setpoint, err, true);
         txName(devType, device_spec.name);

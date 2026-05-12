@@ -34,7 +34,10 @@ static const uint32_t BLINK_OFF_MS = 100U;
 static const uint32_t BLINK_GROUP_PAUSE_MS = 1000U;
 static const uint32_t HALT_NO_LED_TICK_MS = 1000U;
 static const uint8_t BLINKS_PER_GROUP = 3U;
-static const uint8_t HW_VERSION_INIT_PRIORITY = 30U;
+/* Referenced from inside the DT_INST_FOREACH_STATUS_OKAY macro chain below;
+ * GCC's unused-detection cannot see through the expansion, so mark it
+ * explicitly. */
+static const uint8_t HW_VERSION_INIT_PRIORITY __unused = 30U;
 
 /* Array size — must be #define (C compile-time constant for array dimension). */
 #define MAX_PINS 3U

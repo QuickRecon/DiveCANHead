@@ -102,3 +102,105 @@ LOG_ERR → RTT on_write → k_busy_wait → systick spinlock
 **Configuration**: The logging thread priority is set to 3 (`CONFIG_LOG_PROCESS_THREAD_PRIORITY=3`) to ensure it gets CPU time at 12MHz SYSCLK, and the buffer is 2KB (`CONFIG_LOG_BUFFER_SIZE=2048`) to handle burst logging during init.
 
 **How to avoid recurrence**: Do not set `CONFIG_LOG_MODE_IMMEDIATE=y` in any prj.conf or variant overlay. If real-time log output is needed for debugging, increase the log thread priority or buffer size instead.
+
+---
+
+## 6. PPO2 controller forces solenoid off on cell-failure (deviation from legacy behavior)
+
+**What changed**: The Zephyr PPO2 PID controller (`src/ppo2_control.c`) zeros
+the duty cycle, resets the integrator, and calls `sol_o2_inject_off()` when
+the consensus PPO2 becomes `PPO2_FAIL`. The legacy STM32/FreeRTOS firmware
+(STM32/Core/Src/PPO2Control/PPO2Control.c:350-353) instead skipped the PID
+update and continued firing the solenoid at the previously-computed duty
+cycle until cells recovered.
+
+**Why**: The legacy behaviour is a safety defect — if all cells fail mid-dive
+when the duty cycle is high (e.g. PPO2 was tracking up toward setpoint),
+the solenoid keeps injecting oxygen at the stale rate indefinitely with no
+feedback to bound it. The audit that produced
+`~/.claude/plans/yeah-lets-write-the-goofy-eclipse.md` flagged this as the
+single most consequential issue found in the legacy PPO2Control code; the
+user explicitly authorised the fix during planning.
+
+**What still provides coverage**: The fix is layered:
+- Application: zero duty + integrator reset + `sol_o2_inject_off()` on
+  the transition into `consensus == PPO2_FAIL`. Edge-triggered via a
+  `consensus_failed_latch` so we publish status updates only on
+  transitions.
+- Wire-format: `chan_solenoid_status` flips to `DIVECAN_ERR_SOL_UNDERCURRENT`
+  (see compromise #7) so the dive computer reflects the suppressed state.
+- Hardware: the solenoid driver's deadman timer still bounds the worst-case
+  on-time if the kernel stalls (see compromise #8).
+- Test: `tests/ppo2_control_math/` covers the duty-clamp/depth-comp
+  math; the cell-fail integration path is covered by the hardware
+  bring-up checklist in the planning doc.
+
+**Possible alternatives to investigate**: A future revision could use the
+`saturationCount` field (already exposed via UDS DID 0xF212) as an
+additional health indicator — if the integrator stays saturated for N
+cycles, that is also a signal that the controller is out of control even
+when consensus reports values.
+
+---
+
+## 7. `DIVECAN_ERR_SOL_UNDERCURRENT` is reused as the wire-side "controller-suppressed" indicator
+
+**What changed**: When the PPO2 controller suppresses the solenoid (currently
+only on cell-failure — see compromise #6), `chan_solenoid_status` is set to
+`DIVECAN_ERR_SOL_UNDERCURRENT` (0x04) so `RespPing` OR-combines it into
+the DiveCAN status byte sent to the handset. There is no dedicated
+"suppressed" / "inhibited" enumerant in the upstream DiveCAN protocol enum
+(see `src/divecan/include/divecan_types.h`).
+
+**Why**: The legacy DiveCAN protocol enum predates this controller-side use
+case. From the handset's perspective the observable effect (no current
+flowing through the solenoid winding) is identical, so reusing the
+existing code keeps us aligned with upstream rather than forking the
+enumeration. The legacy STM32 firmware never composed the solenoid bits
+of the status byte at all; this is therefore new wire-format behaviour
+introduced in the Zephyr port.
+
+**What provides coverage**: The reuse is documented inline in
+`src/divecan/divecan_rx.c::RespPing`, in
+`src/divecan/include/divecan_types.h`, and in the planning doc
+(`~/.claude/plans/yeah-lets-write-the-goofy-eclipse.md`). Hardware
+bring-up step verifies the byte transitions on the wire.
+
+**Possible alternatives to investigate**: If the upstream DiveCAN protocol
+later defines a dedicated suppressed/inhibited code (for example
+`DIVECAN_ERR_SOL_INHIBITED = 0x10` or similar in a future bit position),
+the controller can switch to it and the wire-format compatibility check
+in this entry can be marked resolved.
+
+---
+
+## 8. TIM7 deadman widened to 5.5 s for the PPO2 controller
+
+**What changed**: The Jr board's solenoid deadman timer (`&timers7`,
+`sol_timer`) was re-prescaled from `st,prescaler = <11>` (divider 12,
+~9.83 ms physical max one-shot) to `st,prescaler = <7999>` (divider 8000,
+100 µs/tick × 65535 ticks ≈ 6.55 s physical max). The driver clamp
+`max-on-time-us` was raised from `100000` (which was unreachable on the
+old prescaling anyway) to `5500000` (5.5 s).
+
+**Why**: The legacy PPO2 PID controller fires the solenoid for up to 4900 ms
+continuously per cycle (`SOLENOID_MAX_FIRE_MS` in `src/ppo2_control.c`),
+which is far above the original 9.83 ms physical bound and the 100 ms DTS
+advertisement. With the deadman tighter than the legitimate maximum
+on-time, every PID fire would be cut short by the ISR.
+
+**What still provides coverage**: The deadman is still a hardware-enforced
+safety net — if the fire-thread stalls or the kernel hangs, the ISR
+forces all solenoid GPIOs low after at most 5.5 s. The new bound is
+sized so legitimate operation has ~12% headroom over the maximum
+expected on-time, while still being short enough that a stuck-on
+solenoid is detected and killed within one PID cycle.
+
+**Possible alternatives to investigate**:
+- Switch the deadman counter to TIM2 (32-bit, currently unused on the Jr
+  board) for ~644 s of headroom at the current tick rate. Cleaner DTS
+  but a more invasive board change.
+- Implement chunked firing in the controller: `solenoid_fire(9 ms)` in
+  a tight loop while the solenoid should be on. Preserves the legacy
+  10 ms safety bound at the cost of substantial controller complexity
+  and risks visible chatter on the GPIO pin.
