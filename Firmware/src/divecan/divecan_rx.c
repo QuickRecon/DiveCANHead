@@ -108,6 +108,15 @@ static void can_rx_callback(const struct device *dev, struct can_frame *frame,
     ARG_UNUSED(dev);
     ARG_UNUSED(user_data);
 
+    /* DiveCAN source byte (low byte of arbitration id) identifies the
+     * sender.  Skip frames where the source is our own DUT_ID — these
+     * are CAN bus echoes that bxCAN drops in hardware but the
+     * native-linux CAN driver delivers anyway.  Filtering here keeps
+     * the behaviour consistent across both backends. */
+    if ((frame->id & 0xFFU) == (uint8_t)DIVECAN_SOLO) {
+        return;
+    }
+
     DiveCANMessage_t msg = {
         .id = frame->id,
         .length = frame->dlc,
@@ -152,11 +161,16 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
         return;
     }
 
-    /* Add RX filter — match all DiveCAN message types via ID_MASK.
-     * The mask drops source/dest bits so we receive from all devices. */
+    /* Add RX filter — accept all DiveCAN messages (top byte 0x0D).
+     * DIVECAN_ID_MASK (0x1FFFF000) is for ID-extraction in the dispatch
+     * switch, NOT for CAN hardware filtering: using it as the filter
+     * mask only matches ids whose bits 12-27 are zero, dropping cal
+     * requests, setpoints, menu frames, etc.  Filtering on the top
+     * byte alone passes every DiveCAN message type while still
+     * rejecting non-DiveCAN traffic. */
     struct can_filter filter = {
         .id = 0x0D000000U,
-        .mask = DIVECAN_ID_MASK,
+        .mask = 0x1F000000U,
         .flags = CAN_FILTER_IDE,
     };
     Status_t filter_id = can_add_rx_filter(can_dev, can_rx_callback, NULL, &filter);
@@ -293,27 +307,31 @@ K_THREAD_DEFINE(divecan_rx, 2048,
  */
 static void cal_response_cb(const struct zbus_channel *chan)
 {
-    CalResponse_t resp = {0};
-    if (0 != zbus_chan_read(chan, &resp, K_NO_WAIT)) {
-        /* No action — read failed, nothing to send */
+    /* Listeners fire SYNCHRONOUSLY inside zbus_chan_pub() while the
+     * channel is still locked, so zbus_chan_read() with K_NO_WAIT will
+     * fail with -EAGAIN.  Use zbus_chan_const_msg() which returns a
+     * pointer to the channel's internal storage without taking the
+     * lock — safe here because we're already on the publisher's
+     * thread of control. */
+    const CalResponse_t *resp = (const CalResponse_t *)zbus_chan_const_msg(chan);
+
+    DiveCANCalResponse_t divecan_result = DIVECAN_CAL_FAIL_GEN;
+    if (CAL_RESULT_OK == resp->result) {
+        divecan_result = DIVECAN_CAL_RESULT_OK;
+    } else if (CAL_RESULT_REJECTED == resp->result) {
+        divecan_result = DIVECAN_CAL_FAIL_REJECTED;
     } else {
-        DiveCANCalResponse_t divecan_result = DIVECAN_CAL_FAIL_GEN;
-        if (CAL_RESULT_OK == resp.result) {
-            divecan_result = DIVECAN_CAL_RESULT_OK;
-        } else if (CAL_RESULT_REJECTED == resp.result) {
-            divecan_result = DIVECAN_CAL_FAIL_REJECTED;
-        } else {
-            /* divecan_result already set to DIVECAN_CAL_FAIL_GEN */
-        }
-
-        /* Read last known atmos pressure and FO2 from the cal request channel */
-        CalRequest_t last_req = {0};
-        (void)zbus_chan_read(&chan_cal_request, &last_req, K_NO_WAIT);
-
-        txCalResponse(device_spec.type, divecan_result,
-                  resp.cell_mv[0], resp.cell_mv[1], resp.cell_mv[CELL_IDX_2],
-                  last_req.fo2, last_req.pressure_mbar);
+        /* divecan_result already set to DIVECAN_CAL_FAIL_GEN */
     }
+
+    /* chan_cal_request is a DIFFERENT channel — not locked here — so
+     * zbus_chan_read with K_NO_WAIT works to fetch the last request. */
+    CalRequest_t last_req = {0};
+    (void)zbus_chan_read(&chan_cal_request, &last_req, K_NO_WAIT);
+
+    txCalResponse(device_spec.type, divecan_result,
+              resp->cell_mv[0], resp->cell_mv[1], resp->cell_mv[CELL_IDX_2],
+              last_req.fo2, last_req.pressure_mbar);
 }
 
 ZBUS_LISTENER_DEFINE(divecan_cal_resp_listener, cal_response_cb);

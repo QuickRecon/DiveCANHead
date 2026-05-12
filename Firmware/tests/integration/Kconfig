@@ -1,0 +1,17 @@
+config INTEGRATION_TEST_SHIM
+    bool "Integration test shim (native_sim only)"
+    depends on BOARD_NATIVE_SIM
+    help
+      Compiles in the test shim thread that bridges emulated peripherals
+      (uart_emul, adc_emul, gpio_emul) to an external Python test harness
+      via a Unix domain socket. Only available on native_sim builds.
+
+config ADC_EMUL_CONFIGURABLE_INPUTS
+    bool "Enable ADC configurable inputs for emulated ADC"
+    depends on ADC_EMUL
+    select ADC_CONFIGURABLE_INPUTS
+    help
+      The real ADS1115 driver selects ADC_CONFIGURABLE_INPUTS so the
+      adc_channel_cfg struct includes input_positive/input_negative
+      fields. The adc_emul driver does not select this by default.
+      Enable it so the firmware compiles identically on native_sim.

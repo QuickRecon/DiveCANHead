@@ -26,7 +26,15 @@ LOG_MODULE_REGISTER(consensus, LOG_LEVEL_INF);
 /* Index of cell 2 in the cells array */
 static const uint8_t CELL_IDX_2 = 2U;
 
-ZBUS_MSG_SUBSCRIBER_DEFINE(consensus_sub);
+/* Plain SUBSCRIBER — the queue holds channel-pointer notifications
+ * (8 bytes each), NOT message payloads.  We re-read each cell channel
+ * for the latest value via zbus_chan_read below, so the payload would
+ * be wasted work.  Queue is sized for the worst burst: three cells
+ * publishing while the consumer is briefly delayed (e.g. by a
+ * calibration cycle that holds zbus_chan_read).  Even when the queue
+ * does fill, no DATA is lost: channel values are updated on every
+ * publish independently of the notification queue. */
+ZBUS_SUBSCRIBER_DEFINE(consensus_sub, 32);
 
 ZBUS_CHAN_ADD_OBS(chan_cell_1, consensus_sub, 0);
 #if CONFIG_CELL_COUNT >= 2
@@ -53,7 +61,6 @@ static void consensus_thread_fn(void *p1, void *p2, void *p3)
     ARG_UNUSED(p3);
 
     const struct zbus_channel *chan = NULL;
-    OxygenCellMsg_t msg_buf = {0};
     heartbeat_register(HEARTBEAT_CONSENSUS);
 
     while (true) {
@@ -63,15 +70,14 @@ static void consensus_thread_fn(void *p1, void *p2, void *p3)
          * where the next sample may be ~10 s away). On timeout we
          * still re-read every cell channel — staleness is enforced
          * downstream by consensus_calculate(). */
-        Status_t wait_rc = zbus_sub_wait_msg(&consensus_sub, &chan,
-                             &msg_buf, K_MSEC(2000));
+        Status_t wait_rc = zbus_sub_wait(&consensus_sub, &chan,
+                                         K_MSEC(2000));
         if ((0 != wait_rc) && (-EAGAIN != wait_rc)) {
             /* Wait error — retry on next iteration */
         } else {
             /* Drain any additional queued notifications so we
              * compute consensus on the latest state of all cells */
-            while (0 == zbus_sub_wait_msg(&consensus_sub, &chan, &msg_buf,
-                         K_NO_WAIT)) {
+            while (0 == zbus_sub_wait(&consensus_sub, &chan, K_NO_WAIT)) {
                 /* consume */
             }
 

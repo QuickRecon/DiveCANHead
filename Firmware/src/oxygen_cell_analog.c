@@ -27,6 +27,12 @@ LOG_MODULE_REGISTER(cell_analog, LOG_LEVEL_INF);
 /* Time to wait on the ADC before declaring the cell stale */
 #define ANALOG_RESPONSE_TIMEOUT_MS 1000
 
+/* Minimum interval between ADC reads.  ADS1115 at 128 SPS is ~8 ms per
+ * conversion, so a 10 ms minimum gives steady ~100 Hz sampling on real
+ * hardware and prevents the read loop from busy-spinning when adc_read()
+ * returns instantly (e.g. zephyr,adc-emul under native_sim). */
+#define ANALOG_SAMPLE_INTERVAL_MS 10
+
 /*
  * ADC channel mapping (from DTS):
  *   Cell 1: adc_ext1 (ADS1115 @ 0x48), channel 0 (diff pair 1)
@@ -251,14 +257,52 @@ static void analog_cell_thread(void *p1, void *p2, void *p3)
             if (0 == analog_adc_read(cell)) {
                 analog_publish(cell);
             }
-            /* ADS1115 at 128SPS takes ~8ms per conversion.
-             * adc_read() blocks until complete. No explicit sleep needed
-             * but add a small yield to avoid starving lower-priority
-             * threads if the ADC returns instantly. */
-            k_yield();
+            /* ADS1115 at 128 SPS takes ~8 ms per conversion on real
+             * hardware; adc_read() blocks until complete.  Emulated
+             * back-ends (zephyr,adc-emul on native_sim) return
+             * immediately, so explicitly enforce the sample rate
+             * here to avoid spinning at maximum speed and starving
+             * other threads of the publisher's zbus queue. */
+            k_msleep(ANALOG_SAMPLE_INTERVAL_MS);
         }
     }
 }
+
+/* ---- Calibration reload listener ----
+ * When calibration publishes a successful result on chan_cal_response,
+ * each analog cell reloads its coefficient from NVS so the new value
+ * takes effect immediately — without this the cell would keep using
+ * the value loaded at thread startup until the next reboot.
+ *
+ * Forward-declared cell state structs are referenced by the callback.
+ */
+
+#if defined(CONFIG_CELL_1_TYPE_ANALOG)
+static struct analog_cell_state cell_1_state;
+#endif
+#if CONFIG_CELL_COUNT >= 2 && defined(CONFIG_CELL_2_TYPE_ANALOG)
+static struct analog_cell_state cell_2_state;
+#endif
+#if CONFIG_CELL_COUNT >= 3 && defined(CONFIG_CELL_3_TYPE_ANALOG)
+static struct analog_cell_state cell_3_state;
+#endif
+
+static void analog_cal_done_cb(const struct zbus_channel *chan)
+{
+    ARG_UNUSED(chan);
+#if defined(CONFIG_CELL_1_TYPE_ANALOG)
+    analog_load_cal(&cell_1_state);
+#endif
+#if CONFIG_CELL_COUNT >= 2 && defined(CONFIG_CELL_2_TYPE_ANALOG)
+    analog_load_cal(&cell_2_state);
+#endif
+#if CONFIG_CELL_COUNT >= 3 && defined(CONFIG_CELL_3_TYPE_ANALOG)
+    analog_load_cal(&cell_3_state);
+#endif
+}
+
+ZBUS_LISTENER_DEFINE(analog_cal_done_listener, analog_cal_done_cb);
+ZBUS_CHAN_ADD_OBS(chan_cal_response, analog_cal_done_listener, 10);
 
 /* ---- Per-cell static state and threads ----
  * Cell 1: ADS1115 @ 0x48, channel 0 (diff pair AIN0-AIN1)

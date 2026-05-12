@@ -1,0 +1,188 @@
+/*
+ * DTS overlay for native_sim integration testing.
+ *
+ * Replaces all hardware peripherals with emulated equivalents so the
+ * full firmware application can run as a host binary. External test
+ * harness communicates via Linux vcan (CAN) and a Unix domain socket
+ * (sensor injection / GPIO observation).
+ *
+ * Uses quickrecon,gpio-sim instead of zephyr,gpio-emul for the main
+ * GPIO controller. gpio-sim preserves externally-driven pin values
+ * through pull-up/pull-down reconfigurations, faithfully simulating
+ * real pin capacitance behavior.
+ *
+ * Pin assignments (all on gpio_sim0, pins 0-31):
+ *   0-3:   Solenoid channels
+ *   4-5:   LEDs
+ *   6:     CAN silent
+ *   7-9:   HW version detect
+ *   10:    VBUS regulator enable
+ *   11:    CAN enable (active-low)
+ *   12:    CAN shutdown
+ */
+
+/* Disable the default gpio_emul so we can replace it with gpio-sim */
+&gpio0 {
+    status = "disabled";
+};
+
+/* Delete the base DTS leds node (uses disabled gpio0) */
+/delete-node/ &led0;
+
+/ {
+    chosen {
+        zephyr,canbus = &can0;
+    };
+
+    /* ---- GPIO: capacitance-aware emulator ---- */
+    gpio_sim0: gpio_sim {
+        compatible = "quickrecon,gpio-sim";
+        status = "okay";
+        gpio-controller;
+        #gpio-cells = <2>;
+        ngpios = <32>;
+        rising-edge;
+        falling-edge;
+        high-level;
+        low-level;
+    };
+
+    /* ---- LEDs ---- */
+    leds {
+        compatible = "gpio-leds";
+        led_0: led_0 {
+            gpios = <&gpio_sim0 4 GPIO_ACTIVE_HIGH>;
+        };
+        led_5: led_5 {
+            gpios = <&gpio_sim0 5 GPIO_ACTIVE_HIGH>;
+        };
+    };
+
+    aliases {
+        led0 = &led_0;
+        led1 = &led_5;
+    };
+
+    /* ---- CAN silent pin (gpio_keys) ---- */
+    gpio_keys {
+        compatible = "gpio-keys";
+        can_silent: can_silent {
+            gpios = <&gpio_sim0 6 GPIO_ACTIVE_HIGH>;
+        };
+    };
+
+    /* ---- Hardware version detection ---- */
+    hw_version: hw-version {
+        compatible = "quickrecon,hw-version";
+        detect-gpios = <&gpio_sim0 7 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 8 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 9 GPIO_ACTIVE_HIGH>;
+        expected-pattern = <0 0 0>;
+        error-led-gpios = <&gpio_sim0 4 GPIO_ACTIVE_HIGH>;
+    };
+
+    /* ---- Solenoid driver ---- */
+    solenoids: solenoids {
+        compatible = "quickrecon,solenoid-driver";
+        gpios = <&gpio_sim0 0 GPIO_ACTIVE_HIGH>,
+                <&gpio_sim0 1 GPIO_ACTIVE_HIGH>,
+                <&gpio_sim0 2 GPIO_ACTIVE_HIGH>,
+                <&gpio_sim0 3 GPIO_ACTIVE_HIGH>;
+        counter = <&counter0>;
+        max-on-time-us = <5500000>;
+    };
+
+    /* ---- Power subsystem ---- */
+    vbus_reg: vbus-regulator {
+        compatible = "regulator-fixed";
+        regulator-name = "vbus";
+        enable-gpios = <&gpio_sim0 10 GPIO_ACTIVE_HIGH>;
+        regulator-boot-on;
+        startup-delay-us = <5000>;
+    };
+
+    power: power-subsystem {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&vbus_reg>;
+        battery-sense-io-channels = <&adc0 0>;
+        battery-divider-ratio = <7250>;
+        can-enable-gpios = <&gpio_sim0 11 GPIO_ACTIVE_LOW>;
+        can-shutdown-gpios = <&gpio_sim0 12 GPIO_ACTIVE_HIGH>;
+    };
+
+    /* ---- Emulated external ADCs (replace I2C ADS1115) ---- */
+    adc_ext1: adc_ext1 {
+        compatible = "zephyr,adc-emul";
+        nchannels = <2>;
+        #io-channel-cells = <1>;
+        status = "okay";
+    };
+
+    adc_ext2: adc_ext2 {
+        compatible = "zephyr,adc-emul";
+        nchannels = <2>;
+        #io-channel-cells = <1>;
+        status = "okay";
+    };
+
+    /* ---- Emulated UARTs for digital oxygen cells ---- */
+    usart1: uart_cell1 {
+        compatible = "zephyr,uart-emul";
+        current-speed = <19200>;
+        tx-fifo-size = <256>;
+        rx-fifo-size = <256>;
+        /* Large latch buffer so the whole sensor response arrives in
+         * a single UART_RX_RDY event, matching DMA semantics on real
+         * hardware. The cell drivers expect this — they overwrite
+         * last_message from offset 0 on every event. */
+        latch-buffer-size = <128>;
+        status = "okay";
+    };
+
+    usart2: uart_cell2 {
+        compatible = "zephyr,uart-emul";
+        current-speed = <19200>;
+        tx-fifo-size = <256>;
+        rx-fifo-size = <256>;
+        /* Large latch buffer so the whole sensor response arrives in
+         * a single UART_RX_RDY event, matching DMA semantics on real
+         * hardware. The cell drivers expect this — they overwrite
+         * last_message from offset 0 on every event. */
+        latch-buffer-size = <128>;
+        status = "okay";
+    };
+
+    usart3: uart_cell3 {
+        compatible = "zephyr,uart-emul";
+        current-speed = <19200>;
+        tx-fifo-size = <256>;
+        rx-fifo-size = <256>;
+        /* Large latch buffer so the whole sensor response arrives in
+         * a single UART_RX_RDY event, matching DMA semantics on real
+         * hardware. The cell drivers expect this — they overwrite
+         * last_message from offset 0 on every event. */
+        latch-buffer-size = <128>;
+        status = "okay";
+    };
+};
+
+/* ---- Enable native Linux CAN on vcan0 ---- */
+&can0 {
+    status = "okay";
+    host-interface = "vcan0";
+};
+
+/* ---- Disable loopback CAN ---- */
+&can_loopback0 {
+    status = "disabled";
+};
+
+/* ---- Expand adc0 for battery sense ---- */
+&adc0 {
+    nchannels = <4>;
+};
+
+/* ---- Disable I2C (not needed — ADS1115 replaced by adc-emul) ---- */
+&i2c0 {
+    status = "disabled";
+};

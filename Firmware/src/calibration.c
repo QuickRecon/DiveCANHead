@@ -25,6 +25,8 @@
 #include "common.h"
 
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
 
@@ -74,13 +76,85 @@ bool calibration_is_running(void)
  * @param coeff    Calibration coefficient to store.
  * @return 0 on success, negative errno on settings write failure.
  */
+/* In-memory cache backing the "cal" settings subtree.  Populated by the
+ * settings handler below (called both by settings_load() at boot and by
+ * settings_load_subtree() after writes).  Cells and the validation
+ * readback both read from this cache via settings_runtime_get. */
+static CalCoeff_t cal_cache[CELL_MAX_COUNT] = {0};
+
+/* Parse "cellN" (N = 0..CELL_MAX_COUNT-1) and return the cell index,
+ * or -1 if the key doesn't fit that pattern. */
+static int cal_parse_cell_key(const char *name)
+{
+    if (strncmp(name, "cell", 4) != 0) {
+        return -1;
+    }
+    char *end = NULL;
+    long n = strtol(name + 4, &end, 10);
+    if (end == name + 4 || *end != '\0' || n < 0 ||
+        n >= (long)CELL_MAX_COUNT) {
+        return -1;
+    }
+    return (int)n;
+}
+
+/* Settings handler set(): called by settings_load() / load_subtree() for
+ * each "cal/cellN" key in NVS.  Updates the in-memory cache so cells and
+ * validation readbacks see the persisted value. */
+static int cal_settings_set(const char *name, size_t len,
+                            settings_read_cb read_cb, void *cb_arg)
+{
+    (void)len;
+    int cell = cal_parse_cell_key(name);
+    if (cell < 0) {
+        return -ENOENT;
+    }
+    CalCoeff_t value = 0.0f;
+    ssize_t got = read_cb(cb_arg, &value, sizeof(value));
+    if (got != (ssize_t)sizeof(value)) {
+        return -EIO;
+    }
+    cal_cache[cell] = value;
+    return 0;
+}
+
+/* Settings handler get(): used by settings_runtime_get("cal/cellN", ...).
+ * Returns the cached value's length on success so the caller can size-check. */
+static int cal_settings_get(const char *name, char *val, int val_len_max)
+{
+    int cell = cal_parse_cell_key(name);
+    if (cell < 0) {
+        return -ENOENT;
+    }
+    if ((size_t)val_len_max < sizeof(CalCoeff_t)) {
+        return -EINVAL;
+    }
+    (void)memcpy(val, &cal_cache[cell], sizeof(CalCoeff_t));
+    return (int)sizeof(CalCoeff_t);
+}
+
+SETTINGS_STATIC_HANDLER_DEFINE(cal_handler, "cal",
+                               cal_settings_get,
+                               cal_settings_set,
+                               NULL, NULL);
+
 static Status_t cal_save_coefficient(uint8_t cell_num, CalCoeff_t coeff)
 {
     char key[CAL_KEY_BUF_LEN] = {0};
 
     (void)snprintf(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
 
-    return settings_save_one(key, &coeff, sizeof(coeff));
+    Status_t ret = settings_save_one(key, &coeff, sizeof(coeff));
+    if (ret != 0) {
+        return ret;
+    }
+
+    /* Force the cache to reload from NVS so the validation readback in
+     * cal_validate_and_save() reflects what actually got persisted to
+     * flash, not what we just tried to write.  This catches a class of
+     * failures where NVS accepts the write but the backing flash is
+     * full/corrupt. */
+    return settings_load_subtree("cal");
 }
 
 /**
@@ -511,25 +585,35 @@ static CalResult_t cal_validate_and_save(uint8_t cell_num, Numeric_t new_coeff)
     if (new_coeff < 0.0f) {
         /* Coefficient out of bounds or computation error */
         result = CAL_RESULT_REJECTED;
-    }
-    else if (cal_save_coefficient(cell_num, new_coeff) != 0) {
-        OP_ERROR_DETAIL(OP_ERR_FLASH, cell_num);
-        result = CAL_RESULT_FAILED;
+        LOG_WRN("validate cell %u: REJECTED (coeff=%.6f < 0)",
+                cell_num, (double)new_coeff);
     }
     else {
-        /* Verify round-trip: read back and compare */
-        CalCoeff_t readback = 0.0f;
-
-        if (cal_load_coefficient(cell_num, &readback) != 0) {
+        Status_t save_err = cal_save_coefficient(cell_num, new_coeff);
+        if (save_err != 0) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, cell_num);
-            result = CAL_RESULT_FAILED;
-        }
-        else if (fabsf(readback - new_coeff) > 1e-5f) {
-            OP_ERROR(OP_ERR_CAL_MISMATCH);
+            LOG_WRN("validate cell %u: save FAILED (coeff=%.6f save_ret=%d)",
+                    cell_num, (double)new_coeff, save_err);
             result = CAL_RESULT_FAILED;
         }
         else {
-            /* No action required */
+            /* Verify round-trip: read back and compare */
+            CalCoeff_t readback = 0.0f;
+
+            if (cal_load_coefficient(cell_num, &readback) != 0) {
+                OP_ERROR_DETAIL(OP_ERR_FLASH, cell_num);
+                LOG_WRN("validate cell %u: readback FAILED", cell_num);
+                result = CAL_RESULT_FAILED;
+            }
+            else if (fabsf(readback - new_coeff) > 1e-5f) {
+                OP_ERROR(OP_ERR_CAL_MISMATCH);
+                LOG_WRN("validate cell %u: MISMATCH (want=%.6f got=%.6f)",
+                        cell_num, (double)new_coeff, (double)readback);
+                result = CAL_RESULT_FAILED;
+            }
+            else {
+                /* No action required */
+            }
         }
     }
 

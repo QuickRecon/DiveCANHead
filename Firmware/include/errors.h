@@ -78,123 +78,123 @@ FUNC_NORETURN void must_succeed_failed(const char *expr, int rc,
  */
 
 typedef enum {
-    OP_ERR_NONE = 0,
+    OP_ERR_NONE              = 0,
 
     /* ---- Hardware ---- */
 
     /** We failed to undertake an I2C operation */
-    OP_ERR_I2C_BUS,
+    OP_ERR_I2C_BUS           = 1,
 
     /** We failed to undertake a UART operation */
-    OP_ERR_UART,
+    OP_ERR_UART              = 2,
 
     /** We couldn't add the CAN message to the outbound buffer */
-    OP_ERR_CAN_TX,
+    OP_ERR_CAN_TX            = 3,
 
     /** Inbound CAN message is longer than 8 bytes */
-    OP_ERR_CAN_OVERFLOW,
+    OP_ERR_CAN_OVERFLOW      = 4,
 
     /** Error occurred when trying to read the internal ADC */
-    OP_ERR_INT_ADC,
+    OP_ERR_INT_ADC           = 5,
 
     /** Error occurred when reading the external ADC (ADS1115) */
-    OP_ERR_EXT_ADC,
+    OP_ERR_EXT_ADC           = 6,
 
     /** We weren't able to read/write flash storage */
-    OP_ERR_FLASH,
+    OP_ERR_FLASH             = 7,
 
     /* ---- Sensors ---- */
 
     /** A cell has reported a value that we can't display */
-    OP_ERR_CELL_OVERRANGE,
+    OP_ERR_CELL_OVERRANGE    = 8,
 
     /** A cell has reported an error */
-    OP_ERR_CELL_FAILURE,
+    OP_ERR_CELL_FAILURE      = 9,
 
     /** The cell number can't be mapped to an input (too high?) */
-    OP_ERR_INVALID_CELL,
+    OP_ERR_INVALID_CELL      = 10,
 
     /* ---- Math / Safety ---- */
 
     /** A computation produced an out-of-range or overflow result */
-    OP_ERR_MATH,
+    OP_ERR_MATH              = 11,
 
     /* ---- Calibration ---- */
 
     /** The configured calibration method cannot complete */
-    OP_ERR_CAL_METHOD,
+    OP_ERR_CAL_METHOD        = 12,
 
     /** The calibration info we stored is not the calibration info we got */
-    OP_ERR_CAL_MISMATCH,
+    OP_ERR_CAL_MISMATCH      = 13,
 
     /* ---- Power ---- */
 
     /** VBus is undervolted, cell readings are unreliable */
-    OP_ERR_VBUS_UNDERVOLT,
+    OP_ERR_VBUS_UNDERVOLT    = 14,
 
     /** VCC is undervolted, can't write to flash */
-    OP_ERR_VCC_UNDERVOLT,
+    OP_ERR_VCC_UNDERVOLT     = 15,
 
     /** We tried to fire the solenoid but were inhibited */
-    OP_ERR_SOLENOID_DISABLED,
+    OP_ERR_SOLENOID_DISABLED = 16,
 
     /* ---- ISO-TP transport ---- */
 
     /** ISO-TP timeout waiting for flow control or consecutive frame */
-    OP_ERR_ISOTP_TIMEOUT,
+    OP_ERR_ISOTP_TIMEOUT     = 17,
 
     /** ISO-TP consecutive frame sequence number error */
-    OP_ERR_ISOTP_SEQ,
+    OP_ERR_ISOTP_SEQ         = 18,
 
     /** ISO-TP message exceeds maximum payload */
-    OP_ERR_ISOTP_OVERFLOW,
+    OP_ERR_ISOTP_OVERFLOW    = 19,
 
     /** ISO-TP invalid state transition */
-    OP_ERR_ISOTP_STATE,
+    OP_ERR_ISOTP_STATE       = 20,
 
     /* ---- UDS ---- */
 
     /** UDS sent a negative response — log NRC for debugging */
-    OP_ERR_UDS_NRC,
+    OP_ERR_UDS_NRC           = 21,
 
     /** UDS response buffer too full to fit data */
-    OP_ERR_UDS_TOO_FULL,
+    OP_ERR_UDS_TOO_FULL      = 22,
 
     /** An invalid UDS operation was attempted */
-    OP_ERR_UDS_INVALID,
+    OP_ERR_UDS_INVALID       = 23,
 
     /* ---- Configuration ---- */
 
     /** Error occurred when trying to load the config */
-    OP_ERR_CONFIG,
+    OP_ERR_CONFIG            = 24,
 
     /* ---- System ---- */
 
     /** What we were waiting for never came */
-    OP_ERR_TIMEOUT,
+    OP_ERR_TIMEOUT           = 25,
 
     /** The data we are looking at is out of date */
-    OP_ERR_OUT_OF_DATE,
+    OP_ERR_OUT_OF_DATE       = 26,
 
     /** We weren't able to lodge an element in the queue */
-    OP_ERR_QUEUE,
+    OP_ERR_QUEUE             = 27,
 
     /** A null pointer was passed to a function not designed to handle it */
-    OP_ERR_NULL_PTR,
+    OP_ERR_NULL_PTR          = 28,
 
     /** Logging quit due to an error */
-    OP_ERR_LOGGING,
+    OP_ERR_LOGGING           = 29,
 
     /** Log push queue full — oldest message dropped */
-    OP_ERR_LOG_TRUNCATED,
+    OP_ERR_LOG_TRUNCATED     = 30,
 
     /** Check code that should be unreachable — something strange happened */
-    OP_ERR_UNREACHABLE,
+    OP_ERR_UNREACHABLE       = 31,
 
     /** We encountered an error we don't know how to handle */
-    OP_ERR_UNKNOWN,
+    OP_ERR_UNKNOWN           = 32,
 
-    OP_ERR_MAX
+    OP_ERR_MAX               = 33
 } OpError_t;
 
 /** @brief Error event published on chan_error. */

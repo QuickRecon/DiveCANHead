@@ -32,7 +32,14 @@ static const uint8_t CELL_IDX_1 = 1U;
 static const uint8_t CELL_IDX_2 = 2U;
 
 /* Subscribe to consensus channel */
-ZBUS_MSG_SUBSCRIBER_DEFINE(ppo2_tx_sub);
+/* Plain SUBSCRIBER — the queue holds channel-pointer notifications
+ * (8 bytes each), not message payloads.  We always re-read
+ * chan_consensus via zbus_chan_read for the latest snapshot.  Sized
+ * to absorb a 500 ms burst of consensus updates while the broadcast
+ * cycle is busy on the CAN driver.  Channel values themselves are
+ * updated on every publish regardless of queue state, so even when
+ * the queue does saturate no DATA is lost. */
+ZBUS_SUBSCRIBER_DEFINE(ppo2_tx_sub, 32);
 ZBUS_CHAN_ADD_OBS(chan_consensus, ppo2_tx_sub, 3);
 
 
@@ -56,9 +63,23 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
     const struct zbus_channel *chan = NULL;
 
     while (true) {
-        /* Wait for consensus update or timeout at broadcast interval */
-        Status_t ret = zbus_sub_wait_msg(&ppo2_tx_sub, &chan, NULL,
-                        K_MSEC(PPO2_TX_INTERVAL_MS));
+        /* Wait for consensus update or timeout at broadcast interval.
+         * We don't care about the payload — we always re-read the
+         * latest consensus via zbus_chan_read below. */
+        Status_t ret = zbus_sub_wait(&ppo2_tx_sub, &chan,
+                                     K_MSEC(PPO2_TX_INTERVAL_MS));
+
+        /* Drain any additional notifications that piled up while we
+         * were busy with the previous CAN TX cycle.  We only need to
+         * broadcast once per period; the channel value already holds
+         * the latest consensus, so coalescing notifications never
+         * loses data.  Without this drain, the ppo2_tx_sub queue can
+         * fill and the publisher (consensus thread) blocks on
+         * zbus_chan_pub, which in turn lets the cell-side queue fill
+         * and eventually the EAGAIN flood begins. */
+        while (0 == zbus_sub_wait(&ppo2_tx_sub, &chan, K_NO_WAIT)) {
+            /* consume */
+        }
 
         /* Read latest consensus regardless of whether we got a
          * notification or timed out — we broadcast periodically
