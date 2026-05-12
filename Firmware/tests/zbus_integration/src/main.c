@@ -3,10 +3,11 @@
  * @brief End-to-end zbus integration tests for the oxygen cell → consensus pipeline
  *
  * Runs on native_sim with real zbus channels (chan_cell_1/2/3 and chan_consensus)
- * and the real consensus_subscriber thread. Tests publish OxygenCellMsg_t values,
- * wait 50 ms for the subscriber to wake and compute, then read back the resulting
- * ConsensusMsg_t to assert correctness. This complements the pure-math consensus
- * unit tests by verifying the full inter-thread zbus wiring.
+ * and the real consensus thread. Tests publish OxygenCellMsg_t values, wait
+ * for at least one full consensus period so the timer-driven consensus thread
+ * is guaranteed to have sampled all three publishes, then read back the
+ * resulting ConsensusMsg_t to assert correctness. This complements the
+ * pure-math consensus unit tests by verifying the full inter-thread zbus wiring.
  */
 
 #include <zephyr/ztest.h>
@@ -38,9 +39,10 @@ static OxygenCellMsg_t make_cell(uint8_t num, PPO2_t ppo2, double prec,
  * @brief Publish three cell messages and return the resulting consensus.
  *
  * Publishes to chan_cell_1, chan_cell_2, and chan_cell_3 in sequence, then
- * sleeps 50 ms to let the consensus_subscriber thread wake and compute, then
- * reads back chan_consensus. All tests share this helper to avoid duplicating
- * the publish/wait/read boilerplate.
+ * sleeps longer than one consensus period so the timer-driven consensus
+ * thread is guaranteed to have sampled all three publishes at least once,
+ * then reads back chan_consensus. All tests share this helper to avoid
+ * duplicating the publish/wait/read boilerplate.
  */
 static ConsensusMsg_t publish_and_read_consensus(OxygenCellMsg_t *c1,
                          OxygenCellMsg_t *c2,
@@ -50,8 +52,9 @@ static ConsensusMsg_t publish_and_read_consensus(OxygenCellMsg_t *c1,
     (void)zbus_chan_pub(&chan_cell_2, c2, K_MSEC(100));
     (void)zbus_chan_pub(&chan_cell_3, c3, K_MSEC(100));
 
-    /* Give the consensus subscriber thread time to wake and compute */
-    k_msleep(50);
+    /* Wait longer than one consensus period (100 ms) so the timer-driven
+     * consensus thread is guaranteed to recompute after all three publishes. */
+    k_msleep(150);
 
     ConsensusMsg_t result = {0};
 
