@@ -1,3 +1,15 @@
+/**
+ * @file solenoid.c
+ * @brief Solenoid driver (quickrecon,solenoid-driver DT compatible)
+ *
+ * Controls one or more solenoid output channels via GPIO, each protected by a
+ * hardware deadman timer backed by a Zephyr counter device.  When a channel is
+ * fired, an alarm is armed for the requested duration; if the software does not
+ * explicitly turn the channel off, the ISR forces all channels off when the
+ * timer expires.  This provides a safe maximum-on-time guarantee even if the
+ * controlling thread hangs.
+ */
+
 #define DT_DRV_COMPAT quickrecon_solenoid_driver
 
 #include <solenoid.h>
@@ -20,6 +32,17 @@ struct solenoid_data {
     struct counter_alarm_cfg alarm;
 };
 
+/**
+ * @brief Counter alarm ISR — force all solenoid channels off when the deadman fires
+ *
+ * Called from interrupt context when the maximum-on-time alarm expires.
+ * Forces every channel's GPIO low regardless of its current state.
+ *
+ * @param counter_dev Counter device that triggered the alarm (unused)
+ * @param chan_id     Counter channel that fired (unused)
+ * @param ticks       Tick value at expiry (unused)
+ * @param user_data   Pointer to the solenoid struct device
+ */
 static void deadman_isr(const struct device *counter_dev, uint8_t chan_id,
             uint32_t ticks, void *user_data)
 {
@@ -35,6 +58,17 @@ static void deadman_isr(const struct device *counter_dev, uint8_t chan_id,
     }
 }
 
+/**
+ * @brief Arm the deadman counter alarm for a given duration
+ *
+ * Cancels any in-progress alarm, converts duration_us to counter ticks,
+ * and starts a one-shot alarm that calls deadman_isr on expiry.
+ * duration_us is clamped to max_on_time_us from the driver config.
+ *
+ * @param dev         Solenoid device
+ * @param duration_us Desired alarm duration in microseconds (clamped to max)
+ * @return 0 on success, negative errno from the counter API on failure
+ */
 static int arm_timer(const struct device *dev, uint32_t duration_us)
 {
     const struct solenoid_config *cfg = dev->config;
@@ -60,6 +94,18 @@ static int arm_timer(const struct device *dev, uint32_t duration_us)
     return ret;
 }
 
+/**
+ * @brief Fire a solenoid channel for a specified duration
+ *
+ * Arms the deadman timer then drives the channel GPIO high.  If duration_us
+ * is 0 the channel is turned off immediately instead.
+ *
+ * @param dev         Solenoid device
+ * @param channel     Zero-based channel index; must be < num_channels
+ * @param duration_us How long to energise the solenoid in microseconds (0 = off)
+ * @return 0 on success, -EINVAL if channel is out of range, or negative errno
+ *         from arm_timer()
+ */
 int solenoid_fire(const struct device *dev, uint8_t channel,
           uint32_t duration_us)
 {
@@ -81,6 +127,12 @@ int solenoid_fire(const struct device *dev, uint8_t channel,
     return ret;
 }
 
+/**
+ * @brief De-energise a single solenoid channel immediately
+ *
+ * @param dev     Solenoid device
+ * @param channel Zero-based channel index; silently ignored if out of range
+ */
 void solenoid_off(const struct device *dev, uint8_t channel)
 {
     const struct solenoid_config *cfg = dev->config;
@@ -90,6 +142,11 @@ void solenoid_off(const struct device *dev, uint8_t channel)
     }
 }
 
+/**
+ * @brief De-energise all solenoid channels and cancel the deadman timer
+ *
+ * @param dev Solenoid device
+ */
 void solenoid_all_off(const struct device *dev)
 {
     const struct solenoid_config *cfg = dev->config;
@@ -102,6 +159,12 @@ void solenoid_all_off(const struct device *dev)
     }
 }
 
+/**
+ * @brief Return the number of solenoid channels configured for this device
+ *
+ * @param dev Solenoid device
+ * @return Number of channels as declared in the devicetree gpios property
+ */
 uint8_t solenoid_channel_count(const struct device *dev)
 {
     const struct solenoid_config *cfg = dev->config;
@@ -109,6 +172,13 @@ uint8_t solenoid_channel_count(const struct device *dev)
     return cfg->num_channels;
 }
 
+/**
+ * @brief Device init callback — verify counter and GPIO readiness, configure outputs
+ *
+ * @param dev Solenoid device
+ * @return 0 on success, -ENODEV if counter or any GPIO is not ready, or
+ *         negative errno from gpio_pin_configure_dt()
+ */
 static int solenoid_init(const struct device *dev)
 {
     const struct solenoid_config *cfg = dev->config;

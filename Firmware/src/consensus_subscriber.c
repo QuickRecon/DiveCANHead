@@ -1,3 +1,13 @@
+/**
+ * @file consensus_subscriber.c
+ * @brief zbus subscriber thread that aggregates per-cell readings into a consensus PPO2
+ *
+ * Subscribes to all active cell channels, drains any queued notifications on
+ * each wakeup, then calls consensus_calculate() and publishes the result on
+ * chan_consensus.  Cell slots that exceed STALENESS_TIMEOUT_MS or are compiled
+ * out (CONFIG_CELL_COUNT < 2/3) are treated as failed.
+ */
+
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/logging/log.h>
@@ -25,6 +35,16 @@ ZBUS_CHAN_ADD_OBS(chan_cell_2, consensus_sub, 0);
 ZBUS_CHAN_ADD_OBS(chan_cell_3, consensus_sub, 0);
 #endif
 
+/**
+ * @brief Consensus subscriber thread entry point
+ *
+ * Blocks on any cell-channel update, drains the queue to get the latest
+ * readings, computes the voted consensus PPO2, and publishes to chan_consensus.
+ *
+ * @param p1 Unused thread argument
+ * @param p2 Unused thread argument
+ * @param p3 Unused thread argument
+ */
 static void consensus_thread_fn(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1);

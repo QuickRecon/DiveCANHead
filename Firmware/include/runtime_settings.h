@@ -1,3 +1,11 @@
+/**
+ * @file runtime_settings.h
+ * @brief Runtime configuration structure persisted in NVS, changeable via UDS.
+ *
+ * Defines PPO2ControlMode_t, CalibrationMode_t, and RuntimeSettings_t, plus
+ * load/save/validate helpers. Valid option sets are bounded by compile-time
+ * Kconfig tables so only hardware-present modes are offered.
+ */
 #ifndef RUNTIME_SETTINGS_H
 #define RUNTIME_SETTINGS_H
 
@@ -7,10 +15,11 @@
 
 /* ---- PPO2 Control Mode ---- */
 
+/** @brief PPO2 solenoid control algorithm selection. */
 typedef enum {
-    PPO2CONTROL_OFF = 0,
-    PPO2CONTROL_PID = 1,
-    PPO2CONTROL_MK15 = 2,
+    PPO2CONTROL_OFF = 0,   /**< No solenoid control */
+    PPO2CONTROL_PID = 1,   /**< PID duty-cycle control */
+    PPO2CONTROL_MK15 = 2,  /**< MK15-style bang-bang control */
 } PPO2ControlMode_t;
 
 static const PPO2ControlMode_t valid_ppo2_control_modes[] = {
@@ -31,11 +40,12 @@ static const PPO2ControlMode_t valid_ppo2_control_modes[] = {
 
 /* ---- Calibration Mode ---- */
 
+/** @brief Calibration method used when a cal request arrives. */
 typedef enum {
-    CAL_DIGITAL_REFERENCE = 0,
-    CAL_ANALOG_ABSOLUTE = 1,
-    CAL_TOTAL_ABSOLUTE = 2,
-    CAL_SOLENOID_FLUSH = 3,
+    CAL_DIGITAL_REFERENCE = 0, /**< Use digital cell as reference for analog cells */
+    CAL_ANALOG_ABSOLUTE = 1,   /**< Absolute calibration of analog cells against known gas */
+    CAL_TOTAL_ABSOLUTE = 2,    /**< Absolute calibration of all cells together */
+    CAL_SOLENOID_FLUSH = 3,    /**< Flush loop with calibration gas then calibrate */
 } CalibrationMode_t;
 
 static const CalibrationMode_t valid_cal_modes[] = {
@@ -63,11 +73,12 @@ static const CalibrationMode_t valid_cal_modes[] = {
  * Stored in NVS. Changeable via UDS at runtime.
  * Valid values are bounded by the compile-time tables above. */
 
+/** @brief All user-configurable runtime settings, stored in NVS. */
 typedef struct {
-    PPO2ControlMode_t ppo2ControlMode;
-    CalibrationMode_t calibrationMode;
-    bool depthCompensation;
-    bool extendedMessages;
+    PPO2ControlMode_t ppo2ControlMode; /**< Active PPO2 control algorithm */
+    CalibrationMode_t calibrationMode; /**< Active calibration method */
+    bool depthCompensation;            /**< Enable depth-pressure compensation for setpoint */
+    bool extendedMessages;             /**< Enable non-standard debug CAN messages */
 } RuntimeSettings_t;
 
 #define RUNTIME_SETTINGS_DEFAULT {                                       \
@@ -79,8 +90,30 @@ typedef struct {
 
 /* ---- Validation ---- */
 
+/**
+ * @brief Load settings from NVS into *out.
+ *
+ * Falls back to RUNTIME_SETTINGS_DEFAULT if NVS is empty or corrupt.
+ *
+ * @param out Destination for loaded settings (must not be NULL)
+ * @return 0 on success, negative errno on NVS failure
+ */
 int runtime_settings_load(RuntimeSettings_t *out);
+
+/**
+ * @brief Persist settings to NVS.
+ *
+ * @param settings Settings to write (must not be NULL)
+ * @return 0 on success, negative errno on NVS failure
+ */
 int runtime_settings_save(const RuntimeSettings_t *settings);
+
+/**
+ * @brief Validate that all fields are within the compile-time allowed sets.
+ *
+ * @param settings Settings to check (must not be NULL)
+ * @return true if all fields are valid for the current build variant
+ */
 bool runtime_settings_validate(const RuntimeSettings_t *settings);
 
 #endif

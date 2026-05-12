@@ -1,14 +1,13 @@
 /**
  * @file main.c
- * @brief Unit tests for power management subsystem
+ * @brief Power management unit tests
  *
- * Tests cover:
- * - ADC millivolt to real-world voltage conversion through resistor dividers
- * - Battery chemistry threshold mapping
- * - VBUS regulator enable/disable via GPIO emulation
- * - Bus select mux GPIO bit patterns (Rev2 logic)
- * - CAN active detection with pull-up/restore sequence
- * - CAN shutdown GPIO control
+ * Tests power_management.c on native_sim using Zephyr's GPIO emulation driver
+ * (gpio_emul). The test DTS overlay instantiates the power device with its GPIO
+ * pins wired to gpio0 pins 0–4, so tests can call gpio_emul_output_get() to
+ * verify the exact GPIO states produced by VBUS enable/disable and bus-mux
+ * select. Pure-math functions (voltage conversion, threshold) are tested
+ * without any GPIO interaction.
  */
 
 #include <zephyr/ztest.h>
@@ -39,61 +38,64 @@ static const struct device *gpio_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
  * Voltage conversion math (pure functions, no hardware)
  * ============================================================================ */
 
+/** @brief Suite: ADC millivolt → real-world voltage via resistor-divider scaling (adc_millivolts_to_voltage). */
 ZTEST_SUITE(voltage_conversion, NULL, NULL, NULL, NULL, NULL);
 
+/** @brief Zero millivolts produces 0.0 V regardless of divider ratio. */
 ZTEST(voltage_conversion, test_zero_mv)
 {
     zassert_within(adc_millivolts_to_voltage(0, 7250), 0.0f, 0.001f);
 }
 
-/* Battery at nominal 7.4V (2S LiIon):
- * ADC sees 7.4 / 7.25 = 1.0207V = 1021 mV */
+/** @brief 2S Li-Ion nominal voltage (7.4 V) through the 7.25× battery divider. */
 ZTEST(voltage_conversion, test_battery_2s_nominal)
 {
     zassert_within(adc_millivolts_to_voltage(1021, 7250), 7.40f, 0.05f);
 }
 
-/* Battery at low threshold 6.0V:
- * ADC sees 6.0 / 7.25 = 0.8276V = 828 mV */
+/** @brief 2S Li-Ion low-battery voltage (6.0 V) maps correctly near the cutoff threshold. */
 ZTEST(voltage_conversion, test_battery_2s_low)
 {
     zassert_within(adc_millivolts_to_voltage(828, 7250), 6.0f, 0.05f);
 }
 
-/* 9V alkaline at nominal */
+/** @brief 9 V alkaline at nominal reads 9 V ± 50 mV through the battery divider. */
 ZTEST(voltage_conversion, test_battery_9v_nominal)
 {
     zassert_within(adc_millivolts_to_voltage(1241, 7250), 9.0f, 0.05f);
 }
 
-/* VBUS at 5V through 11x divider (Rev2) */
+/** @brief VBUS 5 V rail read through the 11× divider (Rev2 hardware). */
 ZTEST(voltage_conversion, test_vbus_5v)
 {
     zassert_within(adc_millivolts_to_voltage(455, 11000), 5.0f, 0.1f);
 }
 
-/* VCC at 3.3V through internal 3x divider */
+/** @brief VCC 3.3 V rail through the internal 3× divider. */
 ZTEST(voltage_conversion, test_vcc_3v3)
 {
     zassert_within(adc_millivolts_to_voltage(1100, 3000), 3.3f, 0.01f);
 }
 
-/* CAN bus at 12V through 7.25x divider */
+/** @brief CAN bus 12 V supply read through the 7.25× divider. */
 ZTEST(voltage_conversion, test_can_12v)
 {
     zassert_within(adc_millivolts_to_voltage(1655, 7250), 12.0f, 0.05f);
 }
 
+/** @brief Negative ADC millivolt input produces a negative output (no clamping). */
 ZTEST(voltage_conversion, test_negative_mv)
 {
     zassert_true(adc_millivolts_to_voltage(-100, 7250) < 0.0f);
 }
 
+/** @brief Unity divider (ratio=1000) means ADC mV equals output mV (3300 mV → 3.3 V). */
 ZTEST(voltage_conversion, test_unity_divider)
 {
     zassert_within(adc_millivolts_to_voltage(3300, 1000), 3.3f, 0.001f);
 }
 
+/** @brief Full-scale 3.3 V ADC reading through the battery divider correctly represents ~23.9 V. */
 ZTEST(voltage_conversion, test_max_adc_battery_divider)
 {
     zassert_within(adc_millivolts_to_voltage(3300, 7250), 23.925f, 0.01f);
@@ -103,8 +105,10 @@ ZTEST(voltage_conversion, test_max_adc_battery_divider)
  * Battery threshold
  * ============================================================================ */
 
+/** @brief Suite: battery low-voltage threshold (power_get_low_battery_threshold). */
 ZTEST_SUITE(battery_threshold, NULL, NULL, NULL, NULL, NULL);
 
+/** @brief Low-battery threshold is a positive voltage in a physically plausible range. */
 ZTEST(battery_threshold, test_threshold_positive)
 {
     float t = power_get_low_battery_threshold();
@@ -112,6 +116,7 @@ ZTEST(battery_threshold, test_threshold_positive)
     zassert_true(t > 0.0f && t < 20.0f);
 }
 
+/** @brief Default threshold is 6.0 V (empty 2S Li-Ion battery). */
 ZTEST(battery_threshold, test_default_threshold)
 {
     zassert_within(power_get_low_battery_threshold(), 6.0f, 0.01f);
@@ -121,9 +126,10 @@ ZTEST(battery_threshold, test_default_threshold)
  * VBUS regulator control via GPIO emulation
  * ============================================================================ */
 
+/** @brief Suite: VBUS regulator enable/disable via GPIO emulation (power_vbus_enable/disable). */
 ZTEST_SUITE(vbus_control, NULL, NULL, NULL, NULL, NULL);
 
-/* Enabling VBUS should set the regulator enable GPIO high */
+/** @brief power_vbus_enable() drives the regulator-enable GPIO high. */
 ZTEST(vbus_control, test_enable_sets_gpio_high)
 {
     int ret = power_vbus_enable(power_dev);
@@ -135,9 +141,12 @@ ZTEST(vbus_control, test_enable_sets_gpio_high)
     zassert_equal(pin_state, 1, "VBUS enable pin should be HIGH");
 }
 
-/* Disabling VBUS should set the regulator enable GPIO low.
- * The regulator-fixed driver is reference-counted — each enable must be
- * matched with a disable. We drain any prior references first. */
+/**
+ * @brief power_vbus_disable() drives the regulator-enable GPIO low.
+ *
+ * The regulator-fixed driver is reference-counted. The test drains any
+ * accumulated enable references to reach the disabled state before asserting.
+ */
 ZTEST(vbus_control, test_disable_sets_gpio_low)
 {
     /* Ensure exactly one enable reference */
@@ -167,9 +176,10 @@ ZTEST(vbus_control, test_disable_sets_gpio_low)
  * on enable. Disable always sets 11 (off).
  * ============================================================================ */
 
+/** @brief Suite: bus-select mux GPIO bit patterns on VBUS enable/disable (Rev2 logic). */
 ZTEST_SUITE(bus_mux, NULL, NULL, NULL, NULL, NULL);
 
-/* VBUS disable should set both mux pins HIGH (MODE_OFF = 11) */
+/** @brief VBUS disable sets both mux select pins HIGH (MODE_OFF = 0b11). */
 ZTEST(bus_mux, test_disable_sets_mux_off)
 {
     (void)power_vbus_enable(power_dev);
@@ -182,8 +192,9 @@ ZTEST(bus_mux, test_disable_sets_mux_off)
     zassert_equal(sel2, 1, "sel2 should be HIGH for MODE_OFF");
 }
 
-/* VBUS enable should set mux pins according to POWER_MODE Kconfig.
- * Default test build has no POWER_MODE set → POWER_MODE_BATTERY → 00 */
+/**
+ * @brief VBUS enable sets mux pins to POWER_MODE_BATTERY (0b00) — the default test Kconfig.
+ */
 ZTEST(bus_mux, test_enable_sets_mux_battery)
 {
     (void)power_vbus_enable(power_dev);
@@ -204,14 +215,18 @@ ZTEST(bus_mux, test_enable_sets_mux_battery)
  * giving a false active reading.
  * ============================================================================ */
 
+/** @brief Suite: CAN bus active detection via CAN_EN input pin (power_is_can_active). */
 ZTEST_SUITE(can_detect, NULL, NULL, NULL, NULL, NULL);
 
-/* CAN_EN pin LOW → bus active.
- * power_is_can_active() temporarily enables a pull-up before reading to
- * avoid capacitive coupling false-actives. On real hardware the external
- * pull-down from the active CAN bus overrides the weak internal pull-up.
- * The GPIO emulator cannot simulate this contention — the reconfigure
- * resets the pin to the pull-up state, so this test is hardware-only. */
+/**
+ * @brief CAN_EN LOW should indicate bus active — skipped in emulation.
+ *
+ * power_is_can_active() temporarily applies GPIO_PULL_UP to defeat capacitive
+ * coupling false-actives. On real hardware the external pull-down from an
+ * active bus overrides the internal pull-up. The GPIO emulator cannot model
+ * this contention — the reconfigure resets the emulated input — so this test
+ * is marked skip and must be verified on physical hardware.
+ */
 ZTEST(can_detect, test_can_active_when_low)
 {
     /* The GPIO emulator cannot simulate external pull-down vs internal
@@ -221,7 +236,7 @@ ZTEST(can_detect, test_can_active_when_low)
     ztest_test_skip();
 }
 
-/* CAN_EN pin HIGH → bus inactive */
+/** @brief CAN_EN HIGH means no bus pull-down present → bus inactive. */
 ZTEST(can_detect, test_can_inactive_when_high)
 {
     gpio_pin_configure(gpio_dev, PIN_CAN_EN, GPIO_INPUT);
@@ -238,9 +253,10 @@ ZTEST(can_detect, test_can_inactive_when_high)
  * power_vbus_disable should leave it in a known state.
  * ============================================================================ */
 
+/** @brief Suite: CAN transceiver shutdown GPIO (power_vbus_disable / can_shdn pin). */
 ZTEST_SUITE(can_shutdown, NULL, NULL, NULL, NULL, NULL);
 
-/* After init, CAN shutdown pin should be configured as output inactive */
+/** @brief After device init, the CAN shutdown pin is inactive (LOW — transceiver not silenced). */
 ZTEST(can_shutdown, test_init_state)
 {
     int pin_state = gpio_emul_output_get(gpio_dev, PIN_CAN_SHDN);

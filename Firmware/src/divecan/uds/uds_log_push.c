@@ -51,6 +51,11 @@ typedef struct {
     uint8_t txBuffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE];
 } LogPushState_t;
 
+/**
+ * @brief Return pointer to the file-local log push state
+ *
+ * @return Pointer to the singleton LogPushState_t
+ */
 static LogPushState_t *getLogPushState(void)
 {
     static LogPushState_t state = {0};
@@ -60,18 +65,36 @@ static LogPushState_t *getLogPushState(void)
 K_MSGQ_DEFINE(log_push_msgq, sizeof(UDSLogQueueItem_t),
           UDS_LOG_QUEUE_LENGTH, 4);
 
+/**
+ * @brief Return pointer to the static item buffer used for enqueuing messages
+ *
+ * @return Pointer to the singleton TX item buffer
+ */
 static UDSLogQueueItem_t *getTxItemBuffer(void)
 {
     static UDSLogQueueItem_t buffer = {0};
     return &buffer;
 }
 
+/**
+ * @brief Return pointer to the static item buffer used for dequeuing messages
+ *
+ * @return Pointer to the singleton RX item buffer
+ */
 static UDSLogQueueItem_t *getRxItemBuffer(void)
 {
     static UDSLogQueueItem_t buffer = {0};
     return &buffer;
 }
 
+/**
+ * @brief Initialize the log push module
+ *
+ * Binds the ISO-TP context, clears module state, and purges the message queue.
+ * Must be called before any other UDS_LogPush_* functions.
+ *
+ * @param isotpCtx ISO-TP context to use for outbound transmissions; must not be NULL
+ */
 void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
 {
     if (NULL == isotpCtx) {
@@ -91,6 +114,17 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
     }
 }
 
+/**
+ * @brief Enqueue a log message for push transmission to the BT client
+ *
+ * Non-blocking. If the queue is full the oldest entry is dropped and
+ * OP_ERR_LOG_TRUNCATED is raised. Silently drops re-entrant calls to
+ * prevent an OP_ERROR recursion loop.
+ *
+ * @param message Pointer to message bytes; must not be NULL
+ * @param length  Number of bytes to send; must be > 0 and <= UDS_LOG_MAX_PAYLOAD
+ * @return true if the message was successfully enqueued, false otherwise
+ */
 bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
 {
     bool result = false;
@@ -135,7 +169,10 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
 }
 
 /**
- * @brief Internal function to send a queued item via ISO-TP
+ * @brief Build a WDBI frame from a queue item and transmit it via ISO-TP
+ *
+ * @param item Queued log item to transmit; must not be NULL
+ * @return true if ISOTP_Send accepted the frame, false otherwise
  */
 static bool sendQueuedItem(const UDSLogQueueItem_t *item)
 {
@@ -156,7 +193,9 @@ static bool sendQueuedItem(const UDSLogQueueItem_t *item)
 
 /**
  * @brief Check TX completion and update pending state
- * @return true if the context is free to transmit a new message
+ *
+ * @param state Log push module state; must not be NULL
+ * @return true if the ISO-TP context is free to transmit a new message
  */
 static bool checkTxPending(LogPushState_t *state)
 {
@@ -179,6 +218,10 @@ static bool checkTxPending(LogPushState_t *state)
 
 /**
  * @brief Attempt to send the next queued log item if conditions allow
+ *
+ * No-ops if the ISO-TP context is busy or the TX queue has pending frames.
+ *
+ * @param state Log push module state; must not be NULL
  */
 static void trySendNextItem(LogPushState_t *state)
 {
@@ -196,6 +239,12 @@ static void trySendNextItem(LogPushState_t *state)
     }
 }
 
+/**
+ * @brief Drive log push state machine; call periodically from the DiveCAN task
+ *
+ * Checks for TX completion, then attempts to dequeue and transmit the next
+ * log message. No-ops if Init has not yet been called.
+ */
 void UDS_LogPush_Poll(void)
 {
     LogPushState_t *state = getLogPushState();

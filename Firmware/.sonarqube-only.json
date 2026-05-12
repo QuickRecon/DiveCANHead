@@ -1,0 +1,3522 @@
+[
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/errors.c",
+    "diagnostics": [
+      {
+        "message": "Make this global variable constant (with static initialization) or remove it by passing the value as a function argument.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 21,
+            "character": 0
+          },
+          "end": {
+            "line": 21,
+            "character": 40
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_388"
+      },
+      {
+        "message": "Make this global variable constant (with static initialization) or remove it by passing the value as a function argument.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 24,
+            "character": 0
+          },
+          "end": {
+            "line": 24,
+            "character": 29
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_388"
+      },
+      {
+        "message": "Make this global variable constant (with static initialization) or remove it by passing the value as a function argument.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 25,
+            "character": 0
+          },
+          "end": {
+            "line": 25,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_388"
+      },
+      {
+        "message": "C-style cast removing volatile qualification from the type of a pointer may lead to an undefined behaviour.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 45,
+            "character": 34
+          },
+          "end": {
+            "line": 45,
+            "character": 61
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_090"
+      },
+      {
+        "message": "cast from 'volatile CrashInfo_t *' to 'const void *' drops volatile qualifier",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 45,
+            "character": 48
+          },
+          "end": {
+            "line": 45,
+            "character": 49
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S859"
+      },
+      {
+        "message": "Check if the usage of the type \"volatile int\" is really appropriate here (for inter-thread synchronization, atomic types are more suited).",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 117,
+            "character": 27
+          },
+          "end": {
+            "line": 117,
+            "character": 28
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S3687"
+      },
+      {
+        "message": "Check if the usage of the type \"volatile int\" is really appropriate here (for inter-thread synchronization, atomic types are more suited).",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 164,
+            "character": 27
+          },
+          "end": {
+            "line": 164,
+            "character": 28
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S3687"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/power_management.c",
+    "diagnostics": [
+      {
+        "message": "Replace this use of \"int\" with a typedef.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 42,
+            "character": 13
+          },
+          "end": {
+            "line": 42,
+            "character": 16
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S813"
+      },
+      {
+        "message": "Add a citation of the person who can best explain this comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 146,
+            "character": 11
+          },
+          "end": {
+            "line": 146,
+            "character": 15
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1707"
+      },
+      {
+        "message": "Complete the task associated to this \"TODO\" comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 146,
+            "character": 0
+          },
+          "end": {
+            "line": 146,
+            "character": 96
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1135"
+      },
+      {
+        "message": "Add a citation of the person who can best explain this comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 162,
+            "character": 11
+          },
+          "end": {
+            "line": 162,
+            "character": 15
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1707"
+      },
+      {
+        "message": "Complete the task associated to this \"TODO\" comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 162,
+            "character": 0
+          },
+          "end": {
+            "line": 162,
+            "character": 95
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1135"
+      },
+      {
+        "message": "Add a citation of the person who can best explain this comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 218,
+            "character": 7
+          },
+          "end": {
+            "line": 218,
+            "character": 11
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1707"
+      },
+      {
+        "message": "Complete the task associated to this \"TODO\" comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 218,
+            "character": 4
+          },
+          "end": {
+            "line": 226,
+            "character": 56
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1135"
+      },
+      {
+        "message": "'return' will never be executed",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 230,
+            "character": 11
+          },
+          "end": {
+            "line": 230,
+            "character": 12
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1763"
+      },
+      {
+        "message": "Refactor this function to reduce its Cognitive Complexity from 31 to the 25 allowed. [+16 locations]",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 235,
+            "character": 16
+          },
+          "end": {
+            "line": 235,
+            "character": 26
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S3776"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'unsigned long' to 'uint32_t' (aka 'unsigned int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 265,
+            "character": 42
+          },
+          "end": {
+            "line": 265,
+            "character": 45
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "Replace this function-like macro with a C++ function or another construct.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 326,
+            "character": 8
+          },
+          "end": {
+            "line": 326,
+            "character": 22
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S960"
+      },
+      {
+        "message": "Replace this function-like macro with a C++ function or another construct.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 326,
+            "character": 8
+          },
+          "end": {
+            "line": 326,
+            "character": 22
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_042"
+      },
+      {
+        "message": "Replace this function-like macro with a C++ function or another construct.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 328,
+            "character": 8
+          },
+          "end": {
+            "line": 328,
+            "character": 27
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_042"
+      },
+      {
+        "message": "Replace this function-like macro with a C++ function or another construct.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 328,
+            "character": 8
+          },
+          "end": {
+            "line": 328,
+            "character": 27
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S960"
+      },
+      {
+        "message": "Replace this function-like macro with a C++ function or another construct.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 333,
+            "character": 8
+          },
+          "end": {
+            "line": 333,
+            "character": 34
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_042"
+      },
+      {
+        "message": "Replace this function-like macro with a C++ function or another construct.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 333,
+            "character": 8
+          },
+          "end": {
+            "line": 333,
+            "character": 34
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S960"
+      },
+      {
+        "message": "Edit this macro to use only a single instance of \"#\" or a single instance of \"##\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 338,
+            "character": 8
+          },
+          "end": {
+            "line": 338,
+            "character": 18
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S967"
+      },
+      {
+        "message": "Remove this usage of the \"##\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 339,
+            "character": 40
+          },
+          "end": {
+            "line": 339,
+            "character": 42
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S968"
+      },
+      {
+        "message": "Remove this usage of the \"##\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 339,
+            "character": 40
+          },
+          "end": {
+            "line": 339,
+            "character": 42
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_212"
+      },
+      {
+        "message": "Remove this usage of the \"##\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 340,
+            "character": 50
+          },
+          "end": {
+            "line": 340,
+            "character": 52
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_212"
+      },
+      {
+        "message": "Remove this usage of the \"##\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 340,
+            "character": 50
+          },
+          "end": {
+            "line": 340,
+            "character": 52
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S968"
+      },
+      {
+        "message": "Remove this usage of the \"##\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 362,
+            "character": 52
+          },
+          "end": {
+            "line": 362,
+            "character": 54
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S968"
+      },
+      {
+        "message": "Remove this usage of the \"##\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 362,
+            "character": 52
+          },
+          "end": {
+            "line": 362,
+            "character": 54
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_212"
+      },
+      {
+        "message": "Remove this usage of the \"##\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 362,
+            "character": 30
+          },
+          "end": {
+            "line": 362,
+            "character": 32
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S968"
+      },
+      {
+        "message": "Remove this usage of the \"##\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 362,
+            "character": 30
+          },
+          "end": {
+            "line": 362,
+            "character": 32
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_212"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/runtime_settings.c",
+    "diagnostics": [
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 16,
+            "character": 4
+          },
+          "end": {
+            "line": 16,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 16,
+            "character": 4
+          },
+          "end": {
+            "line": 16,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 4
+          },
+          "end": {
+            "line": 23,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 4
+          },
+          "end": {
+            "line": 23,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'ssize_t' (aka 'long') to 'Status_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 103,
+            "character": 13
+          },
+          "end": {
+            "line": 103,
+            "character": 47
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'ssize_t' (aka 'long') to 'Status_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 113,
+            "character": 13
+          },
+          "end": {
+            "line": 113,
+            "character": 47
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'ssize_t' (aka 'long') to 'Status_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 123,
+            "character": 13
+          },
+          "end": {
+            "line": 123,
+            "character": 47
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'ssize_t' (aka 'long') to 'Status_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 132,
+            "character": 13
+          },
+          "end": {
+            "line": 132,
+            "character": 47
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/oxygen_cell_channels.c",
+    "diagnostics": [
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 15,
+            "character": 4
+          },
+          "end": {
+            "line": 15,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 15,
+            "character": 4
+          },
+          "end": {
+            "line": 15,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 28,
+            "character": 4
+          },
+          "end": {
+            "line": 28,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 28,
+            "character": 4
+          },
+          "end": {
+            "line": 28,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/oxygen_cell_analog.c",
+    "diagnostics": [
+      {
+        "message": "implicit conversion loses integer precision: 'unsigned long' to 'uint32_t' (aka 'unsigned int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 132,
+            "character": 37
+          },
+          "end": {
+            "line": 132,
+            "character": 40
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "Local variables should be initialized immediately.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 145,
+            "character": 9
+          },
+          "end": {
+            "line": 145,
+            "character": 12
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_321"
+      },
+      {
+        "message": "call to undeclared library function 'snprintf' with type 'int (char *restrict, unsigned long, const char *restrict, ...)'; ISO C99 and later do not support implicit function declarations",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 147,
+            "character": 10
+          },
+          "end": {
+            "line": 147,
+            "character": 18
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S819"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/oxygen_cell_diveo2.c",
+    "diagnostics": [
+      {
+        "message": "Change the reserved name \"_POSIX_C_SOURCE\" to a non-reserved one.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 8
+          },
+          "end": {
+            "line": 2,
+            "character": 23
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S978"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 194,
+            "character": 24
+          },
+          "end": {
+            "line": 194,
+            "character": 73
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 195,
+            "character": 31
+          },
+          "end": {
+            "line": 195,
+            "character": 87
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 238,
+            "character": 28
+          },
+          "end": {
+            "line": 238,
+            "character": 77
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 239,
+            "character": 35
+          },
+          "end": {
+            "line": 239,
+            "character": 91
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 240,
+            "character": 32
+          },
+          "end": {
+            "line": 240,
+            "character": 85
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 241,
+            "character": 29
+          },
+          "end": {
+            "line": 241,
+            "character": 79
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 242,
+            "character": 33
+          },
+          "end": {
+            "line": 242,
+            "character": 87
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 243,
+            "character": 37
+          },
+          "end": {
+            "line": 243,
+            "character": 89
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 244,
+            "character": 32
+          },
+          "end": {
+            "line": 244,
+            "character": 85
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "implicit conversion loses integer precision: 'long' to 'int32_t' (aka 'int')",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 245,
+            "character": 32
+          },
+          "end": {
+            "line": 245,
+            "character": 85
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S5276"
+      },
+      {
+        "message": "Make the type of this parameter a pointer-to-const. The current type of \"evt\" is \"struct uart_event *\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 314,
+            "character": 33
+          },
+          "end": {
+            "line": 314,
+            "character": 55
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S995"
+      },
+      {
+        "message": "call to undeclared library function 'snprintf' with type 'int (char *restrict, unsigned long, const char *restrict, ...)'; ISO C99 and later do not support implicit function declarations",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 404,
+            "character": 10
+          },
+          "end": {
+            "line": 404,
+            "character": 18
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S819"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/divecan/uds/uds.c",
+    "diagnostics": [
+      {
+        "message": "Replace all tab characters in this file by sequences of white-spaces.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 0,
+            "character": 3
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S105"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 54,
+            "character": 5
+          },
+          "end": {
+            "line": 54,
+            "character": 16
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 68,
+            "character": 6
+          },
+          "end": {
+            "line": 68,
+            "character": 17
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 68,
+            "character": 48
+          },
+          "end": {
+            "line": 68,
+            "character": 66
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 68,
+            "character": 23
+          },
+          "end": {
+            "line": 68,
+            "character": 42
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 96,
+            "character": 6
+          },
+          "end": {
+            "line": 96,
+            "character": 17
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 96,
+            "character": 23
+          },
+          "end": {
+            "line": 96,
+            "character": 48
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 114,
+            "character": 23
+          },
+          "end": {
+            "line": 114,
+            "character": 48
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 114,
+            "character": 6
+          },
+          "end": {
+            "line": 114,
+            "character": 17
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 115,
+            "character": 6
+          },
+          "end": {
+            "line": 115,
+            "character": 30
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Move this #define/#undef to the global namespace.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 128,
+            "character": 7
+          },
+          "end": {
+            "line": 128,
+            "character": 16
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S958"
+      },
+      {
+        "message": "Put this #undef in the file where the macro is defined.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 128,
+            "character": 7
+          },
+          "end": {
+            "line": 128,
+            "character": 16
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S959"
+      },
+      {
+        "message": "Move this #define/#undef to the global namespace.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 130,
+            "character": 8
+          },
+          "end": {
+            "line": 130,
+            "character": 18
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S958"
+      },
+      {
+        "message": "Remove this usage of the \"#\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 130,
+            "character": 22
+          },
+          "end": {
+            "line": 130,
+            "character": 23
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_212"
+      },
+      {
+        "message": "Remove this usage of the \"#\" operator.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 130,
+            "character": 22
+          },
+          "end": {
+            "line": 130,
+            "character": 23
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S968"
+      },
+      {
+        "message": "Move this #define/#undef to the global namespace.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 131,
+            "character": 8
+          },
+          "end": {
+            "line": 131,
+            "character": 17
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S958"
+      },
+      {
+        "message": "Replace this function-like macro with a C++ function or another construct.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 131,
+            "character": 8
+          },
+          "end": {
+            "line": 131,
+            "character": 17
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_042"
+      },
+      {
+        "message": "Replace this function-like macro with a C++ function or another construct.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 131,
+            "character": 8
+          },
+          "end": {
+            "line": 131,
+            "character": 17
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S960"
+      },
+      {
+        "message": "Add a citation of the person who can best explain this comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 175,
+            "character": 27
+          },
+          "end": {
+            "line": 175,
+            "character": 31
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1707"
+      },
+      {
+        "message": "Complete the task associated to this \"TODO\" comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 175,
+            "character": 24
+          },
+          "end": {
+            "line": 175,
+            "character": 61
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1135"
+      },
+      {
+        "message": "Refactor this code to not nest more than 3 if|for|do|while|switch statements. [+3 locations]",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 230,
+            "character": 4
+          },
+          "end": {
+            "line": 230,
+            "character": 6
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S134"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 255,
+            "character": 5
+          },
+          "end": {
+            "line": 255,
+            "character": 20
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 300,
+            "character": 5
+          },
+          "end": {
+            "line": 300,
+            "character": 20
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 329,
+            "character": 5
+          },
+          "end": {
+            "line": 329,
+            "character": 18
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 477,
+            "character": 6
+          },
+          "end": {
+            "line": 477,
+            "character": 35
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      },
+      {
+        "message": "Flip this test to put the right operand on the left-hand side of \"==\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 479,
+            "character": 13
+          },
+          "end": {
+            "line": 479,
+            "character": 47
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1772"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/consensus_subscriber.c",
+    "diagnostics": [
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 20,
+            "character": 4
+          },
+          "end": {
+            "line": 20,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 20,
+            "character": 4
+          },
+          "end": {
+            "line": 20,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 4
+          },
+          "end": {
+            "line": 23,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 4
+          },
+          "end": {
+            "line": 23,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "call to undeclared function 'zbus_sub_wait_msg'; ISO C99 and later do not support implicit function declarations",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 38,
+            "character": 17
+          },
+          "end": {
+            "line": 38,
+            "character": 34
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S819"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 54,
+            "character": 4
+          },
+          "end": {
+            "line": 54,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 54,
+            "character": 4
+          },
+          "end": {
+            "line": 54,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 61,
+            "character": 4
+          },
+          "end": {
+            "line": 61,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 61,
+            "character": 4
+          },
+          "end": {
+            "line": 61,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/calibration.c",
+    "diagnostics": [
+      {
+        "message": "call to undeclared library function 'snprintf' with type 'int (char *restrict, unsigned long, const char *restrict, ...)'; ISO C99 and later do not support implicit function declarations",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 51,
+            "character": 10
+          },
+          "end": {
+            "line": 51,
+            "character": 18
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S819"
+      },
+      {
+        "message": "Replace this use of \"int\" with a typedef.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 65,
+            "character": 16
+          },
+          "end": {
+            "line": 65,
+            "character": 19
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S813"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 74,
+            "character": 4
+          },
+          "end": {
+            "line": 74,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 74,
+            "character": 4
+          },
+          "end": {
+            "line": 74,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 87,
+            "character": 4
+          },
+          "end": {
+            "line": 87,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 87,
+            "character": 4
+          },
+          "end": {
+            "line": 87,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 100,
+            "character": 4
+          },
+          "end": {
+            "line": 100,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 100,
+            "character": 4
+          },
+          "end": {
+            "line": 100,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 115,
+            "character": 4
+          },
+          "end": {
+            "line": 115,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 115,
+            "character": 4
+          },
+          "end": {
+            "line": 115,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 185,
+            "character": 4
+          },
+          "end": {
+            "line": 185,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 185,
+            "character": 4
+          },
+          "end": {
+            "line": 185,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 248,
+            "character": 4
+          },
+          "end": {
+            "line": 248,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 248,
+            "character": 4
+          },
+          "end": {
+            "line": 248,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "Remove the unused parameter \"target_ppo2\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 313,
+            "character": 65
+          },
+          "end": {
+            "line": 313,
+            "character": 76
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1172"
+      },
+      {
+        "message": "Remove the unused parameter \"mv_out\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 314,
+            "character": 60
+          },
+          "end": {
+            "line": 314,
+            "character": 66
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1172"
+      },
+      {
+        "message": "Remove the unused parameter \"coeff_out\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 315,
+            "character": 52
+          },
+          "end": {
+            "line": 315,
+            "character": 61
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1172"
+      },
+      {
+        "message": "Replace this \"switch\" statement by \"if\" statements to increase readability.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 319,
+            "character": 4
+          },
+          "end": {
+            "line": 319,
+            "character": 10
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1301"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 320,
+            "character": 4
+          },
+          "end": {
+            "line": 320,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 320,
+            "character": 4
+          },
+          "end": {
+            "line": 320,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 325,
+            "character": 4
+          },
+          "end": {
+            "line": 325,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 325,
+            "character": 4
+          },
+          "end": {
+            "line": 325,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 330,
+            "character": 4
+          },
+          "end": {
+            "line": 330,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 330,
+            "character": 4
+          },
+          "end": {
+            "line": 330,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 424,
+            "character": 6
+          },
+          "end": {
+            "line": 424,
+            "character": 23
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 424,
+            "character": 6
+          },
+          "end": {
+            "line": 424,
+            "character": 23
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 428,
+            "character": 6
+          },
+          "end": {
+            "line": 428,
+            "character": 23
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 428,
+            "character": 6
+          },
+          "end": {
+            "line": 428,
+            "character": 23
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "Add parentheses around complex operands.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 434,
+            "character": 19
+          },
+          "end": {
+            "line": 434,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S868"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 460,
+            "character": 4
+          },
+          "end": {
+            "line": 460,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 460,
+            "character": 4
+          },
+          "end": {
+            "line": 460,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 463,
+            "character": 4
+          },
+          "end": {
+            "line": 463,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 463,
+            "character": 4
+          },
+          "end": {
+            "line": 463,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "Refactor this code to not nest more than 3 if|for|do|while|switch statements. [+3 locations]",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 467,
+            "character": 16
+          },
+          "end": {
+            "line": 467,
+            "character": 18
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S134"
+      },
+      {
+        "message": "call to undeclared function 'zbus_sub_wait_msg'; ISO C99 and later do not support implicit function declarations",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 655,
+            "character": 17
+          },
+          "end": {
+            "line": 655,
+            "character": 34
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S819"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/divecan/divecan_rx.c",
+    "diagnostics": [
+      {
+        "message": "Make the type of this parameter a pointer-to-const. The current type of \"frame\" is \"struct can_frame *\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 85,
+            "character": 54
+          },
+          "end": {
+            "line": 85,
+            "character": 77
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S995"
+      },
+      {
+        "message": "Function has a complexity of 32 which is greater than 20 authorized. [+32 locations]",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 104,
+            "character": 12
+          },
+          "end": {
+            "line": 104,
+            "character": 29
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1541"
+      },
+      {
+        "message": "Refactor the function implementation to get only one return statement.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 104,
+            "character": 12
+          },
+          "end": {
+            "line": 104,
+            "character": 29
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1005"
+      },
+      {
+        "message": "This function has 111 lines, which is greater than the 100 lines authorized. Split it into smaller functions. [+1 location]",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 104,
+            "character": 12
+          },
+          "end": {
+            "line": 104,
+            "character": 29
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S138"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/divecan/divecan_ppo2_tx.c",
+    "diagnostics": [
+      {
+        "message": "call to undeclared function 'zbus_sub_wait_msg'; ISO C99 and later do not support implicit function declarations",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 48,
+            "character": 23
+          },
+          "end": {
+            "line": 48,
+            "character": 40
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S819"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/divecan/uds/uds_state_did.c",
+    "diagnostics": [
+      {
+        "message": "Reduce this switch case number of lines from 10 to at most 5, for example by extracting code into methods.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 88,
+            "character": 4
+          },
+          "end": {
+            "line": 88,
+            "character": 8
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1151"
+      },
+      {
+        "message": "Add a citation of the person who can best explain this comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 103,
+            "character": 39
+          },
+          "end": {
+            "line": 103,
+            "character": 43
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1707"
+      },
+      {
+        "message": "Complete the task associated to this \"TODO\" comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 103,
+            "character": 8
+          },
+          "end": {
+            "line": 103,
+            "character": 90
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1135"
+      },
+      {
+        "message": "Add a citation of the person who can best explain this comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 109,
+            "character": 39
+          },
+          "end": {
+            "line": 109,
+            "character": 43
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1707"
+      },
+      {
+        "message": "Complete the task associated to this \"TODO\" comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 109,
+            "character": 8
+          },
+          "end": {
+            "line": 109,
+            "character": 90
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1135"
+      },
+      {
+        "message": "Add a citation of the person who can best explain this comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 115,
+            "character": 39
+          },
+          "end": {
+            "line": 115,
+            "character": 43
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1707"
+      },
+      {
+        "message": "Complete the task associated to this \"TODO\" comment.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 115,
+            "character": 8
+          },
+          "end": {
+            "line": 115,
+            "character": 90
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S1135"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 262,
+            "character": 4
+          },
+          "end": {
+            "line": 262,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 262,
+            "character": 4
+          },
+          "end": {
+            "line": 262,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 267,
+            "character": 4
+          },
+          "end": {
+            "line": 267,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 267,
+            "character": 4
+          },
+          "end": {
+            "line": 267,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/divecan/divecan_send.c",
+    "diagnostics": [
+      {
+        "message": "Make this global variable constant (with static initialization) or remove it by passing the value as a function argument.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 31,
+            "character": 0
+          },
+          "end": {
+            "line": 31,
+            "character": 19
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_388"
+      },
+      {
+        "message": "Replace this use of \"int\" with a typedef.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 33,
+            "character": 55
+          },
+          "end": {
+            "line": 33,
+            "character": 58
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S813"
+      },
+      {
+        "message": "Replace this use of \"int\" with a typedef.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 45,
+            "character": 0
+          },
+          "end": {
+            "line": 45,
+            "character": 3
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S813"
+      },
+      {
+        "message": "Replace this use of \"int\" with a typedef.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 82,
+            "character": 0
+          },
+          "end": {
+            "line": 82,
+            "character": 3
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S813"
+      },
+      {
+        "message": "Replace this use of \"int\" with a typedef.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 101,
+            "character": 0
+          },
+          "end": {
+            "line": 101,
+            "character": 3
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S813"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/src/oxygen_cell_o2s.c",
+    "diagnostics": [
+      {
+        "message": "Change the reserved name \"_POSIX_C_SOURCE\" to a non-reserved one.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 8
+          },
+          "end": {
+            "line": 2,
+            "character": 23
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S978"
+      },
+      {
+        "message": "Make the type of this parameter a pointer-to-const. The current type of \"evt\" is \"struct uart_event *\".",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 152,
+            "character": 30
+          },
+          "end": {
+            "line": 152,
+            "character": 52
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S995"
+      },
+      {
+        "message": "call to undeclared library function 'snprintf' with type 'int (char *restrict, unsigned long, const char *restrict, ...)'; ISO C99 and later do not support implicit function declarations",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 238,
+            "character": 10
+          },
+          "end": {
+            "line": 238,
+            "character": 18
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S819"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/include/oxygen_cell_channels.h",
+    "diagnostics": [
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S966"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      },
+      {
+        "message": "'CONFIG_CELL_COUNT' is not defined, evaluates to 0",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 4
+          },
+          "end": {
+            "line": 12,
+            "character": 21
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:M23_045"
+      }
+    ]
+  },
+  {
+    "uri": "file:///home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/tests/divecan_tx/src/main.c",
+    "diagnostics": [
+      {
+        "message": "Replace this use of \"int\" with a typedef.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 7,
+            "character": 0
+          },
+          "end": {
+            "line": 7,
+            "character": 3
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S813"
+      },
+      {
+        "message": "Replace this use of \"int\" with a typedef.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 42
+          },
+          "end": {
+            "line": 8,
+            "character": 45
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S813"
+      },
+      {
+        "message": "Assign this magic number 100 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 25,
+            "character": 33
+          },
+          "end": {
+            "line": 25,
+            "character": 36
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 98 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 25,
+            "character": 25
+          },
+          "end": {
+            "line": 25,
+            "character": 27
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 99 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 25,
+            "character": 29
+          },
+          "end": {
+            "line": 25,
+            "character": 31
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 0x0102 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 41,
+            "character": 31
+          },
+          "end": {
+            "line": 41,
+            "character": 37
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 0x0304 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 41,
+            "character": 39
+          },
+          "end": {
+            "line": 41,
+            "character": 45
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 0x0506 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 41,
+            "character": 47
+          },
+          "end": {
+            "line": 41,
+            "character": 53
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 130 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 58,
+            "character": 49
+          },
+          "end": {
+            "line": 58,
+            "character": 52
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 98 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 69,
+            "character": 48
+          },
+          "end": {
+            "line": 69,
+            "character": 50
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 130 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 79,
+            "character": 31
+          },
+          "end": {
+            "line": 79,
+            "character": 34
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 42 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 79,
+            "character": 27
+          },
+          "end": {
+            "line": 79,
+            "character": 29
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 130 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 91,
+            "character": 31
+          },
+          "end": {
+            "line": 91,
+            "character": 34
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 20 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 91,
+            "character": 27
+          },
+          "end": {
+            "line": 91,
+            "character": 29
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 42 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 101,
+            "character": 49
+          },
+          "end": {
+            "line": 101,
+            "character": 51
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 1013 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 172,
+            "character": 30
+          },
+          "end": {
+            "line": 172,
+            "character": 34
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 11 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 172,
+            "character": 14
+          },
+          "end": {
+            "line": 172,
+            "character": 16
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 12 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 172,
+            "character": 18
+          },
+          "end": {
+            "line": 172,
+            "character": 20
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 13 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 172,
+            "character": 22
+          },
+          "end": {
+            "line": 172,
+            "character": 24
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 21 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 172,
+            "character": 26
+          },
+          "end": {
+            "line": 172,
+            "character": 28
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      },
+      {
+        "message": "Assign this magic number 130 to a well-named variable, and use the variable instead.",
+        "severity": "Warning",
+        "range": {
+          "start": {
+            "line": 213,
+            "character": 29
+          },
+          "end": {
+            "line": 213,
+            "character": 32
+          }
+        },
+        "source": "sonarqube",
+        "code": "c:S109"
+      }
+    ]
+  }
+]

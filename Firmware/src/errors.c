@@ -1,3 +1,19 @@
+/**
+ * @file errors.c
+ * @brief Error handling infrastructure — crash persistence, fatal reboot, and op-error channel
+ *
+ * Implements a four-tier error model:
+ *   1. __ASSERT — programming invariants (debug only)
+ *   2. MUST_SUCCEED — init-time calls that must not fail (triggers k_oops)
+ *   3. OP_ERROR — non-fatal runtime errors published on chan_error
+ *   4. FATAL_OP_ERROR — unrecoverable conditions that persist crash info and reboot
+ *
+ * Crash info (PC, LR, CFSR, reason) is stored in noinit RAM so it survives a
+ * warm reset and can be retrieved via errors_get_last_crash() at the next boot.
+ * The Zephyr fatal error handler is overridden here to route all fault paths
+ * (k_oops, k_panic, CPU exceptions, stack canary) through the same mechanism.
+ */
+
 #include "errors.h"
 
 #include <zephyr/fatal.h>
@@ -35,6 +51,16 @@ ZBUS_CHAN_DEFINE(chan_error,
 
 /* ---- Boot-time crash recovery ---- */
 
+/**
+ * @brief SYS_INIT callback — read and clear any crash info left in noinit RAM
+ *
+ * If the noinit magic value is present this function copies the crash record
+ * to a normal RAM snapshot, clears the magic, and logs the crash reason.
+ * The snapshot is then accessible via errors_get_last_crash() for the rest of
+ * this boot cycle.
+ *
+ * @return Always 0 (failure here is non-fatal; the system should still boot)
+ */
 static Status_t errors_init(void)
 {
     if (CRASH_MAGIC == crash_noinit.magic) {
@@ -58,6 +84,13 @@ static Status_t errors_init(void)
 
 SYS_INIT(errors_init, APPLICATION, 0);
 
+/**
+ * @brief Retrieve crash info recorded during the previous boot cycle
+ *
+ * @param out Populated with the saved crash record when a prior crash exists;
+ *            must not be NULL
+ * @return true if a prior crash was detected and *out was written
+ */
 bool errors_get_last_crash(CrashInfo_t *out)
 {
     bool valid = false;
@@ -72,6 +105,14 @@ bool errors_get_last_crash(CrashInfo_t *out)
 
 /* ---- Tier 2: MUST_SUCCEED ---- */
 
+/**
+ * @brief Called when a MUST_SUCCEED() assertion fails — logs and triggers k_oops
+ *
+ * @param expr String representation of the failing expression
+ * @param rc   Return code that caused the failure
+ * @param file Source file name (from __FILE__)
+ * @param line Line number (from __LINE__)
+ */
 FUNC_NORETURN void must_succeed_failed(const char *expr, Status_t rc,
                     const char *file, uint32_t line)
 {
@@ -83,6 +124,15 @@ FUNC_NORETURN void must_succeed_failed(const char *expr, Status_t rc,
 
 /* ---- Tier 3: Operational error publish ---- */
 
+/**
+ * @brief Publish a non-fatal operational error to chan_error
+ *
+ * Uses K_NO_WAIT — if the channel is busy the event is silently dropped
+ * rather than blocking the caller.
+ *
+ * @param code   Error code identifying the fault condition
+ * @param detail Optional numeric detail (e.g. peripheral address, status register)
+ */
 void op_error_publish(OpError_t code, uint32_t detail)
 {
     const ErrorEvent_t evt = {
@@ -95,6 +145,17 @@ void op_error_publish(OpError_t code, uint32_t detail)
 
 /* ---- Tier 4: Fatal operational error ---- */
 
+/**
+ * @brief Record an unrecoverable operational error to noinit RAM and reboot
+ *
+ * Writes a crash record (with code as the reason field) to noinit RAM so it
+ * survives the cold reboot, spins briefly to drain the RTT buffer, then calls
+ * sys_reboot().  Never returns.
+ *
+ * @param code Fatal error code classifying the condition
+ * @param file Source file name (from __FILE__)
+ * @param line Line number (from __LINE__)
+ */
 FUNC_NORETURN void fatal_op_error(FatalOpError_t code, const char *file,
                    uint32_t line)
 {
@@ -130,6 +191,17 @@ FUNC_NORETURN void fatal_op_error(FatalOpError_t code, const char *file,
  * We persist crash context to noinit RAM and reboot.
  */
 
+/**
+ * @brief Zephyr fatal error handler override — persists crash context and reboots
+ *
+ * Overrides the __weak default.  All fatal paths (k_oops, k_panic, __ASSERT,
+ * CPU exceptions, stack canary) route here.  Crash context (reason, PC, LR,
+ * CFSR) is written to noinit RAM before the cold reboot so it can be retrieved
+ * on the next boot via errors_get_last_crash().
+ *
+ * @param reason Zephyr fatal reason code (K_ERR_*)
+ * @param esf    Exception stack frame; may be NULL for software-triggered faults
+ */
 void k_sys_fatal_error_handler(uint32_t reason,
                    const struct arch_esf *esf)
 {

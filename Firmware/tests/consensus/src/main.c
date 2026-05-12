@@ -1,3 +1,14 @@
+/**
+ * @file main.c
+ * @brief Consensus algorithm unit tests
+ *
+ * Pure host build — no Zephyr threads or hardware. Tests consensus_calculate()
+ * and consensus_confidence() in oxygen_cell_math.c, which implement the
+ * 3-cell voting algorithm (outlier exclusion, staleness, status filtering).
+ * Uses a permutation helper to verify that the algorithm is insensitive to
+ * cell ordering in the input array.
+ */
+
 #include <zephyr/ztest.h>
 #include "oxygen_cell_math.h"
 
@@ -5,13 +16,14 @@
 #define STALENESS_TICKS 10000LL
 #define NOW_TICKS       0LL
 
-/* ---- Permutation helper ----
- * Runs each test through all 6 orderings of 3 cells.
- * The expected consensus arrays are indexed by *logical* cell
- * (0=c1, 1=c2, 2=c3). The helper remaps positions for each
- * permutation and verifies the output matches regardless of order.
+/**
+ * @brief Run a consensus test across all 6 orderings of 3 cells.
+ *
+ * Verifies that consensus_calculate() produces the same result regardless of
+ * which physical position each cell occupies in the input array.  Expected
+ * arrays are indexed by *logical* cell identity (0=c1, 1=c2, 2=c3); the
+ * helper remaps them to match each permutation before asserting.
  */
-
 static void check_consensus_permutations(
     const ConsensusMsg_t *expected,
     const OxygenCellMsg_t *c1,
@@ -85,7 +97,7 @@ static void check_consensus_permutations(
     }
 }
 
-/* Helper to build an OxygenCellMsg_t for tests */
+/** @brief Construct an OxygenCellMsg_t with all fields set for use in tests. */
 static OxygenCellMsg_t make_cell(uint8_t num, PPO2_t ppo2, double prec,
                  Millivolts_t mv, CellStatus_t status,
                  int64_t ts)
@@ -100,11 +112,10 @@ static OxygenCellMsg_t make_cell(uint8_t num, PPO2_t ppo2, double prec,
     };
 }
 
-/* ---- Test suite ---- */
-
+/** @brief Suite: three-cell consensus voting and averaging algorithm. */
 ZTEST_SUITE(consensus, NULL, NULL, NULL, NULL, NULL);
 
-/* 3 cells agree → 3-cell average */
+/** @brief Three agreeing cells are all included and their PPO2 is averaged. */
 ZTEST(consensus, test_averages_cells)
 {
     OxygenCellMsg_t c1 = make_cell(0, 110, 1.1, 12, CELL_OK, 0);
@@ -122,7 +133,7 @@ ZTEST(consensus, test_averages_cells)
     check_consensus_permutations(&expected, &c1, &c2, &c3);
 }
 
-/* High outlier excluded */
+/** @brief A cell reading significantly higher than the other two is excluded from the consensus. */
 ZTEST(consensus, test_excludes_high)
 {
     OxygenCellMsg_t c1 = make_cell(0, 110, 1.1, 0, CELL_OK, 0);
@@ -140,7 +151,7 @@ ZTEST(consensus, test_excludes_high)
     check_consensus_permutations(&expected, &c1, &c2, &c3);
 }
 
-/* Very high outlier excluded */
+/** @brief A cell reading very far above the pair is also excluded (large spread). */
 ZTEST(consensus, test_excludes_very_high)
 {
     OxygenCellMsg_t c1 = make_cell(0, 50, 0.5, 0, CELL_OK, 0);
@@ -158,7 +169,7 @@ ZTEST(consensus, test_excludes_very_high)
     check_consensus_permutations(&expected, &c1, &c2, &c3);
 }
 
-/* Low outlier excluded */
+/** @brief A cell reading significantly lower than the other two is excluded. */
 ZTEST(consensus, test_excludes_low)
 {
     OxygenCellMsg_t c1 = make_cell(0, 120, 1.2, 0, CELL_OK, 0);
@@ -176,7 +187,7 @@ ZTEST(consensus, test_excludes_low)
     check_consensus_permutations(&expected, &c1, &c2, &c3);
 }
 
-/* Very low outlier excluded */
+/** @brief A cell reading very far below the pair is also excluded (large spread). */
 ZTEST(consensus, test_excludes_very_low)
 {
     OxygenCellMsg_t c1 = make_cell(0, 120, 1.2, 0, CELL_OK, 0);
@@ -194,7 +205,12 @@ ZTEST(consensus, test_excludes_very_low)
     check_consensus_permutations(&expected, &c1, &c2, &c3);
 }
 
-/* Timed-out cell excluded — tests each position */
+/**
+ * @brief A cell whose timestamp is older than STALENESS_TICKS is excluded.
+ *
+ * Iterates over each cell position to confirm that staleness detection is
+ * position-independent.
+ */
 ZTEST(consensus, test_excludes_timed_out_cell)
 {
     uint8_t expected_consensus[] = {107, 109, 112};
@@ -223,7 +239,12 @@ ZTEST(consensus, test_excludes_timed_out_cell)
     }
 }
 
-/* Failed cell excluded — tests each position */
+/**
+ * @brief A cell with CELL_FAIL status is excluded from voting.
+ *
+ * Iterates over each cell position to confirm that status filtering is
+ * position-independent.
+ */
 ZTEST(consensus, test_excludes_failed_cell)
 {
     uint8_t expected_consensus[] = {107, 109, 112};
@@ -252,7 +273,7 @@ ZTEST(consensus, test_excludes_failed_cell)
     }
 }
 
-/* Needs-cal cell excluded — tests each position */
+/** @brief A cell with CELL_NEED_CAL status is excluded from voting. */
 ZTEST(consensus, test_excludes_cal_cell)
 {
     uint8_t expected_consensus[] = {107, 109, 112};
@@ -281,7 +302,7 @@ ZTEST(consensus, test_excludes_cal_cell)
     }
 }
 
-/* Degraded cell excluded — tests each position */
+/** @brief A cell with CELL_DEGRADED status is excluded from voting. */
 ZTEST(consensus, test_excludes_degraded_cell)
 {
     uint8_t expected_consensus[] = {107, 109, 112};
@@ -310,7 +331,12 @@ ZTEST(consensus, test_excludes_degraded_cell)
     }
 }
 
-/* Dual cell failure — only 1 good cell, used as consensus but voted out */
+/**
+ * @brief Two failed cells leave one good cell: its value is used as consensus but voted out.
+ *
+ * A single surviving cell cannot form a majority vote, so include_array is all
+ * false even though the consensus_ppo2 reflects that cell's reading.
+ */
 ZTEST(consensus, test_dual_cell_failure)
 {
     uint8_t expected_consensus[] = {120, 110, 100};
@@ -340,7 +366,7 @@ ZTEST(consensus, test_dual_cell_failure)
     }
 }
 
-/* Diverged dual failure — 1 surviving cell with extreme values */
+/** @brief Single surviving cell with a diverged value: still used for consensus, voted out. */
 ZTEST(consensus, test_diverged_dual_cell_failure)
 {
     uint8_t expected_consensus[] = {200, 100, 20};
@@ -369,7 +395,7 @@ ZTEST(consensus, test_diverged_dual_cell_failure)
     }
 }
 
-/* All cells failed → consensus = 0xFF */
+/** @brief All three cells failed: consensus is PPO2_FAIL (0xFF) and all are excluded. */
 ZTEST(consensus, test_all_cells_excluded)
 {
     OxygenCellMsg_t c1 = make_cell(0, 120, 1.2, 0, CELL_FAIL, 0);
@@ -387,7 +413,12 @@ ZTEST(consensus, test_all_cells_excluded)
     check_consensus_permutations(&expected, &c1, &c2, &c3);
 }
 
-/* Failed + zeroed cell — one good cell remains */
+/**
+ * @brief One CELL_FAIL and one zero-reading CELL_OK: the zero cell is treated as an outlier.
+ *
+ * The single non-failed, non-zero cell provides the consensus value but cannot
+ * form a majority, so include_array is all false.
+ */
 ZTEST(consensus, test_fail_and_zeroed_cell)
 {
     OxygenCellMsg_t c1 = make_cell(0, 25, 1.1, 12, CELL_FAIL, 0);
@@ -405,7 +436,9 @@ ZTEST(consensus, test_fail_and_zeroed_cell)
     check_consensus_permutations(&expected, &c1, &c2, &c3);
 }
 
-/* Failed + PPO2_FAIL valued cell — one good cell remains */
+/**
+ * @brief One CELL_FAIL and one cell reading PPO2_FAIL (0xFF): treated same as zeroed case.
+ */
 ZTEST(consensus, test_fail_and_fail_valued_cell)
 {
     OxygenCellMsg_t c1 = make_cell(0, 25, 1.1, 12, CELL_FAIL, 0);
@@ -423,7 +456,7 @@ ZTEST(consensus, test_fail_and_fail_valued_cell)
     check_consensus_permutations(&expected, &c1, &c2, &c3);
 }
 
-/* Cell confidence counting */
+/** @brief consensus_confidence() counts the number of included (true) cells in include_array. */
 ZTEST(consensus, test_confidence)
 {
     struct {
@@ -450,9 +483,9 @@ ZTEST(consensus, test_confidence)
     }
 }
 
-/* ---- New tests (not in old CppUTest suite) ---- */
-
-/* 1-cell configuration */
+/**
+ * @brief Single-cell configuration: value used for consensus, but voted out (no majority possible).
+ */
 ZTEST(consensus, test_single_cell)
 {
     OxygenCellMsg_t cell = make_cell(0, 100, 1.0, 10, CELL_OK, 0);
@@ -466,7 +499,7 @@ ZTEST(consensus, test_single_cell)
     zassert_false(result.include_array[0]);
 }
 
-/* 2-cell configuration — both agree */
+/** @brief Two-cell configuration where both agree: both included, consensus is their average. */
 ZTEST(consensus, test_two_cells_agree)
 {
     OxygenCellMsg_t cells[2] = {
@@ -483,7 +516,7 @@ ZTEST(consensus, test_two_cells_agree)
     zassert_true(result.include_array[1]);
 }
 
-/* 2-cell configuration — both disagree */
+/** @brief Two-cell configuration where both diverge: neither wins the vote, consensus = PPO2_FAIL. */
 ZTEST(consensus, test_two_cells_disagree)
 {
     OxygenCellMsg_t cells[2] = {
@@ -499,7 +532,12 @@ ZTEST(consensus, test_two_cells_disagree)
     zassert_equal(result.confidence, 0);
 }
 
-/* Bug #5 regression: consensus > 254 saturates to PPO2_FAIL */
+/**
+ * @brief Bug #5 regression: averaged PPO2 >254 centibar must saturate to PPO2_FAIL.
+ *
+ * Prevents wrapping the uint8_t result, which could silently report a safe low
+ * reading in place of a dangerously high one.
+ */
 ZTEST(consensus, test_overflow_saturates)
 {
     OxygenCellMsg_t c1 = make_cell(0, 254, 2.55, 0, CELL_OK, 0);

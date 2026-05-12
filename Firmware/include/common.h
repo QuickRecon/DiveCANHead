@@ -1,3 +1,10 @@
+/**
+ * @file common.h
+ * @brief Project-wide numeric typedefs and bit-width constants.
+ *
+ * Provides domain-typed aliases for primitive types (satisfying SonarQube S813)
+ * and shared shift/mask constants used across all modules.
+ */
 #ifndef COMMON_H
 #define COMMON_H
 

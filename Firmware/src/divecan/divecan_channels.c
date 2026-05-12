@@ -1,3 +1,12 @@
+/**
+ * @file divecan_channels.c
+ * @brief zbus channel definitions for DiveCAN inter-task messaging
+ *
+ * Defines the shared zbus channels through which the DiveCAN RX thread
+ * publishes protocol-decoded values (setpoint, atmospheric pressure, dive state,
+ * shutdown request) for consumption by other subsystems.
+ */
+
 #include <zephyr/zbus/zbus.h>
 
 #include "divecan_types.h"

@@ -1,3 +1,14 @@
+/**
+ * @file runtime_settings.c
+ * @brief Persistent runtime settings — load/save via Zephyr settings subsystem
+ *
+ * Stores PPO2 control mode, calibration mode, depth compensation flag, and
+ * extended-messages flag in the "rt" settings subtree (NVS/FCB backend).
+ * Build-time sanity checks ensure exactly one cell type and one power mode
+ * are selected per Kconfig.  Invalid stored values are replaced with defaults
+ * rather than causing a boot failure.
+ */
+
 #include "runtime_settings.h"
 #include "common.h"
 #include <zephyr/settings/settings.h>
@@ -35,12 +46,23 @@ BUILD_ASSERT(IS_ENABLED(CONFIG_POWER_MODE_BATTERY) +
 
 #define SETTINGS_SUBTREE "rt"
 
+/**
+ * @brief Return a pointer to the module-local cached settings struct
+ *
+ * @return Pointer to the single static RuntimeSettings_t instance
+ */
 static RuntimeSettings_t *getCached(void)
 {
     static RuntimeSettings_t cached = RUNTIME_SETTINGS_DEFAULT;
     return &cached;
 }
 
+/**
+ * @brief Check whether a PPO2ControlMode_t value is in the allowed set
+ *
+ * @param val Candidate mode value
+ * @return true if val is a recognised PPO2 control mode
+ */
 static bool ppo2_mode_valid(PPO2ControlMode_t val)
 {
     bool found = false;
@@ -53,6 +75,12 @@ static bool ppo2_mode_valid(PPO2ControlMode_t val)
     return found;
 }
 
+/**
+ * @brief Check whether a CalibrationMode_t value is in the allowed set
+ *
+ * @param val Candidate mode value
+ * @return true if val is a recognised calibration mode
+ */
 static bool cal_mode_valid(CalibrationMode_t val)
 {
     bool found = false;
@@ -65,6 +93,16 @@ static bool cal_mode_valid(CalibrationMode_t val)
     return found;
 }
 
+/**
+ * @brief Validate a RuntimeSettings_t struct for internal consistency
+ *
+ * Checks that all enum fields are in-range and that feature flags are
+ * consistent with the build configuration (e.g. depth compensation requires
+ * CONFIG_HAS_O2_SOLENOID).
+ *
+ * @param s Settings struct to validate; must not be NULL
+ * @return true if all fields are valid
+ */
 bool runtime_settings_validate(const RuntimeSettings_t *s)
 {
     bool result = true;
@@ -91,6 +129,19 @@ bool runtime_settings_validate(const RuntimeSettings_t *s)
     return result;
 }
 
+/**
+ * @brief Zephyr settings handler callback — deserialise one key into the cache
+ *
+ * Called by the settings subsystem for each "rt/<key>" entry found in storage.
+ * Unrecognised keys return -ENOENT; read errors are silently discarded and the
+ * existing cached value is preserved.
+ *
+ * @param name    Key name relative to the "rt" subtree (e.g. "ppo2", "cal")
+ * @param len     Byte length hint from the settings backend (unused)
+ * @param read_cb Backend-provided callback to read the raw value bytes
+ * @param cb_arg  Opaque argument to pass back to read_cb
+ * @return 0 on success, -ENOENT for unknown keys
+ */
 static Status_t settings_set(const char *name, size_t len,
             settings_read_cb read_cb, void *cb_arg)
 {
@@ -147,6 +198,18 @@ static Status_t settings_set(const char *name, size_t len,
 SETTINGS_STATIC_HANDLER_DEFINE(runtime, SETTINGS_SUBTREE, NULL,
                    settings_set, NULL, NULL);
 
+/**
+ * @brief Load runtime settings from flash, falling back to defaults on error
+ *
+ * Initialises the settings subsystem, loads the "rt" subtree, and validates
+ * the result.  If loading or validation fails the defaults are written into
+ * *out and a warning is logged; the function still returns 0 so that the
+ * caller can continue with safe defaults.
+ *
+ * @param out Destination struct; populated with the loaded (or default) settings
+ * @return 0 on success or when defaults are used, negative errno if the
+ *         settings subsystem itself could not be initialised
+ */
 Status_t runtime_settings_load(RuntimeSettings_t *out)
 {
     RuntimeSettings_t *cached = getCached();
@@ -181,6 +244,17 @@ Status_t runtime_settings_load(RuntimeSettings_t *out)
     return rc;
 }
 
+/**
+ * @brief Persist runtime settings to flash and update the in-memory cache
+ *
+ * Validates the new settings before writing.  Each field is saved individually;
+ * the cache is updated only when all four writes succeed.  The first failing
+ * write's error code is returned.
+ *
+ * @param s Settings to persist; must not be NULL and must pass validation
+ * @return 0 on success, -EINVAL if validation fails, or a negative errno from
+ *         the settings backend
+ */
 Status_t runtime_settings_save(const RuntimeSettings_t *s)
 {
     Status_t rc = 0;

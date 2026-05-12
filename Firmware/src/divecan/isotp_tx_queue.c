@@ -65,6 +65,11 @@ typedef struct {
 
 /* Static accessor functions (NASA Rule compliance - no exposed globals) */
 
+/**
+ * @brief Return pointer to the static TX state block
+ *
+ * @return Pointer to the singleton ISOTPTxState_t
+ */
 static ISOTPTxState_t *getTxState(void)
 {
     static ISOTPTxState_t state = {0};
@@ -74,7 +79,13 @@ static ISOTPTxState_t *getTxState(void)
 /* Statically allocated message queue */
 K_MSGQ_DEFINE(isotp_tx_msgq, sizeof(ISOTPTxRequest_t), ISOTP_TX_QUEUE_SIZE, 4);
 
-/* Static buffer for building TX requests (avoids large stack allocation) */
+/**
+ * @brief Return pointer to the static scratch buffer used when building TX requests
+ *
+ * Avoids placing a large ISOTPTxRequest_t on the stack.
+ *
+ * @return Pointer to the singleton scratch ISOTPTxRequest_t
+ */
 static ISOTPTxRequest_t *getTxRequestBuffer(void)
 {
     static ISOTPTxRequest_t buffer = {0};
@@ -86,6 +97,12 @@ static void StartNextTx(void);
 static void SendConsecutiveFrames(void);
 static void handleFlowControlCTS(ISOTPTxState_t *state, const DiveCANMessage_t *fc);
 
+/**
+ * @brief Initialize (or reinitialize) the ISO-TP TX queue
+ *
+ * Resets all TX state fields to zero and purges any pending items from the
+ * Zephyr message queue.  Must be called once before any other TxQueue function.
+ */
 void ISOTP_TxQueue_Init(void)
 {
     ISOTPTxState_t *state = getTxState();
@@ -101,6 +118,19 @@ void ISOTP_TxQueue_Init(void)
     k_msgq_purge(&isotp_tx_msgq);
 }
 
+/**
+ * @brief Copy payload into the TX queue for serialized ISO-TP transmission
+ *
+ * Data is copied into an internal static buffer so the caller does not need
+ * to keep the pointer valid after this call returns.
+ *
+ * @param source    Source device type placed in the CAN ID source field
+ * @param target    Destination device type placed in the CAN ID dest field
+ * @param messageId Base CAN message ID (e.g., MENU_ID)
+ * @param data      Payload bytes to transmit (must not be NULL)
+ * @param length    Payload length in bytes (1 to ISOTP_TX_BUFFER_SIZE)
+ * @return true if successfully enqueued, false on NULL data, zero length, or queue full
+ */
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
                 uint32_t messageId, const uint8_t *data,
                 uint16_t length)
@@ -132,7 +162,11 @@ bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
 }
 
 /**
- * @brief Start transmission of next queued message
+ * @brief Dequeue and begin transmitting the next ISO-TP message
+ *
+ * Single-frame messages are sent immediately and the TX state returns to idle.
+ * Multi-frame messages send only the First Frame and transition to ISOTP_WAIT_FC,
+ * expecting ISOTP_TxQueue_ProcessFC() to continue with consecutive frames.
  */
 static void StartNextTx(void)
 {
@@ -194,7 +228,11 @@ static void StartNextTx(void)
 }
 
 /**
- * @brief Send consecutive frames after FC received
+ * @brief Send Consecutive Frames until all data is transmitted or a block boundary is hit
+ *
+ * Respects the STmin separation time and block size from the last Flow Control frame.
+ * Transitions TX state to ISOTP_WAIT_FC when a block boundary is reached, or back to
+ * ISOTP_IDLE when the full payload has been sent.
  */
 static void SendConsecutiveFrames(void)
 {
@@ -273,6 +311,16 @@ static void handleFlowControlCTS(ISOTPTxState_t *state, const DiveCANMessage_t *
     }
 }
 
+/**
+ * @brief Process a received Flow Control frame and continue (or abort) multi-frame TX
+ *
+ * Must be called for every FC frame received while a multi-frame transmission is
+ * in progress (txState == ISOTP_WAIT_FC).  Handles CTS, WAIT (treated as abort),
+ * and OVFLW cases.  Accepts broadcast FC (Shearwater quirk, target = 0xFF).
+ *
+ * @param fc Received Flow Control CAN message (must not be NULL)
+ * @return true if the FC was consumed by the active TX, false if ignored
+ */
 bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
 {
     bool result = false;
@@ -315,6 +363,15 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
     return result;
 }
 
+/**
+ * @brief Poll TX queue: expire timed-out FC waits and start next pending transmission
+ *
+ * Call periodically from the RX thread main loop.  Checks for N_Bs timeout
+ * (1000 ms waiting for FC after FF) and, if the queue is idle, dequeues the
+ * next message and starts transmission.
+ *
+ * @param currentTime Current system time in milliseconds (from k_uptime_get_32())
+ */
 void ISOTP_TxQueue_Poll(uint32_t currentTime)
 {
     ISOTPTxState_t *state = getTxState();
@@ -333,6 +390,11 @@ void ISOTP_TxQueue_Poll(uint32_t currentTime)
     }
 }
 
+/**
+ * @brief Query whether a multi-frame ISO-TP transmission is currently in progress
+ *
+ * @return true if a TX is active (including WAIT_FC state), false if the queue is idle
+ */
 bool ISOTP_TxQueue_IsBusy(void)
 {
     const ISOTPTxState_t *state = getTxState();

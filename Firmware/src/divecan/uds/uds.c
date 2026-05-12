@@ -49,6 +49,11 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, const 
 
 /**
  * @brief Initialize UDS context
+ *
+ * Zeroes the context and binds the ISO-TP transport.
+ *
+ * @param ctx      UDS context to initialise; must not be NULL
+ * @param isotpCtx ISO-TP context to bind for request/response transport
  */
 void UDS_Init(UDSContext_t *ctx, ISOTPContext_t *isotpCtx)
 {
@@ -61,7 +66,14 @@ void UDS_Init(UDSContext_t *ctx, ISOTPContext_t *isotpCtx)
 }
 
 /**
- * @brief Process UDS request message
+ * @brief Process a UDS request message and dispatch to the appropriate service handler
+ *
+ * Currently handles SID 0x22 (ReadDataByIdentifier) and 0x2E (WriteDataByIdentifier).
+ * Sends a negative response for unsupported SIDs.
+ *
+ * @param ctx           UDS context; must not be NULL
+ * @param requestData   Raw request bytes (SID at index UDS_SID_IDX); must not be NULL
+ * @param requestLength Number of bytes in requestData; must be > 0
  */
 void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
             uint16_t requestLength)
@@ -89,7 +101,11 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
 }
 
 /**
- * @brief Send UDS negative response
+ * @brief Send a UDS negative response (NRC) to the requester
+ *
+ * @param ctx          UDS context; must not be NULL and must have a bound ISO-TP context
+ * @param requestedSID SID from the failing request (echoed in the response)
+ * @param nrc          Negative response code (UDS_NRC_* constant)
  */
 void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID,
                   uint8_t nrc)
@@ -108,7 +124,9 @@ void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID,
 }
 
 /**
- * @brief Send UDS positive response
+ * @brief Transmit the positive response already built in ctx->responseBuffer
+ *
+ * @param ctx UDS context with responseBuffer and responseLength populated; must not be NULL
  */
 void UDS_SendResponse(UDSContext_t *ctx)
 {
@@ -130,13 +148,28 @@ void UDS_SendResponse(UDSContext_t *ctx)
 #define APP_BUILD_VERSION_STR "dev"
 #endif
 
+/**
+ * @brief Return the build commit hash string injected by CMake
+ *
+ * @return Null-terminated git-describe string, or "dev" for out-of-tree builds
+ */
 static const char *getCommitHash(void)
 {
     return APP_BUILD_VERSION_STR;
 }
 
 /**
- * @brief Read a single DID and append to response buffer
+ * @brief Read a single DID and append the result to the response buffer
+ *
+ * Writes a 2-byte big-endian DID header followed by the DID payload.
+ * Dispatches to state DID, firmware/hardware version, setting count, setting
+ * info, setting value, and setting label handlers as appropriate.
+ *
+ * @param ctx            UDS context providing the response buffer
+ * @param did            DID to read
+ * @param responseOffset Byte offset in ctx->responseBuffer at which to write
+ * @param bytesWritten   Out: total bytes written (DID header + payload)
+ * @return true if the DID was recognised and data written, false otherwise
  */
 static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
                uint16_t responseOffset, uint16_t *bytesWritten)
@@ -200,7 +233,14 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
 }
 
 /**
- * @brief Handle ReadDataByIdentifier (0x22)
+ * @brief Handle ReadDataByIdentifier service (SID 0x22)
+ *
+ * Parses the DID list from the request, calls ReadSingleDID for each, and
+ * accumulates results into ctx->responseBuffer before sending.
+ *
+ * @param ctx           UDS context
+ * @param requestData   Request bytes starting at the SID byte
+ * @param requestLength Total byte count of requestData
  */
 static void HandleReadDataByIdentifier(UDSContext_t *ctx,
                        const uint8_t *requestData,
@@ -247,6 +287,19 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx,
 
 /* ---- Setting read helpers ---- */
 
+/**
+ * @brief Serialise a setting's metadata record into the response buffer
+ *
+ * Writes the 9-byte label (zero-padded), kind, editable flag, and for
+ * SETTING_KIND_TEXT settings the maxValue and optionCount fields.
+ *
+ * @param did          Setting info DID (UDS_DID_SETTING_INFO_BASE + index)
+ * @param buf          Response buffer origin (includes DID header already written)
+ * @param dataOffset   Byte offset within buf at which to write payload
+ * @param maxAvailable Maximum bytes available from dataOffset onward
+ * @param bytesWritten Out: total bytes written from buf[0] (header + payload)
+ * @return true on success, false if the setting index is invalid or buffer is too small
+ */
 static bool readSettingInfoDID(uint16_t did, uint8_t *buf,
                    uint16_t dataOffset, uint16_t maxAvailable,
                    uint16_t *bytesWritten)
@@ -292,6 +345,18 @@ static bool readSettingInfoDID(uint16_t did, uint8_t *buf,
     return result;
 }
 
+/**
+ * @brief Serialise the max value and current value of a setting into the response buffer
+ *
+ * Both values are encoded as big-endian uint64. Total payload is SETTING_VALUE_RESP_LEN.
+ *
+ * @param did          Setting value DID (UDS_DID_SETTING_VALUE_BASE + index)
+ * @param buf          Response buffer origin (includes DID header already written)
+ * @param dataOffset   Byte offset within buf at which to write payload
+ * @param maxAvailable Maximum bytes available from dataOffset onward
+ * @param bytesWritten Out: total bytes written from buf[0] (header + payload)
+ * @return true on success, false if the setting index is invalid or buffer is too small
+ */
 static bool readSettingValueDID(uint16_t did, uint8_t *buf,
                 uint16_t dataOffset, uint16_t maxAvailable,
                 uint16_t *bytesWritten)
@@ -319,6 +384,20 @@ static bool readSettingValueDID(uint16_t did, uint8_t *buf,
     return result;
 }
 
+/**
+ * @brief Serialise a setting option label string into the response buffer
+ *
+ * The DID encodes both the setting index (low nibble) and the option index
+ * (high nibble) within the sub-offset from UDS_DID_SETTING_LABEL_BASE.
+ * The result is null-terminated.
+ *
+ * @param did          Setting label DID in the UDS_DID_SETTING_LABEL_BASE range
+ * @param buf          Response buffer origin (includes DID header already written)
+ * @param dataOffset   Byte offset within buf at which to write payload
+ * @param maxAvailable Maximum bytes available from dataOffset onward
+ * @param bytesWritten Out: total bytes written from buf[0] (header + payload)
+ * @return true on success, false if the setting/option index is invalid
+ */
 static bool readSettingLabelDID(uint16_t did, uint8_t *buf,
                 uint16_t dataOffset, uint16_t maxAvailable,
                 uint16_t *bytesWritten)
@@ -347,6 +426,17 @@ static bool readSettingLabelDID(uint16_t did, uint8_t *buf,
 
 /* ---- Write handlers ---- */
 
+/**
+ * @brief Handle a WDBI write to the setpoint DID
+ *
+ * Publishes the new PPO2 setpoint to chan_setpoint and sends a positive response.
+ * Sends NRC_INCORRECT_MSG_LEN if requestLength is not UDS_SINGLE_VALUE_LEN.
+ *
+ * @param ctx           UDS context
+ * @param requestData   Full request bytes (SID + DID + data)
+ * @param requestLength Total byte count of requestData
+ * @return true (always; error path sends NRC and still returns true)
+ */
 static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData,
                  uint16_t requestLength)
 {
@@ -367,6 +457,17 @@ static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData,
     return true;
 }
 
+/**
+ * @brief Handle a WDBI write to the calibration trigger DID
+ *
+ * Validates FO2 range (0–FO2_MAX_PERCENT), checks that calibration is not
+ * already running, then publishes a CalRequest_t to chan_cal_request.
+ *
+ * @param ctx           UDS context
+ * @param requestData   Full request bytes; data byte carries FO2 percentage (0–100)
+ * @param requestLength Total byte count of requestData
+ * @return true (always; error paths send NRC and still return true)
+ */
 static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
                        const uint8_t *requestData,
                        uint16_t requestLength)
@@ -406,6 +507,18 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
     return true;
 }
 
+/**
+ * @brief Handle a WDBI write to a setting save DID (persists to flash)
+ *
+ * Extracts the big-endian uint64 value from the request, calls
+ * UDS_SaveSettingValue, and sends a positive response on success.
+ *
+ * @param ctx           UDS context
+ * @param did           Setting save DID (UDS_DID_SETTING_SAVE_BASE + index)
+ * @param requestData   Full request bytes
+ * @param requestLength Total byte count of requestData
+ * @return true (always; error path sends NRC and still returns true)
+ */
 static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did,
                 const uint8_t *requestData,
                 uint16_t requestLength)
@@ -433,6 +546,18 @@ static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did,
     return true;
 }
 
+/**
+ * @brief Handle a WDBI write to a setting value DID (volatile, not persisted)
+ *
+ * Validates the request length, extracts the big-endian uint64 value, and calls
+ * UDS_SetSettingValue to stage the change without writing to flash.
+ *
+ * @param ctx           UDS context
+ * @param did           Setting value DID (UDS_DID_SETTING_VALUE_BASE + index)
+ * @param requestData   Full request bytes; must be SETTING_VALUE_WRITE_LEN bytes
+ * @param requestLength Total byte count of requestData
+ * @return true (always; error path sends NRC and still returns true)
+ */
 static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
                      const uint8_t *requestData,
                      uint16_t requestLength)
@@ -464,7 +589,14 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
 }
 
 /**
- * @brief Handle WriteDataByIdentifier (0x2E)
+ * @brief Handle WriteDataByIdentifier service (SID 0x2E)
+ *
+ * Dispatches to the appropriate write handler based on the DID: setpoint,
+ * calibration trigger, setting save, or setting value.
+ *
+ * @param ctx           UDS context
+ * @param requestData   Request bytes starting at the SID byte
+ * @param requestLength Total byte count of requestData
  */
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
                     const uint8_t *requestData,

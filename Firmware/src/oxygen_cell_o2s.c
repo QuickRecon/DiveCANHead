@@ -1,3 +1,13 @@
+/**
+ * @file oxygen_cell_o2s.c
+ * @brief Driver for Oxygen Scientific (O2S) digital oxygen cells over UART.
+ *
+ * Polls the cell at ~1 Hz by sending the "Mm\n" command and parsing the
+ * "Mn:<ppo2>" response.  Calibration is a multiplicative coefficient stored
+ * in settings.  Publishes OxygenCellMsg_t to the per-cell zbus channel.
+ * One thread is spawned per cell enabled via CONFIG_CELL_n_TYPE_O2S.
+ */
+
 /* strtok_r requires POSIX source on native_sim (host libc) */
 #if !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
@@ -47,6 +57,17 @@ static const k_timeout_t ZBUS_PUB_TIMEOUT_MS = K_MSEC(100);
 
 /* ---- Parse functions (pure, no OS deps — testable) ---- */
 
+/**
+ * @brief Strip leading nulls/newlines and trailing CR/LF from a raw UART buffer.
+ *
+ * Copies the cleaned string into outBuffer (null-terminated).  Safe to call
+ * from unit tests — no OS dependencies.
+ *
+ * @param rawBuffer  Source buffer as received from UART (may start with nulls/newlines).
+ * @param outBuffer  Destination buffer for the cleaned string.
+ * @param outBufferLen  Size of outBuffer including space for the null terminator.
+ * @return Number of leading bytes skipped before the first printable character.
+ */
 size_t o2s_prepare_message_buffer(const char *rawBuffer, char *outBuffer,
                                   size_t outBufferLen)
 {
@@ -80,6 +101,16 @@ size_t o2s_prepare_message_buffer(const char *rawBuffer, char *outBuffer,
     return skipped;
 }
 
+/**
+ * @brief Parse an O2S "Mn:<value>" response and extract the PPO2 reading.
+ *
+ * Accepts both the response token "Mn" and the command echo "Mm" to handle
+ * the cell's half-duplex echo behaviour.
+ *
+ * @param message  Null-terminated, cleaned message string (CR/LF already stripped).
+ * @param ppo2     Output: PPO2 in bar (raw float from sensor, not centibar).
+ * @return true if a valid reading was parsed, false if the format was unrecognised.
+ */
 bool o2s_parse_response(const char *message, Numeric_t *ppo2)
 {
     bool success = false;
@@ -110,6 +141,14 @@ bool o2s_parse_response(const char *message, Numeric_t *ppo2)
     return success;
 }
 
+/**
+ * @brief Format a command string into a UART transmit buffer, appending the
+ *        O2S line terminator (LF, 0x0A).
+ *
+ * @param command  Null-terminated ASCII command string (e.g. "Mm").
+ * @param txBuf    Destination byte buffer; will be zero-filled then populated.
+ * @param bufLen   Size of txBuf in bytes.
+ */
 void o2s_format_tx_command(const char *command, uint8_t *txBuf, size_t bufLen)
 {
     if ((command != NULL) && (txBuf != NULL) && (bufLen > 0U)) {
@@ -136,6 +175,14 @@ struct o2s_cell_state {
     const struct zbus_channel *out_chan;
 };
 
+/**
+ * @brief Copy an UART_RX_RDY payload into the cell's last_message buffer.
+ *
+ * Called from the UART async callback; keeps the callback body small.
+ *
+ * @param cell  Cell state whose last_message field is written.
+ * @param rx    RX event data containing buf pointer, offset, and byte count.
+ */
 static void o2s_capture_rx(struct o2s_cell_state *cell,
                            const struct uart_event_rx *rx)
 {
@@ -148,6 +195,16 @@ static void o2s_capture_rx(struct o2s_cell_state *cell,
     }
 }
 
+/**
+ * @brief UART async callback for the O2S cell driver.
+ *
+ * On UART_RX_RDY captures received bytes; on UART_RX_DISABLED releases the
+ * semaphore to unblock the cell thread.
+ *
+ * @param dev        UART device (unused; Zephyr callback contract).
+ * @param evt        UART event describing the type and associated data.
+ * @param user_data  Pointer to the o2s_cell_state for this cell.
+ */
 /* UART async callback — signals the cell thread when RX completes or idles */
 static void o2s_uart_callback(const struct device *dev,
                               struct uart_event *evt, void *user_data)
@@ -168,6 +225,12 @@ static void o2s_uart_callback(const struct device *dev,
     }
 }
 
+/**
+ * @brief Format and transmit a command string to the O2S cell via UART.
+ *
+ * @param cell     Cell state providing the UART device handle and TX buffer.
+ * @param command  Null-terminated ASCII command string (e.g. GET_OXY_COMMAND).
+ */
 static void o2s_send_command(struct o2s_cell_state *cell, const char *command)
 {
     if ((NULL == cell) || (NULL == command)) {
@@ -180,6 +243,15 @@ static void o2s_send_command(struct o2s_cell_state *cell, const char *command)
     }
 }
 
+/**
+ * @brief Apply calibration to the last cell sample and publish to zbus.
+ *
+ * Checks for stale data (timeout) and low VBUS voltage before computing
+ * PPO2.  The O2S calibration coefficient is multiplicative: the cell reports
+ * raw bar values that are scaled by cal_coeff to correct for drift.
+ *
+ * @param cell  Cell state with the most recent sample and calibration data.
+ */
 static void o2s_broadcast(struct o2s_cell_state *cell)
 {
     PPO2_t ppo2 = 0U;
@@ -232,6 +304,12 @@ static void o2s_broadcast(struct o2s_cell_state *cell)
     (void)zbus_chan_pub(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
 }
 
+/**
+ * @brief Load the stored O2S calibration coefficient from settings and set
+ *        cell status to CELL_OK or CELL_NEED_CAL accordingly.
+ *
+ * @param cell  Cell state whose cal_coeff and status fields are updated.
+ */
 static void o2s_load_cal(struct o2s_cell_state *cell)
 {
     char key[O2S_KEY_BUFFER_LEN] = {0};
@@ -259,6 +337,12 @@ static void o2s_load_cal(struct o2s_cell_state *cell)
     }
 }
 
+/**
+ * @brief Clean and parse the last received UART message, update cell state,
+ *        and broadcast the result.
+ *
+ * @param cell  Cell state containing last_message and output channel.
+ */
 static void o2s_process_rx(struct o2s_cell_state *cell)
 {
     char msgArray[O2S_RX_BUFFER_LEN] = {0};
@@ -279,6 +363,13 @@ static void o2s_process_rx(struct o2s_cell_state *cell)
     }
 }
 
+/**
+ * @brief One-time setup for an O2S cell: initialise the RX semaphore, register
+ *        the UART callback, load calibration, and publish an initial fail message.
+ *
+ * @param cell  Cell state to initialise.
+ * @return true if setup succeeded and the main loop may proceed; false on error.
+ */
 static bool o2s_setup(struct o2s_cell_state *cell)
 {
     bool ok = true;
@@ -317,6 +408,16 @@ static bool o2s_setup(struct o2s_cell_state *cell)
     return ok;
 }
 
+/**
+ * @brief Zephyr thread entry point for an O2S digital oxygen cell.
+ *
+ * After setup, loops at ~1 Hz: enables async UART RX, sends the poll command,
+ * waits for the response semaphore, parses, and broadcasts.
+ *
+ * @param p1  Pointer to the cell's o2s_cell_state struct.
+ * @param p2  Unused (required by Zephyr thread entry signature).
+ * @param p3  Unused (required by Zephyr thread entry signature).
+ */
 static void o2s_cell_thread(void *p1, void *p2, void *p3)
 {
     struct o2s_cell_state *cell = p1;

@@ -1,3 +1,14 @@
+/**
+ * @file oxygen_cell_diveo2.c
+ * @brief Driver for DiveO2 fluorescence-based digital oxygen cells over UART.
+ *
+ * Polls each cell using the "#DRAW" detailed command (falling back to "#DOXY"
+ * simple format).  Calibration is stored as a scale factor relative to the
+ * nominal 1,000,000 count-per-bar output.  Publishes OxygenCellMsg_t including
+ * pressure and temperature ancillary data to the per-cell zbus channel.
+ * One thread is spawned per cell enabled via CONFIG_CELL_n_TYPE_DIVEO2.
+ */
+
 /* strtok_r requires POSIX source on native_sim (host libc) */
 #if !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
@@ -86,6 +97,16 @@ typedef struct {
 
 /* ---- Parse functions (pure, no OS deps — testable) ---- */
 
+/**
+ * @brief Decode a DiveO2 numeric error-code string into a CellStatus_t severity.
+ *
+ * Bit-tests the error word against defined error and warning masks.  Fatal
+ * sensor errors map to CELL_FAIL; humidity/pressure warnings to CELL_DEGRADED;
+ * unknown non-zero codes to CELL_FAIL; zero to CELL_OK.
+ *
+ * @param err_str  Null-terminated decimal string of the error code field.
+ * @return CELL_OK, CELL_DEGRADED, or CELL_FAIL.
+ */
 CellStatus_t diveo2_parse_error_code(const char *err_str)
 {
     CellStatus_t status = CELL_OK;
@@ -118,6 +139,17 @@ CellStatus_t diveo2_parse_error_code(const char *err_str)
     return status;
 }
 
+/**
+ * @brief Strip leading CR/nulls and trailing CR/LF from a raw DiveO2 UART buffer.
+ *
+ * DiveO2 uses CR (0x0D) as its line terminator, so leading CRs are treated as
+ * junk in the same way O2S treats leading LFs.
+ *
+ * @param rawBuffer    Source buffer as received from UART.
+ * @param outBuffer    Destination buffer for the cleaned, null-terminated string.
+ * @param outBufferLen Size of outBuffer including space for the null terminator.
+ * @return Number of leading bytes skipped.
+ */
 size_t diveo2_prepare_message_buffer(const char *rawBuffer, char *outBuffer,
                                      size_t outBufferLen)
 {
@@ -153,6 +185,15 @@ size_t diveo2_prepare_message_buffer(const char *rawBuffer, char *outBuffer,
     return skipped;
 }
 
+/**
+ * @brief Return true if every pointer in a field array is non-null.
+ *
+ * Factored out to avoid S1067 (long `&&` chains) when checking strtok_r results.
+ *
+ * @param fields  Array of C-string pointers produced by strtok_r.
+ * @param count   Number of elements to check.
+ * @return true if all fields[0..count-1] are non-NULL.
+ */
 /* Returns true if all pointers in the array are non-null. Loops to avoid an
  * S1067 long chain of `&&` operators in callers. */
 static bool diveo2_all_non_null(const char *const *fields, uint8_t count)
@@ -167,6 +208,15 @@ static bool diveo2_all_non_null(const char *const *fields, uint8_t count)
     return all_present;
 }
 
+/**
+ * @brief Parse a DiveO2 "#DOXY <ppo2> <temp> <errcode>" simple response.
+ *
+ * @param message      Cleaned, null-terminated message string.
+ * @param ppo2         Output: raw PPO2 in units of 10^-3 hPa (DiveO2 native counts).
+ * @param temperature  Output: cell temperature in tenths of a degree Celsius.
+ * @param status       Output: cell status derived from the error code field.
+ * @return true if parsing succeeded and all outputs are valid.
+ */
 bool diveo2_parse_simple_response(const char *message, int32_t *ppo2,
                                   int32_t *temperature, CellStatus_t *status)
 {
@@ -212,6 +262,14 @@ bool diveo2_parse_simple_response(const char *message, int32_t *ppo2,
     return success;
 }
 
+/**
+ * @brief Parse a DiveO2 "#DRAW <ppo2> <temp> <err> <phase> <intensity>
+ *        <ambient> <pressure> <humidity>" detailed response.
+ *
+ * @param message  Cleaned, null-terminated message string.
+ * @param out      Output struct populated with all eight fields and derived status.
+ * @return true if all eight fields were present and parsed successfully.
+ */
 bool diveo2_parse_detailed_response(const char *message,
                                     DiveO2DetailedReading_t *out)
 {
@@ -262,6 +320,14 @@ bool diveo2_parse_detailed_response(const char *message,
     return success;
 }
 
+/**
+ * @brief Format a command string into a UART transmit buffer, appending the
+ *        DiveO2 line terminator (CR, 0x0D).
+ *
+ * @param command  Null-terminated ASCII command string (e.g. "#DRAW").
+ * @param txBuf    Destination byte buffer; will be zero-filled then populated.
+ * @param bufLen   Size of txBuf in bytes.
+ */
 void diveo2_format_tx_command(const char *command, uint8_t *txBuf,
                               size_t bufLen)
 {
@@ -294,6 +360,14 @@ struct diveo2_cell_state {
     const struct zbus_channel *out_chan;
 };
 
+/**
+ * @brief Copy a UART_RX_RDY payload into the cell's last_message buffer.
+ *
+ * Factored out of the UART callback to keep the switch-case body small (S1151).
+ *
+ * @param cell  Cell state whose last_message field is written.
+ * @param rx    RX event data containing buf pointer, offset, and byte count.
+ */
 /* The Zephyr UART async callback dispatches RX-ready events. The case body
  * size and the framework-fixed parameter types are not negotiable, so the
  * memcpy step is factored out to satisfy S1151 and the suppressions in
@@ -310,6 +384,16 @@ static void diveo2_capture_rx(struct diveo2_cell_state *cell,
     }
 }
 
+/**
+ * @brief UART async callback for the DiveO2 cell driver.
+ *
+ * On UART_RX_RDY captures received bytes; on UART_RX_DISABLED releases the
+ * semaphore to unblock the cell thread.
+ *
+ * @param dev        UART device (unused; Zephyr callback contract).
+ * @param evt        UART event describing the type and associated data.
+ * @param user_data  Pointer to the diveo2_cell_state for this cell.
+ */
 /* UART async callback — signals the cell thread when RX completes or idles */
 static void diveo2_uart_callback(const struct device *dev,
                                  struct uart_event *evt, void *user_data)
@@ -331,6 +415,12 @@ static void diveo2_uart_callback(const struct device *dev,
     }
 }
 
+/**
+ * @brief Format and transmit a command string to the DiveO2 cell via UART.
+ *
+ * @param cell     Cell state providing the UART device handle and TX buffer.
+ * @param command  Null-terminated ASCII command string (e.g. GET_DETAIL_COMMAND).
+ */
 static void diveo2_send_command(struct diveo2_cell_state *cell,
                                 const char *command)
 {
@@ -346,6 +436,15 @@ static void diveo2_send_command(struct diveo2_cell_state *cell,
     }
 }
 
+/**
+ * @brief Apply calibration to the last DiveO2 sample and publish to zbus.
+ *
+ * Checks for stale data and low VBUS before computing PPO2.  The DiveO2
+ * calibration coefficient represents the nominal count-per-bar scale factor;
+ * PPO2 = cell_sample / cal_coeff (inverted compared to analog).
+ *
+ * @param cell  Cell state with the most recent sample and calibration data.
+ */
 static void diveo2_broadcast(struct diveo2_cell_state *cell)
 {
     PPO2_t ppo2 = 0U;
@@ -398,6 +497,12 @@ static void diveo2_broadcast(struct diveo2_cell_state *cell)
     (void)zbus_chan_pub(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
 }
 
+/**
+ * @brief Load the stored DiveO2 calibration coefficient from settings and set
+ *        cell status to CELL_OK or CELL_NEED_CAL accordingly.
+ *
+ * @param cell  Cell state whose cal_coeff and status fields are updated.
+ */
 static void diveo2_load_cal(struct diveo2_cell_state *cell)
 {
     char key[DIVEO2_KEY_BUFFER_LEN] = {0};
@@ -423,6 +528,12 @@ static void diveo2_load_cal(struct diveo2_cell_state *cell)
     }
 }
 
+/**
+ * @brief Copy all fields from a detailed reading into the cell state.
+ *
+ * @param cell  Cell state to update.
+ * @param r     Parsed detailed reading (ppo2, temperature, pressure, humidity, status).
+ */
 static void diveo2_apply_detailed(struct diveo2_cell_state *cell,
                                   const DiveO2DetailedReading_t *r)
 {
@@ -434,6 +545,14 @@ static void diveo2_apply_detailed(struct diveo2_cell_state *cell,
     cell->last_ppo2_ticks = k_uptime_ticks();
 }
 
+/**
+ * @brief Copy ppo2, temperature, and status from a simple response into the cell state.
+ *
+ * @param cell    Cell state to update.
+ * @param ppo2    Raw PPO2 counts from the simple response.
+ * @param temp    Temperature in tenths of a degree Celsius.
+ * @param status  Cell status derived from the simple response error field.
+ */
 static void diveo2_apply_simple(struct diveo2_cell_state *cell, int32_t ppo2,
                                 int32_t temp, CellStatus_t status)
 {
@@ -443,6 +562,14 @@ static void diveo2_apply_simple(struct diveo2_cell_state *cell, int32_t ppo2,
     cell->last_ppo2_ticks = k_uptime_ticks();
 }
 
+/**
+ * @brief Clean and parse the last received UART message, updating cell state.
+ *
+ * Attempts the detailed (#DRAW) format first, falls back to simple (#DOXY).
+ * Backs off briefly on parse failure to avoid flooding logs.
+ *
+ * @param cell  Cell state containing last_message and per-cell fields to update.
+ */
 static void diveo2_process_rx(struct diveo2_cell_state *cell)
 {
     char msgArray[DIVEO2_RX_BUFFER_LEN] = {0};
@@ -468,6 +595,14 @@ static void diveo2_process_rx(struct diveo2_cell_state *cell)
     }
 }
 
+/**
+ * @brief One-time setup for a DiveO2 cell: initialise the RX semaphore,
+ *        register the UART callback, load calibration, and publish an initial
+ *        fail message while the cell powers up.
+ *
+ * @param cell  Cell state to initialise.
+ * @return true if setup succeeded and the main loop may proceed; false on error.
+ */
 static bool diveo2_setup(struct diveo2_cell_state *cell)
 {
     bool ok = true;
@@ -509,6 +644,17 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
     return ok;
 }
 
+/**
+ * @brief Zephyr thread entry point for a DiveO2 digital oxygen cell.
+ *
+ * After setup, loops continuously: enables async UART RX, sends the detailed
+ * poll command, waits for the response semaphore, parses, broadcasts, then
+ * enforces a minimum sample interval of MIN_SAMPLE_INTERVAL_MS.
+ *
+ * @param p1  Pointer to the cell's diveo2_cell_state struct.
+ * @param p2  Unused (required by Zephyr thread entry signature).
+ * @param p3  Unused (required by Zephyr thread entry signature).
+ */
 static void diveo2_cell_thread(void *p1, void *p2, void *p3)
 {
     struct diveo2_cell_state *cell = p1;

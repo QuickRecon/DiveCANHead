@@ -36,6 +36,17 @@ ZBUS_MSG_SUBSCRIBER_DEFINE(ppo2_tx_sub);
 ZBUS_CHAN_ADD_OBS(chan_consensus, ppo2_tx_sub, 3);
 
 
+/**
+ * @brief Thread entry: broadcast PPO2, millivolts, and cell state to the DiveCAN bus
+ *
+ * Waits on the consensus zbus channel (with a periodic timeout) and transmits
+ * the three-cell PPO2 values, millivolts, and inclusion/failure state.
+ * Failed or uncalibrated cells are replaced with PPO2_FAIL before transmission.
+ *
+ * @param p1 Unused (Zephyr thread parameter)
+ * @param p2 Unused (Zephyr thread parameter)
+ * @param p3 Unused (Zephyr thread parameter)
+ */
 static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1);

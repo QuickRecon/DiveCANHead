@@ -1,3 +1,11 @@
+/**
+ * @file oxygen_cell_channels.h
+ * @brief Zbus channel declarations for oxygen cell data and calibration.
+ *
+ * Declares per-cell reading channels (chan_cell_1..3), the voted consensus
+ * channel, and the calibration request/response channels.  Consumers include
+ * divecan.c, ppo2_control.c, and calibration.c.
+ */
 #ifndef OXYGEN_CELL_CHANNELS_H
 #define OXYGEN_CELL_CHANNELS_H
 

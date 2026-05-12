@@ -1,3 +1,13 @@
+/**
+ * @file oxygen_cell_analog.c
+ * @brief Driver for galvanic analog oxygen cells via external ADS1115 ADCs.
+ *
+ * Reads differential ADC counts over I2C, converts to millivolts and PPO2
+ * using a stored calibration coefficient, and publishes OxygenCellMsg_t to
+ * the per-cell zbus channel. One Zephyr thread is spawned per cell that is
+ * configured as analog via Kconfig (CONFIG_CELL_n_TYPE_ANALOG).
+ */
+
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/adc.h>
 #include <zephyr/logging/log.h>
@@ -42,6 +52,12 @@ struct analog_cell_state {
     struct adc_sequence adc_seq;
 };
 
+/**
+ * @brief Trigger a single ADC read and store the raw count result in cell state.
+ *
+ * @param cell Cell state containing the ADC device handle and sequence config.
+ * @return 0 on success, negative errno on ADC driver failure.
+ */
 static Status_t analog_adc_read(struct analog_cell_state *cell)
 {
     cell->adc_seq.buffer = &cell->adc_sample_buf;
@@ -59,6 +75,12 @@ static Status_t analog_adc_read(struct analog_cell_state *cell)
     return ret;
 }
 
+/**
+ * @brief Convert the latest ADC counts to PPO2 and millivolts, then publish
+ *        an OxygenCellMsg_t on the cell's zbus output channel.
+ *
+ * @param cell Cell state holding calibration coefficient, status, and output channel.
+ */
 static void analog_publish(struct analog_cell_state *cell)
 {
     PPO2_t ppo2 = 0;
@@ -102,6 +124,14 @@ static void analog_publish(struct analog_cell_state *cell)
 /* ADS1115 ADC resolution in bits */
 static const uint8_t ADS1115_RESOLUTION_BITS = 16U;
 
+/**
+ * @brief Configure the ADS1115 ADC channel for differential mode and prepare
+ *        the adc_sequence struct in the cell state.
+ *
+ * @param cell Cell state containing device pointer and channel/pin assignments.
+ * @return 0 on success, -ENODEV if the device is not ready, or a negative
+ *         errno forwarded from adc_channel_setup().
+ */
 static Status_t analog_cell_init_adc(struct analog_cell_state *cell)
 {
     Status_t result = 0;
@@ -143,6 +173,12 @@ static Status_t analog_cell_init_adc(struct analog_cell_state *cell)
     return result;
 }
 
+/**
+ * @brief Load the stored calibration coefficient from settings and update
+ *        cell status to CELL_OK or CELL_NEED_CAL accordingly.
+ *
+ * @param cell Cell state whose cal_coeff and status fields are updated in place.
+ */
 static void analog_load_cal(struct analog_cell_state *cell)
 {
     char key[16] = {0};
@@ -167,6 +203,16 @@ static void analog_load_cal(struct analog_cell_state *cell)
     }
 }
 
+/**
+ * @brief Zephyr thread entry point for an analog oxygen cell.
+ *
+ * Loads calibration, publishes an initial fail-state datapoint while the ADC
+ * spools up, then loops continuously: read ADC counts and publish PPO2.
+ *
+ * @param p1 Pointer to the cell's analog_cell_state struct.
+ * @param p2 Unused (required by Zephyr thread entry signature).
+ * @param p3 Unused (required by Zephyr thread entry signature).
+ */
 static void analog_cell_thread(void *p1, void *p2, void *p3)
 {
     struct analog_cell_state *cell = p1;

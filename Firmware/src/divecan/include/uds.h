@@ -75,19 +75,53 @@ static const uint16_t UDS_DID_SETTING_LABEL_END = 0x9200U;
 static const size_t SETTING_LABEL_MAX_LEN = 9U;
 
 /**
- * @brief UDS context
+ * @brief UDS session context (one per ISO-TP channel).
  */
 typedef struct {
-    uint8_t responseBuffer[UDS_MAX_RESPONSE_LENGTH];
-    uint16_t responseLength;
-    ISOTPContext_t *isotpContext;
+    uint8_t responseBuffer[UDS_MAX_RESPONSE_LENGTH]; /**< Scratch buffer for building responses */
+    uint16_t responseLength;                         /**< Number of valid bytes in responseBuffer */
+    ISOTPContext_t *isotpContext;                    /**< Underlying ISO-TP transport context */
 } UDSContext_t;
 
+/**
+ * @brief Initialize a UDS context, linking it to an ISO-TP context.
+ *
+ * @param ctx      UDS context to initialize
+ * @param isotpCtx ISO-TP context to use for response transmission
+ */
 void UDS_Init(UDSContext_t *ctx, ISOTPContext_t *isotpCtx);
+
+/**
+ * @brief Dispatch an incoming UDS request to the appropriate service handler.
+ *
+ * Parses the SID, validates minimum length, and routes to ReadDataByIdentifier
+ * or WriteDataByIdentifier. Sends a negative response on any error.
+ *
+ * @param ctx           UDS context
+ * @param requestData   Raw request bytes (including pad + SID + DID + data)
+ * @param requestLength Total length of requestData in bytes
+ */
 void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
             uint16_t requestLength);
+
+/**
+ * @brief Send a UDS negative response.
+ *
+ * @param ctx          UDS context
+ * @param requestedSID SID from the request that is being rejected
+ * @param nrc          Negative response code (UDS_NRC_t value)
+ */
 void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID,
                   uint8_t nrc);
+
+/**
+ * @brief Transmit the assembled response buffer via ISO-TP.
+ *
+ * Must be called after populating ctx->responseBuffer and setting
+ * ctx->responseLength.
+ *
+ * @param ctx UDS context with responseBuffer and responseLength set
+ */
 void UDS_SendResponse(UDSContext_t *ctx);
 
 #endif /* UDS_H */

@@ -1,3 +1,13 @@
+/**
+ * @file main.c
+ * @brief DiveCAN protocol message composer unit tests
+ *
+ * Pure host build — no Zephyr CAN driver. Uses divecan_send_stub.c to capture
+ * every DiveCANMessage_t that the composers in divecan_tx.c would hand to the
+ * CAN driver. Each test calls a tx* function and then inspects the captured
+ * frame via test_tx_last() to assert byte-exact protocol layout.
+ */
+
 #include <zephyr/ztest.h>
 #include <string.h>
 
@@ -11,16 +21,22 @@ const DiveCANMessage_t *test_tx_last(void);
 
 /* ---- Fixtures ---- */
 
+/**
+ * @brief Per-test setup: clear the captured-frame ring buffer before each test.
+ *
+ * Ensures no frame left over from a previous test is accidentally consumed by
+ * test_tx_last().
+ */
 static void tx_before(void *fixture)
 {
     ARG_UNUSED(fixture);
     test_tx_reset();
 }
 
+/** @brief Suite: byte-layout verification for every DiveCAN TX message composer. */
 ZTEST_SUITE(divecan_tx, NULL, NULL, tx_before, NULL, NULL);
 
-/* ---- PPO2 message ---- */
-
+/** @brief txPPO2 packs three cell PPO2 values into bytes [1..3] with byte[0] = 0x00. */
 ZTEST(divecan_tx, test_txPPO2_byte_layout)
 {
     txPPO2(DIVECAN_SOLO, 98, 99, 100);
@@ -35,8 +51,7 @@ ZTEST(divecan_tx, test_txPPO2_byte_layout)
     zassert_equal(f->length, 4);
 }
 
-/* ---- Millivolts message (big-endian) ---- */
-
+/** @brief txMillivolts encodes each 16-bit millivolt value big-endian (hi byte first). */
 ZTEST(divecan_tx, test_txMillivolts_big_endian)
 {
     txMillivolts(DIVECAN_SOLO, 0x0102, 0x0304, 0x0506);
@@ -52,8 +67,7 @@ ZTEST(divecan_tx, test_txMillivolts_big_endian)
     zassert_equal(f->length, 7);
 }
 
-/* ---- Cell state bitmask ---- */
-
+/** @brief txCellState encodes the include flags as a bitmask in byte[0] (bit0=cell1, bit2=cell3). */
 ZTEST(divecan_tx, test_txCellState_bitmask)
 {
     txCellState(DIVECAN_SOLO, true, false, true, 130);
@@ -65,6 +79,7 @@ ZTEST(divecan_tx, test_txCellState_bitmask)
     zassert_equal(f->length, 2);
 }
 
+/** @brief All three cells included produces bitmask 0x07 (bits 0, 1, and 2 set). */
 ZTEST(divecan_tx, test_txCellState_all_included)
 {
     txCellState(DIVECAN_SOLO, true, true, true, 98);
@@ -73,8 +88,7 @@ ZTEST(divecan_tx, test_txCellState_all_included)
     zassert_equal(f->data[0], 0x07);
 }
 
-/* ---- Status message ---- */
-
+/** @brief txStatus places battery voltage in byte[0], setpoint in byte[5], error byte in byte[7]. */
 ZTEST(divecan_tx, test_txStatus_battery_and_setpoint)
 {
     txStatus(DIVECAN_SOLO, 42, 130, DIVECAN_ERR_NONE, true);
@@ -87,6 +101,7 @@ ZTEST(divecan_tx, test_txStatus_battery_and_setpoint)
     zassert_equal(f->length, 8);
 }
 
+/** @brief Low-battery error propagates to byte[7] unchanged (no battery-normal override). */
 ZTEST(divecan_tx, test_txStatus_low_battery)
 {
     txStatus(DIVECAN_SOLO, 20, 130, DIVECAN_ERR_BAT_LOW, true);
@@ -95,8 +110,7 @@ ZTEST(divecan_tx, test_txStatus_low_battery)
     zassert_equal(f->data[7], DIVECAN_ERR_BAT_LOW);
 }
 
-/* ---- Bus ID ---- */
-
+/** @brief txID sets BUS_ID_ID base, manufacturer byte[0], and firmware version byte[2]. */
 ZTEST(divecan_tx, test_txID_fields)
 {
     txID(DIVECAN_SOLO, DIVECAN_MANUFACTURER_GEN, 42);
@@ -109,8 +123,7 @@ ZTEST(divecan_tx, test_txID_fields)
     zassert_equal(f->length, 3);
 }
 
-/* ---- Name (8-byte truncation) ---- */
-
+/** @brief txName truncates names longer than 8 characters to exactly 8 bytes. */
 ZTEST(divecan_tx, test_txName_truncation)
 {
     /* "LONGERNAME" is 10 chars, truncated to 8 → "LONGERNA" */
@@ -123,6 +136,7 @@ ZTEST(divecan_tx, test_txName_truncation)
     zassert_equal(f->data[7], 'A');
 }
 
+/** @brief txName pads short names with zero bytes beyond the last character. */
 ZTEST(divecan_tx, test_txName_short)
 {
     txName(DIVECAN_SOLO, "Hi");
@@ -133,8 +147,7 @@ ZTEST(divecan_tx, test_txName_short)
     zassert_equal(f->data[2], 0);
 }
 
-/* ---- Bus init ---- */
-
+/** @brief txStartDevice composes the 29-bit CAN ID from BUS_INIT_ID, device type, and target type. */
 ZTEST(divecan_tx, test_txStartDevice_id_composition)
 {
     txStartDevice(DIVECAN_CONTROLLER, DIVECAN_SOLO);
@@ -150,8 +163,7 @@ ZTEST(divecan_tx, test_txStartDevice_id_composition)
     zassert_equal(f->length, 3);
 }
 
-/* ---- Calibration ACK ---- */
-
+/** @brief txCalAck sends DIVECAN_CAL_ACK byte followed by 0xFF fill bytes per protocol spec. */
 ZTEST(divecan_tx, test_txCalAck)
 {
     txCalAck(DIVECAN_SOLO);
@@ -165,8 +177,7 @@ ZTEST(divecan_tx, test_txCalAck)
     zassert_equal(f->length, 8);
 }
 
-/* ---- Calibration response ---- */
-
+/** @brief txCalResponse packs result, cell millivolts, FO2, and big-endian atmos pressure correctly. */
 ZTEST(divecan_tx, test_txCalResponse_fields)
 {
     txCalResponse(DIVECAN_SOLO, DIVECAN_CAL_RESULT_OK,
@@ -185,8 +196,7 @@ ZTEST(divecan_tx, test_txCalResponse_fields)
     zassert_equal(f->length, 8);
 }
 
-/* ---- OBOE stat ---- */
-
+/** @brief txOBOEStat with no error sends battery-OK byte (0x01) and protocol magic bytes. */
 ZTEST(divecan_tx, test_txOBOEStat_ok)
 {
     txOBOEStat(DIVECAN_SOLO, DIVECAN_ERR_NONE);
@@ -199,6 +209,7 @@ ZTEST(divecan_tx, test_txOBOEStat_ok)
     zassert_equal(f->length, 5);
 }
 
+/** @brief txOBOEStat with DIVECAN_ERR_BAT_LOW sends battery-low byte (0x00). */
 ZTEST(divecan_tx, test_txOBOEStat_low_battery)
 {
     txOBOEStat(DIVECAN_SOLO, DIVECAN_ERR_BAT_LOW);
@@ -207,8 +218,7 @@ ZTEST(divecan_tx, test_txOBOEStat_low_battery)
     zassert_equal(f->data[0], 0x00);
 }
 
-/* ---- Setpoint ---- */
-
+/** @brief txSetpoint sends a 1-byte frame with PPO2_SETPOINT_ID and the setpoint value in byte[0]. */
 ZTEST(divecan_tx, test_txSetpoint)
 {
     txSetpoint(DIVECAN_SOLO, 130);

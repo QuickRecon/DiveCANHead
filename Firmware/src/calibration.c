@@ -1,3 +1,15 @@
+/**
+ * @file calibration.c
+ * @brief Oxygen sensor calibration: coefficient computation, persistence, and dispatch.
+ *
+ * Implements the calibration subsystem for all supported cell types (analog, DiveO2, O2S).
+ * A zbus message-subscriber thread (cal_thread) serializes incoming CalRequest_t messages,
+ * executes the requested calibration method, persists new coefficients via the Zephyr
+ * settings subsystem, and publishes a CalResponse_t result. An atomic guard prevents
+ * duplicate in-flight calibrations from overlapping (the Shearwater sometimes fires
+ * the request twice).
+ */
+
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/logging/log.h>
@@ -30,12 +42,22 @@ LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
 
 /* ---- Atomic calibration guard (bug #7 fix) ---- */
 
+/**
+ * @brief Return a pointer to the module-static calibration-in-progress atomic flag.
+ *
+ * @return Pointer to the atomic_t used to guard against concurrent calibration runs.
+ */
 static atomic_t *getCalRunning(void)
 {
     static atomic_t cal_running = ATOMIC_INIT(0);
     return &cal_running;
 }
 
+/**
+ * @brief Query whether a calibration is currently in progress.
+ *
+ * @return true if a calibration is active, false otherwise.
+ */
 bool calibration_is_running(void)
 {
     return atomic_get(getCalRunning()) != 0;
@@ -45,6 +67,13 @@ bool calibration_is_running(void)
 
 #define CAL_SETTINGS_KEY "cal/cell"
 
+/**
+ * @brief Persist a calibration coefficient to non-volatile settings storage.
+ *
+ * @param cell_num Zero-based cell index (0–2).
+ * @param coeff    Calibration coefficient to store.
+ * @return 0 on success, negative errno on settings write failure.
+ */
 static Status_t cal_save_coefficient(uint8_t cell_num, CalCoeff_t coeff)
 {
     char key[CAL_KEY_BUF_LEN] = {0};
@@ -54,6 +83,13 @@ static Status_t cal_save_coefficient(uint8_t cell_num, CalCoeff_t coeff)
     return settings_save_one(key, &coeff, sizeof(coeff));
 }
 
+/**
+ * @brief Load a calibration coefficient from non-volatile settings storage.
+ *
+ * @param cell_num Zero-based cell index (0–2).
+ * @param coeff    Output pointer; written with the loaded coefficient on success.
+ * @return 0 on success, -ENOENT if the key is absent or the stored size does not match.
+ */
 static Status_t cal_load_coefficient(uint8_t cell_num, CalCoeff_t *coeff)
 {
     char key[CAL_KEY_BUF_LEN] = {0};
@@ -73,6 +109,12 @@ static Status_t cal_load_coefficient(uint8_t cell_num, CalCoeff_t *coeff)
 /* ---- Per-cell read helpers (S1151: extracted from switch cases) ---- */
 
 #if CONFIG_CELL_COUNT >= 1
+/**
+ * @brief Read the latest cell-1 message from the zbus channel.
+ *
+ * @param data Output pointer; written with the cell message on success.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the channel read times out.
+ */
 static CalResult_t cal_read_cell_1(OxygenCellMsg_t *data)
 {
     CalResult_t result = CAL_RESULT_OK;
@@ -86,6 +128,12 @@ static CalResult_t cal_read_cell_1(OxygenCellMsg_t *data)
 #endif /* CELL_COUNT >= 1 */
 
 #if CONFIG_CELL_COUNT >= 2
+/**
+ * @brief Read the latest cell-2 message from the zbus channel.
+ *
+ * @param data Output pointer; written with the cell message on success.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the channel read times out.
+ */
 static CalResult_t cal_read_cell_2(OxygenCellMsg_t *data)
 {
     CalResult_t result = CAL_RESULT_OK;
@@ -99,6 +147,12 @@ static CalResult_t cal_read_cell_2(OxygenCellMsg_t *data)
 #endif /* CELL_COUNT >= 2 */
 
 #if CONFIG_CELL_COUNT >= 3
+/**
+ * @brief Read the latest cell-3 message from the zbus channel.
+ *
+ * @param data Output pointer; written with the cell message on success.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the channel read times out.
+ */
 static CalResult_t cal_read_cell_3(OxygenCellMsg_t *data)
 {
     CalResult_t result = CAL_RESULT_OK;
@@ -116,6 +170,18 @@ static CalResult_t cal_read_cell_3(OxygenCellMsg_t *data)
 #if CONFIG_CELL_COUNT >= 1
 
 #if defined(CONFIG_CELL_1_TYPE_ANALOG)
+/**
+ * @brief Compute and return the calibration coefficient for analog cell 1.
+ *
+ * Reads the current millivolt reading from cell 1, converts to approximate ADC
+ * counts, and calls analog_cal_coefficient(). Also populates mv_out with the
+ * scaled millivolt reading for the DiveCAN response message.
+ *
+ * @param target_ppo2 Target PPO2 in centibar at the time of calibration.
+ * @param mv_out      Output: cell millivolts scaled to ShortMillivolts_t (mV / 100).
+ * @param coeff_out   Output: computed calibration coefficient (>= 0).
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
+ */
 static CalResult_t cal_compute_coeff_cell_1(PPO2_t target_ppo2,
                                              ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
@@ -136,6 +202,18 @@ static CalResult_t cal_compute_coeff_cell_1(PPO2_t target_ppo2,
     return result;
 }
 #elif defined(CONFIG_CELL_1_TYPE_DIVEO2)
+/**
+ * @brief Compute and return the calibration coefficient for DiveO2 cell 1.
+ *
+ * Recovers an approximate raw cell sample from precision_ppo2 and the default
+ * coefficient, then calls diveo2_cal_coefficient(). mv_out is unused for
+ * digital cells (the DiveCAN response does not carry millivolts).
+ *
+ * @param target_ppo2 Target PPO2 in centibar at the time of calibration.
+ * @param mv_out      Unused for this cell type.
+ * @param coeff_out   Output: computed calibration coefficient.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
+ */
 static CalResult_t cal_compute_coeff_cell_1(PPO2_t target_ppo2,
                                              ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
@@ -159,6 +237,17 @@ static CalResult_t cal_compute_coeff_cell_1(PPO2_t target_ppo2,
     return result;
 }
 #elif defined(CONFIG_CELL_1_TYPE_O2S)
+/**
+ * @brief Compute and return the calibration coefficient for O2S cell 1.
+ *
+ * Recovers an approximate raw cell sample from precision_ppo2 and the default
+ * coefficient, then calls o2s_cal_coefficient(). mv_out is unused for digital cells.
+ *
+ * @param target_ppo2 Target PPO2 in centibar at the time of calibration.
+ * @param mv_out      Unused for this cell type.
+ * @param coeff_out   Output: computed calibration coefficient.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
+ */
 static CalResult_t cal_compute_coeff_cell_1(PPO2_t target_ppo2,
                                              ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
@@ -186,6 +275,14 @@ static CalResult_t cal_compute_coeff_cell_1(PPO2_t target_ppo2,
 #if CONFIG_CELL_COUNT >= 2
 
 #if defined(CONFIG_CELL_2_TYPE_ANALOG)
+/**
+ * @brief Compute and return the calibration coefficient for analog cell 2.
+ *
+ * @param target_ppo2 Target PPO2 in centibar at the time of calibration.
+ * @param mv_out      Output: cell millivolts scaled to ShortMillivolts_t (mV / 100).
+ * @param coeff_out   Output: computed calibration coefficient (>= 0).
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
+ */
 static CalResult_t cal_compute_coeff_cell_2(PPO2_t target_ppo2,
                                              ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
@@ -204,6 +301,14 @@ static CalResult_t cal_compute_coeff_cell_2(PPO2_t target_ppo2,
     return result;
 }
 #elif defined(CONFIG_CELL_2_TYPE_DIVEO2)
+/**
+ * @brief Compute and return the calibration coefficient for DiveO2 cell 2.
+ *
+ * @param target_ppo2 Target PPO2 in centibar at the time of calibration.
+ * @param mv_out      Unused for this cell type.
+ * @param coeff_out   Output: computed calibration coefficient.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
+ */
 static CalResult_t cal_compute_coeff_cell_2(PPO2_t target_ppo2,
                                              ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
@@ -224,6 +329,14 @@ static CalResult_t cal_compute_coeff_cell_2(PPO2_t target_ppo2,
     return result;
 }
 #elif defined(CONFIG_CELL_2_TYPE_O2S)
+/**
+ * @brief Compute and return the calibration coefficient for O2S cell 2.
+ *
+ * @param target_ppo2 Target PPO2 in centibar at the time of calibration.
+ * @param mv_out      Unused for this cell type.
+ * @param coeff_out   Output: computed calibration coefficient.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
+ */
 static CalResult_t cal_compute_coeff_cell_2(PPO2_t target_ppo2,
                                              ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
@@ -249,6 +362,14 @@ static CalResult_t cal_compute_coeff_cell_2(PPO2_t target_ppo2,
 #if CONFIG_CELL_COUNT >= 3
 
 #if defined(CONFIG_CELL_3_TYPE_ANALOG)
+/**
+ * @brief Compute and return the calibration coefficient for analog cell 3.
+ *
+ * @param target_ppo2 Target PPO2 in centibar at the time of calibration.
+ * @param mv_out      Output: cell millivolts scaled to ShortMillivolts_t (mV / 100).
+ * @param coeff_out   Output: computed calibration coefficient (>= 0).
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
+ */
 static CalResult_t cal_compute_coeff_cell_3(PPO2_t target_ppo2,
                                              ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
@@ -267,6 +388,14 @@ static CalResult_t cal_compute_coeff_cell_3(PPO2_t target_ppo2,
     return result;
 }
 #elif defined(CONFIG_CELL_3_TYPE_DIVEO2)
+/**
+ * @brief Compute and return the calibration coefficient for DiveO2 cell 3.
+ *
+ * @param target_ppo2 Target PPO2 in centibar at the time of calibration.
+ * @param mv_out      Unused for this cell type.
+ * @param coeff_out   Output: computed calibration coefficient.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
+ */
 static CalResult_t cal_compute_coeff_cell_3(PPO2_t target_ppo2,
                                              ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
@@ -287,6 +416,14 @@ static CalResult_t cal_compute_coeff_cell_3(PPO2_t target_ppo2,
     return result;
 }
 #elif defined(CONFIG_CELL_3_TYPE_O2S)
+/**
+ * @brief Compute and return the calibration coefficient for O2S cell 3.
+ *
+ * @param target_ppo2 Target PPO2 in centibar at the time of calibration.
+ * @param mv_out      Unused for this cell type.
+ * @param coeff_out   Output: computed calibration coefficient.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
+ */
 static CalResult_t cal_compute_coeff_cell_3(PPO2_t target_ppo2,
                                              ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
@@ -311,6 +448,19 @@ static CalResult_t cal_compute_coeff_cell_3(PPO2_t target_ppo2,
 
 /* ---- Per-cell coefficient read dispatch ---- */
 
+/**
+ * @brief Dispatch coefficient computation to the correct cell slot and type.
+ *
+ * Routes to cal_compute_coeff_cell_{1,2,3} based on cell_num. The callee
+ * selected at compile time handles the per-type sensor math.
+ *
+ * @param cell_num    Zero-based cell index (0–2).
+ * @param target_ppo2 Target PPO2 in centibar.
+ * @param mv_out      Output: scaled millivolts (analog cells only; digital cells write 0).
+ * @param coeff_out   Output: computed calibration coefficient.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED on cell read timeout,
+ *         or CAL_RESULT_FAILED with an unreachable error if cell_num is out of range.
+ */
 static CalResult_t cal_read_coefficient(uint8_t cell_num, PPO2_t target_ppo2,
                                          ShortMillivolts_t *mv_out,
                                          Numeric_t *coeff_out)
@@ -343,6 +493,17 @@ static CalResult_t cal_read_coefficient(uint8_t cell_num, PPO2_t target_ppo2,
 
 /* ---- Coefficient validation and save ---- */
 
+/**
+ * @brief Validate a newly computed coefficient, persist it, and verify the round-trip.
+ *
+ * Rejects coefficients < 0 (computation error or zero-divisor guard triggered).
+ * On success, reads the value back from settings to confirm the write was lossless.
+ *
+ * @param cell_num  Zero-based cell index (0–2).
+ * @param new_coeff Coefficient to validate and store; must be >= 0.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_REJECTED if the coefficient is negative,
+ *         CAL_RESULT_FAILED if the settings write or readback fails.
+ */
 static CalResult_t cal_validate_and_save(uint8_t cell_num, Numeric_t new_coeff)
 {
     CalResult_t result = CAL_RESULT_OK;
@@ -383,6 +544,16 @@ static CalResult_t cal_validate_and_save(uint8_t cell_num, Numeric_t new_coeff)
  * Also checks the coefficient is within bounds for the cell type.
  */
 
+/**
+ * @brief Calibrate a single cell: read its sensor data, compute a new coefficient, validate, and save.
+ *
+ * Combines cal_read_coefficient() and cal_validate_and_save() for one cell slot.
+ *
+ * @param cell_num    Zero-based cell index (0–2).
+ * @param target_ppo2 Known-good PPO2 reference in centibar for this calibration.
+ * @param mv_out      Output: cell millivolts for the DiveCAN response (analog cells only).
+ * @return CAL_RESULT_OK on success, or a failure/rejection code from the read or save step.
+ */
 static CalResult_t calibrate_cell(uint8_t cell_num, PPO2_t target_ppo2,
                                    ShortMillivolts_t *mv_out)
 {
@@ -403,12 +574,18 @@ static CalResult_t calibrate_cell(uint8_t cell_num, PPO2_t target_ppo2,
 /* ---- Calibration methods ---- */
 
 /**
- * Calibrates oxygen sensors using a digital reference cell.
+ * @brief Calibrate analog cells using the first available DiveO2 cell as a live PPO2 reference.
  *
- * This function searches for the first DiveO2 cell (at compile time via
- * Kconfig), reads its current PPO2 and pressure from zbus, then calibrates
- * all analog cells against that reference. The fO2 is computed from the
- * digital cell's PPO2 and pressure.
+ * Reads the reference cell's PPO2 and pressure via zbus, derives the target PPO2
+ * and fO2, then calibrates every analog cell slot against that value. The derived
+ * pressure and fO2 are written back into req so the DiveCAN response message
+ * matches what the old firmware reported.
+ *
+ * @param req  Calibration request; req->pressure_mbar and req->fo2 are overwritten
+ *             with values derived from the digital reference cell.
+ * @param resp Calibration response; resp->cell_mv[] is populated for each analog cell.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_REJECTED if no DiveO2 cell is found or
+ *         if the pressure reading is zero.
  */
 static CalResult_t cal_digital_reference(CalRequest_t *req,
                                           CalResponse_t *resp)
@@ -486,6 +663,16 @@ static CalResult_t cal_digital_reference(CalRequest_t *req,
     return result;
 }
 
+/**
+ * @brief Calibrate all analog cells against an externally supplied fO2 and pressure.
+ *
+ * Computes the target PPO2 from req->fo2 and req->pressure_mbar, then calibrates
+ * every cell slot. Intended for use when the dive computer provides the reference gas mix.
+ *
+ * @param req  Calibration request carrying fo2 (0–100) and pressure_mbar.
+ * @param resp Calibration response; resp->cell_mv[] populated for each cell.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_REJECTED if target PPO2 computation overflows.
+ */
 static CalResult_t cal_analog_absolute(const CalRequest_t *req,
                                         CalResponse_t *resp)
 {
@@ -516,6 +703,16 @@ static CalResult_t cal_analog_absolute(const CalRequest_t *req,
     return result;
 }
 
+/**
+ * @brief Calibrate all cell types (analog and digital) against the supplied fO2 and pressure.
+ *
+ * Identical flow to cal_analog_absolute() but does not restrict calibration to
+ * analog-only cells — all configured cell slots are calibrated.
+ *
+ * @param req  Calibration request carrying fo2 (0–100) and pressure_mbar.
+ * @param resp Calibration response; resp->cell_mv[] populated for each cell.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_REJECTED if target PPO2 computation overflows.
+ */
 static CalResult_t cal_total_absolute(const CalRequest_t *req,
                                        CalResponse_t *resp)
 {
@@ -546,6 +743,16 @@ static CalResult_t cal_total_absolute(const CalRequest_t *req,
     return result;
 }
 
+/**
+ * @brief Flush the breathing loop with pure oxygen for 25 seconds, then run a total-absolute cal.
+ *
+ * Fires the O2 flush solenoid (or inject solenoid if no dedicated flush solenoid is present)
+ * once per second for CAL_FLUSH_SECONDS, then delegates to cal_total_absolute().
+ *
+ * @param req  Calibration request; passed through to cal_total_absolute().
+ * @param resp Calibration response; passed through to cal_total_absolute().
+ * @return Result of cal_total_absolute().
+ */
 static CalResult_t cal_solenoid_flush(const CalRequest_t *req,
                                        CalResponse_t *resp)
 {
@@ -570,6 +777,17 @@ static CalResult_t cal_solenoid_flush(const CalRequest_t *req,
 
 /* ---- Calibration execution (runs within the listener thread) ---- */
 
+/**
+ * @brief Execute a calibration request end-to-end and publish the result to zbus.
+ *
+ * Saves the current coefficients before starting so they can be restored on
+ * failure. Validates fO2 range, dispatches to the appropriate cal method, rolls
+ * back coefficients if the result is not CAL_RESULT_OK, and publishes a
+ * CalResponse_t on chan_cal_response.
+ *
+ * @param req Calibration request to execute; may be mutated by cal_digital_reference()
+ *            to fill in the derived pressure and fO2.
+ */
 static void execute_calibration(CalRequest_t *req)
 {
     CalResponse_t resp = {
@@ -643,6 +861,17 @@ static void execute_calibration(CalRequest_t *req)
 ZBUS_MSG_SUBSCRIBER_DEFINE(cal_sub);
 ZBUS_CHAN_ADD_OBS(chan_cal_request, cal_sub, 0);
 
+/**
+ * @brief Calibration listener thread entry: wait for CalRequest_t messages and run calibration.
+ *
+ * Subscribes to chan_cal_request via cal_sub. Uses an atomic compare-and-swap to
+ * ensure only one calibration runs at a time; duplicate requests while a cal is
+ * active receive a CAL_RESULT_BUSY response.
+ *
+ * @param p1 Unused thread argument.
+ * @param p2 Unused thread argument.
+ * @param p3 Unused thread argument.
+ */
 static void cal_thread_fn(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1);
@@ -683,6 +912,13 @@ K_THREAD_DEFINE(cal_thread, CAL_THREAD_STACK,
         cal_thread_fn, NULL, NULL, NULL,
         6, 0, 0);
 
+/**
+ * @brief Module initialisation hook (currently a no-op).
+ *
+ * The calibration thread is started automatically by K_THREAD_DEFINE.
+ * Reserved for future use: pre-loading cached coefficients from settings
+ * and distributing them to cell modules at boot.
+ */
 void calibration_init(void)
 {
     /* Nothing to do currently — threads are auto-started by K_THREAD_DEFINE.

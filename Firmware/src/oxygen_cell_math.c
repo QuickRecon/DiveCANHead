@@ -1,3 +1,13 @@
+/**
+ * @file oxygen_cell_math.c
+ * @brief Pure arithmetic helpers shared by all oxygen cell drivers.
+ *
+ * Provides ADC-to-millivolt conversion, PPO2 calculation, calibration
+ * coefficient computation for each cell type (analog, DiveO2, O2S), and
+ * the multi-cell consensus voting algorithm.  No OS dependencies except
+ * optional error reporting when CONFIG_ZBUS is defined.
+ */
+
 #include "oxygen_cell_math.h"
 #include <math.h>
 #include <stdlib.h>
@@ -26,6 +36,16 @@ static const Numeric_t ERROR_RETURN = -1.0f;
 
 /* ---- Internal consensus helpers ---- */
 
+/**
+ * @brief Compute consensus PPO2 from exactly two included cells.
+ *
+ * If the two cells are within MAX_DEVIATION of each other, the consensus is
+ * their average.  Otherwise all cells are voted out (no reliable reading).
+ *
+ * @param consensus  Partially populated consensus state with include_array and
+ *                   precision_ppo2_array already set; consensus_ppo2 is written.
+ * @return Updated ConsensusMsg_t with consensus_ppo2 and include_array set.
+ */
 static ConsensusMsg_t two_cell_consensus(ConsensusMsg_t consensus)
 {
     /* Find the two values that we're including */
@@ -68,6 +88,16 @@ static ConsensusMsg_t two_cell_consensus(ConsensusMsg_t consensus)
     return consensus;
 }
 
+/**
+ * @brief Compute consensus PPO2 from three included cells using pairwise voting.
+ *
+ * Finds the closest pair, votes out the outlier cell if it exceeds MAX_DEVIATION
+ * from that pair's average, then computes the consensus from the remaining cells.
+ * If all three are too far apart, all cells are voted out.
+ *
+ * @param consensus  Partially populated consensus state; written in place.
+ * @return Updated ConsensusMsg_t with consensus_ppo2 and include_array set.
+ */
 static ConsensusMsg_t three_cell_consensus(ConsensusMsg_t consensus)
 {
     const PrecisionPPO2_t pairwise_differences[3] = {
@@ -159,9 +189,20 @@ static ConsensusMsg_t three_cell_consensus(ConsensusMsg_t consensus)
 /* ---- Consensus voting ---- */
 
 /**
- * Calculate the consensus PPO2, cell state aware but does not set the PPO2 to
- * fail value for failed cells. In an all fail scenario we want that data to
- * still be intact so we can still have our best guess.
+ * @brief Compute the voted consensus PPO2 across up to CELL_MAX_COUNT cells.
+ *
+ * Cell-state aware but does not force the PPO2 to PPO2_FAIL for individually
+ * failed cells — in an all-fail scenario the best available estimate is
+ * preserved so the system can still fly a guess rather than going completely
+ * blind.
+ *
+ * @param cells           Array of the most recent OxygenCellMsg_t from each cell.
+ * @param count           Number of valid entries in cells (1..CELL_MAX_COUNT).
+ * @param now_ticks       Current kernel uptime in ticks (k_uptime_ticks()).
+ * @param staleness_ticks Maximum age (in ticks) a cell reading may be before
+ *                        being excluded from the vote.
+ * @return ConsensusMsg_t with consensus_ppo2, include_array, confidence, and
+ *         per-cell arrays populated.
  */
 ConsensusMsg_t consensus_calculate(const OxygenCellMsg_t cells[],
                                    uint8_t count,
@@ -262,8 +303,10 @@ ConsensusMsg_t consensus_calculate(const OxygenCellMsg_t cells[],
 }
 
 /**
- * Calculate the cell confidence out of 3. 3 means 3 voted-in cells,
- * 2 means 2 voted-in cells, etc.
+ * @brief Count the number of cells that were voted in by consensus_calculate.
+ *
+ * @param consensus  Consensus result with include_array populated.
+ * @return Number of cells with include_array[i] == true (0..CELL_MAX_COUNT).
  */
 uint8_t consensus_confidence(const ConsensusMsg_t *consensus)
 {
@@ -281,8 +324,13 @@ uint8_t consensus_confidence(const ConsensusMsg_t *consensus)
 /* ---- Analog cell math ---- */
 
 /**
- * Convert ADC counts to millivolts.
- * ADC range 0.256V full scale at 100000 micro-mV/mV, 15-bit (32767) resolution
+ * @brief Convert ADS1115 raw differential counts to millivolts.
+ *
+ * Uses COUNTS_TO_MILLIS from oxygen_cell_types.h (0.256 V FS / 32767 counts,
+ * scaled to millivolts).  Takes absolute value to handle negative differential.
+ *
+ * @param adc_counts  Signed 16-bit differential ADC count from ADS1115.
+ * @return Millivolts_t (uint16_t) representing the cell voltage in millivolts.
  */
 Millivolts_t analog_counts_to_mv(int16_t adc_counts)
 {
@@ -292,9 +340,15 @@ Millivolts_t analog_counts_to_mv(int16_t adc_counts)
 }
 
 /**
- * Calculate calibrated PPO2 from ADC counts.
- * Our coefficient is simply the float needed to make the current sample
- * the current PPO2.
+ * @brief Calculate calibrated PPO2 (in centibar) from ADS1115 counts.
+ *
+ * PPO2 = abs(counts) * COUNTS_TO_MILLIS * cal_coeff.  The calibration
+ * coefficient encodes the sensor's mV/centibar sensitivity.
+ *
+ * @param adc_counts  Signed 16-bit differential ADC count.
+ * @param cal_coeff   Calibration coefficient (centibar per millivolt); valid
+ *                    range ANALOG_CAL_LOWER..ANALOG_CAL_UPPER.
+ * @return PPO2 in centibar as a Numeric_t (float).
  */
 Numeric_t analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff)
 {
@@ -304,9 +358,15 @@ Numeric_t analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff)
 /* ---- Calibration math ---- */
 
 /**
- * Compute target PPO2 in centibar from fO2 (percent) and pressure (mbar).
- * Bug #4 fix: compute in uint32_t and range-check before truncating.
- * Returns -1 if the result overflows PPO2_t range.
+ * @brief Compute the expected PPO2 in centibar from gas fraction and ambient pressure.
+ *
+ * target_ppo2 = fo2 * pressure_mbar / 1000.  Computed in uint32_t to avoid
+ * overflow before the range check.
+ *
+ * @param fo2           Fraction of oxygen as a percentage (0..100, typically 21..100).
+ * @param pressure_mbar Ambient pressure in millibar.
+ * @return Target PPO2 in centibar (0..MAX_VALID_PPO2), or -1 if the result
+ *         would overflow PPO2_t.
  */
 int16_t cal_compute_target_ppo2(FO2_t fo2, uint16_t pressure_mbar)
 {
@@ -326,11 +386,16 @@ int16_t cal_compute_target_ppo2(FO2_t fo2, uint16_t pressure_mbar)
 }
 
 /**
- * Compute analog calibration coefficient from ADC counts and target PPO2.
- * Our coefficient is simply the float needed to make the current sample
- * the current PPO2: newCal = PPO2 / (abs(adcCounts) * COUNTS_TO_MILLIS)
- * Bug #2 fix: guard against zero divisor.
- * Returns negative value if divisor is zero or coefficient is out of bounds.
+ * @brief Derive an analog cell calibration coefficient from a known-good reading.
+ *
+ * newCal = target_ppo2 / (abs(adc_counts) * COUNTS_TO_MILLIS).
+ * Rejects results outside ANALOG_CAL_LOWER..ANALOG_CAL_UPPER (valid for
+ * 8..13 mV cell output in air).
+ *
+ * @param adc_counts   Signed 16-bit ADC count at calibration time.
+ * @param target_ppo2  Known PPO2 at calibration in centibar.
+ * @return CalCoeff_t coefficient, or ERROR_RETURN (-1.0f) if the divisor is
+ *         near-zero or the result is out of the valid calibration range.
  */
 CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2)
 {
@@ -359,10 +424,16 @@ CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2)
 }
 
 /**
- * Compute DiveO2 calibration coefficient from raw cell sample and target PPO2.
- * newCal = abs(cellSample) / (PPO2 / 100.0)
- * Bug #2 fix: guard against zero divisor.
- * Returns negative value if inputs are invalid or coefficient is out of bounds.
+ * @brief Derive a DiveO2 calibration coefficient from a known-good reading.
+ *
+ * newCal = abs(cell_sample) / (target_ppo2 / 100.0).  The DiveO2 cell reports
+ * counts proportional to bar; the coefficient is the nominal counts-per-bar,
+ * expected near 1,000,000.  Rejects results outside DIVEO2_CAL_LOWER..UPPER.
+ *
+ * @param cell_sample  Raw DiveO2 count at calibration time (integer, units: ~counts/bar).
+ * @param target_ppo2  Known PPO2 at calibration in centibar.
+ * @return CalCoeff_t coefficient, or ERROR_RETURN (-1.0f) if target is zero,
+ *         sample is near-zero, or the coefficient is out of valid range.
  */
 CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
 {
@@ -399,10 +470,16 @@ CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
 }
 
 /**
- * Compute O2S calibration coefficient from cell reading and target PPO2.
- * newCal = (PPO2/100.0) / cellSample
- * Bug #2 fix: guard against zero divisor.
- * Returns negative value if inputs are invalid or coefficient is out of bounds.
+ * @brief Derive an O2S calibration coefficient from a known-good reading.
+ *
+ * newCal = (target_ppo2 / 100.0) / cell_sample.  The O2S reports PPO2
+ * directly in bar; the coefficient scales for sensor-to-sensor variation,
+ * nominally 1.0.  Rejects results outside O2S_CAL_LOWER..O2S_CAL_UPPER.
+ *
+ * @param cell_sample  Raw O2S PPO2 reading in bar at calibration time.
+ * @param target_ppo2  Known PPO2 at calibration in centibar.
+ * @return CalCoeff_t coefficient, or ERROR_RETURN (-1.0f) if cell_sample is
+ *         near-zero or the coefficient is out of valid range.
  */
 CalCoeff_t o2s_cal_coefficient(Numeric_t cell_sample, PPO2_t target_ppo2)
 {

@@ -1,3 +1,12 @@
+/**
+ * @file main.c
+ * @brief Application entry point — hardware init and heartbeat LED loop
+ *
+ * Initialises calibration, performs a deferred CAN-bus activity check to
+ * guard against transient power-on glitches, then drives the heartbeat LED.
+ * Cell threads and the consensus subscriber are auto-started via K_THREAD_DEFINE.
+ */
+
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/version.h>
@@ -19,6 +28,11 @@ static const uint32_t STARTUP_DELAY_MS = 1000U;
 /* Heartbeat LED blink period (ms) */
 static const uint32_t BLINK_PERIOD_MS = 500U;
 
+/**
+ * @brief Application entry point; initialises hardware and blinks the heartbeat LED
+ *
+ * @return 0 on normal exit; negative errno if LED hardware is unavailable
+ */
 Status_t main(void)
 {
     Status_t ret = 0;

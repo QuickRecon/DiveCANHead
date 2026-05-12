@@ -21,7 +21,13 @@ LOG_MODULE_REGISTER(divecan_send, LOG_LEVEL_INF);
 /* Timeout for can_send (ms) — generous to handle bus contention */
 #define CAN_SEND_TIMEOUT_MS 100
 
-/* Static accessor for CAN device reference */
+/**
+ * @brief Return pointer to the static CAN device handle
+ *
+ * Encapsulates the file-scoped device reference so no global is exposed.
+ *
+ * @return Pointer to the static `const struct device *` storing the CAN dev handle
+ */
 static const struct device **get_can_dev(void)
 {
     static const struct device *dev;
@@ -31,6 +37,15 @@ static const struct device **get_can_dev(void)
 /* Semaphore for blocking sends */
 static K_SEM_DEFINE(tx_done_sem, 0, 1);
 
+/**
+ * @brief CAN TX completion callback, called from ISR context
+ *
+ * Signals the blocking-send semaphore and logs any TX error.
+ *
+ * @param dev       CAN device that completed the transmission (unused)
+ * @param error     Zero on success; negative errno on failure
+ * @param user_data User data pointer passed to can_send (unused)
+ */
 static void tx_done_callback(const struct device *dev, int error,
                  void *user_data)
 {
@@ -43,6 +58,15 @@ static void tx_done_callback(const struct device *dev, int error,
     k_sem_give(&tx_done_sem);
 }
 
+/**
+ * @brief Initialize the DiveCAN TX layer and start the CAN controller
+ *
+ * Stores the CAN device handle and calls can_start(). Safe to call if the
+ * controller is already running (EALREADY is treated as success).
+ *
+ * @param can_dev Ready CAN device obtained from DT (must not be NULL or unready)
+ * @return 0 on success, negative errno on failure
+ */
 Status_t divecan_tx_init(const struct device *can_dev)
 {
     Status_t result = -EINVAL;
@@ -66,7 +90,12 @@ Status_t divecan_tx_init(const struct device *can_dev)
 }
 
 /**
- * @brief Build a struct can_frame from our internal message type
+ * @brief Convert a DiveCANMessage_t to a Zephyr struct can_frame
+ *
+ * Sets the extended-ID flag (CAN_FRAME_IDE) required for DiveCAN's 29-bit IDs.
+ *
+ * @param msg Source message with id, length, and data fields populated
+ * @return Populated struct can_frame ready for can_send()
  */
 static struct can_frame msg_to_frame(const DiveCANMessage_t *msg)
 {
@@ -80,6 +109,16 @@ static struct can_frame msg_to_frame(const DiveCANMessage_t *msg)
     return frame;
 }
 
+/**
+ * @brief Transmit a DiveCAN message (non-blocking)
+ *
+ * Builds a CAN frame and calls can_send() with a 100 ms timeout.
+ * Does not wait for TX completion; use divecan_send_blocking() where
+ * frame-ordering guarantees are required (e.g., ISO-TP consecutive frames).
+ *
+ * @param msg Message to transmit (must not be NULL)
+ * @return 0 on success, negative errno on failure
+ */
 Status_t divecan_send(const DiveCANMessage_t *msg)
 {
     const struct device *dev = *get_can_dev();
@@ -99,6 +138,17 @@ Status_t divecan_send(const DiveCANMessage_t *msg)
     return result;
 }
 
+/**
+ * @brief Transmit a DiveCAN message and wait for TX completion
+ *
+ * Like divecan_send() but blocks until the frame has left the bus (tx_done
+ * callback fires).  Required for ISO-TP multi-frame sequences where frame
+ * ordering must be preserved under CAN bus arbitration retries.
+ *
+ * @param msg Message to transmit (must not be NULL)
+ * @return 0 on success, -ETIMEDOUT if TX did not complete within 100 ms,
+ *         other negative errno on CAN driver error
+ */
 Status_t divecan_send_blocking(const DiveCANMessage_t *msg)
 {
     const struct device *dev = *get_can_dev();

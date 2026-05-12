@@ -112,11 +112,22 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
     }
 };
 
+/**
+ * @brief Return the total number of configurable settings
+ *
+ * @return Number of entries in the settings definition table
+ */
 uint8_t UDS_GetSettingCount(void)
 {
     return SETTING_COUNT;
 }
 
+/**
+ * @brief Return the definition record for a setting by index
+ *
+ * @param index Zero-based setting index; must be < UDS_GetSettingCount()
+ * @return Pointer to the SettingDefinition_t, or NULL if index is out of range
+ */
 const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
 {
     const SettingDefinition_t *result = NULL;
@@ -130,6 +141,12 @@ const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
     return result;
 }
 
+/**
+ * @brief Read the current value of a setting from RuntimeSettings
+ *
+ * @param index Zero-based setting index; must be < UDS_GetSettingCount()
+ * @return Current numeric value of the setting; 0 on error or out-of-range index
+ */
 uint64_t UDS_GetSettingValue(uint8_t index)
 {
     uint64_t result = 0U;
@@ -165,6 +182,13 @@ uint64_t UDS_GetSettingValue(uint8_t index)
     return result;
 }
 
+/**
+ * @brief Validate and stage a new setting value (does not persist to flash)
+ *
+ * @param index Zero-based setting index; must be < UDS_GetSettingCount()
+ * @param value New value; must be <= the setting's maxValue
+ * @return true if the value is valid and was staged, false otherwise
+ */
 bool UDS_SetSettingValue(uint8_t index, uint64_t value)
 {
     bool result = false;
@@ -208,6 +232,16 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
     return result;
 }
 
+/**
+ * @brief Validate, apply, and persist a setting value to flash
+ *
+ * Calls UDS_SetSettingValue for validation, then writes the RuntimeSettings
+ * struct to NVS. Raises OP_ERR_FLASH on write failure.
+ *
+ * @param index Zero-based setting index; must be < UDS_GetSettingCount()
+ * @param value New value; must be <= the setting's maxValue
+ * @return true if value was validated and persisted successfully, false otherwise
+ */
 bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
 {
     bool result = false;
@@ -245,6 +279,13 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
     return result;
 }
 
+/**
+ * @brief Return the display label for a specific option of a setting
+ *
+ * @param settingIndex Zero-based setting index; must be < UDS_GetSettingCount()
+ * @param optionIndex  Zero-based option index; must be < setting->optionCount
+ * @return Pointer to the null-terminated option label, or NULL if indices are invalid
+ */
 const char *UDS_GetSettingOptionLabel(uint8_t settingIndex,
                      uint8_t optionIndex)
 {

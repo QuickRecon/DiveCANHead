@@ -1,3 +1,11 @@
+/**
+ * @file solenoid.h
+ * @brief Hardware solenoid driver with deadman-timer safety.
+ *
+ * Provides channel-level fire/off control for solenoid outputs. A hardware
+ * counter ISR forces all solenoids off when the deadman timer expires,
+ * guaranteeing a maximum on-time even if the kernel stalls.
+ */
 #ifndef SOLENOID_H
 #define SOLENOID_H
 

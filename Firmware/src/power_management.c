@@ -1,3 +1,14 @@
+/**
+ * @file power_management.c
+ * @brief Power subsystem driver: VBUS rail control, battery voltage sampling, and shutdown.
+ *
+ * Implements the Zephyr driver for the `quickrecon,power-subsystem` DT-compatible node.
+ * Handles enabling/disabling the VBUS regulator (with optional Rev2 power-mux steering),
+ * reading battery voltage via the internal ADC, sensing CAN bus activity, and initiating
+ * system shutdown. A background thread publishes periodic BatteryStatus_t updates on
+ * the chan_battery_status zbus channel.
+ */
+
 #define DT_DRV_COMPAT quickrecon_power_subsystem
 
 #include <zephyr/kernel.h>
@@ -44,6 +55,13 @@ static const uint8_t ADC_RESOLUTION_BITS = 12U;
 
 /* ---- ADC voltage sampling ---- */
 
+/**
+ * @brief Read the battery voltage by performing an ADC conversion and applying the resistor-divider ratio.
+ *
+ * @param cfg Driver config containing ADC device handle, channel, and divider ratio.
+ * @param data Driver data holding the ADC sequence state and sample buffer.
+ * @return Battery voltage in volts, or -1.0 if the ADC is not ready or the conversion failed.
+ */
 static Numeric_t sample_battery_voltage(const struct power_config *cfg,
                     struct power_data *data)
 {
@@ -75,6 +93,15 @@ static Numeric_t sample_battery_voltage(const struct power_config *cfg,
 
 /* ---- Public API ---- */
 
+/**
+ * @brief Enable the VBUS regulator, optionally configuring the Rev2 power-mux first.
+ *
+ * On Rev2 hardware the bus_sel GPIOs are set according to the compiled power mode
+ * (BATTERY, BATTERY_THEN_CAN, or CAN) before the regulator is turned on.
+ *
+ * @param dev Power subsystem device handle.
+ * @return 0 on success, negative errno from the regulator driver on failure.
+ */
 Status_t power_vbus_enable(const struct device *dev)
 {
     const struct power_config *cfg = dev->config;
@@ -103,6 +130,12 @@ Status_t power_vbus_enable(const struct device *dev)
     return regulator_enable(cfg->vbus_reg);
 }
 
+/**
+ * @brief Disable the VBUS regulator and, on Rev2, drive bus_sel to MODE_OFF (11).
+ *
+ * @param dev Power subsystem device handle.
+ * @return 0 on success, negative errno from the regulator driver on failure.
+ */
 Status_t power_vbus_disable(const struct device *dev)
 {
     const struct power_config *cfg = dev->config;
@@ -119,6 +152,12 @@ Status_t power_vbus_disable(const struct device *dev)
     return ret;
 }
 
+/**
+ * @brief Query whether the VBUS regulator is currently enabled.
+ *
+ * @param dev Power subsystem device handle.
+ * @return true if the regulator reports it is enabled, false otherwise.
+ */
 bool power_vbus_is_enabled(const struct device *dev)
 {
     const struct power_config *cfg = dev->config;
@@ -126,6 +165,12 @@ bool power_vbus_is_enabled(const struct device *dev)
     return regulator_is_enabled(cfg->vbus_reg);
 }
 
+/**
+ * @brief Read the current battery voltage.
+ *
+ * @param dev Power subsystem device handle.
+ * @return Battery voltage in volts, or -1.0 if the ADC is unavailable.
+ */
 Numeric_t power_get_battery_voltage(const struct device *dev)
 {
     const struct power_config *cfg = dev->config;
@@ -134,6 +179,15 @@ Numeric_t power_get_battery_voltage(const struct device *dev)
     return sample_battery_voltage(cfg, data);
 }
 
+/**
+ * @brief Read the current VBUS rail voltage.
+ *
+ * On Jr hardware (no dedicated VBUS sense ADC), returns the battery voltage as
+ * the closest available estimate. Rev2 will read the dedicated VBUS sense channel.
+ *
+ * @param dev Power subsystem device handle.
+ * @return VBUS voltage in volts, or -1.0 if unavailable.
+ */
 Numeric_t power_get_vbus_voltage(const struct device *dev)
 {
     /* On Jr, VBUS shares a regulator with VCC so VBUS voltage =
@@ -154,6 +208,15 @@ Numeric_t power_get_vbus_voltage(const struct device *dev)
     return result;
 }
 
+/**
+ * @brief Read the CAN bus supply voltage.
+ *
+ * Only available on Rev2 hardware with can-sense-io-channels defined.
+ * Returns -1.0 on Jr (no CAN sense hardware present).
+ *
+ * @param dev Power subsystem device handle.
+ * @return CAN supply voltage in volts, or -1.0 if unavailable.
+ */
 Numeric_t power_get_can_voltage(const struct device *dev)
 {
     const struct power_config *cfg = dev->config;
@@ -169,10 +232,14 @@ Numeric_t power_get_can_voltage(const struct device *dev)
 }
 
 /**
- * Check if the CAN bus is active (dive computer is present and powered).
- * The CAN_EN pin is active-low — LOW means bus on.
- * We temporarily enable a pull-up to avoid capacitive coupling giving a
- * false active reading, then restore to no-pull to save power.
+ * @brief Check whether the DiveCAN bus is currently active (dive computer present and powered).
+ *
+ * The CAN_EN pin is active-low: a LOW level means the bus is on. A pull-up is
+ * momentarily applied to discharge capacitive coupling before sampling, then
+ * removed to minimise quiescent current.
+ *
+ * @param dev Power subsystem device handle.
+ * @return true if the CAN bus is active, false if not present or no CAN_EN GPIO.
  */
 bool power_is_can_active(const struct device *dev)
 {
@@ -195,12 +262,14 @@ bool power_is_can_active(const struct device *dev)
 }
 
 /**
- * Go to our lowest power mode that we can be woken from by the DiveCAN bus.
+ * @brief Enter the lowest available power state, awaiting a DiveCAN bus wakeup.
  *
- * This is the Jr-specific shutdown sequence. The full Rev2 sequence includes
- * additional GPIO state management for the power mux, solenoid discharge
- * paths, and O2S cell standby prevention — those will be added when the
- * Rev2 board definition is created.
+ * Silences the CAN transceiver, disables VBUS, then reboots cold as a safe
+ * fallback until true STM32 SHUTDOWN mode with CAN wakeup is implemented.
+ * This function does not return.
+ *
+ * @param dev Power subsystem device handle.
+ * @return Never returns; sys_reboot() is called unconditionally.
  */
 Status_t power_shutdown(const struct device *dev)
 {
@@ -233,6 +302,16 @@ Status_t power_shutdown(const struct device *dev)
 
 /* ---- Driver init ---- */
 
+/**
+ * @brief Zephyr driver init: configure ADC, CAN GPIOs, and optional bus-select mux.
+ *
+ * Called by the kernel at POST_KERNEL priority 91. ADC init failure is non-fatal
+ * (voltage reads return -1 but GPIO operations still work). GPIO init failures
+ * are fatal and propagate the error code back to the kernel.
+ *
+ * @param dev Power subsystem device handle.
+ * @return 0 on success, negative errno if a GPIO could not be configured.
+ */
 static Status_t power_init(const struct device *dev)
 {
     const struct power_config *cfg = dev->config;
@@ -380,6 +459,17 @@ ZBUS_CHAN_DEFINE(chan_battery_status,
  * chan_battery_status for low-battery reporting. */
 #define BATTERY_SAMPLE_INTERVAL_MS 2000
 
+/**
+ * @brief Thread entry: periodically sample battery voltage and publish BatteryStatus_t to zbus.
+ *
+ * Runs at priority 10, waits one sample interval on startup to let the system
+ * stabilize, then publishes to chan_battery_status every BATTERY_SAMPLE_INTERVAL_MS.
+ * Logs a warning when the voltage drops below the configured threshold.
+ *
+ * @param p1 Unused thread argument.
+ * @param p2 Unused thread argument.
+ * @param p3 Unused thread argument.
+ */
 static void battery_monitor_thread(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1);

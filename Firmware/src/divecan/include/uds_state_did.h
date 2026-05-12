@@ -64,7 +64,25 @@
 #define CELL_DID_HUMIDITY           0x0CU
 #define CELL_DID_MAX_OFFSET         0x0CU
 
+/**
+ * @brief Check whether a DID falls within the state-DID ranges handled by this module.
+ *
+ * @param did UDS data identifier to test
+ * @return true if this module handles the DID (0xF2xx or 0xF4Nx)
+ */
 bool UDS_StateDID_IsStateDID(uint16_t did);
+
+/**
+ * @brief Handle a ReadDataByIdentifier request for a state DID.
+ *
+ * Reads the current value from the appropriate zbus channel or power API
+ * and encodes it into responseBuffer.
+ *
+ * @param did            UDS data identifier to read
+ * @param responseBuffer Buffer to write encoded value into
+ * @param responseLength Set to the number of bytes written on success
+ * @return true on success, false if DID unknown or data unavailable
+ */
 bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *responseBuffer,
                  uint16_t *responseLength);
 

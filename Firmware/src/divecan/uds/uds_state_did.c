@@ -37,6 +37,9 @@ static const uint8_t BYTE_IDX_3 = 3U;
 
 /**
  * @brief Write a float32 to buffer in little-endian format
+ *
+ * @param buf   Destination byte buffer; must have at least sizeof(Numeric_t) bytes available
+ * @param value Float value to serialise
  */
 static void writeFloat32(uint8_t *buf, Numeric_t value)
 {
@@ -45,6 +48,9 @@ static void writeFloat32(uint8_t *buf, Numeric_t value)
 
 /**
  * @brief Write a uint32 to buffer in little-endian format
+ *
+ * @param buf   Destination byte buffer; must have at least 4 bytes available
+ * @param value 32-bit value to serialise
  */
 static void writeUint32(uint8_t *buf, uint32_t value)
 {
@@ -56,6 +62,9 @@ static void writeUint32(uint8_t *buf, uint32_t value)
 
 /**
  * @brief Write a uint16 to buffer in little-endian format
+ *
+ * @param buf   Destination byte buffer; must have at least 2 bytes available
+ * @param value 16-bit value to serialise
  */
 static void writeUint16(uint8_t *buf, uint16_t value)
 {
@@ -67,6 +76,17 @@ static void writeUint16(uint8_t *buf, uint16_t value)
  * PPO2 Control State DID Handlers (0xF2xx)
  * ============================================================================ */
 
+/**
+ * @brief Handle a read request for a PPO2 control state DID (0xF2xx)
+ *
+ * Reads live data from zbus channels and power management API, then serialises
+ * the result into buf.
+ *
+ * @param did DID value in the 0xF200–0xF2FF range
+ * @param buf Response data buffer; caller must ensure sufficient space
+ * @param len Out: number of bytes written to buf
+ * @return true if the DID was handled, false if did is not in this range
+ */
 static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
 {
     bool result = true;
@@ -168,6 +188,18 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
  * Cell DID Handlers (0xF4Nx)
  * ============================================================================ */
 
+/**
+ * @brief Handle a cell DID offset that is common to all sensor types
+ *
+ * Covers PPO2, cell type, inclusion status, and cell status offsets.
+ *
+ * @param cellNum  Zero-based cell index (0–CELL_MAX_COUNT-1)
+ * @param offset   DID sub-offset within the cell's DID block
+ * @param cellMsg  Latest oxygen cell message from zbus; must not be NULL
+ * @param buf      Response data buffer; caller must ensure sufficient space
+ * @param len      Out: number of bytes written to buf
+ * @return true if the offset was handled, false if it is not a universal offset
+ */
 static bool handleUniversalCellDID(uint8_t cellNum, uint8_t offset,
                    const OxygenCellMsg_t *cellMsg,
                    uint8_t *buf, uint16_t *len)
@@ -231,6 +263,17 @@ static bool handleUniversalCellDID(uint8_t cellNum, uint8_t offset,
     return result;
 }
 
+/**
+ * @brief Handle a cell DID offset specific to analog galvanic cells
+ *
+ * Currently covers the millivolts offset only.
+ *
+ * @param offset  DID sub-offset within the cell's DID block
+ * @param cellMsg Latest oxygen cell message from zbus; must not be NULL
+ * @param buf     Response data buffer; caller must ensure sufficient space
+ * @param len     Out: number of bytes written to buf
+ * @return true if the offset was handled, false if it is not an analog-specific offset
+ */
 static bool handleAnalogCellDID(uint8_t offset,
                 const OxygenCellMsg_t *cellMsg,
                 uint8_t *buf, uint16_t *len)
@@ -246,6 +289,18 @@ static bool handleAnalogCellDID(uint8_t offset,
     return result;
 }
 
+/**
+ * @brief Dispatch a cell DID read to the appropriate type-specific handler
+ *
+ * Reads the cell's latest zbus message, then tries universal and analog handlers
+ * in order. DiveO2/O2S-specific offsets are not yet implemented.
+ *
+ * @param cellNum Zero-based cell index (0–CELL_MAX_COUNT-1)
+ * @param offset  DID sub-offset within the cell's DID block (0–CELL_DID_MAX_OFFSET)
+ * @param buf     Response data buffer; caller must ensure sufficient space
+ * @param len     Out: number of bytes written to buf
+ * @return true if the DID was handled, false if the offset is unrecognised
+ */
 static bool handleCellDID(uint8_t cellNum, uint8_t offset,
               uint8_t *buf, uint16_t *len)
 {
@@ -292,6 +347,14 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset,
  * Public API
  * ============================================================================ */
 
+/**
+ * @brief Test whether a DID belongs to the state DID namespace
+ *
+ * Covers the 0xF2xx PPO2 control range and the 0xF4xx cell data range.
+ *
+ * @param did DID to test
+ * @return true if the DID is in a state DID range, false otherwise
+ */
 bool UDS_StateDID_IsStateDID(uint16_t did)
 {
     bool result = false;
@@ -312,6 +375,14 @@ bool UDS_StateDID_IsStateDID(uint16_t did)
     return result;
 }
 
+/**
+ * @brief Read a state DID and serialise the result into the response buffer
+ *
+ * @param did            DID to read; must satisfy UDS_StateDID_IsStateDID()
+ * @param responseBuffer Destination buffer for the serialised value; must not be NULL
+ * @param responseLength Out: number of bytes written; set to 0 before dispatch
+ * @return true if the DID was handled and data written, false on error
+ */
 bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *responseBuffer,
                  uint16_t *responseLength)
 {

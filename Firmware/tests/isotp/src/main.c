@@ -1,3 +1,17 @@
+/**
+ * @file main.c
+ * @brief ISO-TP framing layer unit tests
+ *
+ * Tests the ISO-TP RX state machine (ISOTP_ProcessRxFrame, ISOTP_Poll) and the
+ * TX queue (ISOTP_Send, ISOTP_TxQueue_Poll, ISOTP_TxQueue_ProcessFC) in
+ * isotp.c / isotp_tx_queue.c. Uses divecan_tx_stub.c in place of the real CAN
+ * driver so outgoing frames (flow-control responses, SF, FF, CF) can be
+ * inspected by byte index.
+ *
+ * DiveCAN-specific padding: the real protocol inserts a 0x00 byte after the
+ * PCI byte in every frame, so SF/FF data starts at byte[2] not byte[1].
+ */
+
 #include <zephyr/ztest.h>
 #include <string.h>
 
@@ -11,6 +25,7 @@
 
 static ISOTPContext_t ctx;
 
+/** @brief Build a DiveCANMessage_t with the DiveCAN ID encoding (target<<8 | source). */
 static DiveCANMessage_t make_msg(uint8_t src, uint8_t tgt, const uint8_t *data,
                  uint8_t len)
 {
@@ -24,6 +39,12 @@ static DiveCANMessage_t make_msg(uint8_t src, uint8_t tgt, const uint8_t *data,
     return m;
 }
 
+/**
+ * @brief Suite-level setup: initialise the TX queue and the ISO-TP context once per suite run.
+ *
+ * Called by the ztest framework before the first test in each suite; also mirrors
+ * isotp_before so the context is clean even without a prior test.
+ */
 static void *isotp_setup(void)
 {
     test_reset_frames();
@@ -32,6 +53,12 @@ static void *isotp_setup(void)
     return NULL;
 }
 
+/**
+ * @brief Per-test setup: reinitialise the frame buffer, TX queue, and context.
+ *
+ * Runs before every test in both suites so each test starts with a clean state:
+ * no captured frames, no in-progress TX, and context in ISOTP_IDLE.
+ */
 static void isotp_before(void *fixture)
 {
     ARG_UNUSED(fixture);
@@ -40,11 +67,12 @@ static void isotp_before(void *fixture)
     ISOTP_Init(&ctx, SRC, TGT, MSG_ID);
 }
 
+/** @brief Suite: ISO-TP receive path — SF, FF+CF reassembly, error and address filtering. */
 ZTEST_SUITE(isotp_rx, NULL, isotp_setup, isotp_before, NULL, NULL);
+/** @brief Suite: ISO-TP transmit path — SF/FF/CF generation, FC handling, queue serialization. */
 ZTEST_SUITE(isotp_tx, NULL, isotp_setup, isotp_before, NULL, NULL);
 
-/* ---- RX: Single Frame ---- */
-
+/** @brief A valid 3-byte SF is accepted, rxComplete is set, and bytes are copied to rxBuffer. */
 ZTEST(isotp_rx, test_sf_basic)
 {
     uint8_t data[] = {0x03, 0xAA, 0xBB, 0xCC};
@@ -60,6 +88,7 @@ ZTEST(isotp_rx, test_sf_basic)
     zassert_equal(ctx.rxBuffer[2], 0xCC);
 }
 
+/** @brief Maximum SF payload (7 bytes — the ISO-TP limit for a CAN SF) is fully received. */
 ZTEST(isotp_rx, test_sf_max_length)
 {
     uint8_t data[] = {0x07, 1, 2, 3, 4, 5, 6, 7};
@@ -75,6 +104,7 @@ ZTEST(isotp_rx, test_sf_max_length)
     }
 }
 
+/** @brief An SF with a zero length field is rejected (not consumed, rxComplete stays false). */
 ZTEST(isotp_rx, test_sf_zero_length_rejected)
 {
     uint8_t data[] = {0x00, 0xAA};
@@ -86,6 +116,7 @@ ZTEST(isotp_rx, test_sf_zero_length_rejected)
     zassert_false(ctx.rxComplete);
 }
 
+/** @brief A frame addressed to a different target is silently ignored (not consumed). */
 ZTEST(isotp_rx, test_sf_wrong_target_ignored)
 {
     uint8_t data[] = {0x03, 0xAA, 0xBB, 0xCC};
@@ -97,8 +128,7 @@ ZTEST(isotp_rx, test_sf_wrong_target_ignored)
     zassert_false(ctx.rxComplete);
 }
 
-/* ---- RX: Multi-frame (FF + CF) ---- */
-
+/** @brief FF followed by one CF reassembles 10 bytes correctly; a FC is sent after the FF. */
 ZTEST(isotp_rx, test_multiframe_reassembly)
 {
     /* 10 bytes total: FF carries 6, CF carries remaining 4 */
@@ -131,6 +161,7 @@ ZTEST(isotp_rx, test_multiframe_reassembly)
     }
 }
 
+/** @brief An FF declaring more than 256 bytes is rejected with a Flow Control OVFLW frame. */
 ZTEST(isotp_rx, test_ff_overlength_rejected)
 {
     /* Length > 256 → overflow */
@@ -147,6 +178,7 @@ ZTEST(isotp_rx, test_ff_overlength_rejected)
     zassert_equal(fc->data[0], 0x32); /* OVFLW status */
 }
 
+/** @brief A CF with an out-of-order sequence number aborts reception and resets to ISOTP_IDLE. */
 ZTEST(isotp_rx, test_cf_wrong_sequence)
 {
     /* Start multi-frame */
@@ -164,6 +196,7 @@ ZTEST(isotp_rx, test_cf_wrong_sequence)
     zassert_equal(ctx.state, ISOTP_IDLE); /* Reset on error */
 }
 
+/** @brief A CF arriving while the context is in ISOTP_IDLE is rejected without side effects. */
 ZTEST(isotp_rx, test_cf_in_idle_rejected)
 {
     uint8_t cf_data[] = {0x21, 1, 2, 3, 4, 5, 6, 7};
@@ -173,6 +206,12 @@ ZTEST(isotp_rx, test_cf_in_idle_rejected)
     zassert_false(consumed);
 }
 
+/**
+ * @brief Shearwater quirk: FC from source=0xFF (broadcast) is handled by the TX queue, not RX context.
+ *
+ * The Shearwater sends FC frames with source=0xFF. This test verifies the RX
+ * context does not crash on such a frame; the TX queue's FC processor handles it.
+ */
 ZTEST(isotp_rx, test_shearwater_fc_quirk)
 {
     /* Shearwater sends FC with source=0xFF (broadcast) */
@@ -191,6 +230,7 @@ ZTEST(isotp_rx, test_shearwater_fc_quirk)
     zassert_false(consumed);
 }
 
+/** @brief N_Cr timeout: context resets to ISOTP_IDLE when no CF arrives within 1000 ms. */
 ZTEST(isotp_rx, test_ncr_timeout)
 {
     /* Start multi-frame reception */
@@ -206,6 +246,7 @@ ZTEST(isotp_rx, test_ncr_timeout)
     zassert_false(ctx.rxComplete);
 }
 
+/** @brief No timeout while still within the N_Cr 1000 ms window — context stays ISOTP_RECEIVING. */
 ZTEST(isotp_rx, test_ncr_no_timeout_within_window)
 {
     uint8_t ff_data[] = {0x10, 14, 1, 2, 3, 4, 5, 6};
@@ -218,8 +259,7 @@ ZTEST(isotp_rx, test_ncr_no_timeout_within_window)
     zassert_equal(ctx.state, ISOTP_RECEIVING);
 }
 
-/* ---- TX: Single Frame with DiveCAN padding ---- */
-
+/** @brief A 4-byte payload is sent as a DiveCAN SF: PCI byte includes padding length, byte[1]=0x00. */
 ZTEST(isotp_tx, test_sf_with_padding)
 {
     uint8_t payload[] = {0x62, 0xF0, 0x00, 0x01};
@@ -241,6 +281,7 @@ ZTEST(isotp_tx, test_sf_with_padding)
     zassert_equal(sf->data[5], 0x01);
 }
 
+/** @brief Maximum SF payload with DiveCAN padding (6 data bytes + 1 pad = 7 total) fits in one frame. */
 ZTEST(isotp_tx, test_sf_max_with_padding)
 {
     /* Max SF with DiveCAN padding = 6 bytes */
@@ -257,6 +298,7 @@ ZTEST(isotp_tx, test_sf_max_with_padding)
     zassert_equal(sf->data[7], 6);
 }
 
+/** @brief A 10-byte payload triggers multi-frame; FF length field includes the padding byte (11). */
 ZTEST(isotp_tx, test_multiframe_ff_with_padding)
 {
     /* 10 bytes > 6 → multi-frame */
@@ -280,6 +322,7 @@ ZTEST(isotp_tx, test_multiframe_ff_with_padding)
     zassert_equal(ff->data[7], 5); /* 5th data byte */
 }
 
+/** @brief After FF, a CTS Flow Control triggers the remaining CFs; total = FF + 1 CF for 10 bytes. */
 ZTEST(isotp_tx, test_multiframe_cf_after_fc)
 {
     uint8_t payload[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -312,6 +355,7 @@ ZTEST(isotp_tx, test_multiframe_cf_after_fc)
     zassert_equal(cf->data[5], 10);
 }
 
+/** @brief N_Bs timeout: TX queue clears itself if no FC arrives within 1000 ms after FF. */
 ZTEST(isotp_tx, test_nbs_timeout)
 {
     uint8_t payload[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -326,6 +370,7 @@ ZTEST(isotp_tx, test_nbs_timeout)
     zassert_false(ISOTP_TxQueue_IsBusy());
 }
 
+/** @brief Two queued payloads are sent in order: first poll sends p1, second poll sends p2. */
 ZTEST(isotp_tx, test_queue_serialization)
 {
     uint8_t p1[] = {0xAA, 0xBB};
@@ -345,6 +390,7 @@ ZTEST(isotp_tx, test_queue_serialization)
     zassert_equal(test_get_frame(1)->data[2], 0xCC);
 }
 
+/** @brief A Flow Control OVFLW frame causes the TX queue to abort the in-progress transfer. */
 ZTEST(isotp_tx, test_fc_ovflw_aborts)
 {
     uint8_t payload[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -364,6 +410,7 @@ ZTEST(isotp_tx, test_fc_ovflw_aborts)
     zassert_false(ISOTP_TxQueue_IsBusy());
 }
 
+/** @brief Block size (BS) in FC limits CFs per window; a second FC is needed to send the final CF. */
 ZTEST(isotp_tx, test_block_size_handling)
 {
     /* 20 bytes: FF=5, need 15 more = 3 CFs (7+7+1) */

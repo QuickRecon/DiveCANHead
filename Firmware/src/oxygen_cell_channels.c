@@ -1,3 +1,13 @@
+/**
+ * @file oxygen_cell_channels.c
+ * @brief zbus channel definitions for oxygen cell readings, consensus output, and calibration
+ *
+ * Defines the per-cell message channels (chan_cell_1/2/3), the aggregated
+ * consensus channel (chan_consensus), and the calibration request/response
+ * channels.  All channels start in a failed/default state and are populated
+ * at runtime by cell driver threads and the consensus subscriber.
+ */
+
 #include "oxygen_cell_channels.h"
 
 /* ---- Per-cell channels ---- */

@@ -1,3 +1,10 @@
+/**
+ * @file divecan_channels.h
+ * @brief Zbus channel declarations for DiveCAN protocol data.
+ *
+ * Declares channels carrying setpoint, atmospheric pressure, shutdown request,
+ * and dive state. Consumed by ppo2_control.c, calibration.c, and divecan.c.
+ */
 #ifndef DIVECAN_CHANNELS_H
 #define DIVECAN_CHANNELS_H
 

@@ -25,6 +25,11 @@ static void SendFlowControl(const ISOTPContext_t *ctx, uint8_t flowStatus, uint8
 
 /**
  * @brief Initialize ISO-TP context
+ *
+ * @param ctx       Context to initialize; zeroed and then configured (must not be NULL)
+ * @param source    Our device type (e.g., DIVECAN_SOLO), placed in CAN ID source field
+ * @param target    Remote device type (e.g., DIVECAN_CONTROLLER), placed in CAN ID dest field
+ * @param messageId Base CAN message ID for this session (e.g., MENU_ID)
  */
 void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source,
         DiveCANType_t target, uint32_t messageId)
@@ -51,6 +56,8 @@ void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source,
  * Resets state machine and in-progress transfer fields while preserving:
  * - Addressing (source, target, messageId)
  * - Completion flags and completed data (rxComplete, txComplete, rxBuffer, rxDataLength)
+ *
+ * @param ctx Context to reset; NULL is silently ignored (safe to call during cleanup)
  */
 void ISOTP_Reset(ISOTPContext_t *ctx)
 {
@@ -83,7 +90,15 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
 }
 
 /**
- * @brief Process received CAN frame
+ * @brief Process received CAN frame and route to the appropriate ISO-TP handler
+ *
+ * Checks addressing, then dispatches to HandleSingleFrame / HandleFirstFrame /
+ * HandleConsecutiveFrame based on the PCI nibble.  Flow Control frames are
+ * silently ignored here; they are handled centrally by ISOTP_TxQueue_ProcessFC().
+ *
+ * @param ctx     ISO-TP context for this session (must not be NULL)
+ * @param message Received CAN message (must not be NULL)
+ * @return true if the message was consumed by this context, false otherwise
  */
 bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
@@ -142,6 +157,12 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 
 /**
  * @brief Handle Single Frame reception
+ *
+ * Copies up to 7 payload bytes into ctx->rxBuffer and sets rxComplete.
+ *
+ * @param ctx     ISO-TP context; rxBuffer and rxDataLength are updated on success
+ * @param message Received CAN message; byte 0 PCI encodes payload length (1-7)
+ * @return true if message was valid and consumed, false on length error
  */
 static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
@@ -175,7 +196,15 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
 }
 
 /**
- * @brief Handle First Frame reception
+ * @brief Handle First Frame reception and send Flow Control CTS
+ *
+ * Extracts the 12-bit total length, copies the first 6 payload bytes,
+ * transitions context to ISOTP_RECEIVING, and sends a FC CTS frame to
+ * the sender.  Sends FC Overflow and resets if length exceeds ISOTP_MAX_PAYLOAD.
+ *
+ * @param ctx     ISO-TP context; state transitions to ISOTP_RECEIVING on success
+ * @param message Received CAN message; bytes 0-1 encode total length, bytes 2-7 are payload
+ * @return Always true (message is consumed even if rejected with FC Overflow)
  */
 static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
@@ -216,6 +245,14 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
 
 /**
  * @brief Handle Consecutive Frame reception
+ *
+ * Validates sequence number, appends up to 7 payload bytes to rxBuffer, and
+ * sets rxComplete when all expected bytes have been received.  Resets context
+ * on sequence error.
+ *
+ * @param ctx     ISO-TP context; must be in ISOTP_RECEIVING state
+ * @param message Received CAN message; byte 0 lower nibble = sequence number, bytes 1-7 = payload
+ * @return true if message was consumed (including error cases), false if wrong state
  */
 static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 {
@@ -271,7 +308,12 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
 }
 
 /**
- * @brief Send Flow Control frame
+ * @brief Send a Flow Control frame to the remote sender
+ *
+ * @param ctx        ISO-TP context providing source, target, and messageId for CAN ID assembly
+ * @param flowStatus FC status byte: ISOTP_FC_CTS (0x30), ISOTP_FC_WAIT (0x31), or ISOTP_FC_OVFLW (0x32)
+ * @param blockSize  Maximum number of consecutive frames before next FC (0 = unlimited)
+ * @param stmin      Minimum separation time between consecutive frames (ms, 0-127)
  */
 static void SendFlowControl(const ISOTPContext_t *ctx, uint8_t flowStatus,
                  uint8_t blockSize, uint8_t stmin)
@@ -297,6 +339,11 @@ static void SendFlowControl(const ISOTPContext_t *ctx, uint8_t flowStatus,
  * Note: txComplete is set immediately on successful queue. Callers that need
  * to wait for actual transmission should check ISOTP_TxQueue_IsBusy() before
  * sending subsequent messages.
+ *
+ * @param ctx    ISO-TP context providing addressing for the transmission (must not be NULL)
+ * @param data   Payload to send; must remain valid until actually transmitted (must not be NULL)
+ * @param length Payload length in bytes (1 to ISOTP_MAX_PAYLOAD)
+ * @return true if message was successfully enqueued, false on NULL pointer or invalid length
  */
 bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 {
@@ -324,7 +371,13 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
 }
 
 /**
- * @brief Poll for timeouts (RX only - TX is handled by centralized queue)
+ * @brief Poll for RX timeout and reset context if N_Cr expires
+ *
+ * Checks whether the context has been waiting for a Consecutive Frame longer
+ * than ISOTP_TIMEOUT_N_CR (1000 ms).  TX timeouts are handled by ISOTP_TxQueue_Poll().
+ *
+ * @param ctx         ISO-TP context to check (must not be NULL)
+ * @param currentTime Current system time in milliseconds (from k_uptime_get_32())
  */
 void ISOTP_Poll(ISOTPContext_t *ctx, uint32_t currentTime)
 {

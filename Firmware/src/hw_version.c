@@ -1,3 +1,15 @@
+/**
+ * @file hw_version.c
+ * @brief Hardware version detection driver (quickrecon,hw-version DT compatible)
+ *
+ * Reads up to three GPIO detect pins in tri-state (pull-up / pull-down) mode
+ * and compares the resulting pattern against the expected-pattern property from
+ * the devicetree.  A mismatch halts the system with a blink pattern on the
+ * error LED (if present) to prevent running firmware compiled for different
+ * hardware.  Initialised at POST_KERNEL priority so that mismatches are caught
+ * before any peripheral drivers run.
+ */
+
 #define DT_DRV_COMPAT quickrecon_hw_version
 
 #include <zephyr/kernel.h>
@@ -35,6 +47,12 @@ struct hw_version_config {
     bool has_error_led;
 };
 
+/**
+ * @brief Convert a PIN_LOW / PIN_HIGH / PIN_FLOATING constant to a display string
+ *
+ * @param state One of PIN_LOW, PIN_HIGH, or PIN_FLOATING
+ * @return "0", "1", "Z", or "?" for unrecognised values
+ */
 static const char *pin_state_name(uint8_t state)
 {
     const char *name = "?";
@@ -49,13 +67,16 @@ static const char *pin_state_name(uint8_t state)
 }
 
 /**
- * Read a single detection pin and determine its tri-state value.
+ * @brief Read a single detection pin and determine its tri-state value
  *
- * We read the pin twice to distinguish three states:
- *   - Read with pull-up, then with pull-down
- *   - Both HIGH = externally pulled high (PIN_HIGH)
- *   - Both LOW  = wired to ground (PIN_LOW)
- *   - Pull-up HIGH, pull-down LOW = floating (PIN_FLOATING)
+ * Reads the pin twice — once with pull-up, once with pull-down — to
+ * distinguish three states:
+ *   - Both HIGH: externally pulled high (PIN_HIGH)
+ *   - Both LOW:  wired to ground (PIN_LOW)
+ *   - Pull-up HIGH, pull-down LOW: floating (PIN_FLOATING)
+ *
+ * @param pin GPIO spec for the detection pin to sample
+ * @return PIN_LOW, PIN_HIGH, PIN_FLOATING, or a negative errno on hardware error
  */
 static Status_t read_pin_tristate(const struct gpio_dt_spec *pin)
 {
@@ -94,6 +115,11 @@ static Status_t read_pin_tristate(const struct gpio_dt_spec *pin)
     return result;
 }
 
+/**
+ * @brief Drive an LED in a repeating 3-blink pattern forever — never returns
+ *
+ * @param led GPIO spec for the error indicator LED (must already be configured)
+ */
 static void blink_forever(const struct gpio_dt_spec *led)
 {
     /* Fast blink = version mismatch (3 blinks, pause, repeat) */
@@ -108,13 +134,16 @@ static void blink_forever(const struct gpio_dt_spec *led)
     }
 }
 
-/* Blink the error LED forever — firmware/hardware mismatch is not
- * recoverable, and continuing would risk running code designed for
- * different hardware (wrong pin assignments, power topology, etc.)
+/**
+ * @brief Log a version mismatch and halt the system with a blink pattern
  *
- * Note (Aren Leishman, 2026-05-11): "halts" here means a non-returning
- * tight loop. Zephyr has no graceful halt primitive and intentionally
- * staying in the loop is preferable to rebooting into the same mismatch.
+ * Firmware/hardware mismatch is not recoverable — continuing would risk
+ * running code designed for different hardware (wrong pin assignments,
+ * power topology, etc.).  If an error LED is configured it blinks forever;
+ * otherwise the function spins in a 1-second sleep loop.  Never returns.
+ *
+ * @param cfg    Driver config containing the expected pin pattern and LED spec
+ * @param actual Array of MAX_PINS bytes holding the detected pin states
  */
 static void halt_with_blink(const struct hw_version_config *cfg,
                 const uint8_t *actual)
@@ -139,9 +168,12 @@ static void halt_with_blink(const struct hw_version_config *cfg,
     }
 }
 
-/* Print `<prefix>: [s0,s1,...]` to RTT via printk. Used at boot and on
- * mismatch. Walks the actual[] array so we never hard-code MAX_PINS index
- * literals (S109). */
+/**
+ * @brief Print pin states as "<prefix>: [s0,s1,...]" via printk
+ *
+ * @param prefix  Label string printed before the bracket list
+ * @param actual  Array of MAX_PINS pin-state values (PIN_LOW / PIN_HIGH / PIN_FLOATING)
+ */
 static void print_pin_states(const char *prefix, const uint8_t *actual)
 {
     printk("%s: [", prefix);
@@ -155,9 +187,19 @@ static void print_pin_states(const char *prefix, const uint8_t *actual)
     printk("]\n");
 }
 
-/* Read one detect pin into `actual[i]` and OR the mismatch result into
- * `*mismatch`. Returns 0 on success or a negative errno on hardware failure,
- * isolating the nested if/else from hw_version_init() (S134). */
+/**
+ * @brief Read one detect pin and record its tri-state value in actual[i]
+ *
+ * Sets *mismatch to true if the read value differs from cfg->expected[i].
+ * Extracted to keep hw_version_init() within complexity budget (S134).
+ *
+ * @param cfg      Driver config; provides the GPIO spec and expected values
+ * @param i        Zero-based index of the pin to read
+ * @param actual   Array of at least (i+1) bytes; actual[i] is written on success
+ * @param mismatch Set to true if actual[i] != cfg->expected[i]; never cleared
+ * @return 0 on success, -ENODEV if the GPIO is not ready, or negative errno
+ *         from read_pin_tristate()
+ */
 static Status_t read_one_detect_pin(const struct hw_version_config *cfg,
                                     uint8_t i, uint8_t *actual,
                                     bool *mismatch)
@@ -183,6 +225,15 @@ static Status_t read_one_detect_pin(const struct hw_version_config *cfg,
     return result;
 }
 
+/**
+ * @brief Device init callback — verify detected hardware version against expected
+ *
+ * Reads all detect pins and compares against the expected pattern from the
+ * devicetree.  On mismatch, calls halt_with_blink() which never returns.
+ *
+ * @param dev Zephyr device pointer; config must be a hw_version_config
+ * @return 0 on successful version match, negative errno on GPIO hardware failure
+ */
 static Status_t hw_version_init(const struct device *dev)
 {
     const struct hw_version_config *cfg = dev->config;

@@ -59,6 +59,13 @@ typedef struct {
     bool logPushInitialized;
 } DiveCANUDSState_t;
 
+/**
+ * @brief Return pointer to the static UDS/ISO-TP state block
+ *
+ * Encapsulates the file-scoped UDS state so no mutable global is exposed.
+ *
+ * @return Pointer to the singleton DiveCANUDSState_t
+ */
 static DiveCANUDSState_t *getUDSState(void)
 {
     static DiveCANUDSState_t state = {0};
@@ -83,6 +90,17 @@ static void InitializeUDSContexts(void);
 
 /* ---- CAN RX filter callback ---- */
 
+/**
+ * @brief CAN RX filter callback — enqueue received frame for thread processing
+ *
+ * Called from ISR context for every frame that passes the CAN hardware filter.
+ * Copies the frame into the message queue; if the queue is full an overflow
+ * error is logged.
+ *
+ * @param dev       CAN device that received the frame (unused)
+ * @param frame     Received CAN frame; copied before returning
+ * @param user_data User data pointer passed to can_add_rx_filter (unused)
+ */
 static void can_rx_callback(const struct device *dev, struct can_frame *frame,
                  void *user_data)
 {
@@ -102,6 +120,17 @@ static void can_rx_callback(const struct device *dev, struct can_frame *frame,
 
 /* ---- Main RX thread ---- */
 
+/**
+ * @brief Thread entry: initialize CAN hardware then dispatch inbound DiveCAN messages
+ *
+ * Sets up CAN RX filters, initializes UDS/ISO-TP contexts, sends the bus-init
+ * handshake, then loops forever dequeueing messages and dispatching them to
+ * the appropriate Resp* handler.  Also polls ISO-TP timeout state each iteration.
+ *
+ * @param p1 Unused (Zephyr thread parameter)
+ * @param p2 Unused (Zephyr thread parameter)
+ * @param p3 Unused (Zephyr thread parameter)
+ */
 static void divecan_rx_thread(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1);
@@ -250,6 +279,15 @@ K_THREAD_DEFINE(divecan_rx, 2048,
  * When the calibration thread publishes a result, we send the
  * DiveCAN calibration response frame to the handset. */
 
+/**
+ * @brief zbus listener: translate calibration result and send DiveCAN cal response frame
+ *
+ * Fired when the calibration subsystem publishes to chan_cal_response.
+ * Reads the result, maps it to a DiveCANCalResponse_t, then calls txCalResponse()
+ * to inform the handset of the outcome.
+ *
+ * @param chan The zbus channel that fired (chan_cal_response)
+ */
 static void cal_response_cb(const struct zbus_channel *chan)
 {
     CalResponse_t resp = {0};
@@ -280,12 +318,25 @@ ZBUS_CHAN_ADD_OBS(chan_cal_response, divecan_cal_resp_listener, 5);
 
 /* ---- Response Handlers ---- */
 
+/**
+ * @brief Handle BUS_INIT_ID — respond to bus initialisation handshake
+ *
+ * @param message Received DiveCAN message (forwarded to RespPing)
+ */
 static void RespBusInit(const DiveCANMessage_t *message)
 {
     /* Do startup stuff and then ping the bus */
     RespPing(message);
 }
 
+/**
+ * @brief Handle BUS_ID_ID ping — send device identity, status, name, and HUD stat
+ *
+ * Only responds when the sender is DIVECAN_CONTROLLER or DIVECAN_MONITOR;
+ * messages from other device types are silently ignored.
+ *
+ * @param message Received DiveCAN message; sender type extracted from CAN ID
+ */
 static void RespPing(const DiveCANMessage_t *message)
 {
     static const uint8_t DIVECAN_TYPE_MASK = 0x0FU;
@@ -318,6 +369,14 @@ static void RespPing(const DiveCANMessage_t *message)
     }
 }
 
+/**
+ * @brief Handle CAL_REQ_ID — acknowledge calibration request and publish to calibration subsystem
+ *
+ * Validates FO2 range, sends a DiveCAN cal-ack to the handset, then publishes
+ * a CalRequest_t to chan_cal_request for the calibration thread to execute.
+ *
+ * @param message Received DiveCAN message; byte 0 = FO2 (%), bytes 1-2 = pressure (mbar, big-endian)
+ */
 static void RespCal(const DiveCANMessage_t *message)
 {
     FO2_t fo2 = message->data[0];
@@ -344,12 +403,22 @@ static void RespCal(const DiveCANMessage_t *message)
     }
 }
 
+/**
+ * @brief Handle PPO2_SETPOINT_ID — publish new setpoint to chan_setpoint
+ *
+ * @param message Received DiveCAN message; byte 0 = setpoint in centibar (0-255)
+ */
 static void RespSetpoint(const DiveCANMessage_t *message)
 {
     PPO2_t setpoint = message->data[0];
     (void)zbus_chan_pub(&chan_setpoint, &setpoint, K_MSEC(100));
 }
 
+/**
+ * @brief Handle PPO2_ATMOS_ID — publish atmospheric pressure to chan_atmos_pressure
+ *
+ * @param message Received DiveCAN message; bytes 2-3 = pressure in mbar (big-endian)
+ */
 static void RespAtmos(const DiveCANMessage_t *message)
 {
     uint16_t pressure = (uint16_t)(
@@ -358,6 +427,12 @@ static void RespAtmos(const DiveCANMessage_t *message)
     (void)zbus_chan_pub(&chan_atmos_pressure, &pressure, K_MSEC(100));
 }
 
+/**
+ * @brief Handle BUS_OFF_ID — request system shutdown via zbus
+ *
+ * Publishes true to chan_shutdown_request; the power management subsystem
+ * performs the actual shutdown sequence asynchronously.
+ */
 static void RespShutdown(void)
 {
     /* B5 fix: non-blocking shutdown. Publish intent and let the power
@@ -368,6 +443,12 @@ static void RespShutdown(void)
     LOG_INF("Shutdown requested via BUS_OFF");
 }
 
+/**
+ * @brief Handle DIVING_ID — publish dive state (number, timestamp, on/off) to chan_dive_state
+ *
+ * @param message Received DiveCAN message; byte 0 = diving flag, bytes 1-2 = dive number,
+ *                bytes 3-6 = Unix timestamp (big-endian)
+ */
 static void RespDiving(const DiveCANMessage_t *message)
 {
     uint32_t diveNumber = ((uint32_t)message->data[1] << DIVECAN_BYTE_WIDTH) |
@@ -392,6 +473,11 @@ static void RespDiving(const DiveCANMessage_t *message)
     }
 }
 
+/**
+ * @brief Handle CAN_SERIAL_NUMBER_ID — log the serial number of the sending device
+ *
+ * @param message Received DiveCAN message; bytes 0-7 contain the null-terminated serial string
+ */
 static void RespSerialNumber(const DiveCANMessage_t *message)
 {
     DiveCANType_t origin = (DiveCANType_t)(0x0FU & (message->id));

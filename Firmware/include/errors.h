@@ -1,3 +1,13 @@
+/**
+ * @file errors.h
+ * @brief Tiered error reporting: crash-info recovery, init-fatal, non-fatal, and fatal.
+ *
+ * Four error tiers:
+ *   1. Crash info — noinit RAM snapshot read on next boot via errors_get_last_crash()
+ *   2. MUST_SUCCEED() — init-time fatal check for kernel API calls
+ *   3. OP_ERROR() / OP_ERROR_DETAIL() — recoverable runtime errors published to zbus
+ *   4. FATAL_OP_ERROR() — unrecoverable conditions that reboot the system
+ */
 #ifndef ERRORS_H
 #define ERRORS_H
 
@@ -8,20 +18,25 @@
 
 /* ---- Crash info (persisted in noinit RAM across warm resets) ---- */
 
+/** @brief Magic value written to CrashInfo_t.magic to mark a valid crash record. */
 #define CRASH_MAGIC 0xDEADC0DEU
 
+/** @brief Crash record persisted across warm resets in __noinit RAM. */
 typedef struct {
-    uint32_t magic;
-    uint32_t reason;    /* K_ERR_* value, or FatalOpError_t for Tier 4 */
-    uint32_t pc;
-    uint32_t lr;
-    uint32_t cfsr;      /* Cortex-M Configurable Fault Status Register */
+    uint32_t magic;  /**< Set to CRASH_MAGIC when record is valid */
+    uint32_t reason; /**< K_ERR_* value, or FatalOpError_t for Tier 4 */
+    uint32_t pc;     /**< Program counter at the time of the fault */
+    uint32_t lr;     /**< Link register at the time of the fault */
+    uint32_t cfsr;   /**< Cortex-M Configurable Fault Status Register */
 } CrashInfo_t;
 
 /**
- * Read crash info from the previous boot.
- * Returns true and populates *out if a crash was recorded.
+ * @brief Read crash info from the previous boot.
+ *
  * Valid for the entire session — data is copied at boot before noinit is cleared.
+ *
+ * @param out Destination struct; populated only if a crash was recorded
+ * @return true if a crash record was found, false if last boot was clean
  */
 bool errors_get_last_crash(CrashInfo_t *out);
 
@@ -33,6 +48,17 @@ bool errors_get_last_crash(CrashInfo_t *out);
  * Never compiles out.
  */
 
+/**
+ * @brief Internal handler called by MUST_SUCCEED() on failure.
+ *
+ * Logs the failed expression and calls k_oops() → fatal handler → reboot.
+ * Do not call directly; use the MUST_SUCCEED() macro.
+ *
+ * @param expr Stringified expression that failed
+ * @param rc   Return code from the expression
+ * @param file Source filename (__FILE__)
+ * @param line Source line number (__LINE__)
+ */
 FUNC_NORETURN void must_succeed_failed(const char *expr, int rc,
                     const char *file, unsigned int line);
 
@@ -171,17 +197,22 @@ typedef enum {
     OP_ERR_MAX
 } OpError_t;
 
+/** @brief Error event published on chan_error. */
 typedef struct {
-    OpError_t code;
-    uint32_t detail;
+    OpError_t code;   /**< Error code identifying the fault type */
+    uint32_t detail;  /**< Context-specific detail (e.g., errno, offending value) */
 } ErrorEvent_t;
 
 ZBUS_CHAN_DECLARE(chan_error);
 
 /**
- * Publish an operational error to the zbus error channel.
+ * @brief Publish an operational error to the zbus error channel.
+ *
  * Prefer the OP_ERROR / OP_ERROR_DETAIL macros — they also emit a LOG_ERR
  * tagged with the caller's log module.
+ *
+ * @param code   Error code identifying the fault type
+ * @param detail Context-specific detail value (0 if none)
  */
 void op_error_publish(OpError_t code, uint32_t detail);
 
@@ -233,6 +264,16 @@ typedef enum {
     FATAL_OP_MAX
 } FatalOpError_t;
 
+/**
+ * @brief Internal handler called by FATAL_OP_ERROR() on an unrecoverable condition.
+ *
+ * Persists the error code to noinit RAM and reboots. Do not call directly;
+ * use the FATAL_OP_ERROR() macro.
+ *
+ * @param code Error code identifying the unrecoverable condition
+ * @param file Source filename (__FILE__)
+ * @param line Source line number (__LINE__)
+ */
 FUNC_NORETURN void fatal_op_error(FatalOpError_t code, const char *file,
                    unsigned int line);
 

@@ -1,3 +1,10 @@
+/**
+ * @file divecan_ppo2_math.h
+ * @brief PPO2 value transformation for DiveCAN wire format.
+ *
+ * Provides helpers that apply cell-status rules to the PPO2 array before
+ * it is packed into DiveCAN messages (failed/uncalibrated cells → 0xFF).
+ */
 #ifndef DIVECAN_PPO2_MATH_H
 #define DIVECAN_PPO2_MATH_H
 

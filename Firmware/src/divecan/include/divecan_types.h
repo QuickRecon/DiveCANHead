@@ -1,3 +1,11 @@
+/**
+ * @file divecan_types.h
+ * @brief Core DiveCAN protocol types: CAN IDs, device enums, message structs.
+ *
+ * Shared by all DiveCAN module sources. Defines the message ID constants,
+ * DiveCANType_t / DiveCANError_t / DiveCANManufacturer_t enumerations,
+ * the DiveCANMessage_t wire-format struct, and protocol bit-width constants.
+ */
 #ifndef DIVECAN_TYPES_H
 #define DIVECAN_TYPES_H
 
@@ -8,7 +16,7 @@
 
 /* ---- CAN ID mask ---- */
 
-/* Drop the source/dest stuff, we're listening for anything from anyone */
+/** @brief Mask applied to incoming CAN IDs to extract message type, ignoring src/dst nibbles. */
 #define DIVECAN_ID_MASK 0x1FFFF000U
 
 /* ---- DiveCAN Message IDs ---- */
@@ -55,6 +63,7 @@
 
 /* ---- CAN frame constants ---- */
 
+/** @brief Maximum CAN frame data length (standard CAN, not CAN FD). */
 #define MAX_CAN_RX_LENGTH 8U
 
 /* ---- Device types ---- */
@@ -160,6 +169,7 @@ typedef struct {
 
 /* ---- Device spec ---- */
 
+/** @brief Maximum DiveCAN device name length including NUL terminator. */
 #define DIVECAN_MAX_NAME_SIZE 9U
 
 /**
@@ -175,6 +185,7 @@ typedef struct {
 
 /* ---- Bit width constants (for protocol byte assembly) ---- */
 
+/** @brief 8-bit shift for extracting/inserting the low byte of multi-byte fields. */
 static const uint32_t DIVECAN_BYTE_WIDTH = 8U;
 static const uint32_t DIVECAN_TWO_BYTE_WIDTH = 16U;
 static const uint32_t DIVECAN_THREE_BYTE_WIDTH = 24U;
@@ -184,20 +195,24 @@ static const uint8_t DIVECAN_BYTE_MASK = 0xFFU;
 
 /* ---- FO2 limits ---- */
 
+/** @brief Maximum valid FO2 percentage (100% O2). */
 static const FO2_t FO2_MAX_PERCENT = 100U;
 
 /* ---- Battery voltage scaling ---- */
 
+/** @brief Multiplier to convert real battery voltage (V) to BatteryV_t (0.1 V units). */
 static const uint8_t BATTERY_FLOAT_TO_INT = 10U;
 
+/** @brief Battery voltage in 0.1 V units (e.g., 77 = 7.7 V). */
 typedef uint8_t BatteryV_t;
 
 /* ---- Dive state (for DIVING_ID messages) ---- */
 
+/** @brief Dive state decoded from DIVING_ID messages, published on chan_dive_state. */
 typedef struct {
-    bool diving;
-    uint32_t dive_number;
-    uint32_t unix_timestamp;
+    bool diving;              /**< true when a dive is in progress */
+    uint32_t dive_number;     /**< Sequential dive counter from the dive computer */
+    uint32_t unix_timestamp;  /**< Unix timestamp from the dive computer at dive start */
 } DiveState_t;
 
 #endif /* DIVECAN_TYPES_H */
