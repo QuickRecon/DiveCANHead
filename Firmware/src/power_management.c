@@ -18,7 +18,12 @@
 #include <zephyr/drivers/regulator.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/pm/device.h>
 #include <zephyr/sys/reboot.h>
+
+#if defined(CONFIG_SOC_FAMILY_STM32)
+#include <stm32l4xx_hal_pwr_ex.h>
+#endif
 
 #include "power_management.h"
 #include "errors.h"
@@ -320,15 +325,37 @@ bool power_is_can_active(const struct device *dev)
     return active;
 }
 
+#if defined(CONFIG_SOC_FAMILY_STM32)
+/**
+ * @brief Suspend a UART device if it's bound and ready.
+ *
+ * Helper for the cell-UART deinit step of power_shutdown(). Treats
+ * unready devices and suspend failures as benign — the goal is to
+ * get into SHUTDOWN, and a UART that wasn't resumed in the first
+ * place doesn't matter.
+ */
+static void suspend_uart_if_ready(const struct device *dev)
+{
+    if (device_is_ready(dev)) {
+        (void)pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
+    }
+}
+#endif
+
 /**
  * @brief Enter the lowest available power state, awaiting a DiveCAN bus wakeup.
  *
- * Silences the CAN transceiver, disables VBUS, then reboots cold as a safe
- * fallback until true STM32 SHUTDOWN mode with CAN wakeup is implemented.
- * This function does not return.
+ * Silences the CAN transceiver, disables VBUS, suspends the cell UARTs,
+ * configures GPIO pulls for minimal leakage, then enters STM32 SHUTDOWN
+ * with PWR_WAKEUP_PIN2 (PC13 = CAN_EN, active-low) armed. From SHUTDOWN
+ * the SoC draws <1 µA on the L431; CAN traffic re-asserting CAN_EN low
+ * triggers a power-on reset and the firmware boots normally.
+ *
+ * Falls back to sys_reboot() if the HAL entry returns or on non-STM32
+ * targets (so native_sim test fixtures don't fault).
  *
  * @param dev Power subsystem device handle.
- * @return Never returns; sys_reboot() is called unconditionally.
+ * @return Never returns; HAL SHUTDOWN entry or sys_reboot() take over.
  */
 Status_t power_shutdown(const struct device *dev)
 {
@@ -336,23 +363,91 @@ Status_t power_shutdown(const struct device *dev)
 
     LOG_INF("Entering shutdown");
 
-    /* Silence the CAN transceiver */
+    /* Step 1: silence the CAN transceiver before doing anything else
+     * so the bus sees a clean idle state. */
     if (cfg->has_can_shdn) {
         (void)gpio_pin_set_dt(&cfg->can_shdn, 0);
     }
 
-    /* Disable VBUS — removes power from all peripherals */
+    /* Step 2: drop VBUS — peripherals lose power. */
     (void)power_vbus_disable(dev);
 
-    /* TODO(aren.leishman@gmail.com, 2026-05-11): Configure STM32 SHUTDOWN mode with CAN wakeup.
-     * This requires HAL-level calls for:
-     *   - HAL_PWREx_EnablePullUpPullDownConfig()
-     *   - GPIO pull state configuration for minimal leakage
-     *   - O2S cell UART pin pull-up to prevent analog standby
-     *   - HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN2_LOW)
-     *   - HAL_PWREx_EnterSHUTDOWNMode()
-     * For now, reboot as a safe fallback — the system will come back
-     * and re-evaluate whether the CAN bus is active. */
+#if defined(CONFIG_SOC_FAMILY_STM32)
+    /* Step 3: suspend the cell UARTs so their pins stop being driven.
+     * The pins still need pull-up below to stop digital cells from
+     * dropping into analog mode, but the controller has to release
+     * them first. */
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(usart1), okay)
+    suspend_uart_if_ready(DEVICE_DT_GET(DT_NODELABEL(usart1)));
+#endif
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(usart2), okay)
+    suspend_uart_if_ready(DEVICE_DT_GET(DT_NODELABEL(usart2)));
+#endif
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(usart3), okay)
+    suspend_uart_if_ready(DEVICE_DT_GET(DT_NODELABEL(usart3)));
+#endif
+
+    /* Step 4: arm GPIO pulls (Standby/Shutdown PUPDR registers) so
+     * floating inputs don't bleed current. The pin map is intentionally
+     * Jr-specific — see divecan_jr.dts for the authoritative pin
+     * assignments. Pull tables for new boards must be re-derived from
+     * their own DTS; do not assume Rev1 legacy pulls translate. */
+    HAL_PWREx_EnablePullUpPullDownConfig();
+
+    /* CAN transceiver: SHDN high (off), SILENT high (recessive). */
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_14);
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_15);
+
+    /* VBUS regulator enable (PA1) low — keep VBUS off through wake. */
+    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_1);
+
+    /* Solenoid drives (PB4, PB5, PA7, PC11) low — fail-safe off. */
+    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_4);
+    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_B, PWR_GPIO_BIT_5);
+    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_7);
+    (void)HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_C, PWR_GPIO_BIT_11);
+
+    /* O2S/DiveO2 UART pins: pull up RX/TX so cells don't fall into
+     * analog mode (legacy footnote — only matters for O2S, but pulling
+     * up an idling UART is harmless for analog/DiveO2). */
+#if defined(CONFIG_CELL_1_TYPE_O2S) || defined(CONFIG_CELL_1_TYPE_DIVEO2)
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_6);
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_B, PWR_GPIO_BIT_7);
+#endif
+#if (defined(CONFIG_CELL_2_TYPE_O2S) || defined(CONFIG_CELL_2_TYPE_DIVEO2)) && \
+    (CONFIG_CELL_COUNT >= 2)
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_2);
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_A, PWR_GPIO_BIT_3);
+#endif
+#if (defined(CONFIG_CELL_3_TYPE_O2S) || defined(CONFIG_CELL_3_TYPE_DIVEO2)) && \
+    (CONFIG_CELL_COUNT >= 3)
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_4);
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_5);
+#endif
+
+    /* CAN_EN (PC13) is the wakeup line. Pull it up so the unit
+     * idles high; CAN traffic asserts low → WKUP2_LOW fires →
+     * power-on reset. */
+    (void)HAL_PWREx_EnableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_13);
+
+    /* Step 5: arm wakeup and clear stale flags. */
+    __disable_irq();
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF2);
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF3);
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF4);
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF5);
+
+    HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN2_LOW);
+    HAL_PWREx_DisableInternalWakeUpLine();
+
+    /* Step 6: SHUTDOWN. Does not return on success — wakeup is a reset. */
+    HAL_PWREx_EnterSHUTDOWNMode();
+#endif /* CONFIG_SOC_FAMILY_STM32 */
+
+    /* Hard fallback — only reached if HAL entry returns (shouldn't on
+     * STM32) or on native_sim where the HAL is absent. */
+    LOG_ERR("SHUTDOWN entry returned, falling back to sys_reboot");
     sys_reboot(SYS_REBOOT_COLD);
 
     CODE_UNREACHABLE;
@@ -556,13 +651,15 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
     ARG_UNUSED(p3);
 
     const struct device *dev = POWER_DEVICE;
-    Numeric_t threshold = power_get_low_battery_threshold();
 
     /* Wait for system to stabilize before starting voltage monitoring */
     k_msleep(BATTERY_SAMPLE_INTERVAL_MS);
 
     while (true) {
         Numeric_t voltage = power_get_battery_voltage(dev);
+        /* Re-read each iteration so a UDS chemistry change takes effect
+         * within one sample interval without restarting the thread. */
+        Numeric_t threshold = power_get_low_battery_threshold();
 
         BatteryStatus_t status = {
             .voltage = voltage,

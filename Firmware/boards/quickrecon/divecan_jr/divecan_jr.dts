@@ -279,10 +279,12 @@
 };
 
 /* ---- Watchdog ----
- * Disabled until the watchdog feeding task is ported.
- * Enabling without a feeder causes an immediate WDT reset. */
+ * Fed by src/watchdog_feeder.c, which only kicks IWDG when every
+ * registered safety-critical thread (heartbeat.h) has advanced since
+ * the last check.
+ */
 &iwdg {
-	status = "disabled";
+	status = "okay";
 };
 
 /* ---- Flash partitions ----

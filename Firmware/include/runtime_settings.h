@@ -72,6 +72,30 @@ static const CalibrationMode_t valid_cal_modes[] = {
 #define CAL_MODE_DEFAULT CAL_SOLENOID_FLUSH
 #endif
 
+/* ---- Battery Chemistry ----
+ * Selects the low-battery cutoff voltage. Defaults from CONFIG_BATTERY_CHEMISTRY_*
+ * but is runtime-overridable via UDS so the same firmware can ship to units with
+ * different battery packs without a reflash. */
+
+/** @brief Battery chemistry, controls the low-battery threshold voltage. */
+typedef enum {
+    BATTERY_TYPE_9V   = 0, /**< 9V alkaline; threshold 7.7 V */
+    BATTERY_TYPE_LI1S = 1, /**< 1S Li-ion (3.7V nominal); threshold 3.0 V */
+    BATTERY_TYPE_LI2S = 2, /**< 2S Li-ion (7.4V nominal); threshold 6.0 V */
+    BATTERY_TYPE_LI3S = 3, /**< 3S Li-ion (11.1V nominal); threshold 9.0 V */
+    BATTERY_TYPE_COUNT
+} BatteryType_t;
+
+#if defined(CONFIG_BATTERY_CHEMISTRY_9V)
+#define BATTERY_TYPE_DEFAULT BATTERY_TYPE_9V
+#elif defined(CONFIG_BATTERY_CHEMISTRY_LI1S)
+#define BATTERY_TYPE_DEFAULT BATTERY_TYPE_LI1S
+#elif defined(CONFIG_BATTERY_CHEMISTRY_LI3S)
+#define BATTERY_TYPE_DEFAULT BATTERY_TYPE_LI3S
+#else
+#define BATTERY_TYPE_DEFAULT BATTERY_TYPE_LI2S
+#endif
+
 /* ---- PID Gain bounds ----
  * Used for both UDS write validation and post-load NVS validation.
  * The upper bound is a sanity guard against malformed / corrupted writes —
@@ -105,6 +129,7 @@ typedef struct {
     Numeric_t pidKp;                   /**< PID proportional gain (HAS_O2_SOLENOID variants) */
     Numeric_t pidKi;                   /**< PID integral gain (HAS_O2_SOLENOID variants) */
     Numeric_t pidKd;                   /**< PID derivative gain (HAS_O2_SOLENOID variants) */
+    BatteryType_t batteryType;         /**< Battery chemistry, drives low-battery threshold */
 } RuntimeSettings_t;
 
 #define RUNTIME_SETTINGS_DEFAULT {                                       \
@@ -114,6 +139,7 @@ typedef struct {
     .pidKp = PID_DEFAULT_KP,                                         \
     .pidKi = PID_DEFAULT_KI,                                         \
     .pidKd = PID_DEFAULT_KD,                                         \
+    .batteryType = BATTERY_TYPE_DEFAULT,                             \
 }
 
 /* ---- Validation ---- */
@@ -143,5 +169,17 @@ int runtime_settings_save(const RuntimeSettings_t *settings);
  * @return true if all fields are valid for the current build variant
  */
 bool runtime_settings_validate(const RuntimeSettings_t *settings);
+
+/**
+ * @brief Return the currently-cached battery chemistry.
+ *
+ * Reads from the in-memory cache populated by runtime_settings_load().
+ * Cheap (no NVS or settings-subsystem call), so safe to invoke from
+ * polling loops such as battery_monitor_thread.
+ *
+ * @return Cached battery chemistry; falls back to BATTERY_TYPE_DEFAULT
+ *         if the settings cache has not been initialised yet.
+ */
+BatteryType_t runtime_settings_get_battery_type(void);
 
 #endif

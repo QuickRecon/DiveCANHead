@@ -23,6 +23,7 @@
 #include "oxygen_cell_channels.h"
 #include "power_management.h"
 #include "errors.h"
+#include "heartbeat.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -427,7 +428,9 @@ static void o2s_cell_thread(void *p1, void *p2, void *p3)
     ARG_UNUSED(p3);
 
     if (o2s_setup(cell)) {
+        heartbeat_register((HeartbeatId_t)(HEARTBEAT_CELL_1 + cell->cell_number));
         while (true) {
+            heartbeat_kick((HeartbeatId_t)(HEARTBEAT_CELL_1 + cell->cell_number));
             /* Ensure RX is stopped before starting a new cycle */
             (void)uart_rx_disable(cell->uart_dev);
             k_sem_reset(&cell->rx_sem);

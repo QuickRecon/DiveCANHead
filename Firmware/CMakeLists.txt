@@ -6,7 +6,11 @@ set(DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 # Always-on GCC static analysis (-fanalyzer). Must be set before find_package(Zephyr).
 # Analyzer false positives in CMSIS/HAL inline asm and Zephyr internals are demoted
 # from -Werror to plain warnings; see COMPROMISE.md for the full list and rationale.
-set(ZEPHYR_SCA_VARIANT gcc)
+# Disabled on native_sim: host toolchain path doesn't populate GCC_COMPILER_VERSION
+# before the SCA check runs, causing a false version-too-old error.
+if(NOT BOARD STREQUAL "native_sim")
+    set(ZEPHYR_SCA_VARIANT gcc)
+endif()
 set(GCC_SCA_OPTS
     -Wno-error=analyzer-shift-count-overflow
     -Wno-error=analyzer-out-of-bounds
@@ -36,7 +40,9 @@ target_sources(app PRIVATE
     src/hw_version.c
     src/power_math.c
     src/power_management.c
+    src/heartbeat.c
 )
+target_sources_ifdef(CONFIG_DIVECAN_WATCHDOG app PRIVATE src/watchdog_feeder.c)
 target_sources_ifdef(CONFIG_HAS_ANALOG_CELL app PRIVATE src/oxygen_cell_analog.c)
 target_sources_ifdef(CONFIG_HAS_DIVEO2_CELL app PRIVATE src/oxygen_cell_diveo2.c)
 target_sources_ifdef(CONFIG_HAS_O2S_CELL app PRIVATE src/oxygen_cell_o2s.c)
@@ -100,4 +106,12 @@ target_compile_options(app PRIVATE
     -ftrivial-auto-var-init=pattern
     -fstack-usage
     -std=gnu23
+)
+
+# Integration test shim (native_sim only)
+target_sources_ifdef(CONFIG_INTEGRATION_TEST_SHIM app PRIVATE
+    tests/integration/src/test_shim.c
+    tests/integration/src/test_shim_uart.c
+    tests/integration/src/test_shim_adc.c
+    tests/integration/src/test_shim_gpio.c
 )

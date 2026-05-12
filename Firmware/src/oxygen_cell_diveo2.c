@@ -24,6 +24,7 @@
 #include "oxygen_cell_channels.h"
 #include "power_management.h"
 #include "errors.h"
+#include "heartbeat.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -664,7 +665,9 @@ static void diveo2_cell_thread(void *p1, void *p2, void *p3)
     ARG_UNUSED(p3);
 
     if (diveo2_setup(cell)) {
+        heartbeat_register((HeartbeatId_t)(HEARTBEAT_CELL_1 + cell->cell_number));
         while (true) {
+            heartbeat_kick((HeartbeatId_t)(HEARTBEAT_CELL_1 + cell->cell_number));
             int64_t loop_start = k_uptime_ticks();
 
             /* Ensure RX is stopped before starting a new cycle — avoids

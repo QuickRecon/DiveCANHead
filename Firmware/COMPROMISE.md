@@ -204,3 +204,47 @@ solenoid is detected and killed within one PID cycle.
   a tight loop while the solenoid should be on. Preserves the legacy
   10 ms safety bound at the cost of substantial controller complexity
   and risks visible chatter on the GPIO pin.
+
+
+## 9. Direct STM32 HAL SHUTDOWN-mode entry (bypasses Zephyr PM)
+
+`src/power_management.c::power_shutdown()` calls
+`HAL_PWREx_EnterSHUTDOWNMode()` and the pull-up/pull-down configurators
+directly through the STM32 HAL, rather than going through Zephyr's
+power-management subsystem (`pm_state_force()` /
+`pm_device_action_run()`).
+
+**What changed**: shutdown entry uses `HAL_PWR_EnableWakeUpPin()` +
+`HAL_PWREx_EnterSHUTDOWNMode()` reached via `<stm32l4xx_hal_pwr_ex.h>`.
+Linker pulls in `stm32l4xx_hal_pwr.c` and `stm32l4xx_hal_pwr_ex.c`
+through `CONFIG_USE_STM32_HAL_PWR{,_EX}=y`, which a new
+`CONFIG_DIVECAN_HAL_PWR_EX` Kconfig selects (the upstream symbols have
+no prompt and only `stm32wbax` SoCs select them by default).
+
+**Why**: Zephyr's STM32L4 PM driver
+(`zephyr/soc/st/stm32/stm32l4x/power.c`) only handles
+`PM_STATE_SUSPEND_TO_IDLE` (STOP0/1/2) and `PM_STATE_STANDBY`. SHUTDOWN
+mode — the deepest state, drawing < 1 µA on the L431 — is not exposed.
+The product needs SHUTDOWN-mode current draw to extend battery life
+when the dive computer disappears, so we bypass the PM layer rather
+than degrade to STANDBY.
+
+**What still provides coverage**: The HAL is vendor-supported and
+matches the legacy STM32 firmware's shutdown path
+(`STM32/Core/Src/Hardware/pwr_management.c::Shutdown()`) line-for-line
+in semantics. The pin-pull table is Jr-specific and re-derived from
+`divecan_jr.dts`, not blindly copied from the legacy Rev1 board. A
+fallback to `sys_reboot(SYS_REBOOT_COLD)` runs if the HAL entry returns
+unexpectedly, and on non-STM32 builds (`CONFIG_SOC_FAMILY_STM32=n`)
+the entire HAL block is `#if`-guarded out so native_sim test fixtures
+fall through to the reboot path.
+
+**Possible alternatives to investigate**:
+- Contribute SHUTDOWN-mode support to Zephyr's STM32L4 PM driver
+  upstream — would expose `PM_STATE_SOFT_OFF` for STM32L4. Zephyr's
+  generic `pm_state_force(PM_STATE_SOFT_OFF)` would then handle the
+  entry sequence and we could drop the direct HAL call.
+- Move the pin-pull table into a DT-driven structure so it's
+  per-board rather than per-`#if`-chain. Bench characterisation of the
+  Jr standby current would tell us whether the simplification is worth
+  the extra DT plumbing.

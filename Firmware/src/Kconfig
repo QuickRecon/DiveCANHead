@@ -215,3 +215,32 @@ config DEPTH_COMPENSATION_DEFAULT
 	  Only meaningful when a control solenoid is present.
 
 endmenu # Runtime Setting Defaults
+
+menu "Safety"
+
+config DIVECAN_WATCHDOG
+	bool "Enable IWDG feeder thread"
+	default y
+	depends on WATCHDOG
+	help
+	  Compiles in src/watchdog_feeder.c, which arms the SoC watchdog
+	  and only feeds it when every safety-critical thread (registered
+	  via heartbeat.h) has advanced since the last check.
+	  Disable for native_sim test builds where IWDG hardware is absent.
+
+config DIVECAN_HAL_PWR_EX
+	bool "Pull in STM32 HAL PWR (+ Extended) driver for SHUTDOWN-mode entry"
+	default y
+	depends on SOC_FAMILY_STM32
+	select USE_STM32_HAL_PWR
+	select USE_STM32_HAL_PWR_EX
+	select PM_DEVICE
+	help
+	  power_shutdown() calls HAL_PWR_EnableWakeUpPin() +
+	  HAL_PWREx_EnterSHUTDOWNMode() (and the associated pull-up /
+	  pull-down configurators) directly because Zephyr's STM32 PM
+	  layer doesn't expose SHUTDOWN. This option pulls in both HAL TUs.
+
+endmenu # Safety
+
+rsource "../tests/integration/Kconfig"

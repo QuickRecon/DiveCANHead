@@ -26,6 +26,7 @@
 #include "calibration.h"
 #include "errors.h"
 #include "common.h"
+#include "heartbeat.h"
 
 LOG_MODULE_REGISTER(divecan_rx, LOG_LEVEL_INF);
 
@@ -184,8 +185,10 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
     txStartDevice(DIVECAN_CONTROLLER, device_spec.type);
 
     LOG_INF("DiveCAN RX thread started");
+    heartbeat_register(HEARTBEAT_DIVECAN_RX);
 
     while (true) {
+        heartbeat_kick(HEARTBEAT_DIVECAN_RX);
         DiveCANMessage_t message = {0};
         Status_t rx_ret = k_msgq_get(&can_rx_msgq, &message,
                     K_MSEC(RX_TIMEOUT_MS));

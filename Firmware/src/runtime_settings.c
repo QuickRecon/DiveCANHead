@@ -95,6 +95,19 @@ static bool cal_mode_valid(CalibrationMode_t val)
 }
 
 /**
+ * @brief Check whether a BatteryType_t value is in the allowed set
+ *
+ * @param val Candidate battery chemistry value
+ * @return true if val is a recognised BatteryType_t
+ */
+static bool battery_type_valid(BatteryType_t val)
+{
+    /* Lower bound omitted: BatteryType_t is unsigned and BATTERY_TYPE_9V==0,
+     * so `val >= BATTERY_TYPE_9V` is always true (compiler -Wtype-limits). */
+    return val < BATTERY_TYPE_COUNT;
+}
+
+/**
  * @brief Check whether a candidate PID gain is finite and within bounds
  *
  * Used by both NVS-load validation and UDS-write validation. Bounds are
@@ -129,9 +142,12 @@ bool runtime_settings_validate(const RuntimeSettings_t *s)
     else if (!cal_mode_valid(s->calibrationMode)) {
         result = false;
     }
-    else if (!pid_gain_valid(s->pidKp) ||
-         !pid_gain_valid(s->pidKi) ||
-         !pid_gain_valid(s->pidKd)) {
+    else if ((!pid_gain_valid(s->pidKp)) ||
+         (!pid_gain_valid(s->pidKi)) ||
+         (!pid_gain_valid(s->pidKd))) {
+        result = false;
+    }
+    else if (!battery_type_valid(s->batteryType)) {
         result = false;
     }
     else
@@ -148,6 +164,59 @@ bool runtime_settings_validate(const RuntimeSettings_t *s)
     }
 
     return result;
+}
+
+/* Per-field loaders: each reads its expected wire type from the settings
+ * backend and updates the in-memory cache iff the byte count matches and
+ * the value passes its validator. Read errors leave the cache unchanged
+ * (the existing default or previously-loaded value persists). */
+
+static void load_ppo2(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    uint8_t val = 0U;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if ((sizeof(val) == (size_t)got) &&
+        ppo2_mode_valid((PPO2ControlMode_t)val)) {
+        cached->ppo2ControlMode = (PPO2ControlMode_t)val;
+    }
+}
+
+static void load_cal(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    uint8_t val = 0U;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if ((sizeof(val) == (size_t)got) &&
+        cal_mode_valid((CalibrationMode_t)val)) {
+        cached->calibrationMode = (CalibrationMode_t)val;
+    }
+}
+
+static void load_depth(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    bool val = false;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if (sizeof(val) == (size_t)got) {
+        cached->depthCompensation = val;
+    }
+}
+
+static void load_pid_gain(settings_read_cb cb, void *arg, Numeric_t *dest)
+{
+    Numeric_t val = 0.0f;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if ((sizeof(val) == (size_t)got) && pid_gain_valid(val)) {
+        *dest = val;
+    }
+}
+
+static void load_battery(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    uint8_t val = 0U;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if ((sizeof(val) == (size_t)got) &&
+        battery_type_valid((BatteryType_t)val)) {
+        cached->batteryType = (BatteryType_t)val;
+    }
 }
 
 /**
@@ -171,60 +240,25 @@ static Status_t settings_set(const char *name, size_t len,
     (void)len;
 
     if (0 == strcmp(name, "ppo2")) {
-        uint8_t val = 0U;
-
-        rc = read_cb(cb_arg, &val, sizeof(val));
-        if (((Status_t)sizeof(val) == rc) &&
-            ppo2_mode_valid((PPO2ControlMode_t)val)) {
-            cached->ppo2ControlMode = (PPO2ControlMode_t)val;
-        }
-        rc = 0;
+        load_ppo2(read_cb, cb_arg, cached);
     }
     else if (0 == strcmp(name, "cal")) {
-        uint8_t val = 0U;
-
-        rc = read_cb(cb_arg, &val, sizeof(val));
-        if (((Status_t)sizeof(val) == rc) &&
-            cal_mode_valid((CalibrationMode_t)val)) {
-            cached->calibrationMode = (CalibrationMode_t)val;
-        }
-        rc = 0;
+        load_cal(read_cb, cb_arg, cached);
     }
     else if (0 == strcmp(name, "depth")) {
-        bool val = false;
-
-        rc = read_cb(cb_arg, &val, sizeof(val));
-        if ((Status_t)sizeof(val) == rc) {
-            cached->depthCompensation = val;
-        }
-        rc = 0;
+        load_depth(read_cb, cb_arg, cached);
     }
     else if (0 == strcmp(name, "kp")) {
-        Numeric_t val = 0.0f;
-
-        rc = read_cb(cb_arg, &val, sizeof(val));
-        if (((Status_t)sizeof(val) == rc) && pid_gain_valid(val)) {
-            cached->pidKp = val;
-        }
-        rc = 0;
+        load_pid_gain(read_cb, cb_arg, &cached->pidKp);
     }
     else if (0 == strcmp(name, "ki")) {
-        Numeric_t val = 0.0f;
-
-        rc = read_cb(cb_arg, &val, sizeof(val));
-        if (((Status_t)sizeof(val) == rc) && pid_gain_valid(val)) {
-            cached->pidKi = val;
-        }
-        rc = 0;
+        load_pid_gain(read_cb, cb_arg, &cached->pidKi);
     }
     else if (0 == strcmp(name, "kd")) {
-        Numeric_t val = 0.0f;
-
-        rc = read_cb(cb_arg, &val, sizeof(val));
-        if (((Status_t)sizeof(val) == rc) && pid_gain_valid(val)) {
-            cached->pidKd = val;
-        }
-        rc = 0;
+        load_pid_gain(read_cb, cb_arg, &cached->pidKd);
+    }
+    else if (0 == strcmp(name, "bat")) {
+        load_battery(read_cb, cb_arg, cached);
     }
     else
     {
@@ -274,11 +308,12 @@ Status_t runtime_settings_load(RuntimeSettings_t *out)
         }
 
         *out = *cached;
-        LOG_INF("ppo2=%d cal=%d depth=%d kp=%.4f ki=%.4f kd=%.4f",
+        LOG_INF("ppo2=%d cal=%d depth=%d kp=%.4f ki=%.4f kd=%.4f bat=%d",
             cached->ppo2ControlMode, cached->calibrationMode,
             cached->depthCompensation,
             (double)cached->pidKp, (double)cached->pidKi,
-            (double)cached->pidKd);
+            (double)cached->pidKd,
+            cached->batteryType);
         rc = 0;
     }
 
@@ -305,54 +340,57 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
     }
     else
     {
-        uint8_t val = 0U;
-        Status_t rc_ppo2 = 0;
-        Status_t rc_cal = 0;
-        Status_t rc_depth = 0;
-        Status_t rc_kp = 0;
-        Status_t rc_ki = 0;
-        Status_t rc_kd = 0;
+        uint8_t ppo2_val = (uint8_t)s->ppo2ControlMode;
+        uint8_t cal_val = (uint8_t)s->calibrationMode;
+        uint8_t bat_val = (uint8_t)s->batteryType;
 
-        val = (uint8_t)s->ppo2ControlMode;
-        rc_ppo2 = settings_save_one(SETTINGS_SUBTREE "/ppo2", &val, sizeof(val));
+        enum { SAVE_FIELD_COUNT = 7 };
+        const Status_t rc_codes[SAVE_FIELD_COUNT] = {
+            settings_save_one(SETTINGS_SUBTREE "/ppo2",
+                      &ppo2_val, sizeof(ppo2_val)),
+            settings_save_one(SETTINGS_SUBTREE "/cal",
+                      &cal_val, sizeof(cal_val)),
+            settings_save_one(SETTINGS_SUBTREE "/depth",
+                      &s->depthCompensation,
+                      sizeof(s->depthCompensation)),
+            settings_save_one(SETTINGS_SUBTREE "/kp",
+                      &s->pidKp, sizeof(s->pidKp)),
+            settings_save_one(SETTINGS_SUBTREE "/ki",
+                      &s->pidKi, sizeof(s->pidKi)),
+            settings_save_one(SETTINGS_SUBTREE "/kd",
+                      &s->pidKd, sizeof(s->pidKd)),
+            settings_save_one(SETTINGS_SUBTREE "/bat",
+                      &bat_val, sizeof(bat_val)),
+        };
 
-        val = (uint8_t)s->calibrationMode;
-        rc_cal = settings_save_one(SETTINGS_SUBTREE "/cal", &val, sizeof(val));
+        Status_t first_err = 0;
+        for (size_t i = 0; i < ARRAY_SIZE(rc_codes); ++i) {
+            if ((0 == first_err) && (0 != rc_codes[i])) {
+                first_err = rc_codes[i];
+            }
+        }
 
-        rc_depth = settings_save_one(SETTINGS_SUBTREE "/depth",
-                    &s->depthCompensation,
-                    sizeof(s->depthCompensation));
-
-        rc_kp = settings_save_one(SETTINGS_SUBTREE "/kp",
-                    &s->pidKp, sizeof(s->pidKp));
-        rc_ki = settings_save_one(SETTINGS_SUBTREE "/ki",
-                    &s->pidKi, sizeof(s->pidKi));
-        rc_kd = settings_save_one(SETTINGS_SUBTREE "/kd",
-                    &s->pidKd, sizeof(s->pidKd));
-
-        if ((0 == rc_ppo2) && (0 == rc_cal) && (0 == rc_depth) &&
-            (0 == rc_kp) && (0 == rc_ki) && (0 == rc_kd)) {
+        if (0 == first_err) {
             *getCached() = *s;
         }
-        else if (0 != rc_ppo2) {
-            rc = rc_ppo2;
-        }
-        else if (0 != rc_cal) {
-            rc = rc_cal;
-        }
-        else if (0 != rc_depth) {
-            rc = rc_depth;
-        }
-        else if (0 != rc_kp) {
-            rc = rc_kp;
-        }
-        else if (0 != rc_ki) {
-            rc = rc_ki;
-        }
         else {
-            rc = rc_kd;
+            rc = first_err;
         }
     }
 
     return rc;
+}
+
+/**
+ * @brief Return the currently-cached battery chemistry.
+ *
+ * Reads only from the in-memory cache; no NVS or settings-subsystem access.
+ * Polled by battery_monitor_thread so the threshold tracks runtime UDS edits
+ * within one sample interval.
+ *
+ * @return Cached BatteryType_t value.
+ */
+BatteryType_t runtime_settings_get_battery_type(void)
+{
+    return getCached()->batteryType;
 }

@@ -140,11 +140,33 @@ VBUS is modeled as a `regulator-fixed` device — the idiomatic Zephyr way to re
 
 ### Battery monitoring
 
-A dedicated thread samples battery voltage every 2 seconds and publishes `BatteryStatus_t` to `chan_battery_status`. The low-battery threshold is set by the `BATTERY_CHEMISTRY_*` Kconfig choice. Consumers (future DiveCAN status composer) subscribe for `DIVECAN_ERR_BAT_LOW` reporting.
+A dedicated thread samples battery voltage every 2 seconds and publishes `BatteryStatus_t` to `chan_battery_status` (voltage, threshold, low_battery flag). The low-battery threshold is **runtime-configurable**: the `BATTERY_CHEMISTRY_*` Kconfig is the boot default, but the active value comes from `RuntimeSettings_t.batteryType` (NVS-persisted under `rt/bat`, exposed as UDS settings index 7 — `9V` / `Li 1S` / `Li 2S` / `Li 3S`). The thread re-reads the threshold every iteration so a runtime change takes effect within one sample interval.
+
+Per design decision, **low-battery does not auto-trigger shutdown** — the warning is published to zbus and logged; the dive computer / surface tooling chooses the response.
 
 ### Shutdown
 
-On boot, the firmware waits 1 second for peripherals to stabilize, then checks if the CAN bus is active. If not, it shuts down immediately — this guards against transient power glitches ("blip on in the dead of night"). The CAN bus commands a shutdown via DiveCAN BUS_OFF, published to `chan_shutdown_request`.
+On boot, the firmware waits 1 second for peripherals to stabilize, then checks if the CAN bus is active. If not, `power_shutdown()` runs — this guards against transient power glitches ("blip on in the dead of night").
+
+`power_shutdown()` enters STM32 SHUTDOWN mode via direct HAL calls (`HAL_PWREx_EnterSHUTDOWNMode()`), draws < 1 µA, and arms `PWR_WAKEUP_PIN2_LOW` (PC13 = CAN_EN, active-low). When CAN traffic re-asserts CAN_EN low, the wakeup is a power-on reset — execution restarts at the reset vector and the boot path re-evaluates whether to stay up. Zephyr's STM32L4 PM layer doesn't expose SHUTDOWN, so the HAL is called directly (see COMPROMISE.md).
+
+### Watchdog
+
+The IWDG is enabled in DTS and fed by `src/watchdog_feeder.c` at priority 14 (lower than every safety-critical thread). The feeder only kicks the watchdog when **every registered thread** in the heartbeat module (`include/heartbeat.h`) has advanced its atomic counter since the previous check — a stalled thread → no feed → SoC reset within the IWDG timeout window (8 s, three feed attempts per window).
+
+Currently registered slots:
+
+| Slot | Thread | Kick site |
+|------|--------|-----------|
+| `HEARTBEAT_PPO2_PID` | `ppo2_pid_thread` | top of PID iteration |
+| `HEARTBEAT_SOLENOID_FIRE` | `solenoid_fire_thread` | top of fire-cycle iteration |
+| `HEARTBEAT_CONSENSUS` | `consensus_thread` | top of consensus loop (bounded 2 s wait) |
+| `HEARTBEAT_DIVECAN_RX` | `divecan_rx` | top of RX loop (1 s timeout in msgq_get) |
+| `HEARTBEAT_CELL_1..3` | each active cell thread | top of sample iteration |
+
+Slots not registered are ignored — variants without a given thread (e.g. cell 3 unconfigured, no solenoid) skip registration and the feeder doesn't expect a kick from them.
+
+A reset caused by missed feeds surfaces on the next boot through the existing crash-DID infrastructure: the IWDG reset flag in `RCC_CSR` is captured by `errors.c` and exposed via `UDS_DID_CRASH_REASON` (0xF251).
 
 ## DiveCAN Protocol
 

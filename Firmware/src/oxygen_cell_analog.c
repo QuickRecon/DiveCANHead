@@ -20,6 +20,7 @@
 #include "oxygen_cell_math.h"
 #include "errors.h"
 #include "common.h"
+#include "heartbeat.h"
 
 LOG_MODULE_REGISTER(cell_analog, LOG_LEVEL_INF);
 
@@ -244,7 +245,9 @@ static void analog_cell_thread(void *p1, void *p2, void *p3)
     if (0 != analog_cell_init_adc(cell)) {
         cell->status = CELL_FAIL;
     } else {
+        heartbeat_register((HeartbeatId_t)(HEARTBEAT_CELL_1 + cell->cell_number));
         while (true) {
+            heartbeat_kick((HeartbeatId_t)(HEARTBEAT_CELL_1 + cell->cell_number));
             if (0 == analog_adc_read(cell)) {
                 analog_publish(cell);
             }

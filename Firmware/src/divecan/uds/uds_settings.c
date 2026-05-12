@@ -25,8 +25,9 @@ LOG_MODULE_REGISTER(uds_settings, LOG_LEVEL_INF);
 #define SETTING_INDEX_PID_KP       4U
 #define SETTING_INDEX_PID_KI       5U
 #define SETTING_INDEX_PID_KD       6U
+#define SETTING_INDEX_BATTERY_TYPE 7U
 
-#define SETTING_COUNT 7U
+#define SETTING_COUNT 8U
 
 /* PID gains are stored as floats in NVS but exposed as uint64 milliunits
  * over the wire (handset and SettingValue u64 BE format). The factor 1000
@@ -46,10 +47,11 @@ LOG_MODULE_REGISTER(uds_settings, LOG_LEVEL_INF);
 #define APP_BUILD_VERSION_STR "dev"
 #endif
 
-#define FW_COMMIT_OPTION_COUNT 2U
-#define PPO2_MODE_OPTION_COUNT 4U
-#define CAL_MODE_OPTION_COUNT  5U
-#define BOOL_OPTION_COUNT      3U
+#define FW_COMMIT_OPTION_COUNT   2U
+#define PPO2_MODE_OPTION_COUNT   4U
+#define CAL_MODE_OPTION_COUNT    5U
+#define BOOL_OPTION_COUNT        3U
+#define BATTERY_TYPE_OPTION_COUNT 5U
 
 static const char * const fwCommitOptions[FW_COMMIT_OPTION_COUNT] = {
     APP_BUILD_VERSION_STR,
@@ -74,6 +76,15 @@ static const char * const calModeOptions[CAL_MODE_OPTION_COUNT] = {
 static const char * const boolOptions[BOOL_OPTION_COUNT] = {
     "Off",
     "On",
+    NULL
+};
+
+/* Order MUST match BatteryType_t enum values (9V=0, LI1S=1, LI2S=2, LI3S=3). */
+static const char * const batteryTypeOptions[BATTERY_TYPE_OPTION_COUNT] = {
+    "9V",
+    "Li 1S",
+    "Li 2S",
+    "Li 3S",
     NULL
 };
 
@@ -141,6 +152,15 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .maxValue = PID_GAIN_MAX_WIRE,
         .options = NULL,
         .optionCount = 0
+    },
+    /* Index 7: Battery chemistry (drives low-voltage cutoff threshold) */
+    {
+        .label = "Battery",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .maxValue = (uint64_t)(BATTERY_TYPE_COUNT - 1),
+        .options = batteryTypeOptions,
+        .optionCount = (uint8_t)BATTERY_TYPE_COUNT
     }
 };
 
@@ -210,6 +230,9 @@ uint64_t UDS_GetSettingValue(uint8_t index)
     case SETTING_INDEX_PID_KD:
         result = (uint64_t)((double)rs.pidKd * (double)PID_GAIN_SCALE_TO_WIRE);
         break;
+    case SETTING_INDEX_BATTERY_TYPE:
+        result = (uint64_t)rs.batteryType;
+        break;
     default:
         OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
         break;
@@ -263,6 +286,9 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
             case SETTING_INDEX_PID_KD:
                 rs.pidKd = (Numeric_t)((double)value /
                             (double)PID_GAIN_SCALE_TO_WIRE);
+                break;
+            case SETTING_INDEX_BATTERY_TYPE:
+                rs.batteryType = (BatteryType_t)value;
                 break;
             default:
                 break;
@@ -321,6 +347,9 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
         case SETTING_INDEX_PID_KD:
             rs.pidKd = (Numeric_t)((double)value /
                         (double)PID_GAIN_SCALE_TO_WIRE);
+            break;
+        case SETTING_INDEX_BATTERY_TYPE:
+            rs.batteryType = (BatteryType_t)value;
             break;
         default:
             break;

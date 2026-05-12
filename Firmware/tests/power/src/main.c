@@ -15,6 +15,18 @@
 #include <zephyr/drivers/gpio/gpio_emul.h>
 
 #include "power_management.h"
+#include "runtime_settings.h"
+
+/* Stub the runtime-settings accessor that power_math.c reaches through —
+ * this test is about pure threshold math, not NVS plumbing. Returning
+ * LI2S preserves the historical default-threshold expectation (6.0 V).
+ * Per-chemistry mappings are exercised by overriding this in a future
+ * test if needed. */
+static BatteryType_t stub_battery_type = BATTERY_TYPE_LI2S;
+BatteryType_t runtime_settings_get_battery_type(void)
+{
+    return stub_battery_type;
+}
 
 /* Get the power device instantiated from the DTS overlay */
 static const struct device *power_dev = DEVICE_DT_GET(DT_NODELABEL(power));
@@ -119,7 +131,24 @@ ZTEST(battery_threshold, test_threshold_positive)
 /** @brief Default threshold is 6.0 V (empty 2S Li-Ion battery). */
 ZTEST(battery_threshold, test_default_threshold)
 {
+    stub_battery_type = BATTERY_TYPE_LI2S;
     zassert_within(power_get_low_battery_threshold(), 6.0f, 0.01f);
+}
+
+/** @brief Threshold tracks the runtime chemistry across all four enum values. */
+ZTEST(battery_threshold, test_threshold_per_chemistry)
+{
+    stub_battery_type = BATTERY_TYPE_9V;
+    zassert_within(power_get_low_battery_threshold(), 7.7f, 0.01f);
+
+    stub_battery_type = BATTERY_TYPE_LI1S;
+    zassert_within(power_get_low_battery_threshold(), 3.0f, 0.01f);
+
+    stub_battery_type = BATTERY_TYPE_LI2S;
+    zassert_within(power_get_low_battery_threshold(), 6.0f, 0.01f);
+
+    stub_battery_type = BATTERY_TYPE_LI3S;
+    zassert_within(power_get_low_battery_threshold(), 9.0f, 0.01f);
 }
 
 /* ============================================================================

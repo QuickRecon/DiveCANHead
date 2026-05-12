@@ -31,6 +31,7 @@
 #include "runtime_settings.h"
 #include "errors.h"
 #include "common.h"
+#include "heartbeat.h"
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_types.h"
 #include "solenoid_roles.h"
@@ -201,12 +202,14 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
     }
 
     LOG_INF("PID thread started");
+    heartbeat_register(HEARTBEAT_PPO2_PID);
 
     bool *failed_latch = getConsensusFailedLatch();
     PIDState_t *state = getPidState();
     Numeric_t *latest_duty = getLatestDutyCycle();
 
     while (true) {
+        heartbeat_kick(HEARTBEAT_PPO2_PID);
         ConsensusMsg_t consensus = {0};
         (void)zbus_chan_read(&chan_consensus, &consensus, K_NO_WAIT);
         PPO2_t setpoint = read_setpoint_or_default();
@@ -359,8 +362,10 @@ static void solenoid_fire_thread_fn(void *p1, void *p2, void *p3)
     }
 
     LOG_INF("Solenoid fire thread started (mode %d)", (int)mode);
+    heartbeat_register(HEARTBEAT_SOLENOID_FIRE);
 
     while (true) {
+        heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
         if (PPO2CONTROL_PID == mode) {
             run_pid_fire_cycle();
         }

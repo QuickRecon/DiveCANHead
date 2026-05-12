@@ -15,6 +15,7 @@
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_math.h"
 #include "errors.h"
+#include "heartbeat.h"
 
 LOG_MODULE_REGISTER(consensus, LOG_LEVEL_INF);
 
@@ -53,11 +54,18 @@ static void consensus_thread_fn(void *p1, void *p2, void *p3)
 
     const struct zbus_channel *chan = NULL;
     OxygenCellMsg_t msg_buf = {0};
+    heartbeat_register(HEARTBEAT_CONSENSUS);
 
     while (true) {
-        /* Block until any cell channel is updated */
-        if (0 != zbus_sub_wait_msg(&consensus_sub, &chan, &msg_buf,
-                      K_FOREVER)) {
+        heartbeat_kick(HEARTBEAT_CONSENSUS);
+        /* Bounded wait so the watchdog feeder sees a heartbeat every
+         * iteration even if all cells are slow (e.g. an all-O2S build
+         * where the next sample may be ~10 s away). On timeout we
+         * still re-read every cell channel — staleness is enforced
+         * downstream by consensus_calculate(). */
+        Status_t wait_rc = zbus_sub_wait_msg(&consensus_sub, &chan,
+                             &msg_buf, K_MSEC(2000));
+        if ((0 != wait_rc) && (-EAGAIN != wait_rc)) {
             /* Wait error — retry on next iteration */
         } else {
             /* Drain any additional queued notifications so we

@@ -11,6 +11,7 @@ target_sources(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/oxygen_cell_diveo2.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/oxygen_cell_o2s.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/oxygen_cell_channels.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/heartbeat.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/errors.c
 )
 target_include_directories(app PRIVATE
