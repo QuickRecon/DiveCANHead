@@ -38,7 +38,7 @@ Hardware topology is defined at compile time via Kconfig, applied through `EXTRA
 - **Power mode**: Battery only, battery+CAN fallback, CAN only
 - **Battery chemistry**: 9V alkaline, 1S/2S/3S lithium
 - **Solenoid role mapping**: Which physical channel serves which function (O2 inject, O2 flush, dil flush, secondary inject)
-- **Runtime defaults**: PPO2 control mode, calibration method, depth compensation, extended messages
+- **Runtime defaults**: PPO2 control mode, calibration method, depth compensation
 
 Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_settings.c` catches configuration errors at compile time. Derived bools (`HAS_DIGITAL_CELL`, `HAS_O2_SOLENOID`, `HAS_FLUSH_SOLENOID`) gate feature availability.
 
@@ -58,7 +58,7 @@ Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_set
 | PPO2 control mode | NVS settings | UDS write at runtime |
 | Calibration method | NVS settings | UDS write at runtime |
 | Depth compensation | NVS settings | UDS write at runtime |
-| Extended messages | NVS settings | UDS write at runtime |
+| PID Kp/Ki/Kd gains | NVS settings | UDS write at runtime |
 
 Runtime settings are validated against compile-time tables — e.g., PID mode is only valid if `HAS_O2_SOLENOID` is set. The valid-value tables are const arrays gated by `#ifdef CONFIG_*`, so the compiler eliminates invalid options entirely.
 
@@ -85,7 +85,7 @@ ESP_ERROR_CHECK-style macro for kernel/driver API calls that must not fail. Logs
 Non-fatal runtime errors published to a zbus channel (`chan_error`). The `LOG_ERR` in the macro uses the caller's log module for attribution. Subscribers (DiveCAN status composer, flash logger, etc.) react independently. System continues operating with graceful degradation.
 
 ### Tier 4: FATAL_OP_ERROR — Fatal operational errors
-Unrecoverable runtime conditions. Persists error info to noinit RAM and reboots. On next boot, the crash info is logged and made available via `errors_get_last_crash()` for UDS DID readout.
+Unrecoverable runtime conditions. Persists error info to noinit RAM and reboots. On next boot, the crash info is logged and made available via `errors_get_last_crash()`, with each field exposed through dedicated UDS state DIDs (`0xF250` CRASH_VALID, `0xF251` REASON, `0xF252` PC, `0xF253` LR, `0xF254` CFSR) so the handset can read the post-mortem after a dive incident.
 
 ### Fatal Error Handler
 Overrides Zephyr's `k_sys_fatal_error_handler` (weak symbol). All fatal paths — CPU exceptions, stack canary corruption, `k_oops()`, `k_panic()` — route here. The handler:
@@ -133,8 +133,10 @@ VBUS is modeled as a `regulator-fixed` device — the idiomatic Zephyr way to re
 - **Single power source**: Battery only
 - **VCC**: Always on, powers MCU
 - **VBUS**: Powers everything else (ADCs, CAN, UARTs, SPI flash). Controlled via `regulator-fixed` with `battery_en` (PA1) as the enable GPIO
-- **Voltage monitoring**: Battery voltage via ADC1 channel 4 (PC3) through 7.25x resistor divider. VCC readable via internal VBAT sensor (shared regulator with VBUS)
-- **On Jr, VBUS == VCC** since they share a regulator. `power_get_vbus_voltage()` returns the battery voltage as the best available VBUS estimate
+- **Voltage monitoring**:
+  - Battery voltage via ADC1 channel 4 (PC3) through a 7.25x external resistor divider — reads the unregulated battery rail.
+  - VCC (= VBUS, shared regulator) via the STM32 internal VBAT sensor on ADC1 channel 18, which applies the chip's internal 1/3 divider. Wired into the `power-subsystem` node via `vcc-sense = <&vbat>;` and consumed through the Zephyr sensor API (`SENSOR_CHAN_VOLTAGE`) so the divider is handled by the upstream driver.
+- **On Jr, VBUS == VCC** physically because they share the regulator. `power_get_vbus_voltage()` and `power_get_vcc_voltage()` therefore both read the VBAT sensor on this board; the Rev2 driver path will read a dedicated VBUS ADC channel once implemented.
 
 ### Battery monitoring
 

@@ -42,6 +42,13 @@
 #define UDS_DID_SETPOINT_WRITE      0xF240U
 #define UDS_DID_CALIBRATION_TRIGGER 0xF241U
 
+/* Crash-info DIDs (0xF25x) — populated from errors_get_last_crash() */
+#define UDS_DID_CRASH_VALID         0xF250U  /**< uint8: 1 if last boot was a crash, else 0 */
+#define UDS_DID_CRASH_REASON        0xF251U  /**< uint32: K_ERR_* / FatalOpError_t code */
+#define UDS_DID_CRASH_PC            0xF252U  /**< uint32: program counter at fault */
+#define UDS_DID_CRASH_LR            0xF253U  /**< uint32: link register at fault */
+#define UDS_DID_CRASH_CFSR          0xF254U  /**< uint32: Cortex-M Configurable Fault Status Register */
+
 /* ============================================================================
  * Cell DIDs (0xF4Nx where N = cell number 0-2)
  * ============================================================================ */

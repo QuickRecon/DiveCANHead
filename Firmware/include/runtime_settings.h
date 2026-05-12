@@ -102,7 +102,6 @@ typedef struct {
     PPO2ControlMode_t ppo2ControlMode; /**< Active PPO2 control algorithm */
     CalibrationMode_t calibrationMode; /**< Active calibration method */
     bool depthCompensation;            /**< Enable depth-pressure compensation for setpoint */
-    bool extendedMessages;             /**< Enable non-standard debug CAN messages */
     Numeric_t pidKp;                   /**< PID proportional gain (HAS_O2_SOLENOID variants) */
     Numeric_t pidKi;                   /**< PID integral gain (HAS_O2_SOLENOID variants) */
     Numeric_t pidKd;                   /**< PID derivative gain (HAS_O2_SOLENOID variants) */
@@ -112,7 +111,6 @@ typedef struct {
     .ppo2ControlMode = PPO2_CONTROL_MODE_DEFAULT,                    \
     .calibrationMode = CAL_MODE_DEFAULT,                             \
     .depthCompensation = IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT), \
-    .extendedMessages = IS_ENABLED(CONFIG_EXTENDED_MESSAGES_DEFAULT), \
     .pidKp = PID_DEFAULT_KP,                                         \
     .pidKi = PID_DEFAULT_KI,                                         \
     .pidKd = PID_DEFAULT_KD,                                         \

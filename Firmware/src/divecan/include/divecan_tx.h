@@ -154,17 +154,4 @@ void txCalResponse(DiveCANType_t deviceType, DiveCANCalResponse_t response,
            ShortMillivolts_t cell3, FO2_t fo2,
            uint16_t atmosphericPressure);
 
-#if defined(CONFIG_EXTENDED_MESSAGES)
-/**
- * @brief Transmit a raw text log message over CAN (non-standard, debug only).
- *
- * Splits long messages across multiple 8-byte CAN frames using LOG_TEXT_ID.
- *
- * @param deviceType Our device type
- * @param msg        Message bytes to transmit
- * @param length     Number of bytes to send
- */
-void txLogText(DiveCANType_t deviceType, const char *msg, uint16_t length);
-#endif
-
 #endif /* DIVECAN_TX_H */

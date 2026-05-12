@@ -83,6 +83,18 @@ Numeric_t power_get_battery_voltage(const struct device *dev);
 Numeric_t power_get_vbus_voltage(const struct device *dev);
 
 /**
+ * @brief Read the VCC rail voltage in volts.
+ *
+ * Reads the VCC sense sensor configured on the power node (typically the
+ * STM32 internal VBAT sensor on Jr). Returns the regulated VCC voltage
+ * with the chip's internal divider already applied by the sensor driver.
+ *
+ * @param dev Power management device (use POWER_DEVICE)
+ * @return VCC voltage in volts, or negative if no VCC sense hardware is configured
+ */
+Numeric_t power_get_vcc_voltage(const struct device *dev);
+
+/**
  * @brief Read the CAN bus voltage in volts.
  *
  * Only available on boards with CAN voltage sensing (Rev2).

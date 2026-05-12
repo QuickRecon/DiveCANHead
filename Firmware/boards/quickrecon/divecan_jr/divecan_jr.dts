@@ -81,6 +81,10 @@
 		vbus-supply = <&vbus_reg>;
 		battery-sense-io-channels = <&adc1 4>;
 		battery-divider-ratio = <7250>;
+		/* On Jr, VCC == VBUS (shared regulator). Read it via the
+		 * STM32 internal VBAT sensor, which owns ADC channel 18 and
+		 * applies the chip's internal 1/3 divider. */
+		vcc-sense = <&vbat>;
 		can-enable-gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
 		can-shutdown-gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;
 	};

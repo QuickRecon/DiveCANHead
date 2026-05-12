@@ -915,13 +915,14 @@ K_THREAD_DEFINE(cal_thread, CAL_THREAD_STACK,
 /**
  * @brief Module initialisation hook (currently a no-op).
  *
- * The calibration thread is started automatically by K_THREAD_DEFINE.
- * Reserved for future use: pre-loading cached coefficients from settings
- * and distributing them to cell modules at boot.
+ * Each cell driver (analog/diveo2/o2s) loads its own coefficient from
+ * settings (`cal/cellN`) during its thread-init path, so no central
+ * pre-load is required here. The calibration thread is started
+ * automatically by K_THREAD_DEFINE. Kept as a hook in case a future
+ * cross-cell orchestration is needed (e.g. a single transactional load
+ * + integrity check across all cells before any cell publishes).
  */
 void calibration_init(void)
 {
-    /* Nothing to do currently — threads are auto-started by K_THREAD_DEFINE.
-     * Future: load cached cal coefficients from settings and push them
-     * to the cell modules on startup. */
+    /* Intentionally empty — see header comment. */
 }

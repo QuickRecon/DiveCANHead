@@ -155,12 +155,12 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
 
     /* Power Monitoring DIDs */
     case UDS_DID_VBUS_VOLTAGE:
-        writeFloat32(buf, power_get_battery_voltage(POWER_DEVICE));
+        writeFloat32(buf, power_get_vbus_voltage(POWER_DEVICE));
         *len = sizeof(Numeric_t);
         break;
 
     case UDS_DID_VCC_VOLTAGE:
-        writeFloat32(buf, power_get_battery_voltage(POWER_DEVICE));
+        writeFloat32(buf, power_get_vcc_voltage(POWER_DEVICE));
         *len = sizeof(Numeric_t);
         break;
 
@@ -170,8 +170,7 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
         break;
 
     case UDS_DID_CAN_VOLTAGE:
-        /* Jr has no separate CAN voltage sense */
-        writeFloat32(buf, -1.0f);
+        writeFloat32(buf, power_get_can_voltage(POWER_DEVICE));
         *len = sizeof(Numeric_t);
         break;
 
@@ -185,6 +184,66 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
         buf[0] = 0;
         *len = sizeof(uint8_t);
         break;
+
+    case UDS_DID_CRASH_VALID:
+    {
+        CrashInfo_t info = {0};
+        if (errors_get_last_crash(&info)) {
+            buf[0] = 1U;
+        } else {
+            buf[0] = 0U;
+        }
+        *len = sizeof(uint8_t);
+        break;
+    }
+
+    case UDS_DID_CRASH_REASON:
+    {
+        CrashInfo_t info = {0};
+        uint32_t val = 0U;
+        if (errors_get_last_crash(&info)) {
+            val = info.reason;
+        }
+        writeUint32(buf, val);
+        *len = sizeof(uint32_t);
+        break;
+    }
+
+    case UDS_DID_CRASH_PC:
+    {
+        CrashInfo_t info = {0};
+        uint32_t val = 0U;
+        if (errors_get_last_crash(&info)) {
+            val = info.pc;
+        }
+        writeUint32(buf, val);
+        *len = sizeof(uint32_t);
+        break;
+    }
+
+    case UDS_DID_CRASH_LR:
+    {
+        CrashInfo_t info = {0};
+        uint32_t val = 0U;
+        if (errors_get_last_crash(&info)) {
+            val = info.lr;
+        }
+        writeUint32(buf, val);
+        *len = sizeof(uint32_t);
+        break;
+    }
+
+    case UDS_DID_CRASH_CFSR:
+    {
+        CrashInfo_t info = {0};
+        uint32_t val = 0U;
+        if (errors_get_last_crash(&info)) {
+            val = info.cfsr;
+        }
+        writeUint32(buf, val);
+        *len = sizeof(uint32_t);
+        break;
+    }
 
     default:
         result = false;

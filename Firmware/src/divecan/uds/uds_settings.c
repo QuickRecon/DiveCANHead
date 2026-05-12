@@ -22,12 +22,11 @@ LOG_MODULE_REGISTER(uds_settings, LOG_LEVEL_INF);
 #define SETTING_INDEX_PPO2_MODE    1U
 #define SETTING_INDEX_CAL_MODE     2U
 #define SETTING_INDEX_DEPTH_COMP   3U
-#define SETTING_INDEX_EXT_MSGS     4U
-#define SETTING_INDEX_PID_KP       5U
-#define SETTING_INDEX_PID_KI       6U
-#define SETTING_INDEX_PID_KD       7U
+#define SETTING_INDEX_PID_KP       4U
+#define SETTING_INDEX_PID_KI       5U
+#define SETTING_INDEX_PID_KD       6U
 
-#define SETTING_COUNT 8U
+#define SETTING_COUNT 7U
 
 /* PID gains are stored as floats in NVS but exposed as uint64 milliunits
  * over the wire (handset and SettingValue u64 BE format). The factor 1000
@@ -116,16 +115,7 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .options = boolOptions,
         .optionCount = 2
     },
-    /* Index 4: Extended Messages */
-    {
-        .label = "Ext Msgs",
-        .kind = SETTING_KIND_TEXT,
-        .editable = true,
-        .maxValue = 1,
-        .options = boolOptions,
-        .optionCount = 2
-    },
-    /* Index 5: PID Kp (milliunits, 0..100000 ⇔ 0.0..100.0) */
+    /* Index 4: PID Kp (milliunits, 0..100000 ⇔ 0.0..100.0) */
     {
         .label = "PID Kp x1k",
         .kind = SETTING_KIND_NUMBER,
@@ -134,7 +124,7 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .options = NULL,
         .optionCount = 0
     },
-    /* Index 6: PID Ki (milliunits, 0..100000 ⇔ 0.0..100.0) */
+    /* Index 5: PID Ki (milliunits, 0..100000 ⇔ 0.0..100.0) */
     {
         .label = "PID Ki x1k",
         .kind = SETTING_KIND_NUMBER,
@@ -143,7 +133,7 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .options = NULL,
         .optionCount = 0
     },
-    /* Index 7: PID Kd (milliunits, 0..100000 ⇔ 0.0..100.0) */
+    /* Index 6: PID Kd (milliunits, 0..100000 ⇔ 0.0..100.0) */
     {
         .label = "PID Kd x1k",
         .kind = SETTING_KIND_NUMBER,
@@ -211,11 +201,6 @@ uint64_t UDS_GetSettingValue(uint8_t index)
             result = 1U;
         }
         break;
-    case SETTING_INDEX_EXT_MSGS:
-        if (rs.extendedMessages) {
-            result = 1U;
-        }
-        break;
     case SETTING_INDEX_PID_KP:
         result = (uint64_t)((double)rs.pidKp * (double)PID_GAIN_SCALE_TO_WIRE);
         break;
@@ -266,9 +251,6 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
                 break;
             case SETTING_INDEX_DEPTH_COMP:
                 rs.depthCompensation = (value != 0U);
-                break;
-            case SETTING_INDEX_EXT_MSGS:
-                rs.extendedMessages = (value != 0U);
                 break;
             case SETTING_INDEX_PID_KP:
                 rs.pidKp = (Numeric_t)((double)value /
@@ -327,9 +309,6 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
             break;
         case SETTING_INDEX_DEPTH_COMP:
             rs.depthCompensation = (value != 0U);
-            break;
-        case SETTING_INDEX_EXT_MSGS:
-            rs.extendedMessages = (value != 0U);
             break;
         case SETTING_INDEX_PID_KP:
             rs.pidKp = (Numeric_t)((double)value /

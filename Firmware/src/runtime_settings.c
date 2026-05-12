@@ -3,7 +3,7 @@
  * @brief Persistent runtime settings — load/save via Zephyr settings subsystem
  *
  * Stores PPO2 control mode, calibration mode, depth compensation flag, and
- * extended-messages flag in the "rt" settings subtree (NVS/FCB backend).
+ * PID gains in the "rt" settings subtree (NVS/FCB backend).
  * Build-time sanity checks ensure exactly one cell type and one power mode
  * are selected per Kconfig.  Invalid stored values are replaced with defaults
  * rather than causing a boot failure.
@@ -199,15 +199,6 @@ static Status_t settings_set(const char *name, size_t len,
         }
         rc = 0;
     }
-    else if (0 == strcmp(name, "ext")) {
-        bool val = false;
-
-        rc = read_cb(cb_arg, &val, sizeof(val));
-        if ((Status_t)sizeof(val) == rc) {
-            cached->extendedMessages = val;
-        }
-        rc = 0;
-    }
     else if (0 == strcmp(name, "kp")) {
         Numeric_t val = 0.0f;
 
@@ -283,9 +274,9 @@ Status_t runtime_settings_load(RuntimeSettings_t *out)
         }
 
         *out = *cached;
-        LOG_INF("ppo2=%d cal=%d depth=%d ext=%d kp=%.4f ki=%.4f kd=%.4f",
+        LOG_INF("ppo2=%d cal=%d depth=%d kp=%.4f ki=%.4f kd=%.4f",
             cached->ppo2ControlMode, cached->calibrationMode,
-            cached->depthCompensation, cached->extendedMessages,
+            cached->depthCompensation,
             (double)cached->pidKp, (double)cached->pidKi,
             (double)cached->pidKd);
         rc = 0;
@@ -318,7 +309,6 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
         Status_t rc_ppo2 = 0;
         Status_t rc_cal = 0;
         Status_t rc_depth = 0;
-        Status_t rc_ext = 0;
         Status_t rc_kp = 0;
         Status_t rc_ki = 0;
         Status_t rc_kd = 0;
@@ -333,10 +323,6 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
                     &s->depthCompensation,
                     sizeof(s->depthCompensation));
 
-        rc_ext = settings_save_one(SETTINGS_SUBTREE "/ext",
-                    &s->extendedMessages,
-                    sizeof(s->extendedMessages));
-
         rc_kp = settings_save_one(SETTINGS_SUBTREE "/kp",
                     &s->pidKp, sizeof(s->pidKp));
         rc_ki = settings_save_one(SETTINGS_SUBTREE "/ki",
@@ -345,7 +331,7 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
                     &s->pidKd, sizeof(s->pidKd));
 
         if ((0 == rc_ppo2) && (0 == rc_cal) && (0 == rc_depth) &&
-            (0 == rc_ext) && (0 == rc_kp) && (0 == rc_ki) && (0 == rc_kd)) {
+            (0 == rc_kp) && (0 == rc_ki) && (0 == rc_kd)) {
             *getCached() = *s;
         }
         else if (0 != rc_ppo2) {
@@ -356,9 +342,6 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
         }
         else if (0 != rc_depth) {
             rc = rc_depth;
-        }
-        else if (0 != rc_ext) {
-            rc = rc_ext;
         }
         else if (0 != rc_kp) {
             rc = rc_kp;

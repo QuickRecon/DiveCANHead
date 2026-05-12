@@ -106,3 +106,14 @@ properties:
   can-divider-ratio:
     type: int
     description: CAN bus voltage resistor divider ratio in milli-units.
+
+  vcc-sense:
+    type: phandle
+    description: |
+      Phandle to a sensor device that reports the VCC rail voltage via
+      SENSOR_CHAN_VOLTAGE. On Jr this is the STM32 internal VBAT node
+      (`compatible = "st,stm32-vbat"`), which owns ADC channel 18 and
+      applies the chip's internal 1/3 divider for us — physically the
+      same rail as VBUS because both share the regulator on Jr. Using a
+      sensor phandle (rather than a raw io-channel) avoids contending
+      for the ADC channel that the vbat driver already owns.

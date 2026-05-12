@@ -28,6 +28,13 @@ CONFIG_SPI=y
 CONFIG_ADC=y
 CONFIG_ADC_ADS1X1X=y
 
+# Internal VBAT sensor — used as the VCC rail voltage source on Jr
+# (VCC == VBUS physically; both share the regulator). The vbat driver
+# applies the chip's internal 1/3 divider and reports VDD via the
+# sensor API.
+CONFIG_SENSOR=y
+CONFIG_STM32_VBAT=y
+
 # External flash
 CONFIG_FLASH=y
 CONFIG_SPI_NOR=y

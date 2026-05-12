@@ -33,6 +33,11 @@ struct power_config {
     const struct device *battery_adc_dev;
     uint8_t battery_adc_channel;
     uint16_t battery_divider_ratio;  /* milli-units (7250 = 7.25x) */
+    /* VCC sense via a sensor device (e.g. st,stm32-vbat). Reports
+     * SENSOR_CHAN_VOLTAGE in volts. On Jr this also reports VBUS
+     * because both rails share the regulator. */
+    const struct device *vcc_sense_dev;
+    bool has_vcc_sense;
     struct gpio_dt_spec can_en;
     bool has_can_en;
     struct gpio_dt_spec can_shdn;
@@ -85,6 +90,39 @@ static Numeric_t sample_battery_voltage(const struct power_config *cfg,
             result = adc_millivolts_to_voltage(mv, cfg->battery_divider_ratio);
         } else {
             OP_ERROR_DETAIL(OP_ERR_INT_ADC, (uint32_t)ret);
+        }
+    }
+
+    return result;
+}
+
+/**
+ * @brief Read the VCC rail voltage from the configured sensor device.
+ *
+ * Wraps `sensor_sample_fetch` + `sensor_channel_get` for the VCC sense
+ * sensor (typically `st,stm32-vbat`). The sensor driver applies the
+ * chip's internal divider so the returned value is the regulated VCC
+ * voltage in volts.
+ *
+ * @param cfg Driver config; cfg->has_vcc_sense must be true.
+ * @return VCC voltage in volts, or -1.0 if the sensor read failed.
+ */
+static Numeric_t sample_vcc_voltage(const struct power_config *cfg)
+{
+    Numeric_t result = -1.0f;
+    struct sensor_value val = {0};
+
+    Status_t fetch_ret = sensor_sample_fetch_chan(cfg->vcc_sense_dev,
+                              SENSOR_CHAN_VOLTAGE);
+    if (0 != fetch_ret) {
+        OP_ERROR_DETAIL(OP_ERR_INT_ADC, (uint32_t)fetch_ret);
+    } else {
+        Status_t get_ret = sensor_channel_get(cfg->vcc_sense_dev,
+                              SENSOR_CHAN_VOLTAGE, &val);
+        if (0 != get_ret) {
+            OP_ERROR_DETAIL(OP_ERR_INT_ADC, (uint32_t)get_ret);
+        } else {
+            result = (Numeric_t)sensor_value_to_double(&val);
         }
     }
 
@@ -182,27 +220,48 @@ Numeric_t power_get_battery_voltage(const struct device *dev)
 /**
  * @brief Read the current VBUS rail voltage.
  *
- * On Jr hardware (no dedicated VBUS sense ADC), returns the battery voltage as
- * the closest available estimate. Rev2 will read the dedicated VBUS sense channel.
+ * On Jr, VBUS shares a regulator with VCC so this reads the VCC sense
+ * (the STM32 internal VBAT sensor monitoring VDD). On Rev2 — which has a
+ * dedicated VBUS sense ADC channel — this will read that channel directly
+ * once the Rev2 path is implemented.
  *
  * @param dev Power subsystem device handle.
  * @return VBUS voltage in volts, or -1.0 if unavailable.
  */
 Numeric_t power_get_vbus_voltage(const struct device *dev)
 {
-    /* On Jr, VBUS shares a regulator with VCC so VBUS voltage =
-     * battery voltage (minus regulator dropout, but close enough
-     * for our purposes). On Rev2, this would read the dedicated
-     * VBUS sense ADC channel. */
     const struct power_config *cfg = dev->config;
     Numeric_t result = -1.0f;
 
     if (cfg->has_vbus_sense) {
         /* TODO(aren.leishman@gmail.com, 2026-05-11): Rev2 path — read vbus-sense-io-channels */
+    } else if (cfg->has_vcc_sense) {
+        /* Jr: VBUS == VCC physically (shared regulator), so reading the
+         * VCC sensor is the most accurate VBUS measurement available. */
+        result = sample_vcc_voltage(cfg);
     } else {
-        /* Jr: VBUS == VCC, which comes from the same battery regulator.
-         * Return battery voltage as the best available VBUS estimate. */
-        result = power_get_battery_voltage(dev);
+        /* No sense hardware on this variant — leave at -1.0 sentinel. */
+    }
+
+    return result;
+}
+
+/**
+ * @brief Read the current VCC rail voltage.
+ *
+ * Reads the configured VCC sense sensor (on Jr, the STM32 internal VBAT
+ * sensor monitoring VDD through the chip's 1/3 divider).
+ *
+ * @param dev Power subsystem device handle.
+ * @return VCC voltage in volts, or -1.0 if no VCC sense hardware is configured.
+ */
+Numeric_t power_get_vcc_voltage(const struct device *dev)
+{
+    const struct power_config *cfg = dev->config;
+    Numeric_t result = -1.0f;
+
+    if (cfg->has_vcc_sense) {
+        result = sample_vcc_voltage(cfg);
     }
 
     return result;
@@ -391,10 +450,23 @@ static Status_t power_init(const struct device *dev)
             }
         }
 
+        /* Sanity check the optional VCC sense sensor (e.g. st,stm32-vbat).
+         * Non-fatal if absent or not ready — VCC reads return -1.0 via
+         * the has_vcc_sense gate in sample_vcc_voltage. */
+        if ((0 == result) && cfg->has_vcc_sense &&
+            !device_is_ready(cfg->vcc_sense_dev)) {
+            LOG_WRN("VCC sense sensor not ready (VCC reads disabled)");
+        }
+
         if (0 == result) {
-            LOG_INF("Power subsystem initialized (divider=%u.%02ux)",
+            const char *vcc_state = "absent";
+            if (cfg->has_vcc_sense && device_is_ready(cfg->vcc_sense_dev)) {
+                vcc_state = "ready";
+            }
+            LOG_INF("Power subsystem initialized (batt-divider=%u.%02ux, vcc-sense=%s)",
                 cfg->battery_divider_ratio / 1000,
-                (cfg->battery_divider_ratio % 1000) / 10);
+                (cfg->battery_divider_ratio % 1000) / 10,
+                vcc_state);
         }
     }
 
@@ -415,6 +487,11 @@ static Status_t power_init(const struct device *dev)
              (GPIO_DT_SPEC_INST_GET_BY_IDX(inst, prop, idx)),          \
              ({0}))
 
+#define POWER_VCC_SENSE_DEV(inst)                                              \
+    COND_CODE_1(POWER_HAS_PROP(inst, vcc_sense),                              \
+             (DEVICE_DT_GET(DT_INST_PHANDLE(inst, vcc_sense))),            \
+             (NULL))
+
 #define POWER_INIT(inst)                                                      \
     static struct power_data power_data_##inst;                            \
     static const struct power_config power_config_##inst = {               \
@@ -426,6 +503,8 @@ static Status_t power_init(const struct device *dev)
             battery_sense_io_channels, 0, input),                  \
         .battery_divider_ratio =                                       \
             DT_INST_PROP(inst, battery_divider_ratio),             \
+        .vcc_sense_dev = POWER_VCC_SENSE_DEV(inst),                    \
+        .has_vcc_sense = POWER_HAS_PROP(inst, vcc_sense),              \
         .can_en = POWER_GPIO_OR_EMPTY(inst, can_enable_gpios),         \
         .has_can_en = POWER_HAS_PROP(inst, can_enable_gpios),          \
         .can_shdn = POWER_GPIO_OR_EMPTY(inst, can_shutdown_gpios),     \

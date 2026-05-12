@@ -214,8 +214,4 @@ config DEPTH_COMPENSATION_DEFAULT
 	  Adjusts PID duty cycle based on ambient pressure.
 	  Only meaningful when a control solenoid is present.
 
-config EXTENDED_MESSAGES_DEFAULT
-	bool "Enable extended DiveCAN messages by default"
-	default n
-
 endmenu # Runtime Setting Defaults

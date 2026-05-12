@@ -17,7 +17,6 @@
 LOG_MODULE_REGISTER(divecan_tx, LOG_LEVEL_INF);
 
 #define BUS_NAME_LEN 8U
-#define CAN_DATA_SIZE 8U
 
 /* Bus init magic bytes (protocol-defined) */
 static const uint8_t BUS_INIT_BYTE0 = 0x8AU;
@@ -271,31 +270,3 @@ void txCalResponse(DiveCANType_t deviceType, DiveCANCalResponse_t response,
     };
     (void)divecan_send(&message);
 }
-
-#if defined(CONFIG_EXTENDED_MESSAGES)
-
-void txLogText(DiveCANType_t deviceType, const char *msg, uint16_t length)
-{
-    uint16_t remaining = length;
-
-    for (uint16_t i = 0; i < length; i += CAN_DATA_SIZE) {
-        uint8_t bytesToWrite = CAN_DATA_SIZE;
-        if (remaining < CAN_DATA_SIZE) {
-            bytesToWrite = (uint8_t)remaining;
-        }
-
-        uint8_t msgBuf[CAN_DATA_SIZE] = {0};
-        (void)memcpy(msgBuf, msg + i, bytesToWrite);
-
-        const DiveCANMessage_t message = {
-            .id = LOG_TEXT_ID | (uint32_t)deviceType,
-            .data = {msgBuf[0], msgBuf[1], msgBuf[2], msgBuf[3],
-                 msgBuf[4], msgBuf[5], msgBuf[6], msgBuf[7]},
-            .length = bytesToWrite,
-        };
-        (void)divecan_send(&message);
-        remaining -= bytesToWrite;
-    }
-}
-
-#endif /* CONFIG_EXTENDED_MESSAGES */

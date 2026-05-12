@@ -15,6 +15,102 @@ west build -d build -b divecan_jr/stm32l431xx . \
 
 Clean build: delete `build/` first. Incremental: just re-run.
 
+## Native (host) test runner
+
+Every test under `tests/<name>/` builds for `native_sim` and runs as a host
+binary. Build dirs live under `build-native/<name>/` (NOT scattered as
+`build_test_<name>/` at the Firmware/ root) — keep this convention so the
+working tree stays tidy.
+
+The `scripts/native_test.py` wrapper handles toolchain env, build-dir
+naming, and aggregation. Use it instead of raw `west build -d build_test_*`:
+
+```bash
+scripts/native_test.py list                     # show every discovered test
+scripts/native_test.py build ppo2_control_math  # build one
+scripts/native_test.py run   ppo2_control_math  # run a built binary
+scripts/native_test.py build-all                # build every test
+scripts/native_test.py run-all                  # build + run every test
+scripts/native_test.py clean                    # nuke build-native/
+```
+
+### VSCode Test Explorer integration
+
+A CMake umbrella at `tests/CMakeLists.txt` (LANGUAGES NONE, no compile —
+pure CTest registration) discovers every test module under `tests/`,
+builds each one (incremental — runs `scripts/native_test.py build <name>`
+during CMake configure), then invokes `zephyr.exe -list` to enumerate the
+**individual ztest cases** inside each binary. One CTest entry is
+registered per case using ztest's `-test=<suite>::<case>` filter, so the
+Testing tab shows the full hierarchy:
+
+```
+ppo2_control_math/
+├── pid_update_suite/
+│   ├── test_step_response
+│   ├── test_integral_windup_clamp
+│   └── …
+├── fire_timing_suite/
+│   ├── test_clamps_to_max
+│   └── …
+└── …
+```
+
+Forward slashes in the CTest name structure the tree (CMake Tools
+hierarchises on `/`), and each entry also carries the module as a CTest
+LABEL so the explorer's filter picks them up too. Right-click → **Debug
+Test** in the Testing tab launches gdb against the selected case via the
+registered `-test=` filter — no extra launch config needed.
+
+CMake Tools (`ms-vscode.cmake-tools`) is pointed at the umbrella via
+`.vscode/settings.json` (`cmake.sourceDirectory = tests`,
+`cmake.buildDirectory = build-native/_runner`, `cmake.configureOnOpen`,
+`cmake.testSuiteDelimiter = "/"`). The delimiter setting is what makes
+the Test Explorer render the slash-separated names as a tree.
+
+**Use CMake Tools' built-in test view, not `brobeson.ctest-lab`** —
+ctest-lab calls `createTestItem` once per test with no parent linkage
+(verified in `src/test_discovery.ts`), so it always renders flat
+regardless of how the names are structured. Disable it (or just rely on
+CMake Tools' view, which appears in the Testing tab independently).
+The umbrella configures on workspace open. **Cold configure runs every
+test build** (parallel-friendly, ~2 min on a fast machine); incremental
+reconfigures after a code change are sub-second.
+
+When adding a new ztest **case** inside an existing test binary: rebuild
+that binary (Tasks: "Native Test: Build"), then trigger a CMake
+reconfigure — the new case appears in the explorer.
+
+When adding a new test **module** (new directory under `tests/` with its
+own `CMakeLists.txt`): the next CMake configure picks it up automatically
+via `file(GLOB)`. No edits to the umbrella required.
+
+If a module fails to compile, the umbrella registers a single
+`<module>::BUILD_FAILED` entry so the failure surfaces in the explorer
+instead of the module silently disappearing.
+
+### VSCode Tasks palette (alternative)
+
+`.vscode/tasks.json` provides the same flow via `Cmd/Ctrl+Shift+P →
+"Tasks: Run Task"`:
+
+- **Native Test: Build** / **Run** / **Build + Run** — pick a test from
+  the dropdown
+- **Native Test: Build All** / **Run All** — for full sweeps
+- **Native Test: Clean All** — wipes `build-native/`
+
+`launch.json` adds a **Debug Native Test (gdb)** configuration that runs
+the chosen test under cppdbg. Build the test via the Tasks palette or
+Testing tab first; the launcher just attaches a debugger to the existing
+binary. The existing **Debug (OpenOCD + ST-Link)** / **Attach** configs
+for hardware debugging are unchanged.
+
+When adding a new test directory under `tests/`, the Testing tab picks it
+up automatically on the next CMake configure. For the Tasks palette
+dropdowns, also add the new name to the `nativeTest` `pickString` options
+in both `.vscode/tasks.json` and `.vscode/launch.json` (VSCode
+`pickString` inputs cannot enumerate the filesystem at picker time).
+
 ## Documentation Maintenance
 
 ### ARCHITECTURE.md
