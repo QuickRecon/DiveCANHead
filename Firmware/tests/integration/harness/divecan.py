@@ -104,13 +104,22 @@ def build_setpoint(src_id: int, setpoint: int) -> can.Message:
 
 
 def build_menu_req(target: int, source: int) -> can.Message:
-    """Build a menu transport request from ``source`` directed at ``target``."""
+    """Build the menu init request from ``source`` directed at ``target``.
+
+    Matches the legacy ``DiveCAN.send_menu_req`` payload — a UDS read of
+    DID 0x9100 (menu count) wrapped in an ISO-TP single frame.
+    """
     arbitration_id = MENU_ID | (source & 0xFF) | ((target & 0xFF) << 8)
     return can.Message(
         arbitration_id=arbitration_id,
-        data=[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        data=[0x04, 0x00, 0x22, 0x91, 0x00, 0x00, 0x00, 0x00],
         is_extended_id=True,
     )
+
+
+def menu_response_id(target: int, source: int) -> int:
+    """ISO-TP response id from ``target`` (DUT) back to ``source`` (host)."""
+    return MENU_ID | (target & 0xFF) | ((source & 0xFF) << 8)
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +158,22 @@ class CanClient:
         self._bus.send(msg)
 
     # -- expectations -------------------------------------------------------
+
+    def drain_now(self) -> list[can.Message]:
+        """Return every message currently buffered without blocking.
+
+        Useful for closed-loop tests that need to consume frames
+        opportunistically inside a tight stimulus/observation loop —
+        ``wait_for(timeout=0)`` short-circuits, while this returns
+        whatever the BufferedReader has already received.
+        """
+        out: list[can.Message] = []
+        while True:
+            msg = self._reader.get_message(timeout=0.0)
+            if msg is None:
+                break
+            out.append(msg)
+        return out
 
     def wait_for(
         self,

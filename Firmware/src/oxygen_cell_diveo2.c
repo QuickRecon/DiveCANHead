@@ -18,6 +18,7 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
+#include <zephyr/zbus/zbus.h>
 
 #include "common.h"
 #include "oxygen_cell_types.h"
@@ -755,3 +756,31 @@ K_THREAD_DEFINE(diveo2_thread_3, 1024,
         diveo2_cell_thread, &diveo2_cell_3, NULL, NULL,
         7, 0, 0);
 #endif
+
+/* ---- Cal-completion listener ----
+ *
+ * When the calibration subsystem publishes a result on chan_cal_response,
+ * every DiveO2 cell re-reads its stored coefficient from NVS so the next
+ * sample uses the freshly written value instead of waiting for a reboot.
+ *
+ * Matches the analog cell driver pattern (see oxygen_cell_analog.c).
+ * Fires synchronously on the publisher's thread — calibration thread —
+ * after the divecan_cal_resp_listener (priority 5) has emitted the
+ * outcome frame to the bus.
+ */
+static void diveo2_cal_done_cb(const struct zbus_channel *chan)
+{
+    ARG_UNUSED(chan);
+#if defined(CONFIG_CELL_1_TYPE_DIVEO2)
+    diveo2_load_cal(&diveo2_cell_1);
+#endif
+#if CONFIG_CELL_COUNT >= 2 && defined(CONFIG_CELL_2_TYPE_DIVEO2)
+    diveo2_load_cal(&diveo2_cell_2);
+#endif
+#if CONFIG_CELL_COUNT >= 3 && defined(CONFIG_CELL_3_TYPE_DIVEO2)
+    diveo2_load_cal(&diveo2_cell_3);
+#endif
+}
+
+ZBUS_LISTENER_DEFINE(diveo2_cal_done_listener, diveo2_cal_done_cb);
+ZBUS_CHAN_ADD_OBS(chan_cal_response, diveo2_cal_done_listener, 10);

@@ -110,11 +110,19 @@
         can-shutdown-gpios = <&gpio_sim0 12 GPIO_ACTIVE_HIGH>;
     };
 
-    /* ---- Emulated external ADCs (replace I2C ADS1115) ---- */
+    /* ---- Emulated external ADCs (replace I2C ADS1115) ----
+     * ADS1115 with PGA ±0.256V: input range ±256 mV → ±32767 raw counts.
+     * The cell driver uses adc_emul_const_raw_value_set so the reference
+     * voltage isn't applied for cell readings, but ref-internal-mv must
+     * still be set (adc_emul reads it from DT at build time into a
+     * .rodata struct, and runtime adc_emul_ref_voltage_set writes are
+     * silently dropped on native_sim because the api struct lives in
+     * read-only memory). */
     adc_ext1: adc_ext1 {
         compatible = "zephyr,adc-emul";
         nchannels = <2>;
         #io-channel-cells = <1>;
+        ref-internal-mv = <256>;
         status = "okay";
     };
 
@@ -122,6 +130,7 @@
         compatible = "zephyr,adc-emul";
         nchannels = <2>;
         #io-channel-cells = <1>;
+        ref-internal-mv = <256>;
         status = "okay";
     };
 
@@ -177,9 +186,15 @@
     status = "disabled";
 };
 
-/* ---- Expand adc0 for battery sense ---- */
+/* ---- Expand adc0 for battery sense ----
+ * STM32 ADC1 internal reference is 3.0 V. adc_emul reads this at
+ * compile time and stores it in a .rodata struct, so runtime
+ * adc_emul_ref_voltage_set is a no-op on native_sim. Setting
+ * ref-internal-mv here is the only way to make adc_raw_to_millivolts
+ * return real values. */
 &adc0 {
     nchannels = <4>;
+    ref-internal-mv = <3000>;
 };
 
 /* ---- Disable I2C (not needed — ADS1115 replaced by adc-emul) ---- */

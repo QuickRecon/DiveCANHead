@@ -12,12 +12,19 @@
 #include "divecan_types.h"
 #include "common.h"
 
-/* Setpoint from handset or UDS write (centibar, 0-255) */
+/* Setpoint from handset or UDS write (centibar, 0-255).
+ *
+ * Initial value matches DEFAULT_SETPOINT_CB in ppo2_control.c — the
+ * controller's read_setpoint_or_default() falls through to the channel
+ * value with K_NO_WAIT, and ZBUS_CHAN_DEFINE installs an initial value
+ * which always satisfies that read, so the "default" path is never
+ * exercised once the channel is initialised. Seeding the channel at
+ * 70 cb keeps the safety contract intact (PID won't run with sp=0). */
 ZBUS_CHAN_DEFINE(chan_setpoint,
     PPO2_t,
     NULL, NULL,
     ZBUS_OBSERVERS_EMPTY,
-    0);
+    70);
 
 /* Atmospheric pressure from handset (mbar) */
 ZBUS_CHAN_DEFINE(chan_atmos_pressure,

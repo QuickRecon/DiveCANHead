@@ -208,6 +208,19 @@ static int cmd_get_solenoids(const char *line, char *resp, size_t resp_size)
                     s[0], s[1], s[2], s[3]);
 }
 
+static int cmd_get_uptime(const char *line, char *resp, size_t resp_size)
+{
+    (void)line;
+    /* Firmware-simulated-time uptime in microseconds.  Useful for the
+     * harness when --rt-ratio decouples wall and simulated time: the
+     * closed-loop tests step their plant model by firmware-time delta
+     * rather than Python wall-clock delta. */
+    uint64_t us = k_ticks_to_us_floor64(k_uptime_ticks());
+    return snprintf(resp, resp_size,
+                    "{\"uptime_us\":%llu}\n",
+                    (unsigned long long)us);
+}
+
 static const struct {
     const char *name;
     cmd_handler_t handler;
@@ -220,6 +233,7 @@ static const struct {
     { "set_bus_on",         cmd_set_bus_on },
     { "set_bus_off",        cmd_set_bus_off },
     { "get_solenoids",      cmd_get_solenoids },
+    { "get_uptime",         cmd_get_uptime },
 };
 
 static int dispatch_line(const char *line, char *resp, size_t resp_size)

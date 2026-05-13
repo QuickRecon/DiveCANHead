@@ -20,11 +20,13 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/zbus/zbus.h>
 
 #if defined(CONFIG_SOC_FAMILY_STM32)
 #include <stm32l4xx_hal_pwr_ex.h>
 #endif
 
+#include "divecan_channels.h"
 #include "power_management.h"
 #include "errors.h"
 #include "common.h"
@@ -682,3 +684,75 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
 K_THREAD_DEFINE(battery_monitor, 512,
         battery_monitor_thread, NULL, NULL, NULL,
         10, 0, 0);
+
+/* ---- Shutdown handler ----
+ *
+ * Subscribes to chan_shutdown_request (published by divecan_rx when the
+ * handset sends BUS_OFF_ID) and runs the legacy "20×100 ms" abort
+ * window before committing to a real shutdown.  If the CAN_EN pin
+ * re-asserts active during that window the request is dropped and the
+ * firmware keeps running — matches the
+ * ``HW Testing/Tests/test_pwr_management.py::test_power_aborts_on_bus_up``
+ * contract and the legacy STM32 ``RespShutdown`` loop.
+ *
+ * Once the window expires the thread hands off to ``power_shutdown()``
+ * which never returns: on STM32 the SoC enters SHUTDOWN mode with
+ * PWR_WAKEUP_PIN2 (CAN_EN) armed, and a bus reassertion produces a
+ * power-on reset; on native_sim the fallback ``sys_reboot()`` exits the
+ * process, which the integration test fixture interprets as the
+ * equivalent dormant state.
+ */
+
+#define SHUTDOWN_ABORT_WINDOW_ATTEMPTS 20U
+#define SHUTDOWN_ABORT_POLL_MS 100
+
+ZBUS_MSG_SUBSCRIBER_DEFINE(shutdown_sub);
+ZBUS_CHAN_ADD_OBS(chan_shutdown_request, shutdown_sub, 0);
+
+static void shutdown_thread_fn(void *p1, void *p2, void *p3)
+{
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+
+    const struct device *dev = POWER_DEVICE;
+    const struct zbus_channel *chan = NULL;
+    bool req = false;
+
+    while (true) {
+        if (0 != zbus_sub_wait_msg(&shutdown_sub, &chan, &req, K_FOREVER)) {
+            /* Wait error — retry on next iteration */
+            continue;
+        }
+        if (!req) {
+            continue;
+        }
+
+        LOG_INF("Shutdown requested — entering abort window");
+
+        bool committed = true;
+        for (uint8_t i = 0; i < SHUTDOWN_ABORT_WINDOW_ATTEMPTS; ++i) {
+            if (power_is_can_active(dev)) {
+                LOG_INF("Bus reasserted during abort window — staying up");
+                committed = false;
+                break;
+            }
+            k_msleep(SHUTDOWN_ABORT_POLL_MS);
+        }
+
+        if (!committed) {
+            continue;
+        }
+
+        LOG_INF("Committing to shutdown");
+        (void)power_shutdown(dev);
+        /* power_shutdown() does not return on a healthy build.  If it
+         * does (e.g. HAL refused to enter SHUTDOWN), fall through to
+         * the next iteration so the system is responsive to bus
+         * traffic rather than spinning here. */
+    }
+}
+
+K_THREAD_DEFINE(shutdown_thread, 768,
+        shutdown_thread_fn, NULL, NULL, NULL,
+        8, 0, 0);

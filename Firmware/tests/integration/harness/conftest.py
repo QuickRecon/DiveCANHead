@@ -32,8 +32,17 @@ from sim_shim import SimShim
 HARNESS_DIR: Path = Path(__file__).resolve().parent
 # .../Firmware/tests/integration/harness -> .../Firmware
 FIRMWARE_ROOT: Path = HARNESS_DIR.parents[2]
-NATIVE_SIM_BIN: Path = (
-    FIRMWARE_ROOT / "build-native" / "integration" / "zephyr" / "zephyr.exe"
+
+# Allow callers to point at an alternate build directory — e.g. the
+# sanitizer-instrumented build at ``build-native/integration-asan``.
+# Set ``DIVECAN_FW_BIN`` in the environment to override.  Default is
+# the standard integration build.
+NATIVE_SIM_BIN: Path = Path(
+    os.environ.get(
+        "DIVECAN_FW_BIN",
+        str(FIRMWARE_ROOT / "build-native" / "integration"
+            / "zephyr" / "zephyr.exe"),
+    )
 )
 SHIM_SOCK_PATH: str = "/tmp/divecan_shim.sock"
 
@@ -82,22 +91,80 @@ def _remove_stale_socket(path: str) -> None:
         ) from exc
 
 
-@pytest.fixture()
-def firmware() -> Generator[tuple[subprocess.Popen[bytes], str], None, None]:
-    """Launch the native_sim binary, yield ``(proc, sock_path)``."""
+def _kill_stale_firmware() -> None:
+    """SIGKILL any leftover native_sim processes from a previous test run.
+
+    When a test crashes or the SIGTERM-then-SIGKILL teardown sequence loses a
+    race, a zephyr.exe child can survive across pytest sessions.  Multiple
+    surviving processes on ``vcan0`` produce ghost traffic that breaks
+    arbitration-id based filtering (frames from different firmware instances
+    appear at the same id with different payloads).  Reap them before launch.
+    """
+    bin_path = str(NATIVE_SIM_BIN)
+    result = subprocess.run(
+        ["pgrep", "-f", bin_path],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            pid = int(line)
+        except ValueError:
+            continue
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    # Give the kernel a moment to release the vcan0 socket.
+    time.sleep(0.05)
+
+
+def launch_native_sim_firmware(append_log: bool = False,
+                                rt_ratio: float | None = None,
+                                ) -> subprocess.Popen[bytes]:
+    """Spawn the native_sim binary and return the Popen handle.
+
+    ``rt_ratio`` passes ``--rt-ratio=<N>`` to the native_sim runtime
+    if set, which scales simulated time relative to wall time:
+
+      * ``rt_ratio=1.0`` (or ``None``) — default, simulated time tracks
+        wall time 1:1.
+      * ``rt_ratio=0.1`` — simulated time runs **10× faster** than
+        wall time.  Useful for tests that watch many control cycles
+        (PID stability) and only care about per-iteration timing
+        being self-consistent inside the firmware.
+      * ``rt_ratio=2.0`` — simulated time runs half wall speed.
+
+    External IPC (CAN, shim sockets) is always wall-time bound, so a
+    very aggressive ratio can destabilise tests that depend on
+    request/response within a bounded wall window — keep it ≥0.05.
+
+    Exposed so power-cycle tests can simulate the silicon's
+    WKUP-pin → POR mechanism by relaunching the firmware after it has
+    sys_reboot'd (which on native_sim equates to ``posix_exit``).
+    ``append_log=True`` opens ``/tmp/divecan_firmware.log`` in append
+    mode so the second boot's output is preserved alongside the first.
+    """
     if not NATIVE_SIM_BIN.exists():
         pytest.skip(f"native_sim binary not found at {NATIVE_SIM_BIN}")
 
     _remove_stale_socket(SHIM_SOCK_PATH)
 
-    # Pipe-backed stdout/stderr blocks the firmware once the kernel pipe
-    # buffer (~64 KB) fills, because nothing in this fixture drains them
-    # and Zephyr's printk path is synchronous on the writing thread.  Stream
-    # to a file in /tmp instead so the firmware can log freely; the file
-    # is available for post-test inspection.
-    log_file = open("/tmp/divecan_firmware.log", "wb")
+    log_mode = "ab" if append_log else "wb"
+    log_file = open("/tmp/divecan_firmware.log", log_mode)
+
+    cmdline: list[str] = [str(NATIVE_SIM_BIN)]
+    if rt_ratio is not None:
+        cmdline.append(f"--rt-ratio={rt_ratio}")
+
     proc = subprocess.Popen(
-        [str(NATIVE_SIM_BIN)],
+        cmdline,
         stdout=log_file,
         stderr=subprocess.STDOUT,
         cwd=str(FIRMWARE_ROOT),
@@ -107,21 +174,55 @@ def firmware() -> Generator[tuple[subprocess.Popen[bytes], str], None, None]:
     # try to connect.
     time.sleep(SHIM_BIND_DELAY_S)
 
-    try:
-        yield proc, SHIM_SOCK_PATH
-    finally:
-        if proc.poll() is None:
-            proc.send_signal(signal.SIGTERM)
+    # Attach the log file to the proc so the caller (or the firmware
+    # fixture's teardown) can close it after termination.
+    proc._divecan_log_file = log_file  # type: ignore[attr-defined]
+    return proc
+
+
+def stop_native_sim_firmware(proc: subprocess.Popen[bytes]) -> None:
+    """Politely stop the firmware process and reap any siblings."""
+    if proc.poll() is None:
+        proc.send_signal(signal.SIGTERM)
+        try:
+            proc.wait(timeout=TERMINATE_GRACE_S)
+        except subprocess.TimeoutExpired:
+            proc.kill()
             try:
                 proc.wait(timeout=TERMINATE_GRACE_S)
             except subprocess.TimeoutExpired:
-                proc.kill()
-                try:
-                    proc.wait(timeout=TERMINATE_GRACE_S)
-                except subprocess.TimeoutExpired:
-                    pass
+                pass
+
+    _kill_stale_firmware()
+
+    log_file = getattr(proc, "_divecan_log_file", None)
+    if log_file is not None:
         log_file.close()
-        _remove_stale_socket(SHIM_SOCK_PATH)
+    _remove_stale_socket(SHIM_SOCK_PATH)
+
+
+@pytest.fixture()
+def firmware(request) -> Generator[tuple[subprocess.Popen[bytes], str], None, None]:
+    """Launch the native_sim binary, yield ``(proc, sock_path)``.
+
+    A test that wants accelerated simulated time can attach an
+    ``rt_ratio`` marker:
+
+        @pytest.mark.rt_ratio(0.1)   # 10× faster than wall time
+        def test_thing(...): ...
+
+    No marker → real-time pacing (default).
+    """
+    marker = request.node.get_closest_marker("rt_ratio")
+    rt_ratio = marker.args[0] if marker is not None else None
+
+    _kill_stale_firmware()
+    proc = launch_native_sim_firmware(rt_ratio=rt_ratio)
+
+    try:
+        yield proc, SHIM_SOCK_PATH
+    finally:
+        stop_native_sim_firmware(proc)
 
 
 # ---------------------------------------------------------------------------

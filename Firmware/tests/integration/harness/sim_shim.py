@@ -166,6 +166,22 @@ class SimShim:
             )
         return [int(v) for v in state]
 
+    def get_uptime_us(self) -> int:
+        """Read the firmware's simulated-time uptime in microseconds.
+
+        With ``--rt-ratio`` the firmware's simulated time can advance
+        faster than wall clock; closed-loop tests pace their plant
+        model on this value so the model integration step matches the
+        firmware's perception of elapsed time, not Python's.
+        """
+        response = self._send({"cmd": "get_uptime"})
+        us = response.get("uptime_us")
+        if not isinstance(us, int):
+            raise ShimError(
+                f"shim returned malformed uptime: {response!r}"
+            )
+        return us
+
     # -- teardown ----------------------------------------------------------
 
     def _close_locked(self) -> None:

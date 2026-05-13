@@ -66,9 +66,12 @@ static int shim_adc_init(void)
         return -ENODEV;
     }
 
-    /* Internal reference: STM32 VREF (3.0V) for battery channel. The
-     * battery uses adc_emul_const_value_set which converts mV→raw via
-     * the reference voltage, so this matters. */
+    /* Internal reference is set via DT (`ref-internal-mv = <3000>`) in
+     * the overlay, not at runtime: adc_emul's api struct lives in
+     * .rodata on native_sim and runtime writes to it are silently
+     * dropped. The shim layer is left here as a fallback in case a
+     * future overlay forgets to set the property; if the DT value is
+     * non-zero the call is a no-op. */
     ret = adc_emul_ref_voltage_set(adc0_dev, ADC_REF_INTERNAL, ADC_INT_REF_MV);
     if (ret != 0) {
         LOG_ERR("adc0 ref set failed: %d", ret);

@@ -17,6 +17,7 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
+#include <zephyr/zbus/zbus.h>
 
 #include "common.h"
 #include "oxygen_cell_types.h"
@@ -505,3 +506,27 @@ K_THREAD_DEFINE(o2s_thread_3, 768,
         o2s_cell_thread, &o2s_cell_3, NULL, NULL,
         7, 0, 0);
 #endif
+
+/* ---- Cal-completion listener ----
+ *
+ * Re-reads the stored coefficient from NVS for every configured O2S
+ * cell when the calibration subsystem publishes a result. Mirror of
+ * the analog / DiveO2 cell pattern so digital cells don't have to be
+ * power-cycled to pick up a fresh cal.
+ */
+static void o2s_cal_done_cb(const struct zbus_channel *chan)
+{
+    ARG_UNUSED(chan);
+#if defined(CONFIG_CELL_1_TYPE_O2S)
+    o2s_load_cal(&o2s_cell_1);
+#endif
+#if CONFIG_CELL_COUNT >= 2 && defined(CONFIG_CELL_2_TYPE_O2S)
+    o2s_load_cal(&o2s_cell_2);
+#endif
+#if CONFIG_CELL_COUNT >= 3 && defined(CONFIG_CELL_3_TYPE_O2S)
+    o2s_load_cal(&o2s_cell_3);
+#endif
+}
+
+ZBUS_LISTENER_DEFINE(o2s_cal_done_listener, o2s_cal_done_cb);
+ZBUS_CHAN_ADD_OBS(chan_cal_response, o2s_cal_done_listener, 10);

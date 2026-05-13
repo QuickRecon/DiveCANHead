@@ -110,10 +110,18 @@ void txName(DiveCANType_t deviceType, const char *name)
 void txStatus(DiveCANType_t deviceType, BatteryV_t batteryVoltage,
           PPO2_t setpoint, DiveCANError_t error, bool showBattery)
 {
+    /* error packs battery state in bits 0-1 and solenoid state in
+     * bits 2-3.  Check only the battery field so an OR-combined error
+     * byte (e.g. BAT_LOW | SOL_NORM == 0x09) still routes correctly:
+     * the legacy STM32 firmware passed a battery-only value, but the
+     * Zephyr port packs both states into one byte. */
+    static const uint8_t DIVECAN_ERR_BAT_MASK = 0x03U;
+
     uint8_t errByte = (uint8_t)error;
-    /* Only send the battery info if there aren't error */
-    if ((error != DIVECAN_ERR_BAT_LOW) && showBattery) {
-        errByte = DIVECAN_ERR_BAT_NORM;
+    if (((errByte & DIVECAN_ERR_BAT_MASK) != (uint8_t)DIVECAN_ERR_BAT_LOW)
+        && showBattery) {
+        errByte = (uint8_t)((errByte & ~DIVECAN_ERR_BAT_MASK)
+                            | (uint8_t)DIVECAN_ERR_BAT_NORM);
     }
 
     static const uint8_t STATUS_MSG_LEN = 8U;
@@ -144,8 +152,14 @@ void txSetpoint(DiveCANType_t deviceType, PPO2_t setpoint)
  */
 void txOBOEStat(DiveCANType_t deviceType, DiveCANError_t error)
 {
+    /* Same packing as txStatus: bits 0-1 carry battery state.  Mask
+     * before comparing so a combined error byte still triggers the
+     * low-battery indicator. */
+    static const uint8_t DIVECAN_ERR_BAT_MASK = 0x03U;
+
     uint8_t batByte = BAT_STATUS_OK;
-    if (error == DIVECAN_ERR_BAT_LOW) {
+    if (((uint8_t)error & DIVECAN_ERR_BAT_MASK) ==
+        (uint8_t)DIVECAN_ERR_BAT_LOW) {
         batByte = BAT_STATUS_LOW;
     }
 
