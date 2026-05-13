@@ -17,6 +17,11 @@
 		led0 = &led_0;
 		led1 = &led_5;
 		watchdog0 = &iwdg;
+		/* MCUBoot uses this LED during boot/swap operations
+		 * (CONFIG_MCUBOOT_INDICATION_LED). Once MCUBoot jumps
+		 * into the app, the heartbeat thread takes the LED back
+		 * via the led0 alias. */
+		mcuboot-led0 = &led_0;
 	};
 
 	leds {
@@ -218,7 +223,11 @@
 		reg = <0>;
 		spi-max-frequency = <6000000>;
 		jedec-id = [ef 40 20];
-		size = <DT_SIZE_M(512)>;
+		/* W25Q512JV: 512 Mbit = 64 MB. Note: schematic and
+		 * ARCHITECTURE.md historically misstated this as GD25Q128
+		 * (16 MB). DTS is authoritative — confirmed by physical
+		 * hardware inspection. */
+		size = <DT_SIZE_M(64)>;
 		has-dpd;
 		t-enter-dpd = <3000>;
 		t-exit-dpd = <30000>;
@@ -288,8 +297,19 @@
 };
 
 /* ---- Flash partitions ----
- * Internal 256KB: bootloader + primary slot + NVS config
- * External 16MB:  secondary OTA slot + scratch + data
+ * Internal 256KB: MCUBoot bootloader (32K) + primary slot (224K).
+ *   NVS storage was previously on internal flash — moved to the end
+ *   of the external NOR to free 16K of slot0 headroom. See the OTA
+ *   plan and ARCHITECTURE.md.
+ *
+ * External 64MB (W25Q512JV): slot1 (224K) + scratch (64K) + factory
+ *   image backup (224K) + free middle region (~63.5MB, reserved for
+ *   future dive-log persistence) + NVS storage (32K at top).
+ *
+ * Labels are MCUBoot-conformant: mcuboot, image-0, image-1,
+ * image-scratch enable the bootloader's swap-area discovery. The
+ * "storage" label is what Zephyr's settings/NVS subsystem looks up
+ * by default.
  */
 &flash0 {
 	partitions {
@@ -297,15 +317,31 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
+		/* MCUBoot partition sized at 64 KB. Measured 56 KB
+		 * (87 % utilised) with all desired features on:
+		 *
+		 *   - BOOT_VALIDATE_SLOT0=y (SHA-256 of slot0 every boot)
+		 *   - BOOT_SWAP_USING_SCRATCH=y
+		 *   - BOOT_WATCHDOG_FEED=y
+		 *   - I2C + ADC drivers (forced on by board defconfig
+		 *     for the application; carried into MCUBoot's build
+		 *     as dead weight)
+		 *
+		 * Slot0 stays at 192 KB. The originally-planned 32 KB
+		 * MCUBoot + 224 KB slot0 layout wasn't reachable while
+		 * keeping slot-0 hash validation enabled and inheriting
+		 * the application's board defconfig. Future optimisation:
+		 * a separate divecan_jr_mcuboot_defconfig stripping
+		 * application peripherals would recover ~16 KB and let
+		 * MCUBoot fit in 48 KB, giving slot0 a 208 KB budget. */
 		boot_partition: partition@0 {
-			reg = <0x00000000 DT_SIZE_K(48)>;
+			label = "mcuboot";
+			reg = <0x00000000 DT_SIZE_K(64)>;
 			read-only;
 		};
-		slot0_partition: partition@c000 {
-			reg = <0x0000c000 DT_SIZE_K(192)>;
-		};
-		storage_partition: partition@3c000 {
-			reg = <0x0003c000 DT_SIZE_K(16)>;
+		slot0_partition: partition@10000 {
+			label = "image-0";
+			reg = <0x00010000 DT_SIZE_K(192)>;
 		};
 	};
 };
@@ -317,10 +353,24 @@
 		#size-cells = <1>;
 
 		slot1_partition: partition@0 {
+			label = "image-1";
 			reg = <0x00000000 DT_SIZE_K(192)>;
 		};
 		scratch_partition: partition@30000 {
+			label = "image-scratch";
 			reg = <0x00030000 DT_SIZE_K(64)>;
+		};
+		factory_partition: partition@40000 {
+			label = "factory-image";
+			reg = <0x00040000 DT_SIZE_K(192)>;
+		};
+		/* Free region 0x00070000 — 0x03FF8000 (~63.5 MB) reserved
+		 * for future dive-log persistence — not declared as a
+		 * partition yet so it can grow upward without
+		 * re-partitioning. */
+		storage_partition: partition@3ff8000 {
+			label = "storage";
+			reg = <0x03ff8000 DT_SIZE_K(32)>;
 		};
 	};
 };

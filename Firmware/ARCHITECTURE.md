@@ -17,18 +17,52 @@ This document captures the design decisions made during the port from the FreeRT
 - **CAN**: DiveCAN @ 250kbps (CAN1, PB8/PB9)
 - **ADC**: Dual ADS1115 on I2C1 (0x48, 0x49) for oxygen cell voltage
 - **UARTs**: 3x at 19200 baud for digital oxygen sensors
-- **Flash**: GD25Q128 SPI NOR (16MB) replacing SD card — used for OTA secondary slot, scratch, and data logging
+- **Flash**: Winbond W25Q512JV SPI NOR (64MB) replacing SD card — used for OTA secondary slot, scratch, factory image backup, NVS settings, and data logging
 - **Console**: Segger RTT over ST-Link (no UART consumed)
 
 ## Flash Partitions
 
-| Region | Location | Size | Purpose |
-|--------|----------|------|---------|
-| Bootloader | Internal 0x0000 | 48KB | MCUBoot |
-| Primary slot | Internal 0xC000 | 192KB | Running firmware |
-| NVS storage | Internal 0x3C000 | 16KB | Runtime settings |
-| Secondary slot | External 0x0000 | 192KB | OTA staging |
-| Scratch | External 0x30000 | 64KB | MCUBoot swap |
+Internal flash (STM32L431RC, 256 KB) is dedicated to MCUBoot + the
+primary application slot. All operational storage (secondary slot,
+swap scratch, factory image backup, NVS settings, future log space)
+lives on the external W25Q512JV NOR.
+
+### Internal flash
+
+| Region | Node | Label | Range | Size |
+|--------|------|-------|-------|------|
+| Bootloader | `boot_partition` | `mcuboot` | 0x00000000 – 0x00010000 | 64 KB |
+| Primary slot | `slot0_partition` | `image-0` | 0x00010000 – 0x00040000 | 192 KB |
+
+MCUBoot is built with `BOOT_SIGNATURE_TYPE_NONE` (SHA-256 integrity
+only, no asymmetric crypto). Measured 56 KB with `BOOT_VALIDATE_SLOT0=y`
+and the I2C/ADC drivers carried in from the board defconfig — fits in
+64 KB with ~14 % headroom. A future optimisation pass with a
+dedicated `divecan_jr_mcuboot_defconfig` (stripping app-only
+peripherals) is expected to recover ~16 KB and enable a 48 KB
+MCUBoot / 208 KB slot0 split.
+
+### External NOR (W25Q512JV, 64 MB)
+
+| Region | Node | Label | Range | Size |
+|--------|------|-------|-------|------|
+| Secondary slot | `slot1_partition` | `image-1` | 0x00000000 – 0x00030000 | 192 KB |
+| Swap scratch | `scratch_partition` | `image-scratch` | 0x00030000 – 0x00040000 | 64 KB |
+| Factory image backup | `factory_partition` | `factory-image` | 0x00040000 – 0x00070000 | 192 KB |
+| (free / future dive-log space) | — | — | 0x00070000 – 0x03FF8000 | ~63.5 MB |
+| NVS settings | `storage_partition` | `storage` | 0x03FF8000 – 0x04000000 | 32 KB |
+
+The NVS partition is parked at the top of the chip so the free middle
+region can grow upward (rotating dive-log writes) without
+re-partitioning. Settings writes are infrequent and benefit from
+being far from the log write hot zone (reduces inadvertent wear
+interaction).
+
+The factory partition holds a permanent known-good copy of the
+first-confirmed image, captured automatically on first boot after a
+fresh flash. UDS DID `0xF276` triggers a restore-from-factory swap
+when the running image needs to be force-reverted to the factory
+baseline. See the OTA design plan for the full state machine.
 
 ## Product Variant System
 

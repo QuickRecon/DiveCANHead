@@ -161,7 +161,9 @@ Each entry must include: what changed, why, what still provides coverage, and po
 - Float literals in app code should use `f` suffix (e.g., `0.5f`) even though the compiler flag was removed
 - All fatal paths must reboot, never halt
 - **Never use `CONFIG_LOG_MODE_IMMEDIATE=y`** — causes spinlock reentry crash with RTT backend (see COMPROMISE.md #5)
-- Fatal handlers use `printk` not `LOG_ERR`/`LOG_PANIC` — the logging subsystem is not safe in fault context on this platform
+- **`k_sys_fatal_error_handler` is currently NOT overridden** — every variation we tried (printk + spin-wait, LOG_PANIC only, no-op + reboot) ended up truncating the standard fatal dump in a different way. The upstream default (`LOG_PANIC` → `LOG_ERR("Halting system")` → `arch_system_halt`) gives a complete, reliable diagnostic trace. Trade-off: the chip halts on a true fault instead of rebooting. Acceptable during development; revisit before production. Our override is kept in `errors.c` under `#if 0` so reintroducing it is one flag away once the underlying fault is identified.
+- **`fatal_op_error()` (the custom path called directly by app code) DOES use `printk`** — that path bypasses Zephyr's fatal machinery, so we have to do the diagnostic line ourselves. The logging subsystem isn't safe to call from a hand-invoked panic.
+- **`crash_noinit` + `errors_get_last_crash()` infrastructure is still active** — used by `fatal_op_error()` and surfaced on next boot by `main.c`. The Zephyr stock halt path doesn't populate it, so PC/LR/CFSR won't appear in the next-boot report when the fault came from a CPU exception. Live with that for now.
 
 ## Iterative Diagnostic Procedure
 

@@ -6,6 +6,11 @@
 #   ./flash.sh              # Build (if needed) and flash
 #   ./flash.sh --no-build   # Flash only, skip build
 #   ./flash.sh --rtt-only   # Skip build and flash, just connect RTT
+#   ./flash.sh --erase      # Mass-erase the chip before flashing.
+#                           # Needed when the chip has firmware that
+#                           # enters STOP/SHUTDOWN before openocd can
+#                           # halt it (e.g. the pre-MCUBoot image's
+#                           # power_is_can_active() shutdown path).
 #
 # Requires: ST-Link connected, openocd installed.
 # The ST-Link is also used for RTT console (Segger RTT over SWD),
@@ -23,23 +28,53 @@ cd "$SCRIPT_DIR"
 
 RTT_ONLY=false
 NO_BUILD=false
+ERASE=false
 
 for arg in "$@"; do
     case "$arg" in
         --rtt-only) RTT_ONLY=true; NO_BUILD=true ;;
         --no-build) NO_BUILD=true ;;
+        --erase)    ERASE=true ;;
     esac
 done
 
 if [ "$NO_BUILD" = false ]; then
     echo "=== Building ==="
-    west build -d build -b divecan_jr/stm32l431xx . \
+    # --sysbuild pulls in MCUBoot as a child image. The resulting
+    # build/merged_<board>.hex contains bootloader + signed app and
+    # is what `west flash` programs.
+    #
+    # If an existing build/ was configured without --sysbuild, the
+    # CMake cache mismatches the sysbuild source root and west aborts.
+    # Detect that case and wipe build/ before retrying. The sysbuild
+    # top-level cache sets CMAKE_PROJECT_NAME to "sysbuild_toplevel"
+    # — its absence means this is a plain (non-sysbuild) build dir.
+    if [ -f build/CMakeCache.txt ] && \
+       ! grep -q "^CMAKE_PROJECT_NAME:STATIC=sysbuild_toplevel" build/CMakeCache.txt; then
+        echo "    build/ was non-sysbuild — clearing"
+        rm -rf build
+    fi
+    west build -d build -b divecan_jr/stm32l431xx . --sysbuild \
         -- -DBOARD_ROOT=. -DEXTRA_CONF_FILE=variants/dev_full.conf
+fi
+
+if [ "$ERASE" = true ]; then
+    echo "=== Mass-erasing chip ==="
+    # STM32CubeProgrammer's "under reset" (mode=UR) connect handles
+    # chips that openocd can't halt — needed when firmware enters
+    # STM32 SHUTDOWN mode within ~1 s of boot and the STLINK adapter
+    # doesn't have NRST wired through. UR connect uses tight SWD
+    # timing during the reset pulse to grab the chip before it
+    # executes any user code.
+    STM32_Programmer_CLI -c port=SWD mode=UR reset=HWrst -e all
 fi
 
 if [ "$RTT_ONLY" = false ]; then
     echo "=== Flashing ==="
-    west flash -d build
+    # Same rationale as the erase path: use the stm32cubeprogrammer
+    # runner instead of openocd. The runner is pre-configured in the
+    # board's runners.yaml so this is just a one-flag swap.
+    west flash -d build --runner stm32cubeprogrammer
 fi
 
 echo "=== RTT Console (Ctrl-C to exit) ==="

@@ -16,6 +16,7 @@
 #include "power_management.h"
 #include "ppo2_control.h"
 #include "error_histogram.h"
+#include "errors.h"
 #include "common.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
@@ -61,13 +62,22 @@ Status_t main(void)
              * logging to start, then verify the CAN bus is actually active.
              * If the bus is NOT active, shut down immediately — this guards
              * against the case where the device powered on from a transient
-             * glitch ("blip on in the dead of night"). */
+             * glitch ("blip on in the dead of night").
+             *
+             * Disabled until final release: on a bench unit with no CAN
+             * partner, this path puts the SoC into STM32 SHUTDOWN mode
+             * within 1 s of boot, which kills the debug interface and
+             * makes everything past PPO2 control init impossible to
+             * develop on. Re-enable for production builds (consider
+             * gating on a Kconfig such as CONFIG_DIVECAN_REQUIRE_CAN_TRAFFIC).
+             */
             k_msleep(STARTUP_DELAY_MS);
-
+#if 0
             if (!power_is_can_active(POWER_DEVICE)) {
                 LOG_WRN("CAN bus not active — entering shutdown");
                 (void)power_shutdown(POWER_DEVICE);
             }
+#endif
 
             /* Cell threads, consensus subscriber, and calibration listener are
              * all auto-started by K_THREAD_DEFINE — no manual init needed.
