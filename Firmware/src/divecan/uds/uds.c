@@ -18,6 +18,7 @@
 #include "oxygen_cell_types.h"
 #include "calibration.h"
 #include "errors.h"
+#include "error_histogram.h"
 
 LOG_MODULE_REGISTER(uds, LOG_LEVEL_INF);
 
@@ -190,7 +191,9 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
         /* Try state DID handler first (0xF2xx, 0xF4xx) */
         if (UDS_StateDID_IsStateDID(did)) {
             uint16_t dataLen = 0U;
-            if (UDS_StateDID_HandleRead(did, &buf[dataOffset], &dataLen)) {
+            uint16_t dataMax = maxAvailable - dataOffset;
+            if (UDS_StateDID_HandleRead(did, &buf[dataOffset], dataMax,
+                            &dataLen)) {
                 *bytesWritten = dataOffset + dataLen;
                 result = true;
             }
@@ -594,10 +597,44 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
 }
 
 /**
+ * @brief Handle a WDBI write to the error-histogram clear DID
+ *
+ * Any byte payload triggers the clear — the handset does not need to encode
+ * a specific value because the DID is fundamentally a command, not a data
+ * write.  Persistence is performed synchronously by `error_histogram_clear`.
+ *
+ * @param ctx           UDS context
+ * @param requestData   Request bytes
+ * @param requestLength Total byte count of requestData
+ * @return true (always; error path sends NRC and still returns true)
+ */
+static bool writeHistogramClearDID(UDSContext_t *ctx,
+                   const uint8_t *requestData,
+                   uint16_t requestLength)
+{
+    ARG_UNUSED(requestLength);
+
+    int rc = error_histogram_clear();
+
+    if (0 != rc) {
+        OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)rc);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                     UDS_NRC_CONDITIONS_NOT_CORRECT);
+    } else {
+        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+        ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+        ctx->responseLength = UDS_POS_RESP_HDR;
+        UDS_SendResponse(ctx);
+    }
+    return true;
+}
+
+/**
  * @brief Handle WriteDataByIdentifier service (SID 0x2E)
  *
  * Dispatches to the appropriate write handler based on the DID: setpoint,
- * calibration trigger, setting save, or setting value.
+ * calibration trigger, setting save, setting value, or histogram clear.
  *
  * @param ctx           UDS context
  * @param requestData   Request bytes starting at the SID byte
@@ -618,6 +655,8 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
             (void)writeSetpointDID(ctx, requestData, requestLength);
         } else if (UDS_DID_CALIBRATION_TRIGGER == did) {
             (void)writeCalibrationTriggerDID(ctx, requestData, requestLength);
+        } else if (UDS_DID_ERROR_HISTOGRAM_CLEAR == did) {
+            (void)writeHistogramClearDID(ctx, requestData, requestLength);
         } else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
                (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))) {
             (void)writeSettingSaveDID(ctx, did, requestData, requestLength);

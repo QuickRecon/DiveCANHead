@@ -123,6 +123,7 @@ static void analog_publish(struct analog_cell_state *cell)
         .millivolts = millivolts,
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
+        .raw_sample = (int32_t)cell->last_counts,
     };
 
     (void)zbus_chan_pub(cell->out_chan, &msg, K_MSEC(100));

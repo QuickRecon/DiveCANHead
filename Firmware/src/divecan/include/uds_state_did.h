@@ -49,6 +49,10 @@
 #define UDS_DID_CRASH_LR            0xF253U  /**< uint32: link register at fault */
 #define UDS_DID_CRASH_CFSR          0xF254U  /**< uint32: Cortex-M Configurable Fault Status Register */
 
+/* Error-histogram DIDs (0xF26x) — populated from error_histogram_snapshot() */
+#define UDS_DID_ERROR_HISTOGRAM       0xF260U  /**< uint16[OP_ERR_MAX]: per-code occurrence counts (saturated) */
+#define UDS_DID_ERROR_HISTOGRAM_CLEAR 0xF261U  /**< write-only: any value clears all counters and persists to NVS */
+
 /* ============================================================================
  * Cell DIDs (0xF4Nx where N = cell number 0-2)
  * ============================================================================ */
@@ -87,10 +91,13 @@ bool UDS_StateDID_IsStateDID(uint16_t did);
  *
  * @param did            UDS data identifier to read
  * @param responseBuffer Buffer to write encoded value into
+ * @param maxLength      Maximum bytes the handler may write into responseBuffer
  * @param responseLength Set to the number of bytes written on success
- * @return true on success, false if DID unknown or data unavailable
+ * @return true on success, false if DID unknown, data unavailable, or the
+ *         payload would not fit within @p maxLength bytes
  */
 bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *responseBuffer,
+                 uint16_t maxLength,
                  uint16_t *responseLength);
 
 #endif /* UDS_STATE_DID_H */

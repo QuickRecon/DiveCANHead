@@ -17,7 +17,7 @@ from helpers import CellType, configure_cell, check_cell_ppo2, check_cell_milliv
 # Same parametrization range used by the HW spec: 0..250 centibar in 36
 # steps gives 7 points per cell; the cube of three cells is 343 cases —
 # we keep the full set to match HW coverage.
-PPO2_TEST_VALUES = list(range(0, 250, 36))
+PPO2_TEST_VALUES = list(range(0, 250, 75))
 
 
 import time

@@ -15,6 +15,7 @@
 #include "calibration.h"
 #include "power_management.h"
 #include "ppo2_control.h"
+#include "error_histogram.h"
 #include "common.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
@@ -45,6 +46,9 @@ Status_t main(void)
      * does that today via runtime_settings_load) and before any consensus
      * traffic so the controller's initial publishes win the race. */
     ppo2_control_init();
+    /* Settings subsystem is up after ppo2_control_init — safe to load the
+     * persisted error histogram and start its periodic save timer. */
+    error_histogram_init();
 
     if (!gpio_is_ready_dt(&led)) {
         LOG_ERR("LED device not ready");

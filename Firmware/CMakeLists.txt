@@ -41,6 +41,7 @@ target_sources(app PRIVATE
     src/power_math.c
     src/power_management.c
     src/heartbeat.c
+    src/error_histogram.c
 )
 target_sources_ifdef(CONFIG_DIVECAN_WATCHDOG app PRIVATE src/watchdog_feeder.c)
 target_sources_ifdef(CONFIG_HAS_ANALOG_CELL app PRIVATE src/oxygen_cell_analog.c)

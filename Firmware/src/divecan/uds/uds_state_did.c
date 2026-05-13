@@ -18,6 +18,7 @@
 #include "oxygen_cell_types.h"
 #include "power_management.h"
 #include "ppo2_control.h"
+#include "error_histogram.h"
 #include "errors.h"
 #include "common.h"
 
@@ -73,6 +74,71 @@ static void writeUint16(uint8_t *buf, uint16_t value)
     buf[1] = (uint8_t)(value >> DIVECAN_BYTE_WIDTH);
 }
 
+/**
+ * @brief Write a signed int16 to buffer in little-endian format
+ *
+ * @param buf   Destination byte buffer; must have at least 2 bytes available
+ * @param value 16-bit signed value to serialise
+ */
+static void writeInt16(uint8_t *buf, int16_t value)
+{
+    writeUint16(buf, (uint16_t)value);
+}
+
+/* Per-cell type identifier matching the legacy CellType_t wire encoding
+ * exposed via CELL_DID_TYPE. */
+typedef enum {
+    CELL_KIND_DIVEO2 = 0,
+    CELL_KIND_ANALOG = 1,
+    CELL_KIND_O2S    = 2,
+} CellKind_t;
+
+/**
+ * @brief Return the compile-time-configured kind of a given cell index.
+ *
+ * Mirrors the table emitted for CELL_DID_TYPE. Used to gate the type-specific
+ * cell DID handlers so the wire response matches the legacy STM32 firmware
+ * (NRC on type mismatch instead of zero-filled payload).
+ */
+static CellKind_t cellKindFor(uint8_t cellNum)
+{
+    static const CellKind_t kinds[CELL_MAX_COUNT] = {
+#if defined(CONFIG_CELL_1_TYPE_ANALOG)
+        CELL_KIND_ANALOG,
+#elif defined(CONFIG_CELL_1_TYPE_DIVEO2)
+        CELL_KIND_DIVEO2,
+#elif defined(CONFIG_CELL_1_TYPE_O2S)
+        CELL_KIND_O2S,
+#else
+        CELL_KIND_ANALOG,
+#endif
+#if defined(CONFIG_CELL_2_TYPE_ANALOG)
+        CELL_KIND_ANALOG,
+#elif defined(CONFIG_CELL_2_TYPE_DIVEO2)
+        CELL_KIND_DIVEO2,
+#elif defined(CONFIG_CELL_2_TYPE_O2S)
+        CELL_KIND_O2S,
+#else
+        CELL_KIND_ANALOG,
+#endif
+#if defined(CONFIG_CELL_3_TYPE_ANALOG)
+        CELL_KIND_ANALOG,
+#elif defined(CONFIG_CELL_3_TYPE_DIVEO2)
+        CELL_KIND_DIVEO2,
+#elif defined(CONFIG_CELL_3_TYPE_O2S)
+        CELL_KIND_O2S,
+#else
+        CELL_KIND_ANALOG,
+#endif
+    };
+    CellKind_t result = CELL_KIND_ANALOG;
+
+    if (cellNum < CELL_MAX_COUNT) {
+        result = kinds[cellNum];
+    }
+    return result;
+}
+
 /* ============================================================================
  * PPO2 Control State DID Handlers (0xF2xx)
  * ============================================================================ */
@@ -88,7 +154,8 @@ static void writeUint16(uint8_t *buf, uint16_t value)
  * @param len Out: number of bytes written to buf
  * @return true if the DID was handled, false if did is not in this range
  */
-static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
+static bool handleControlStateDID(uint16_t did, uint8_t *buf,
+                  uint16_t maxLen, uint16_t *len)
 {
     bool result = true;
     ConsensusMsg_t consensus = {0};
@@ -245,6 +312,32 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf, uint16_t *len)
         break;
     }
 
+    case UDS_DID_ERROR_HISTOGRAM:
+    {
+        if (maxLen < ERROR_HISTOGRAM_BYTES) {
+            /* Caller bundled this DID with so many others that the
+             * remaining response buffer can't hold the full histogram —
+             * fail this DID so ReadDataByIdentifier emits NRC instead
+             * of overflowing the buffer. */
+            OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+            result = false;
+        } else {
+            uint16_t snap[ERROR_HISTOGRAM_COUNT] = {0};
+            size_t written = error_histogram_snapshot(snap,
+                                  ERROR_HISTOGRAM_COUNT);
+            if (written > 0U) {
+                for (size_t i = 0U; i < ERROR_HISTOGRAM_COUNT; ++i) {
+                    writeUint16(&buf[i * sizeof(uint16_t)],
+                            snap[i]);
+                }
+                *len = (uint16_t)written;
+            } else {
+                result = false;
+            }
+        }
+        break;
+    }
+
     default:
         result = false;
         break;
@@ -349,10 +442,76 @@ static bool handleAnalogCellDID(uint8_t offset,
 {
     bool result = false;
 
-    if (CELL_DID_MILLIVOLTS == offset) {
+    if (CELL_DID_RAW_ADC == offset) {
+        /* Legacy wire format: int16 (2 bytes). The analog ADS1115 is 15-bit
+         * signed, so the cell's raw_sample fits with one bit of headroom. */
+        writeInt16(buf, (int16_t)cellMsg->raw_sample);
+        *len = sizeof(int16_t);
+        result = true;
+    } else if (CELL_DID_MILLIVOLTS == offset) {
         writeUint16(buf, cellMsg->millivolts);
         *len = sizeof(uint16_t);
         result = true;
+    } else {
+        /* Not an analog-specific DID */
+    }
+
+    return result;
+}
+
+/**
+ * @brief Handle cell DID offsets carrying digital-cell ancillary fields.
+ *
+ * Covers DiveO2 #DRAW data: temperature, raw error word, phase, intensity,
+ * ambient light, pressure, humidity. Analog and O2S drivers leave these
+ * fields zero in their published OxygenCellMsg_t, so the handler returns
+ * the published value as-is rather than refusing the read — a zero is the
+ * correct answer for a cell type that does not measure that quantity.
+ *
+ * @param offset  DID sub-offset within the cell's DID block
+ * @param cellMsg Latest oxygen cell message from zbus; must not be NULL
+ * @param buf     Response data buffer; caller must ensure sufficient space
+ * @param len     Out: number of bytes written to buf
+ * @return true if the offset was handled, false if it is not a digital-cell offset
+ */
+static bool handleDigitalCellDID(uint8_t offset,
+                 const OxygenCellMsg_t *cellMsg,
+                 uint8_t *buf, uint16_t *len)
+{
+    bool result = true;
+
+    switch (offset) {
+    case CELL_DID_TEMPERATURE:
+        writeUint32(buf, (uint32_t)cellMsg->temperature_dC);
+        *len = sizeof(uint32_t);
+        break;
+    case CELL_DID_ERROR:
+        writeUint32(buf, cellMsg->err_code);
+        *len = sizeof(uint32_t);
+        break;
+    case CELL_DID_PHASE:
+        writeUint32(buf, (uint32_t)cellMsg->phase);
+        *len = sizeof(uint32_t);
+        break;
+    case CELL_DID_INTENSITY:
+        writeUint32(buf, (uint32_t)cellMsg->intensity);
+        *len = sizeof(uint32_t);
+        break;
+    case CELL_DID_AMBIENT_LIGHT:
+        writeUint32(buf, (uint32_t)cellMsg->ambient_light);
+        *len = sizeof(uint32_t);
+        break;
+    case CELL_DID_PRESSURE:
+        writeUint32(buf, cellMsg->pressure_uhpa);
+        *len = sizeof(uint32_t);
+        break;
+    case CELL_DID_HUMIDITY:
+        writeUint32(buf, (uint32_t)cellMsg->humidity_mRH);
+        *len = sizeof(uint32_t);
+        break;
+    default:
+        result = false;
+        break;
     }
 
     return result;
@@ -361,8 +520,8 @@ static bool handleAnalogCellDID(uint8_t offset,
 /**
  * @brief Dispatch a cell DID read to the appropriate type-specific handler
  *
- * Reads the cell's latest zbus message, then tries universal and analog handlers
- * in order. DiveO2/O2S-specific offsets are not yet implemented.
+ * Reads the cell's latest zbus message, then tries universal, analog, and
+ * digital handlers in order.
  *
  * @param cellNum Zero-based cell index (0–CELL_MAX_COUNT-1)
  * @param offset  DID sub-offset within the cell's DID block (0–CELL_DID_MAX_OFFSET)
@@ -400,12 +559,20 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset,
             (void)zbus_chan_read(cell_chans[cellNum], &cellMsg, K_NO_WAIT);
         }
 
+        CellKind_t kind = cellKindFor(cellNum);
+
         if (handleUniversalCellDID(cellNum, offset, &cellMsg, buf, len)) {
             result = true;
-        } else if (handleAnalogCellDID(offset, &cellMsg, buf, len)) {
+        } else if ((CELL_KIND_ANALOG == kind) &&
+               handleAnalogCellDID(offset, &cellMsg, buf, len)) {
+            result = true;
+        } else if ((CELL_KIND_DIVEO2 == kind) &&
+               handleDigitalCellDID(offset, &cellMsg, buf, len)) {
             result = true;
         } else {
-            /* DiveO2/O2S-specific DIDs: not yet wired (need extended cell msg fields) */
+            /* Offset not implemented for this cell kind — caller emits NRC.
+             * O2S cells only support the universal DIDs (PPO2 / TYPE /
+             * INCLUDED / STATUS), matching the legacy STM32 firmware. */
         }
     }
 
@@ -453,6 +620,7 @@ bool UDS_StateDID_IsStateDID(uint16_t did)
  * @return true if the DID was handled and data written, false on error
  */
 bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *responseBuffer,
+                 uint16_t maxLength,
                  uint16_t *responseLength)
 {
     bool result = false;
@@ -464,7 +632,8 @@ bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *responseBuffer,
 
         /* PPO2 Control State DIDs (0xF2xx) */
         if ((did >= UDS_DID_CONTROL_BASE) && (did <= UDS_DID_CONTROL_END)) {
-            result = handleControlStateDID(did, responseBuffer, responseLength);
+            result = handleControlStateDID(did, responseBuffer,
+                            maxLength, responseLength);
         }
         /* Cell DIDs (0xF4Nx) */
         else if ((did >= UDS_DID_CELL_BASE) &&

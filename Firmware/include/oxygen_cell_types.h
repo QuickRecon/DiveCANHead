@@ -68,7 +68,15 @@ typedef enum {
 
 /* ---- zbus message types ---- */
 
-/** @brief Per-cell reading published on chan_cell_1..3. */
+/** @brief Per-cell reading published on chan_cell_1..3.
+ *
+ * Common fields (cell_number .. timestamp_ticks) are populated by every
+ * driver. The trailing ancillary fields are populated by the cell type that
+ * has the data — DiveO2 #DRAW responses fill temperature/err_code/phase/
+ * intensity/ambient_light/pressure_uhpa/humidity_mRH; analog cells fill
+ * raw_sample with ADC counts; other drivers leave the unused fields zero.
+ * Exposed via the 0xF4Nx UDS state DIDs.
+ */
 typedef struct {
     uint8_t cell_number;
     PPO2_t ppo2;               /**< PPO2 in centibar; 0xFF = fail */
@@ -76,7 +84,14 @@ typedef struct {
     Millivolts_t millivolts;
     CellStatus_t status;
     int64_t timestamp_ticks;   /**< k_uptime_ticks() — 64-bit, no overflow */
+    int32_t raw_sample;        /**< Cell-native raw reading (analog: ADC counts; DiveO2: cell count) */
+    int32_t temperature_dC;    /**< Temperature in tenths of °C (DiveO2 native); 0 otherwise */
+    uint32_t err_code;         /**< Digital cell raw error word; 0 otherwise */
+    int32_t phase;             /**< DiveO2 #DRAW phase field; 0 otherwise */
+    int32_t intensity;         /**< DiveO2 #DRAW intensity field; 0 otherwise */
+    int32_t ambient_light;     /**< DiveO2 #DRAW ambient-light field; 0 otherwise */
     uint32_t pressure_uhpa;    /**< Pressure in units of 10^-3 hPa (DiveO2 native); 0 for analog */
+    int32_t humidity_mRH;      /**< Humidity in milliRH (DiveO2 native); 0 otherwise */
 } OxygenCellMsg_t;
 
 /** @brief Voted consensus result published on chan_consensus. */

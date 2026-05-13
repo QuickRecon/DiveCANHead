@@ -352,6 +352,10 @@ struct diveo2_cell_state {
     CellStatus_t status;
     int32_t cell_sample;
     int32_t temperature;
+    uint32_t err_code;
+    int32_t phase;
+    int32_t intensity;
+    int32_t ambient_light;
     int32_t pressure;
     int32_t humidity;
     int64_t last_ppo2_ticks;
@@ -494,7 +498,14 @@ static void diveo2_broadcast(struct diveo2_cell_state *cell)
         .millivolts = 0U,
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
+        .raw_sample = cell->cell_sample,
+        .temperature_dC = cell->temperature,
+        .err_code = cell->err_code,
+        .phase = cell->phase,
+        .intensity = cell->intensity,
+        .ambient_light = cell->ambient_light,
         .pressure_uhpa = (uint32_t)cell->pressure,
+        .humidity_mRH = cell->humidity,
     };
 
     (void)zbus_chan_pub(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
@@ -542,6 +553,10 @@ static void diveo2_apply_detailed(struct diveo2_cell_state *cell,
 {
     cell->cell_sample = r->ppo2;
     cell->temperature = r->temperature;
+    cell->err_code = (uint32_t)r->err_code;
+    cell->phase = r->phase;
+    cell->intensity = r->intensity;
+    cell->ambient_light = r->ambient_light;
     cell->pressure = r->pressure;
     cell->humidity = r->humidity;
     cell->status = r->status;
@@ -561,6 +576,12 @@ static void diveo2_apply_simple(struct diveo2_cell_state *cell, int32_t ppo2,
 {
     cell->cell_sample = ppo2;
     cell->temperature = temp;
+    cell->err_code = 0U;
+    cell->phase = 0;
+    cell->intensity = 0;
+    cell->ambient_light = 0;
+    cell->pressure = 0;
+    cell->humidity = 0;
     cell->status = status;
     cell->last_ppo2_ticks = k_uptime_ticks();
 }
