@@ -13,7 +13,7 @@ from enum import IntEnum
 from typing import Iterable
 
 import divecan
-from sim_shim import ShimDigitalCellType, SimShim
+from sim_shim import ShimDigitalCellType, SharedMemShim
 
 
 class CellType(IntEnum):
@@ -33,7 +33,7 @@ DEV_FULL_CELLS: tuple[CellType, ...] = (
 
 
 def configure_cell(
-    shim: SimShim,
+    shim: SharedMemShim,
     cell_num: int,
     cell_type: CellType,
     cell_centibar: float,
@@ -82,7 +82,7 @@ def check_cell_millivolts(actual_x100: int, expected_centibar: int) -> None:
     )
 
 
-def sim_sleep(shim: SimShim, sim_seconds: float,
+def sim_sleep(shim: SharedMemShim, sim_seconds: float,
               poll_interval: float = 0.005) -> None:
     """Sleep until the firmware has advanced by ``sim_seconds`` of simulated time.
 
@@ -99,7 +99,7 @@ def sim_sleep(shim: SimShim, sim_seconds: float,
 
 
 def configure_all_cells(
-    shim: SimShim,
+    shim: SharedMemShim,
     centibar_values: Iterable[float],
     cells: Iterable[CellType] = DEV_FULL_CELLS,
 ) -> None:
@@ -137,7 +137,7 @@ generous headroom."""
 
 def calibrate_board(
     can_client: divecan.CanClient,
-    shim: SimShim,
+    shim: SharedMemShim,
     cells: Iterable[CellType] = DEV_FULL_CELLS,
 ) -> None:
     """Run the calibration happy path.
@@ -166,7 +166,7 @@ def calibrate_board(
 
 def ensure_calibrated(
     can_client: divecan.CanClient,
-    shim: SimShim,
+    shim: SharedMemShim,
     cells: Iterable[CellType] = DEV_FULL_CELLS,
 ) -> None:
     """Trigger a calibration if the most recent PPO2 broadcast indicates the

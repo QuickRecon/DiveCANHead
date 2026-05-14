@@ -33,11 +33,10 @@ import time
 import pytest
 
 from conftest import (
-    SHIM_BIND_DELAY_S,
     launch_native_sim_firmware,
     stop_native_sim_firmware,
 )
-from sim_shim import SimShim
+from sim_shim import SharedMemShim
 import divecan
 import helpers
 
@@ -214,7 +213,7 @@ def test_power_cycle_bus_off_then_shutdown(dut, firmware) -> None:
     firmware to the dormant state.  On native_sim that means the
     process exits; on hardware it would have entered SHUTDOWN mode."""
     can_bus, shim = dut
-    proc, _sock = firmware
+    proc = firmware
 
     shim.set_bus_off()
     can_bus.send(divecan.build_shutdown())
@@ -234,7 +233,7 @@ def test_power_cycle_bus_on_recovery(dut, firmware) -> None:
     WKUP-triggered POR by relaunching the firmware.  The fresh boot
     should resume normal operation, in particular PPO2 broadcasts."""
     can_bus, shim = dut
-    proc, _sock = firmware
+    proc = firmware
 
     # First: trigger the dormant state.
     shim.set_bus_off()
@@ -245,7 +244,7 @@ def test_power_cycle_bus_on_recovery(dut, firmware) -> None:
     # Now play the role of the silicon's WKUP→POR mechanism: relaunch
     # the firmware as if a fresh power-on reset had occurred.
     new_proc = launch_native_sim_firmware(append_log=True, rt_ratio=100)
-    new_shim = SimShim()
+    new_shim = SharedMemShim()
     try:
         new_shim.wait_ready()
 
@@ -263,7 +262,7 @@ def test_power_aborts_on_bus_held_active(dut, firmware) -> None:
     during its 20×100 ms observation window.  Hold ``bus_on`` and
     verify the firmware stays alive with broadcasts intact."""
     can_bus, shim = dut
-    proc, _sock = firmware
+    proc = firmware
 
     shim.set_bus_on()
     can_bus.send(divecan.build_shutdown())

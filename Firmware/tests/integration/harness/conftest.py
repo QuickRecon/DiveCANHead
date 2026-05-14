@@ -4,8 +4,8 @@ Layered fixtures:
 
 * ``vcan`` (module): verifies ``vcan0`` is present, skips otherwise.
 * ``firmware`` (function): launches the ``native_sim`` binary, hands back
-  ``(proc, sock_path)``, and tears the process down on exit.
-* ``shim`` (function): a connected :class:`SimShim` against ``firmware``.
+  the ``Popen`` handle, and tears the process down on exit.
+* ``shim`` (function): a connected :class:`SharedMemShim` against ``firmware``.
 * ``can_bus`` (function): a :class:`CanClient` bound to ``vcan0``.
 * ``dut`` (function): convenience tuple ``(can_bus, shim)``.
 """
@@ -22,7 +22,7 @@ from typing import Generator
 import pytest
 
 from divecan import CanClient
-from sim_shim import SharedMemShim, SimShim
+from sim_shim import SharedMemShim
 
 
 # ---------------------------------------------------------------------------
@@ -44,13 +44,6 @@ NATIVE_SIM_BIN: Path = Path(
             / "zephyr" / "zephyr.exe"),
     )
 )
-SHIM_SOCK_PATH: str = "/tmp/divecan_shim.sock"
-
-# Time to wait for the shim socket to bind once the binary launches. The
-# firmware does this very early in main() but the syscall is asynchronous
-# from our point of view.
-SHIM_BIND_DELAY_S: float = 0.2
-
 # Termination grace period before escalating to SIGKILL.
 TERMINATE_GRACE_S: float = 1.0
 
@@ -77,18 +70,6 @@ def vcan() -> str:
 # ---------------------------------------------------------------------------
 # Firmware lifecycle
 # ---------------------------------------------------------------------------
-
-
-def _remove_stale_socket(path: str) -> None:
-    """Delete any leftover socket node at ``path``."""
-    try:
-        os.unlink(path)
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        raise RuntimeError(
-            f"could not remove stale shim socket {path!r}: {exc}"
-        ) from exc
 
 
 def _kill_stale_firmware() -> None:
@@ -145,9 +126,9 @@ def launch_native_sim_firmware(append_log: bool = False,
         wall time.  Useful for ISO-TP multi-frame transfers that
         need extra wall-time headroom for IPC.
 
-    External IPC (CAN, shim sockets) is always wall-time bound, so a
-    very aggressive ratio can destabilise tests that depend on
-    request/response within a bounded wall window — keep it ≥0.05.
+    External IPC (CAN) is always wall-time bound, so a very aggressive
+    ratio can destabilise tests that depend on request/response within
+    a bounded wall window — keep it ≥0.05.
 
     Exposed so power-cycle tests can simulate the silicon's
     WKUP-pin → POR mechanism by relaunching the firmware after it has
@@ -163,8 +144,6 @@ def launch_native_sim_firmware(append_log: bool = False,
     """
     if not NATIVE_SIM_BIN.exists():
         pytest.skip(f"native_sim binary not found at {NATIVE_SIM_BIN}")
-
-    _remove_stale_socket(SHIM_SOCK_PATH)
 
     log_mode = "ab" if append_log else "wb"
     log_file = open("/tmp/divecan_firmware.log", log_mode)
@@ -184,9 +163,8 @@ def launch_native_sim_firmware(append_log: bool = False,
         cwd=str(FIRMWARE_ROOT),
     )
 
-    # Give the shim a moment to bind its socket before fixtures downstream
-    # try to connect.
-    time.sleep(SHIM_BIND_DELAY_S)
+    # Brief delay for the firmware process to start and bind to vcan0.
+    time.sleep(0.2)
 
     # Attach the log file to the proc so the caller (or the firmware
     # fixture's teardown) can close it after termination.
@@ -212,12 +190,11 @@ def stop_native_sim_firmware(proc: subprocess.Popen[bytes]) -> None:
     log_file = getattr(proc, "_divecan_log_file", None)
     if log_file is not None:
         log_file.close()
-    _remove_stale_socket(SHIM_SOCK_PATH)
 
 
 @pytest.fixture()
-def firmware(request) -> Generator[tuple[subprocess.Popen[bytes], str], None, None]:
-    """Launch the native_sim binary, yield ``(proc, sock_path)``.
+def firmware(request) -> Generator[subprocess.Popen[bytes], None, None]:
+    """Launch the native_sim binary, yield the ``Popen`` handle.
 
     A test that wants accelerated simulated time can attach an
     ``rt_ratio`` marker:
@@ -234,7 +211,7 @@ def firmware(request) -> Generator[tuple[subprocess.Popen[bytes], str], None, No
     proc = launch_native_sim_firmware(rt_ratio=rt_ratio)
 
     try:
-        yield proc, SHIM_SOCK_PATH
+        yield proc
     finally:
         stop_native_sim_firmware(proc)
 
@@ -246,10 +223,10 @@ def firmware(request) -> Generator[tuple[subprocess.Popen[bytes], str], None, No
 
 @pytest.fixture()
 def shim(
-    firmware: tuple[subprocess.Popen[bytes], str],
+    firmware: subprocess.Popen[bytes],
 ) -> Generator[SharedMemShim, None, None]:
     """Yield a :class:`SharedMemShim` connected to the running firmware."""
-    _proc, _sock_path = firmware
+    _ = firmware
     client = SharedMemShim()
     try:
         client.wait_ready()
@@ -271,9 +248,9 @@ def can_bus(vcan: str) -> Generator[CanClient, None, None]:
 @pytest.fixture()
 def dut(
     can_bus: CanClient,
-    shim: SimShim,
-    firmware: tuple[subprocess.Popen[bytes], str],
-) -> tuple[CanClient, SimShim]:
+    shim: SharedMemShim,
+    firmware: subprocess.Popen[bytes],
+) -> tuple[CanClient, SharedMemShim]:
     """Convenience tuple for tests that need both transports."""
     # ``firmware`` is requested for ordering only — Pytest will set it up
     # before this fixture and tear it down after.
@@ -284,7 +261,7 @@ def dut(
 @pytest.fixture()
 def can_only_dut(
     can_bus: CanClient,
-    firmware: tuple[subprocess.Popen[bytes], str],
+    firmware: subprocess.Popen[bytes],
 ) -> CanClient:
     """CAN-only fixture for tests that don't need the sensor-injection shim
     (ping, basic CAN protocol responses). Launches the firmware but skips
@@ -296,14 +273,14 @@ def can_only_dut(
 @pytest.fixture()
 def firmware_with_flash(
     request, tmp_path,
-) -> Generator[tuple[subprocess.Popen[bytes], str, str], None, None]:
+) -> Generator[tuple[subprocess.Popen[bytes], str], None, None]:
     """Launch firmware with a file-backed flash simulator.
 
-    Yields ``(proc, sock_path, flash_path)``.  The flash file lives in
-    pytest's per-test ``tmp_path``, so each test gets an isolated
-    backing.  The file is created empty (flash_erase=True on first
-    launch), letting the firmware boot from an unwritten flash sim
-    that the integration build's NVS subsystem then populates.
+    Yields ``(proc, flash_path)``.  The flash file lives in pytest's
+    per-test ``tmp_path``, so each test gets an isolated backing.  The
+    file is created empty (flash_erase=True on first launch), letting
+    the firmware boot from an unwritten flash sim that the integration
+    build's NVS subsystem then populates.
 
     Tests that want to relaunch after a sys_reboot (e.g. to inspect
     the post-activate flash state) can call
@@ -321,7 +298,7 @@ def firmware_with_flash(
                                        flash_erase=True)
 
     try:
-        yield proc, SHIM_SOCK_PATH, flash_path
+        yield proc, flash_path
     finally:
         stop_native_sim_firmware(proc)
 
@@ -344,7 +321,7 @@ def relaunch_native_sim_firmware(flash_path: str,
 
 
 @pytest.fixture()
-def calibrated_dut(dut: tuple[CanClient, SimShim]) -> tuple[CanClient, SimShim]:
+def calibrated_dut(dut: tuple[CanClient, SharedMemShim]) -> tuple[CanClient, SharedMemShim]:
     """Like ``dut`` but runs the calibration happy path before yielding so
     cell PPO2 broadcasts are not stuck on CELL_NEED_CAL (0xFF) bytes."""
     import helpers  # local import to avoid cycle at module-load time

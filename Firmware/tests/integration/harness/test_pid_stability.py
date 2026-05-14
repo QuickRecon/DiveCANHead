@@ -53,7 +53,7 @@ from conftest import (
     stop_native_sim_firmware,
 )
 from rebreather_model import LOOP_PROFILES, RebreatherModel
-from sim_shim import SharedMemShim, SimShim
+from sim_shim import SharedMemShim
 
 
 # Solenoid channel for O2 inject (CONFIG_SOL_O2_INJECT_CHANNEL=0).
@@ -137,13 +137,12 @@ def _set_mode_and_reboot(mode_name: str, can_bus, shim, proc):
     the firmware restart.
 
     We use SIGTERM rather than the BUS_OFF + shutdown-handler path
-    here because the shutdown handler's abort window (20 × 100 ms in
-    simulated time) interacts poorly with the wall-time-bound shim
-    socket commands at high rt_ratio — the firmware can race past
-    the abort window before the shim's set_bus_off propagates.
-    The power-cycle behaviour of the shutdown handler is tested
-    separately in ``test_pwr_management.py``; here we only need the
-    NVS-persisted mode to be picked up at the next cold boot.
+    here because the shutdown handler's abort window (20 x 100 ms in
+    simulated time) interacts poorly with the wall-time-bound IPC
+    at high rt_ratio.  The power-cycle behaviour of the shutdown
+    handler is tested separately in ``test_pwr_management.py``; here
+    we only need the NVS-persisted mode to be picked up at the next
+    cold boot.
     """
     # 1. Persist the new mode via UDS.
     uds_helpers.save_setting_value(
@@ -267,15 +266,14 @@ def test_controller_does_not_oscillate(dut, firmware,
     """The active controller must converge and stay bounded under the
     named plant profile for both PID and MK15 algorithms."""
     can_bus, shim = dut
-    proc, _sock = firmware
+    proc = firmware
 
     # Switch into the requested control mode and reboot so it latches.
     # This also exercises the UDS setting + shutdown + relaunch path
     # end-to-end on every run, which is a nice side benefit.
     proc, shim = _set_mode_and_reboot(mode_name, can_bus, shim, proc)
     try:
-        # Re-calibrate after the reboot.  SharedMemShim is duck-type
-        # compatible with SimShim for configure_cell / sim_sleep.
+        # Re-calibrate after the reboot.
         helpers.calibrate_board(can_bus, shim)
 
         profile = LOOP_PROFILES[profile_name]

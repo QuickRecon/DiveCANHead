@@ -24,7 +24,7 @@ import time
 import pytest
 
 import divecan
-from sim_shim import SimShim
+from sim_shim import SharedMemShim
 from uds_ota import (
     OTAClient,
     OTAResponseError,
@@ -82,7 +82,7 @@ def ota_dut(firmware_with_flash, vcan):
     Bound to ``firmware_with_flash`` so each test starts with a fresh
     erased flash file in pytest's tmp_path.
     """
-    proc, _sock_path, flash_path = firmware_with_flash
+    proc, flash_path = firmware_with_flash
 
     # Bring up CAN.  Bus comes from the existing CanClient class.
     from divecan import CanClient
@@ -250,7 +250,7 @@ def test_routine_activate_reboots_dut(firmware_with_flash, vcan):
     and disappears off the bus.  Per-SID response wire format is
     covered by the unit suite (tests/uds_ota/).
     """
-    proc, _sock, flash_path = firmware_with_flash
+    proc, flash_path = firmware_with_flash
 
     from divecan import CanClient
     can_bus = CanClient(channel=vcan)

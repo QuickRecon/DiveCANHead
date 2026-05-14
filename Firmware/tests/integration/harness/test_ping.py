@@ -10,6 +10,7 @@ is used.
 
 from __future__ import annotations
 
+import subprocess
 from typing import Generator
 
 import pytest
@@ -20,7 +21,6 @@ from conftest import (
     launch_native_sim_firmware,
     stop_native_sim_firmware,
     _kill_stale_firmware,
-    SHIM_SOCK_PATH,
 )
 from sim_shim import SharedMemShim
 
@@ -34,18 +34,18 @@ RT_RATIO: float = 100.0
 
 
 @pytest.fixture(scope="module")
-def firmware(vcan) -> Generator[tuple, None, None]:
+def firmware(vcan) -> Generator[subprocess.Popen[bytes], None, None]:
     _kill_stale_firmware()
     proc = launch_native_sim_firmware(rt_ratio=RT_RATIO)
     try:
-        yield proc, SHIM_SOCK_PATH
+        yield proc
     finally:
         stop_native_sim_firmware(proc)
 
 
 @pytest.fixture(scope="module")
 def shim(firmware) -> Generator[SharedMemShim, None, None]:
-    _proc, _sock_path = firmware
+    _ = firmware
     client = SharedMemShim()
     try:
         client.wait_ready()
