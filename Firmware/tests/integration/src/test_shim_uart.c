@@ -34,6 +34,7 @@
 #include <stdio.h>
 
 #include "test_shim_uart.h"
+#include "test_shim_shared.h"
 
 LOG_MODULE_REGISTER(test_shim_uart, LOG_LEVEL_INF);
 
@@ -115,10 +116,16 @@ static void handle_command(struct cell_state *cell, const char *cmd)
     char response[RESPONSE_BUF_LEN];
     int len = 0;
 
-    /* DiveO2 commands begin with '#' regardless of cell mode setting.
-     * The cell may answer to both protocols at startup, but per the
-     * firmware design the production cell type is known at compile time.
-     * For the shim we treat the command prefix as authoritative. */
+    /* Pull state from shared memory (zero-copy path). */
+    struct shim_shared_state *sh = shim_shared_get();
+    if (sh != NULL) {
+        unsigned int idx = (unsigned int)(cell - cells);
+        if (idx < CELL_COUNT) {
+            cell->ppo2_bar = sh->digital_ppo2[idx];
+            cell->mode = (shim_cell_mode_t)sh->digital_mode[idx];
+        }
+    }
+
     if (strncmp(cmd, "#DRAW", 5) == 0) {
         len = build_diveo2_draw_response(cell, response, sizeof(response));
     } else if (strncmp(cmd, "#DOXY", 5) == 0) {
@@ -220,6 +227,10 @@ int shim_uart_set_digital_ppo2(uint8_t cell, float ppo2)
         return -EINVAL;
     }
     cells[cell - 1].ppo2_bar = ppo2;
+    struct shim_shared_state *sh = shim_shared_get();
+    if (sh != NULL) {
+        sh->digital_ppo2[cell - 1] = ppo2;
+    }
     return 0;
 }
 

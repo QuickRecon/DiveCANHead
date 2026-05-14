@@ -22,7 +22,7 @@ from conftest import (
     _kill_stale_firmware,
     SHIM_SOCK_PATH,
 )
-from sim_shim import SimShim
+from sim_shim import SharedMemShim
 
 
 RT_RATIO: float = 100.0
@@ -44,9 +44,9 @@ def firmware(vcan) -> Generator[tuple, None, None]:
 
 
 @pytest.fixture(scope="module")
-def shim(firmware) -> Generator[SimShim, None, None]:
-    _proc, sock_path = firmware
-    client = SimShim(sock_path=sock_path)
+def shim(firmware) -> Generator[SharedMemShim, None, None]:
+    _proc, _sock_path = firmware
+    client = SharedMemShim()
     try:
         client.wait_ready()
         yield client
@@ -64,7 +64,7 @@ def can_bus(vcan) -> Generator[CanClient, None, None]:
 
 
 @pytest.fixture(scope="module")
-def dut(can_bus, shim, firmware) -> tuple[CanClient, SimShim]:
+def dut(can_bus, shim, firmware) -> tuple[CanClient, SharedMemShim]:
     _ = firmware
     return can_bus, shim
 

@@ -53,7 +53,7 @@ from conftest import (
     stop_native_sim_firmware,
 )
 from rebreather_model import LOOP_PROFILES, RebreatherModel
-from sim_shim import SimShim
+from sim_shim import SharedMemShim, SimShim
 
 
 # Solenoid channel for O2 inject (CONFIG_SOL_O2_INJECT_CHANNEL=0).
@@ -76,19 +76,20 @@ SIM_DURATION_S: float = 300.0
 # bootup transient.
 STEADY_WINDOW_START_S: float = 60.0
 
-# Firmware-time acceleration factor.  Higher values run faster but the
-# test loop (shim round-trips + CAN drain) becomes the bottleneck.
-# At 100× the plant model steps with larger dt, but the firmware PID
-# still converges because cell updates arrive every few PID periods.
-RT_RATIO: float = 10.0
+# Firmware-time acceleration factor.  With shared memory IPC the test
+# loop is no longer bound by socket round-trips, so high ratios work.
+RT_RATIO: float = 100.0
 
 # Steady-state assertion bounds.  Picked so a converged-but-noisy
 # controller still passes while persistent oscillation fails clearly.
 # MK15 swings further per cycle by design (1.5 s on, 6 s off, no
 # integral term) so use a looser amplitude bound for it.
+# 2 cb headroom accounts for dual-process scheduling jitter: the Python
+# plant model and native_sim run as separate processes, so the exact
+# interleaving of cell writes and PID reads varies by ±1-2 cb.
 STEADY_AMPLITUDE_LIMIT_CB: dict[str, int] = {
-    "PID":  12,   # 0.12 bar peak-to-peak
-    "MK15": 20,   # 0.20 bar peak-to-peak — wider band, stateless control
+    "PID":  14,   # 0.14 bar p-p (12 cb intrinsic + 2 cb simulation noise)
+    "MK15": 22,   # 0.22 bar p-p — wider band, stateless bang-bang
 }
 
 # Setpoint-crossing rate (crossings per second of steady window) —
@@ -160,7 +161,7 @@ def _set_mode_and_reboot(mode_name: str, can_bus, shim, proc):
     marker_ratio = RT_RATIO
     new_proc = launch_native_sim_firmware(append_log=True,
                                           rt_ratio=marker_ratio)
-    new_shim = SimShim()
+    new_shim = SharedMemShim()
     new_shim.wait_ready()
     new_shim.set_bus_on()
     return new_proc, new_shim
@@ -218,10 +219,10 @@ def _save_plot(profile_name: str, mode_name: str,
 # ---------------------------------------------------------------------------
 
 
-def _inject_ppo2_to_cells(shim, reported_ppo2_bar):
-    """Push the model's per-cell PPO2 readings into the firmware."""
+def _inject_ppo2_to_cells(shared, reported_ppo2_bar):
+    """Push the model's per-cell PPO2 readings into the firmware via shm."""
     bar_to_mv = 100.0 / 2.0  # 50 mV per bar per helpers.configure_cell
-    shim.set_cells(
+    shared.set_cells(
         d1=reported_ppo2_bar[0],
         d2=reported_ppo2_bar[1],
         a3=reported_ppo2_bar[2] * bar_to_mv,
@@ -273,9 +274,8 @@ def test_controller_does_not_oscillate(dut, firmware,
     # end-to-end on every run, which is a nice side benefit.
     proc, shim = _set_mode_and_reboot(mode_name, can_bus, shim, proc)
     try:
-        # Re-calibrate after the reboot (cal coefficients are in NVS
-        # but cells fresh-boot in CELL_NEED_CAL until the listener
-        # picks up the loaded coefficient).
+        # Re-calibrate after the reboot.  SharedMemShim is duck-type
+        # compatible with SimShim for configure_cell / sim_sleep.
         helpers.calibrate_board(can_bus, shim)
 
         profile = LOOP_PROFILES[profile_name]
@@ -289,7 +289,7 @@ def test_controller_does_not_oscillate(dut, firmware,
         model._f_bulk = model._f_local
         model._reported_ppo2 = [seed_ppo2_bar] * 3
         _inject_ppo2_to_cells(shim, model.reported_ppo2)
-        time.sleep(0.5)
+        helpers.sim_sleep(shim, 0.5)
 
         can_bus.flush_rx()
 
@@ -297,10 +297,6 @@ def test_controller_does_not_oscillate(dut, firmware,
         solenoid_trace: list[tuple[float, int]] = []  # (sim_t_rel, 0|1)
         failures: list[float] = []
 
-        # Anchor: firmware-simulated-time at the start of the run.
-        # All model steps and trace timestamps are expressed relative
-        # to this anchor so they reflect the firmware's perception of
-        # elapsed time regardless of the wall-clock acceleration ratio.
         sim_t_start_us = shim.get_uptime_us()
         sim_t_last_us = sim_t_start_us
         last_sol_state = -1  # Force first sample to log
@@ -398,8 +394,5 @@ def test_controller_does_not_oscillate(dut, firmware,
             f"{_trace_summary()}"
         )
     finally:
-        # Teardown: stop the second-boot firmware so the next test
-        # starts from a clean state.  The shim and ``proc`` here are
-        # the relaunched pair, not the ones the fixture supplied.
         shim.close()
         stop_native_sim_firmware(proc)

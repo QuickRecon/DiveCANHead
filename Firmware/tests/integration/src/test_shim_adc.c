@@ -29,6 +29,7 @@
 #include <zephyr/init.h>
 
 #include "test_shim_adc.h"
+#include "test_shim_shared.h"
 
 LOG_MODULE_REGISTER(test_shim_adc, LOG_LEVEL_INF);
 
@@ -56,6 +57,36 @@ static const struct device *const adc_ext2_dev =
  * sensible values. Must run before the cell threads and power_init
  * call adc_channel_setup().
  */
+/* Callback invoked by adc_emul on each adc_read for external cell channels.
+ * Reads the millivolt value directly from shared memory and converts to
+ * raw counts, making the value available at exactly the point the firmware
+ * requests it — no sync timer jitter. */
+/* adc_emul calls this on each adc_read().  The firmware configures
+ * differential mode, so adc_emul uses the result directly as raw ADC
+ * codes (bypassing gain/reference conversion).  Same conversion as
+ * shim_adc_set_analog_millis: raw = mV * 32767 / 256. */
+static int shm_cell_value_cb(const struct device *dev, unsigned int chan,
+                             void *data, uint32_t *result)
+{
+    ARG_UNUSED(dev);
+    ARG_UNUSED(chan);
+    const struct shim_shared_state *sh = shim_shared_get();
+    if (sh == NULL) {
+        *result = 0;
+        return 0;
+    }
+    unsigned int cell_idx = (unsigned int)(uintptr_t)data;
+    float mv = sh->analog_millis[cell_idx];
+    if (mv < 0.0f) {
+        mv = 0.0f;
+    }
+    if (mv > (float)ADC_EXT_FS_MV) {
+        mv = (float)ADC_EXT_FS_MV;
+    }
+    *result = (uint32_t)(mv * (float)ADC_EXT_FS_COUNTS / (float)ADC_EXT_FS_MV);
+    return 0;
+}
+
 static int shim_adc_init(void)
 {
     int ret;
@@ -66,24 +97,18 @@ static int shim_adc_init(void)
         return -ENODEV;
     }
 
-    /* Internal reference is set via DT (`ref-internal-mv = <3000>`) in
-     * the overlay, not at runtime: adc_emul's api struct lives in
-     * .rodata on native_sim and runtime writes to it are silently
-     * dropped. The shim layer is left here as a fallback in case a
-     * future overlay forgets to set the property; if the DT value is
-     * non-zero the call is a no-op. */
     ret = adc_emul_ref_voltage_set(adc0_dev, ADC_REF_INTERNAL, ADC_INT_REF_MV);
     if (ret != 0) {
         LOG_ERR("adc0 ref set failed: %d", ret);
         return ret;
     }
 
-    /* External ADCs (ADS1115): cell channels use
-     * adc_emul_const_raw_value_set so the reference voltage is irrelevant
-     * — we set the raw counts directly.  Still need a non-zero reference
-     * so adc_channel_setup() doesn't reject the channel config. */
     (void)adc_emul_ref_voltage_set(adc_ext1_dev, ADC_REF_INTERNAL, ADC_EXT_FS_MV);
     (void)adc_emul_ref_voltage_set(adc_ext2_dev, ADC_REF_INTERNAL, ADC_EXT_FS_MV);
+
+    (void)adc_emul_raw_value_func_set(adc_ext1_dev, 0, shm_cell_value_cb, (void *)0);
+    (void)adc_emul_raw_value_func_set(adc_ext1_dev, 1, shm_cell_value_cb, (void *)1);
+    (void)adc_emul_raw_value_func_set(adc_ext2_dev, 0, shm_cell_value_cb, (void *)2);
 
     /* Default battery voltage: 7.4V (2S lithium nominal, well above
      * the 6.0V LI2S threshold so low_battery starts FALSE) */
@@ -98,6 +123,14 @@ SYS_INIT(shim_adc_init, POST_KERNEL, 60);
 
 int shim_adc_set_analog_millis(uint8_t cell, float millis)
 {
+    /* Keep shared memory in sync so the raw_value_func callback
+     * (registered during init) returns the correct value regardless
+     * of whether the caller is the socket handler or direct code. */
+    struct shim_shared_state *sh = shim_shared_get();
+    if (sh != NULL && cell >= 1 && cell <= 3) {
+        sh->analog_millis[cell - 1] = millis;
+    }
+
     const struct device *dev;
     unsigned int chan;
 

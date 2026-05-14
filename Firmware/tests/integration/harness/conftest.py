@@ -22,7 +22,7 @@ from typing import Generator
 import pytest
 
 from divecan import CanClient
-from sim_shim import SimShim
+from sim_shim import SharedMemShim, SimShim
 
 
 # ---------------------------------------------------------------------------
@@ -247,10 +247,10 @@ def firmware(request) -> Generator[tuple[subprocess.Popen[bytes], str], None, No
 @pytest.fixture()
 def shim(
     firmware: tuple[subprocess.Popen[bytes], str],
-) -> Generator[SimShim, None, None]:
-    """Yield a :class:`SimShim` connected to the running firmware."""
-    _proc, sock_path = firmware
-    client = SimShim(sock_path=sock_path)
+) -> Generator[SharedMemShim, None, None]:
+    """Yield a :class:`SharedMemShim` connected to the running firmware."""
+    _proc, _sock_path = firmware
+    client = SharedMemShim()
     try:
         client.wait_ready()
         yield client

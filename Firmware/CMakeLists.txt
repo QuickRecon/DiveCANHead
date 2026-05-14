@@ -125,11 +125,13 @@ target_sources_ifdef(CONFIG_INTEGRATION_TEST_SHIM app PRIVATE
     tests/integration/src/test_shim_adc.c
     tests/integration/src/test_shim_gpio.c
     tests/integration/src/test_shim_socket.c
+    tests/integration/src/test_shim_shared.c
 )
-# Host-side socket adapter — compiled into the native_simulator runner
-# so it can use raw Linux/glibc headers without colliding with Zephyr's
-# POSIX networking shims.
+# Host-side adapter — compiled into the native_simulator runner so it
+# can use raw Linux/glibc headers without colliding with Zephyr's POSIX
+# shims.  Provides socket + shared memory wrappers.
 if(CONFIG_INTEGRATION_TEST_SHIM)
     target_sources(native_simulator INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/src/test_shim_socket_adapt.c)
+    target_link_libraries(native_simulator INTERFACE rt)
 endif()
