@@ -27,4 +27,22 @@ void calibration_init(void);
  */
 bool calibration_is_running(void);
 
+#ifdef CONFIG_ZTEST
+/**
+ * @brief Test-only entry point: drive the calibration SMF synchronously.
+ *
+ * Bypasses the listener thread, the atomic in-progress guard, and the
+ * zbus_sub_wait_msg blocking path. Test cases set up the inputs
+ * (cell channel publishes, settings stubs) then invoke this with a
+ * CalRequest_t to step the state machine to a terminal state and
+ * inspect the published CalResponse_t.
+ *
+ * Only declared when CONFIG_ZTEST=y so production builds can't reach
+ * the SM through a side door.
+ *
+ * @param req Calibration request to execute.
+ */
+void calibration_run_for_test(const CalRequest_t *req);
+#endif
+
 #endif /* CALIBRATION_H */

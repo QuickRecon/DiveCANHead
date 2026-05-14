@@ -129,6 +129,28 @@ Overrides Zephyr's `k_sys_fatal_error_handler` (weak symbol). All fatal paths �
 
 The system always reboots on fatal error — never halts. Transient faults may self-resolve on restart.
 
+## State Machine Framework (SMF)
+
+Subsystems with multi-step lifecycles (one accepted request walks
+through several discrete stages) use Zephyr's State Machine Framework
+(`<zephyr/smf.h>`) so each state, the work that runs in it, and the
+transitions between them are obvious from one read of the source.
+
+- **Flat-only** — `CONFIG_SMF_ANCESTOR_SUPPORT` and
+  `CONFIG_SMF_INITIAL_TRANSITION` stay off. No hierarchical states, no
+  initial-substate descent. Keeps the framework code small and the
+  control flow boring.
+- **One state table per module**, indexed by an enum. Entry / run / exit
+  function pointers per state, plus an `SMF_CTX` typedef whose first
+  member is `struct smf_ctx smf;` (the cast contract).
+- **Test hooks** (`<module>_run_for_test`) under `#ifdef CONFIG_ZTEST`
+  drive the SM synchronously; production paths go through the
+  module's thread or its caller.
+
+See `docs/STATE_MACHINES.md` for the per-module state tables and event
+vocabularies. Today: calibration (`src/calibration.c`). Planned:
+POST gate, UDS OTA, ISO-TP RX, ISO-TP TX queue.
+
 ## IPC: zbus
 
 Replaces the FreeRTOS 1-element peek queue pattern (`xQueueOverwrite`/`xQueuePeek`). zbus channels hold the latest published value; subscribers get notified on change. ISR-safe, statically allocated, no shared global state.

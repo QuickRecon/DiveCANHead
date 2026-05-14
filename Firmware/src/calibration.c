@@ -14,17 +14,21 @@
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
+#include <zephyr/smf.h>
 #include <zephyr/sys/atomic.h>
 
 #include "calibration.h"
 #include "oxygen_cell_types.h"
+#if defined(CONFIG_HAS_FLUSH_SOLENOID) || defined(CONFIG_HAS_O2_SOLENOID)
 #include "solenoid_roles.h"
+#endif
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_math.h"
 #include "errors.h"
 #include "common.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -859,81 +863,230 @@ static CalResult_t cal_solenoid_flush(const CalRequest_t *req,
     return cal_total_absolute(req, resp);
 }
 
-/* ---- Calibration execution (runs within the listener thread) ---- */
+/* ---- Calibration execution: SMF state machine ----
+ *
+ * The lifecycle of a single calibration request is modelled as a flat
+ * Zephyr SMF state machine. Entry actions do the work; `run` is NULL
+ * throughout — every transition cascades synchronously through
+ * `smf_set_state` until DONE or FAILED terminates. The driver
+ * `run_calibration_sm()` is invoked once per accepted request from the
+ * listener thread.
+ *
+ * Linear flow on success:
+ *   BACKING_UP → VALIDATING_REQUEST → EXECUTING → DONE
+ * On invalid fO2:
+ *   BACKING_UP → VALIDATING_REQUEST → RESTORING_ON_FAIL → FAILED
+ * On execution failure:
+ *   BACKING_UP → VALIDATING_REQUEST → EXECUTING → RESTORING_ON_FAIL → FAILED
+ *
+ * DONE.entry and FAILED.entry both publish a CalResponse_t on
+ * chan_cal_response and call smf_set_terminate so the driver loop exits.
+ */
+
+typedef enum {
+    CAL_STATE_BACKING_UP = 0,
+    CAL_STATE_VALIDATING_REQUEST,
+    CAL_STATE_EXECUTING,
+    CAL_STATE_RESTORING_ON_FAIL,
+    CAL_STATE_DONE,
+    CAL_STATE_FAILED,
+    CAL_STATE_COUNT,
+} CalState_e;
+
+typedef struct {
+    struct smf_ctx smf;
+    CalRequest_t   request;
+    CalResponse_t  response;
+    CalCoeff_t     previous_cals[CELL_MAX_COUNT];
+} CalSmCtx_t;
+
+static const struct smf_state cal_states[CAL_STATE_COUNT];
 
 /**
- * @brief Execute a calibration request end-to-end and publish the result to zbus.
+ * @brief CAL_BACKING_UP entry: snapshot existing coefficients for rollback.
  *
- * Saves the current coefficients before starting so they can be restored on
- * failure. Validates fO2 range, dispatches to the appropriate cal method, rolls
- * back coefficients if the result is not CAL_RESULT_OK, and publishes a
- * CalResponse_t on chan_cal_response.
- *
- * @param req Calibration request to execute; may be mutated by cal_digital_reference()
- *            to fill in the derived pressure and fO2.
+ * Transitions to CAL_VALIDATING_REQUEST unconditionally — a failed
+ * coefficient load is logged but not fatal (the validation+restore
+ * path still operates on the partially-loaded snapshot).
  */
-static void execute_calibration(CalRequest_t *req)
+static void cal_backing_up_entry(void *obj)
 {
-    CalResponse_t resp = {
-        .result = CAL_RESULT_FAILED,
-        .cell_mv = {0, 0, 0},
-    };
-
-    /* Store the current cal values so we can undo a cal if we need to */
-    CalCoeff_t previous_cals[CELL_MAX_COUNT] = {0};
+    CalSmCtx_t *sm = (CalSmCtx_t *)obj;
 
     for (uint8_t i = 0; i < CONFIG_CELL_COUNT; ++i) {
-        if (cal_load_coefficient(i, &previous_cals[i]) != 0) {
+        if (cal_load_coefficient(i, &sm->previous_cals[i]) != 0) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, i);
         }
     }
 
-    /* Validate fO2 range before starting calibration */
-    if (CAL_FO2_MAX < req->fo2) {
-        OP_ERROR_DETAIL(OP_ERR_CAL_METHOD, req->fo2);
-        resp.result = CAL_RESULT_REJECTED;
-    } else {
-        /* Do the calibration */
-        LOG_INF("Starting cal method %u", req->method);
-
-        switch (req->method) {
-        case CAL_DIGITAL_REFERENCE:
-            /* Give the shearwater time to catch up */
-            k_msleep(CAL_SETTLE_MS);
-            resp.result = cal_digital_reference(req, &resp);
-            break;
-        case CAL_ANALOG_ABSOLUTE:
-            k_msleep(CAL_SETTLE_MS);
-            resp.result = cal_analog_absolute(req, &resp);
-            break;
-        case CAL_TOTAL_ABSOLUTE:
-            k_msleep(CAL_SETTLE_MS);
-            resp.result = cal_total_absolute(req, &resp);
-            break;
-        case CAL_SOLENOID_FLUSH:
-            resp.result = cal_solenoid_flush(req, &resp);
-            break;
-        default:
-            OP_ERROR(OP_ERR_CAL_METHOD);
-            resp.result = CAL_RESULT_REJECTED;
-            break;
-        }
-    }
-
-    if (CAL_RESULT_OK != resp.result) {
-        /* The cal failed, we need to restore the previous cal values */
-        for (uint8_t i = 0; i < CONFIG_CELL_COUNT; ++i) {
-            if (cal_save_coefficient(i, previous_cals[i]) != 0) {
-                OP_ERROR_DETAIL(OP_ERR_FLASH, i);
-            } else {
-                LOG_INF("Restored cal for cell %u", i);
-            }
-        }
-    }
-
-    LOG_INF("Cal result: %d", resp.result);
-    (void)zbus_chan_pub(&chan_cal_response, &resp, K_MSEC(100));
+    smf_set_state(SMF_CTX(sm), &cal_states[CAL_STATE_VALIDATING_REQUEST]);
 }
+
+/**
+ * @brief CAL_VALIDATING_REQUEST entry: range-check the requested fO2.
+ *
+ * Rejects fO2 > 100% with CAL_RESULT_REJECTED, otherwise proceeds to
+ * CAL_EXECUTING. On rejection the response is marked and we hop
+ * straight to CAL_RESTORING_ON_FAIL so the unchanged backing coefficients
+ * are re-saved (a no-op idempotent write; preserves prior behaviour).
+ */
+static void cal_validating_request_entry(void *obj)
+{
+    CalSmCtx_t *sm = (CalSmCtx_t *)obj;
+
+    if (CAL_FO2_MAX < sm->request.fo2) {
+        OP_ERROR_DETAIL(OP_ERR_CAL_METHOD, sm->request.fo2);
+        sm->response.result = CAL_RESULT_REJECTED;
+        smf_set_state(SMF_CTX(sm), &cal_states[CAL_STATE_RESTORING_ON_FAIL]);
+    } else {
+        smf_set_state(SMF_CTX(sm), &cal_states[CAL_STATE_EXECUTING]);
+    }
+}
+
+/**
+ * @brief CAL_EXECUTING entry: dispatch to the configured calibration method.
+ *
+ * Each method (digital-reference, analog-absolute, total-absolute,
+ * solenoid-flush) sleeps for the required settle/flush time inline and
+ * writes new coefficients via cal_validate_and_save. Result determines
+ * whether we transition to DONE or RESTORING_ON_FAIL.
+ */
+static void cal_executing_entry(void *obj)
+{
+    CalSmCtx_t *sm = (CalSmCtx_t *)obj;
+
+    LOG_INF("Starting cal method %u", sm->request.method);
+
+    switch (sm->request.method) {
+    case CAL_DIGITAL_REFERENCE:
+        /* Give the shearwater time to catch up */
+        k_msleep(CAL_SETTLE_MS);
+        sm->response.result = cal_digital_reference(&sm->request,
+                                                    &sm->response);
+        break;
+    case CAL_ANALOG_ABSOLUTE:
+        k_msleep(CAL_SETTLE_MS);
+        sm->response.result = cal_analog_absolute(&sm->request,
+                                                  &sm->response);
+        break;
+    case CAL_TOTAL_ABSOLUTE:
+        k_msleep(CAL_SETTLE_MS);
+        sm->response.result = cal_total_absolute(&sm->request,
+                                                 &sm->response);
+        break;
+    case CAL_SOLENOID_FLUSH:
+        sm->response.result = cal_solenoid_flush(&sm->request,
+                                                 &sm->response);
+        break;
+    default:
+        OP_ERROR(OP_ERR_CAL_METHOD);
+        sm->response.result = CAL_RESULT_REJECTED;
+        break;
+    }
+
+    if (CAL_RESULT_OK == sm->response.result) {
+        smf_set_state(SMF_CTX(sm), &cal_states[CAL_STATE_DONE]);
+    } else {
+        smf_set_state(SMF_CTX(sm), &cal_states[CAL_STATE_RESTORING_ON_FAIL]);
+    }
+}
+
+/**
+ * @brief CAL_RESTORING_ON_FAIL entry: roll back to the BACKING_UP snapshot.
+ *
+ * Re-persists every cell's pre-calibration coefficient. Save failures
+ * are logged but don't gate the transition — we always end in
+ * CAL_FAILED so the caller sees the original failure code.
+ */
+static void cal_restoring_on_fail_entry(void *obj)
+{
+    CalSmCtx_t *sm = (CalSmCtx_t *)obj;
+
+    for (uint8_t i = 0; i < CONFIG_CELL_COUNT; ++i) {
+        if (cal_save_coefficient(i, sm->previous_cals[i]) != 0) {
+            OP_ERROR_DETAIL(OP_ERR_FLASH, i);
+        } else {
+            LOG_INF("Restored cal for cell %u", i);
+        }
+    }
+
+    smf_set_state(SMF_CTX(sm), &cal_states[CAL_STATE_FAILED]);
+}
+
+/**
+ * @brief CAL_DONE entry: publish the success response and terminate.
+ */
+static void cal_done_entry(void *obj)
+{
+    CalSmCtx_t *sm = (CalSmCtx_t *)obj;
+
+    LOG_INF("Cal result: %d", sm->response.result);
+    (void)zbus_chan_pub(&chan_cal_response, &sm->response, K_MSEC(100));
+    smf_set_terminate(SMF_CTX(sm), 1);
+}
+
+/**
+ * @brief CAL_FAILED entry: publish the failure response and terminate.
+ */
+static void cal_failed_entry(void *obj)
+{
+    CalSmCtx_t *sm = (CalSmCtx_t *)obj;
+
+    LOG_INF("Cal result: %d", sm->response.result);
+    (void)zbus_chan_pub(&chan_cal_response, &sm->response, K_MSEC(100));
+    smf_set_terminate(SMF_CTX(sm), 1);
+}
+
+static const struct smf_state cal_states[CAL_STATE_COUNT] = {
+    [CAL_STATE_BACKING_UP]         = SMF_CREATE_STATE(cal_backing_up_entry,         NULL, NULL, NULL, NULL),
+    [CAL_STATE_VALIDATING_REQUEST] = SMF_CREATE_STATE(cal_validating_request_entry, NULL, NULL, NULL, NULL),
+    [CAL_STATE_EXECUTING]          = SMF_CREATE_STATE(cal_executing_entry,          NULL, NULL, NULL, NULL),
+    [CAL_STATE_RESTORING_ON_FAIL]  = SMF_CREATE_STATE(cal_restoring_on_fail_entry,  NULL, NULL, NULL, NULL),
+    [CAL_STATE_DONE]               = SMF_CREATE_STATE(cal_done_entry,               NULL, NULL, NULL, NULL),
+    [CAL_STATE_FAILED]             = SMF_CREATE_STATE(cal_failed_entry,             NULL, NULL, NULL, NULL),
+};
+
+/**
+ * @brief Run the calibration SMF end-to-end for one request.
+ *
+ * The state-table init cascades through entry actions (each transitions
+ * to the next state synchronously); the loop only needs to observe the
+ * terminate flag set by DONE.entry or FAILED.entry. `run` is NULL on
+ * every state so the loop never reruns work — it's a defensive shape
+ * in case a future state grows a run action.
+ */
+static void run_calibration_sm(const CalRequest_t *req)
+{
+    CalSmCtx_t sm = {
+        .request = *req,
+        .response = {
+            .result = CAL_RESULT_FAILED,
+            .cell_mv = {0, 0, 0},
+        },
+    };
+
+    smf_set_initial(SMF_CTX(&sm), &cal_states[CAL_STATE_BACKING_UP]);
+
+    while (0 == smf_run_state(SMF_CTX(&sm))) {
+        /* Cascading entry actions terminate at DONE/FAILED. */
+    }
+}
+
+#ifdef CONFIG_ZTEST
+/**
+ * @brief Test-only entry point: drive the calibration SM synchronously.
+ *
+ * Bypasses the listener thread, atomic guard, and the
+ * zbus_sub_wait_msg blocking call so ztest cases can step the state
+ * machine deterministically against synthetic cell publishes.
+ *
+ * @param req Calibration request to execute (copied into the SM context).
+ */
+void calibration_run_for_test(const CalRequest_t *req)
+{
+    run_calibration_sm(req);
+}
+#endif
 
 /* ---- Calibration listener thread ----
  * Subscribes to chan_cal_request and runs calibration directly within this
@@ -984,7 +1137,7 @@ static void cal_thread_fn(void *p1, void *p2, void *p3)
                                    K_MSEC(100));
             }
             else {
-                execute_calibration(&req);
+                run_calibration_sm(&req);
 
                 atomic_clear(getCalRunning());
             }
