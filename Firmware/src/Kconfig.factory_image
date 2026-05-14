@@ -1,0 +1,64 @@
+# Kconfig fragment for the factory-image backup module (factory_image.c).
+#
+# Same standalone-file pattern as Kconfig.firmware_confirm so the
+# tests/factory_image/ native_sim suite can source it directly without
+# the rest of the product-topology menu.
+
+config FACTORY_IMAGE
+	bool "Factory image backup module"
+	default y
+	depends on FLASH_MAP
+	help
+	  Compile in src/factory_image.c. On first boot the running slot0
+	  image is captured to an external storage backend (flash partition
+	  by default), and that copy is restorable over UDS by the operator
+	  if a confirmed OTA later turns out to be unrecoverable in some way
+	  the POST gate can't catch.
+
+if FACTORY_IMAGE
+
+choice FACTORY_IMAGE_BACKEND
+	prompt "Factory image backup backend"
+	default FACTORY_IMAGE_BACKEND_FLASH
+
+config FACTORY_IMAGE_BACKEND_FLASH
+	bool "Dedicated flash partition (factory-image label in DTS)"
+	depends on FLASH_MAP
+	help
+	  Store the factory image in a dedicated flash partition labelled
+	  factory-image. Required for the divecan_jr hardware (external
+	  W25Q512JV NOR).
+
+config FACTORY_IMAGE_BACKEND_FS
+	bool "File on a mounted filesystem (SD card)"
+	depends on FILE_SYSTEM
+	help
+	  Store the factory image as ``factory.img`` on a mounted
+	  filesystem volume. The captured-flag is signalled by the presence
+	  of a ``factory.ok`` sidecar file written only after fs_sync
+	  succeeds. For older hardware variants that host slot1 + the
+	  factory backup on an SD card instead of dedicated NOR.
+
+endchoice
+
+config FACTORY_IMAGE_CAPTURE_ON_BOOT
+	bool "Auto-capture factory image on first confirmed boot"
+	default y
+	help
+	  When set, factory_image_maybe_capture_async() runs unconditionally
+	  on every confirmed cold boot. It's a no-op if the captured flag is
+	  already set, so the actual capture only happens once. Disable for
+	  bench builds that want to manually decide when to bless an image as
+	  the factory baseline.
+
+config FACTORY_IMAGE_CHUNK_SIZE
+	int "Per-iteration chunk size in bytes"
+	default 4096
+	range 256 8192
+	help
+	  Granularity of the slot0-to-factory copy loop. Smaller chunks mean
+	  more iterations and lower RAM use but more total WDT-feed
+	  opportunities. 4 KB matches a single SPI NOR sector erase, which
+	  keeps the erase and write loops in lockstep.
+
+endif # FACTORY_IMAGE

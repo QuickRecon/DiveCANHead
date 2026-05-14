@@ -22,6 +22,10 @@
 #include <zephyr/drivers/watchdog.h>
 #include <zephyr/logging/log.h>
 
+#if defined(CONFIG_SOC_FAMILY_STM32)
+#include <stm32l4xx_ll_iwdg.h>
+#endif
+
 #include "errors.h"
 #include "heartbeat.h"
 
@@ -49,6 +53,28 @@ LOG_MODULE_REGISTER(watchdog_feeder, LOG_LEVEL_INF);
 BUILD_ASSERT(DT_NODE_HAS_STATUS(WDT_NODE, okay),
          "CONFIG_DIVECAN_WATCHDOG=y requires the watchdog0 alias to be enabled");
 
+/* Post-setup IWDG register-level assertion (STM32L4).
+ *
+ * The legacy firmware has been bitten in the past by silent IWDG
+ * mis-configuration — the Zephyr WDT driver returns success but the
+ * hardware shadow registers never accept the writes, leaving the IWDG
+ * either running with reset-default values (~512 ms window) or
+ * effectively off depending on context. The reset-default RLR is
+ * 0xFFF; the value the driver should have programmed for our 8000 ms
+ * timeout is 3999, with PR=4 (LL_IWDG_PRESCALER_64). Anything else
+ * means our `wdt_setup` claim doesn't match silicon, which we treat
+ * as a fatal init failure rather than ship silently.
+ *
+ *   t_IWDG = (1/LSI) × 4 × 2^PR × (RLR + 1)
+ *
+ * For WDT_TIMEOUT_MS=8000 and LSI=32 kHz:
+ *   ticks = 8000 × 32 = 256000
+ *   PR    = 4  → divider = 4 × 2^4 = 64
+ *   RLR   = (ticks / divider) − 1 = (256000 / 64) − 1 = 3999
+ */
+#define EXPECTED_IWDG_PR    LL_IWDG_PRESCALER_64
+#define EXPECTED_IWDG_RLR   3999U
+
 static int wdt_channel_id_get_or_init(const struct device *wdt)
 {
     static int cached_channel_id = -1;
@@ -74,9 +100,28 @@ static int wdt_channel_id_get_or_init(const struct device *wdt)
             }
             else
             {
-                cached_channel_id = channel;
-                LOG_INF("IWDG armed: channel=%d, timeout=%ums",
-                    channel, (unsigned)WDT_TIMEOUT_MS);
+                /* Belt-and-braces: read the IWDG registers directly and
+                 * confirm the driver actually wrote our values, not the
+                 * reset defaults. See COMPROMISE.md #13 for context.
+                 * Anything else means the watchdog is silently mis-armed
+                 * and we'd ship without protection — fatal init failure. */
+                uint32_t actual_pr  = LL_IWDG_GetPrescaler(IWDG);
+                uint32_t actual_rlr = LL_IWDG_GetReloadCounter(IWDG);
+
+                if ((actual_pr != EXPECTED_IWDG_PR) ||
+                    (actual_rlr != EXPECTED_IWDG_RLR)) {
+                    LOG_ERR("IWDG mis-armed: got PR=%u RLR=%u, expected PR=%u RLR=%u",
+                            (unsigned)actual_pr, (unsigned)actual_rlr,
+                            (unsigned)EXPECTED_IWDG_PR, (unsigned)EXPECTED_IWDG_RLR);
+                    FATAL_OP_ERROR(FATAL_UNDEFINED_STATE);
+                }
+                else
+                {
+                    cached_channel_id = channel;
+                    LOG_INF("IWDG armed: channel=%d, timeout=%ums, PR=%u, RLR=%u (verified)",
+                        channel, (unsigned)WDT_TIMEOUT_MS,
+                        (unsigned)actual_pr, (unsigned)actual_rlr);
+                }
             }
         }
     }

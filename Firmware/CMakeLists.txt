@@ -42,7 +42,13 @@ target_sources(app PRIVATE
     src/power_management.c
     src/heartbeat.c
     src/error_histogram.c
+    src/firmware_confirm.c
 )
+target_sources_ifdef(CONFIG_FACTORY_IMAGE app PRIVATE src/factory_image.c)
+target_sources_ifdef(CONFIG_FACTORY_IMAGE_BACKEND_FLASH app PRIVATE
+    src/factory_image_backend_flash.c)
+target_sources_ifdef(CONFIG_DIVECAN_OPTION_BYTES_CHECK app PRIVATE
+    src/option_bytes.c)
 target_sources_ifdef(CONFIG_DIVECAN_WATCHDOG app PRIVATE src/watchdog_feeder.c)
 target_sources_ifdef(CONFIG_HAS_ANALOG_CELL app PRIVATE src/oxygen_cell_analog.c)
 target_sources_ifdef(CONFIG_HAS_DIVEO2_CELL app PRIVATE src/oxygen_cell_diveo2.c)

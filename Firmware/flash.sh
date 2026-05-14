@@ -58,6 +58,19 @@ if [ "$NO_BUILD" = false ]; then
         -- -DBOARD_ROOT=. -DEXTRA_CONF_FILE=variants/dev_full.conf
 fi
 
+if [ "$RTT_ONLY" = false ]; then
+    # Force option bytes to ignore the physical BOOT0 pin and always boot
+    # from main flash. The Jr boards we've seen have BOOT0 floating high,
+    # which sends every reset to the STM32 ROM bootloader and breaks
+    # MCUBoot. nSWBOOT0=0 takes the boot decision from nBOOT0 (=1, main
+    # flash) only. This is idempotent — re-running on an already-set
+    # chip is a no-op. See COMPROMISE.md #9 for background.
+    echo "=== Ensuring boot-from-flash option bytes ==="
+    STM32_Programmer_CLI -c port=SWD mode=UR reset=HWrst \
+                         -ob nSWBOOT0=0 nBOOT0=1 2>&1 \
+                         | tail -3 || true
+fi
+
 if [ "$ERASE" = true ]; then
     echo "=== Mass-erasing chip ==="
     # STM32CubeProgrammer's "under reset" (mode=UR) connect handles

@@ -85,4 +85,20 @@ bool heartbeat_check_all_alive(void);
  */
 void heartbeat_reset_for_test(void);
 
+/**
+ * @brief Suppress the per-slot liveness check while a long flash op runs.
+ *
+ * Some operations (factory-image capture, factory restore) block the
+ * system workqueue for several seconds doing flash I/O. Their internal
+ * loops kick every registered heartbeat slot, but a slot that's been
+ * starved by the same workqueue can still tip stale. The capture path
+ * sets this flag to true around its critical section; while set,
+ * heartbeat_check_all_alive() returns true regardless of slot state.
+ *
+ * Must be paired (call true, then call false). Auto-clears nothing —
+ * a stuck operation will silence the watchdog indefinitely, which is
+ * the trade-off accepted for the duration of a legitimate flash op.
+ */
+void heartbeat_set_long_op(bool in_progress);
+
 #endif /* HEARTBEAT_H */

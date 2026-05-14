@@ -248,3 +248,271 @@ fall through to the reboot path.
   per-board rather than per-`#if`-chain. Bench characterisation of the
   Jr standby current would tell us whether the simplification is worth
   the extra DT plumbing.
+
+---
+
+## 8. STM32L431 HW RNG disabled in production
+
+**What changed**: `CONFIG_ENTROPY_STM32_RNG=n` forces the STM32 RNG
+driver off in `prj.conf`, even though the DTS has `&rng { status =
+"okay" }` and the driver auto-enables off the DT node. Stack canaries
+fall back to a non-entropy seed.
+
+**Why**: `entropy_stm32_rng_init` asserts during early SYS_INIT
+(`__ASSERT_NO_MSG(dev != NULL)` at `entropy_stm32.c:860`, fires
+`assert_post_action → k_panic → SVC → z_arm_fatal_error → z_fatal_error
+→ LOG_ERR → recurses through panic-mode log processing → second
+`z_fatal_error` → IWDG → reset → bootloop`). The original failure
+appears to be a Zephyr device-framework / clock-mux issue (the existing
+prj.conf comment hypothesises "PLL Q clock config for CLK48 mux"); the
+secondary recurse is the well-known LOG_PANIC + RTT spinlock
+re-entry problem documented under #5.
+
+The earlier mitigation of just commenting out
+`CONFIG_ENTROPY_GENERATOR=y` did NOT actually disable the driver: the
+RNG driver's Kconfig has `default y` gated on
+`DT_HAS_ST_STM32_RNG_ENABLED`, which selects `ENTROPY_HAS_DRIVER`
+which pulls `ENTROPY_GENERATOR` back in. Only an explicit
+`CONFIG_ENTROPY_STM32_RNG=n` suppresses the offending init.
+
+**What still provides coverage**: Stack canaries still apply
+(`-fstack-protector-strong`), they just don't have an entropy-seeded
+canary value — the seed defaults to a build-time constant. The bigger
+NASA Rule 9 guard (`CONFIG_HW_STACK_PROTECTION` MPU stack guard) is
+unaffected.
+
+**Possible alternatives to investigate**:
+- Walk the clock tree at runtime to confirm the RNG peripheral
+  actually has CLK48 ticking, then re-enable the driver. A targeted
+  oscilloscope on the L431 RNG clock pin (or a HSI48/PLL Q vector
+  readback in code) would isolate the root cause.
+- Use `CONFIG_TEST_RANDOM_GENERATOR=y` as the entropy provider — a
+  pseudo-random source good enough for a non-cryptographic canary
+  seed and free of HW dependencies.
+- Override `assert_post_action` to NOT call `k_panic` for non-fatal
+  init asserts; would let the rest of the system boot when the RNG
+  driver's init asserts. Heavy-handed but isolates the
+  device-framework failure from system uptime.
+
+---
+
+## 12. Hardware-IWDG-from-power-on (`IWDG_SW=0`) not enabled — race against pre-main init
+
+**What changed**: The legacy STM32 firmware ran with option byte `IWDG_SW=0`,
+which makes the IWDG auto-start at power-on with its hardware-reset
+defaults (PR=0 prescaler /4, RLR=0xFFF reload → ~512 ms timeout). That
+gave the legacy unit watchdog protection from the very first instruction
+out of reset, covering every conceivable hang — ROM bootloader stall,
+flash-driver wedge, anything. We tried to port the same behaviour to
+the Zephyr+MCUBoot stack but rolled back: on cold boot, the chip
+bootloops with roughly **25 % miss rate** before MCUBoot's startup
+fully completes.
+
+**Why**: MCUBoot's `mcuboot_watchdog_setup()` runs as the very first
+statement of `main()` — but on this stack, everything that happens
+*before* `main()` is fixed-overhead Zephyr/MCUBoot boilerplate that we
+don't control:
+
+| Phase                                          | Time       | Cumulative |
+|------------------------------------------------|------------|------------|
+| ROM bootloader                                 |   ~10 ms   |     10 ms  |
+| Reset_Handler (.data copy, .bss zero)          |   ~50 ms   |     60 ms  |
+| PRE_KERNEL_1 SYS_INITs (clock control etc.)    |   ~50 ms   |    110 ms  |
+| PRE_KERNEL_2 SYS_INITs                         |   ~50 ms   |    160 ms  |
+| POST_KERNEL device init incl. SPI NOR SFDP probe | 200–400 ms |  360–560 ms |
+| main() → MCUBOOT_WATCHDOG_SETUP() (first line) | — | **~400–500 ms** |
+
+The hardware IWDG default ~512 ms window lands exactly where our setup
+call lands — sometimes earlier, sometimes later, depending on flash
+chip response latency. The SPI NOR's SFDP probe (`spi_nor: w25q512@0:
+SFDP v 1.6 …`) is the dominant variable; on a slow boot it pushes the
+setup call past the watchdog's expiry and the chip resets.
+
+Observed: ~3 of 4 cold boots bootloop, the fourth succeeds. We need
+100 % cold-boot success, so this configuration was reverted.
+
+We currently use `IWDG_SW=1` (software-controlled): the IWDG is OFF
+from power-on until MCUBoot's `wdt_install_timeout(8000ms)` + `wdt_setup`
+arms it inside `main()`. From that point onward MCUBoot feeds during
+validation + swap, then our `watchdog_feeder` thread takes over inside
+the app.
+
+**What still provides coverage**:
+- MCUBoot does install + feed the IWDG once it gets to `main()`, so
+  the bootloader's own work *is* covered (8 s window, fed after every
+  sector erase and chunk write in `bootutil_area.c` / `loader.c`).
+- The app's `watchdog_feeder` arms + feeds within ~2.5 s of the
+  chainload, so steady-state coverage matches the legacy firmware.
+- The boot-time assertion added in `watchdog_feeder.c` verifies the
+  IWDG was *actually* armed before declaring init complete, catching
+  the silent-disarm failure mode described in #13 below.
+
+**What's still uncovered**: the ~250–500 ms window from power-on to
+MCUBoot's `wdt_setup` call. Anything that hangs in Zephyr's pre-main
+init chain (clock setup, flash driver probe, RAM init) sits forever.
+
+In practice this window has very few hang modes:
+- SPI NOR not responding: the driver returns `-ETIMEDOUT`, kernel
+  init carries on, app still boots without the external flash.
+- Clock setup: deterministic, doesn't hang.
+- Memory init: an actual fault triggers the architectural fault
+  handler → reset → MCUBoot again. Not a silent hang.
+
+The legacy firmware's IWDG-from-power-on protection caught the
+"unknown unknown" hang that we can't enumerate. We've traded that
+generic protection for 100 % boot reliability.
+
+**Possible alternatives to investigate**:
+- Override the `__weak mcuboot_watchdog_setup` symbol with a custom
+  implementation that does a direct `IWDG->KR = 0xAAAA` write at the
+  very top of the function (one assembly instruction, no Zephyr deps),
+  *before* the higher-level `wdt_install_timeout` / `wdt_setup` calls.
+  Combined with an early-priority Zephyr SYS_INIT at PRE_KERNEL_1
+  priority 0 doing the same direct write, that's two refresh-feeds
+  during the pre-main window — ~1024 ms total budget vs. ~512 ms.
+  Should be enough headroom. Roughly half a day of work plus a bench
+  reliability test (need to confirm zero-bootloop over hundreds of
+  cold cycles, not just one or two attempts).
+- Disable `CONFIG_SPI_NOR_SFDP_RUNTIME` in MCUBoot's config and pin
+  the W25Q512JV's parameters via DTS overlay. Removes the SFDP probe
+  step from MCUBoot's POST_KERNEL phase, saving ~150–300 ms. Faster
+  fix than the above, but more brittle — any future board revision
+  with a different SPI NOR chip silently mis-configures and the
+  bootloader can't read the external flash.
+- Patch the L4 silicon's IWDG default-reload value. Not possible —
+  PR and RLR reset values are hardcoded in the silicon (no option
+  byte controls them), so the ~512 ms default window cannot be
+  extended via configuration.
+
+---
+
+## 13. Runtime IWDG-armed assertion in watchdog_feeder
+
+**What changed**: Added a runtime self-check after `wdt_setup()` that
+reads `IWDG->PR` and `IWDG->RLR` directly, verifies they match the
+values the Zephyr driver claimed to write, and `FATAL_OP_ERROR`s on
+mismatch. Logs a loud `IWDG ARMED` confirmation line on success so the
+RTT trail proves the watchdog is alive on every boot.
+
+**Why**: The legacy firmware was bitten in the past by silent IWDG
+mis-configuration — the driver thinks the watchdog is running, the
+hardware says otherwise, and the unit ships with no watchdog
+protection. With Zephyr's `wdt_install_timeout` / `wdt_setup` split
+across an opaque driver, it's hard to tell at a glance whether the
+configuration writes were actually accepted by the IWDG_SR
+shadow-register-update machinery. The explicit register read closes
+that gap: if PR or RLR is at the reset default (0 / 0xFFF) after our
+"setup succeeded" call, the IWDG is running with the ~512 ms hardware
+default instead of our 8 s window — measurably worse than the no-IWDG
+case for diagnostic clarity, and a candidate for the kind of silent
+mis-config that's bitten this project before. The assertion forces
+that state to fail loudly rather than ship silently.
+
+**What still provides coverage**:
+- The check is a single read of two memory-mapped registers — no
+  runtime cost beyond the boot path.
+- It runs *after* the Zephyr driver claims success, so it catches
+  exactly the silent-disarm case (driver thinks it worked, hardware
+  disagrees).
+- `FATAL_OP_ERROR` persists the failure into noinit RAM and reboots,
+  so the next boot's `errors_get_last_crash()` surfaces the issue.
+
+**Possible alternatives to investigate**:
+- Add a "long-window" CI bench test that boots a unit, deliberately
+  stalls all heartbeats for 9 s, and asserts the unit resets. Would
+  catch *any* IWDG failure (not just config mis-write), at the cost
+  of a 9 s blocking step per boot test.
+- Read `RCC->CSR.LSIRDY` to confirm the LSI oscillator backing the
+  IWDG is actually running. Adds independence from the IWDG's own
+  status reporting.
+
+---
+
+## 10. Option-byte rewrite at runtime disabled — assertion only
+
+**What changed**: The legacy STM32 firmware
+(`STM32/Core/Src/Hardware/flash.c`) actively re-programs any drifted
+option bytes at boot via `HAL_FLASH_Unlock` → `HAL_FLASHEx_OBProgram` →
+`HAL_FLASH_OB_Launch`. The Zephyr port (`src/option_bytes.c`) replaces
+that with a **read-only assertion** that just logs an error if the
+bits are wrong; it does NOT call `HAL_FLASHEx_OBProgram` from the app.
+
+**Why**: Hardware bring-up revealed two distinct failure modes when
+the runtime rewrite was active:
+
+1. **Rewrite-loop**: Programming bits beyond the minimal set
+   (`nBOOT0` + `nSWBOOT0`) sometimes produced an OPTR value that, when
+   compared after the OB_Launch reset, *still* mismatched the desired
+   value. Each boot would detect the mismatch, rewrite, reset, loop.
+2. **IWDG_SW lock-in**: One iteration of the rewrite path successfully
+   programmed `IWDG_SW=0` (hardware IWDG, auto-start at power-up).
+   The hardware IWDG's default ~410 ms timeout then fired during
+   MCUBoot's image-validation walk before the chainload to slot0
+   could complete, producing a MCUBoot-internal bootloop that no app
+   code could break out of. Recovery required reprogramming
+   `IWDG_SW=1` via SWD.
+
+Until those failure modes are understood and fixed, the runtime
+rewrite is off. One-time provisioning via `flash.sh` (which calls
+`STM32_Programmer_CLI -ob nSWBOOT0=0 nBOOT0=1`) covers the BOOT0
+issue from #11 below, and the runtime assertion in `option_bytes.c`
+is the audit trail if anything ever drifts in the field.
+
+**What still provides coverage**:
+- `flash.sh` idempotently re-asserts `nSWBOOT0=0 nBOOT0=1` on every
+  flash — drifted boot bits self-heal at the next dev-workflow flash.
+- The boot-time assertion in `option_bytes.c` logs an error to RTT if
+  the bits aren't what we expect — an operator inspecting the log
+  will see the discrepancy.
+- Field operators with non-development units can still recover via
+  ST-LINK + `STM32_Programmer_CLI`.
+
+**Possible alternatives to investigate**:
+- Verify the rewrite-loop by writing a single-bit test (only
+  `BOR_LEV`, no other fields) and seeing whether the post-rewrite
+  OPTR readback matches what was programmed. If not, the HAL or
+  silicon may be quirky on this part.
+- Re-introduce the `IWDG_SW=0` desired-bit only AFTER MCUBoot's
+  `BOOT_WATCHDOG_FEED` is verified to keep the hardware IWDG fed
+  through the full slot0 SHA-256 walk + chainload sequence — on
+  silicon with a stopwatch.
+- Skip option bytes entirely and put the "asserted" config in a
+  separate manufacturing-time script run from CI — same effect, less
+  runtime risk.
+
+---
+
+## 11. `nSWBOOT0=0` forced in option bytes (factory provisioning)
+
+**What changed**: The chip's option bytes ship with `nSWBOOT0=1` (BOOT0
+sampled from the physical PH3 pin at reset). On the divecan_jr boards
+we've seen, the BOOT0 pin floats high at power-up, sending each reset
+into the STM32 ROM bootloader instead of MCUBoot at `0x08000000`. The
+work-around is to program `nSWBOOT0=0` (ignore the physical pin) + leave
+`nBOOT0=1` (boot from main flash) once during board provisioning.
+
+**Why**: This is a hardware/board issue, not a Zephyr issue — the BOOT0
+pull-down is either missing or weakly pulled. STM32CubeProgrammer command
+to fix it permanently:
+
+```
+STM32_Programmer_CLI -c port=SWD mode=UR reset=HWrst \
+                     -ob nSWBOOT0=0 nBOOT0=1
+```
+
+After programming, every reset (NRST, software, IWDG) goes to flash
+regardless of BOOT0 pin state. The setting is persistent across
+power cycles and re-flashes.
+
+**What still provides coverage**: Once option bytes are set, the chip
+unconditionally boots from main flash. BOOT0 still works as a debug
+escape hatch by physically reprogramming the option bytes back. The
+condition is detectable at any time by reading option bytes via
+STM32CubeProgrammer (`-ob displ`).
+
+**Possible alternatives to investigate**:
+- Add an explicit pull-down resistor on PH3/BOOT0 in the next board
+  revision; lets us keep `nSWBOOT0=1` (factory default) so users can
+  enter DFU/system memory with a jumper.
+- Bake the option byte programming into `flash.sh` so a freshly-
+  acquired board gets the right setting automatically.

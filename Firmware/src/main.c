@@ -18,6 +18,10 @@
 #include "error_histogram.h"
 #include "errors.h"
 #include "common.h"
+#include "firmware_confirm.h"
+#ifdef CONFIG_FACTORY_IMAGE
+#include "factory_image.h"
+#endif
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -50,6 +54,32 @@ Status_t main(void)
     /* Settings subsystem is up after ppo2_control_init — safe to load the
      * persisted error histogram and start its periodic save timer. */
     error_histogram_init();
+
+    /* If MCUBoot left a freshly-swapped image in test mode, the POST
+     * thread wakes up here and walks every subsystem (cells, consensus,
+     * CAN TX, handset RX, solenoid). It calls boot_write_img_confirmed()
+     * on full pass or sys_reboot()s within CONFIG_FIRMWARE_CONFIRM_DEADLINE_MS
+     * so MCUBoot reverts. On a confirmed cold boot this is a silent
+     * no-op. Must run after error_histogram_init so failed POSTs get
+     * stamped into the histogram before reboot. */
+    firmware_confirm_init();
+
+#ifdef CONFIG_FACTORY_IMAGE
+    /* Factory backup: init the backend (loads the captured flag from
+     * NVS) and, on a confirmed cold boot, queue a maybe-capture work
+     * item. The first call after a factory-fresh flash performs the
+     * actual capture; every subsequent boot is a fast no-op (idempotent
+     * check inside the work handler). On a pending-confirm boot the
+     * POST module triggers the same maybe-capture after it confirms
+     * the image, so the path here only fires when MCUBoot landed us
+     * on an already-confirmed image. */
+    factory_image_init();
+#ifdef CONFIG_FACTORY_IMAGE_CAPTURE_ON_BOOT
+    if (POST_CONFIRMED == firmware_confirm_get_state()) {
+        factory_image_maybe_capture_async();
+    }
+#endif
+#endif
 
     if (!gpio_is_ready_dt(&led)) {
         LOG_ERR("LED device not ready");

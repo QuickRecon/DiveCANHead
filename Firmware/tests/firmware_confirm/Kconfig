@@ -1,0 +1,8 @@
+mainmenu "firmware_confirm POST gate test"
+
+# Pull in only the POST gate's own knobs. Avoiding rsource of the full
+# src/Kconfig keeps the test build free of product-topology requirements
+# (cell type, power mode, battery chemistry).
+rsource "../../src/Kconfig.firmware_confirm"
+
+source "Kconfig.zephyr"

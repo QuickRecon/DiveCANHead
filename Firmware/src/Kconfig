@@ -228,6 +228,26 @@ config DIVECAN_WATCHDOG
 	  via heartbeat.h) has advanced since the last check.
 	  Disable for native_sim test builds where IWDG hardware is absent.
 
+rsource "Kconfig.firmware_confirm"
+rsource "Kconfig.factory_image"
+
+config DIVECAN_OPTION_BYTES_CHECK
+	bool "Validate STM32 option bytes at boot and rewrite if wrong"
+	default y
+	depends on SOC_FAMILY_STM32
+	select USE_STM32_HAL_FLASH
+	select USE_STM32_HAL_FLASH_EX
+	help
+	  Ports the option-byte policy from the legacy STM32 FreeRTOS
+	  firmware (Hardware/flash.c). At PRE_KERNEL_2 the SYS_INIT
+	  reads the current FLASH_OPTR, builds the desired USERConfig,
+	  and if they differ writes the desired config + launches OB
+	  reload (which resets the chip). The desired config enforces
+	  boot-from-flash regardless of the physical BOOT0 pin, hardware
+	  IWDG auto-start, and BOR level 4 — the same safety policy the
+	  original firmware applied. See option_bytes.c for the
+	  per-field rationale.
+
 config DIVECAN_HAL_PWR_EX
 	bool "Pull in STM32 HAL PWR (+ Extended) driver for SHUTDOWN-mode entry"
 	default y

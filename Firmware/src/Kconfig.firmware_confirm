@@ -1,0 +1,63 @@
+# Kconfig fragment for the POST gate (firmware_confirm.c).
+#
+# Lives in a standalone file so the native_sim test suite under
+# tests/firmware_confirm/ can source it directly without dragging in
+# the whole product-topology menu (cell count, power mode, etc.).
+
+config FIRMWARE_CONFIRM_DEADLINE_MS
+	int "POST overall deadline (milliseconds)"
+	default 45000
+	range 200 600000
+	help
+	  Wall-clock deadline for the firmware-confirm POST gate. If every
+	  subsystem (cells, consensus, PPO2 TX, handset RX, solenoid) does
+	  not report healthy within this window, the unit reboots without
+	  calling boot_write_img_confirmed() so MCUBoot reverts the new
+	  image. Default 45 s (matches the plan); test builds typically
+	  override to a few hundred milliseconds to keep ztest runtimes
+	  short.
+
+config FIRMWARE_CONFIRM_CELL_TIMEOUT_MS
+	int "POST per-cell liveness sub-timeout (milliseconds)"
+	default 10000
+	range 50 60000
+	help
+	  How long each enabled oxygen cell has to produce a non-fail status
+	  message before POST gives up on that cell. DiveO2 startup latency
+	  is ~3 s on the slowest variants so this defaults to 10 s.
+
+config FIRMWARE_CONFIRM_CONSENSUS_TIMEOUT_MS
+	int "POST consensus liveness sub-timeout (milliseconds)"
+	default 5000
+	range 50 60000
+	help
+	  How long the voted consensus output has to publish a non-fail PPO2
+	  reading. Always longer than at least one cell timeout in practice
+	  because the consensus subscriber needs cell data first.
+
+config FIRMWARE_CONFIRM_PPO2_TX_TIMEOUT_MS
+	int "POST PPO2 TX evidence sub-timeout (milliseconds)"
+	default 5000
+	range 50 60000
+	help
+	  How long for the divecan TX counter to advance by the required
+	  number of frames (currently 3) before POST declares the bus dead.
+
+config FIRMWARE_CONFIRM_HANDSET_TIMEOUT_MS
+	int "POST handset RX evidence sub-timeout (milliseconds)"
+	default 15000
+	range 50 60000
+	help
+	  How long the unit waits for at least one BUS_INIT or BUS_ID frame
+	  from a handset before refusing to confirm the new image. Always
+	  required — no Kconfig escape hatch; bench retests of headless
+	  hardware go through SWD.
+
+config FIRMWARE_CONFIRM_SOL_TIMEOUT_MS
+	int "POST solenoid health sub-timeout (milliseconds)"
+	default 2000
+	range 50 60000
+	help
+	  How long for the solenoid status channel to report normal before
+	  POST treats the solenoid as broken. Skipped entirely when
+	  HAS_O2_SOLENOID is not set.

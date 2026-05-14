@@ -194,7 +194,14 @@ typedef enum {
     /** We encountered an error we don't know how to handle */
     OP_ERR_UNKNOWN           = 32,
 
-    OP_ERR_MAX               = 33
+    /* ---- POST / firmware confirm ---- */
+
+    /** Power-on self-test (firmware_confirm) refused to confirm a new
+     *  image, so the unit reboots and MCUBoot reverts to the previous
+     *  slot. The detail field carries the @ref PostState_t fail reason. */
+    OP_ERR_POST_FAIL         = 33,
+
+    OP_ERR_MAX               = 34
 } OpError_t;
 
 /** @brief Error event published on chan_error. */
