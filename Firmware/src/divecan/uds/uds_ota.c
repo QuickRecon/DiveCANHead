@@ -25,6 +25,7 @@
  */
 
 #include <zephyr/kernel.h>
+#include <zephyr/smf.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/dfu/flash_img.h>
@@ -85,102 +86,148 @@ static const uint32_t BYTE_SHIFT_8  = 8U;
 static const uint32_t BYTE_SHIFT_16 = 16U;
 static const uint32_t BYTE_SHIFT_24 = 24U;
 
-/* ---- OTA pipeline state ---- */
+/* ---- OTA pipeline state ----
+ *
+ * Modelled as a flat Zephyr SMF: each SID arriving via UDS_OTA_Handle
+ * sets an OtaEvent_e on the context, then `smf_run_state` dispatches
+ * to the current state's run function. State validation that was
+ * scattered across SID handlers (`OTA_DOWNLOADING != state->phase`,
+ * `OTA_AWAITING_ACTIVATE != state->phase`) is now implicit — a SID
+ * is only handled when the SM is in the state that allows it.
+ *
+ * Out-of-sequence events return UDS_NRC_REQUEST_SEQUENCE_ERR (0x24).
+ * Notably this includes a second SID 0x34 received mid-download —
+ * a behaviour change from the legacy code, which silently re-erased
+ * slot1.
+ */
 
 typedef enum {
-    OTA_IDLE,           /**< No transfer in progress */
-    OTA_DOWNLOADING,    /**< 0x34 accepted, awaiting 0x36 data and 0x37 exit */
-    OTA_AWAITING_ACTIVATE /**< 0x37 succeeded, waiting for 0x31 RID 0xF001 */
-} OtaPhase_t;
+    OTA_STATE_IDLE = 0,         /**< No transfer in progress */
+    OTA_STATE_DOWNLOADING,      /**< 0x34 accepted, awaiting 0x36 + 0x37 */
+    OTA_STATE_AWAITING_ACTIVATE,/**< 0x37 succeeded, awaiting 0x31 */
+    OTA_STATE_ACTIVATING,       /**< 0x31 accepted; entry reboots */
+    OTA_STATE_COUNT,
+} OtaState_e;
+
+typedef enum {
+    OTA_EVT_NONE = 0,
+    OTA_EVT_REQUEST_DOWNLOAD,   /**< SID 0x34 */
+    OTA_EVT_TRANSFER_DATA,      /**< SID 0x36 */
+    OTA_EVT_TRANSFER_EXIT,      /**< SID 0x37 */
+    OTA_EVT_ROUTINE_CONTROL,    /**< SID 0x31 */
+} OtaEvent_e;
 
 typedef struct {
-    OtaPhase_t phase;
+    struct smf_ctx           smf;
     struct flash_img_context flashCtx;
-    uint32_t bytesExpected;
-    uint32_t bytesReceived;
-    uint8_t  nextSeq;
-} OtaState_t;
+    uint32_t                 bytesExpected;
+    uint32_t                 bytesReceived;
+    uint8_t                  nextSeq;
+    /* Per-call inputs (set by UDS_OTA_Handle before smf_run_state). */
+    UDSContext_t            *udsCtx;
+    const uint8_t           *requestData;
+    uint16_t                 requestLength;
+    OtaEvent_e               event;
+} OtaSmCtx_t;
 
-/**
- * @brief Return pointer to the file-scoped OTA state singleton.
- *
- * Encapsulates state in a static accessor (project convention c:M23_388).
- *
- * @return Pointer to the singleton OtaState_t
- */
-static OtaState_t *getOtaState(void)
-{
-    static OtaState_t state = {0};
-    return &state;
-}
-
-void UDS_OTA_Reset(void)
-{
-    OtaState_t *state = getOtaState();
-    state->phase = OTA_IDLE;
-    state->bytesExpected = 0;
-    state->bytesReceived = 0;
-    state->nextSeq = 1U;
-}
+static const struct smf_state ota_states[OTA_STATE_COUNT];
 
 /* ---- Forward declarations ---- */
 
-static void handleRequestDownload(UDSContext_t *ctx, const uint8_t *requestData,
-                  uint16_t requestLength);
-static void handleTransferData(UDSContext_t *ctx, const uint8_t *requestData,
-                   uint16_t requestLength);
-static void handleRequestTransferExit(UDSContext_t *ctx, const uint8_t *requestData,
-                      uint16_t requestLength);
-static void handleRoutineControl(UDSContext_t *ctx, const uint8_t *requestData,
-                 uint16_t requestLength);
 static bool extractSlot1Sha256(const struct flash_area *fa,
                    uint8_t outHash[IMG_SHA256_LEN],
                    size_t *outHashedLen);
 static int  validateSlot1(void);
 
-/* ---- Public entry ---- */
-
-void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *requestData,
-            uint16_t requestLength)
+/**
+ * @brief Map a SID byte to the SMF event vocabulary.
+ *
+ * Unknown SIDs return OTA_EVT_NONE so the state run can produce
+ * UDS_NRC_SERVICE_NOT_SUPPORTED.
+ */
+static OtaEvent_e sid_to_event(uint8_t sid)
 {
-    if ((NULL == ctx) || (NULL == requestData) || (0U == requestLength)) {
-        OP_ERROR(OP_ERR_NULL_PTR);
-    } else {
-        uint8_t sid = requestData[UDS_SID_IDX];
-
-        switch (sid) {
-        case UDS_SID_REQUEST_DOWNLOAD:
-            handleRequestDownload(ctx, requestData, requestLength);
-            break;
-        case UDS_SID_TRANSFER_DATA:
-            handleTransferData(ctx, requestData, requestLength);
-            break;
-        case UDS_SID_REQUEST_TRANSFER_EXIT:
-            handleRequestTransferExit(ctx, requestData, requestLength);
-            break;
-        case UDS_SID_ROUTINE_CONTROL:
-            handleRoutineControl(ctx, requestData, requestLength);
-            break;
-        default:
-            OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_SERVICE_NOT_SUPPORTED);
-            UDS_SendNegativeResponse(ctx, sid, UDS_NRC_SERVICE_NOT_SUPPORTED);
-            break;
-        }
+    OtaEvent_e ev = OTA_EVT_NONE;
+    switch (sid) {
+    case UDS_SID_REQUEST_DOWNLOAD:
+        ev = OTA_EVT_REQUEST_DOWNLOAD;
+        break;
+    case UDS_SID_TRANSFER_DATA:
+        ev = OTA_EVT_TRANSFER_DATA;
+        break;
+    case UDS_SID_REQUEST_TRANSFER_EXIT:
+        ev = OTA_EVT_TRANSFER_EXIT;
+        break;
+    case UDS_SID_ROUTINE_CONTROL:
+        ev = OTA_EVT_ROUTINE_CONTROL;
+        break;
+    default:
+        ev = OTA_EVT_NONE;
+        break;
     }
+    return ev;
 }
 
-/* ---- SID handlers ---- */
+/**
+ * @brief Reject the current request because the SID is out of sequence
+ *        for the current state, and emit NRC 0x24.
+ */
+static void reject_sequence_error(OtaSmCtx_t *sm)
+{
+    uint8_t sid = sm->requestData[UDS_SID_IDX];
+    OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_SEQUENCE_ERR);
+    UDS_SendNegativeResponse(sm->udsCtx, sid, UDS_NRC_REQUEST_SEQUENCE_ERR);
+}
 
 /**
- * @brief Handle RequestDownload (SID 0x34).
+ * @brief Lazy-init accessor for the OTA SMF context singleton.
  *
- * Validates session and dive state, parses the request, erases slot1, and
- * initialises the streaming-flash writer. Replies with the max block length
- * the unit will accept in subsequent 0x36 frames.
+ * Uses `smf.current == NULL` as the uninitialised sentinel so the SM
+ * is set up on first reference (no separate init hook needed).
+ * Production access is single-threaded (divecan_rx thread).
  */
-static void handleRequestDownload(UDSContext_t *ctx, const uint8_t *requestData,
-                  uint16_t requestLength)
+static OtaSmCtx_t *getOtaSm(void)
 {
+    static OtaSmCtx_t sm = {0};
+    if (NULL == sm.smf.current) {
+        smf_set_initial(SMF_CTX(&sm), &ota_states[OTA_STATE_IDLE]);
+    }
+    return &sm;
+}
+
+void UDS_OTA_Reset(void)
+{
+    OtaSmCtx_t *sm = getOtaSm();
+    smf_set_state(SMF_CTX(sm), &ota_states[OTA_STATE_IDLE]);
+}
+
+/* ---- State action implementations ---- */
+
+/**
+ * @brief OTA_STATE_IDLE entry: clear pipeline counters.
+ */
+static void ota_idle_entry(void *obj)
+{
+    OtaSmCtx_t *sm = (OtaSmCtx_t *)obj;
+    sm->bytesExpected = 0;
+    sm->bytesReceived = 0;
+    sm->nextSeq = 1U;
+}
+
+/**
+ * @brief IDLE.run handler for OTA_EVT_REQUEST_DOWNLOAD.
+ *
+ * Validates session and dive state, parses the request, erases slot1,
+ * initialises the streaming-flash writer, and transitions to
+ * OTA_STATE_DOWNLOADING. Replies with the max block length the unit
+ * will accept in subsequent 0x36 frames.
+ */
+static void ota_handle_request_download(OtaSmCtx_t *sm)
+{
+    UDSContext_t  *ctx           = sm->udsCtx;
+    const uint8_t *requestData   = sm->requestData;
+    uint16_t       requestLength = sm->requestLength;
+
     if (requestLength < OTA_DOWNLOAD_REQ_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
@@ -228,10 +275,9 @@ static void handleRequestDownload(UDSContext_t *ctx, const uint8_t *requestData,
             } else {
                 flash_area_close(fa);
 
-                OtaState_t *state = getOtaState();
-                (void)memset(&state->flashCtx, 0, sizeof(state->flashCtx));
+                (void)memset(&sm->flashCtx, 0, sizeof(sm->flashCtx));
 
-                rc = flash_img_init_id(&state->flashCtx,
+                rc = flash_img_init_id(&sm->flashCtx,
                                PARTITION_ID(slot1_partition));
                 if (0 != rc) {
                     OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
@@ -239,10 +285,9 @@ static void handleRequestDownload(UDSContext_t *ctx, const uint8_t *requestData,
                         ctx, UDS_SID_REQUEST_DOWNLOAD,
                         UDS_NRC_GENERAL_PROG_FAIL);
                 } else {
-                    state->phase = OTA_DOWNLOADING;
-                    state->bytesExpected = length;
-                    state->bytesReceived = 0;
-                    state->nextSeq = 1U;
+                    sm->bytesExpected = length;
+                    sm->bytesReceived = 0;
+                    sm->nextSeq = 1U;
                     LOG_INF("OTA 0x34 download accepted: %u bytes",
                         length);
                     ok = true;
@@ -260,32 +305,48 @@ static void handleRequestDownload(UDSContext_t *ctx, const uint8_t *requestData,
                 (uint8_t)OTA_MAX_BLOCK_LENGTH;
             ctx->responseLength = OTA_DOWNLOAD_RESP_LEN;
             UDS_SendResponse(ctx);
+            smf_set_state(SMF_CTX(sm),
+                      &ota_states[OTA_STATE_DOWNLOADING]);
         }
     }
 }
 
-/**
- * @brief Handle TransferData (SID 0x36).
- *
- * Validates pipeline state and sequence counter, then streams the payload
- * into slot1 via flash_img_buffered_write(). Replies echoing the seq byte.
- */
-static void handleTransferData(UDSContext_t *ctx, const uint8_t *requestData,
-                   uint16_t requestLength)
+static enum smf_state_result ota_idle_run(void *obj)
 {
-    OtaState_t *state = getOtaState();
+    OtaSmCtx_t *sm = (OtaSmCtx_t *)obj;
+
+    if (OTA_EVT_REQUEST_DOWNLOAD == sm->event) {
+        ota_handle_request_download(sm);
+    } else if (OTA_EVT_NONE == sm->event) {
+        uint8_t sid = sm->requestData[UDS_SID_IDX];
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_SERVICE_NOT_SUPPORTED);
+        UDS_SendNegativeResponse(sm->udsCtx, sid,
+                     UDS_NRC_SERVICE_NOT_SUPPORTED);
+    } else {
+        reject_sequence_error(sm);
+    }
+    return SMF_EVENT_HANDLED;
+}
+
+/**
+ * @brief DOWNLOADING.run handler for OTA_EVT_TRANSFER_DATA (SID 0x36).
+ *
+ * Validates the sequence counter, streams the payload into slot1 via
+ * flash_img_buffered_write(), and replies echoing the seq byte.
+ */
+static void ota_handle_transfer_data(OtaSmCtx_t *sm)
+{
+    UDSContext_t  *ctx           = sm->udsCtx;
+    const uint8_t *requestData   = sm->requestData;
+    uint16_t       requestLength = sm->requestLength;
 
     if (requestLength < OTA_TRANSFER_MIN_REQ_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
                      UDS_NRC_INCORRECT_MSG_LEN);
-    } else if (OTA_DOWNLOADING != state->phase) {
-        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_SEQUENCE_ERR);
-        UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
-                     UDS_NRC_REQUEST_SEQUENCE_ERR);
     } else {
         uint8_t seq = requestData[UDS_SID_IDX + 1U];
-        if (seq != state->nextSeq) {
+        if (seq != sm->nextSeq) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
                     UDS_NRC_WRONG_BLOCK_SEQ_COUNTER);
             UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
@@ -293,16 +354,16 @@ static void handleTransferData(UDSContext_t *ctx, const uint8_t *requestData,
         } else {
             size_t dataLen = requestLength - OTA_TRANSFER_OVERHEAD;
             const uint8_t *data = &requestData[UDS_SID_IDX + 2U];
-            int rc = flash_img_buffered_write(&state->flashCtx, data,
+            int rc = flash_img_buffered_write(&sm->flashCtx, data,
                               dataLen, false);
             if (0 != rc) {
                 OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
                 UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
                              UDS_NRC_GENERAL_PROG_FAIL);
             } else {
-                state->bytesReceived += (uint32_t)dataLen;
+                sm->bytesReceived += (uint32_t)dataLen;
                 /* Seq wraps modulo 256 per ISO 14229. */
-                state->nextSeq = (uint8_t)(state->nextSeq + 1U);
+                sm->nextSeq = (uint8_t)(sm->nextSeq + 1U);
 
                 ctx->responseBuffer[UDS_PAD_IDX] =
                     UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET;
@@ -315,32 +376,27 @@ static void handleTransferData(UDSContext_t *ctx, const uint8_t *requestData,
 }
 
 /**
- * @brief Handle RequestTransferExit (SID 0x37).
+ * @brief DOWNLOADING.run handler for OTA_EVT_TRANSFER_EXIT (SID 0x37).
  *
- * Flushes the streaming-flash writer and verifies slot1 now carries a
- * sane MCUBoot header. Full SHA-256 validation is deferred to the 0x31
- * Activate routine so the tool can stage a transfer and decide later
- * whether to commit.
+ * Flushes the streaming-flash writer and verifies slot1 carries a sane
+ * MCUBoot header. On success, transitions to OTA_STATE_AWAITING_ACTIVATE.
+ * Full SHA-256 validation is deferred to the Activate routine in
+ * OTA_STATE_AWAITING_ACTIVATE.
  */
-static void handleRequestTransferExit(UDSContext_t *ctx,
-                      const uint8_t *requestData,
-                      uint16_t requestLength)
+static void ota_handle_transfer_exit(OtaSmCtx_t *sm)
 {
-    OtaState_t *state = getOtaState();
+    UDSContext_t *ctx           = sm->udsCtx;
+    uint16_t      requestLength = sm->requestLength;
 
     if (requestLength < OTA_EXIT_MIN_REQ_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_TRANSFER_EXIT,
                      UDS_NRC_INCORRECT_MSG_LEN);
-    } else if (OTA_DOWNLOADING != state->phase) {
-        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_SEQUENCE_ERR);
-        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_TRANSFER_EXIT,
-                     UDS_NRC_REQUEST_SEQUENCE_ERR);
     } else {
         /* Flush any unwritten bytes from flash_img_buffered_write's
          * internal block buffer. Pass an empty data buffer so only
          * the flush flag has effect. */
-        int rc = flash_img_buffered_write(&state->flashCtx, NULL, 0, true);
+        int rc = flash_img_buffered_write(&sm->flashCtx, NULL, 0, true);
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
             UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_TRANSFER_EXIT,
@@ -356,35 +412,54 @@ static void handleRequestTransferExit(UDSContext_t *ctx,
                     ctx, UDS_SID_REQUEST_TRANSFER_EXIT,
                     UDS_NRC_GENERAL_PROG_FAIL);
             } else {
-                state->phase = OTA_AWAITING_ACTIVATE;
                 LOG_INF("OTA 0x37 exit: hdr OK, %u bytes received",
-                    state->bytesReceived);
+                    sm->bytesReceived);
 
                 ctx->responseBuffer[UDS_PAD_IDX] =
                     UDS_SID_REQUEST_TRANSFER_EXIT +
                     UDS_RESPONSE_SID_OFFSET;
                 ctx->responseLength = OTA_EXIT_RESP_LEN;
                 UDS_SendResponse(ctx);
+                smf_set_state(SMF_CTX(sm),
+                          &ota_states[OTA_STATE_AWAITING_ACTIVATE]);
             }
         }
     }
 }
 
-/**
- * @brief Handle RoutineControl (SID 0x31).
- *
- * Subfunction 0x01 + RID 0xF001 triggers full SHA-256 verification of slot1
- * via the TLV trailer, then boot_request_upgrade(TEST) and sys_reboot().
- * MCUBoot performs the swap on the next boot.
- *
- * Phase 4 will replace the "test" semantics with a POST-driven
- * boot_write_img_confirmed() — for now manual confirm via debug probe is
- * required after the new image boots.
- */
-static void handleRoutineControl(UDSContext_t *ctx, const uint8_t *requestData,
-                 uint16_t requestLength)
+static enum smf_state_result ota_downloading_run(void *obj)
 {
-    OtaState_t *state = getOtaState();
+    OtaSmCtx_t *sm = (OtaSmCtx_t *)obj;
+
+    if (OTA_EVT_TRANSFER_DATA == sm->event) {
+        ota_handle_transfer_data(sm);
+    } else if (OTA_EVT_TRANSFER_EXIT == sm->event) {
+        ota_handle_transfer_exit(sm);
+    } else if (OTA_EVT_NONE == sm->event) {
+        uint8_t sid = sm->requestData[UDS_SID_IDX];
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_SERVICE_NOT_SUPPORTED);
+        UDS_SendNegativeResponse(sm->udsCtx, sid,
+                     UDS_NRC_SERVICE_NOT_SUPPORTED);
+    } else {
+        reject_sequence_error(sm);
+    }
+    return SMF_EVENT_HANDLED;
+}
+
+/**
+ * @brief AWAITING_ACTIVATE.run handler for OTA_EVT_ROUTINE_CONTROL.
+ *
+ * Subfunction 0x01 + RID 0xF001 (Activate) triggers full SHA-256
+ * verification of slot1 via its TLV trailer. On success, transitions
+ * to OTA_STATE_ACTIVATING whose entry sends the positive response,
+ * calls boot_request_upgrade(TEST), and reboots. Validation failure
+ * keeps the SM in AWAITING_ACTIVATE so the tool can retry.
+ */
+static void ota_handle_routine_control(OtaSmCtx_t *sm)
+{
+    UDSContext_t  *ctx           = sm->udsCtx;
+    const uint8_t *requestData   = sm->requestData;
+    uint16_t       requestLength = sm->requestLength;
 
     if (requestLength < OTA_ROUTINE_MIN_REQ_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
@@ -416,11 +491,6 @@ static void handleRoutineControl(UDSContext_t *ctx, const uint8_t *requestData,
                     UDS_NRC_CONDITIONS_NOT_CORRECT);
             UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
                          UDS_NRC_CONDITIONS_NOT_CORRECT);
-        } else if (OTA_AWAITING_ACTIVATE != state->phase) {
-            OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
-                    UDS_NRC_REQUEST_SEQUENCE_ERR);
-            UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
-                         UDS_NRC_REQUEST_SEQUENCE_ERR);
         } else {
             int rc = validateSlot1();
             if (0 != rc) {
@@ -449,14 +519,67 @@ static void handleRoutineControl(UDSContext_t *ctx, const uint8_t *requestData,
                         (uint8_t)rid;
                     ctx->responseLength = OTA_ROUTINE_RESP_LEN;
                     UDS_SendResponse(ctx);
-
-                    /* Let the positive response leave the bus
-                     * before pulling the reset line. */
-                    k_msleep(ACTIVATE_REBOOT_DELAY_MS);
-                    sys_reboot(SYS_REBOOT_COLD);
+                    smf_set_state(SMF_CTX(sm),
+                              &ota_states[OTA_STATE_ACTIVATING]);
                 }
             }
         }
+    }
+}
+
+static enum smf_state_result ota_awaiting_activate_run(void *obj)
+{
+    OtaSmCtx_t *sm = (OtaSmCtx_t *)obj;
+
+    if (OTA_EVT_ROUTINE_CONTROL == sm->event) {
+        ota_handle_routine_control(sm);
+    } else if (OTA_EVT_NONE == sm->event) {
+        uint8_t sid = sm->requestData[UDS_SID_IDX];
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_SERVICE_NOT_SUPPORTED);
+        UDS_SendNegativeResponse(sm->udsCtx, sid,
+                     UDS_NRC_SERVICE_NOT_SUPPORTED);
+    } else {
+        reject_sequence_error(sm);
+    }
+    return SMF_EVENT_HANDLED;
+}
+
+/**
+ * @brief OTA_STATE_ACTIVATING entry: wait for the response to drain, then reboot.
+ *
+ * The 200 ms delay lets the positive UDS response leave the bus before
+ * we pull the reset line. After sys_reboot, MCUBoot performs the swap
+ * on the next boot.
+ */
+static void ota_activating_entry(void *obj)
+{
+    ARG_UNUSED(obj);
+    k_msleep(ACTIVATE_REBOOT_DELAY_MS);
+    sys_reboot(SYS_REBOOT_COLD);
+}
+
+static const struct smf_state ota_states[OTA_STATE_COUNT] = {
+    [OTA_STATE_IDLE]              = SMF_CREATE_STATE(ota_idle_entry,       ota_idle_run,              NULL, NULL, NULL),
+    [OTA_STATE_DOWNLOADING]       = SMF_CREATE_STATE(NULL,                 ota_downloading_run,       NULL, NULL, NULL),
+    [OTA_STATE_AWAITING_ACTIVATE] = SMF_CREATE_STATE(NULL,                 ota_awaiting_activate_run, NULL, NULL, NULL),
+    [OTA_STATE_ACTIVATING]        = SMF_CREATE_STATE(ota_activating_entry, NULL,                      NULL, NULL, NULL),
+};
+
+/* ---- Public entry ---- */
+
+void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *requestData,
+            uint16_t requestLength)
+{
+    if ((NULL == ctx) || (NULL == requestData) || (0U == requestLength)) {
+        OP_ERROR(OP_ERR_NULL_PTR);
+    } else {
+        OtaSmCtx_t *sm = getOtaSm();
+        sm->udsCtx        = ctx;
+        sm->requestData   = requestData;
+        sm->requestLength = requestLength;
+        sm->event         = sid_to_event(requestData[UDS_SID_IDX]);
+
+        (void)smf_run_state(SMF_CTX(sm));
     }
 }
 
@@ -593,14 +716,14 @@ static int validateSlot1(void)
             LOG_ERR("validateSlot1: no SHA-256 TLV in slot1");
             result = -EBADMSG;
         } else {
-            OtaState_t *state = getOtaState();
-            (void)memset(&state->flashCtx, 0, sizeof(state->flashCtx));
+            OtaSmCtx_t *sm = getOtaSm();
+            (void)memset(&sm->flashCtx, 0, sizeof(sm->flashCtx));
 
             const struct flash_img_check check = {
                 .match = expectedHash,
                 .clen = hashedLen,
             };
-            rc = flash_img_check(&state->flashCtx, &check,
+            rc = flash_img_check(&sm->flashCtx, &check,
                          PARTITION_ID(slot1_partition));
             if (0 != rc) {
                 LOG_ERR("validateSlot1: hash mismatch (%d)", rc);

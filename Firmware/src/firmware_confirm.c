@@ -22,6 +22,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
+#include <zephyr/smf.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/logging/log.h>
@@ -180,125 +181,6 @@ static int64_t deadline_remaining_ms(int64_t start_ms)
 }
 
 /**
- * @brief Compute the actual per-check budget, capped by the overall deadline.
- */
-static int64_t clamp_budget(int64_t sub_timeout_ms, int64_t start_ms)
-{
-    int64_t remaining = deadline_remaining_ms(start_ms);
-    int64_t budget = sub_timeout_ms;
-
-    if (remaining < budget) {
-        budget = remaining;
-    }
-    if (budget < 0) {
-        budget = 0;
-    }
-    return budget;
-}
-
-/* ---- Per-check waiters ----
- *
- * Each waiter polls its predicate every POLL_INTERVAL_MS ticks until
- * either the predicate passes or the budget expires. Returns true on
- * pass. The caller already set the WAITING_* state, so a failure here
- * is the right point to transition to the matching FAILED_* state.
- */
-
-static bool wait_for_cells(int64_t start_ms)
-{
-    int64_t budget = clamp_budget(POST_CELL_DEADLINE_MS, start_ms);
-    int64_t check_start = k_uptime_get();
-    bool all_alive = false;
-
-    do {
-        bool c1 = cell_is_alive(&chan_cell_1);
-#if CONFIG_CELL_COUNT >= 2
-        bool c2 = cell_is_alive(&chan_cell_2);
-#else
-        bool c2 = true;
-#endif
-#if CONFIG_CELL_COUNT >= 3
-        bool c3 = cell_is_alive(&chan_cell_3);
-#else
-        bool c3 = true;
-#endif
-        if (c1 && c2 && c3) {
-            all_alive = true;
-        } else {
-            k_msleep(POLL_INTERVAL_MS);
-        }
-    } while ((!all_alive) && ((k_uptime_get() - check_start) < budget));
-    return all_alive;
-}
-
-static bool wait_for_consensus(int64_t start_ms)
-{
-    int64_t budget = clamp_budget(POST_CONSENSUS_DEADLINE_MS, start_ms);
-    int64_t check_start = k_uptime_get();
-    bool alive = false;
-
-    do {
-        if (consensus_is_alive()) {
-            alive = true;
-        } else {
-            k_msleep(POLL_INTERVAL_MS);
-        }
-    } while ((!alive) && ((k_uptime_get() - check_start) < budget));
-    return alive;
-}
-
-static bool wait_for_ppo2_tx(int64_t start_ms, uint32_t baseline)
-{
-    int64_t budget = clamp_budget(POST_PPO2_TX_DEADLINE_MS, start_ms);
-    int64_t check_start = k_uptime_get();
-    bool advanced = false;
-
-    do {
-        uint32_t now_count = divecan_send_get_tx_count();
-        uint32_t delta = now_count - baseline;
-        if (delta >= POST_REQUIRED_PPO2_TX_COUNT) {
-            advanced = true;
-        } else {
-            k_msleep(POLL_INTERVAL_MS);
-        }
-    } while ((!advanced) && ((k_uptime_get() - check_start) < budget));
-    return advanced;
-}
-
-static bool wait_for_handset(int64_t start_ms, uint32_t baseline)
-{
-    int64_t budget = clamp_budget(POST_HANDSET_DEADLINE_MS, start_ms);
-    int64_t check_start = k_uptime_get();
-    bool heard = false;
-
-    do {
-        uint32_t now_total = handset_rx_total();
-        if (now_total > baseline) {
-            heard = true;
-        } else {
-            k_msleep(POLL_INTERVAL_MS);
-        }
-    } while ((!heard) && ((k_uptime_get() - check_start) < budget));
-    return heard;
-}
-
-static bool wait_for_solenoid(int64_t start_ms)
-{
-    int64_t budget = clamp_budget(POST_SOL_DEADLINE_MS, start_ms);
-    int64_t check_start = k_uptime_get();
-    bool alive = false;
-
-    do {
-        if (solenoid_is_alive()) {
-            alive = true;
-        } else {
-            k_msleep(POLL_INTERVAL_MS);
-        }
-    } while ((!alive) && ((k_uptime_get() - check_start) < budget));
-    return alive;
-}
-
-/**
  * @brief Stamp a fail reason into the histogram and reboot without confirm.
  *
  * The reboot path is what triggers MCUBoot rollback on the next swap.
@@ -321,95 +203,303 @@ static void abort_and_reboot(PostState_t fail_state)
 #endif
 }
 
+/* ---- SMF state machine ----
+ *
+ * The POST gate is a periodic-tick state machine. Each WAITING_*
+ * state's `run` checks its subsystem predicate once and:
+ *   - on pass: marks the corresponding pass-bit and transitions to the
+ *     next WAITING_* state;
+ *   - on overall deadline exceeded: transitions to POST_FAILED_TIMEOUT;
+ *   - on per-state budget exceeded (when overall still has time):
+ *     transitions to the matching POST_FAILED_<this> state;
+ *   - otherwise stays put — the driver loop will k_msleep(POLL_INTERVAL_MS)
+ *     and call smf_run_state again on the next tick.
+ *
+ * POST_CONFIRMED.entry calls boot_write_img_confirmed and terminates.
+ * POST_FAILED_*.entry calls abort_and_reboot, which never returns
+ * (production) or longjmps out via the wrapped sys_reboot (tests).
+ */
+
+typedef struct {
+    struct smf_ctx smf;
+    int64_t        start_ms;        /* wall-clock POST start */
+    int64_t        state_start_ms;  /* per-state deadline anchor */
+    uint32_t       tx_baseline;     /* divecan_send_get_tx_count() at start */
+    uint32_t       rx_baseline;     /* handset_rx_total() at start */
+} PostSmCtx_t;
+
+static const struct smf_state post_states[];
+
+BUILD_ASSERT(POST_INIT == 0, "post_states[] index must match enum");
+
 /**
- * @brief Drive the state machine end-to-end.
+ * @brief Stamp a WAITING_* state into the atomic + reset per-state deadline.
+ *
+ * Shared shape across every waiting state's entry — moving it here
+ * keeps the table rows symmetrical.
+ */
+static void enter_waiting_state(PostSmCtx_t *sm, PostState_t state)
+{
+    sm->state_start_ms = k_uptime_get();
+    (void)atomic_set(&s_post_state, (atomic_val_t)state);
+}
+
+/**
+ * @brief Returns true once the overall POST deadline has elapsed.
+ */
+static bool overall_deadline_exceeded(const PostSmCtx_t *sm)
+{
+    return deadline_remaining_ms(sm->start_ms) <= 0;
+}
+
+/**
+ * @brief Returns true once the per-state budget (raw, unclamped) has elapsed.
+ *
+ * The overall-deadline check runs first in each run action, so the
+ * effective per-state budget is implicitly MIN(per-state, overall
+ * remaining) — same semantics as the legacy clamp_budget helper.
+ */
+static bool state_budget_exceeded(const PostSmCtx_t *sm, int64_t budget_ms)
+{
+    return (k_uptime_get() - sm->state_start_ms) >= budget_ms;
+}
+
+/**
+ * @brief Predicate: are all compiled-in cells healthy?
+ */
+static bool all_cells_alive(void)
+{
+    bool c1 = cell_is_alive(&chan_cell_1);
+#if CONFIG_CELL_COUNT >= 2
+    bool c2 = cell_is_alive(&chan_cell_2);
+#else
+    bool c2 = true;
+#endif
+#if CONFIG_CELL_COUNT >= 3
+    bool c3 = cell_is_alive(&chan_cell_3);
+#else
+    bool c3 = true;
+#endif
+    return c1 && c2 && c3;
+}
+
+/* ---- WAITING state entries: stamp atomic + deadline ---- */
+
+static void post_cells_entry(void *obj)
+{
+    enter_waiting_state((PostSmCtx_t *)obj, POST_WAITING_CELLS);
+}
+
+static void post_consensus_entry(void *obj)
+{
+    enter_waiting_state((PostSmCtx_t *)obj, POST_WAITING_CONSENSUS);
+}
+
+static void post_ppo2_tx_entry(void *obj)
+{
+    enter_waiting_state((PostSmCtx_t *)obj, POST_WAITING_PPO2_TX);
+}
+
+static void post_handset_entry(void *obj)
+{
+    enter_waiting_state((PostSmCtx_t *)obj, POST_WAITING_HANDSET);
+}
+
+static void post_solenoid_entry(void *obj)
+{
+    enter_waiting_state((PostSmCtx_t *)obj, POST_WAITING_SOLENOID);
+}
+
+/* ---- WAITING state run functions ---- */
+
+static enum smf_state_result post_cells_run(void *obj)
+{
+    PostSmCtx_t *sm = (PostSmCtx_t *)obj;
+
+    if (all_cells_alive()) {
+        mark_check_passed(POST_PASS_BIT_CELLS, POST_WAITING_CONSENSUS);
+        smf_set_state(SMF_CTX(sm), &post_states[POST_WAITING_CONSENSUS]);
+    } else if (overall_deadline_exceeded(sm)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_TIMEOUT]);
+    } else if (state_budget_exceeded(sm, POST_CELL_DEADLINE_MS)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_CELL]);
+    } else {
+        /* Stay; next tick. */
+    }
+    return SMF_EVENT_HANDLED;
+}
+
+static enum smf_state_result post_consensus_run(void *obj)
+{
+    PostSmCtx_t *sm = (PostSmCtx_t *)obj;
+
+    if (consensus_is_alive()) {
+        mark_check_passed(POST_PASS_BIT_CONSENSUS, POST_WAITING_PPO2_TX);
+        smf_set_state(SMF_CTX(sm), &post_states[POST_WAITING_PPO2_TX]);
+    } else if (overall_deadline_exceeded(sm)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_TIMEOUT]);
+    } else if (state_budget_exceeded(sm, POST_CONSENSUS_DEADLINE_MS)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_CONSENSUS]);
+    } else {
+        /* Stay; next tick. */
+    }
+    return SMF_EVENT_HANDLED;
+}
+
+static enum smf_state_result post_ppo2_tx_run(void *obj)
+{
+    PostSmCtx_t *sm = (PostSmCtx_t *)obj;
+    uint32_t now_count = divecan_send_get_tx_count();
+    uint32_t delta = now_count - sm->tx_baseline;
+
+    if (delta >= POST_REQUIRED_PPO2_TX_COUNT) {
+        mark_check_passed(POST_PASS_BIT_PPO2_TX, POST_WAITING_HANDSET);
+        smf_set_state(SMF_CTX(sm), &post_states[POST_WAITING_HANDSET]);
+    } else if (overall_deadline_exceeded(sm)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_TIMEOUT]);
+    } else if (state_budget_exceeded(sm, POST_PPO2_TX_DEADLINE_MS)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_NO_PPO2_TX]);
+    } else {
+        /* Stay; next tick. */
+    }
+    return SMF_EVENT_HANDLED;
+}
+
+static enum smf_state_result post_handset_run(void *obj)
+{
+    PostSmCtx_t *sm = (PostSmCtx_t *)obj;
+    uint32_t now_total = handset_rx_total();
+
+    if (now_total > sm->rx_baseline) {
+        mark_check_passed(POST_PASS_BIT_HANDSET, POST_WAITING_SOLENOID);
+        smf_set_state(SMF_CTX(sm), &post_states[POST_WAITING_SOLENOID]);
+    } else if (overall_deadline_exceeded(sm)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_TIMEOUT]);
+    } else if (state_budget_exceeded(sm, POST_HANDSET_DEADLINE_MS)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_NO_HANDSET]);
+    } else {
+        /* Stay; next tick. */
+    }
+    return SMF_EVENT_HANDLED;
+}
+
+static enum smf_state_result post_solenoid_run(void *obj)
+{
+    PostSmCtx_t *sm = (PostSmCtx_t *)obj;
+
+    if (solenoid_is_alive()) {
+        mark_check_passed(POST_PASS_BIT_SOLENOID, POST_CONFIRMED);
+        smf_set_state(SMF_CTX(sm), &post_states[POST_CONFIRMED]);
+    } else if (overall_deadline_exceeded(sm)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_TIMEOUT]);
+    } else if (state_budget_exceeded(sm, POST_SOL_DEADLINE_MS)) {
+        smf_set_state(SMF_CTX(sm), &post_states[POST_FAILED_SOLENOID]);
+    } else {
+        /* Stay; next tick. */
+    }
+    return SMF_EVENT_HANDLED;
+}
+
+/* ---- Terminal state entries ---- */
+
+static void post_confirmed_entry(void *obj)
+{
+    PostSmCtx_t *sm = (PostSmCtx_t *)obj;
+
+#ifndef CONFIG_ZTEST
+    int rc = boot_write_img_confirmed();
+    if (0 != rc) {
+        LOG_ERR("boot_write_img_confirmed failed: %d", rc);
+        OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+    } else {
+        LOG_INF("POST passed — image confirmed");
+#ifdef CONFIG_FACTORY_IMAGE_CAPTURE_ON_BOOT
+        /* Now that the image is committed, queue a maybe-capture so
+         * the very first OTA→confirm cycle on factory-fresh hardware
+         * blesses itself as the factory baseline. */
+        factory_image_maybe_capture_async();
+#endif
+    }
+#else
+    /* Tests stub boot_write_img_confirmed via --wrap. */
+    (void)boot_write_img_confirmed();
+    LOG_INF("POST passed (test build) — confirm stubbed");
+#endif
+
+    smf_set_terminate(SMF_CTX(sm), 1);
+}
+
+static void post_failed_timeout_entry(void *obj)
+{
+    ARG_UNUSED(obj);
+    abort_and_reboot(POST_FAILED_TIMEOUT);
+}
+
+static void post_failed_cell_entry(void *obj)
+{
+    ARG_UNUSED(obj);
+    abort_and_reboot(POST_FAILED_CELL);
+}
+
+static void post_failed_consensus_entry(void *obj)
+{
+    ARG_UNUSED(obj);
+    abort_and_reboot(POST_FAILED_CONSENSUS);
+}
+
+static void post_failed_no_ppo2_tx_entry(void *obj)
+{
+    ARG_UNUSED(obj);
+    abort_and_reboot(POST_FAILED_NO_PPO2_TX);
+}
+
+static void post_failed_no_handset_entry(void *obj)
+{
+    ARG_UNUSED(obj);
+    abort_and_reboot(POST_FAILED_NO_HANDSET);
+}
+
+static void post_failed_solenoid_entry(void *obj)
+{
+    ARG_UNUSED(obj);
+    abort_and_reboot(POST_FAILED_SOLENOID);
+}
+
+static const struct smf_state post_states[] = {
+    [POST_INIT]              = SMF_CREATE_STATE(NULL,                       NULL,               NULL, NULL, NULL),
+    [POST_WAITING_CELLS]     = SMF_CREATE_STATE(post_cells_entry,           post_cells_run,     NULL, NULL, NULL),
+    [POST_WAITING_CONSENSUS] = SMF_CREATE_STATE(post_consensus_entry,       post_consensus_run, NULL, NULL, NULL),
+    [POST_WAITING_PPO2_TX]   = SMF_CREATE_STATE(post_ppo2_tx_entry,         post_ppo2_tx_run,   NULL, NULL, NULL),
+    [POST_WAITING_HANDSET]   = SMF_CREATE_STATE(post_handset_entry,         post_handset_run,   NULL, NULL, NULL),
+    [POST_WAITING_SOLENOID]  = SMF_CREATE_STATE(post_solenoid_entry,        post_solenoid_run,  NULL, NULL, NULL),
+    [POST_CONFIRMED]         = SMF_CREATE_STATE(post_confirmed_entry,       NULL,               NULL, NULL, NULL),
+    [POST_FAILED_TIMEOUT]    = SMF_CREATE_STATE(post_failed_timeout_entry,  NULL,               NULL, NULL, NULL),
+    [POST_FAILED_CELL]       = SMF_CREATE_STATE(post_failed_cell_entry,     NULL,               NULL, NULL, NULL),
+    [POST_FAILED_CONSENSUS]  = SMF_CREATE_STATE(post_failed_consensus_entry, NULL,              NULL, NULL, NULL),
+    [POST_FAILED_NO_PPO2_TX] = SMF_CREATE_STATE(post_failed_no_ppo2_tx_entry, NULL,             NULL, NULL, NULL),
+    [POST_FAILED_NO_HANDSET] = SMF_CREATE_STATE(post_failed_no_handset_entry, NULL,             NULL, NULL, NULL),
+    [POST_FAILED_SOLENOID]   = SMF_CREATE_STATE(post_failed_solenoid_entry, NULL,               NULL, NULL, NULL),
+};
+
+/**
+ * @brief Drive the POST state machine to a terminal state.
  *
  * Called both by the K_THREAD_DEFINE'd entry point and by the
- * ZTEST-only sync hook. Internally captures the start timestamp, walks
- * every check in order, and either confirms + returns or reboots.
+ * ZTEST-only sync hook. Initialises the per-run context, transitions
+ * into the first WAITING state, and ticks until either POST_CONFIRMED
+ * sets the terminate flag or a POST_FAILED_* entry calls sys_reboot.
  */
 static void run_post_sequence(void)
 {
-    int64_t start_ms = k_uptime_get();
-    uint32_t tx_baseline = divecan_send_get_tx_count();
-    uint32_t rx_baseline = handset_rx_total();
+    PostSmCtx_t sm = {
+        .start_ms      = k_uptime_get(),
+        .tx_baseline   = divecan_send_get_tx_count(),
+        .rx_baseline   = handset_rx_total(),
+    };
 
-    /* ---- Cells ---- */
-    (void)atomic_set(&s_post_state, (atomic_val_t)POST_WAITING_CELLS);
-    if (!wait_for_cells(start_ms)) {
-        if (deadline_remaining_ms(start_ms) <= 0) {
-            abort_and_reboot(POST_FAILED_TIMEOUT);
-        } else {
-            abort_and_reboot(POST_FAILED_CELL);
-        }
-    } else {
-        mark_check_passed(POST_PASS_BIT_CELLS, POST_WAITING_CONSENSUS);
-
-        /* ---- Consensus ---- */
-        if (!wait_for_consensus(start_ms)) {
-            if (deadline_remaining_ms(start_ms) <= 0) {
-                abort_and_reboot(POST_FAILED_TIMEOUT);
-            } else {
-                abort_and_reboot(POST_FAILED_CONSENSUS);
-            }
-        } else {
-            mark_check_passed(POST_PASS_BIT_CONSENSUS, POST_WAITING_PPO2_TX);
-
-            /* ---- PPO2 TX evidence ---- */
-            if (!wait_for_ppo2_tx(start_ms, tx_baseline)) {
-                if (deadline_remaining_ms(start_ms) <= 0) {
-                    abort_and_reboot(POST_FAILED_TIMEOUT);
-                } else {
-                    abort_and_reboot(POST_FAILED_NO_PPO2_TX);
-                }
-            } else {
-                mark_check_passed(POST_PASS_BIT_PPO2_TX, POST_WAITING_HANDSET);
-
-                /* ---- Handset RX evidence ---- */
-                if (!wait_for_handset(start_ms, rx_baseline)) {
-                    if (deadline_remaining_ms(start_ms) <= 0) {
-                        abort_and_reboot(POST_FAILED_TIMEOUT);
-                    } else {
-                        abort_and_reboot(POST_FAILED_NO_HANDSET);
-                    }
-                } else {
-                    mark_check_passed(POST_PASS_BIT_HANDSET, POST_WAITING_SOLENOID);
-
-                    /* ---- Solenoid (optional) ---- */
-                    if (!wait_for_solenoid(start_ms)) {
-                        if (deadline_remaining_ms(start_ms) <= 0) {
-                            abort_and_reboot(POST_FAILED_TIMEOUT);
-                        } else {
-                            abort_and_reboot(POST_FAILED_SOLENOID);
-                        }
-                    } else {
-                        mark_check_passed(POST_PASS_BIT_SOLENOID, POST_CONFIRMED);
-
-                        /* ---- Confirm ---- */
-#ifndef CONFIG_ZTEST
-                        int rc = boot_write_img_confirmed();
-                        if (0 != rc) {
-                            LOG_ERR("boot_write_img_confirmed failed: %d", rc);
-                            OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
-                        } else {
-                            LOG_INF("POST passed — image confirmed");
-#ifdef CONFIG_FACTORY_IMAGE_CAPTURE_ON_BOOT
-                            /* Now that the image is committed, queue a
-                             * maybe-capture so the very first OTA→confirm
-                             * cycle on factory-fresh hardware blesses
-                             * itself as the factory baseline. */
-                            factory_image_maybe_capture_async();
-#endif
-                        }
-#else
-                        /* Tests stub boot_write_img_confirmed via --wrap. */
-                        (void)boot_write_img_confirmed();
-                        LOG_INF("POST passed (test build) — confirm stubbed");
-#endif
-                    }
-                }
-            }
-        }
+    smf_set_initial(SMF_CTX(&sm), &post_states[POST_WAITING_CELLS]);
+    while (0 == smf_run_state(SMF_CTX(&sm))) {
+        k_msleep(POLL_INTERVAL_MS);
     }
 }
 

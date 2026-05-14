@@ -148,8 +148,10 @@ transitions between them are obvious from one read of the source.
   module's thread or its caller.
 
 See `docs/STATE_MACHINES.md` for the per-module state tables and event
-vocabularies. Today: calibration (`src/calibration.c`). Planned:
-POST gate, UDS OTA, ISO-TP RX, ISO-TP TX queue.
+vocabularies. Currently active: calibration (`src/calibration.c`),
+POST gate (`src/firmware_confirm.c`), UDS OTA pipeline
+(`src/divecan/uds/uds_ota.c`), ISO-TP RX (`src/divecan/isotp.c`), and
+ISO-TP TX queue (`src/divecan/isotp_tx_queue.c`).
 
 ## IPC: zbus
 

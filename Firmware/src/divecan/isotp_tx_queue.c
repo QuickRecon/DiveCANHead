@@ -6,11 +6,22 @@
  * when multiple ISO-TP contexts are active (e.g., UDS responses and log push).
  * This is required for the stateful CAN-to-Bluetooth bridge handset.
  *
+ * The queue is driven by a small SMF state machine with two durable states:
+ *   TX_STATE_IDLE  - nothing transmitting; ticks pull from the k_msgq and
+ *                    either send an SF (and stay) or send an FF and
+ *                    transition to TX_STATE_WAIT_FC.
+ *   TX_STATE_WAIT_FC - FF sent (or block boundary hit); awaiting the next
+ *                      Flow Control frame. FC_CTS -> send CFs up to the
+ *                      next block boundary (stay) or to payload exhaustion
+ *                      (back to IDLE). FC_WAIT/FC_OVFLW -> abort to IDLE.
+ *                      A TICK while in WAIT_FC checks the N_Bs timeout.
+ *
  * @note Static allocation only (NASA Rule 10 compliance)
  * @note Uses Zephyr k_msgq for thread-safe queuing
  */
 
 #include <zephyr/kernel.h>
+#include <zephyr/smf.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
 
@@ -48,32 +59,51 @@ typedef struct {
     uint32_t messageId;                 /**< Base CAN ID */
 } ISOTPTxRequest_t;
 
-/**
- * @brief Active TX state (for multi-frame in-progress transmissions)
- */
+/* ---- TX state machine ---- */
+
+typedef enum {
+    TX_STATE_IDLE = 0,    /**< No active TX; ready to dequeue */
+    TX_STATE_WAIT_FC,     /**< FF sent (or block boundary); awaiting FC */
+    TX_STATE_COUNT,
+} TxState_e;
+
+typedef enum {
+    TX_EVT_NONE = 0,
+    TX_EVT_TICK,          /**< From ISOTP_TxQueue_Poll */
+    TX_EVT_FC_CTS,        /**< Flow Control: Continue To Send */
+    TX_EVT_FC_WAIT,       /**< Flow Control: Wait (treat as abort) */
+    TX_EVT_FC_OVFLW,      /**< Flow Control: Overflow (receiver rejected) */
+} TxEvent_e;
+
 typedef struct {
-    bool txActive;            /**< TX in progress */
-    ISOTPTxRequest_t current; /**< Current TX being sent */
-    ISOTPState_t txState;     /**< IDLE, WAIT_FC, TRANSMITTING */
-    uint16_t txBytesSent;     /**< Bytes sent so far */
-    uint8_t txSequenceNumber; /**< Next CF sequence */
-    uint8_t txBlockSize;      /**< From FC */
-    uint8_t txSTmin;          /**< From FC */
-    uint8_t txBlockCounter;   /**< CFs sent in current block */
-    uint32_t txLastFrameTime; /**< For timeout tracking */
-} ISOTPTxState_t;
+    struct smf_ctx          smf;
+    ISOTPTxRequest_t        current;
+    uint16_t                txBytesSent;
+    uint8_t                 txSequenceNumber;
+    uint8_t                 txBlockSize;
+    uint8_t                 txSTmin;
+    uint8_t                 txBlockCounter;
+    uint32_t                txLastFrameTime;
+    TxEvent_e               event;
+    const DiveCANMessage_t *fcMessage;
+} TxSmCtx_t;
 
-/* Static accessor functions (NASA Rule compliance - no exposed globals) */
+static const struct smf_state tx_states[TX_STATE_COUNT];
 
 /**
- * @brief Return pointer to the static TX state block
+ * @brief Lazy-init accessor for the TX SMF context singleton.
  *
- * @return Pointer to the singleton ISOTPTxState_t
+ * Uses `smf.current == NULL` as the uninitialised sentinel — first
+ * access falls into the initial state via smf_set_initial. Production
+ * access is serialised by the RX thread (the sole caller).
  */
-static ISOTPTxState_t *getTxState(void)
+static TxSmCtx_t *getTxSm(void)
 {
-    static ISOTPTxState_t state = {0};
-    return &state;
+    static TxSmCtx_t sm = {0};
+    if (NULL == sm.smf.current) {
+        smf_set_initial(SMF_CTX(&sm), &tx_states[TX_STATE_IDLE]);
+    }
+    return &sm;
 }
 
 /* Statically allocated message queue */
@@ -92,45 +122,212 @@ static ISOTPTxRequest_t *getTxRequestBuffer(void)
     return &buffer;
 }
 
-/* Forward declarations */
-static void StartNextTx(void);
-static void SendConsecutiveFrames(void);
-static void handleFlowControlCTS(ISOTPTxState_t *state, const DiveCANMessage_t *fc);
+/* ---- Wire-format helpers (no state-machine knowledge) ---- */
 
 /**
- * @brief Initialize (or reinitialize) the ISO-TP TX queue
- *
- * Resets all TX state fields to zero and purges any pending items from the
- * Zephyr message queue.  Must be called once before any other TxQueue function.
+ * @brief Build and send a Single Frame for `tx`.
  */
-void ISOTP_TxQueue_Init(void)
+static void send_single_frame(const ISOTPTxRequest_t *tx)
 {
-    ISOTPTxState_t *state = getTxState();
-    state->txActive = false;
-    state->txState = ISOTP_IDLE;
-    state->txBytesSent = 0;
-    state->txSequenceNumber = 0;
-    state->txBlockSize = 0;
-    state->txSTmin = 0;
-    state->txBlockCounter = 0;
-    state->txLastFrameTime = 0;
-
-    k_msgq_purge(&isotp_tx_msgq);
+    DiveCANMessage_t sf = {0};
+    sf.id = tx->messageId | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
+    sf.length = ISOTP_CAN_FRAME_LEN;
+    sf.data[DIVECAN_SF_PCI_IDX] = (uint8_t)tx->length + DIVECAN_PAD_BYTE_SIZE;
+    sf.data[DIVECAN_SF_PAD_IDX] = 0;
+    (void)memcpy(&sf.data[DIVECAN_SF_DATA_START], tx->data, tx->length);
+    (void)divecan_send_blocking(&sf);
 }
 
 /**
- * @brief Copy payload into the TX queue for serialized ISO-TP transmission
- *
- * Data is copied into an internal static buffer so the caller does not need
- * to keep the pointer valid after this call returns.
- *
- * @param source    Source device type placed in the CAN ID source field
- * @param target    Destination device type placed in the CAN ID dest field
- * @param messageId Base CAN message ID (e.g., MENU_ID)
- * @param data      Payload bytes to transmit (must not be NULL)
- * @param length    Payload length in bytes (1 to ISOTP_TX_BUFFER_SIZE)
- * @return true if successfully enqueued, false on NULL data, zero length, or queue full
+ * @brief Build and send the First Frame for `tx`.
  */
+static void send_first_frame(const ISOTPTxRequest_t *tx)
+{
+    /* DiveCAN uses non-standard ISO-TP format with padding byte at offset 2.
+     * Frame format: [PCI_hi][len_lo][0x00 pad][5 data bytes]
+     * Length field includes the padding byte (tx->length + 1). */
+    uint16_t totalLength = tx->length + DIVECAN_PAD_BYTE_SIZE;
+    DiveCANMessage_t ff = {0};
+    ff.id = tx->messageId | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
+    ff.length = ISOTP_CAN_FRAME_LEN;
+    ff.data[DIVECAN_FF_PCI_HI_IDX] = ISOTP_PCI_FF | ((totalLength >> DIVECAN_BYTE_WIDTH) & ISOTP_PCI_LEN_MASK);
+    ff.data[DIVECAN_FF_LEN_LO_IDX] = (uint8_t)(totalLength & DIVECAN_BYTE_MASK);
+    ff.data[DIVECAN_FF_PAD_IDX] = 0x00U;
+    (void)memcpy(&ff.data[DIVECAN_FF_DATA_START], tx->data, ISOTP_FF_DATA_WITH_PAD);
+    (void)divecan_send_blocking(&ff);
+}
+
+/**
+ * @brief Stream Consecutive Frames until block boundary or payload exhausted.
+ *
+ * Respects STmin pacing between frames. Returns true if all payload was
+ * sent (caller should transition back to IDLE), false if the block size
+ * was hit before completion (caller stays in WAIT_FC).
+ */
+static bool send_consecutive_frames(TxSmCtx_t *sm)
+{
+    const ISOTPTxRequest_t *tx = &sm->current;
+    bool waitingForFC = false;
+
+    while ((sm->txBytesSent < tx->length) && (!waitingForFC)) {
+        /* STmin delay handling.
+         * k_msleep is a lower bound — the scheduler may overshoot,
+         * but STmin is a minimum separation time so overshooting
+         * is compliant with ISO 15765-2. */
+        uint32_t stminMs = 0;
+        if (sm->txSTmin <= ISOTP_STMIN_MS_MAX) {
+            stminMs = sm->txSTmin;
+        }
+        if (stminMs > 0) {
+            k_msleep((int32_t)stminMs);
+        }
+
+        /* Build CF */
+        DiveCANMessage_t cf = {0};
+        cf.id = tx->messageId | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
+        cf.length = ISOTP_CAN_FRAME_LEN;
+        cf.data[ISOTP_FC_STATUS_IDX] = ISOTP_PCI_CF | ((sm->txSequenceNumber + 1U) & ISOTP_SEQ_MASK);
+
+        uint16_t remaining = tx->length - sm->txBytesSent;
+        uint8_t bytesToCopy = 0;
+        if (remaining > ISOTP_CF_DATA_BYTES) {
+            bytesToCopy = ISOTP_CF_DATA_BYTES;
+        } else {
+            bytesToCopy = (uint8_t)remaining;
+        }
+        (void)memcpy(&cf.data[ISOTP_CF_DATA_START], &tx->data[sm->txBytesSent], bytesToCopy);
+
+        sm->txBytesSent += bytesToCopy;
+        sm->txLastFrameTime = k_uptime_get_32();
+
+        (void)divecan_send_blocking(&cf);
+
+        sm->txSequenceNumber = (sm->txSequenceNumber + 1U) & ISOTP_SEQ_MASK;
+
+        /* Block size handling */
+        ++sm->txBlockCounter;
+        if ((sm->txBlockSize != 0) &&
+            (sm->txBlockCounter >= sm->txBlockSize)) {
+            waitingForFC = true;
+        }
+    }
+
+    return (!waitingForFC);
+}
+
+/* ---- State action functions ---- */
+
+/**
+ * @brief TX_STATE_IDLE entry: zero the TX progress fields.
+ */
+static void tx_idle_entry(void *obj)
+{
+    TxSmCtx_t *sm = (TxSmCtx_t *)obj;
+    sm->txBytesSent = 0;
+    sm->txSequenceNumber = 0;
+    sm->txBlockSize = 0;
+    sm->txSTmin = 0;
+    sm->txBlockCounter = 0;
+    sm->txLastFrameTime = 0;
+}
+
+/**
+ * @brief TX_STATE_IDLE.run: on TICK, dequeue and send the next message.
+ *
+ * Single-frame messages are sent inline and the SM stays IDLE.
+ * Multi-frame messages send the FF and transition to WAIT_FC.
+ */
+static enum smf_state_result tx_idle_run(void *obj)
+{
+    TxSmCtx_t *sm = (TxSmCtx_t *)obj;
+
+    if (TX_EVT_TICK == sm->event) {
+        ISOTPTxRequest_t *reqBuffer = getTxRequestBuffer();
+        (void)memset(reqBuffer, 0, sizeof(ISOTPTxRequest_t));
+        if (0 == k_msgq_get(&isotp_tx_msgq, reqBuffer, K_NO_WAIT)) {
+            (void)memcpy(&sm->current, reqBuffer, sizeof(ISOTPTxRequest_t));
+            sm->txBytesSent = 0;
+            sm->txSequenceNumber = 0;
+
+            if (sm->current.length <= ISOTP_SF_MAX_WITH_PAD) {
+                /* SF: send and stay IDLE. */
+                send_single_frame(&sm->current);
+            } else {
+                /* Multi-frame: send FF, expect FC. */
+                send_first_frame(&sm->current);
+                sm->txBytesSent = ISOTP_FF_DATA_WITH_PAD;
+                sm->txLastFrameTime = k_uptime_get_32();
+                smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_WAIT_FC]);
+            }
+        }
+    }
+    /* FC events received in IDLE are spurious — peer should not send
+     * FC when we're not waiting for one. Silently ignore. */
+    return SMF_EVENT_HANDLED;
+}
+
+/**
+ * @brief TX_STATE_WAIT_FC.run: handle FC frames and N_Bs timeout.
+ *
+ * FC_CTS triggers a block-bounded CF send; full payload returns the
+ * SM to IDLE, block boundary keeps it in WAIT_FC for the next FC.
+ * FC_WAIT and FC_OVFLW abort to IDLE.
+ * TICK checks the N_Bs timeout and aborts on expiry.
+ */
+static enum smf_state_result tx_wait_fc_run(void *obj)
+{
+    TxSmCtx_t *sm = (TxSmCtx_t *)obj;
+
+    if (TX_EVT_FC_CTS == sm->event) {
+        const DiveCANMessage_t *fc = sm->fcMessage;
+        sm->txBlockSize = fc->data[ISOTP_FC_BS_IDX];
+        sm->txSTmin = fc->data[ISOTP_FC_STMIN_IDX];
+        sm->txBlockCounter = 0;
+        bool payload_complete = send_consecutive_frames(sm);
+        if (payload_complete) {
+            smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
+        }
+        /* else: still in WAIT_FC awaiting the next FC. */
+    } else if (TX_EVT_FC_WAIT == sm->event) {
+        OP_ERROR_DETAIL(OP_ERR_ISOTP_STATE, ISOTP_FC_WAIT);
+        smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
+    } else if (TX_EVT_FC_OVFLW == sm->event) {
+        OP_ERROR_DETAIL(ISOTP_RX_ABORT_ERR, ISOTP_FC_OVFLW);
+        smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
+    } else if (TX_EVT_TICK == sm->event) {
+        uint32_t currentTime = k_uptime_get_32();
+        if ((currentTime - sm->txLastFrameTime) > ISOTP_TIMEOUT_N_BS) {
+            smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
+        }
+    } else {
+        /* NONE / unknown: no-op. */
+    }
+    return SMF_EVENT_HANDLED;
+}
+
+static const struct smf_state tx_states[TX_STATE_COUNT] = {
+    [TX_STATE_IDLE]    = SMF_CREATE_STATE(tx_idle_entry, tx_idle_run,    NULL, NULL, NULL),
+    [TX_STATE_WAIT_FC] = SMF_CREATE_STATE(NULL,          tx_wait_fc_run, NULL, NULL, NULL),
+};
+
+/**
+ * @brief Return true if the SM is in TX_STATE_IDLE.
+ */
+static bool tx_sm_is_idle(const TxSmCtx_t *sm)
+{
+    return sm->smf.current == &tx_states[TX_STATE_IDLE];
+}
+
+/* ---- Public API ---- */
+
+void ISOTP_TxQueue_Init(void)
+{
+    TxSmCtx_t *sm = getTxSm();
+    /* Force back to IDLE — clears progress fields via the entry. */
+    smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
+    k_msgq_purge(&isotp_tx_msgq);
+}
+
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
                 uint32_t messageId, const uint8_t *data,
                 uint16_t length)
@@ -161,244 +358,80 @@ bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
     return result;
 }
 
-/**
- * @brief Dequeue and begin transmitting the next ISO-TP message
- *
- * Single-frame messages are sent immediately and the TX state returns to idle.
- * Multi-frame messages send only the First Frame and transition to ISOTP_WAIT_FC,
- * expecting ISOTP_TxQueue_ProcessFC() to continue with consecutive frames.
- */
-static void StartNextTx(void)
-{
-    ISOTPTxState_t *state = getTxState();
-
-    if (state->txActive) {
-        /* Expected: Already transmitting, caller will retry on next poll */
-    } else {
-        /* Non-blocking get from queue using static buffer to avoid large stack allocation */
-        ISOTPTxRequest_t *reqBuffer = getTxRequestBuffer();
-        (void)memset(reqBuffer, 0, sizeof(ISOTPTxRequest_t));
-
-        if (k_msgq_get(&isotp_tx_msgq, reqBuffer, K_NO_WAIT) != 0) {
-            /* Expected: Queue empty - nothing to transmit */
-        } else {
-            (void)memcpy(&state->current, reqBuffer, sizeof(ISOTPTxRequest_t));
-            state->txActive = true;
-            state->txBytesSent = 0;
-            state->txSequenceNumber = 0;
-
-            const ISOTPTxRequest_t *tx = &state->current;
-
-            /* Single frame (<=6 bytes with DiveCAN padding) - send immediately */
-            if (tx->length <= ISOTP_SF_MAX_WITH_PAD) {
-                DiveCANMessage_t sf = {0};
-                sf.id = tx->messageId | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
-                sf.length = ISOTP_CAN_FRAME_LEN;
-                sf.data[DIVECAN_SF_PCI_IDX] = (uint8_t)tx->length + DIVECAN_PAD_BYTE_SIZE; /* SF PCI */
-                sf.data[DIVECAN_SF_PAD_IDX] = 0;
-                (void)memcpy(&sf.data[DIVECAN_SF_DATA_START], tx->data, tx->length);
-
-                (void)divecan_send_blocking(&sf);
-
-                /* Single frame complete */
-                state->txActive = false;
-                state->txState = ISOTP_IDLE;
-            } else {
-                /* Multi-frame: Send First Frame
-                 * DiveCAN uses non-standard ISO-TP format with padding byte at offset 2.
-                 * Frame format: [PCI_hi][len_lo][0x00 pad][5 data bytes]
-                 * Length field includes the padding byte (tx->length + 1). */
-                uint16_t totalLength = tx->length + DIVECAN_PAD_BYTE_SIZE; /* +1 for padding byte */
-                DiveCANMessage_t ff = {0};
-                ff.id = tx->messageId | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
-                ff.length = ISOTP_CAN_FRAME_LEN;
-                ff.data[DIVECAN_FF_PCI_HI_IDX] = ISOTP_PCI_FF | ((totalLength >> DIVECAN_BYTE_WIDTH) & ISOTP_PCI_LEN_MASK);
-                ff.data[DIVECAN_FF_LEN_LO_IDX] = (uint8_t)(totalLength & DIVECAN_BYTE_MASK);
-                ff.data[DIVECAN_FF_PAD_IDX] = 0x00U; /* DiveCAN padding byte */
-                (void)memcpy(&ff.data[DIVECAN_FF_DATA_START], tx->data, ISOTP_FF_DATA_WITH_PAD);
-
-                state->txBytesSent = ISOTP_FF_DATA_WITH_PAD;
-                state->txLastFrameTime = k_uptime_get_32();
-                state->txState = ISOTP_WAIT_FC;
-
-                (void)divecan_send_blocking(&ff);
-            }
-        }
-    }
-}
-
-/**
- * @brief Send Consecutive Frames until all data is transmitted or a block boundary is hit
- *
- * Respects the STmin separation time and block size from the last Flow Control frame.
- * Transitions TX state to ISOTP_WAIT_FC when a block boundary is reached, or back to
- * ISOTP_IDLE when the full payload has been sent.
- */
-static void SendConsecutiveFrames(void)
-{
-    ISOTPTxState_t *state = getTxState();
-    const ISOTPTxRequest_t *tx = &state->current;
-    bool waitingForFC = false;
-
-    while ((state->txBytesSent < tx->length) && (!waitingForFC)) {
-        /* STmin delay handling.
-         * k_usleep is a lower bound — the scheduler may overshoot,
-         * but STmin is a minimum separation time so overshooting
-         * is compliant with ISO 15765-2. */
-        uint32_t stminMs = 0;
-        if (state->txSTmin <= ISOTP_STMIN_MS_MAX) {
-            stminMs = state->txSTmin;
-        }
-        if (stminMs > 0) {
-            k_msleep((int32_t)stminMs);
-        }
-
-        /* Build CF */
-        DiveCANMessage_t cf = {0};
-        cf.id = tx->messageId | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
-        cf.length = ISOTP_CAN_FRAME_LEN;
-        cf.data[ISOTP_FC_STATUS_IDX] = ISOTP_PCI_CF | ((state->txSequenceNumber + 1U) & ISOTP_SEQ_MASK);
-
-        uint16_t remaining = tx->length - state->txBytesSent;
-        uint8_t bytesToCopy = 0;
-        if (remaining > ISOTP_CF_DATA_BYTES) {
-            bytesToCopy = ISOTP_CF_DATA_BYTES;
-        } else {
-            bytesToCopy = (uint8_t)remaining;
-        }
-        (void)memcpy(&cf.data[ISOTP_CF_DATA_START], &tx->data[state->txBytesSent], bytesToCopy);
-
-        state->txBytesSent += bytesToCopy;
-        state->txLastFrameTime = k_uptime_get_32();
-
-        (void)divecan_send_blocking(&cf);
-
-        state->txSequenceNumber = (state->txSequenceNumber + 1U) & ISOTP_SEQ_MASK;
-
-        /* Block size handling */
-        ++state->txBlockCounter;
-        if ((state->txBlockSize != 0) &&
-            (state->txBlockCounter >= state->txBlockSize)) {
-            state->txState = ISOTP_WAIT_FC;
-            waitingForFC = true;
-        }
-    }
-
-    /* TX complete (unless waiting for next FC) */
-    if (!waitingForFC) {
-        state->txActive = false;
-        state->txState = ISOTP_IDLE;
-    }
-}
-
-/**
- * @brief Handle Flow Control CTS (Continue to Send) status
- *
- * @param state TX state structure
- * @param fc Flow control message
- */
-static void handleFlowControlCTS(ISOTPTxState_t *state, const DiveCANMessage_t *fc)
-{
-    state->txBlockSize = fc->data[ISOTP_FC_BS_IDX];
-    state->txSTmin = fc->data[ISOTP_FC_STMIN_IDX];
-    state->txBlockCounter = 0;
-    state->txState = ISOTP_TRANSMITTING;
-    SendConsecutiveFrames();
-
-    /* If TX completed, immediately start next queued message */
-    if (!state->txActive) {
-        StartNextTx();
-    }
-}
-
-/**
- * @brief Process a received Flow Control frame and continue (or abort) multi-frame TX
- *
- * Must be called for every FC frame received while a multi-frame transmission is
- * in progress (txState == ISOTP_WAIT_FC).  Handles CTS, WAIT (treated as abort),
- * and OVFLW cases.  Accepts broadcast FC (Shearwater quirk, target = 0xFF).
- *
- * @param fc Received Flow Control CAN message (must not be NULL)
- * @return true if the FC was consumed by the active TX, false if ignored
- */
 bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
 {
     bool result = false;
-    ISOTPTxState_t *state = getTxState();
+    TxSmCtx_t *sm = getTxSm();
 
     if (NULL == fc) {
         OP_ERROR(OP_ERR_NULL_PTR);
-    } else if ((!state->txActive) || (state->txState != ISOTP_WAIT_FC)) {
+    } else if (tx_sm_is_idle(sm)) {
         /* Expected: FC received when not awaiting one - spurious or for another context */
     } else {
         /* Verify FC is for our current TX
          * Accept FC addressed to us, or broadcast FC (Shearwater quirk) */
         uint8_t fcTarget = (uint8_t)((fc->id >> DIVECAN_BYTE_WIDTH) & ISOTP_PCI_LEN_MASK);
-        if ((fcTarget != (uint8_t)state->current.source) && (fcTarget != ISOTP_BROADCAST_ADDR)) {
+        if ((fcTarget != (uint8_t)sm->current.source) && (fcTarget != ISOTP_BROADCAST_ADDR)) {
             /* Expected: FC addressed to another node on the bus */
         } else {
             uint8_t flowStatus = fc->data[ISOTP_FC_STATUS_IDX];
-
+            TxEvent_e ev = TX_EVT_NONE;
             switch (flowStatus) {
             case ISOTP_FC_CTS:
-                handleFlowControlCTS(state, fc);
+                ev = TX_EVT_FC_CTS;
                 break;
-
-            case ISOTP_FC_WAIT: /* Not implemented - abort */
-                OP_ERROR_DETAIL(OP_ERR_ISOTP_STATE, ISOTP_FC_WAIT);
-                __attribute__((fallthrough));
-            case ISOTP_FC_OVFLW: /* Receiver rejected - abort */
-                OP_ERROR_DETAIL(ISOTP_RX_ABORT_ERR, flowStatus);
-                __attribute__((fallthrough));
+            case ISOTP_FC_WAIT:
+                ev = TX_EVT_FC_WAIT;
+                break;
+            case ISOTP_FC_OVFLW:
+                ev = TX_EVT_FC_OVFLW;
+                break;
             default:
-                state->txActive = false;
-                state->txState = ISOTP_IDLE;
+                /* Unknown FC status: log as abort and let WAIT_FC.run
+                 * fall through (no-op event), then force the SM back
+                 * to IDLE here so we don't dead-end. */
+                OP_ERROR_DETAIL(ISOTP_RX_ABORT_ERR, flowStatus);
+                smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
+                result = true;
                 break;
             }
 
-            result = true;
+            if (ev != TX_EVT_NONE) {
+                sm->event = ev;
+                sm->fcMessage = fc;
+                (void)smf_run_state(SMF_CTX(sm));
+                sm->fcMessage = NULL;
+                sm->event = TX_EVT_NONE;
+                result = true;
+
+                /* If the SM returned to IDLE inside the run (full payload
+                 * sent or abort), pull the next message off the queue
+                 * immediately to preserve the legacy "back-to-back" timing. */
+                if (tx_sm_is_idle(sm)) {
+                    sm->event = TX_EVT_TICK;
+                    (void)smf_run_state(SMF_CTX(sm));
+                    sm->event = TX_EVT_NONE;
+                }
+            }
         }
     }
 
     return result;
 }
 
-/**
- * @brief Poll TX queue: expire timed-out FC waits and start next pending transmission
- *
- * Call periodically from the RX thread main loop.  Checks for N_Bs timeout
- * (1000 ms waiting for FC after FF) and, if the queue is idle, dequeues the
- * next message and starts transmission.
- *
- * @param currentTime Current system time in milliseconds (from k_uptime_get_32())
- */
 void ISOTP_TxQueue_Poll(uint32_t currentTime)
 {
-    ISOTPTxState_t *state = getTxState();
-
-    /* Check for timeout */
-    if ((state->txActive) &&
-        (state->txState == ISOTP_WAIT_FC) &&
-        ((currentTime - state->txLastFrameTime) > ISOTP_TIMEOUT_N_BS)) {
-        state->txActive = false;
-        state->txState = ISOTP_IDLE;
-    }
-
-    /* If not busy, start next TX */
-    if (!state->txActive) {
-        StartNextTx();
-    }
+    ARG_UNUSED(currentTime);  /* read inside the WAIT_FC run via k_uptime_get_32 */
+    TxSmCtx_t *sm = getTxSm();
+    sm->event = TX_EVT_TICK;
+    (void)smf_run_state(SMF_CTX(sm));
+    sm->event = TX_EVT_NONE;
 }
 
-/**
- * @brief Query whether a multi-frame ISO-TP transmission is currently in progress
- *
- * @return true if a TX is active (including WAIT_FC state), false if the queue is idle
- */
 bool ISOTP_TxQueue_IsBusy(void)
 {
-    const ISOTPTxState_t *state = getTxState();
-    return state->txActive;
+    const TxSmCtx_t *sm = getTxSm();
+    return !tx_sm_is_idle(sm);
 }
 
 uint8_t ISOTP_TxQueue_GetPendingCount(void)

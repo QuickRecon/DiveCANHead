@@ -24,6 +24,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include <zephyr/smf.h>
+
 #include "divecan_types.h"
 
 /* ISO-TP Configuration */
@@ -77,13 +79,33 @@ static const size_t ISOTP_CF_DATA_START = 1U;    /**< Payload start index in Con
 
 /**
  * @brief ISO-TP state machine states
+ *
+ * Indices into the SMF state table for RX (IDLE / RECEIVING). The TX-side
+ * values (TRANSMITTING / WAIT_FC) are legacy enum members preserved so
+ * the centralized TX queue's own state field stays compatible — the RX
+ * SM table does not register them.
  */
 typedef enum {
     ISOTP_IDLE = 0,     /**< No active transfer */
     ISOTP_RECEIVING,    /**< Multi-frame reception in progress */
-    ISOTP_TRANSMITTING, /**< Multi-frame transmission in progress */
-    ISOTP_WAIT_FC       /**< Sent FF, waiting for receiver FC */
+    ISOTP_TRANSMITTING, /**< (legacy) Multi-frame transmission in progress */
+    ISOTP_WAIT_FC       /**< (legacy) Sent FF, waiting for receiver FC */
 } ISOTPState_t;
+
+/**
+ * @brief Event vocabulary for the RX state machine.
+ *
+ * ISOTP_ProcessRxFrame classifies an inbound CAN frame's PCI byte into
+ * one of these events, stores it on the context, then ticks the SM.
+ * ISOTP_Poll injects ISOTP_RX_EVT_TIMEOUT when N_Cr expires.
+ */
+typedef enum {
+    ISOTP_RX_EVT_NONE = 0,
+    ISOTP_RX_EVT_SF,       /**< Single Frame received */
+    ISOTP_RX_EVT_FF,       /**< First Frame received */
+    ISOTP_RX_EVT_CF,       /**< Consecutive Frame received */
+    ISOTP_RX_EVT_TIMEOUT,  /**< N_Cr expired in ISOTP_Poll */
+} IsotpRxEvent_e;
 
 /**
  * @brief ISO-TP context (one per source/target pair)
@@ -92,8 +114,10 @@ typedef enum {
  * sequence tracking, flow control parameters, and addressing.
  *
  * @note txDataPtr must remain valid until txComplete is set
+ * @note `smf` MUST be the first member so SMF_CTX() downcasts correctly.
  */
 typedef struct {
+    struct smf_ctx smf;     /**< SMF context (must be first member) */
     ISOTPState_t state; /**< Current state machine state */
 
     /* RX state */
@@ -119,6 +143,13 @@ typedef struct {
     DiveCANType_t source; /**< Our device type */
     DiveCANType_t target; /**< Remote device type */
     uint32_t messageId;   /**< Base CAN ID (e.g., MENU_ID = 0xD0A0000) */
+
+    /* Per-tick SMF input. ISOTP_ProcessRxFrame / ISOTP_Poll populate
+     * these before calling smf_run_state; the state run reads them and
+     * dispatches accordingly. */
+    IsotpRxEvent_e currentEvent;
+    const DiveCANMessage_t *currentMessage;
+    bool currentConsumed; /**< Set by handlers; read by ISOTP_ProcessRxFrame */
 } ISOTPContext_t;
 
 /* Public API */
