@@ -81,6 +81,64 @@ Same convention as `ARCHITECTURE.md` and `COMPROMISE.md`.
   - After app boot: LED blinks at the app's heartbeat cadence.
   - Smooth handoff, no extended dark period.
 
+### BT-1.6 Signed slot0 image validates on every boot (Phase 2)
+
+- **Pre:** Unit programmed via `flash.sh` (sysbuild merged hex
+  containing MCUBoot + an imgtool-signed v0.0.0+0 app). MCUBoot
+  Kconfig has `CONFIG_BOOT_VALIDATE_SLOT0=y` (verify via
+  `grep BOOT_VALIDATE build/mcuboot/zephyr/.config`).
+- **Action:** Cold power-cycle and observe RTT log up to the app
+  banner.
+- **Pass:**
+  - MCUBoot logs a successful slot0 validation pass (no
+    `Image in the primary slot is not valid!` line).
+  - App banner `DiveCAN Jr — Zephyr <version>` appears.
+  - SHA-256 walk completes in well under the 8 s IWDG window —
+    confirms `BOOT_WATCHDOG_FEED=y` is alive during the hash.
+- **Notes:** Image layout reference (from `scripts/sign_app.py`
+  output): 512 B header + body + 40 B TLV (single SHA-256 entry,
+  TLV type 0x10). `python3 imgtool.py verify` against the
+  signed bin should print `Image was correctly validated`.
+
+### BT-1.7 Corrupt byte in slot0 → MCUBoot refuses to jump (Phase 2)
+
+- **Pre:** Unit running normally from a known-good signed image.
+  External NOR / slot1 state irrelevant.
+- **Action:** Run `scripts/test_mcuboot_reject.sh`. The script:
+  1. Copies the freshly-built `zephyr.signed.bin`, flips one byte
+     at offset 0x1000 (past the 512 B header, before the TLV).
+  2. Reflashes only slot0 at `0x08010000` via STM32CubeProgrammer —
+     MCUBoot itself is untouched.
+  3. Halts the chip via openocd, reads PC, dumps the SEGGER RTT
+     up-buffer in RAM (`pBuffer`, `WrOff` from the control block).
+  4. Prints the captured MCUBoot log + PASS/FAIL verdict.
+- **Pass:**
+  - Script prints **`PASS: MCUBoot rejected the corrupt image`**.
+  - PC at halt is inside MCUBoot text (`< 0x08010000`).
+  - When MCUBoot reaches its FIH_PANIC log path, the RTT buffer
+    contains the textbook chain:
+    `Image in the primary slot is not valid!` → `Unable to find
+    bootable image`. (On the early-validation path the chip
+    panics through `arch_system_halt` before that log line gets
+    a chance — the PC check is still the authoritative verdict.)
+  - Heartbeat LED does **not** transition to the app's cadence.
+- **Recovery:** `./flash.sh` (the script prints this on exit too).
+- **Notes:**
+  - We dump the RTT up-buffer directly from RAM via openocd's
+    `mdb` rather than running the live `rtt server` bridge.
+    MCUBoot's writes happen in tens of ms during early boot and
+    are long over by the time openocd's RTT poll thread finds
+    the control block. The buffer-dump method is deterministic
+    and avoids the host-attach race.
+  - This is the most important defensive property of the
+    bootloader and must remain green after any MCUBoot config
+    change.
+  - The pre-existing `E: Watchdog install timeout failed: -22`
+    line in MCUBoot's output is unrelated — it fires whenever
+    the L4 IWDG is already running from a prior boot, which is
+    expected on warm-reset and harmless here (`BOOT_WATCHDOG_FEED`
+    keeps the running IWDG fed regardless).
+
 ---
 
 ## Section 2 — OTA transfer (Phase 3, placeholder)
