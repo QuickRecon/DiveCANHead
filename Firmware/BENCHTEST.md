@@ -463,10 +463,206 @@ power cycle.
     no `Heartbeat slot N stalled` WRN lines in RTT during capture.
   - Once capture completes, normal heartbeat behaviour resumes.
 
-## Section 5 — UDS OTA diagnostics (Phase 6, placeholder)
+## Section 5 — UDS OTA diagnostics (Phase 6)
 
-_Filled in when Phase 6 lands. Will cover read DIDs 0xF270–0xF274
-and write DIDs 0xF275–0xF277._
+Phase 6 surfaces full MCUBoot / OTA / factory state through the UDS
+DID namespace at 0xF27x. The wire dispatch + session/dive gating +
+magic-byte checks are covered by:
+
+- **`tests/uds_state_did_ota/`** — native_sim ztest suite, 31 cases
+  (run with `scripts/native_test.py run uds_state_did_ota`).
+- **`tests/integration/harness/test_uds_did_ota.py`** — pytest
+  integration cases run against a running firmware on the test stand.
+
+The bench tests below verify the diagnostics behave correctly against
+real MCUBoot state — pre/post swap, pre/post factory capture, pre/post
+POST confirmation — which the native_sim harness cannot fake because
+the bootloader doesn't run there.
+
+### BT-5.1 MCUBOOT_STATUS reflects a clean confirmed boot
+
+- **Pre:** Freshly flashed unit, BT-1.1 passed (cold boot to confirmed
+  state, factory captured).
+- **Action:** Read DID 0xF270.
+- **Pass:**
+  - Payload is exactly 16 bytes.
+  - Byte 0 (swap_type) = 0 (BOOT_SWAP_TYPE_NONE).
+  - Byte 1 (confirmed) = 1.
+  - Byte 2 (running slot) = 0.
+  - Byte 3 bit 0 (factory captured) = 1.
+  - Bytes 4–7 (slot0 truncated sem_ver) match `git describe` of the
+    flashed image.
+  - Bytes 8–11 (slot1 truncated sem_ver) = 0xFF×4 (no staged OTA).
+  - Bytes 12–15 (factory truncated sem_ver) match bytes 4–7
+    (factory was captured from this slot0).
+
+### BT-5.2 MCUBOOT_STATUS during a staged OTA
+
+- **Pre:** BT-5.1 passed. OTA a different v2 image up to slot1 via
+  the 0x34/0x36/0x37 pipeline but **do not** activate (skip 0x31).
+- **Action:** Read DID 0xF270 then DID 0xF273.
+- **Pass:**
+  - 0xF270 byte 1 (confirmed) = 1 (running image still confirmed).
+  - 0xF270 bytes 8–11 now contain v2's truncated sem_ver (not 0xFF×4).
+  - 0xF273 returns v2's full 8-byte sem_ver including build_num.
+  - 0xF272 still returns the running v1 sem_ver.
+
+### BT-5.3 MCUBOOT_STATUS after activation, before confirm
+
+- **Pre:** BT-5.2 staged. Activate via SID 0x31 RID 0xF001. Reboot
+  happens; new image boots; POST runs but is not yet complete.
+- **Action:** During POST (before confirmation), read DID 0xF270.
+- **Pass:**
+  - Byte 0 (swap_type) reports the MCUBoot post-swap state — typically
+    0 (NONE) by the time the app is running, because the swap has
+    already been committed.
+  - Byte 1 (confirmed) = 0 until POST completes, 1 after.
+  - 0xF271 byte 0 transitions through POST_WAITING_* states then
+    reaches POST_CONFIRMED.
+
+### BT-5.4 POST_STATUS pass-mask accumulates checks
+
+- **Pre:** Fresh boot with a known-working v2 image awaiting confirm.
+- **Action:** Poll DID 0xF271 at 1 Hz for the duration of POST
+  (~5–10 s depending on cell type).
+- **Pass:**
+  - Byte 1 (pass_mask) starts at 0 and accumulates bits:
+    `POST_PASS_BIT_CELLS` then `_CONSENSUS` then `_PPO2_TX` then
+    `_HANDSET` (and `_SOLENOID` on solenoid variants).
+  - On reaching the all-ones mask, byte 0 transitions to
+    POST_CONFIRMED.
+  - Reserved bytes 2 and 3 stay 0 throughout.
+
+### BT-5.5 OTA_VERSION matches git describe at flash time
+
+- **Pre:** Unit flashed with a known git ref.
+- **Action:** Read DID 0xF272.
+- **Pass:**
+  - Returned 8 bytes match the imgtool-signed image version field
+    (major / minor / revision_le16 / build_num_le32).
+  - Cross-check by reading slot0 header directly via SWD at offset
+    20 — the bytes must be byte-identical.
+
+### BT-5.6 OTA_PENDING_VERSION reports 0xFF×8 when slot1 is empty
+
+- **Pre:** Fresh unit, no OTA staged, slot1 either un-touched or
+  explicitly erased via probe.
+- **Action:** Read DID 0xF273.
+- **Pass:**
+  - Payload is exactly 8 bytes of 0xFF.
+
+### BT-5.7 OTA_FACTORY_VERSION reports captured version
+
+- **Pre:** BT-4.1 passed (factory captured at v1).
+- **Action:** Read DID 0xF274.
+- **Pass:**
+  - 8-byte payload matches the slot0 sem_ver at the time of capture
+    (i.e. v1's sem_ver), and matches what 0xF272 returned right
+    before the first OTA.
+  - After OTA to v2 + confirm, 0xF274 still returns v1's sem_ver
+    (factory backup is sticky across OTAs).
+
+### BT-5.8 Force-revert via DID 0xF275 returns previous image
+
+- **Pre:** Fresh unit confirmed at v1. OTA to v2 + confirm
+  (slot1 now holds v1 from the swap). Read DID 0xF272 — confirms v2
+  running.
+- **Action:** Enter programming session (SID 0x10 subfunction 0x02).
+  Send UDS write to DID 0xF275 with payload `0x01`.
+- **Pass:**
+  - DUT replies positively to the write.
+  - Unit reboots within ~250 ms.
+  - On next boot, DID 0xF272 returns v1 (rollback succeeded).
+  - DID 0xF273 now holds v2 (the swap put v2 back into slot1).
+  - POST passes within the deadline (v1 already proven good).
+
+### BT-5.9 Write DIDs refused outside programming session
+
+- **Pre:** Fresh boot, no diagnostic session entered.
+- **Action:** For each of 0xF275 / 0xF276 / 0xF277, send a WDBI
+  write with payload `0x01`.
+- **Pass:**
+  - Each request gets a UDS negative response with NRC 0x7F
+    (SERVICE_NOT_IN_SESSION).
+  - No reboot, no SPI NOR activity, no factory partition writes.
+
+### BT-5.10 Write DIDs refused during a dive
+
+- **Pre:** Programming session entered. Use the integration test
+  harness to inject `chan_atmos_pressure = 2000` (~10 m head).
+- **Action:** Send WDBI to any of 0xF275 / 0xF276 / 0xF277 with
+  payload `0x01`.
+- **Pass:**
+  - First request: session is force-downgraded to DEFAULT by
+    `UDS_MaintainSession` and the handler refuses with NRC 0x7F
+    (SERVICE_NOT_IN_SESSION).
+  - RTT shows `<wrn> uds: Dive detected: programming session
+    forced -> default`.
+  - Subsequent re-entry attempts at SID 0x10 0x02 also refused
+    (NRC 0x22 from the dive check in the session-control handler).
+
+### BT-5.11 Write DIDs reject wrong magic byte
+
+- **Pre:** Programming session entered, surface ambient pressure.
+- **Action:** Send WDBI to 0xF275 with payload `0xFF` (or any
+  byte ≠ 0x01).
+- **Pass:**
+  - NRC 0x31 (REQUEST_OUT_OF_RANGE).
+  - No reboot, no SPI NOR activity.
+  - Subsequent write with payload `0x01` succeeds — the wrong-byte
+    rejection doesn't latch the channel into a refused state.
+
+### BT-5.12 Force-revert refused with empty slot1
+
+- **Pre:** Fresh confirmed unit, slot1 erased (probe-driven
+  `flash_erase` on slot1's partition range).
+- **Action:** Enter programming session. Send WDBI to 0xF275 with
+  payload `0x01`.
+- **Pass:**
+  - NRC 0x22 (CONDITIONS_NOT_CORRECT).
+  - RTT shows `<wrn> uds: Force-revert refused: slot1 header read
+    failed -ENOENT`.
+  - No reboot.
+
+### BT-5.13 Restore-factory refused with no captured backup
+
+- **Pre:** Fresh-flashed unit, `factory/captured` NVS key not set
+  yet (capture hasn't run, or NVS was wiped).
+- **Action:** Enter programming session. Send WDBI to 0xF276 with
+  payload `0x01`.
+- **Pass:**
+  - NRC 0x22 (CONDITIONS_NOT_CORRECT).
+  - RTT shows `<wrn> uds: Restore-factory refused: no captured
+    factory image`.
+  - No reboot, no SPI NOR activity.
+
+### BT-5.14 Force-capture refused with unconfirmed image
+
+- **Pre:** Stage an OTA + activate but do NOT let POST confirm
+  (e.g. simulate a POST failure via the integration shim by holding
+  PPO2_TX counter at 0). Image is running in test mode,
+  `boot_is_img_confirmed()` returns false.
+- **Action:** Enter programming session. Send WDBI to 0xF277 with
+  payload `0x01`.
+- **Pass:**
+  - NRC 0x22 (CONDITIONS_NOT_CORRECT).
+  - RTT shows `<wrn> uds: Force-capture refused: running image is
+    not confirmed`.
+  - Factory partition unchanged.
+
+### BT-5.15 Force-capture overwrites the factory backup
+
+- **Pre:** Factory at v1 (BT-4.1). OTA + confirm to v2. DID 0xF274
+  still reports v1.
+- **Action:** Enter programming session. Send WDBI to 0xF277 with
+  payload `0x01`.
+- **Pass:**
+  - DUT replies positively immediately (capture runs asynchronously
+    on the factory work queue).
+  - Within ~20 s, RTT shows `<inf> factory_image: Factory image
+    re-captured (forced)`.
+  - DID 0xF274 now returns v2's sem_ver.
+  - DID 0xF270 captured bit stays 1 throughout.
 
 ## Section 6 — Backport (Phase 7, separate ticket)
 

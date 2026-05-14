@@ -78,6 +78,7 @@ target_sources(app PRIVATE
     src/divecan/uds/uds_log_push.c
 )
 target_include_directories(app PRIVATE src/divecan/include)
+target_include_directories(app PRIVATE src)
 
 add_subdirectory(drivers/solenoid)
 add_subdirectory_ifdef(CONFIG_GPIO_SIM drivers/gpio_sim)

@@ -456,11 +456,11 @@ int factory_image_restore_to_slot1(void)
 
 /* ---- Version introspection ---- */
 
-int factory_image_get_version(uint8_t out_version[4])
+static int factory_image_read_version_field(uint8_t *out_bytes, size_t len)
 {
     int result = -EIO;
 
-    if ((NULL == out_version) || (NULL == get_state()->backend)) {
+    if ((NULL == out_bytes) || (NULL == get_state()->backend)) {
         result = -EINVAL;
     } else if (!get_state()->backend->is_captured()) {
         result = -ENOENT;
@@ -477,14 +477,24 @@ int factory_image_get_version(uint8_t out_version[4])
             if (IMAGE_HEADER_MAGIC != magic) {
                 result = -EBADF;
             } else {
-                (void)memcpy(out_version,
+                (void)memcpy(out_bytes,
                              &header[IMAGE_HEADER_VERSION_OFFSET],
-                             4U);
+                             len);
                 result = 0;
             }
         }
     }
     return result;
+}
+
+int factory_image_get_version(uint8_t out_version[4])
+{
+    return factory_image_read_version_field(out_version, 4U);
+}
+
+int factory_image_get_sem_ver(uint8_t out_sem_ver[8])
+{
+    return factory_image_read_version_field(out_sem_ver, 8U);
 }
 
 /* ---- Public API ---- */

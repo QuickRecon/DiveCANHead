@@ -74,6 +74,18 @@ int factory_image_restore_to_slot1(void);
  */
 int factory_image_get_version(uint8_t out_version[4]);
 
+/**
+ * @brief Read the full 8-byte MCUBoot sem_ver from the factory backup.
+ *
+ * Layout matches the on-disk image_header sem_ver field: major(1) +
+ * minor(1) + revision(2 little-endian) + build_num(4 little-endian).
+ *
+ * @param out_sem_ver 8-byte buffer.
+ * @return 0 on success, negative errno if the backup is missing or the
+ *         header magic doesn't match.
+ */
+int factory_image_get_sem_ver(uint8_t out_sem_ver[8]);
+
 #ifdef CONFIG_ZTEST
 /**
  * @brief Run the capture work synchronously (test-only).

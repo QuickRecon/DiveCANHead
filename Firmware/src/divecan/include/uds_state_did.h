@@ -53,6 +53,16 @@
 #define UDS_DID_ERROR_HISTOGRAM       0xF260U  /**< uint16[OP_ERR_MAX]: per-code occurrence counts (saturated) */
 #define UDS_DID_ERROR_HISTOGRAM_CLEAR 0xF261U  /**< write-only: any value clears all counters and persists to NVS */
 
+/* OTA / MCUBoot status DIDs (0xF27x) — populated from boot_*, firmware_confirm_*, factory_image_* */
+#define UDS_DID_MCUBOOT_STATUS        0xF270U  /**< 16 B: swap_type, confirmed, slot, factory flag, slot0/slot1/factory versions (4 B each, truncated to major/minor/rev_lo/rev_hi) */
+#define UDS_DID_POST_STATUS           0xF271U  /**< 4 B: PostState_t, pass-mask (low 8 bits), reserved x2 */
+#define UDS_DID_OTA_VERSION           0xF272U  /**< 8 B: slot0 sem_ver (major/minor/rev16/build32) */
+#define UDS_DID_OTA_PENDING_VERSION   0xF273U  /**< 8 B: slot1 sem_ver, all 0xFF if slot1 has no valid header */
+#define UDS_DID_OTA_FACTORY_VERSION   0xF274U  /**< 8 B: factory backup sem_ver, all 0xFF if not captured */
+#define UDS_DID_OTA_FORCE_REVERT      0xF275U  /**< write-only, magic 0x01: re-stage slot1 (1-step rollback) */
+#define UDS_DID_OTA_RESTORE_FACTORY   0xF276U  /**< write-only, magic 0x01: copy factory backup into slot1 + reboot */
+#define UDS_DID_OTA_FACTORY_CAPTURE   0xF277U  /**< write-only, magic 0x01: force re-capture of slot0 into factory backup */
+
 /* ============================================================================
  * Cell DIDs (0xF4Nx where N = cell number 0-2)
  * ============================================================================ */

@@ -8,6 +8,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/zbus/zbus.h>
+#include <zephyr/dfu/mcuboot.h>
+#include <zephyr/storage/flash_map.h>
+#include <zephyr/sys/reboot.h>
 #include <string.h>
 
 #include "uds.h"
@@ -20,6 +23,7 @@
 #include "calibration.h"
 #include "errors.h"
 #include "error_histogram.h"
+#include "factory_image.h"
 
 LOG_MODULE_REGISTER(uds, LOG_LEVEL_INF);
 
@@ -37,6 +41,16 @@ static const size_t SI_COUNT_OFF = 4U;
 /* UDS write message lengths */
 static const uint16_t UDS_SINGLE_VALUE_LEN = 5U;
 static const uint16_t SETTING_VALUE_WRITE_LEN = 12U;
+
+/* Magic data byte required on the OTA-action write DIDs (0xF275–0xF277).
+ * Treating these as "command" DIDs that demand a deliberate non-zero byte
+ * keeps an accidental zero-fill write from triggering a reboot. */
+static const uint8_t OTA_WRITE_MAGIC = 0x01U;
+
+/* Pause between the positive UDS response and sys_reboot — gives ISO-TP
+ * time to drain the response onto the bus before the controller goes
+ * down. Matches the equivalent delay inside uds_ota.c's 0x31 path. */
+static const uint32_t OTA_WRITE_REBOOT_DELAY_MS = 200U;
 
 /* SID 0x10 subfunction reply length: SID echo + subfunction byte */
 static const uint16_t UDS_SESSION_CTRL_REQ_LEN = 2U;
@@ -747,6 +761,173 @@ static bool writeHistogramClearDID(UDSContext_t *ctx,
 }
 
 /**
+ * @brief Common precondition checks for the OTA-action write DIDs.
+ *
+ * Centralises the shared length / magic-byte / session / dive-state
+ * validation so the three action handlers stay short. Returns the NRC
+ * the caller should reply with, or 0 if every check passes.
+ *
+ * @param ctx           UDS context (carries session state)
+ * @param requestData   Full request bytes (SID + DID + data)
+ * @param requestLength Total byte count of requestData
+ * @return UDS_NRC_* on failure, 0 on success
+ */
+static uint8_t checkOtaWritePrecondition(const UDSContext_t *ctx,
+                                         const uint8_t *requestData,
+                                         uint16_t requestLength)
+{
+    uint8_t nrc = 0U;
+
+    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+        nrc = UDS_NRC_INCORRECT_MSG_LEN;
+    } else if (OTA_WRITE_MAGIC != requestData[UDS_DATA_IDX]) {
+        nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
+    } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
+        nrc = UDS_NRC_SERVICE_NOT_IN_SESSION;
+    } else if (UDS_IsInDive()) {
+        nrc = UDS_NRC_CONDITIONS_NOT_CORRECT;
+    } else {
+        /* All preconditions OK */
+    }
+    return nrc;
+}
+
+/**
+ * @brief Build a standard WDBI positive response in ctx->responseBuffer.
+ */
+static void buildWriteDidPositiveResponse(UDSContext_t *ctx,
+                                          const uint8_t *requestData)
+{
+    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+    ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+    ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+    ctx->responseLength = UDS_POS_RESP_HDR;
+}
+
+/**
+ * @brief Handle a WDBI write to UDS_DID_OTA_FORCE_REVERT (0xF275).
+ *
+ * 1-step rollback. After a confirmed OTA the swap-using-scratch path has
+ * left the previous good image in slot1; calling
+ * boot_request_upgrade(BOOT_UPGRADE_TEST) re-triggers the swap on next
+ * reboot, putting the old image back in slot0. POST re-runs and confirms
+ * (the image is known-good — it confirmed at least once previously).
+ *
+ * Refused if slot1 does not present a valid MCUBoot image header.
+ */
+static bool writeForceRevertDID(UDSContext_t *ctx,
+                                const uint8_t *requestData,
+                                uint16_t requestLength)
+{
+    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+
+    if (0U != nrc) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
+    } else {
+        struct mcuboot_img_header hdr = {0};
+        int rc = boot_read_bank_header(PARTITION_ID(slot1_partition),
+                                       &hdr, sizeof(hdr));
+        if (0 != rc) {
+            LOG_WRN("Force-revert refused: slot1 header read failed %d", rc);
+            OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                                     UDS_NRC_CONDITIONS_NOT_CORRECT);
+        } else {
+            rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+            if (0 != rc) {
+                OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                                         UDS_NRC_GENERAL_PROG_FAIL);
+            } else {
+                LOG_INF("Force-revert: slot1 re-staged, rebooting");
+                buildWriteDidPositiveResponse(ctx, requestData);
+                UDS_SendResponse(ctx);
+                k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
+                sys_reboot(SYS_REBOOT_COLD);
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Handle a WDBI write to UDS_DID_OTA_RESTORE_FACTORY (0xF276).
+ *
+ * Re-stages the captured factory backup image into slot1 and reboots.
+ * @c factory_image_restore_to_slot1() handles the copy + magic check +
+ * boot_request_upgrade + sys_reboot internally; on success it doesn't
+ * return. Negative return values are surfaced as NRCs.
+ */
+static bool writeRestoreFactoryDID(UDSContext_t *ctx,
+                                   const uint8_t *requestData,
+                                   uint16_t requestLength)
+{
+    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+
+    if (0U != nrc) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
+    } else if (!factory_image_is_captured()) {
+        LOG_WRN("Restore-factory refused: no captured factory image");
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                                 UDS_NRC_CONDITIONS_NOT_CORRECT);
+    } else {
+        /* Send the positive response *before* the restore call because
+         * the restore is synchronous and ends in sys_reboot — we won't
+         * get another chance to reply. */
+        LOG_INF("Restore-factory: kicking factory_image_restore_to_slot1");
+        buildWriteDidPositiveResponse(ctx, requestData);
+        UDS_SendResponse(ctx);
+        k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
+        int rc = factory_image_restore_to_slot1();
+        if (0 != rc) {
+            /* Only reachable if the restore failed before reboot —
+             * log + record but the caller has already received the
+             * positive response (best we can do without a second NRC
+             * round-trip). */
+            LOG_ERR("Restore-factory failed: %d", rc);
+            OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Handle a WDBI write to UDS_DID_OTA_FACTORY_CAPTURE (0xF277).
+ *
+ * Forces re-capture of the currently-confirmed slot0 image into the
+ * factory backup partition. Refused unless slot0 is confirmed — capturing
+ * an unconfirmed candidate would defeat the "known-good fallback"
+ * property of the factory image. Capture runs asynchronously on a
+ * preemptible work queue so the UDS handler returns immediately and the
+ * watchdog feeder can keep ticking while the SPI NOR erase runs.
+ */
+static bool writeFactoryCaptureDID(UDSContext_t *ctx,
+                                   const uint8_t *requestData,
+                                   uint16_t requestLength)
+{
+    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+
+    if (0U != nrc) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
+    } else if (!boot_is_img_confirmed()) {
+        LOG_WRN("Force-capture refused: running image is not confirmed");
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                                 UDS_NRC_CONDITIONS_NOT_CORRECT);
+    } else {
+        LOG_INF("Force-capture: kicking factory_image_force_capture_async");
+        factory_image_force_capture_async();
+        buildWriteDidPositiveResponse(ctx, requestData);
+        UDS_SendResponse(ctx);
+    }
+    return true;
+}
+
+/**
  * @brief Handle WriteDataByIdentifier service (SID 0x2E)
  *
  * Dispatches to the appropriate write handler based on the DID: setpoint,
@@ -773,6 +954,12 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
             (void)writeCalibrationTriggerDID(ctx, requestData, requestLength);
         } else if (UDS_DID_ERROR_HISTOGRAM_CLEAR == did) {
             (void)writeHistogramClearDID(ctx, requestData, requestLength);
+        } else if (UDS_DID_OTA_FORCE_REVERT == did) {
+            (void)writeForceRevertDID(ctx, requestData, requestLength);
+        } else if (UDS_DID_OTA_RESTORE_FACTORY == did) {
+            (void)writeRestoreFactoryDID(ctx, requestData, requestLength);
+        } else if (UDS_DID_OTA_FACTORY_CAPTURE == did) {
+            (void)writeFactoryCaptureDID(ctx, requestData, requestLength);
         } else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
                (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))) {
             (void)writeSettingSaveDID(ctx, did, requestData, requestLength);

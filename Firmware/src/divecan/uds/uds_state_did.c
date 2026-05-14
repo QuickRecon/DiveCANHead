@@ -9,6 +9,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/dfu/mcuboot.h>
+#include <zephyr/storage/flash_map.h>
 #include <string.h>
 
 #include "uds_state_did.h"
@@ -19,6 +21,8 @@
 #include "power_management.h"
 #include "ppo2_control.h"
 #include "error_histogram.h"
+#include "factory_image.h"
+#include "firmware_confirm.h"
 #include "errors.h"
 #include "common.h"
 
@@ -137,6 +141,240 @@ static CellKind_t cellKindFor(uint8_t cellNum)
         result = kinds[cellNum];
     }
     return result;
+}
+
+/* ============================================================================
+ * MCUBoot / OTA status DID helpers (0xF27x)
+ * ============================================================================ */
+
+static const size_t OTA_VERSION_LEN        = 8U;
+static const size_t OTA_VERSION_SHORT_LEN  = 4U;
+static const size_t MCUBOOT_STATUS_LEN     = 16U;
+static const size_t POST_STATUS_LEN        = 4U;
+
+/* Byte offsets within the 16-byte MCUBOOT_STATUS payload. */
+static const size_t MB_STATUS_OFF_SWAP    = 0U;
+static const size_t MB_STATUS_OFF_CONFIRM = 1U;
+static const size_t MB_STATUS_OFF_SLOT    = 2U;
+static const size_t MB_STATUS_OFF_FACTORY = 3U;
+static const size_t MB_STATUS_OFF_VER_S0  = 4U;
+static const size_t MB_STATUS_OFF_VER_S1  = 8U;
+static const size_t MB_STATUS_OFF_VER_FAC = 12U;
+
+static const uint8_t INVALID_VERSION_BYTE = 0xFFU;
+
+/**
+ * @brief Encode an MCUBoot sem_ver into the 8-byte on-wire layout.
+ *
+ * Layout: major(1) + minor(1) + revision(2 LE) + build_num(4 LE).
+ */
+static void writeSemVer8(uint8_t *buf, const struct mcuboot_img_sem_ver *v)
+{
+    buf[0] = v->major;
+    buf[1] = v->minor;
+    buf[2] = (uint8_t)(v->revision);
+    buf[3] = (uint8_t)((uint16_t)(v->revision) >> DIVECAN_BYTE_WIDTH);
+    buf[4] = (uint8_t)(v->build_num);
+    buf[5] = (uint8_t)(v->build_num >> DIVECAN_BYTE_WIDTH);
+    buf[6] = (uint8_t)(v->build_num >> DIVECAN_TWO_BYTE_WIDTH);
+    buf[7] = (uint8_t)(v->build_num >> DIVECAN_THREE_BYTE_WIDTH);
+}
+
+/**
+ * @brief Encode the truncated 4-byte version used inside MCUBOOT_STATUS.
+ *
+ * Matches the first 4 bytes of writeSemVer8: major / minor / rev_lo / rev_hi.
+ * build_num is dropped.
+ */
+static void writeSemVer4(uint8_t *buf, const struct mcuboot_img_sem_ver *v)
+{
+    buf[0] = v->major;
+    buf[1] = v->minor;
+    buf[2] = (uint8_t)(v->revision);
+    buf[3] = (uint8_t)((uint16_t)(v->revision) >> DIVECAN_BYTE_WIDTH);
+}
+
+/**
+ * @brief Fill @p buf with 0xFF — the "no valid image" sentinel.
+ */
+static void writeInvalidVersion(uint8_t *buf, size_t len)
+{
+    (void)memset(buf, INVALID_VERSION_BYTE, len);
+}
+
+/**
+ * @brief Read the MCUBoot sem_ver from an image bank.
+ *
+ * @return true on a valid header read, false on any failure (header missing,
+ *         truncated, wrong magic).
+ */
+static bool readBankSemVer(uint8_t area_id, struct mcuboot_img_sem_ver *out)
+{
+    struct mcuboot_img_header hdr = {0};
+    bool ok = false;
+    int rc = boot_read_bank_header(area_id, &hdr, sizeof(hdr));
+    if ((0 == rc) && (1U == hdr.mcuboot_version)) {
+        *out = hdr.h.v1.sem_ver;
+        ok = true;
+    }
+    return ok;
+}
+
+static void fillSlotVersion8(uint8_t area_id, uint8_t *buf)
+{
+    struct mcuboot_img_sem_ver v = {0};
+    if (readBankSemVer(area_id, &v)) {
+        writeSemVer8(buf, &v);
+    } else {
+        writeInvalidVersion(buf, OTA_VERSION_LEN);
+    }
+}
+
+static void fillSlotVersion4(uint8_t area_id, uint8_t *buf)
+{
+    struct mcuboot_img_sem_ver v = {0};
+    if (readBankSemVer(area_id, &v)) {
+        writeSemVer4(buf, &v);
+    } else {
+        writeInvalidVersion(buf, OTA_VERSION_SHORT_LEN);
+    }
+}
+
+static void fillFactoryVersion8(uint8_t *buf)
+{
+    uint8_t sem_ver[8] = {0};
+    int rc = factory_image_get_sem_ver(sem_ver);
+    if (0 == rc) {
+        (void)memcpy(buf, sem_ver, OTA_VERSION_LEN);
+    } else {
+        writeInvalidVersion(buf, OTA_VERSION_LEN);
+    }
+}
+
+static void fillFactoryVersion4(uint8_t *buf)
+{
+    uint8_t version4[4] = {0};
+    int rc = factory_image_get_version(version4);
+    if (0 == rc) {
+        (void)memcpy(buf, version4, OTA_VERSION_SHORT_LEN);
+    } else {
+        writeInvalidVersion(buf, OTA_VERSION_SHORT_LEN);
+    }
+}
+
+/**
+ * @brief Build the 16-byte MCUBOOT_STATUS payload.
+ *
+ * See uds_state_did.h for the wire layout. Failures in any underlying
+ * MCUBoot/factory_image call surface as 0xFF bytes in the corresponding
+ * version slot rather than a refused read — diagnostic tools should be
+ * able to fetch this DID at any point in the boot cycle.
+ */
+static void buildMcubootStatus(uint8_t *buf)
+{
+    int swap = mcuboot_swap_type();
+    if (swap < 0) {
+        swap = 0;
+    }
+    buf[MB_STATUS_OFF_SWAP] = (uint8_t)swap;
+
+    if (boot_is_img_confirmed()) {
+        buf[MB_STATUS_OFF_CONFIRM] = 1U;
+    } else {
+        buf[MB_STATUS_OFF_CONFIRM] = 0U;
+    }
+
+    buf[MB_STATUS_OFF_SLOT] = boot_fetch_active_slot();
+
+    if (factory_image_is_captured()) {
+        buf[MB_STATUS_OFF_FACTORY] = 1U;
+    } else {
+        buf[MB_STATUS_OFF_FACTORY] = 0U;
+    }
+
+    fillSlotVersion4((uint8_t)PARTITION_ID(slot0_partition),
+                     &buf[MB_STATUS_OFF_VER_S0]);
+    fillSlotVersion4((uint8_t)PARTITION_ID(slot1_partition),
+                     &buf[MB_STATUS_OFF_VER_S1]);
+    fillFactoryVersion4(&buf[MB_STATUS_OFF_VER_FAC]);
+}
+
+/**
+ * @brief Build the 4-byte POST_STATUS payload.
+ *
+ * Layout: state(1) + pass_mask_low(1) + reserved(2). Pass-mask uses only
+ * 5 bits (one per POST check); the byte is plenty.
+ */
+static void buildPostStatus(uint8_t *buf)
+{
+    buf[0] = (uint8_t)firmware_confirm_get_state();
+    buf[1] = (uint8_t)(firmware_confirm_get_pass_mask() & BYTE_MASK);
+    buf[2] = 0U;
+    buf[3] = 0U;
+}
+
+/**
+ * @brief Handle a read for any 0xF27x OTA-status DID.
+ *
+ * @return true if @p did matched a known OTA DID and the payload was
+ *         written; false if @p did is not an OTA DID. Buffer-overflow
+ *         protection is handled by maxLen check.
+ */
+static bool handleOtaStatusDID(uint16_t did, uint8_t *buf,
+                               uint16_t maxLen, uint16_t *len)
+{
+    bool handled = true;
+    size_t required = 0U;
+
+    switch (did) {
+    case UDS_DID_MCUBOOT_STATUS:
+        required = MCUBOOT_STATUS_LEN;
+        break;
+    case UDS_DID_POST_STATUS:
+        required = POST_STATUS_LEN;
+        break;
+    case UDS_DID_OTA_VERSION:
+    case UDS_DID_OTA_PENDING_VERSION:
+    case UDS_DID_OTA_FACTORY_VERSION:
+        required = OTA_VERSION_LEN;
+        break;
+    default:
+        handled = false;
+        break;
+    }
+
+    if (handled) {
+        if (maxLen < required) {
+            OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+            handled = false;
+        } else {
+            switch (did) {
+            case UDS_DID_MCUBOOT_STATUS:
+                buildMcubootStatus(buf);
+                break;
+            case UDS_DID_POST_STATUS:
+                buildPostStatus(buf);
+                break;
+            case UDS_DID_OTA_VERSION:
+                fillSlotVersion8((uint8_t)PARTITION_ID(slot0_partition),
+                                 buf);
+                break;
+            case UDS_DID_OTA_PENDING_VERSION:
+                fillSlotVersion8((uint8_t)PARTITION_ID(slot1_partition),
+                                 buf);
+                break;
+            case UDS_DID_OTA_FACTORY_VERSION:
+                fillFactoryVersion8(buf);
+                break;
+            default:
+                /* Unreachable — handled flagged above */
+                break;
+            }
+            *len = (uint16_t)required;
+        }
+    }
+
+    return handled;
 }
 
 /* ============================================================================
@@ -339,7 +577,10 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
     }
 
     default:
-        result = false;
+        /* Fall through to the OTA/MCUBoot helper for 0xF270-0xF274.
+         * Unknown DIDs land back here returning false → caller emits
+         * REQUEST_OUT_OF_RANGE NRC. */
+        result = handleOtaStatusDID(did, buf, maxLen, len);
         break;
     }
 

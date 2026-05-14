@@ -36,6 +36,7 @@ target_sources(app PRIVATE
 
 target_include_directories(app PRIVATE
     ${APP_SRC}/divecan/include
+    ${APP_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include
 )
 

@@ -84,6 +84,13 @@ int error_histogram_clear(void) { return 0; }
 
 bool calibration_is_running(void) { return false; }
 
+/* factory_image_* are referenced by uds.c's OTA write-DID handlers
+ * (0xF276 / 0xF277). The uds_ota suite doesn't exercise those write
+ * paths — these stubs exist only to satisfy the linker. */
+bool factory_image_is_captured(void) { return false; }
+int  factory_image_restore_to_slot1(void) { return -ENOSYS; }
+void factory_image_force_capture_async(void) {}
+
 ZBUS_CHAN_DEFINE(chan_cal_request, CalRequest_t, NULL, NULL,
          ZBUS_OBSERVERS_EMPTY, ZBUS_MSG_INIT(0));
 
