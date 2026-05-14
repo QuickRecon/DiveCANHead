@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "uds.h"
+#include "uds_ota.h"
 #include "uds_settings.h"
 #include "uds_state_did.h"
 #include "divecan_channels.h"
@@ -37,9 +38,14 @@ static const size_t SI_COUNT_OFF = 4U;
 static const uint16_t UDS_SINGLE_VALUE_LEN = 5U;
 static const uint16_t SETTING_VALUE_WRITE_LEN = 12U;
 
+/* SID 0x10 subfunction reply length: SID echo + subfunction byte */
+static const uint16_t UDS_SESSION_CTRL_REQ_LEN = 2U;
+static const uint16_t UDS_SESSION_CTRL_RESP_LEN = 2U;
+
 /* Forward declarations */
 static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
+static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static bool readSettingInfoDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
 static bool readSettingValueDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
 static bool readSettingLabelDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
@@ -63,6 +69,49 @@ void UDS_Init(UDSContext_t *ctx, ISOTPContext_t *isotpCtx)
     } else {
         (void)memset(ctx, 0, sizeof(UDSContext_t));
         ctx->isotpContext = isotpCtx;
+        ctx->session = UDS_SESSION_DEFAULT;
+        ctx->lastActivityMs = k_uptime_get_32();
+    }
+}
+
+bool UDS_IsInDive(void)
+{
+    bool in_dive = false;
+    uint16_t ambient_mbar = 0;
+    if (0 == zbus_chan_read(&chan_atmos_pressure, &ambient_mbar, K_MSEC(10))) {
+        if (ambient_mbar > DIVE_AMBIENT_PRESSURE_THRESHOLD_MBAR) {
+            in_dive = true;
+        }
+    }
+    return in_dive;
+}
+
+void UDS_MaintainSession(UDSContext_t *ctx)
+{
+    if (NULL == ctx) {
+        OP_ERROR(OP_ERR_NULL_PTR);
+    } else {
+        uint32_t now = k_uptime_get_32();
+
+        /* S3 timeout: programming session reverts to default after
+         * UDS_S3_TIMEOUT_MS of inactivity. */
+        if (UDS_SESSION_PROGRAMMING == ctx->session) {
+            uint32_t elapsed = now - ctx->lastActivityMs;
+            if (elapsed > UDS_S3_TIMEOUT_MS) {
+                LOG_INF("S3 timeout: programming session -> default");
+                ctx->session = UDS_SESSION_DEFAULT;
+            }
+        }
+
+        /* Forced downgrade if we observe a dive in progress — any
+         * programming session that was alive when the diver descended
+         * gets cancelled. Safety property overrides user request. */
+        if ((UDS_SESSION_PROGRAMMING == ctx->session) && UDS_IsInDive()) {
+            LOG_WRN("Dive detected: programming session forced -> default");
+            ctx->session = UDS_SESSION_DEFAULT;
+        }
+
+        ctx->lastActivityMs = now;
     }
 }
 
@@ -82,15 +131,28 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
     if ((NULL == ctx) || (NULL == requestData) || (0U == requestLength)) {
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
+        UDS_MaintainSession(ctx);
+
         uint8_t sid = requestData[UDS_SID_IDX];
 
         switch (sid) {
+        case UDS_SID_DIAG_SESSION_CTRL:
+            HandleDiagnosticSessionControl(ctx, requestData, requestLength);
+            break;
+
         case UDS_SID_READ_DATA_BY_ID:
             HandleReadDataByIdentifier(ctx, requestData, requestLength);
             break;
 
         case UDS_SID_WRITE_DATA_BY_ID:
             HandleWriteDataByIdentifier(ctx, requestData, requestLength);
+            break;
+
+        case UDS_SID_REQUEST_DOWNLOAD:
+        case UDS_SID_TRANSFER_DATA:
+        case UDS_SID_REQUEST_TRANSFER_EXIT:
+        case UDS_SID_ROUTINE_CONTROL:
+            UDS_OTA_Handle(ctx, requestData, requestLength);
             break;
 
         default:
@@ -137,6 +199,60 @@ void UDS_SendResponse(UDSContext_t *ctx)
     } else {
         (void)ISOTP_Send(ctx->isotpContext, ctx->responseBuffer,
                  ctx->responseLength);
+    }
+}
+
+/* ---- SID 0x10 DiagnosticSessionControl ---- */
+
+/**
+ * @brief Handle DiagnosticSessionControl service (SID 0x10)
+ *
+ * Subfunction 0x01 (default) always succeeds.
+ * Subfunction 0x02 (programming) transitions only if not in a dive.
+ * Any other subfunction returns NRC subFunctionNotSupported.
+ *
+ * @param ctx           UDS context
+ * @param requestData   Request bytes starting at the SID byte
+ * @param requestLength Total byte count of requestData
+ */
+static void HandleDiagnosticSessionControl(UDSContext_t *ctx,
+                       const uint8_t *requestData,
+                       uint16_t requestLength)
+{
+    if (requestLength < UDS_SESSION_CTRL_REQ_LEN) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
+        UDS_SendNegativeResponse(ctx, UDS_SID_DIAG_SESSION_CTRL,
+                     UDS_NRC_INCORRECT_MSG_LEN);
+    } else {
+        uint8_t subfunction = requestData[UDS_SID_IDX + 1U];
+        bool ok = false;
+
+        if (UDS_SESSION_DEFAULT == subfunction) {
+            ctx->session = UDS_SESSION_DEFAULT;
+            ok = true;
+        } else if (UDS_SESSION_PROGRAMMING == subfunction) {
+            if (UDS_IsInDive()) {
+                OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
+                        UDS_NRC_CONDITIONS_NOT_CORRECT);
+                UDS_SendNegativeResponse(ctx, UDS_SID_DIAG_SESSION_CTRL,
+                             UDS_NRC_CONDITIONS_NOT_CORRECT);
+            } else {
+                ctx->session = UDS_SESSION_PROGRAMMING;
+                ok = true;
+            }
+        } else {
+            OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_SUBFUNC_NOT_SUPPORTED);
+            UDS_SendNegativeResponse(ctx, UDS_SID_DIAG_SESSION_CTRL,
+                         UDS_NRC_SUBFUNC_NOT_SUPPORTED);
+        }
+
+        if (ok) {
+            ctx->responseBuffer[UDS_PAD_IDX] =
+                UDS_SID_DIAG_SESSION_CTRL + UDS_RESPONSE_SID_OFFSET;
+            ctx->responseBuffer[UDS_SID_IDX] = subfunction;
+            ctx->responseLength = UDS_SESSION_CTRL_RESP_LEN;
+            UDS_SendResponse(ctx);
+        }
     }
 }
 

@@ -10,9 +10,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/can.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <string.h>
 
 #include "divecan_tx.h"
+#include "divecan_counters.h"
 #include "errors.h"
 #include "common.h"
 
@@ -20,6 +22,37 @@ LOG_MODULE_REGISTER(divecan_send, LOG_LEVEL_INF);
 
 /* Timeout for can_send (ms) — generous to handle bus contention */
 #define CAN_SEND_TIMEOUT_MS 100
+
+/**
+ * @brief Return pointer to the file-scoped TX counter
+ *
+ * Saturating uint32_t — POST observers use a "did it advance by N" pattern
+ * that's wrap-sensitive, so we clamp rather than let it wrap.
+ *
+ * @return Pointer to the singleton atomic counter
+ */
+static atomic_t *get_tx_count(void)
+{
+    static atomic_t tx_count;
+    return &tx_count;
+}
+
+/**
+ * @brief Bump the TX counter, saturating at UINT32_MAX
+ */
+static void bump_tx_count(void)
+{
+    atomic_t *count = get_tx_count();
+    atomic_val_t current = atomic_get(count);
+    if (current < (atomic_val_t)UINT32_MAX) {
+        (void)atomic_inc(count);
+    }
+}
+
+uint32_t divecan_send_get_tx_count(void)
+{
+    return (uint32_t)atomic_get(get_tx_count());
+}
 
 /**
  * @brief Return pointer to the static CAN device handle
@@ -132,6 +165,8 @@ Status_t divecan_send(const DiveCANMessage_t *msg)
                   NULL, NULL);
         if (0 != result) {
             OP_ERROR_DETAIL(OP_ERR_CAN_TX, (uint32_t)(-result));
+        } else {
+            bump_tx_count();
         }
     }
 
@@ -174,6 +209,8 @@ Status_t divecan_send_blocking(const DiveCANMessage_t *msg)
                        K_MSEC(CAN_SEND_TIMEOUT_MS))) {
                 OP_ERROR_DETAIL(OP_ERR_CAN_TX, 0xFFU);
                 result = -ETIMEDOUT;
+            } else {
+                bump_tx_count();
             }
         }
     }

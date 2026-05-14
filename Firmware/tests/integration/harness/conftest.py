@@ -127,6 +127,8 @@ def _kill_stale_firmware() -> None:
 
 def launch_native_sim_firmware(append_log: bool = False,
                                 rt_ratio: float | None = None,
+                                flash_file: str | None = None,
+                                flash_erase: bool = False,
                                 ) -> subprocess.Popen[bytes]:
     """Spawn the native_sim binary and return the Popen handle.
 
@@ -150,6 +152,12 @@ def launch_native_sim_firmware(append_log: bool = False,
     sys_reboot'd (which on native_sim equates to ``posix_exit``).
     ``append_log=True`` opens ``/tmp/divecan_firmware.log`` in append
     mode so the second boot's output is preserved alongside the first.
+
+    ``flash_file`` points the Zephyr flash simulator at a backing file
+    so state persists across relaunches.  Without this, native_sim
+    defaults to ``cwd/flash.bin`` which collides across parallel test
+    invocations.  Set ``flash_erase=True`` to wipe it on launch (used
+    for the first launch of a test that wants a clean slate).
     """
     if not NATIVE_SIM_BIN.exists():
         pytest.skip(f"native_sim binary not found at {NATIVE_SIM_BIN}")
@@ -162,6 +170,10 @@ def launch_native_sim_firmware(append_log: bool = False,
     cmdline: list[str] = [str(NATIVE_SIM_BIN)]
     if rt_ratio is not None:
         cmdline.append(f"--rt-ratio={rt_ratio}")
+    if flash_file is not None:
+        cmdline.append(f"-flash={flash_file}")
+        if flash_erase:
+            cmdline.append("-flash_erase")
 
     proc = subprocess.Popen(
         cmdline,
@@ -277,6 +289,56 @@ def can_only_dut(
     the shim connection."""
     _ = firmware
     return can_bus
+
+
+@pytest.fixture()
+def firmware_with_flash(
+    request, tmp_path,
+) -> Generator[tuple[subprocess.Popen[bytes], str, str], None, None]:
+    """Launch firmware with a file-backed flash simulator.
+
+    Yields ``(proc, sock_path, flash_path)``.  The flash file lives in
+    pytest's per-test ``tmp_path``, so each test gets an isolated
+    backing.  The file is created empty (flash_erase=True on first
+    launch), letting the firmware boot from an unwritten flash sim
+    that the integration build's NVS subsystem then populates.
+
+    Tests that want to relaunch after a sys_reboot (e.g. to inspect
+    the post-activate flash state) can call
+    ``relaunch_native_sim_firmware(flash_path)`` and the flash content
+    is preserved.
+    """
+    marker = request.node.get_closest_marker("rt_ratio")
+    rt_ratio = marker.args[0] if marker is not None else None
+
+    flash_path = str(tmp_path / "flash.bin")
+
+    _kill_stale_firmware()
+    proc = launch_native_sim_firmware(rt_ratio=rt_ratio,
+                                       flash_file=flash_path,
+                                       flash_erase=True)
+
+    try:
+        yield proc, SHIM_SOCK_PATH, flash_path
+    finally:
+        stop_native_sim_firmware(proc)
+
+
+def relaunch_native_sim_firmware(flash_path: str,
+                                  rt_ratio: float | None = None,
+                                  ) -> subprocess.Popen[bytes]:
+    """Re-launch the firmware after a sys_reboot, preserving flash state.
+
+    Used by OTA tests to simulate the post-activate cycle: the process
+    exits via sys_reboot, the harness sees the exit, and a second
+    invocation against the same flash file reads back what the OTA
+    pipeline left behind (slot1 contents, MCUBoot trailer markers).
+    """
+    _kill_stale_firmware()
+    return launch_native_sim_firmware(append_log=True,
+                                       rt_ratio=rt_ratio,
+                                       flash_file=flash_path,
+                                       flash_erase=False)
 
 
 @pytest.fixture()

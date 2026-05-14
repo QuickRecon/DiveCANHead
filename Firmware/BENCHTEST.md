@@ -141,11 +141,93 @@ Same convention as `ARCHITECTURE.md` and `COMPROMISE.md`.
 
 ---
 
-## Section 2 — OTA transfer (Phase 3, placeholder)
+## Section 2 — OTA transfer (Phase 3)
 
-_Filled in when Phase 3 lands. Will cover RequestDownload (0x34),
-TransferData (0x36), RequestTransferExit (0x37), header rejection,
-hash rejection at activation._
+The wire-protocol behaviour for SIDs 0x10 / 0x34 / 0x36 / 0x37 / 0x31 is
+covered automatically by:
+
+- **`tests/uds_ota/`** — native_sim ztest suite, 25 cases (run with
+  `scripts/native_test.py run uds_ota`)
+- **`tests/integration/harness/test_uds_ota.py`** — pytest E2E suite,
+  8 cases over vcan against the real Zephyr firmware (run with
+  `pytest test_uds_ota.py` from the harness venv)
+
+The bench tests below catch what the host harness can't: the real
+MCUBoot bootloader doing the actual swap on STM32L4 silicon. Until the
+"Enable MCUBoot E2E on native_sim" follow-up lands, this section is the
+authoritative coverage for the swap path.
+
+### BT-2.1 Happy path: streamed image swaps in
+
+- **Pre:** Unit running a confirmed v1 image. SD card / external NOR in
+  whatever state — slot1 contents irrelevant.
+- **Action:**
+  1. Use the existing `tests/integration/harness/uds_ota.py` helpers (or
+     equivalent dive-computer tool) over a USB CAN adapter:
+     ```
+     ota.enter_programming()
+     ota.request_download(len(image))
+     ota.transfer_image(image)
+     ota.request_transfer_exit()
+     ota.routine_activate()
+     ```
+  2. Wait ~15 s for MCUBoot's swap-using-scratch to complete.
+  3. Power-cycle (or watch the reboot fire from the activate response).
+- **Pass:**
+  - Each UDS request gets a positive response (0x50 / 0x74 / 0x76 / 0x77
+    / 0x71).
+  - On the next boot, the running firmware is v2 (query DID 0xF000 to
+    confirm).
+  - No `Image in the primary slot is not valid!` line in MCUBoot's RTT
+    log.
+  - **The unit is now booting from a test-mode image — Phase 4 POST
+    confirmation hasn't landed yet, so the image will revert on the
+    next reboot unless `boot_write_img_confirmed()` is called manually
+    via SWD.** This is the documented Phase 3 → Phase 4 gap; flagged in
+    the OTA plan.
+
+### BT-2.2 Header rejection at 0x37
+
+- **Pre:** Unit running a confirmed image.
+- **Action:** Run `tests/integration/harness/test_uds_ota.py`'s
+  `truncate_image_header()` helper to zero the MCUBoot magic, then
+  stream that corrupted image via 0x34 / 0x36 / 0x37.
+- **Pass:**
+  - 0x37 returns NRC (0x22 or 0x72).
+  - slot0 is **untouched** — `mcuboot_swap_type()` reports
+    BOOT_SWAP_TYPE_NONE on next read.
+  - `boot_request_upgrade` was never called.
+
+### BT-2.3 Hash rejection at 0x31 activate
+
+- **Pre:** Unit running a confirmed image.
+- **Action:** Use `corrupt_signed_image()` to flip a byte inside the
+  body of a valid signed image. Stream the full 0x34/0x36/0x37/0x31
+  sequence.
+- **Pass:**
+  - 0x37 succeeds (header magic + size still valid).
+  - 0x31 returns NRC 0x22 (CONDITIONS_NOT_CORRECT) — the firmware-side
+    SHA-256 walk caught the corruption before the bootloader was
+    invoked.
+  - `boot_request_upgrade` was never called.
+  - The unit stays alive, no reboot.
+
+### BT-2.4 Programming session refused mid-dive
+
+- **Pre:** Unit running a confirmed image. Pressure transducer
+  registering surface (~1013 mbar).
+- **Action:**
+  1. Pressurise the depth chamber (or inject a high `chan_atmos_pressure`
+     via the test rig) to simulate descent past 2 m → ambient > 1200 mbar.
+  2. From the host: send `SID 0x10 subfunction 0x02` (enter programming
+     session).
+- **Pass:**
+  - DUT replies NRC 0x22 — programming session denied.
+  - Surface, pressure back to ~1013 mbar.
+  - Retry session control: positive response, session enters
+    programming.
+  - Confirms the safety property "no flash operations underwater" holds
+    across the depth threshold.
 
 ## Section 3 — POST + confirm (Phase 4, placeholder)
 

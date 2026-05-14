@@ -66,6 +66,7 @@ target_sources(app PRIVATE
     src/divecan/divecan_ppo2_math.c
     src/divecan/divecan_ppo2_tx.c
     src/divecan/uds/uds.c
+    src/divecan/uds/uds_ota.c
     src/divecan/uds/uds_state_did.c
     src/divecan/uds/uds_settings.c
     src/divecan/uds/uds_log_push.c

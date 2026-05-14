@@ -11,11 +11,13 @@
 #include <zephyr/drivers/can.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/zbus/zbus.h>
+#include <zephyr/sys/atomic.h>
 #include <string.h>
 
 #include "divecan_types.h"
 #include "divecan_tx.h"
 #include "divecan_channels.h"
+#include "divecan_counters.h"
 #include "isotp.h"
 #include "isotp_tx_queue.h"
 #include "uds.h"
@@ -71,6 +73,54 @@ static DiveCANUDSState_t *getUDSState(void)
 {
     static DiveCANUDSState_t state = {0};
     return &state;
+}
+
+/* ---- F-section RX counters ---- */
+
+/**
+ * @brief Return pointer to the file-scoped BUS_INIT receive counter
+ *
+ * Saturating uint32_t — POST uses a "did it advance" pattern that wraps
+ * badly, so we clamp rather than let it roll over.
+ *
+ * @return Pointer to the singleton atomic counter
+ */
+static atomic_t *get_bus_init_count(void)
+{
+    static atomic_t count;
+    return &count;
+}
+
+/**
+ * @brief Return pointer to the file-scoped BUS_ID (ping) receive counter
+ */
+static atomic_t *get_bus_id_count(void)
+{
+    static atomic_t count;
+    return &count;
+}
+
+/**
+ * @brief Bump an atomic counter, saturating at UINT32_MAX
+ *
+ * @param count Counter to bump
+ */
+static void bump_saturating(atomic_t *count)
+{
+    atomic_val_t current = atomic_get(count);
+    if (current < (atomic_val_t)UINT32_MAX) {
+        (void)atomic_inc(count);
+    }
+}
+
+uint32_t divecan_rx_get_bus_init_count(void)
+{
+    return (uint32_t)atomic_get(get_bus_init_count());
+}
+
+uint32_t divecan_rx_get_bus_id_count(void)
+{
+    return (uint32_t)atomic_get(get_bus_id_count());
 }
 
 /* ---- Forward declarations ---- */
@@ -215,6 +265,7 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
             switch (message_id) {
             case BUS_ID_ID:
                 /* Respond to pings */
+                bump_saturating(get_bus_id_count());
                 RespPing(&message);
                 break;
             case BUS_NAME_ID:
@@ -255,6 +306,7 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
                 break;
             case BUS_INIT_ID:
                 /* Bus Init */
+                bump_saturating(get_bus_init_count());
                 RespBusInit(&message);
                 break;
             case RMS_TEMP_ID:
