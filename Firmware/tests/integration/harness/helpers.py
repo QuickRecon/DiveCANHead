@@ -82,6 +82,22 @@ def check_cell_millivolts(actual_x100: int, expected_centibar: int) -> None:
     )
 
 
+def sim_sleep(shim: SimShim, sim_seconds: float,
+              poll_interval: float = 0.005) -> None:
+    """Sleep until the firmware has advanced by ``sim_seconds`` of simulated time.
+
+    At rt_ratio=1 this behaves like ``time.sleep(sim_seconds)`` plus IPC
+    overhead.  At rt_ratio=100, ``sim_sleep(shim, 3.0)`` completes in
+    ~0.03 s wall instead of 3.0 s.
+    """
+    if shim is None:
+        time.sleep(sim_seconds)
+        return
+    target_us = shim.get_uptime_us() + int(sim_seconds * 1_000_000)
+    while shim.get_uptime_us() < target_us:
+        time.sleep(poll_interval)
+
+
 def configure_all_cells(
     shim: SimShim,
     centibar_values: Iterable[float],
@@ -132,7 +148,7 @@ def calibrate_board(
     """
     for cell_num, cell_type in enumerate(cells, start=1):
         configure_cell(shim, cell_num, cell_type, 100)  # 1.00 bar
-    time.sleep(CAL_SETTLE_S)
+    sim_sleep(shim, CAL_SETTLE_S)
 
     can_client.flush_rx()
     can_client.send(divecan.build_cal_request())

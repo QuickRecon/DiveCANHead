@@ -76,8 +76,10 @@ SIM_DURATION_S: float = 300.0
 # bootup transient.
 STEADY_WINDOW_START_S: float = 60.0
 
-# Firmware-time acceleration factor.  rt-ratio=10 ⇒ simulated time
-# advances at 10× wall clock (capped by host CPU; empirically ~5×).
+# Firmware-time acceleration factor.  Higher values run faster but the
+# test loop (shim round-trips + CAN drain) becomes the bottleneck.
+# At 100× the plant model steps with larger dt, but the firmware PID
+# still converges because cell updates arrive every few PID periods.
 RT_RATIO: float = 10.0
 
 # Steady-state assertion bounds.  Picked so a converged-but-noisy
@@ -105,8 +107,9 @@ DEFAULT_SETPOINT_CB: int = 70
 # Directory for per-run plots.  Created on first use; existing files
 # are overwritten so re-running the suite always reflects the latest
 # trace.
-PLOT_DIR: Path = Path(os.environ.get("DIVECAN_PLOT_DIR",
-                                      "/tmp/divecan_stability_plots"))
+PLOT_DIR: Path = Path(os.environ.get(
+    "DIVECAN_PLOT_DIR",
+    str(Path(__file__).resolve().parent / "control-response-data")))
 
 
 # ---------------------------------------------------------------------------
@@ -218,9 +221,11 @@ def _save_plot(profile_name: str, mode_name: str,
 def _inject_ppo2_to_cells(shim, reported_ppo2_bar):
     """Push the model's per-cell PPO2 readings into the firmware."""
     bar_to_mv = 100.0 / 2.0  # 50 mV per bar per helpers.configure_cell
-    shim.set_digital_ppo2(1, reported_ppo2_bar[0])
-    shim.set_digital_ppo2(2, reported_ppo2_bar[1])
-    shim.set_analog_millis(3, reported_ppo2_bar[2] * bar_to_mv)
+    shim.set_cells(
+        d1=reported_ppo2_bar[0],
+        d2=reported_ppo2_bar[1],
+        a3=reported_ppo2_bar[2] * bar_to_mv,
+    )
 
 
 def _count_setpoint_crossings(samples: list[int], setpoint_cb: int) -> int:
@@ -301,7 +306,7 @@ def test_controller_does_not_oscillate(dut, firmware,
         last_sol_state = -1  # Force first sample to log
 
         while True:
-            now_us = shim.get_uptime_us()
+            now_us, sol_state = shim.get_state()
             sim_t_rel = (now_us - sim_t_start_us) / 1_000_000.0
             if sim_t_rel >= SIM_DURATION_S:
                 break
@@ -309,8 +314,7 @@ def test_controller_does_not_oscillate(dut, firmware,
             dt_s = (now_us - sim_t_last_us) / 1_000_000.0
             sim_t_last_us = now_us
 
-            solenoid = bool(
-                shim.get_solenoid_state()[O2_INJECT_SOLENOID])
+            solenoid = bool(sol_state[O2_INJECT_SOLENOID])
             if dt_s > 0:
                 model.step(dt_s, solenoid_open=solenoid)
             _inject_ppo2_to_cells(shim, model.reported_ppo2)

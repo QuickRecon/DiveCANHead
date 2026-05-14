@@ -38,6 +38,8 @@ from uds_ota import (
 )
 
 
+pytestmark = pytest.mark.rt_ratio(100)
+
 HOST_ID: int = 1  # DIVECAN_CONTROLLER
 
 # DiveCAN PPO2_ATMOS_ID — atmospheric-pressure broadcast from the dive
@@ -100,7 +102,7 @@ def ota_dut(firmware_with_flash, vcan):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.rt_ratio(0.1)
+
 def test_session_default_then_programming(ota_dut):
     """0x10 0x01 (default) and 0x10 0x02 (programming) at surface."""
     can_bus, ota, _flash, _proc = ota_dut
@@ -111,7 +113,7 @@ def test_session_default_then_programming(ota_dut):
     assert resp[2] == 0x02, f"subfunction echo: {resp.hex()}"
 
 
-@pytest.mark.rt_ratio(0.1)
+
 def test_programming_refused_during_simulated_dive(ota_dut):
     """Inject ambient pressure > 1200 mbar → session-control must NRC."""
     can_bus, ota, _flash, _proc = ota_dut
@@ -124,7 +126,7 @@ def test_programming_refused_during_simulated_dive(ota_dut):
     )
 
 
-@pytest.mark.rt_ratio(0.1)
+
 def test_request_download_refused_in_default_session(ota_dut):
     """0x34 without prior 0x10 0x02 must NRC."""
     can_bus, ota, _flash, _proc = ota_dut
@@ -140,7 +142,7 @@ def test_request_download_refused_in_default_session(ota_dut):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.rt_ratio(0.1)
+
 def test_full_pipeline_streams_to_slot1(ota_dut):
     """Stream a small signed image through 0x10/0x34/0x36/0x37.
 
@@ -176,7 +178,7 @@ def test_full_pipeline_streams_to_slot1(ota_dut):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.rt_ratio(0.1)
+
 def test_transfer_exit_rejects_bad_header(ota_dut):
     """0x37 must NRC when the streamed image has no MCUBoot magic."""
     can_bus, ota, _flash, _proc = ota_dut
@@ -196,7 +198,7 @@ def test_transfer_exit_rejects_bad_header(ota_dut):
     assert exc.value.nrc != 0
 
 
-@pytest.mark.rt_ratio(0.1)
+
 def test_routine_activate_blocks_on_hash_mismatch(ota_dut):
     """0x31 must NRC when slot1's SHA-256 doesn't match its TLV."""
     can_bus, ota, _flash, _proc = ota_dut
@@ -218,7 +220,7 @@ def test_routine_activate_blocks_on_hash_mismatch(ota_dut):
     assert _proc.poll() is None, "DUT must not reboot on hash mismatch"
 
 
-@pytest.mark.rt_ratio(0.1)
+
 def test_transfer_data_wrong_seq_rejected(ota_dut):
     """0x36 with the wrong block sequence counter must NRC."""
     can_bus, ota, _flash, _proc = ota_dut
@@ -236,7 +238,7 @@ def test_transfer_data_wrong_seq_rejected(ota_dut):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.rt_ratio(0.1)
+
 def test_routine_activate_reboots_dut(firmware_with_flash, vcan):
     """0x31 with a valid hash must send +ve resp then sys_reboot.
 

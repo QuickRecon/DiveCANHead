@@ -221,6 +221,39 @@ static int cmd_get_uptime(const char *line, char *resp, size_t resp_size)
                     (unsigned long long)us);
 }
 
+static int cmd_get_state(const char *line, char *resp, size_t resp_size)
+{
+    (void)line;
+    uint64_t us = k_ticks_to_us_floor64(k_uptime_ticks());
+    int s[4];
+    shim_gpio_get_solenoids(s);
+    return snprintf(resp, resp_size,
+                    "{\"uptime_us\":%llu,\"solenoids\":[%d,%d,%d,%d]}\n",
+                    (unsigned long long)us, s[0], s[1], s[2], s[3]);
+}
+
+static int cmd_set_cells(const char *line, char *resp, size_t resp_size)
+{
+    float ppo2_1 = 0.0f, ppo2_2 = 0.0f, mv_3 = 0.0f;
+    bool has_d1 = (extract_float(line, "d1", &ppo2_1) == 0);
+    bool has_d2 = (extract_float(line, "d2", &ppo2_2) == 0);
+    bool has_a3 = (extract_float(line, "a3", &mv_3) == 0);
+
+    if (!has_d1 && !has_d2 && !has_a3) {
+        return snprintf(resp, resp_size, "{\"error\":\"no cell args\"}\n");
+    }
+    if (has_d1) {
+        (void)shim_uart_set_digital_ppo2(1, ppo2_1);
+    }
+    if (has_d2) {
+        (void)shim_uart_set_digital_ppo2(2, ppo2_2);
+    }
+    if (has_a3) {
+        (void)shim_adc_set_analog_millis(3, mv_3);
+    }
+    return snprintf(resp, resp_size, "{\"ok\":true}\n");
+}
+
 static const struct {
     const char *name;
     cmd_handler_t handler;
@@ -234,6 +267,8 @@ static const struct {
     { "set_bus_off",        cmd_set_bus_off },
     { "get_solenoids",      cmd_get_solenoids },
     { "get_uptime",         cmd_get_uptime },
+    { "get_state",          cmd_get_state },
+    { "set_cells",          cmd_set_cells },
 };
 
 static int dispatch_line(const char *line, char *resp, size_t resp_size)

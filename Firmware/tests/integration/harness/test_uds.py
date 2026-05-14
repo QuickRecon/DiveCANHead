@@ -40,6 +40,8 @@ import pytest
 import divecan
 import helpers
 
+pytestmark = pytest.mark.rt_ratio(100)
+
 
 # Menu transport is independent of the DUT type; for these tests the
 # host plays the dive-computer role (controller, id 1).
@@ -330,14 +332,14 @@ def test_rdbi_setpoint_default(dut) -> None:
 def test_rdbi_uptime_increases(dut) -> None:
     """Successive reads of the uptime DID must report monotonically
     increasing values."""
-    can_bus, _shim = dut
+    can_bus, shim = dut
 
     can_bus.flush_rx()
     _send_rdbi(can_bus, DID_UPTIME_SEC)
     t0_payload = _expect_rdbi_response(can_bus, DID_UPTIME_SEC)
     t0 = struct.unpack("<I", t0_payload[:4])[0]
 
-    time.sleep(2.0)
+    helpers.sim_sleep(shim, 2.0)
 
     can_bus.flush_rx()
     _send_rdbi(can_bus, DID_UPTIME_SEC)
@@ -355,7 +357,7 @@ def test_rdbi_battery_voltage(dut) -> None:
     can_bus, shim = dut
 
     shim.set_battery_voltage(8.0)
-    time.sleep(2.5)  # let the battery monitor poll the ADC
+    helpers.sim_sleep(shim, 2.5)
 
     can_bus.flush_rx()
     _send_rdbi(can_bus, DID_BATTERY_VOLTAGE)
@@ -463,7 +465,7 @@ def test_rdbi_cell_ppo2_matches_injection(calibrated_dut) -> None:
 
     # Inject 0.80 bar on cell 1 (DiveO2 by topology).
     helpers.configure_cell(shim, 1, helpers.DEV_FULL_CELLS[0], 80)
-    time.sleep(helpers.CAL_SETTLE_S)  # let driver poll + publish
+    helpers.sim_sleep(shim, helpers.CAL_SETTLE_S)
 
     can_bus.flush_rx()
     did = _cell_did(0, CELL_OFFSET_PPO2)
@@ -482,7 +484,7 @@ def test_rdbi_cell_millivolts_analog(calibrated_dut) -> None:
 
     # Cell 3 is analog; inject 50 mV.
     shim.set_analog_millis(3, 50.0)
-    time.sleep(0.5)
+    helpers.sim_sleep(shim, 0.5)
 
     can_bus.flush_rx()
     did = _cell_did(2, CELL_OFFSET_MILLIVOLTS)
@@ -516,7 +518,7 @@ def test_wdbi_setpoint(dut) -> None:
     DIDs because the wire format differs.  This split is by design in the
     firmware (see uds_state_did.h).
     """
-    can_bus, _shim = dut
+    can_bus, shim = dut
 
     DID_SETPOINT_WRITE = 0xF240
     new_setpoint_cb = 0x90  # 1.44 bar
@@ -534,7 +536,7 @@ def test_wdbi_setpoint(dut) -> None:
     )
 
     # Now read the live setpoint back.
-    time.sleep(0.2)
+    helpers.sim_sleep(shim, 0.2)
     can_bus.flush_rx()
     _send_rdbi(can_bus, DID_SETPOINT)
     payload = _expect_rdbi_response(can_bus, DID_SETPOINT)
@@ -561,7 +563,7 @@ def test_wdbi_setting_value_roundtrip(dut) -> None:
     (SETTING_SAVE_BASE + index, 1-byte 'commit' flag).  Both are
     exercised here.
     """
-    can_bus, _shim = dut
+    can_bus, shim = dut
 
     DID_SETTING_VALUE_BASE = 0x9130
     DID_SETTING_SAVE_BASE = 0x9350  # 0x9170 is option-label range, not save
@@ -599,7 +601,7 @@ def test_wdbi_setting_value_roundtrip(dut) -> None:
     )
 
     # Read the SettingValue back.
-    time.sleep(0.2)
+    helpers.sim_sleep(shim, 0.2)
     can_bus.flush_rx()
     _send_rdbi(can_bus, DID_SETTING_VALUE_BASE + setting_index)
     payload = _expect_rdbi_response(

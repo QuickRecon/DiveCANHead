@@ -39,6 +39,9 @@ from conftest import (
 )
 from sim_shim import SimShim
 import divecan
+import helpers
+
+pytestmark = pytest.mark.rt_ratio(100)
 
 
 # Battery-type → threshold map from src/power_math.c.  Keep in sync with
@@ -83,7 +86,7 @@ def test_indicated_voltage(dut, decivolts: int) -> None:
 
     volts = decivolts / 10.0
     shim.set_battery_voltage(volts)
-    time.sleep(VOLTAGE_SETTLE_S)
+    helpers.sim_sleep(shim, VOLTAGE_SETTLE_S)
 
     msg = _ping_and_get_status(can_bus)
     reported = msg.data[0]
@@ -101,7 +104,7 @@ def test_indicated_voltage_tracks_source(dut) -> None:
 
     for decivolts in (75, 80, 90):
         shim.set_battery_voltage(decivolts / 10.0)
-        time.sleep(VOLTAGE_SETTLE_S)
+        helpers.sim_sleep(shim, VOLTAGE_SETTLE_S)
         msg = _ping_and_get_status(can_bus)
         tolerance = max(0.02 * decivolts, 2)
         assert abs(msg.data[0] - decivolts) <= tolerance, (
@@ -121,7 +124,7 @@ def test_low_battery_clears_when_above_threshold(dut) -> None:
     can_bus, shim = dut
 
     shim.set_battery_voltage(LI2S_THRESHOLD_V + 1.0)
-    time.sleep(VOLTAGE_SETTLE_S)
+    helpers.sim_sleep(shim, VOLTAGE_SETTLE_S)
 
     status = _ping_and_get_status(can_bus)
     # data[7] low nibble carries battery state. BAT_LOW = 0x01, BAT_NORM = 0x02.
@@ -142,7 +145,7 @@ def test_low_battery_triggers_below_threshold(dut) -> None:
     can_bus, shim = dut
 
     shim.set_battery_voltage(LI2S_THRESHOLD_V - 1.0)
-    time.sleep(VOLTAGE_SETTLE_S)
+    helpers.sim_sleep(shim, VOLTAGE_SETTLE_S)
 
     status = _ping_and_get_status(can_bus)
     # The firmware combines battery and solenoid bits.  Check the low
@@ -167,7 +170,7 @@ def test_low_battery_at_threshold_boundary(dut) -> None:
 
     # 0.1 V above threshold → clear
     shim.set_battery_voltage(LI2S_THRESHOLD_V + 0.1)
-    time.sleep(VOLTAGE_SETTLE_S)
+    helpers.sim_sleep(shim, VOLTAGE_SETTLE_S)
     status = _ping_and_get_status(can_bus)
     assert (status.data[7] & 0x03) != 0x01, (
         f"BAT_LOW asserted just above threshold: "
@@ -176,7 +179,7 @@ def test_low_battery_at_threshold_boundary(dut) -> None:
 
     # 0.1 V below threshold → set
     shim.set_battery_voltage(LI2S_THRESHOLD_V - 0.1)
-    time.sleep(VOLTAGE_SETTLE_S)
+    helpers.sim_sleep(shim, VOLTAGE_SETTLE_S)
     status = _ping_and_get_status(can_bus)
     assert (status.data[7] & 0x03) == 0x01, (
         f"BAT_LOW NOT asserted just below threshold: "
@@ -241,7 +244,7 @@ def test_power_cycle_bus_on_recovery(dut, firmware) -> None:
 
     # Now play the role of the silicon's WKUP→POR mechanism: relaunch
     # the firmware as if a fresh power-on reset had occurred.
-    new_proc = launch_native_sim_firmware(append_log=True)
+    new_proc = launch_native_sim_firmware(append_log=True, rt_ratio=100)
     new_shim = SimShim()
     try:
         new_shim.wait_ready()
@@ -266,7 +269,7 @@ def test_power_aborts_on_bus_held_active(dut, firmware) -> None:
     can_bus.send(divecan.build_shutdown())
 
     # Wait out the abort window plus a little margin.
-    time.sleep(SHUTDOWN_ABORT_WINDOW_S + 0.5)
+    helpers.sim_sleep(shim, SHUTDOWN_ABORT_WINDOW_S + 0.5)
 
     assert proc.poll() is None, (
         f"firmware exited (rc={proc.returncode}) despite bus_on being held — "

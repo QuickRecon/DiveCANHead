@@ -3,13 +3,75 @@
 Mirror of the hardware-stand spec in
 ``HW Testing/Tests/test_ping.py`` but driven against the native_sim
 firmware build over ``vcan0``.
+
+All tests are stateless — a shared module-scoped firmware instance
+is used.
 """
 
 from __future__ import annotations
 
+from typing import Generator
+
 import pytest
 
 import divecan
+from divecan import CanClient
+from conftest import (
+    launch_native_sim_firmware,
+    stop_native_sim_firmware,
+    _kill_stale_firmware,
+    SHIM_SOCK_PATH,
+)
+from sim_shim import SimShim
+
+
+RT_RATIO: float = 100.0
+
+
+# ---------------------------------------------------------------------------
+# Module-scoped fixtures — one firmware launch for all ping tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def firmware(vcan) -> Generator[tuple, None, None]:
+    _kill_stale_firmware()
+    proc = launch_native_sim_firmware(rt_ratio=RT_RATIO)
+    try:
+        yield proc, SHIM_SOCK_PATH
+    finally:
+        stop_native_sim_firmware(proc)
+
+
+@pytest.fixture(scope="module")
+def shim(firmware) -> Generator[SimShim, None, None]:
+    _proc, sock_path = firmware
+    client = SimShim(sock_path=sock_path)
+    try:
+        client.wait_ready()
+        yield client
+    finally:
+        client.close()
+
+
+@pytest.fixture(scope="module")
+def can_bus(vcan) -> Generator[CanClient, None, None]:
+    client = CanClient(channel=vcan)
+    try:
+        yield client
+    finally:
+        client.close()
+
+
+@pytest.fixture(scope="module")
+def dut(can_bus, shim, firmware) -> tuple[CanClient, SimShim]:
+    _ = firmware
+    return can_bus, shim
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("device_id", [1, 3])

@@ -182,6 +182,39 @@ class SimShim:
             )
         return us
 
+    # -- batch operations (reduced IPC round-trips) -------------------------
+
+    def get_state(self) -> tuple[int, list[int]]:
+        """Read uptime and solenoid state in a single round-trip.
+
+        Returns ``(uptime_us, solenoids)`` where solenoids is a 4-element
+        list of 0/1 values.
+        """
+        response = self._send({"cmd": "get_state"})
+        us = response.get("uptime_us")
+        solenoids = response.get("solenoids")
+        if not isinstance(us, int) or not isinstance(solenoids, list):
+            raise ShimError(
+                f"shim returned malformed state: {response!r}"
+            )
+        return us, [int(v) for v in solenoids]
+
+    def set_cells(self, d1: float | None = None, d2: float | None = None,
+                  a3: float | None = None) -> None:
+        """Set cell values in a single round-trip.
+
+        ``d1``/``d2`` are digital PPO2 in bar; ``a3`` is analog in
+        millivolts. Pass ``None`` to leave a cell unchanged.
+        """
+        cmd: dict[str, Any] = {"cmd": "set_cells"}
+        if d1 is not None:
+            cmd["d1"] = d1
+        if d2 is not None:
+            cmd["d2"] = d2
+        if a3 is not None:
+            cmd["a3"] = a3
+        self._send(cmd)
+
     # -- teardown ----------------------------------------------------------
 
     def _close_locked(self) -> None:

@@ -32,6 +32,7 @@ import divecan
 import helpers
 from helpers import CellType, configure_cell
 
+pytestmark = pytest.mark.rt_ratio(100)
 
 # Time to let the cal listener finish and the cells re-load their stored
 # coefficients before sampling the next PPO2 broadcast.  CAL_SETTLE_MS in
@@ -53,7 +54,7 @@ def test_cal_happy_path(dut) -> None:
     # request, and asserts the result frame carries status 0x01.
     helpers.calibrate_board(can_bus, shim)
 
-    time.sleep(POST_CAL_SETTLE_S)
+    helpers.sim_sleep(shim, POST_CAL_SETTLE_S)
 
     # After a successful cal every cell should be reporting a real
     # reading rather than the 0xFF "needs cal" sentinel.
@@ -95,7 +96,7 @@ def test_cal_analog_out_of_range(dut, bad_mv: float, label: str) -> None:
         else:
             configure_cell(shim, cell_num, cell_type, 100)  # 1.00 bar
 
-    time.sleep(helpers.CAL_SETTLE_S)
+    helpers.sim_sleep(shim, helpers.CAL_SETTLE_S)
 
     can_bus.flush_rx()
     can_bus.send(divecan.build_cal_request())
@@ -114,7 +115,7 @@ def test_cal_analog_out_of_range(dut, bad_mv: float, label: str) -> None:
         f"unexpected cal status byte 0x{result.data[0]:02X} for {label}"
     )
 
-    time.sleep(POST_CAL_SETTLE_S)
+    helpers.sim_sleep(shim, POST_CAL_SETTLE_S)
 
     can_bus.flush_rx()
     msg = can_bus.wait_for(divecan.PPO2_RESP_ID)
@@ -150,7 +151,7 @@ def test_cal_request_always_acked(dut) -> None:
     for cell_num, cell_type in enumerate(helpers.DEV_FULL_CELLS, start=1):
         configure_cell(shim, cell_num, cell_type, 0)
 
-    time.sleep(helpers.CAL_SETTLE_S)
+    helpers.sim_sleep(shim, helpers.CAL_SETTLE_S)
 
     can_bus.flush_rx()
     t0 = time.monotonic()

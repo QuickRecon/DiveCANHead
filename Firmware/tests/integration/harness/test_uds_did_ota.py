@@ -21,7 +21,12 @@ from __future__ import annotations
 import time
 from typing import Final
 
+import pytest
+
 import divecan
+import helpers
+
+pytestmark = pytest.mark.rt_ratio(100)
 
 # Reuse the existing single-frame request/reassembly helpers — they are
 # private but stable enough to call from sibling tests.
@@ -100,19 +105,20 @@ def test_F270_factory_captured_on_boot(dut) -> None:
     with MCUBoot-signed slot0 would surface a non-sentinel version
     matching bytes 4-7 (running slot0). The hardware path is covered by
     BENCHTEST.md BT-5.7."""
-    can_bus, _shim = dut
+    can_bus, shim = dut
 
     # Capture runs on a preemptible work queue after firmware_confirm
-    # finishes — give it up to 30 s to land before we assert.
-    deadline = time.monotonic() + 30.0
+    # finishes — give it up to 30 s simulated to land before we assert.
+    start_us = shim.get_uptime_us()
+    deadline_us = start_us + 30_000_000
     payload = b""
-    while time.monotonic() < deadline:
+    while shim.get_uptime_us() < deadline_us:
         can_bus.flush_rx()
         _send_rdbi(can_bus, DID_MCUBOOT_STATUS)
         payload = _expect_rdbi_response(can_bus, DID_MCUBOOT_STATUS)
         if (payload[3] & 0x01) == 1:
             break
-        time.sleep(1.0)
+        helpers.sim_sleep(shim, 1.0)
 
     assert (payload[3] & 0x01) == 1, (
         f"factory-captured bit should be set after boot, got byte 3 = "
