@@ -80,6 +80,17 @@ target_sources(app PRIVATE
 target_include_directories(app PRIVATE src/divecan/include)
 target_include_directories(app PRIVATE src)
 
+# Flash log subsystem — two FCB instances, single writer thread,
+# zbus listeners + RTT capture backend + UDS download path.
+target_sources_ifdef(CONFIG_FLASH_LOG app PRIVATE
+    src/flash_log/flash_log.c
+    src/flash_log/flash_log_listeners.c
+    src/flash_log/flash_log_backend.c
+    src/flash_log/flash_log_reader.c
+    src/divecan/uds/uds_log_download.c
+)
+target_include_directories(app PRIVATE src/flash_log)
+
 add_subdirectory(drivers/solenoid)
 add_subdirectory_ifdef(CONFIG_GPIO_SIM drivers/gpio_sim)
 
@@ -101,7 +112,10 @@ target_compile_definitions(app PRIVATE
     APP_BUILD_VERSION_STR="${APP_BUILD_VERSION_RAW}"
 )
 
-# App-only hardening flags (not applied to Zephyr kernel/drivers)
+# App-only hardening flags (not applied to Zephyr kernel/drivers).
+# -fdump-rtl-dfinish emits a .<NNN>r.dfinish RTL dump per TU; scripts/wcs.py
+# walks the dumps + .su files to compute worst-case stack per function, used
+# to right-size K_THREAD_DEFINE stacks. See scripts/stack_analysis.sh.
 target_compile_options(app PRIVATE
     -Wall
     -Wextra
@@ -115,6 +129,7 @@ target_compile_options(app PRIVATE
     -fharden-conditional-branches
     -ftrivial-auto-var-init=pattern
     -fstack-usage
+    -fdump-rtl-dfinish
     -std=gnu23
 )
 
@@ -124,12 +139,11 @@ target_sources_ifdef(CONFIG_INTEGRATION_TEST_SHIM app PRIVATE
     tests/integration/src/test_shim_uart.c
     tests/integration/src/test_shim_adc.c
     tests/integration/src/test_shim_gpio.c
-    tests/integration/src/test_shim_socket.c
     tests/integration/src/test_shim_shared.c
 )
 # Host-side adapter — compiled into the native_simulator runner so it
 # can use raw Linux/glibc headers without colliding with Zephyr's POSIX
-# shims.  Provides socket + shared memory wrappers.
+# shims.  Provides shared memory wrappers.
 if(CONFIG_INTEGRATION_TEST_SHIM)
     target_sources(native_simulator INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/src/test_shim_socket_adapt.c)

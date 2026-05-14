@@ -22,6 +22,9 @@
 #ifdef CONFIG_FACTORY_IMAGE
 #include "factory_image.h"
 #endif
+#ifdef CONFIG_FLASH_LOG
+#include "flash_log.h"
+#endif
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -45,6 +48,20 @@ Status_t main(void)
     Status_t ret = 0;
 
     LOG_INF("DiveCAN Jr — Zephyr %s", KERNEL_VERSION_STRING);
+
+#ifdef CONFIG_FLASH_LOG
+    /* Mount FCBs and bump the persisted boot counter. Record the boot
+     * marker (with prior-crash details if any) as the first entry of
+     * this session. Producer hooks (zbus listeners, CAN tap, custom
+     * log backend) will start emitting once their init runs. */
+    (void)flash_log_init();
+    CrashInfo_t prev_crash;
+    const CrashInfo_t *prev = NULL;
+    if (errors_get_last_crash(&prev_crash)) {
+        prev = &prev_crash;
+    }
+    flash_log_record_boot_marker(flash_log_get_boot_id(), prev);
+#endif
 
     calibration_init();
     /* Must run after runtime_settings has its NVS load wired (calibration_init

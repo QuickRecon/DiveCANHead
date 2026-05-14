@@ -63,6 +63,13 @@
 #define UDS_DID_OTA_RESTORE_FACTORY   0xF276U  /**< write-only, magic 0x01: copy factory backup into slot1 + reboot */
 #define UDS_DID_OTA_FACTORY_CAPTURE   0xF277U  /**< write-only, magic 0x01: force re-capture of slot0 into factory backup */
 
+/* Flash log management DIDs (0xF28x) — see docs/FLASH_LOG.md */
+#define UDS_DID_LOG_STATS             0xF280U  /**< 48 B: FlashLogStats_t per-FCB breakdown */
+#define UDS_DID_LOG_SELECTOR_RESULT   0xF281U  /**< 20 B: stream/start/end/count/bytes/status of the live selection */
+#define UDS_DID_LOG_ERASE             0xF282U  /**< write-only, 2 B: stream_mask u8 + magic 0xA5; gated to programming + !in_dive */
+#define UDS_DID_LOG_VERBOSITY         0xF283U  /**< RW, 1 B: text-FCB min level (1=ERR..4=DBG), persisted to NVS */
+#define UDS_DID_LOG_CAN_VERBOSE       0xF284U  /**< RW, 1 B: CAN-capture bitmask (bit0=RX, bit1=TX), persisted to NVS */
+
 /* ============================================================================
  * Cell DIDs (0xF4Nx where N = cell number 0-2)
  * ============================================================================ */

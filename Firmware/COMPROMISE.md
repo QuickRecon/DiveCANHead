@@ -516,3 +516,39 @@ STM32CubeProgrammer (`-ob displ`).
   enter DFU/system memory with a jumper.
 - Bake the option byte programming into `flash.sh` so a freshly-
   acquired board gets the right setting automatically.
+
+---
+
+## 12. FCB sector-count cap forces ~13 MiB log out of a 64 MiB chip
+
+**What changed**: The persistent flash log uses two Zephyr FCB instances
+(telemetry + text). FCB exposes `f_sector_cnt` as a `uint8_t`, capping
+each instance at 255 logical sectors. Each in-RAM `flash_sector`
+descriptor is 8 bytes, so the dominant cost on the STM32L431's 64 KiB
+SRAM is `f_sectors[]`.
+
+To stay within the SRAM budget alongside the rest of the firmware,
+each FCB declares 100 × 64 KiB block-erase logical sectors (6.4 MiB
+per FCB, 12.8 MiB across both) and the `f_sectors[]` arrays total
+~1.6 KiB. The remaining ~47 MiB of the SPI NOR's free region between
+`log_text_partition` and `storage_partition` sits unallocated.
+
+**Why**: Going to 255 sectors per FCB (16.32 MiB) would consume ~4.1 KiB
+of RAM per FCB, and would still leave ~30 MiB of flash unused given
+FCB's structural cap. Using native 4 KiB sectors instead would lift
+per-sector erase cost but cap each FCB at ~1 MiB — too small for
+multi-dive history. The 64 KiB sector + 100-sector working point is
+the Pareto knee on the (RAM, capacity, wear) trade.
+
+**What still provides coverage**: 12.8 MiB ≈ 9 dive-hours of continuous
+high-rate logging before the ring overwrites the oldest boot — well
+beyond what a single dive needs. The text FCB at WRN+ default sees
+KB/hour and effectively never wraps. See `docs/FLASH_LOG.md` for the
+capacity sizing.
+
+**Possible alternatives to investigate**:
+- Roll a custom append-only log layer (per-sector sequence number, no
+  in-RAM `f_sectors[]` — O(1) RAM) to claim the unused ~47 MiB. ~600
+  LOC of new safety-critical code; current plan defers this until a
+  real capacity pressure shows up.
+- Upstream a `uint16_t f_sector_cnt` variant of FCB to Zephyr.

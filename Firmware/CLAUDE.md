@@ -165,6 +165,76 @@ Each entry must include: what changed, why, what still provides coverage, and po
 - **`fatal_op_error()` (the custom path called directly by app code) DOES use `printk`** — that path bypasses Zephyr's fatal machinery, so we have to do the diagnostic line ourselves. The logging subsystem isn't safe to call from a hand-invoked panic.
 - **`crash_noinit` + `errors_get_last_crash()` infrastructure is still active** — used by `fatal_op_error()` and surfaced on next boot by `main.c`. The Zephyr stock halt path doesn't populate it, so PC/LR/CFSR won't appear in the next-boot report when the fault came from a CPU exception. Live with that for now.
 
+## Stack analysis (belt and braces)
+
+Two complementary tools keep K_THREAD_DEFINE stack budgets honest. Use
+both — static gives upper bounds at build time, runtime confirms the
+upper bounds are not wasteful.
+
+### Static — `scripts/stack_analysis.sh`
+
+Walks the build directory's `.c.su` (per-function local stack from
+`-fstack-usage`) and `.c.<NNN>r.dfinish` (call-graph RTL dump from
+`-fdump-rtl-dfinish`) artefacts. Both flags are wired into the app's
+`target_compile_options` in `CMakeLists.txt`. The Python core
+(`scripts/wcs.py`) is a Zephyr-adapted port of the old STM32 firmware's
+`WCS.py`.
+
+```bash
+# After a build, dump worst-case stack per function, sorted descending.
+scripts/stack_analysis.sh build | head -30
+```
+
+Output is also written to `stackAnalysis.txt` for diffing across
+changes. Each row reads: TU, function, worst-case stack, unresolved
+externs the call graph couldn't see through.
+
+Unresolved externs (picolibc, libgcc soft-float, Zephyr kernel syscall
+impls compiled without `-fstack-usage`) get conservative ceilings from
+`scripts/wcs_manual.msu` — append a new line `<symbol> <bytes>` when
+the report flags a name you haven't seen before. Without an override
+the function is treated as a zero-stack leaf, so an over-eager number
+in the manual file is safer than an omission.
+
+The static numbers are upper bounds for the call paths the analyzer
+can resolve, but they are **lower bounds in absolute terms**: any call
+into a TU that wasn't compiled with `-fstack-usage` (Zephyr kernel,
+HAL, picolibc) is treated as a zero-stack leaf unless `wcs_manual.msu`
+declares otherwise. Real high-water marks have been observed at
+**~2× the static WCS** for threads that go deep through the CAN
+driver, settings/NVS, or the log subsystem.
+
+Concrete case: `divecan_ppo2_tx` static WCS was 264 B; runtime
+high-water mark on real hardware was 552 B — a 512 B stack derived
+from the static number tripped the canary and produced a hardware
+bootloop. Resolved by reverting to the legacy 1024 B size and
+confirmed via the runtime analyzer afterward.
+
+Sizing rule: use static WCS only to identify obviously oversized
+stacks (>4× the reported number). For threads near the boundary,
+**flash and read runtime high-water marks before trimming**. The
+runtime analyzer logs every 30 s once `CONFIG_THREAD_ANALYZER_AUTO=y`.
+
+### Runtime — `CONFIG_THREAD_ANALYZER`
+
+`prj.conf` enables `CONFIG_THREAD_ANALYZER + CONFIG_INIT_STACKS +
+CONFIG_THREAD_ANALYZER_AUTO=y` so every 30 seconds a high-water-mark
+table for every K_THREAD_DEFINE'd thread is logged via the RTT
+backend. `INIT_STACKS` fills each stack with a sentinel pattern at
+spawn so the analyzer can count untouched bytes accurately.
+
+The two views diverge by design:
+
+- **Static says how bad it could get.** Use it before flashing to
+  catch obviously-undersized stacks.
+- **Runtime says how bad it actually got.** Use it on a real workload
+  to recover headroom and confirm assumptions.
+
+If runtime shows a thread is using 30 % of its allocation, halve the
+static number it was sized against. If runtime ever creeps above 80 %
+of the allocation, the static estimate was right and the stack needs
+more.
+
 ## Iterative Diagnostic Procedure
 
 **After every major round of changes**, run a SonarQube diagnostic sweep before

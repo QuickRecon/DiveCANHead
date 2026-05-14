@@ -36,6 +36,9 @@
 #include "oxygen_cell_types.h"
 #include "solenoid_roles.h"
 #include "divecan_channels.h"
+#ifdef CONFIG_FLASH_LOG
+#include "flash_log.h"
+#endif
 #include "divecan_types.h"
 
 #include <zephyr/kernel.h>
@@ -70,12 +73,12 @@ static const uint32_t US_PER_MS = 1000U;
 /** Default PID setpoint (centibar) when chan_setpoint has no published value. */
 static const PPO2_t DEFAULT_SETPOINT_CB = 70U;
 
-/** PPO2 controller thread stack size (bytes). Sized from the legacy
- *  PPO2_PIDControlTask_buffer (2000 B observed peak ~1128 B); rounded up
- *  to the next power-of-2 for K_THREAD_DEFINE compatibility. */
-#define PPO2_PID_STACK_SIZE 2048
-/** Solenoid fire thread stack (bytes). Legacy peak ~592 B. */
-#define SOLENOID_FIRE_STACK_SIZE 1024
+/** PPO2 controller thread stack (bytes). Static WCS = 256 B (scripts/wcs.py);
+ *  768 B gives ~3× margin. The legacy 2 KiB allocation was inherited from
+ *  the FreeRTOS+SD-logging era and is no longer needed. */
+#define PPO2_PID_STACK_SIZE 768
+/** Solenoid fire thread stack (bytes). Static WCS = 272 B; 512 B = ~2× margin. */
+#define SOLENOID_FIRE_STACK_SIZE 512
 /** Both threads run at priority 6 — one step lower than consensus_subscriber
  *  (5) and divecan_rx (5), matching the legacy CAN_PPO2_TX_PRIORITY tier. */
 #define PPO2_THREAD_PRIORITY 6
@@ -247,6 +250,15 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
             *latest_duty = (Numeric_t)duty;
             Numeric_t pub = (Numeric_t)duty;
             (void)zbus_chan_pub(&chan_duty_cycle, &pub, K_NO_WAIT);
+#ifdef CONFIG_FLASH_LOG
+            const FlashLogPidSnapshot_t snap = {
+                .integral = (float)state->integralState,
+                .saturation_count = state->saturationCount,
+                .duty = (float)duty,
+                .setpoint = setpoint,
+            };
+            flash_log_enqueue_pid_snapshot(&snap);
+#endif
         }
 
         k_msleep((int32_t)PID_PERIOD_MS);
@@ -302,8 +314,26 @@ static void run_pid_fire_cycle(void)
         if (rc < 0) {
             OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
         }
+#ifdef CONFIG_FLASH_LOG
+        else {
+            const SolenoidFireEvent_t fire_evt = {
+                .kind = 0U,
+                .requested_on_us = timing.on_duration_us,
+                .off_us = timing.off_duration_us,
+            };
+            (void)zbus_chan_pub(&chan_solenoid_fire, &fire_evt, K_NO_WAIT);
+        }
+#endif
         k_usleep((int32_t)timing.on_duration_us);
         sol_o2_inject_off();
+#ifdef CONFIG_FLASH_LOG
+        const SolenoidFireEvent_t end_evt = {
+            .kind = 1U,
+            .requested_on_us = timing.on_duration_us,
+            .off_us = timing.off_duration_us,
+        };
+        (void)zbus_chan_pub(&chan_solenoid_fire, &end_evt, K_NO_WAIT);
+#endif
         k_usleep((int32_t)timing.off_duration_us);
     }
     else {
@@ -336,8 +366,26 @@ static void run_mk15_fire_cycle(void)
         if (rc < 0) {
             OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
         }
+#ifdef CONFIG_FLASH_LOG
+        else {
+            const SolenoidFireEvent_t fire_evt = {
+                .kind = 0U,
+                .requested_on_us = MK15_ON_TIME_MS * US_PER_MS,
+                .off_us = MK15_OFF_TIME_MS * US_PER_MS,
+            };
+            (void)zbus_chan_pub(&chan_solenoid_fire, &fire_evt, K_NO_WAIT);
+        }
+#endif
         k_msleep((int32_t)MK15_ON_TIME_MS);
         sol_o2_inject_off();
+#ifdef CONFIG_FLASH_LOG
+        const SolenoidFireEvent_t end_evt = {
+            .kind = 1U,
+            .requested_on_us = MK15_ON_TIME_MS * US_PER_MS,
+            .off_us = MK15_OFF_TIME_MS * US_PER_MS,
+        };
+        (void)zbus_chan_pub(&chan_solenoid_fire, &end_evt, K_NO_WAIT);
+#endif
     }
 
     /* Do our off time before waiting again */

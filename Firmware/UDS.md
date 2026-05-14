@@ -159,6 +159,7 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF250–0xF254  | Crash info (next-boot diagnostic)             |
 | 0xF260–0xF261  | Error histogram                               |
 | 0xF270–0xF277  | MCUBoot / OTA / factory backup                |
+| 0xF280–0xF284  | Flash log management (see [Flash Log DIDs](#flash-log-dids-0xf280-0xf284)) |
 | 0xF400–0xF42F  | Per-cell data (3 cells × 16 sub-IDs)          |
 | 0x9100–0x935F  | Settings (count, info, value, label, save)    |
 | 0xA100         | Log message push (Head → handset, unsolicited)|
@@ -199,6 +200,11 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF275 | 1     | uint8=1  | W         | Force-revert (1-step rollback via slot1 re-swap)         |
 | 0xF276 | 1     | uint8=1  | W         | Restore factory image into slot1 + reboot                |
 | 0xF277 | 1     | uint8=1  | W         | Force re-capture of current slot0 into factory backup    |
+| 0xF280 | 48    | struct   | R         | Flash log stats (per-FCB breakdown — see [Flash Log DIDs](#flash-log-dids-0xf280-0xf284)) |
+| 0xF281 | 20    | struct   | R         | Selector result from the most recent 0x31 0xF10x routine |
+| 0xF282 | 2     | u8+u8    | W         | Erase flash log (stream mask + magic 0xA5) — gated to programming + !in_dive |
+| 0xF283 | 1     | uint8    | R/W       | Text-FCB minimum log level (1=ERR..4=DBG); persisted to NVS |
+| 0xF284 | 1     | uint8    | R/W       | CAN-capture bitmask (bit0=RX, bit1=TX); persisted to NVS |
 | 0xF400 + n×0x10 + offset | — | — | R | Per-cell DIDs (see [Per-Cell DIDs](#per-cell-dids-0xf4nx)) |
 | 0x9100 | 1     | uint8    | R         | Setting count                                            |
 | 0x9110 + index | var | struct | R       | Setting info (label + kind + editable + maxValue + opt count) |
@@ -296,6 +302,146 @@ new factory baseline, overwriting any prior backup.
    preemptible work queue, so the UDS dispatcher returns immediately
    and the watchdog feeder keeps ticking through the multi-second SPI
    NOR erase.
+
+### Flash Log DIDs (0xF280–0xF284)
+
+Read access to flash-log state and runtime knobs for the persistent
+dive log subsystem. The bulk-download protocol uses RoutineControl
+(0x31) selectors plus 0x34/0x36/0x37 — see
+[Flash Log Download Protocol](#flash-log-download-protocol-0xf1xx--0x340x360x37)
+below. See `docs/FLASH_LOG.md` for the on-flash format and partition
+layout.
+
+**`0xF280` — LOG_STATS** (48 bytes, RO)
+
+Two back-to-back `FlashLogFcbStats_t` structs (telemetry first, text
+second). Each is:
+
+| Offset | Bytes | Field                    |
+|--------|-------|--------------------------|
+| 0      | 4 LE  | `boot_id_current`        |
+| 4      | 4 LE  | `boot_id_oldest`         |
+| 8      | 2 LE  | `dive_id_latest`         |
+| 10     | 4 LE  | `entries_total_estimate` |
+| 14     | 4 LE  | `drops_since_boot`       |
+| 18     | 2 LE  | `sectors_free`           |
+| 20     | 2 LE  | `sectors_total`          |
+| 22     | 2     | reserved                 |
+
+**`0xF281` — LOG_SELECTOR_RESULT** (20 bytes, RO)
+
+| Offset | Bytes | Field           |
+|--------|-------|-----------------|
+| 0      | 1     | `stream` (0=telemetry, 1=text) |
+| 1      | 1     | reserved        |
+| 2      | 2 LE  | `start_id`      |
+| 4      | 2 LE  | `end_id`        |
+| 6      | 4 LE  | `entry_count`   |
+| 10     | 4 LE  | `total_bytes`   |
+| 14     | 2     | reserved        |
+| 16     | 4 LE  | `status` (0 OK, -ENOENT no selection, other errno) |
+
+Reads before any selector resolves return `status = -ENOENT (-2)` with
+the rest zero.
+
+**`0xF282` — LOG_ERASE** (2-byte payload, WO)
+
+```
+[stream_mask u8] [magic 0xA5]
+```
+
+Bit 0 of `stream_mask` clears the telemetry FCB, bit 1 the text FCB.
+Both set ⇒ full erase. Gated to the UDS programming session AND
+out-of-water (chan_atmos_pressure ≤ DIVE threshold). Erase blocks the
+SPI bus for tens of milliseconds per sector — multi-second total at
+100 sectors.
+
+**`0xF283` — LOG_VERBOSITY** (1 byte, R/W)
+
+Minimum severity captured into the text FCB: 1=ERR, 2=WRN (default),
+3=INF, 4=DBG. Bump to 3 or 4 for development dives. Persisted to NVS.
+
+**`0xF284` — LOG_CAN_VERBOSE** (1 byte, R/W)
+
+Bitmask: bit 0 = capture CAN RX into telemetry, bit 1 = capture CAN
+TX. Default 0 (off). Persisted to NVS. Enable for protocol-discovery
+sessions; semantic protocol events are already captured as structured
+telemetry records, so leave off in normal operation.
+
+### Flash Log Download Protocol (0xF1xx + 0x34/0x36/0x37)
+
+Bulk download of the on-flash log uses two protocol services in
+sequence: RoutineControl selectors that resolve which entries to
+stream, then a UDS download triple that ships the bytes over ISO-TP.
+
+The 0x34/0x36/0x37 handlers are mutually exclusive with the OTA
+pipeline (also wired to those SIDs) — `uds_log_download.c`'s
+`UDS_LogDownload_Claims()` shim claims the request when a log
+selection is live AND the 0x34 memory address is the sentinel
+`0xFFFFFFFE`. All other 0x34s fall through to OTA.
+
+**RoutineControl selector RIDs (0x31 subfunction 0x01):**
+
+| RID    | Name                 | Request payload (after pad+SID+subfunc+RID) |
+|--------|----------------------|--------------------------------------------|
+| 0xF100 | Select By Range      | stream u8 + start_id u16 + end_id u16 (reserved — not yet supported, returns REQUEST_OUT_OF_RANGE) |
+| 0xF101 | Select By Boot ID    | stream u8 + boot_id u32 LE                 |
+| 0xF102 | Select By Dive ID    | stream u8 + dive_number u16 LE             |
+| 0xF103 | Select Latest Boot   | stream u8                                  |
+| 0xF104 | Select Latest Dive   | stream u8                                  |
+| 0xF105 | Begin Stream         | (none)                                     |
+
+`stream` is 0 for telemetry, 1 for text. Each selector populates
+`0xF281 LOG_SELECTOR_RESULT` synchronously — read it after the routine
+to see the matched range before committing to a download.
+
+**Download sequence:**
+
+```
+client                                head
+  --- 0x31 0x01 0xF1xx  (selector) -->
+  <--   pos resp                    ---
+  --- 0x22 0xF281       (sanity)   -->
+  <--   selector_result (20 B)     ---
+  --- 0x31 0x01 0xF105  (begin)    -->
+  <--   pos resp                    ---
+  --- 0x34 ... addr=0xFFFFFFFE --> (RequestDownload)
+  <-- 0x74 0x20 [maxBlock hi/lo] ---
+  --- 0x36 seq=1 (TransferData)  -->
+  <-- 0x76 seq=1 [header + entries] (max maxBlock bytes)
+  --- 0x36 seq=2 ...             -->
+  ...
+  --- 0x37 (RequestTransferExit) -->
+  <-- 0x77                       ---
+```
+
+`maxBlock` is `UDS_MAX_RESPONSE_LENGTH - 3` (253 bytes today) so the
+0x36 response fits in a single ISO-TP message.
+
+**Stream framing.** The first 0x36 response carries a 16-byte header
+followed by TLV entries; subsequent responses carry only TLV entries.
+
+```
+Offset  Bytes  Field
+0       4      magic "DCLG" (0x47434C44 LE)
+4       1      version (0x01)
+5       1      flags
+6       1      stream (0=telemetry, 1=text)
+7       1      reserved
+8       4 LE   total_bytes (0 = streaming, length unknown ahead)
+12      4 LE   entry_count (estimate)
+```
+
+After the header, the response stream is concatenated TLV records as
+written on flash:
+
+```
+[ts_us u64] [type u8] [flags u8] [length u16 LE] [payload …]
+```
+
+A short final chunk (fewer than `maxBlock` bytes after the header
+overhead) signals end-of-stream — clients should still emit 0x37 to
+release the SM.
 
 ### Per-Cell DIDs (0xF4Nx)
 

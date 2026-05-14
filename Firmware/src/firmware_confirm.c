@@ -63,7 +63,10 @@ LOG_MODULE_REGISTER(fw_confirm, LOG_LEVEL_INF);
 #define POST_REBOOT_DELAY_MS  200
 
 /** @brief POST thread stack size (B). */
-#define POST_THREAD_STACK   2048
+/* Static WCS = 104 B (scripts/wcs.py). 768 B keeps generous margin for
+ * the boot_request_upgrade / settings_save_one call chain the POST may
+ * trigger on confirmation. */
+#define POST_THREAD_STACK   768
 /** @brief POST thread priority (between divecan_rx prio 5 and watchdog prio 14). */
 #define POST_THREAD_PRIO    7
 

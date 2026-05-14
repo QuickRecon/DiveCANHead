@@ -364,10 +364,31 @@
 			label = "factory-image";
 			reg = <0x00040000 DT_SIZE_K(192)>;
 		};
-		/* Free region 0x00070000 — 0x03FF8000 (~63.5 MB) reserved
-		 * for future dive-log persistence — not declared as a
-		 * partition yet so it can grow upward without
-		 * re-partitioning. */
+		/* Flash log — split into two parallel FCB instances.
+		 *
+		 * Each FCB caps at 255 sectors (uint8_t f_sector_cnt) but
+		 * we run with 100 × 64 KiB block-erase logical sectors per
+		 * FCB (= 6.4 MiB / partition) to keep the in-RAM
+		 * f_sectors[] arrays within the STM32L431's 64 KiB SRAM
+		 * budget. 100 × 8 B = 800 B per FCB; 1.6 KiB across both.
+		 *
+		 * Markers (BOOT/DIVE_START/DIVE_END) are mirrored across
+		 * both so each stream can be partitioned by boot or dive
+		 * independently for UDS bulk download.
+		 *
+		 * Remaining flash between log_text_partition and
+		 * storage_partition is unallocated for now (future custom
+		 * log layer or hardware revision can claim it). See
+		 * docs/FLASH_LOG.md.
+		 */
+		log_telemetry_partition: partition@70000 {
+			label = "log-telemetry";
+			reg = <0x00070000 DT_SIZE_K(6400)>;
+		};
+		log_text_partition: partition@6b0000 {
+			label = "log-text";
+			reg = <0x006b0000 DT_SIZE_K(6400)>;
+		};
 		storage_partition: partition@3ff8000 {
 			label = "storage";
 			reg = <0x03ff8000 DT_SIZE_K(32)>;

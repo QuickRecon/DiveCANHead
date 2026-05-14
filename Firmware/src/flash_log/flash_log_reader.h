@@ -1,0 +1,83 @@
+/**
+ * @file flash_log_reader.h
+ * @brief Walk / filter / stream-out API for the flash log.
+ *
+ * Used by the UDS download path (uds_log_download.c) to resolve a
+ * selection (latest boot, by dive id, by absolute fcb id range) and
+ * iterate the matched entries in order.
+ *
+ * Indexes are built lazily on first selector call and refreshed when
+ * `flash_log_reader_invalidate_index()` is called (e.g. on entering a
+ * UDS programming session).
+ */
+#ifndef FLASH_LOG_READER_H
+#define FLASH_LOG_READER_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <zephyr/fs/fcb.h>
+
+#include "flash_log.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/** @brief Resolved selection range over a single FCB. */
+typedef struct {
+    FlashLogDest_t dest;
+    /* Begin / end fcb_entry — inclusive of begin, exclusive of end.
+     * begin.fe_sector == NULL means "from the oldest entry"; end ==
+     * NULL means "to the newest entry". */
+    struct fcb_entry begin;
+    struct fcb_entry end;
+    uint32_t entry_count_estimate;
+} FlashLogRange_t;
+
+/** @brief Cursor for iterating a previously-resolved range. */
+typedef struct {
+    FlashLogRange_t range;
+    struct fcb_entry cursor;
+    bool started;
+    bool finished;
+} FlashLogReader_t;
+
+/** @brief Force the next selector call to rebuild its in-RAM index. */
+void flash_log_reader_invalidate_index(void);
+
+/** @brief Resolve "the latest boot on `dest`" into an iterable range. */
+int flash_log_reader_resolve_latest_boot(FlashLogDest_t dest,
+                     FlashLogRange_t *out);
+
+/** @brief Resolve "the latest dive on `dest`" into an iterable range. */
+int flash_log_reader_resolve_latest_dive(FlashLogDest_t dest,
+                     FlashLogRange_t *out);
+
+/** @brief Resolve "boot id N on `dest`" into an iterable range. */
+int flash_log_reader_resolve_boot_id(FlashLogDest_t dest, uint32_t boot_id,
+                     FlashLogRange_t *out);
+
+/** @brief Resolve "dive number N on `dest`" into an iterable range. */
+int flash_log_reader_resolve_dive_id(FlashLogDest_t dest, uint16_t dive_id,
+                     FlashLogRange_t *out);
+
+/** @brief Resolve "everything on `dest`" into an iterable range. */
+int flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out);
+
+/** @brief Prepare a cursor to stream `range`. */
+void flash_log_reader_open(FlashLogReader_t *r, const FlashLogRange_t *range);
+
+/**
+ * @brief Read the next entry's TLV-header + payload bytes into `buf`.
+ *
+ * @return positive bytes written, 0 if the range is exhausted,
+ *         negative errno on flash error.
+ */
+int flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_size);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* FLASH_LOG_READER_H */

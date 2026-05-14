@@ -35,6 +35,9 @@
 
 #include "uds_ota.h"
 #include "uds.h"
+#ifdef CONFIG_FLASH_LOG
+#include "flash_log.h"
+#endif
 #include "isotp.h"
 #include "errors.h"
 #include "common.h"
@@ -500,7 +503,18 @@ static void ota_handle_routine_control(OtaSmCtx_t *sm)
                 UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
                              UDS_NRC_CONDITIONS_NOT_CORRECT);
             } else {
+#ifdef CONFIG_FLASH_LOG
+                /* boot_request_upgrade writes MCUBoot trailer sectors;
+                 * holding the log writer off prevents SPI contention
+                 * with our own flash log. Resume isn't strictly
+                 * needed because reboot is imminent, but pair them
+                 * for clarity. */
+                flash_log_pause();
+#endif
                 rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+#ifdef CONFIG_FLASH_LOG
+                flash_log_resume();
+#endif
                 if (0 != rc) {
                     OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
                     UDS_SendNegativeResponse(

@@ -24,6 +24,10 @@
 #include "errors.h"
 #include "error_histogram.h"
 #include "factory_image.h"
+#ifdef CONFIG_FLASH_LOG
+#include "flash_log.h"
+#include "uds_log_download.h"
+#endif
 
 LOG_MODULE_REGISTER(uds, LOG_LEVEL_INF);
 
@@ -165,8 +169,33 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
         case UDS_SID_REQUEST_DOWNLOAD:
         case UDS_SID_TRANSFER_DATA:
         case UDS_SID_REQUEST_TRANSFER_EXIT:
+#ifdef CONFIG_FLASH_LOG
+            if (UDS_LogDownload_Claims(sid, requestData)) {
+                UDS_LogDownload_Handle(ctx, requestData, requestLength);
+            } else
+#endif
+            {
+                UDS_OTA_Handle(ctx, requestData, requestLength);
+            }
+            break;
         case UDS_SID_ROUTINE_CONTROL:
+#ifdef CONFIG_FLASH_LOG
+            {
+                /* RoutineControl RIDs 0xF1xx belong to the log
+                 * download path; everything else stays with OTA. */
+                uint16_t rid = ((uint16_t)requestData[UDS_SID_IDX + 2U] << 8) |
+                           (uint16_t)requestData[UDS_SID_IDX + 3U];
+                if ((requestLength >= 5U) &&
+                    (rid >= 0xF100U) && (rid <= 0xF1FFU)) {
+                    UDS_LogDownload_HandleRoutine(ctx, requestData,
+                                      requestLength);
+                } else {
+                    UDS_OTA_Handle(ctx, requestData, requestLength);
+                }
+            }
+#else
             UDS_OTA_Handle(ctx, requestData, requestLength);
+#endif
             break;
 
         default:
@@ -834,7 +863,13 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                                      UDS_NRC_CONDITIONS_NOT_CORRECT);
         } else {
+#ifdef CONFIG_FLASH_LOG
+            flash_log_pause();
+#endif
             rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+#ifdef CONFIG_FLASH_LOG
+            flash_log_resume();
+#endif
             if (0 != rc) {
                 OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
@@ -881,7 +916,17 @@ static bool writeRestoreFactoryDID(UDSContext_t *ctx,
         buildWriteDidPositiveResponse(ctx, requestData);
         UDS_SendResponse(ctx);
         k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
+#ifdef CONFIG_FLASH_LOG
+        /* Factory restore reads ~192 KB from the factory partition and
+         * writes it to slot1 — both adjacent to the log partitions on
+         * the same SPI NOR. Pause the log writer so its sector-erase
+         * waits don't fight the restore for the bus. */
+        flash_log_pause();
+#endif
         int rc = factory_image_restore_to_slot1();
+#ifdef CONFIG_FLASH_LOG
+        flash_log_resume();
+#endif
         if (0 != rc) {
             /* Only reachable if the restore failed before reboot —
              * log + record but the caller has already received the
@@ -927,6 +972,111 @@ static bool writeFactoryCaptureDID(UDSContext_t *ctx,
     return true;
 }
 
+#ifdef CONFIG_FLASH_LOG
+static const uint8_t LOG_ERASE_MAGIC = 0xA5U;
+
+/**
+ * @brief Handle a WDBI write to UDS_DID_LOG_ERASE (0xF282).
+ *
+ * 2-byte payload: stream_mask u8 (bit0=telemetry, bit1=text) + magic
+ * byte 0xA5. Gated to programming session AND not-in-dive — the erase
+ * holds the SPI bus for hundreds of milliseconds per FCB.
+ */
+static bool writeLogEraseDID(UDSContext_t *ctx,
+                 const uint8_t *requestData,
+                 uint16_t requestLength)
+{
+    uint8_t nrc = 0U;
+
+    if (requestLength != (UDS_SINGLE_VALUE_LEN + 1U)) {
+        nrc = UDS_NRC_INCORRECT_MSG_LEN;
+    } else if (LOG_ERASE_MAGIC != requestData[UDS_DATA_IDX + 1U]) {
+        nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
+    } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
+        nrc = UDS_NRC_SERVICE_NOT_IN_SESSION;
+    } else if (UDS_IsInDive()) {
+        nrc = UDS_NRC_CONDITIONS_NOT_CORRECT;
+    } else {
+        /* All preconditions OK */
+    }
+
+    if (0U != nrc) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
+    } else {
+        uint8_t stream_mask = requestData[UDS_DATA_IDX] & 0x03U;
+        int rc = flash_log_erase(stream_mask);
+        if (0 != rc) {
+            OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)rc);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                         UDS_NRC_CONDITIONS_NOT_CORRECT);
+        } else {
+            buildWriteDidPositiveResponse(ctx, requestData);
+            UDS_SendResponse(ctx);
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Handle a WDBI write to UDS_DID_LOG_VERBOSITY (0xF283).
+ *
+ * 1-byte payload: minimum log level (1=ERR..4=DBG) to mirror into the
+ * text FCB. Persisted to NVS.
+ */
+static bool writeLogVerbosityDID(UDSContext_t *ctx,
+                 const uint8_t *requestData,
+                 uint16_t requestLength)
+{
+    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                     UDS_NRC_INCORRECT_MSG_LEN);
+    } else {
+        int rc = flash_log_set_rtt_level(requestData[UDS_DATA_IDX]);
+        if (0 != rc) {
+            OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
+                    UDS_NRC_REQUEST_OUT_OF_RANGE);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                         UDS_NRC_REQUEST_OUT_OF_RANGE);
+        } else {
+            buildWriteDidPositiveResponse(ctx, requestData);
+            UDS_SendResponse(ctx);
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Handle a WDBI write to UDS_DID_LOG_CAN_VERBOSE (0xF284).
+ *
+ * 1-byte payload: bitmask (bit0 = capture CAN RX, bit1 = capture CAN
+ * TX). Persisted to NVS.
+ */
+static bool writeLogCanVerboseDID(UDSContext_t *ctx,
+                  const uint8_t *requestData,
+                  uint16_t requestLength)
+{
+    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                     UDS_NRC_INCORRECT_MSG_LEN);
+    } else {
+        int rc = flash_log_set_can_verbose(requestData[UDS_DATA_IDX]);
+        if (0 != rc) {
+            OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
+                    UDS_NRC_REQUEST_OUT_OF_RANGE);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                         UDS_NRC_REQUEST_OUT_OF_RANGE);
+        } else {
+            buildWriteDidPositiveResponse(ctx, requestData);
+            UDS_SendResponse(ctx);
+        }
+    }
+    return true;
+}
+#endif /* CONFIG_FLASH_LOG */
+
 /**
  * @brief Handle WriteDataByIdentifier service (SID 0x2E)
  *
@@ -960,6 +1110,14 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
             (void)writeRestoreFactoryDID(ctx, requestData, requestLength);
         } else if (UDS_DID_OTA_FACTORY_CAPTURE == did) {
             (void)writeFactoryCaptureDID(ctx, requestData, requestLength);
+#ifdef CONFIG_FLASH_LOG
+        } else if (UDS_DID_LOG_ERASE == did) {
+            (void)writeLogEraseDID(ctx, requestData, requestLength);
+        } else if (UDS_DID_LOG_VERBOSITY == did) {
+            (void)writeLogVerbosityDID(ctx, requestData, requestLength);
+        } else if (UDS_DID_LOG_CAN_VERBOSE == did) {
+            (void)writeLogCanVerboseDID(ctx, requestData, requestLength);
+#endif
         } else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
                (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))) {
             (void)writeSettingSaveDID(ctx, did, requestData, requestLength);

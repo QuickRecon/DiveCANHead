@@ -11,6 +11,9 @@
 
 #include "divecan_types.h"
 #include "common.h"
+#ifdef CONFIG_FLASH_LOG
+#include "flash_log.h"
+#endif
 
 /* Setpoint from handset or UDS write (centibar, 0-255).
  *
@@ -65,3 +68,15 @@ ZBUS_CHAN_DEFINE(chan_solenoid_status,
     NULL, NULL,
     ZBUS_OBSERVERS_EMPTY,
     DIVECAN_ERR_SOL_NORM);
+
+#ifdef CONFIG_FLASH_LOG
+/* Per-event solenoid fire records (start and end of each fire cycle).
+ * Published by ppo2_control around the actual solenoid fire/off calls;
+ * subscribed by flash_log_listeners.c which converts each publish into
+ * a FL_TYPE_SOLENOID_FIRE entry in the telemetry FCB. */
+ZBUS_CHAN_DEFINE(chan_solenoid_fire,
+    SolenoidFireEvent_t,
+    NULL, NULL,
+    ZBUS_OBSERVERS_EMPTY,
+    ZBUS_MSG_INIT(0));
+#endif

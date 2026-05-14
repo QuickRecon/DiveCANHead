@@ -78,6 +78,11 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
     }
 }
 
+/* Restored to 1024 after a 512 trim caused K_ERR_STACK_CHK_FAIL on
+ * real hardware. Static WCS came back at 264 B but the CAN driver +
+ * log-path call chains under it carry Zephyr-internal frames that
+ * the .su / .dfinish analysis can't see. Runtime is authoritative;
+ * revisit only with CONFIG_INIT_STACKS high-water-mark data. */
 K_THREAD_DEFINE(divecan_ppo2_tx, 1024,
         divecan_ppo2_tx_thread, NULL, NULL, NULL,
         4, 0, 0);

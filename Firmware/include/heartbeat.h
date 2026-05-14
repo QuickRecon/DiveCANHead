@@ -33,6 +33,7 @@ typedef enum {
     HEARTBEAT_CELL_1 = 4,          /**< Per-cell sample threads (analog/diveo2/o2s) */
     HEARTBEAT_CELL_2 = 5,
     HEARTBEAT_CELL_3 = 6,
+    HEARTBEAT_FLASH_LOG = 7,       /**< Flash log writer thread (src/flash_log/flash_log.c) */
     HEARTBEAT_COUNT
 } HeartbeatId_t;
 

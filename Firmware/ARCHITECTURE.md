@@ -161,7 +161,7 @@ Defined channels:
 
 | Channel | Type | Publisher | Subscribers |
 |---------|------|-----------|-------------|
-| `chan_error` | `ErrorEvent_t` | Any module via `OP_ERROR` | Future: flash log |
+| `chan_error` | `ErrorEvent_t` | Any module via `OP_ERROR` | Flash log listener |
 | `chan_cell_1` | `OxygenCellMsg_t` | Cell 1 thread | Consensus subscriber, UDS state DID |
 | `chan_cell_2` | `OxygenCellMsg_t` | Cell 2 thread | Consensus subscriber, UDS state DID |
 | `chan_cell_3` | `OxygenCellMsg_t` | Cell 3 thread | Consensus subscriber, UDS state DID |
@@ -172,11 +172,30 @@ Defined channels:
 | `chan_setpoint` | `PPO2_t` | DiveCAN RX, UDS write | PPO2 PID controller, DiveCAN ping |
 | `chan_atmos_pressure` | `uint16_t` | DiveCAN RX | UDS cal trigger, PPO2 PID controller (depth comp) |
 | `chan_shutdown_request` | `bool` | DiveCAN RX (BUS_OFF) | Future power management |
-| `chan_dive_state` | `DiveState_t` | DiveCAN RX (DIVING msg) | Future logging |
+| `chan_dive_state` | `DiveState_t` | DiveCAN RX (DIVING msg) | Flash log listener (emits DIVE_START/DIVE_END markers) |
 | `chan_duty_cycle` | `Numeric_t` | PPO2 PID controller | Solenoid fire thread |
 | `chan_solenoid_status` | `DiveCANError_t` | PPO2 PID controller | DiveCAN RespPing (OR-combined into status byte) |
+| `chan_solenoid_fire` | `SolenoidFireEvent_t` | PPO2 solenoid fire thread (start + end of each cycle) | Flash log listener (FL_TYPE_SOLENOID_FIRE) — `CONFIG_FLASH_LOG` only |
 
 `chan_cell_2` and `chan_cell_3` are conditionally compiled based on `CONFIG_CELL_COUNT`.
+
+## Flash Log Subsystem
+
+When `CONFIG_FLASH_LOG=y`, a pair of FCB instances on the external SPI
+NOR captures a persistent dive log retrievable via UDS. Two streams:
+**telemetry** (structured records — consensus, cell raw samples, PID
+snapshots, solenoid fire events, errors) and **text** (Zephyr LOG_x
+output captured via a custom log backend). Boot and dive markers are
+mirrored across both.
+
+A single writer thread (priority 9, below all safety-critical control
+threads) serves both FCBs from a unified ingest queue; producers
+enqueue with `K_NO_WAIT` and never block or recurse into LOG_x. The
+writer is paused around OTA / factory-restore flash operations that
+contend for the SPI bus.
+
+Full subsystem details — partition map, on-flash TLV format, recovery
+semantics, UDS download protocol — live in `docs/FLASH_LOG.md`.
 
 ## Power Management
 

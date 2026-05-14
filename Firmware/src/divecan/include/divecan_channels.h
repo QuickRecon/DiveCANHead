@@ -21,4 +21,8 @@ ZBUS_CHAN_DECLARE(
     chan_solenoid_status
 );
 
+#ifdef CONFIG_FLASH_LOG
+ZBUS_CHAN_DECLARE(chan_solenoid_fire);
+#endif
+
 #endif /* DIVECAN_CHANNELS_H */

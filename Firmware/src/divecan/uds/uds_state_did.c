@@ -25,6 +25,10 @@
 #include "firmware_confirm.h"
 #include "errors.h"
 #include "common.h"
+#ifdef CONFIG_FLASH_LOG
+#include "flash_log.h"
+#include "uds_log_download.h"
+#endif
 
 LOG_MODULE_REGISTER(uds_state_did, LOG_LEVEL_INF);
 
@@ -575,6 +579,49 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         }
         break;
     }
+
+#ifdef CONFIG_FLASH_LOG
+    case UDS_DID_LOG_STATS: {
+        const size_t required = sizeof(FlashLogStats_t);
+        if (maxLen < required) {
+            OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+            result = false;
+        } else {
+            FlashLogStats_t stats = {0};
+            (void)flash_log_stats(&stats);
+            (void)memcpy(buf, &stats, required);
+            *len = (uint16_t)required;
+        }
+        break;
+    }
+
+    case UDS_DID_LOG_SELECTOR_RESULT: {
+        /* Result struct is populated by uds_log_download.c after a
+         * RoutineControl selector call. 20 bytes:
+         *   stream u8, start_id u16, end_id u16, entry_count u32,
+         *   total_bytes u32, status u32. Pre-cleared so an
+         *   un-selected read returns all zeros / status=ENOENT. */
+        const size_t required = 20U;
+        if (maxLen < required) {
+            OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+            result = false;
+        } else {
+            UDS_LogDownload_FillSelectorResult(buf, required);
+            *len = (uint16_t)required;
+        }
+        break;
+    }
+
+    case UDS_DID_LOG_VERBOSITY:
+        buf[0] = flash_log_get_rtt_level();
+        *len = 1U;
+        break;
+
+    case UDS_DID_LOG_CAN_VERBOSE:
+        buf[0] = flash_log_get_can_verbose();
+        *len = 1U;
+        break;
+#endif
 
     default:
         /* Fall through to the OTA/MCUBoot helper for 0xF270-0xF274.

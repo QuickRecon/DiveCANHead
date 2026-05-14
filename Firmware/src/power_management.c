@@ -681,6 +681,12 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
     }
 }
 
+/* Restored to 512 after 384 caused K_ERR_STACK_CHK_FAIL on hardware.
+ * Boot-time runtime analyzer reported 208/384 (54%) but steady-state
+ * ADC-poll path under load pushed past 384 B and tripped the canary.
+ * The static WCS (232 B) missed the deeper ADC/LOG_x paths the
+ * runtime exercises after boot — same pattern as divecan_ppo2_tx.
+ * Use INIT_STACKS + thread_analyzer high-water for any future trim. */
 K_THREAD_DEFINE(battery_monitor, 512,
         battery_monitor_thread, NULL, NULL, NULL,
         10, 0, 0);
@@ -753,6 +759,10 @@ static void shutdown_thread_fn(void *p1, void *p2, void *p3)
     }
 }
 
+/* Restored to 768 — static WCS was "unbounded" and we had no runtime
+ * data; given the battery_monitor lesson (static under-estimates real
+ * usage by ~2× on log/HAL paths), keep the original size until a real
+ * BUS_OFF exercises the thread. */
 K_THREAD_DEFINE(shutdown_thread, 768,
         shutdown_thread_fn, NULL, NULL, NULL,
         8, 0, 0);

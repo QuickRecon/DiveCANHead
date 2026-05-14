@@ -263,5 +263,7 @@ config DIVECAN_HAL_PWR_EX
 
 endmenu # Safety
 
+rsource "Kconfig.flash_log"
+
 rsource "../tests/integration/Kconfig"
 rsource "../drivers/gpio_sim/Kconfig"

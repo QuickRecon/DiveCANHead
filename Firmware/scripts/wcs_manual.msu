@@ -1,0 +1,183 @@
+# Manual stack-usage overrides for symbols whose definitions GCC can't see
+# (libc/picolibc routines, Zephyr kernel calls compiled without
+# -fdump-rtl-dfinish, HAL inline asm). Format: <symbol> <bytes>.
+#
+# Conservative ceilings — better to overestimate than to silently miss a
+# deep call. Numbers cross-checked against the picolibc + arm-zephyr-eabi
+# 14.3.0 frames.
+
+# ---- picolibc / libc ----
+memcpy          16
+memset          16
+memmove         24
+memcmp          16
+strcmp          16
+strncmp         16
+strcpy          16
+strncpy         16
+strlcpy         24
+strcat          16
+strncat         24
+strlen          8
+strnlen         8
+strchr          16
+strrchr         16
+strstr          32
+strtok_r        48
+strtol          80
+strtoul         80
+strtof          96
+strtod         128
+strcspn         16
+snprintf       160
+vsnprintf      144
+__vsprintf_chk 160
+__snprintf_chk 168
+sprintf        160
+printf         160
+puts            48
+fputs           48
+
+# ---- libgcc soft-float / arithmetic helpers ----
+__aeabi_uldivmod   16
+__aeabi_ldivmod    16
+__aeabi_uidiv       8
+__aeabi_idiv        8
+__aeabi_uidivmod   16
+__aeabi_idivmod    16
+__aeabi_dadd       32
+__aeabi_dsub       32
+__aeabi_dmul       32
+__aeabi_ddiv       40
+__aeabi_dcmpgt     16
+__aeabi_dcmplt     16
+__aeabi_dcmpge     16
+__aeabi_dcmpeq     16
+__aeabi_dcmple     16
+__aeabi_f2d        16
+__aeabi_d2f        16
+__aeabi_i2d        16
+__aeabi_ui2d       16
+__aeabi_d2iz       16
+__aeabi_d2uiz      16
+__aeabi_fadd       24
+__aeabi_fsub       24
+__aeabi_fmul       24
+__aeabi_fdiv       32
+__aeabi_fcmpgt     16
+__aeabi_fcmplt     16
+__aeabi_f2iz       16
+__aeabi_f2uiz      16
+__aeabi_memcpy     16
+__aeabi_memset     16
+
+# ---- Math library ----
+round              24
+roundf             16
+floor              16
+floorf             16
+ceil               16
+ceilf              16
+fabs                8
+fabsf               8
+sqrt               24
+sqrtf              16
+exp                64
+log                64
+pow                96
+sin                48
+cos                48
+
+# ---- picolibc internals occasionally referenced ----
+_reclaim_reent     32
+__assert_func      48
+__memcpy_chk       24
+__strncpy_chk      24
+__strcpy_chk       24
+
+# ---- Reasonable ceilings for Zephyr kernel hot paths whose .su we don't
+# have (when -fstack-usage isn't applied to Zephyr core). These are
+# generous defaults; tighten as needed once a real measurement disagrees.
+# Both the public k_* / zbus_* names and the syscall-impl z_impl_* names
+# are listed because GCC's RTL dump shows whichever the compiler picks.
+
+k_msgq_put            48
+k_msgq_get            48
+k_msgq_purge          24
+z_impl_k_msgq_put     48
+z_impl_k_msgq_get     48
+z_impl_k_msgq_purge   24
+k_msleep              24
+k_sleep               24
+k_usleep              24
+k_busy_wait           16
+z_impl_k_sleep        24
+z_impl_k_usleep       24
+z_impl_k_busy_wait    16
+k_uptime_get          16
+k_uptime_ticks         8
+z_impl_k_uptime_ticks  8
+k_thread_create       96
+k_thread_suspend      32
+z_impl_k_thread_suspend 32
+k_sem_take            48
+k_sem_reset           24
+z_impl_k_sem_take     48
+z_impl_k_sem_reset    24
+k_work_submit_to_queue 48
+k_work_queue_init     48
+k_work_queue_start    48
+z_impl_device_is_ready 16
+zbus_chan_pub         64
+zbus_chan_read        48
+zbus_chan_claim       48
+zbus_chan_finish      16
+log_msg_create        64
+log_printf            96
+printk                96
+assert_print         128
+assert_post_action   128
+z_impl_z_log_msg_static_create     96
+z_impl_z_log_msg_simple_create_0   80
+z_impl_z_log_msg_simple_create_1   96
+z_impl_z_log_msg_simple_create_2  112
+fcb_append            96
+fcb_append_finish     48
+fcb_walk              80
+fcb_rotate            96
+flash_area_write      64
+flash_area_read       48
+flash_area_erase      64
+flash_area_open       32
+flash_area_close      16
+flash_img_init_id    128
+flash_img_check      128
+flash_img_buffered_write 128
+boot_request_upgrade  96
+boot_is_img_confirmed 32
+boot_read_bank_header 48
+boot_fetch_active_slot 32
+mcuboot_swap_type     32
+z_impl_can_send       64
+can_add_rx_filter     96
+adc_gain_invert_64    48
+HAL_FLASHEx_OBGetConfig 96
+settings_save_one     96
+settings_load_subtree 64
+settings_subsys_init  64
+settings_runtime_get  96
+smf_set_state         32
+smf_set_initial       32
+smf_run_state         48
+sys_reboot            32
+lround                24
+z_impl_hwinfo_get_reset_cause 32
+
+# Float helpers picked up from the analyzer's unresolved list
+__aeabi_d2ulz      16
+__aeabi_dcmpun     16
+__aeabi_fcmpge     16
+__aeabi_fcmple     16
+__aeabi_ui2f       16
+__aeabi_ul2d       16
+__aeabi_i2f        16

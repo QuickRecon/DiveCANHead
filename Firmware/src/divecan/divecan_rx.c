@@ -23,6 +23,9 @@
 #include "uds.h"
 #include "uds_log_push.h"
 #include "oxygen_cell_channels.h"
+#ifdef CONFIG_FLASH_LOG
+#include "flash_log.h"
+#endif
 #include "oxygen_cell_types.h"
 #include "power_management.h"
 #include "calibration.h"
@@ -172,6 +175,13 @@ static void can_rx_callback(const struct device *dev, struct can_frame *frame,
         .length = frame->dlc,
     };
     (void)memcpy(msg.data, frame->data, frame->dlc);
+
+#ifdef CONFIG_FLASH_LOG
+    /* ISR-safe enqueue; the helper internally gates on the runtime
+     * LOG_CAN_VERBOSE bit so this is a single u8 load when capture is
+     * disabled. */
+    flash_log_enqueue_can_rx_isr(frame);
+#endif
 
     if (0 != k_msgq_put(&can_rx_msgq, &msg, K_NO_WAIT)) {
         OP_ERROR(OP_ERR_CAN_OVERFLOW);
@@ -340,7 +350,9 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
     }
 }
 
-K_THREAD_DEFINE(divecan_rx, 2048,
+/* Static WCS = 760 B (scripts/wcs.py). 1280 B gives ~70 % margin for the
+ * OTA / settings paths reachable through UDS handling. */
+K_THREAD_DEFINE(divecan_rx, 1280,
         divecan_rx_thread, NULL, NULL, NULL,
         5, 0, 0);
 
