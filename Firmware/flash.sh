@@ -54,8 +54,14 @@ if [ "$NO_BUILD" = false ]; then
         echo "    build/ was non-sysbuild — clearing"
         rm -rf build
     fi
+    # The .overlay sibling to .conf disables peripherals the variant
+    # doesn't use, recovering ~1.8 KB RAM from driver state structs
+    # that would otherwise be allocated for hardware never spoken to.
+    # See variants/dev_full.overlay and reports/memory_analysis.md.
     west build -d build -b divecan_jr/stm32l431xx . --sysbuild \
-        -- -DBOARD_ROOT=. -DEXTRA_CONF_FILE=variants/dev_full.conf
+        -- -DBOARD_ROOT=. \
+           -DEXTRA_CONF_FILE=variants/dev_full.conf \
+           -DEXTRA_DTC_OVERLAY_FILE=variants/dev_full.overlay
 fi
 
 if [ "$RTT_ONLY" = false ]; then
@@ -99,11 +105,16 @@ cleanup() {
 }
 trap cleanup INT TERM
 
+# RTT polling at 10 ms (default 100 ms). Drains the up-buffer ~10×
+# faster so concurrent log bursts have headroom — relevant for the
+# thread_analyzer paced dump (~20 messages over 1 s) and any panic /
+# error storms. No throughput downside; openocd just polls more often.
 openocd \
     -f interface/stlink.cfg \
     -f target/stm32l4x.cfg \
     -c "init" \
     -c "rtt setup 0x20000000 0x10000 \"SEGGER RTT\"" \
+    -c "rtt polling_interval 10" \
     -c "rtt start" \
     -c "rtt server start 9090 0" \
     2>/dev/null &

@@ -53,12 +53,15 @@ config FACTORY_IMAGE_CAPTURE_ON_BOOT
 
 config FACTORY_IMAGE_CHUNK_SIZE
 	int "Per-iteration chunk size in bytes"
-	default 4096
+	default 1024
 	range 256 8192
 	help
-	  Granularity of the slot0-to-factory copy loop. Smaller chunks mean
-	  more iterations and lower RAM use but more total WDT-feed
-	  opportunities. 4 KB matches a single SPI NOR sector erase, which
-	  keeps the erase and write loops in lockstep.
+	  RAM size of the read/write buffer used by the slot0-to-factory
+	  copy loop. The bulk erase of the destination region happens
+	  before the copy loop starts via a single flash_area_erase() call,
+	  so chunk size has no relationship to the SPI NOR sector erase
+	  size — it only controls per-iteration RAM cost and the number of
+	  loop iterations. 1 KB is a reasonable default; the loop feeds the
+	  watchdog between iterations so even 256 B is safe.
 
 endif # FACTORY_IMAGE

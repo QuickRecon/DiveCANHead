@@ -1,0 +1,667 @@
+-- west build: running target rom_report
+[0/1] cd /home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/build/mcuboot && /home/aren/ncs/toolchains/927563c840/usr/local/bin/python3.12 /home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/zephyr/scripts/footprint/size_report -k /home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/build/mcuboot/zephyr/zephyr.elf -z /home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/zephyr -o /home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/build/mcuboot --workspace=/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2 -d 99 --json rom.json rom
+Path                                                                                             Size       %  Address    Section    
+==========================================================================================================================================
+Root                                                                                            31748 100.00%  - 
+├── (hidden)                                                                                     1983   6.25%  - 
+├── (no paths)                                                                                   1474   4.64%  - 
+│   ├── CSWTCH.2044                                                                                12   0.04%  0x080133a0 rodata
+│   ├── __aeabi_idiv0                                                                               2   0.01%  0x0800c115 text
+│   ├── __aeabi_memcpy8                                                                            28   0.09%  0x08012b1f text
+│   ├── __compound_literal.0                                                                        8   0.03%  0x080132f4 rodata
+│   ├── __m_vfprintf                                                                              624   1.97%  0x08010615 text
+│   ├── __udivmoddi4                                                                              700   2.20%  0x0800c119 text
+│   ├── __ultoa_invert                                                                             52   0.16%  0x08012b6b text
+│   ├── memcmp                                                                                     32   0.10%  0x08012b4b text
+│   └── memset                                                                                     16   0.05%  0x08012b3b text
+├── /                                                                                              28   0.09%  - 
+│   └── opt                                                                                        28   0.09%  - 
+│       └── zephyr-sdk                                                                             28   0.09%  - 
+│           └── gnu                                                                                28   0.09%  - 
+│               └── arm-zephyr-eabi                                                                28   0.09%  - 
+│                   └── arm-zephyr-eabi                                                            28   0.09%  - 
+│                       └── sys-include                                                            28   0.09%  - 
+│                           └── stdlib.h                                                           28   0.09%  - 
+│                               └── abort                                                          28   0.09%  0x0800e041 text
+├── OUTPUT_DIR                                                                                    494   1.56%  - 
+│   └── zephyr                                                                                    494   1.56%  - 
+│       ├── isr_tables.c                                                                          492   1.55%  - 
+│       │   ├── _irq_vector_table                                                                 164   0.52%  0x0800c040 rom_start
+│       │   └── _sw_isr_table                                                                     328   1.03%  0x08012de8 sw_isr_table
+│       └── misc                                                                                    2   0.01%  - 
+│           └── generated                                                                           2   0.01%  - 
+│               └── configs.c                                                                       2   0.01%  - 
+│                   └── _ConfigAbsSyms                                                              2   0.01%  0x080109bb text
+├── WORKSPACE                                                                                    8799  27.72%  - 
+│   ├── bootloader                                                                               7906  24.90%  - 
+│   │   └── mcuboot                                                                              7906  24.90%  - 
+│   │       ├── boot                                                                             6844  21.56%  - 
+│   │       │   ├── bootutil                                                                     6252  19.69%  - 
+│   │       │   │   └── src                                                                      6252  19.69%  - 
+│   │       │   │       ├── bootutil_area.c                                                       234   0.74%  - 
+│   │       │   │       │   ├── boot_erase_region                                                 134   0.42%  0x08010fc3 text
+│   │       │   │       │   ├── boot_scramble_region                                               16   0.05%  0x08011049 text
+│   │       │   │       │   ├── boot_scramble_slot                                                 10   0.03%  0x08011059 text
+│   │       │   │       │   ├── boot_scratch_trailer_sz                                             8   0.03%  0x08010f83 text
+│   │       │   │       │   ├── boot_trailer_scramble_offset                                       56   0.18%  0x08010f8b text
+│   │       │   │       │   └── boot_trailer_sz                                                    10   0.03%  0x08010f79 text
+│   │       │   │       ├── bootutil_img_hash.c                                                   110   0.35%  - 
+│   │       │   │       │   └── bootutil_img_hash                                                 110   0.35%  0x08010c89 text
+│   │       │   │       ├── bootutil_loader.c                                                     304   0.96%  - 
+│   │       │   │       │   ├── boot_add_shared_data                                                4   0.01%  0x080110ad text
+│   │       │   │       │   ├── boot_check_header_erased                                           26   0.08%  0x08011063 text
+│   │       │   │       │   ├── boot_check_header_valid                                            76   0.24%  0x0800c939 text
+│   │       │   │       │   ├── boot_check_image                                                   48   0.15%  0x0800c985 text
+│   │       │   │       │   ├── boot_close_all_flash_areas                                         34   0.11%  0x080110ed text
+│   │       │   │       │   ├── boot_open_all_flash_areas                                          60   0.19%  0x080110b1 text
+│   │       │   │       │   ├── boot_read_image_headers                                            48   0.15%  0x0801107d text
+│   │       │   │       │   └── boot_state_init                                                     8   0.03%  0x0801110f text
+│   │       │   │       ├── bootutil_misc.c                                                       552   1.74%  - 
+│   │       │   │       │   ├── boot_fih_memequal                                                   4   0.01%  0x08010e45 text
+│   │       │   │       │   ├── boot_find_status                                                   96   0.30%  0x0800c879 text
+│   │       │   │       │   ├── boot_initialize_area                                               64   0.20%  0x08010f37 text
+│   │       │   │       │   ├── boot_read_image_size                                              138   0.43%  0x08010ead text
+│   │       │   │       │   ├── boot_read_sectors                                                  96   0.30%  0x0800c8d9 text
+│   │       │   │       │   ├── boot_read_swap_size                                                28   0.09%  0x08010e6f text
+│   │       │   │       │   ├── boot_state_clear                                                    2   0.01%  0x08010f77 text
+│   │       │   │       │   ├── boot_status_entries                                                52   0.16%  0x0800c845 text
+│   │       │   │       │   ├── boot_status_off                                                    38   0.12%  0x08010e49 text
+│   │       │   │       │   ├── boot_write_swap_size                                               30   0.09%  0x08010e8b text
+│   │       │   │       │   └── bootutil_max_image_size                                             4   0.01%  0x08010ea9 text
+│   │       │   │       ├── bootutil_public.c                                                     878   2.77%  - 
+│   │       │   │       │   ├── boot_img_magic                                                     16   0.05%  0x080133ea rodata
+│   │       │   │       │   ├── boot_magic_compatible_check                                        28   0.09%  0x080125e1 text
+│   │       │   │       │   ├── boot_read_flag                                                     56   0.18%  0x08012623 text
+│   │       │   │       │   ├── boot_read_image_ok                                                 12   0.04%  0x080126d3 text
+│   │       │   │       │   ├── boot_read_swap_state                                              172   0.54%  0x0800f411 text
+│   │       │   │       │   ├── boot_read_swap_state_by_id                                         40   0.13%  0x080126df text
+│   │       │   │       │   ├── boot_swap_info_off                                                 12   0.04%  0x080125d5 text
+│   │       │   │       │   ├── boot_swap_tables                                                   18   0.06%  0x08013a86 rodata
+│   │       │   │       │   ├── boot_swap_type_multi                                              236   0.74%  0x0800f4bd text
+│   │       │   │       │   ├── boot_write_copy_done                                               16   0.05%  0x08012735 text
+│   │       │   │       │   ├── boot_write_image_ok                                                14   0.04%  0x080126c5 text
+│   │       │   │       │   ├── boot_write_magic                                                   68   0.21%  0x0800f3cd text
+│   │       │   │       │   ├── boot_write_swap_info                                               46   0.14%  0x08012707 text
+│   │       │   │       │   ├── boot_write_trailer                                                 86   0.27%  0x0801265b text
+│   │       │   │       │   ├── boot_write_trailer_flag                                            20   0.06%  0x080126b1 text
+│   │       │   │       │   └── bootutil_buffer_is_erased                                          38   0.12%  0x080125fd text
+│   │       │   │       ├── fault_injection_hardening.c                                             8   0.03%  - 
+│   │       │   │       │   ├── FIH_FAILURE                                                         4   0.01%  0x2000092c datas
+│   │       │   │       │   └── FIH_NO_BOOTABLE_IMAGE                                               4   0.01%  0x20000928 datas
+│   │       │   │       ├── image_validate.c                                                      278   0.88%  - 
+│   │       │   │       │   ├── allowed_unprot_tlvs                                                30   0.09%  0x080133cc rodata
+│   │       │   │       │   └── bootutil_img_validate                                             248   0.78%  0x0800c74d text
+│   │       │   │       ├── loader.c                                                             1170   3.69%  - 
+│   │       │   │       │   ├── boot_copy_region                                                   88   0.28%  0x0800cae1 text
+│   │       │   │       │   ├── boot_go                                                            36   0.11%  0x0800cdb1 text
+│   │       │   │       │   ├── boot_status_is_reset                                               26   0.08%  0x08011117 text
+│   │       │   │       │   ├── boot_swap_image.isra.0                                            156   0.49%  0x0800ca45 text
+│   │       │   │       │   ├── boot_validate_slot.isra.0                                         144   0.45%  0x0800c9b5 text
+│   │       │   │       │   ├── boot_write_status                                                  88   0.28%  0x08011131 text
+│   │       │   │       │   └── context_boot_go                                                   632   1.99%  0x0800cb39 text
+│   │       │   │       ├── swap_misc.c                                                           346   1.09%  - 
+│   │       │   │       │   ├── swap_read_status                                                  110   0.35%  0x08011205 text
+│   │       │   │       │   ├── swap_scramble_trailer_sectors                                      42   0.13%  0x08011189 text
+│   │       │   │       │   ├── swap_set_copy_done                                                 44   0.14%  0x0800cdd5 text
+│   │       │   │       │   ├── swap_set_image_ok                                                  68   0.21%  0x0800ce01 text
+│   │       │   │       │   └── swap_status_init                                                   82   0.26%  0x080111b3 text
+│   │       │   │       ├── swap_scratch.c                                                       2038   6.42%  - 
+│   │       │   │       │   ├── app_max_size                                                      212   0.67%  0x0800d3f1 text
+│   │       │   │       │   ├── boot_get_first_trailer_sector                                      38   0.12%  0x08011273 text
+│   │       │   │       │   ├── boot_read_image_header                                            188   0.59%  0x0801131d text
+│   │       │   │       │   ├── boot_slots_compatible                                             204   0.64%  0x0800cef1 text
+│   │       │   │       │   ├── boot_status_internal_off                                           22   0.07%  0x08011307 text
+│   │       │   │       │   ├── boot_status_tables                                                 16   0.05%  0x08013a58 rodata
+│   │       │   │       │   ├── find_last_sector_idx                                               74   0.23%  0x080112bd text
+│   │       │   │       │   ├── get_first_trailer_sector_end_off                                   36   0.11%  0x08011299 text
+│   │       │   │       │   ├── swap_read_status_bytes                                            172   0.54%  0x0800ce45 text
+│   │       │   │       │   ├── swap_run                                                          780   2.46%  0x0800d0e5 text
+│   │       │   │       │   └── swap_status_source                                                296   0.93%  0x0800cfbd text
+│   │       │   │       └── tlv.c                                                                 334   1.05%  - 
+│   │       │   │           ├── bootutil_tlv_iter_begin                                           156   0.49%  0x08010cf7 text
+│   │       │   │           ├── bootutil_tlv_iter_is_prot                                          28   0.09%  0x08010e29 text
+│   │       │   │           └── bootutil_tlv_iter_next                                            150   0.47%  0x08010d93 text
+│   │       │   └── zephyr                                                                        592   1.86%  - 
+│   │       │       ├── cleanup                                                                    84   0.26%  - 
+│   │       │       │   └── arm_cortex_m.c                                                         84   0.26%  - 
+│   │       │       │       └── cleanup_arm_interrupts                                             84   0.26%  0x0800d6f1 text
+│   │       │       ├── flash_map_extended.c                                                      130   0.41%  - 
+│   │       │       │   ├── flash_area_get_device_id                                                4   0.01%  0x08010887 text
+│   │       │       │   ├── flash_area_get_sector                                                  54   0.17%  0x0801088b text
+│   │       │       │   ├── flash_area_id_from_multi_image_slot                                    36   0.11%  0x0800c4bd text
+│   │       │       │   └── flash_device_base                                                      36   0.11%  0x0800c499 text
+│   │       │       ├── include                                                                    32   0.10%  - 
+│   │       │       │   └── sysflash                                                               32   0.10%  - 
+│   │       │       │       └── sysflash.h                                                         32   0.10%  - 
+│   │       │       │           ├── all_slots.0                                                     8   0.03%  0x08013008 rodata
+│   │       │       │           ├── all_slots.0                                                     8   0.03%  0x0801312c rodata
+│   │       │       │           ├── all_slots.0                                                     8   0.03%  0x08013134 rodata
+│   │       │       │           └── all_slots.0                                                     8   0.03%  0x080133ac rodata
+│   │       │       ├── main.c                                                                    204   0.64%  - 
+│   │       │       │   ├── log_const_mcuboot                                                       8   0.03%  0x08012ff8 log_const_area
+│   │       │       │   └── main                                                                  196   0.62%  0x0800c3d5 text
+│   │       │       ├── os.c                                                                        2   0.01%  - 
+│   │       │       │   └── os_heap_init                                                            2   0.01%  0x080108c1 text
+│   │       │       └── watchdog.c                                                                140   0.44%  - 
+│   │       │           ├── mcuboot_watchdog_feed                                                  40   0.13%  0x0800c545 text
+│   │       │           └── mcuboot_watchdog_setup                                                100   0.31%  0x0800c4e1 text
+│   │       └── ext                                                                              1062   3.35%  - 
+│   │           └── tinycrypt                                                                    1062   3.35%  - 
+│   │               └── lib                                                                      1062   3.35%  - 
+│   │                   └── source                                                               1062   3.35%  - 
+│   │                       ├── sha256.c                                                         1058   3.33%  - 
+│   │                       │   ├── compress                                                      468   1.47%  0x0800d4c5 text
+│   │                       │   ├── k256                                                          256   0.81%  0x0801313c rodata
+│   │                       │   ├── tc_sha256_final                                               170   0.54%  0x08011425 text
+│   │                       │   ├── tc_sha256_init                                                 88   0.28%  0x0800d699 text
+│   │                       │   └── tc_sha256_update                                               76   0.24%  0x080113d9 text
+│   │                       └── utils.c                                                             4   0.01%  - 
+│   │                           └── _set                                                            4   0.01%  0x080114cf text
+│   └── modules                                                                                   893   2.81%  - 
+│       ├── debug                                                                                 487   1.53%  - 
+│       │   └── segger                                                                            487   1.53%  - 
+│       │       └── SEGGER                                                                        487   1.53%  - 
+│       │           └── SEGGER_RTT.c                                                              487   1.53%  - 
+│       │               ├── SEGGER_RTT_Init                                                        60   0.19%  0x0800f69d text
+│       │               ├── SEGGER_RTT_Write                                                       52   0.16%  0x0800f669 text
+│       │               ├── SEGGER_RTT_WriteNoLock                                                 88   0.28%  0x0800f611 text
+│       │               ├── _DoInit                                                               104   0.33%  0x0800f5a9 text
+│       │               ├── _GetAvailWriteSpace                                                    18   0.06%  0x08012745 text
+│       │               ├── _WriteBlocking                                                         90   0.28%  0x08012791 text
+│       │               ├── _WriteNoCheck                                                          58   0.18%  0x08012757 text
+│       │               └── _aInitStr                                                              17   0.05%  0x08013a98 rodata
+│       ├── hal                                                                                   388   1.22%  - 
+│       │   └── stm32                                                                             388   1.22%  - 
+│       │       └── stm32cube                                                                     388   1.22%  - 
+│       │           └── stm32l4xx                                                                 388   1.22%  - 
+│       │               ├── drivers                                                               320   1.01%  - 
+│       │               │   └── src                                                               320   1.01%  - 
+│       │               │       ├── stm32l4xx_hal_rcc.c                                           148   0.47%  - 
+│       │               │       │   └── HAL_RCC_GetSysClockFreq                                   148   0.47%  0x0800f28d text
+│       │               │       └── stm32l4xx_ll_utils.c                                          172   0.54%  - 
+│       │               │           └── LL_SetFlashLatency                                        172   0.54%  0x0800f321 text
+│       │               └── soc                                                                    68   0.21%  - 
+│       │                   └── system_stm32l4xx.c                                                 68   0.21%  - 
+│       │                       ├── AHBPrescTable                                                  16   0.05%  0x08013a76 rodata
+│       │                       ├── MSIRangeTable                                                  48   0.15%  0x08013370 rodata
+│       │                       └── SystemCoreClock                                                 4   0.01%  0x200009e0 datas
+│       ├── segger                                                                                 10   0.03%  - 
+│       │   └── SEGGER_RTT_zephyr.c                                                                10   0.03%  - 
+│       │       └── rtt_init                                                                       10   0.03%  0x080127eb text
+│       └── segger                                                                                  8   0.03%  - 
+│           └── SEGGER_RTT_zephyr.c                                                                 8   0.03%  - 
+│               └── __init_rtt_init                                                                 8   0.03%  0x08012bb8 initlevel
+└── ZEPHYR_BASE                                                                                 18970  59.75%  - 
+    ├── arch                                                                                     2208   6.95%  - 
+    │   ├── arm                                                                                  2120   6.68%  - 
+    │   │   └── core                                                                             2120   6.68%  - 
+    │   │       ├── cortex_m                                                                     1234   3.89%  - 
+    │   │       │   ├── cpu_idle.c                                                                 38   0.12%  - 
+    │   │       │   │   ├── arch_cpu_idle                                                          26   0.08%  0x08011519 text
+    │   │       │   │   └── z_arm_cpu_idle_init                                                    12   0.04%  0x0800dc51 text
+    │   │       │   ├── exc_exit.c                                                                 32   0.10%  - 
+    │   │       │   │   └── z_arm_exc_exit                                                         32   0.10%  0x0800dc5d text
+    │   │       │   ├── fault.c                                                                   676   2.13%  - 
+    │   │       │   │   ├── bus_fault.isra.0                                                      108   0.34%  0x0800d8d1 text
+    │   │       │   │   ├── mem_manage_fault                                                      160   0.50%  0x0800d7dd text
+    │   │       │   │   ├── usage_fault.isra.0                                                     84   0.26%  0x0800d87d text
+    │   │       │   │   ├── z_arm_fault                                                           300   0.94%  0x0800d93d text
+    │   │       │   │   └── z_arm_fault_init                                                       24   0.08%  0x0800da69 text
+    │   │       │   ├── irq_init.c                                                                 24   0.08%  - 
+    │   │       │   │   └── z_arm_interrupt_init                                                   24   0.08%  0x0800dd09 text
+    │   │       │   ├── irq_manage.c                                                               84   0.26%  - 
+    │   │       │   │   ├── arm_irq_enable                                                         28   0.09%  0x0800db11 text
+    │   │       │   │   ├── arm_irq_priority_set                                                   48   0.15%  0x0800db2d text
+    │   │       │   │   └── z_irq_spurious                                                          8   0.03%  0x080114fd text
+    │   │       │   ├── isr_wrapper.c                                                              36   0.11%  - 
+    │   │       │   │   └── _isr_wrapper                                                           36   0.11%  0x0800dd21 text
+    │   │       │   ├── prep_c.c                                                                   84   0.26%  - 
+    │   │       │   │   ├── relocate_vector_table                                                  28   0.09%  0x0800db5d text
+    │   │       │   │   └── z_prep_c                                                               56   0.18%  0x0800db79 text
+    │   │       │   ├── scb.c                                                                      36   0.11%  - 
+    │   │       │   │   └── z_arm_clear_arm_mpu_config                                             36   0.11%  0x0800dac9 text
+    │   │       │   ├── thread.c                                                                  180   0.57%  - 
+    │   │       │   │   ├── arch_coprocessors_disable                                               6   0.02%  0x08011505 text
+    │   │       │   │   ├── arch_irq_unlock_outlined                                               14   0.04%  0x0801150b text
+    │   │       │   │   ├── arch_new_thread                                                        56   0.18%  0x0800dbb1 text
+    │   │       │   │   ├── arch_switch_to_main_thread                                             60   0.19%  0x0800dc15 text
+    │   │       │   │   └── z_check_thread_stack_fail                                              44   0.14%  0x0800dbe9 text
+    │   │       │   └── thread_abort.c                                                             44   0.14%  - 
+    │   │       │       └── z_impl_k_thread_abort                                                  44   0.14%  0x0800dc7d text
+    │   │       ├── fatal.c                                                                        20   0.06%  - 
+    │   │       │   ├── z_arm_fatal_error                                                          12   0.04%  0x080114db text
+    │   │       │   └── z_do_kernel_oops                                                            8   0.03%  0x080114e7 text
+    │   │       ├── mpu                                                                           788   2.48%  - 
+    │   │       │   ├── arm_core_mpu.c                                                             68   0.21%  - 
+    │   │       │   │   ├── static_regions                                                         12   0.04%  0x0801323c rodata
+    │   │       │   │   ├── z_arm_configure_dynamic_mpu_regions                                    32   0.10%  0x0800dd69 text
+    │   │       │   │   └── z_arm_configure_static_mpu_regions                                     24   0.08%  0x0800dd51 text
+    │   │       │   ├── arm_mpu.c                                                                 616   1.94%  - 
+    │   │       │   │   ├── arm_core_mpu_configure_dynamic_mpu_regions                             56   0.18%  0x0800de5d text
+    │   │       │   │   ├── arm_core_mpu_configure_static_mpu_regions                              20   0.06%  0x0800de49 text
+    │   │       │   │   ├── arm_core_mpu_disable                                                   20   0.06%  0x0800de35 text
+    │   │       │   │   ├── arm_core_mpu_enable                                                    24   0.08%  0x0800de1d text
+    │   │       │   │   ├── mpu_configure_regions                                                 108   0.34%  0x0800ddb1 text
+    │   │       │   │   └── z_arm_mpu_init                                                        388   1.22%  0x0800de95 text
+    │   │       │   ├── arm_mpu_regions.c                                                          32   0.10%  - 
+    │   │       │   │   ├── mpu_config                                                              8   0.03%  0x08013248 rodata
+    │   │       │   │   └── mpu_regions                                                            24   0.08%  0x08013250 rodata
+    │   │       │   └── arm_mpu_v7_internal.h                                                      72   0.23%  - 
+    │   │       │       ├── region_init                                                            40   0.13%  0x0800dd89 text
+    │   │       │       └── size_to_mpu_rasr_size                                                  32   0.10%  0x08011533 text
+    │   │       ├── nmi.c                                                                          14   0.04%  - 
+    │   │       │   └── z_arm_nmi                                                                  14   0.04%  0x080114ef text
+    │   │       └── tls.c                                                                          64   0.20%  - 
+    │   │           └── arch_tls_stack_setup                                                       64   0.20%  0x0800d79d text
+    │   └── common                                                                                 88   0.28%  - 
+    │       ├── init.c                                                                             32   0.10%  - 
+    │       │   ├── arch_bss_zero                                                                  24   0.08%  0x0800d745 text
+    │       │   ├── arch_early_memcpy                                                               4   0.01%  0x080114d7 text
+    │       │   └── arch_early_memset                                                               4   0.01%  0x080114d3 text
+    │       └── xip.c                                                                              56   0.18%  - 
+    │           └── arch_data_copy                                                                 56   0.18%  0x0800d75d text
+    ├── drivers                                                                                  9758  30.74%  - 
+    │   ├── clock_control                                                                         892   2.81%  - 
+    │   │   ├── clock_stm32_ll_common.c                                                           788   2.48%  - 
+    │   │   │   ├── __device_dts_ord_8                                                             32   0.10%  0x08012c48 device_area
+    │   │   │   ├── __devstate_dts_ord_8                                                            2   0.01%  0x20000a0e device_states
+    │   │   │   ├── __init___device_dts_ord_8                                                       8   0.03%  0x08012ba8 initlevel
+    │   │   │   ├── config_regulator_voltage                                                        2   0.01%  0x08011743 text
+    │   │   │   ├── enabled_clock                                                                  30   0.09%  0x080116a7 text
+    │   │   │   ├── stm32_clock_control_api                                                        28   0.09%  0x08012f9c device_api_area
+    │   │   │   ├── stm32_clock_control_configure                                                  70   0.22%  0x080116c5 text
+    │   │   │   ├── stm32_clock_control_get_status                                                 56   0.18%  0x0801170b text
+    │   │   │   ├── stm32_clock_control_get_subsys_rate                                           188   0.59%  0x0800e261 text
+    │   │   │   ├── stm32_clock_control_init                                                      260   0.82%  0x0800e31d text
+    │   │   │   ├── stm32_clock_control_off                                                        44   0.14%  0x0801167b text
+    │   │   │   └── stm32_clock_control_on                                                         68   0.21%  0x08011637 text
+    │   │   └── clock_stm32l4_l5_wb_wl.c                                                          104   0.33%  - 
+    │   │       ├── config_enable_default_clocks                                                   32   0.10%  0x0800e469 text
+    │   │       ├── config_pll_sysclock                                                            64   0.20%  0x0800e429 text
+    │   │       └── get_pllsrc_frequency                                                            8   0.03%  0x0800e421 text
+    │   ├── console                                                                               104   0.33%  - 
+    │   │   └── rtt_console.c                                                                     104   0.33%  - 
+    │   │       ├── __init_rtt_console_init                                                         8   0.03%  0x08012c08 initlevel
+    │   │       ├── rtt_console_init                                                               24   0.08%  0x0800e489 text
+    │   │       └── rtt_console_out                                                                72   0.23%  0x0800e4a1 text
+    │   ├── flash                                                                                3282  10.34%  - 
+    │   │   ├── flash_page_layout.c                                                               194   0.61%  - 
+    │   │   │   ├── flash_get_page_info                                                            98   0.31%  0x0801176b text
+    │   │   │   ├── flash_page_foreach                                                             88   0.28%  0x080117d5 text
+    │   │   │   └── z_impl_flash_get_page_info_by_offs                                              8   0.03%  0x080117cd text
+    │   │   ├── flash_stm32.c                                                                     670   2.11%  - 
+    │   │   │   ├── __device_dts_ord_14                                                            32   0.10%  0x08012d68 device_area
+    │   │   │   ├── __devstate_dts_ord_14                                                           2   0.01%  0x20000a12 device_states
+    │   │   │   ├── __init___device_dts_ord_14                                                      8   0.03%  0x08012c20 initlevel
+    │   │   │   ├── flash_data                                                                     28   0.09%  0x20000950 datas
+    │   │   │   ├── flash_stm32_api                                                                24   0.08%  0x08012f30 device_api_area
+    │   │   │   ├── flash_stm32_check_configuration                                                 4   0.01%  0x08011c41 text
+    │   │   │   ├── flash_stm32_cr_lock                                                            68   0.21%  0x0800e8d9 text
+    │   │   │   ├── flash_stm32_erase                                                             130   0.41%  0x08011c9d text
+    │   │   │   ├── flash_stm32_get_parameters                                                      8   0.03%  0x0800e881 text
+    │   │   │   ├── flash_stm32_get_size                                                           24   0.08%  0x0800e889 text
+    │   │   │   ├── flash_stm32_parameters                                                          8   0.03%  0x0801329c rodata
+    │   │   │   ├── flash_stm32_read                                                               42   0.13%  0x08011c17 text
+    │   │   │   ├── flash_stm32_valid_range                                                        56   0.18%  0x08011bdf text
+    │   │   │   ├── flash_stm32_wait_flash_idle                                                    88   0.28%  0x08011c45 text
+    │   │   │   ├── flash_stm32_write                                                              92   0.29%  0x08011d1f text
+    │   │   │   └── stm32_flash_init                                                               56   0.18%  0x0800e8a1 text
+    │   │   ├── flash_stm32.h                                                                      14   0.04%  - 
+    │   │   │   └── _flash_stm32_sem_take.isra.0                                                   14   0.04%  0x08011bd1 text
+    │   │   ├── flash_stm32l4x.c                                                                  380   1.20%  - 
+    │   │   │   ├── flash_stm32_block_erase_loop                                                  182   0.57%  0x08011d7b text
+    │   │   │   ├── flash_stm32_page_layout                                                        56   0.18%  0x0800e91d text
+    │   │   │   └── flash_stm32_write_range                                                       142   0.45%  0x08011e31 text
+    │   │   ├── jesd216.c                                                                          98   0.31%  - 
+    │   │   │   ├── jesd216_bfp_decode_dw16                                                        60   0.19%  0x0800e4e9 text
+    │   │   │   └── jesd216_bfp_erase                                                              38   0.12%  0x08011745 text
+    │   │   └── spi_nor.c                                                                        1926   6.07%  - 
+    │   │       ├── __device_dts_ord_111                                                           32   0.10%  0x08012dc8 device_area
+    │   │       ├── __devstate_dts_ord_111                                                          2   0.01%  0x20000a10 device_states
+    │   │       ├── __init___device_dts_ord_111                                                     8   0.03%  0x08012c38 initlevel
+    │   │       ├── __pm_device_dts_ord_111                                                        16   0.05%  0x20000940 datas
+    │   │       ├── acquire_device.isra.0                                                          12   0.04%  0x08011849 text
+    │   │       ├── enter_dpd                                                                      60   0.19%  0x08011b95 text
+    │   │       ├── exit_dpd                                                                      102   0.32%  0x08011b2f text
+    │   │       ├── flash_nor_get_parameters                                                        8   0.03%  0x0800e525 text
+    │   │       ├── flash_nor_get_size                                                             12   0.04%  0x08011839 text
+    │   │       ├── flash_nor_parameters                                                            8   0.03%  0x08013294 rodata
+    │   │       ├── release_device.isra.0                                                           4   0.01%  0x08011845 text
+    │   │       ├── spi_nor_0_config                                                               44   0.14%  0x08013268 rodata
+    │   │       ├── spi_nor_access                                                                174   0.55%  0x08011855 text
+    │   │       ├── spi_nor_api                                                                    24   0.08%  0x08012f48 device_api_area
+    │   │       ├── spi_nor_erase                                                                 242   0.76%  0x0801195f text
+    │   │       ├── spi_nor_init                                                                   32   0.10%  0x0800e52d text
+    │   │       ├── spi_nor_pages_layout                                                           12   0.04%  0x0801182d text
+    │   │       ├── spi_nor_pm_control                                                            820   2.58%  0x0800e54d text
+    │   │       ├── spi_nor_rdsr                                                                   34   0.11%  0x08011903 text
+    │   │       ├── spi_nor_read                                                                   62   0.20%  0x08011af1 text
+    │   │       ├── spi_nor_wait_until_ready                                                       58   0.18%  0x08011925 text
+    │   │       └── spi_nor_write                                                                 160   0.50%  0x08011a51 text
+    │   ├── gpio                                                                                  550   1.73%  - 
+    │   │   └── gpio_stm32.c                                                                      550   1.73%  - 
+    │   │       ├── gpio_stm32_config                                                             150   0.47%  0x08011f53 text
+    │   │       ├── gpio_stm32_driver                                                              36   0.11%  0x08012f60 device_api_area
+    │   │       ├── gpio_stm32_isr                                                                 44   0.14%  0x08011fe9 text
+    │   │       ├── gpio_stm32_manage_callback                                                     84   0.26%  0x08011eff text
+    │   │       ├── gpio_stm32_pin_interrupt_configure                                            172   0.54%  0x0800e955 text
+    │   │       ├── gpio_stm32_port_clear_bits_raw                                                 10   0.03%  0x08011ee7 text
+    │   │       ├── gpio_stm32_port_get_raw                                                        12   0.04%  0x08011ebf text
+    │   │       ├── gpio_stm32_port_set_bits_raw                                                   10   0.03%  0x08011edd text
+    │   │       ├── gpio_stm32_port_set_masked_raw                                                 18   0.06%  0x08011ecb text
+    │   │       └── gpio_stm32_port_toggle_bits                                                    14   0.04%  0x08011ef1 text
+    │   ├── interrupt_controller                                                                  808   2.55%  - 
+    │   │   ├── intc_exti_stm32.c                                                                 166   0.52%  - 
+    │   │   │   ├── __device_dts_ord_65                                                            32   0.10%  0x08012d28 device_area
+    │   │   │   ├── __devstate_dts_ord_65                                                           2   0.01%  0x20000a0c device_states
+    │   │   │   ├── __init___device_dts_ord_65                                                      8   0.03%  0x08012be0 initlevel
+    │   │   │   ├── stm32_exti_clear_pending                                                       40   0.13%  0x0800e0b1 text
+    │   │   │   ├── stm32_exti_init                                                                44   0.14%  0x0800e05d text
+    │   │   │   └── stm32_exti_is_pending                                                          40   0.13%  0x0800e089 text
+    │   │   └── intc_gpio_stm32.c                                                                 642   2.02%  - 
+    │   │       ├── __init_stm32_exti_gpio_intc_init                                                8   0.03%  0x08012c00 initlevel
+    │   │       ├── exti_irq_table                                                                 16   0.05%  0x200009f0 datas
+    │   │       ├── line_range_0.6                                                                  2   0.01%  0x08013a74 rodata
+    │   │       ├── line_range_1.5                                                                  2   0.01%  0x08013a72 rodata
+    │   │       ├── line_range_2.4                                                                  2   0.01%  0x08013a70 rodata
+    │   │       ├── line_range_3.3                                                                  2   0.01%  0x08013a6e rodata
+    │   │       ├── line_range_4.2                                                                  2   0.01%  0x08013a6c rodata
+    │   │       ├── line_range_5.1                                                                  2   0.01%  0x08013a6a rodata
+    │   │       ├── line_range_6.0                                                                  2   0.01%  0x08013a68 rodata
+    │   │       ├── stm32_exti_get_line_src_port                                                   52   0.16%  0x0800e22d text
+    │   │       ├── stm32_exti_gpio_intc_init                                                     146   0.46%  0x08011563 text
+    │   │       ├── stm32_exti_set_line_src_port                                                   56   0.18%  0x080115ff text
+    │   │       ├── stm32_fill_irq_table                                                           24   0.08%  0x0800e0d9 text
+    │   │       ├── stm32_gpio_intc_disable_line                                                   16   0.05%  0x0800e169 text
+    │   │       ├── stm32_gpio_intc_enable_line                                                    44   0.14%  0x0800e13d text
+    │   │       ├── stm32_gpio_intc_get_pin_irq_line                                               10   0.03%  0x080115f5 text
+    │   │       ├── stm32_gpio_intc_remove_irq_callback                                            36   0.11%  0x0800e209 text
+    │   │       ├── stm32_gpio_intc_select_line_trigger                                            80   0.25%  0x0800e179 text
+    │   │       ├── stm32_gpio_intc_set_irq_callback                                               64   0.20%  0x0800e1c9 text
+    │   │       └── stm32_intc_gpio_isr                                                            76   0.24%  0x0800e0f1 text
+    │   ├── pinctrl                                                                                94   0.30%  - 
+    │   │   ├── common.c                                                                           38   0.12%  - 
+    │   │   │   └── pinctrl_lookup_state                                                           38   0.12%  0x08012015 text
+    │   │   └── pinctrl_stm32.c                                                                    56   0.18%  - 
+    │   │       └── pinctrl_configure_pins                                                         56   0.18%  0x0801203b text
+    │   ├── regulator                                                                             946   2.98%  - 
+    │   │   ├── regulator_common.c                                                                516   1.63%  - 
+    │   │   │   ├── regulator_common_data_init                                                     16   0.05%  0x08012091 text
+    │   │   │   ├── regulator_common_init                                                         244   0.77%  0x08012183 text
+    │   │   │   ├── regulator_delay                                                                30   0.09%  0x08012073 text
+    │   │   │   ├── regulator_disable                                                              84   0.26%  0x080120a1 text
+    │   │   │   ├── regulator_set_current_limit                                                    40   0.13%  0x0801211d text
+    │   │   │   ├── regulator_set_mode                                                             62   0.20%  0x08012145 text
+    │   │   │   └── regulator_set_voltage                                                          40   0.13%  0x080120f5 text
+    │   │   └── regulator_fixed.c                                                                 430   1.35%  - 
+    │   │       ├── __device_dts_ord_34                                                            32   0.10%  0x08012d48 device_area
+    │   │       ├── __devstate_dts_ord_34                                                           2   0.01%  0x20000a14 device_states
+    │   │       ├── __init___device_dts_ord_34                                                      8   0.03%  0x08012c18 initlevel
+    │   │       ├── config0                                                                        48   0.15%  0x080132a4 rodata
+    │   │       ├── regulator_fixed_api                                                            64   0.20%  0x08012fb8 device_api_area
+    │   │       ├── regulator_fixed_count_voltages                                                 24   0.08%  0x080122b5 text
+    │   │       ├── regulator_fixed_disable                                                        22   0.07%  0x08012395 text
+    │   │       ├── regulator_fixed_enable                                                         30   0.09%  0x08012297 text
+    │   │       ├── regulator_fixed_get_voltage                                                    20   0.06%  0x080122e7 text
+    │   │       ├── regulator_fixed_init                                                          154   0.49%  0x080122fb text
+    │   │       └── regulator_fixed_list_voltage                                                   26   0.08%  0x080122cd text
+    │   ├── spi                                                                                  2202   6.94%  - 
+    │   │   ├── spi_context.h                                                                      92   0.29%  - 
+    │   │   │   ├── spi_context_get_next_buf                                                       44   0.14%  0x080123ab text
+    │   │   │   └── spi_context_unlock_unconditionally                                             48   0.15%  0x0801256b text
+    │   │   ├── spi_stm32.c                                                                      2084   6.56%  - 
+    │   │   │   ├── __device_dts_ord_110                                                           32   0.10%  0x08012d88 device_area
+    │   │   │   ├── __devstate_dts_ord_110                                                          2   0.01%  0x20000a16 device_states
+    │   │   │   ├── __init___device_dts_ord_110                                                     8   0.03%  0x08012c30 initlevel
+    │   │   │   ├── __pinctrl_dev_config__device_dts_ord_110                                        8   0.03%  0x0801331c rodata
+    │   │   │   ├── __pinctrl_state_pins_0__device_dts_ord_110                                     12   0.04%  0x0801332c rodata
+    │   │   │   ├── __pinctrl_states__device_dts_ord_110                                            8   0.03%  0x08013324 rodata
+    │   │   │   ├── __pm_device_dts_ord_110                                                        16   0.05%  0x2000096c datas
+    │   │   │   ├── api_funcs                                                                       8   0.03%  0x08012f84 device_api_area
+    │   │   │   ├── pclken_0                                                                        8   0.03%  0x08013314 rodata
+    │   │   │   ├── scaler.0                                                                       32   0.10%  0x080132d4 rodata
+    │   │   │   ├── spi_stm32_cfg_0                                                                24   0.08%  0x080132fc rodata
+    │   │   │   ├── spi_stm32_dev_data_0                                                          100   0.31%  0x2000097c datas
+    │   │   │   ├── spi_stm32_init                                                                 28   0.09%  0x0800eae1 text
+    │   │   │   ├── spi_stm32_pinctrl_apply.isra.0                                                 42   0.13%  0x080123ff text
+    │   │   │   ├── spi_stm32_pm_action                                                           224   0.71%  0x0800ea01 text
+    │   │   │   ├── spi_stm32_read_next_frame.isra.0                                              142   0.45%  0x080124dd text
+    │   │   │   ├── spi_stm32_release                                                              20   0.06%  0x0801259b text
+    │   │   │   ├── spi_stm32_send_next_frame.isra.0                                              154   0.49%  0x08012443 text
+    │   │   │   ├── spi_stm32_transceive_sync                                                    1164   3.67%  0x0800eafd text
+    │   │   │   └── table_datawidth                                                                52   0.16%  0x08013338 rodata
+    │   │   └── spi_stm32.h                                                                        26   0.08%  - 
+    │   │       └── ll_disable_spi                                                                 26   0.08%  0x08012429 text
+    │   ├── timer                                                                                 550   1.73%  - 
+    │   │   └── cortex_m_systick.c                                                                550   1.73%  - 
+    │   │       ├── __init_sys_clock_driver_init                                                    8   0.03%  0x08012c10 initlevel
+    │   │       ├── elapsed                                                                        68   0.21%  0x0800ef89 text
+    │   │       ├── sys_clock_cycle_get_32                                                         40   0.13%  0x0800f171 text
+    │   │       ├── sys_clock_disable                                                              14   0.04%  0x080125af text
+    │   │       ├── sys_clock_driver_init                                                          52   0.16%  0x0800efcd text
+    │   │       ├── sys_clock_elapsed                                                              60   0.19%  0x0800f135 text
+    │   │       ├── sys_clock_isr                                                                  92   0.29%  0x0800f001 text
+    │   │       └── sys_clock_set_timeout                                                         216   0.68%  0x0800f05d text
+    │   └── watchdog                                                                              330   1.04%  - 
+    │       └── wdt_iwdg_stm32.c                                                                  330   1.04%  - 
+    │           ├── __device_dts_ord_90                                                            32   0.10%  0x08012da8 device_area
+    │           ├── __devstate_dts_ord_90                                                           2   0.01%  0x20000a18 device_states
+    │           ├── __init___device_dts_ord_90                                                      8   0.03%  0x08012c28 initlevel
+    │           ├── iwdg_stm32_api                                                                 16   0.05%  0x08012f8c device_api_area
+    │           ├── iwdg_stm32_dev_cfg                                                              4   0.01%  0x0801336c rodata
+    │           ├── iwdg_stm32_disable                                                              6   0.02%  0x080125bd text
+    │           ├── iwdg_stm32_feed                                                                14   0.04%  0x080125c3 text
+    │           ├── iwdg_stm32_init                                                                 4   0.01%  0x080125d1 text
+    │           ├── iwdg_stm32_install_timeout                                                    124   0.39%  0x0800f199 text
+    │           └── iwdg_stm32_setup                                                              120   0.38%  0x0800f215 text
+    ├── include                                                                                    88   0.28%  - 
+    │   └── zephyr                                                                                 88   0.28%  - 
+    │       ├── drivers                                                                            72   0.23%  - 
+    │       │   └── gpio.h                                                                         72   0.23%  - 
+    │       │       ├── gpio_pin_set                                                               32   0.10%  0x08012277 text
+    │       │       └── gpio_pin_set_dt.isra.0                                                     40   0.13%  0x080123d7 text
+    │       └── sys                                                                                16   0.05%  - 
+    │           └── dlist.h                                                                        16   0.05%  - 
+    │               └── sys_dlist_remove                                                           16   0.05%  0x08012907 text
+    ├── kernel                                                                                   4792  15.09%  - 
+    │   ├── busy_wait.c                                                                            28   0.09%  - 
+    │   │   └── z_impl_k_busy_wait                                                                 28   0.09%  0x080127f5 text
+    │   ├── device.c                                                                               70   0.22%  - 
+    │   │   ├── do_device_init                                                                     48   0.15%  0x08012811 text
+    │   │   └── z_impl_device_is_ready                                                             22   0.07%  0x08012841 text
+    │   ├── fatal.c                                                                                70   0.22%  - 
+    │   │   ├── arch_system_halt                                                                   16   0.05%  0x08012857 text
+    │   │   ├── k_sys_fatal_error_handler                                                           6   0.02%  0x08012867 text
+    │   │   └── z_fatal_error                                                                      48   0.15%  0x0800f6d9 text
+    │   ├── idle.c                                                                                 22   0.07%  - 
+    │   │   └── idle                                                                               22   0.07%  0x0801286d text
+    │   ├── include                                                                                70   0.22%  - 
+    │   │   ├── kernel_offsets.h                                                                    2   0.01%  - 
+    │   │   │   └── _OffsetAbsSyms                                                                  2   0.01%  0x08010885 text
+    │   │   ├── ksched.h                                                                           20   0.06%  - 
+    │   │   │   └── unpend_thread_no_timeout                                                       20   0.06%  0x08012917 text
+    │   │   └── kswap.h                                                                            48   0.15%  - 
+    │   │       └── z_swap_irqlock                                                                 48   0.15%  0x0800fc61 text
+    │   ├── init.c                                                                                576   1.81%  - 
+    │   │   ├── bg_thread_main                                                                    188   0.59%  0x0800f739 text
+    │   │   ├── levels.0                                                                           24   0.08%  0x080133b4 rodata
+    │   │   ├── z_cstart                                                                          204   0.64%  0x0800f865 text
+    │   │   ├── z_init_cpu                                                                        112   0.35%  0x0800f7f5 text
+    │   │   └── z_sys_init_run_level                                                               48   0.15%  0x0800f709 text
+    │   ├── kheap.c                                                                                60   0.19%  - 
+    │   │   ├── __init_statics_init_pre                                                             8   0.03%  0x08012bc0 initlevel
+    │   │   ├── k_heap_init                                                                        16   0.05%  0x08012b0f text
+    │   │   └── statics_init                                                                       36   0.11%  0x080105f1 text
+    │   ├── mutex.c                                                                               418   1.32%  - 
+    │   │   ├── adjust_owner_prio.isra.0                                                           16   0.05%  0x08012883 text
+    │   │   ├── z_impl_k_mutex_init                                                                14   0.04%  0x08012893 text
+    │   │   ├── z_impl_k_mutex_lock                                                               228   0.72%  0x0800f931 text
+    │   │   └── z_impl_k_mutex_unlock                                                             160   0.50%  0x0800fa15 text
+    │   ├── sched.c                                                                              1372   4.32%  - 
+    │   │   ├── add_to_waitq_locked                                                                76   0.24%  0x0801292b text
+    │   │   ├── move_current_to_end_of_prio_q                                                     108   0.34%  0x0800fd8d text
+    │   │   ├── ready_thread                                                                      128   0.40%  0x0800fce5 text
+    │   │   ├── reschedule.isra.0                                                                  40   0.13%  0x0800fd65 text
+    │   │   ├── unready_thread                                                                     84   0.26%  0x0800fc91 text
+    │   │   ├── z_pend_curr                                                                        88   0.28%  0x0800ffed text
+    │   │   ├── z_ready_thread                                                                     30   0.09%  0x08012977 text
+    │   │   ├── z_reschedule                                                                        6   0.02%  0x080129f5 text
+    │   │   ├── z_sched_lock_reschedule                                                            68   0.21%  0x0800ff25 text
+    │   │   ├── z_sched_ready_locked                                                                4   0.01%  0x08012995 text
+    │   │   ├── z_sched_unready_locked                                                              4   0.01%  0x08012999 text
+    │   │   ├── z_sched_wake_thread_locked                                                         40   0.13%  0x0801299d text
+    │   │   ├── z_sched_yield                                                                     132   0.42%  0x0800ff69 text
+    │   │   ├── z_thread_halt                                                                     300   0.94%  0x0800fdf9 text
+    │   │   ├── z_thread_prio_set                                                                 216   0.68%  0x08010045 text
+    │   │   └── z_thread_timeout                                                                   48   0.15%  0x080129c5 text
+    │   ├── scheduler.c                                                                           100   0.31%  - 
+    │   │   ├── k_sched_lock                                                                       40   0.13%  0x080101bd text
+    │   │   ├── k_sched_unlock                                                                     32   0.10%  0x080101e5 text
+    │   │   ├── z_impl_k_sched_current_thread_query                                                12   0.04%  0x08010205 text
+    │   │   └── z_sched_init                                                                       16   0.05%  0x080101ad text
+    │   ├── sem.c                                                                                 204   0.64%  - 
+    │   │   ├── z_impl_k_sem_give                                                                 104   0.33%  0x0800fab5 text
+    │   │   ├── z_impl_k_sem_init                                                                  24   0.08%  0x080128a1 text
+    │   │   └── z_impl_k_sem_take                                                                  76   0.24%  0x0800fb1d text
+    │   ├── sleep.c                                                                               222   0.70%  - 
+    │   │   ├── z_impl_k_sleep                                                                     44   0.14%  0x080129fb text
+    │   │   ├── z_impl_k_usleep                                                                    34   0.11%  0x08012a27 text
+    │   │   └── z_tick_sleep                                                                      144   0.45%  0x0801011d text
+    │   ├── sys                                                                                    52   0.16%  - 
+    │   │   └── thread_entry.c                                                                     52   0.16%  - 
+    │   │       └── z_thread_entry                                                                 52   0.16%  0x0800c719 text
+    │   ├── thread.c                                                                              326   1.03%  - 
+    │   │   ├── k_is_in_isr                                                                        12   0.04%  0x080128b9 text
+    │   │   ├── z_dummy_thread_init                                                                24   0.08%  0x0800fc01 text
+    │   │   ├── z_impl_k_wakeup                                                                    72   0.23%  0x0800fc19 text
+    │   │   ├── z_impl_k_yield                                                                      4   0.01%  0x08012903 text
+    │   │   ├── z_setup_new_thread                                                                152   0.48%  0x0800fb69 text
+    │   │   └── z_thread_abort                                                                     62   0.20%  0x080128c5 text
+    │   ├── timeout.c                                                                             942   2.97%  - 
+    │   │   ├── elapsed                                                                            20   0.06%  0x08010321 text
+    │   │   ├── first                                                                              16   0.05%  0x08010311 text
+    │   │   ├── next_timeout                                                                       46   0.14%  0x08012a49 text
+    │   │   ├── sys_clock_announce_locked                                                         204   0.64%  0x080104f5 text
+    │   │   ├── sys_clock_tick_get                                                                 48   0.15%  0x080105c1 text
+    │   │   ├── sys_clock_tick_get_32                                                               8   0.03%  0x08012a77 text
+    │   │   ├── sys_timepoint_calc                                                                 74   0.23%  0x08012a83 text
+    │   │   ├── sys_timepoint_timeout                                                              66   0.21%  0x08012acd text
+    │   │   ├── timeout_list                                                                        8   0.03%  0x200009e8 datas
+    │   │   ├── z_abort_timeout                                                                   144   0.45%  0x08010465 text
+    │   │   ├── z_add_timeout                                                                     304   0.96%  0x08010335 text
+    │   │   └── z_impl_k_uptime_ticks                                                               4   0.01%  0x08012a7f text
+    │   └── timeslicing.c                                                                         260   0.82%  - 
+    │       ├── slice_ticks                                                                         4   0.01%  0x200009e4 datas
+    │       ├── slice_timeout                                                                      32   0.10%  0x08010251 text
+    │       ├── z_time_slice                                                                       92   0.29%  0x080102b5 text
+    │       ├── z_time_slice_reset                                                                 68   0.21%  0x08010271 text
+    │       └── z_time_slice_size                                                                  64   0.20%  0x08010211 text
+    ├── lib                                                                                       424   1.34%  - 
+    │   ├── heap                                                                                  218   0.69%  - 
+    │   │   ├── heap.c                                                                            208   0.66%  - 
+    │   │   │   ├── free_list_add                                                                  78   0.25%  0x080108cd text
+    │   │   │   └── sys_heap_init                                                                 130   0.41%  0x0801091b text
+    │   │   └── heap.h                                                                             10   0.03%  - 
+    │   │       └── chunk_size                                                                     10   0.03%  0x080108c3 text
+    │   ├── libc                                                                                   72   0.23%  - 
+    │   │   └── picolibc                                                                           72   0.23%  - 
+    │   │       ├── assert.c                                                                        6   0.02%  - 
+    │   │       │   └── __assert_no_args                                                            6   0.02%  0x08011553 text
+    │   │       └── stdio.c                                                                        66   0.21%  - 
+    │   │           ├── __stdout                                                                   16   0.05%  0x20000930 datas
+    │   │           ├── __stdout_hook_install                                                      24   0.08%  0x0800e029 text
+    │   │           ├── picolibc_put                                                               10   0.03%  0x08011559 text
+    │   │           └── z_impl_zephyr_fputc                                                        16   0.05%  0x0800e019 text
+    │   ├── os                                                                                    130   0.41%  - 
+    │   │   ├── boot_banner.c                                                                      24   0.08%  - 
+    │   │   │   ├── __init_boot_banner                                                              8   0.03%  0x08012c40 initlevel
+    │   │   │   └── boot_banner                                                                    16   0.05%  0x0800c56d text
+    │   │   └── printk.c                                                                          106   0.33%  - 
+    │   │       ├── __printk_hook_install                                                          12   0.04%  0x0800c589 text
+    │   │       ├── _char_out                                                                       4   0.01%  0x200008c0 datas
+    │   │       ├── arch_printk_char_out                                                            4   0.01%  0x0801099d text
+    │   │       ├── char_out                                                                       12   0.04%  0x0800c57d text
+    │   │       ├── printk                                                                         26   0.08%  0x080109a1 text
+    │   │       └── vprintk                                                                        48   0.15%  0x0800c595 text
+    │   └── utils                                                                                   4   0.01%  - 
+    │       └── last_section_id.c                                                                   4   0.01%  - 
+    │           └── last_id                                                                         4   0.01%  0x08013c10 .last_section
+    ├── soc                                                                                      1004   3.16%  - 
+    │   └── st                                                                                   1004   3.16%  - 
+    │       └── stm32                                                                            1004   3.16%  - 
+    │           ├── common                                                                        956   3.01%  - 
+    │           │   ├── gpioport_mgr.c                                                            900   2.83%  - 
+    │           │   │   ├── __device_dts_ord_100                                                   32   0.10%  0x08012c68 device_area
+    │           │   │   ├── __device_dts_ord_33                                                    32   0.10%  0x08012d08 device_area
+    │           │   │   ├── __device_dts_ord_49                                                    32   0.10%  0x08012cc8 device_area
+    │           │   │   ├── __device_dts_ord_52                                                    32   0.10%  0x08012ce8 device_area
+    │           │   │   ├── __device_dts_ord_98                                                    32   0.10%  0x08012ca8 device_area
+    │           │   │   ├── __device_dts_ord_99                                                    32   0.10%  0x08012c88 device_area
+    │           │   │   ├── __devstate_dts_ord_100                                                  2   0.01%  0x20000a00 device_states
+    │           │   │   ├── __devstate_dts_ord_33                                                   2   0.01%  0x20000a0a device_states
+    │           │   │   ├── __devstate_dts_ord_49                                                   2   0.01%  0x20000a06 device_states
+    │           │   │   ├── __devstate_dts_ord_52                                                   2   0.01%  0x20000a08 device_states
+    │           │   │   ├── __devstate_dts_ord_98                                                   2   0.01%  0x20000a04 device_states
+    │           │   │   ├── __devstate_dts_ord_99                                                   2   0.01%  0x20000a02 device_states
+    │           │   │   ├── __init___device_dts_ord_100                                             8   0.03%  0x08012bf8 initlevel
+    │           │   │   ├── __init___device_dts_ord_33                                              8   0.03%  0x08012bc8 initlevel
+    │           │   │   ├── __init___device_dts_ord_49                                              8   0.03%  0x08012bd0 initlevel
+    │           │   │   ├── __init___device_dts_ord_52                                              8   0.03%  0x08012bd8 initlevel
+    │           │   │   ├── __init___device_dts_ord_98                                              8   0.03%  0x08012be8 initlevel
+    │           │   │   ├── __init___device_dts_ord_99                                              8   0.03%  0x08012bf0 initlevel
+    │           │   │   ├── __pm_device_dts_ord_100                                                16   0.05%  0x200008c4 datas
+    │           │   │   ├── __pm_device_dts_ord_33                                                 16   0.05%  0x20000914 datas
+    │           │   │   ├── __pm_device_dts_ord_49                                                 16   0.05%  0x200008f4 datas
+    │           │   │   ├── __pm_device_dts_ord_52                                                 16   0.05%  0x20000904 datas
+    │           │   │   ├── __pm_device_dts_ord_98                                                 16   0.05%  0x200008e4 datas
+    │           │   │   ├── __pm_device_dts_ord_99                                                 16   0.05%  0x200008d4 datas
+    │           │   │   ├── gpio_ports                                                             32   0.10%  0x08013088 rodata
+    │           │   │   ├── gpio_stm32_cfg_a                                                       20   0.06%  0x08013074 rodata
+    │           │   │   ├── gpio_stm32_cfg_b                                                       20   0.06%  0x08013060 rodata
+    │           │   │   ├── gpio_stm32_cfg_c                                                       20   0.06%  0x0801304c rodata
+    │           │   │   ├── gpio_stm32_cfg_d                                                       20   0.06%  0x08013038 rodata
+    │           │   │   ├── gpio_stm32_cfg_e                                                       20   0.06%  0x08013024 rodata
+    │           │   │   ├── gpio_stm32_cfg_h                                                       20   0.06%  0x08013010 rodata
+    │           │   │   ├── stm32_gpioport_configure_pin                                          296   0.93%  0x080109bd text
+    │           │   │   ├── stm32_gpioport_get                                                     36   0.11%  0x0800c639 text
+    │           │   │   ├── stm32_gpioport_init                                                    12   0.04%  0x0800c5f5 text
+    │           │   │   └── stm32_gpioport_pm_action                                               56   0.18%  0x0800c601 text
+    │           │   └── soc_config.c                                                               56   0.18%  - 
+    │           │       ├── __init_st_stm32_common_config                                           8   0.03%  0x08012bb0 initlevel
+    │           │       └── st_stm32_common_config                                                 48   0.15%  0x0800c5c5 text
+    │           └── stm32l4x                                                                       48   0.15%  - 
+    │               └── soc.c                                                                      48   0.15%  - 
+    │                   └── soc_early_init_hook                                                    48   0.15%  0x0800c65d text
+    └── subsys                                                                                    696   2.19%  - 
+        ├── logging                                                                                26   0.08%  - 
+        │   └── log_minimal.c                                                                      26   0.08%  - 
+        │       └── z_log_minimal_printk                                                           26   0.08%  0x08010ae5 text
+        ├── mem_mgmt                                                                               12   0.04%  - 
+        │   └── mem_attr.c                                                                         12   0.04%  - 
+        │       └── mem_attr_get_regions                                                           12   0.04%  0x0800c68d text
+        ├── pm                                                                                     94   0.30%  - 
+        │   └── device.c                                                                           94   0.30%  - 
+        │       ├── pm_device_driver_init                                                          70   0.22%  0x08010b17 text
+        │       └── pm_device_is_powered                                                           24   0.08%  0x08010aff text
+        └── storage                                                                               564   1.78%  - 
+            └── flash_map                                                                         564   1.78%  - 
+                ├── flash_map.c                                                                   232   0.73%  - 
+                │   ├── flash_area_align                                                           14   0.04%  0x08010bf7 text
+                │   ├── flash_area_close                                                            2   0.01%  0x08010b77 text
+                │   ├── flash_area_erase                                                           42   0.13%  0x08010bcd text
+                │   ├── flash_area_erased_val                                                      14   0.04%  0x08010c05 text
+                │   ├── flash_area_open                                                            76   0.24%  0x0800c699 text
+                │   ├── flash_area_read                                                            42   0.13%  0x08010b79 text
+                │   └── flash_area_write                                                           42   0.13%  0x08010ba3 text
+                ├── flash_map_default.c                                                           136   0.43%  - 
+                │   ├── default_flash_map                                                         128   0.40%  0x080130ac rodata
+                │   ├── flash_map                                                                   4   0.01%  0x20000924 datas
+                │   └── flash_map_entries                                                           4   0.01%  0x080130a8 rodata
+                ├── flash_map_layout.c                                                            170   0.54%  - 
+                │   ├── flash_area_get_sectors                                                     50   0.16%  0x08010c57 text
+                │   ├── flash_area_sectors                                                         52   0.16%  0x0800c6e5 text
+                │   └── get_sectors_cb                                                             68   0.21%  0x08010c13 text
+                └── flash_map_priv.h                                                               26   0.08%  - 
+                    └── is_in_flash_area_bounds                                                    26   0.08%  0x08010b5d text
+==========================================================================================================================================
+                                                                                                31748

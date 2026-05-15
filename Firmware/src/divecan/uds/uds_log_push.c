@@ -149,17 +149,29 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
             }
             (void)memcpy(txBuffer->data, message, txBuffer->length);
 
-            /* Check if queue is full - drop oldest to make room */
+            /* Overwrite-oldest on full queue — this is the documented
+             * back-pressure behaviour and MUST NOT emit OP_ERROR /
+             * LOG_ERR. The log processing thread runs every backend
+             * (RTT + flash_log + this one), so a LOG_ERR here would
+             * cycle straight back through uds_log_push_backend on the
+             * next pass of the log loop. The reentrancy flag on
+             * SendLogMessage doesn't catch it because Zephyr's
+             * deferred logging returns immediately and re-enters
+             * asynchronously. Result: an unbounded feedback loop that
+             * starves real work and overruns RTT.
+             *
+             * If drop visibility is needed, surface the count via a
+             * UDS DID, not via the log path. */
             if (0 == k_msgq_num_free_get(&log_push_msgq)) {
-                OP_ERROR(OP_ERR_LOG_TRUNCATED);
                 (void)k_msgq_get(&log_push_msgq, getRxItemBuffer(), K_NO_WAIT);
             }
 
-            if (0 != k_msgq_put(&log_push_msgq, txBuffer, K_NO_WAIT)) {
-                OP_ERROR(OP_ERR_QUEUE);
-            } else {
+            if (0 == k_msgq_put(&log_push_msgq, txBuffer, K_NO_WAIT)) {
                 result = true;
             }
+            /* k_msgq_put failure after the just-freed slot would
+             * indicate a concurrency bug, but silent here for the same
+             * feedback-loop reason. */
         }
 
         state->inSendLogMessage = false;

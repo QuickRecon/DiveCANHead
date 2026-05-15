@@ -43,6 +43,7 @@ target_sources(app PRIVATE
     src/heartbeat.c
     src/error_histogram.c
     src/firmware_confirm.c
+    src/thread_analyzer_paced.c
 )
 target_sources_ifdef(CONFIG_FACTORY_IMAGE app PRIVATE src/factory_image.c)
 target_sources_ifdef(CONFIG_FACTORY_IMAGE_BACKEND_FLASH app PRIVATE
@@ -76,6 +77,13 @@ target_sources(app PRIVATE
     src/divecan/uds/uds_state_did.c
     src/divecan/uds/uds_settings.c
     src/divecan/uds/uds_log_push.c
+)
+# UDS log push as a Zephyr log backend (live RTT-over-UDS streaming).
+# Depends on the flash log subsystem for the shared severity threshold
+# accessor — the two backends together give us "persistent log on flash
+# + live tail over UDS" with one runtime control DID.
+target_sources_ifdef(CONFIG_FLASH_LOG app PRIVATE
+    src/divecan/uds/uds_log_push_backend.c
 )
 target_include_directories(app PRIVATE src/divecan/include)
 target_include_directories(app PRIVATE src)
@@ -113,6 +121,32 @@ target_compile_definitions(app PRIVATE
 )
 
 # App-only hardening flags (not applied to Zephyr kernel/drivers).
+#
+# Scope: this is an open-source, deliberately-hackable platform — there
+# is no adversary, no secrets to protect, no fault-injection threat
+# model. The only attack surface that matters is the one that exists
+# anyway: software bugs, buffer overflows, uninitialised reads. We
+# harden against those and ignore the rest.
+#
+# What's enabled:
+#   -ftrivial-auto-var-init=pattern   catches uninit-read bugs by
+#                                     filling locals with 0xAA
+#   _FORTIFY_SOURCE=2 (via Kconfig)   runtime bounds checks on libc
+#                                     string/mem ops when the dest
+#                                     size is compile-time known
+#   stack canaries (via Kconfig)      catch return-address smashing
+#                                     from buffer overflows
+#   -Wstack-usage=1305                static cap on per-function stack
+#
+# What's deliberately NOT enabled:
+#   -fstack-clash-protection          mitigates unbounded stack growth
+#                                     attack — architecturally impossible
+#                                     here per NASA P10 (no recursion,
+#                                     no VLAs, all loops fixed-bound)
+#   -fharden-compares                 fault-injection defence — out of
+#                                     scope per platform philosophy
+#   -fharden-conditional-branches     same as above
+#
 # -fdump-rtl-dfinish emits a .<NNN>r.dfinish RTL dump per TU; scripts/wcs.py
 # walks the dumps + .su files to compute worst-case stack per function, used
 # to right-size K_THREAD_DEFINE stacks. See scripts/stack_analysis.sh.
@@ -124,9 +158,6 @@ target_compile_options(app PRIVATE
     -Wno-unused-parameter
     -Wno-vla
     -Wstack-usage=1305
-    -fstack-clash-protection
-    -fharden-compares
-    -fharden-conditional-branches
     -ftrivial-auto-var-init=pattern
     -fstack-usage
     -fdump-rtl-dfinish

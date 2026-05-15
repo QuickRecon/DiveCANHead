@@ -10,8 +10,17 @@ PATH=$NCS/usr/local/bin:$PATH \
 LD_LIBRARY_PATH=$NCS/usr/local/lib:$LD_LIBRARY_PATH \
 ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk \
 west build -d build -b divecan_jr/stm32l431xx . \
-  -- -DBOARD_ROOT=. -DEXTRA_CONF_FILE=variants/dev_full.conf
+  -- -DBOARD_ROOT=. \
+     -DEXTRA_CONF_FILE=variants/dev_full.conf \
+     -DEXTRA_DTC_OVERLAY_FILE=variants/dev_full.overlay
 ```
+
+Each variant has a matching `.overlay` next to its `.conf` that
+disables peripherals the variant won't use (unused ADS1115 instances,
+USARTs, etc.). Without it Zephyr still allocates driver state for
+hardware that's compiled-in but never spoken to (~1.5 KB per unused
+ADS1115, ~350 B per unused USART). Always pass both `EXTRA_*` flags
+for a given variant — they're a pair.
 
 Clean build: delete `build/` first. Incremental: just re-run.
 

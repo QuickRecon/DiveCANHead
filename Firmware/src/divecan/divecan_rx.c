@@ -599,9 +599,12 @@ static void InitializeUDSContexts(void)
 
     ISOTP_TxQueue_Init();
 
-    /* Log push ISO-TP uses broadcast target (0xFF) for BT client */
-    ISOTP_Init(&udsState->logPushIsoTpContext, device_spec.type,
-           (DiveCANType_t)ISOTP_BROADCAST_ADDR, MENU_ID);
+    /* Log push ISO-TP uses broadcast target (0xFF) for BT client. We let
+     * UDS_LogPush_Init() do the ISOTP_Init internally so the module's
+     * own state (singleton LogPushState_t) gets the context pointer it
+     * needs — without that wiring, UDS_LogPush_Poll() no-ops forever
+     * and no log message ever leaves the queue. */
+    UDS_LogPush_Init(&udsState->logPushIsoTpContext);
     udsState->logPushInitialized = true;
 }
 

@@ -297,19 +297,25 @@
 };
 
 /* ---- Flash partitions ----
- * Internal 256KB: MCUBoot bootloader (32K) + primary slot (224K).
- *   NVS storage was previously on internal flash — moved to the end
- *   of the external NOR to free 16K of slot0 headroom. See the OTA
- *   plan and ARCHITECTURE.md.
+ * Internal 256 KB: MCUBoot bootloader (36 KB) + slot0 (220 KB).
+ *   NVS storage lives at the top of the external NOR.
  *
- * External 64MB (W25Q512JV): slot1 (224K) + scratch (64K) + factory
- *   image backup (224K) + free middle region (~63.5MB, reserved for
- *   future dive-log persistence) + NVS storage (32K at top).
+ * External 64 MB (W25Q512JV): slot1 (220 KB) + scratch (64 KB) +
+ *   factory image backup (220 KB) + flash log (telemetry + text) +
+ *   NVS storage (32 KB at top).
  *
  * Labels are MCUBoot-conformant: mcuboot, image-0, image-1,
  * image-scratch enable the bootloader's swap-area discovery. The
  * "storage" label is what Zephyr's settings/NVS subsystem looks up
  * by default.
+ *
+ * History: the original layout was MCUBoot 64 KB + slot0 192 KB,
+ * sized for an MCUBoot build that pulled in the full application
+ * board DTS (UART/CAN/ADC drivers compiled into the bootloader as
+ * dead weight). The sysbuild/mcuboot.overlay disables those nodes
+ * for the MCUBoot child image, shrinking the bootloader from
+ * ~56 KB to ~32 KB. We reclaim 28 KB and hand it to slot0, growing
+ * slot0 from 192 KB to 220 KB. slot1/factory grow to match.
  */
 &flash0 {
 	partitions {
@@ -317,31 +323,20 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
-		/* MCUBoot partition sized at 64 KB. Measured 56 KB
-		 * (87 % utilised) with all desired features on:
-		 *
-		 *   - BOOT_VALIDATE_SLOT0=y (SHA-256 of slot0 every boot)
-		 *   - BOOT_SWAP_USING_SCRATCH=y
-		 *   - BOOT_WATCHDOG_FEED=y
-		 *   - I2C + ADC drivers (forced on by board defconfig
-		 *     for the application; carried into MCUBoot's build
-		 *     as dead weight)
-		 *
-		 * Slot0 stays at 192 KB. The originally-planned 32 KB
-		 * MCUBoot + 224 KB slot0 layout wasn't reachable while
-		 * keeping slot-0 hash validation enabled and inheriting
-		 * the application's board defconfig. Future optimisation:
-		 * a separate divecan_jr_mcuboot_defconfig stripping
-		 * application peripherals would recover ~16 KB and let
-		 * MCUBoot fit in 48 KB, giving slot0 a 208 KB budget. */
+		/* MCUBoot at 36 KB. Measured ~32 KB (87 % utilised) after
+		 * the sysbuild/mcuboot.overlay disables the unused
+		 * application peripherals. The ~5 KB headroom (~14 %)
+		 * absorbs minor MCUBoot growth from future Zephyr/MCUBoot
+		 * upgrades — narrow margin, watch the build-size report
+		 * after any sysbuild upgrade. */
 		boot_partition: partition@0 {
 			label = "mcuboot";
-			reg = <0x00000000 DT_SIZE_K(64)>;
+			reg = <0x00000000 DT_SIZE_K(36)>;
 			read-only;
 		};
-		slot0_partition: partition@10000 {
+		slot0_partition: partition@9000 {
 			label = "image-0";
-			reg = <0x00010000 DT_SIZE_K(192)>;
+			reg = <0x00009000 DT_SIZE_K(220)>;
 		};
 	};
 };
@@ -354,15 +349,15 @@
 
 		slot1_partition: partition@0 {
 			label = "image-1";
-			reg = <0x00000000 DT_SIZE_K(192)>;
+			reg = <0x00000000 DT_SIZE_K(220)>;
 		};
-		scratch_partition: partition@30000 {
+		scratch_partition: partition@37000 {
 			label = "image-scratch";
-			reg = <0x00030000 DT_SIZE_K(64)>;
+			reg = <0x00037000 DT_SIZE_K(64)>;
 		};
-		factory_partition: partition@40000 {
+		factory_partition: partition@47000 {
 			label = "factory-image";
-			reg = <0x00040000 DT_SIZE_K(192)>;
+			reg = <0x00047000 DT_SIZE_K(220)>;
 		};
 		/* Flash log — split into two parallel FCB instances.
 		 *
@@ -381,13 +376,19 @@
 		 * log layer or hardware revision can claim it). See
 		 * docs/FLASH_LOG.md.
 		 */
-		log_telemetry_partition: partition@70000 {
+		/* Each FCB sector is 64 KiB block-erase; partitions
+		 * must start on a 64 KiB boundary. After the
+		 * factory_partition grew to 220 KB and shifted to
+		 * 0x47000–0x7E000, the next 64 KiB-aligned address is
+		 * 0x80000. The 8 KiB between 0x7E000 and 0x80000 stays
+		 * unallocated. */
+		log_telemetry_partition: partition@80000 {
 			label = "log-telemetry";
-			reg = <0x00070000 DT_SIZE_K(6400)>;
+			reg = <0x00080000 DT_SIZE_K(6400)>;
 		};
-		log_text_partition: partition@6b0000 {
+		log_text_partition: partition@6c0000 {
 			label = "log-text";
-			reg = <0x006b0000 DT_SIZE_K(6400)>;
+			reg = <0x006c0000 DT_SIZE_K(6400)>;
 		};
 		storage_partition: partition@3ff8000 {
 			label = "storage";
