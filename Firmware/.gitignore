@@ -2,3 +2,4 @@
 tests/*/build
 twister-out*/
 tests/integration/harness/control-response-data
+/coverage-report/

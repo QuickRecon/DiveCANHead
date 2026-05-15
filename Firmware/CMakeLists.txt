@@ -43,8 +43,13 @@ target_sources(app PRIVATE
     src/heartbeat.c
     src/error_histogram.c
     src/firmware_confirm.c
-    src/thread_analyzer_paced.c
 )
+# The paced thread-analyzer wrapper calls thread_analyzer_run(), which
+# Zephyr only provides when CONFIG_THREAD_ANALYZER=y. That symbol has
+# `depends on !ARCH_POSIX`, so on native_sim it is unavailable and the
+# source must not be compiled. Guard accordingly.
+target_sources_ifdef(CONFIG_THREAD_ANALYZER app PRIVATE
+    src/thread_analyzer_paced.c)
 target_sources_ifdef(CONFIG_FACTORY_IMAGE app PRIVATE src/factory_image.c)
 target_sources_ifdef(CONFIG_FACTORY_IMAGE_BACKEND_FLASH app PRIVATE
     src/factory_image_backend_flash.c)

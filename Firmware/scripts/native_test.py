@@ -16,6 +16,11 @@ Usage:
     scripts/native_test.py run-all
     scripts/native_test.py clean [<name>...]      # or all when no name given
     scripts/native_test.py discover-cases <name>  # emit "suite::case|file:line"
+
+Pass --coverage to any of build / run / build-all / run-all / clean to
+redirect to ``build-coverage/<name>/`` with gcov instrumentation layered
+on top of the test's prj.conf. Aggregation happens via
+``scripts/coverage.py report``.
                                                   # for every ZTEST in the test's
                                                   # source — used by the CMake
                                                   # umbrella to set
@@ -47,6 +52,12 @@ ZTEST_PATTERN = re.compile(
 FIRMWARE_ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = FIRMWARE_ROOT / "tests"
 BUILD_ROOT = FIRMWARE_ROOT / "build-native"
+COVERAGE_BUILD_ROOT = FIRMWARE_ROOT / "build-coverage"
+COVERAGE_OVERLAY = TESTS_DIR / "coverage.conf"
+
+
+def _root_for(coverage: bool) -> Path:
+    return COVERAGE_BUILD_ROOT if coverage else BUILD_ROOT
 
 NCS_TOOLCHAIN = Path(os.environ.get(
     "NCS", "/home/aren/ncs/toolchains/927563c840"
@@ -78,42 +89,58 @@ def build_env() -> dict[str, str]:
     return env
 
 
-def build_one(name: str) -> int:
+def build_one(name: str, coverage: bool = False) -> int:
     src = TESTS_DIR / name
     if not (src / "CMakeLists.txt").is_file():
         print(f"!! no such test: {name}", file=sys.stderr)
         return 2
 
-    out = BUILD_ROOT / name
+    root = _root_for(coverage)
+    out = root / name
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"== building {name} -> {out.relative_to(FIRMWARE_ROOT)}")
-    proc = subprocess.run(
-        [
-            "west", "build",
-            "-d", str(out),
-            "-b", "native_sim",
-            str(src),
-        ],
-        cwd=FIRMWARE_ROOT,
-        env=build_env(),
-    )
+    label = "coverage" if coverage else "native"
+    print(f"== building {name} ({label}) -> {out.relative_to(FIRMWARE_ROOT)}")
+
+    cmd = [
+        "west", "build",
+        "-d", str(out),
+        "-b", "native_sim",
+        str(src),
+    ]
+    if coverage:
+        # Layer the coverage overlay on top of the per-test prj.conf.
+        # Zephyr applies prj.conf first, then EXTRA_CONF_FILE entries
+        # in order — so this strictly adds CONFIG_COVERAGE=y without
+        # disturbing test-specific options.
+        cmd += [
+            "--",
+            f"-DEXTRA_CONF_FILE={COVERAGE_OVERLAY}",
+        ]
+
+    proc = subprocess.run(cmd, cwd=FIRMWARE_ROOT, env=build_env())
     return proc.returncode
 
 
-def run_one(name: str) -> int:
-    binary = BUILD_ROOT / name / "zephyr" / "zephyr.exe"
+def run_one(name: str, coverage: bool = False) -> int:
+    root = _root_for(coverage)
+    binary = root / name / "zephyr" / "zephyr.exe"
     if not binary.is_file():
         print(f"!! binary missing for {name} — build it first", file=sys.stderr)
         return 2
 
-    print(f"== running {name}")
-    proc = subprocess.run([str(binary)], cwd=FIRMWARE_ROOT)
+    label = "coverage" if coverage else "native"
+    print(f"== running {name} ({label})")
+    # cwd=binary's build dir so any cwd-relative artefacts (gcov uses
+    # absolute paths from the .gcno, so this is belt-and-braces) land
+    # alongside the .gcno files instead of polluting FIRMWARE_ROOT.
+    proc = subprocess.run([str(binary)], cwd=binary.parent)
     return proc.returncode
 
 
-def clean_one(name: str) -> None:
-    out = BUILD_ROOT / name
+def clean_one(name: str, coverage: bool = False) -> None:
+    root = _root_for(coverage)
+    out = root / name
     if out.is_dir():
         print(f"== removing {out.relative_to(FIRMWARE_ROOT)}")
         shutil.rmtree(out)
@@ -128,33 +155,33 @@ def cmd_list(_args: argparse.Namespace) -> int:
 def cmd_build(args: argparse.Namespace) -> int:
     rc = 0
     for name in args.names:
-        rc |= build_one(name)
+        rc |= build_one(name, coverage=args.coverage)
     return rc
 
 
 def cmd_run(args: argparse.Namespace) -> int:
     rc = 0
     for name in args.names:
-        rc |= run_one(name)
+        rc |= run_one(name, coverage=args.coverage)
     return rc
 
 
-def cmd_build_all(_args: argparse.Namespace) -> int:
+def cmd_build_all(args: argparse.Namespace) -> int:
     rc = 0
     for name in discover_tests():
-        rc |= build_one(name)
+        rc |= build_one(name, coverage=args.coverage)
     return rc
 
 
-def cmd_run_all(_args: argparse.Namespace) -> int:
+def cmd_run_all(args: argparse.Namespace) -> int:
     """Build-then-run each test. Aggregates exit codes — any failure exits non-zero."""
     rc = 0
     for name in discover_tests():
-        b = build_one(name)
+        b = build_one(name, coverage=args.coverage)
         if b != 0:
             rc |= b
             continue
-        rc |= run_one(name)
+        rc |= run_one(name, coverage=args.coverage)
     return rc
 
 
@@ -198,14 +225,26 @@ def cmd_discover_cases(args: argparse.Namespace) -> int:
 def cmd_clean(args: argparse.Namespace) -> int:
     targets = args.names or discover_tests()
     for name in targets:
-        clean_one(name)
-    if not args.names and BUILD_ROOT.is_dir():
+        clean_one(name, coverage=args.coverage)
+    root = _root_for(args.coverage)
+    if not args.names and root.is_dir():
         # If user asked to clean everything, also remove the root if empty.
         try:
-            BUILD_ROOT.rmdir()
+            root.rmdir()
         except OSError:
             pass
     return 0
+
+
+def _add_coverage_flag(p: argparse.ArgumentParser) -> None:
+    """`--coverage` reroutes build/run/clean to build-coverage/ and layers
+    tests/coverage.conf on the configure command. Off by default so the
+    ordinary developer flow is untouched."""
+    p.add_argument(
+        "--coverage",
+        action="store_true",
+        help="build/run/clean against build-coverage/ with gcov instrumentation",
+    )
 
 
 def main() -> int:
@@ -217,17 +256,25 @@ def main() -> int:
 
     p = sub.add_parser("build", help="build one or more tests")
     p.add_argument("names", nargs="+")
+    _add_coverage_flag(p)
     p.set_defaults(func=cmd_build)
 
     p = sub.add_parser("run", help="run a pre-built binary")
     p.add_argument("names", nargs="+")
+    _add_coverage_flag(p)
     p.set_defaults(func=cmd_run)
 
-    sub.add_parser("build-all", help="build every test").set_defaults(func=cmd_build_all)
-    sub.add_parser("run-all", help="build + run every test").set_defaults(func=cmd_run_all)
+    p = sub.add_parser("build-all", help="build every test")
+    _add_coverage_flag(p)
+    p.set_defaults(func=cmd_build_all)
+
+    p = sub.add_parser("run-all", help="build + run every test")
+    _add_coverage_flag(p)
+    p.set_defaults(func=cmd_run_all)
 
     p = sub.add_parser("clean", help="remove build dirs (specify names or omit for all)")
     p.add_argument("names", nargs="*")
+    _add_coverage_flag(p)
     p.set_defaults(func=cmd_clean)
 
     p = sub.add_parser(

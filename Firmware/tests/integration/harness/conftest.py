@@ -44,8 +44,32 @@ NATIVE_SIM_BIN: Path = Path(
             / "zephyr" / "zephyr.exe"),
     )
 )
-# Termination grace period before escalating to SIGKILL.
-TERMINATE_GRACE_S: float = 1.0
+# Termination grace period before escalating to SIGKILL.  Coverage builds
+# need a longer window so libgcov's atexit hook can flush every .gcda
+# before SIGKILL truncates it — set ``DIVECAN_TERMINATE_GRACE_S=5`` (or
+# similar) when running ``scripts/coverage.py run-pytest``.
+TERMINATE_GRACE_S: float = float(
+    os.environ.get("DIVECAN_TERMINATE_GRACE_S", "1.0")
+)
+
+
+def _clamp_rt_ratio(rt_ratio: float | None) -> float | None:
+    """Optionally cap a test's ``rt_ratio`` via ``DIVECAN_RT_RATIO_MAX``.
+
+    Coverage builds add ``-fno-inline`` + ``--coverage`` instrumentation
+    that roughly doubles per-instruction wall time. Tests that request
+    ``--rt-ratio=100`` then can't actually run 100× faster than wall
+    time — the firmware falls behind, CAN frames sent by the harness
+    miss their processing window, and assertions about exit timing
+    fail. Setting ``DIVECAN_RT_RATIO_MAX=10`` caps the requested ratio
+    so coverage runs converge; ordinary runs leave the env var unset
+    and pass the marker value through untouched.
+    """
+    cap_raw = os.environ.get("DIVECAN_RT_RATIO_MAX")
+    if cap_raw is None or rt_ratio is None:
+        return rt_ratio
+    cap = float(cap_raw)
+    return min(rt_ratio, cap)
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +230,7 @@ def firmware(request) -> Generator[subprocess.Popen[bytes], None, None]:
     """
     marker = request.node.get_closest_marker("rt_ratio")
     rt_ratio = marker.args[0] if marker is not None else None
+    rt_ratio = _clamp_rt_ratio(rt_ratio)
 
     _kill_stale_firmware()
     proc = launch_native_sim_firmware(rt_ratio=rt_ratio)
@@ -289,6 +314,7 @@ def firmware_with_flash(
     """
     marker = request.node.get_closest_marker("rt_ratio")
     rt_ratio = marker.args[0] if marker is not None else None
+    rt_ratio = _clamp_rt_ratio(rt_ratio)
 
     flash_path = str(tmp_path / "flash.bin")
 

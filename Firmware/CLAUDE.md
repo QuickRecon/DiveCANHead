@@ -120,6 +120,76 @@ dropdowns, also add the new name to the `nativeTest` `pickString` options
 in both `.vscode/tasks.json` and `.vscode/launch.json` (VSCode
 `pickString` inputs cannot enumerate the filesystem at picker time).
 
+## Coverage
+
+`scripts/coverage.py` runs every ztest module + the pytest integration
+suite under gcov instrumentation and stitches the traces into a single
+report. Builds live under `build-coverage/<name>/` (parallel to
+`build-native/`) so coverage runs never disturb the ordinary developer
+flow. The overlay that adds `--coverage` to the compiler is
+`tests/coverage.conf` — it's layered on top of each test's own
+`prj.conf` (and, for the integration build, on top of
+`variants/dev_full.conf` + `tests/integration/integration.conf`).
+
+Typical full-sweep invocation:
+
+```bash
+scripts/coverage.py all                  # build + run-tests + run-pytest + report
+xdg-open coverage-report/index.html      # browse line/branch heatmap
+```
+
+Granular subcommands when iterating on a specific gap:
+
+```bash
+scripts/coverage.py build-tests          # build every ztest with --coverage
+scripts/coverage.py build-integration    # build the integration firmware
+scripts/coverage.py run-tests            # run the ztest binaries
+scripts/coverage.py run-pytest <args>    # pytest with DIVECAN_FW_BIN set
+                                         # and a longer SIGTERM grace
+scripts/coverage.py report               # gcovr → coverage-report/
+scripts/coverage.py clean                # wipe build-coverage/ + coverage-report/
+```
+
+`scripts/native_test.py` also gained a `--coverage` flag for single-test
+iteration:
+
+```bash
+scripts/native_test.py build --coverage ppo2_control_math
+scripts/native_test.py run   --coverage ppo2_control_math
+```
+
+`.gcda` files are flushed by libgcov's `atexit` hook when the process
+exits cleanly. The pytest fixture's `SIGTERM → wait → SIGKILL` teardown
+runs that hook reliably, but the grace period must be long enough.
+`scripts/coverage.py run-pytest` sets these env vars so the harness
+handles coverage-instrumented binaries correctly; each is also a knob
+for ad-hoc invocations:
+
+| Env var | Coverage default | Purpose |
+|---------|------------------|---------|
+| `DIVECAN_FW_BIN` | path to coverage binary | Already supported — pin the harness to a non-default build |
+| `DIVECAN_TERMINATE_GRACE_S` | `5.0` (vs `1.0`) | SIGTERM grace before the harness escalates to SIGKILL |
+| `DIVECAN_SHUTDOWN_DEADLINE_S` | `15.0` (vs `4.0`) | `test_pwr_management` deadline for the firmware to exit on shutdown |
+| `DIVECAN_RT_RATIO_MAX` | `10` (unset normally) | Cap any `@pytest.mark.rt_ratio(N)` so coverage's `-fno-inline` overhead doesn't starve the firmware |
+
+`test_pwr_management::test_power_cycle_bus_off_then_shutdown` and
+`::test_power_cycle_bus_on_recovery` skip themselves under coverage —
+the instrumented binary loses the BUS_OFF CAN frame at the SocketCAN
+boundary even at `rt_ratio=1` with a 60 s deadline. The skip key is
+either `DIVECAN_RT_RATIO_MAX` being set or `build-coverage/` appearing
+in `DIVECAN_FW_BIN`. Coverage on `shutdown_thread_fn` comes from the
+other tests in the same file.
+
+Reports land at:
+
+* `coverage-report/index.html` — line + branch heatmap, drill-down per file
+* `coverage-report/coverage.xml` — gcovr SonarQube generic-coverage XML,
+  ready to upload alongside a SonarCloud scan
+
+The report filters to `src/` and excludes `tests/` and
+`drivers/gpio_sim/` so the percentage reflects application coverage, not
+test scaffolding.
+
 ## Documentation Maintenance
 
 ### ARCHITECTURE.md
