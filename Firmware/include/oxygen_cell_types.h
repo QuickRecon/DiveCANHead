@@ -116,12 +116,31 @@ typedef enum {
     CAL_SOLENOID_FLUSH = 3,    /**< Flush then calibrate */
 } CalMethod_t;
 
-/** @brief Result of a completed calibration sequence. */
+/** @brief Result of a completed calibration sequence.
+ *
+ * Distinguishes failure modes so the DiveCAN response can report the
+ * specific reason (legacy parity with the STM32 firmware's
+ * DIVECAN_CAL_FAIL_FO2_RANGE / DIVECAN_CAL_FAIL_GEN / DIVECAN_CAL_FAIL_REJECTED
+ * / DIVECAN_CAL_FAIL_LOW_EXT_BAT).
+ */
 typedef enum {
-    CAL_RESULT_OK = 0,    /**< Calibration succeeded */
-    CAL_RESULT_REJECTED,  /**< Result out of range; old coefficients retained */
-    CAL_RESULT_FAILED,    /**< Hardware or sensor error during calibration */
-    CAL_RESULT_BUSY,      /**< Calibration already in progress */
+    CAL_RESULT_OK = 0,        /**< Calibration succeeded */
+    CAL_RESULT_REJECTED,      /**< Request itself rejected (fO2 out of bounds,
+                                   no reference cell, unknown method); maps to
+                                   DIVECAN_CAL_FAIL_REJECTED. */
+    CAL_RESULT_OUT_OF_RANGE,  /**< Coefficient computed but outside the cell-type's
+                                   valid envelope; old coefficients retained.
+                                   Maps to DIVECAN_CAL_FAIL_FO2_RANGE. */
+    CAL_RESULT_FAILED,        /**< Math, hardware, or flash error during cal;
+                                   maps to DIVECAN_CAL_FAIL_GEN. */
+    CAL_RESULT_LOW_BATTERY,   /**< Battery voltage too low to safely calibrate;
+                                   maps to DIVECAN_CAL_FAIL_LOW_EXT_BAT.
+                                   Reserved — no emitter wired yet (the legacy
+                                   firmware defined the code but never emitted
+                                   it either). Plumbed end-to-end so a future
+                                   pre-cal battery check can use it without
+                                   touching the DiveCAN response mapping. */
+    CAL_RESULT_BUSY,          /**< Calibration already in progress */
 } CalResult_t;
 
 /** @brief Calibration request published on chan_cal_request. */

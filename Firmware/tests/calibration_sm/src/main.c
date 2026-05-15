@@ -254,6 +254,45 @@ ZTEST(calibration_sm, test_analog_absolute_happy_path)
     }
 }
 
+ZTEST(calibration_sm, test_out_of_envelope_returns_out_of_range)
+{
+    /* When the new coefficient falls outside the cell-type's valid envelope
+     * the math layer returns CAL_COEFF_ERR_RANGE. cal_validate_and_save
+     * must surface that as CAL_RESULT_OUT_OF_RANGE (which divecan_rx maps
+     * to DIVECAN_CAL_FAIL_FO2_RANGE) — distinct from a hardware/flash
+     * failure (CAL_RESULT_FAILED → DIVECAN_CAL_FAIL_GEN). Cell sample
+     * mv=500 yields approx_counts=640 → coeff ≈ 0.042 (above
+     * ANALOG_CAL_UPPER 0.02625) — out of envelope. */
+    seed_previous_coefficients(0.020f);
+
+    publish_analog_cell(&chan_cell_1, 0, 500U);
+    publish_analog_cell(&chan_cell_2, 1, 500U);
+    publish_analog_cell(&chan_cell_3, 2, 500U);
+
+    CalRequest_t req = {
+        .method = CAL_ANALOG_ABSOLUTE,
+        .fo2 = 21U,
+        .pressure_mbar = 1000U,
+    };
+    calibration_run_for_test(&req);
+
+    zassert_true(g.response_seen, "must publish a response");
+    zassert_equal(g.last_response.result, CAL_RESULT_OUT_OF_RANGE,
+                  "out-of-envelope coeff must produce CAL_RESULT_OUT_OF_RANGE");
+
+    /* Rollback re-saves the baseline; the failed cell attempts never
+     * reach settings_save_one because the math sentinel short-circuits
+     * cal_validate_and_save before the save call. */
+    zassert_equal(g.save_count, (int)CELL_MAX_COUNT,
+                  "rollback re-saves all cells (got %d)", g.save_count);
+
+    for (int i = 0; i < (int)CELL_MAX_COUNT; ++i) {
+        zassert_within(g.store[i], 0.020f, 1e-5f,
+                       "cell %d: store must hold rollback baseline (got %.6f)",
+                       i, (double)g.store[i]);
+    }
+}
+
 ZTEST(calibration_sm, test_save_failure_triggers_rollback)
 {
     /* Seed a baseline so rollback has something to restore. */

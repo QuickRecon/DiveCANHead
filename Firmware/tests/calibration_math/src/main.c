@@ -89,13 +89,18 @@ ZTEST(target_ppo2, test_zero_fo2)
 ZTEST_SUITE(analog_cal, NULL, NULL, NULL, NULL, NULL);
 
 /**
- * @brief Bug #2 regression: zero ADC counts must return an error, not divide by zero.
+ * @brief Zero ADC counts must return the MATH sentinel (divide-by-zero guard).
+ *
+ * Distinguishing math from range errors lets the calibration pipeline map
+ * to DIVECAN_CAL_FAIL_GEN vs DIVECAN_CAL_FAIL_FO2_RANGE — see
+ * `cal_classify_coeff_error` in calibration.c.
  */
-ZTEST(analog_cal, test_zero_counts_rejects)
+ZTEST(analog_cal, test_zero_counts_returns_math_sentinel)
 {
     float coeff = analog_cal_coefficient(0, 21);
 
-    zassert_true(coeff < 0.0f, "Zero ADC counts must return error");
+    zassert_equal(coeff, CAL_COEFF_ERR_MATH,
+                  "Zero ADC counts must return MATH sentinel (got %f)", (double)coeff);
 }
 
 /** @brief Valid air calibration: 1152 counts at PPO2=21 → coefficient within [LOWER, UPPER]. */
@@ -109,22 +114,29 @@ ZTEST(analog_cal, test_normal_air_cal)
     zassert_true(coeff <= ANALOG_CAL_UPPER, "Coeff within upper bound");
 }
 
-/** @brief Coefficient below ANALOG_CAL_LOWER (cell over-producing voltage) is rejected. */
-ZTEST(analog_cal, test_coeff_below_lower_bound)
+/**
+ * @brief Coefficient below ANALOG_CAL_LOWER returns the RANGE sentinel
+ *        (envelope rejection, not a math error).
+ */
+ZTEST(analog_cal, test_coeff_below_lower_bound_returns_range_sentinel)
 {
     /* Very high counts with low PPO2 → tiny coefficient */
     float coeff = analog_cal_coefficient(30000, 1);
 
-    zassert_true(coeff < 0.0f, "Out-of-range coeff must return error");
+    zassert_equal(coeff, CAL_COEFF_ERR_RANGE,
+                  "Out-of-envelope must return RANGE sentinel (got %f)", (double)coeff);
 }
 
-/** @brief Coefficient above ANALOG_CAL_UPPER (cell under-producing voltage) is rejected. */
-ZTEST(analog_cal, test_coeff_above_upper_bound)
+/**
+ * @brief Coefficient above ANALOG_CAL_UPPER returns the RANGE sentinel.
+ */
+ZTEST(analog_cal, test_coeff_above_upper_bound_returns_range_sentinel)
 {
     /* Very low counts with high PPO2 → huge coefficient */
     float coeff = analog_cal_coefficient(10, 200);
 
-    zassert_true(coeff < 0.0f, "Out-of-range coeff must return error");
+    zassert_equal(coeff, CAL_COEFF_ERR_RANGE,
+                  "Out-of-envelope must return RANGE sentinel (got %f)", (double)coeff);
 }
 
 /** @brief Negative ADC counts (inverted cell polarity) produce the same coefficient as positive. */
@@ -145,21 +157,23 @@ ZTEST(analog_cal, test_negative_counts)
 ZTEST_SUITE(diveo2_cal, NULL, NULL, NULL, NULL, NULL);
 
 /**
- * @brief Bug #2 regression: zero cell sample must return error, not divide by zero.
+ * @brief Zero cell sample must return the MATH sentinel (divide-by-zero guard).
  */
-ZTEST(diveo2_cal, test_zero_sample_rejects)
+ZTEST(diveo2_cal, test_zero_sample_returns_math_sentinel)
 {
     float coeff = diveo2_cal_coefficient(0, 21);
 
-    zassert_true(coeff < 0.0f, "Zero cell sample must return error");
+    zassert_equal(coeff, CAL_COEFF_ERR_MATH,
+                  "Zero cell sample must return MATH sentinel (got %f)", (double)coeff);
 }
 
-/** @brief Bug #2 regression: zero target PPO2 must return error (division by zero). */
-ZTEST(diveo2_cal, test_zero_ppo2_rejects)
+/** @brief Zero target PPO2 must return the MATH sentinel (division by zero guard). */
+ZTEST(diveo2_cal, test_zero_ppo2_returns_math_sentinel)
 {
     float coeff = diveo2_cal_coefficient(1000000, 0);
 
-    zassert_true(coeff < 0.0f, "Zero PPO2 must return error");
+    zassert_equal(coeff, CAL_COEFF_ERR_MATH,
+                  "Zero PPO2 must return MATH sentinel (got %f)", (double)coeff);
 }
 
 /** @brief Valid air calibration: sample=210000 hPa at PPO2=21 → coefficient in bounds. */
@@ -173,13 +187,17 @@ ZTEST(diveo2_cal, test_normal_cal)
     zassert_true(coeff <= DIVEO2_CAL_UPPER);
 }
 
-/** @brief Out-of-range coefficient (sample far too low) is rejected. */
-ZTEST(diveo2_cal, test_out_of_range_rejects)
+/**
+ * @brief Out-of-envelope coefficient returns the RANGE sentinel
+ *        (distinguishable from a math error).
+ */
+ZTEST(diveo2_cal, test_out_of_range_returns_range_sentinel)
 {
     /* Very small sample → coeff too low */
     float coeff = diveo2_cal_coefficient(100, 21);
 
-    zassert_true(coeff < 0.0f);
+    zassert_equal(coeff, CAL_COEFF_ERR_RANGE,
+                  "Out-of-envelope must return RANGE sentinel (got %f)", (double)coeff);
 }
 
 /* ============================================================================
@@ -191,21 +209,23 @@ ZTEST(diveo2_cal, test_out_of_range_rejects)
 ZTEST_SUITE(o2s_cal, NULL, NULL, NULL, NULL, NULL);
 
 /**
- * @brief Bug #2 regression: exactly-zero float sample must return error, not divide by zero.
+ * @brief Exactly-zero float sample must return the MATH sentinel.
  */
-ZTEST(o2s_cal, test_zero_sample_rejects)
+ZTEST(o2s_cal, test_zero_sample_returns_math_sentinel)
 {
     float coeff = o2s_cal_coefficient(0.0f, 21);
 
-    zassert_true(coeff < 0.0f, "Zero cell sample must return error");
+    zassert_equal(coeff, CAL_COEFF_ERR_MATH,
+                  "Zero cell sample must return MATH sentinel (got %f)", (double)coeff);
 }
 
-/** @brief Near-zero float sample (below guard threshold) is also rejected to prevent instability. */
-ZTEST(o2s_cal, test_tiny_sample_rejects)
+/** @brief Near-zero float sample (below guard threshold) also returns MATH sentinel. */
+ZTEST(o2s_cal, test_tiny_sample_returns_math_sentinel)
 {
     float coeff = o2s_cal_coefficient(1e-7f, 21);
 
-    zassert_true(coeff < 0.0f, "Near-zero cell sample must return error");
+    zassert_equal(coeff, CAL_COEFF_ERR_MATH,
+                  "Near-zero cell sample must return MATH sentinel (got %f)", (double)coeff);
 }
 
 /** @brief Valid air calibration: sample=0.21 bar at PPO2=21 → coefficient ≈ 1.0, within bounds. */
@@ -219,11 +239,14 @@ ZTEST(o2s_cal, test_normal_cal)
     zassert_within(coeff, 1.0f, 0.01f);
 }
 
-/** @brief Coefficient far above O2S_CAL_UPPER (tiny sample vs large PPO2) is rejected. */
-ZTEST(o2s_cal, test_out_of_range_rejects)
+/**
+ * @brief Coefficient far above O2S_CAL_UPPER returns the RANGE sentinel.
+ */
+ZTEST(o2s_cal, test_out_of_range_returns_range_sentinel)
 {
     /* Sample = 0.01 bar, PPO2 = 21 → coeff = 21.0, way above O2S_CAL_UPPER */
     float coeff = o2s_cal_coefficient(0.01f, 21);
 
-    zassert_true(coeff < 0.0f);
+    zassert_equal(coeff, CAL_COEFF_ERR_RANGE,
+                  "Out-of-envelope must return RANGE sentinel (got %f)", (double)coeff);
 }

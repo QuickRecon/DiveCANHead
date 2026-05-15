@@ -384,8 +384,19 @@ static void cal_response_cb(const struct zbus_channel *chan)
         divecan_result = DIVECAN_CAL_RESULT_OK;
     } else if (CAL_RESULT_REJECTED == resp->result) {
         divecan_result = DIVECAN_CAL_FAIL_REJECTED;
+    } else if (CAL_RESULT_OUT_OF_RANGE == resp->result) {
+        /* Coefficient computed but outside the cell-type envelope — legacy
+         * FO2_RANGE meant "supplied fO2 is implausible given this cell's
+         * sample." Mirrors the old CELL_NEED_CAL-after-cal condition. */
+        divecan_result = DIVECAN_CAL_FAIL_FO2_RANGE;
+    } else if (CAL_RESULT_LOW_BATTERY == resp->result) {
+        /* Reserved: no emitter wired yet on either firmware. Mapping is
+         * present so a future pre-cal battery check can produce this
+         * response without changing this dispatch. */
+        divecan_result = DIVECAN_CAL_FAIL_LOW_EXT_BAT;
     } else {
-        /* divecan_result already set to DIVECAN_CAL_FAIL_GEN */
+        /* CAL_RESULT_FAILED, CAL_RESULT_BUSY, or any other —
+         * divecan_result already set to DIVECAN_CAL_FAIL_GEN */
     }
 
     /* chan_cal_request is a DIFFERENT channel — not locked here — so

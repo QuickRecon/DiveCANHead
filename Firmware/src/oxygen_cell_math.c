@@ -32,7 +32,6 @@ static const Numeric_t MIN_ANALOG_SAMPLE = 1.0f;
 static const Numeric_t ANALOG_COEFF_REPORT_SCALE = 1000000.0f;
 static const Numeric_t O2S_COEFF_REPORT_SCALE = 1000.0f;
 static const uint32_t MBAR_PER_FRACTIONAL_UNIT = 1000U;
-static const Numeric_t ERROR_RETURN = -1.0f;
 
 /* ---- Internal consensus helpers ---- */
 
@@ -394,19 +393,20 @@ int16_t cal_compute_target_ppo2(FO2_t fo2, uint16_t pressure_mbar)
  *
  * @param adc_counts   Signed 16-bit ADC count at calibration time.
  * @param target_ppo2  Known PPO2 at calibration in centibar.
- * @return CalCoeff_t coefficient, or ERROR_RETURN (-1.0f) if the divisor is
- *         near-zero or the result is out of the valid calibration range.
+ * @return CalCoeff_t coefficient, CAL_COEFF_ERR_MATH if the divisor is
+ *         near-zero, or CAL_COEFF_ERR_RANGE if the result is outside the
+ *         valid calibration envelope.
  */
 CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2)
 {
-    CalCoeff_t result = ERROR_RETURN;
+    CalCoeff_t result = CAL_COEFF_ERR_MATH;
     Numeric_t divisor = (Numeric_t)abs(adc_counts) * COUNTS_TO_MILLIS;
 
     if (divisor < MIN_DIVISOR) {
 #ifdef CONFIG_ZBUS
         OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)adc_counts);
 #endif
-        result = ERROR_RETURN;
+        result = CAL_COEFF_ERR_MATH;
     } else {
         Numeric_t coeff = (Numeric_t)target_ppo2 / divisor;
 
@@ -415,7 +415,7 @@ CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2)
 #ifdef CONFIG_ZBUS
             OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)(coeff * ANALOG_COEFF_REPORT_SCALE));
 #endif
-            result = ERROR_RETURN;
+            result = CAL_COEFF_ERR_RANGE;
         } else {
             result = coeff;
         }
@@ -432,18 +432,19 @@ CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2)
  *
  * @param cell_sample  Raw DiveO2 count at calibration time (integer, units: ~counts/bar).
  * @param target_ppo2  Known PPO2 at calibration in centibar.
- * @return CalCoeff_t coefficient, or ERROR_RETURN (-1.0f) if target is zero,
- *         sample is near-zero, or the coefficient is out of valid range.
+ * @return CalCoeff_t coefficient, CAL_COEFF_ERR_MATH if target is zero or
+ *         sample is near-zero, or CAL_COEFF_ERR_RANGE if the coefficient
+ *         is out of the valid calibration envelope.
  */
 CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
 {
-    CalCoeff_t result = ERROR_RETURN;
+    CalCoeff_t result = CAL_COEFF_ERR_MATH;
 
     if (0U == target_ppo2) {
 #ifdef CONFIG_ZBUS
         OP_ERROR_DETAIL(OP_ERR_MATH, 0U);
 #endif
-        result = ERROR_RETURN;
+        result = CAL_COEFF_ERR_MATH;
     } else {
         Numeric_t ppo2_bar = (Numeric_t)target_ppo2 / CENTIBAR_PER_BAR_F;
         Numeric_t sample_abs = fabsf((Numeric_t)cell_sample);
@@ -452,7 +453,7 @@ CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
 #ifdef CONFIG_ZBUS
             OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)cell_sample);
 #endif
-            result = ERROR_RETURN;
+            result = CAL_COEFF_ERR_MATH;
         } else {
             Numeric_t coeff = sample_abs / ppo2_bar;
 
@@ -460,7 +461,7 @@ CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
 #ifdef CONFIG_ZBUS
                 OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)coeff);
 #endif
-                result = ERROR_RETURN;
+                result = CAL_COEFF_ERR_RANGE;
             } else {
                 result = coeff;
             }
@@ -478,18 +479,19 @@ CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
  *
  * @param cell_sample  Raw O2S PPO2 reading in bar at calibration time.
  * @param target_ppo2  Known PPO2 at calibration in centibar.
- * @return CalCoeff_t coefficient, or ERROR_RETURN (-1.0f) if cell_sample is
- *         near-zero or the coefficient is out of valid range.
+ * @return CalCoeff_t coefficient, CAL_COEFF_ERR_MATH if cell_sample is
+ *         near-zero, or CAL_COEFF_ERR_RANGE if the coefficient is outside
+ *         the valid calibration envelope.
  */
 CalCoeff_t o2s_cal_coefficient(Numeric_t cell_sample, PPO2_t target_ppo2)
 {
-    CalCoeff_t result = ERROR_RETURN;
+    CalCoeff_t result = CAL_COEFF_ERR_MATH;
 
     if (fabsf(cell_sample) < MIN_DIVISOR) {
 #ifdef CONFIG_ZBUS
         OP_ERROR_DETAIL(OP_ERR_MATH, 0U);
 #endif
-        result = ERROR_RETURN;
+        result = CAL_COEFF_ERR_MATH;
     } else {
         Numeric_t ppo2_bar = (Numeric_t)target_ppo2 / CENTIBAR_PER_BAR_F;
         Numeric_t coeff = ppo2_bar / cell_sample;
@@ -498,7 +500,7 @@ CalCoeff_t o2s_cal_coefficient(Numeric_t cell_sample, PPO2_t target_ppo2)
 #ifdef CONFIG_ZBUS
             OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)(coeff * O2S_COEFF_REPORT_SCALE));
 #endif
-            result = ERROR_RETURN;
+            result = CAL_COEFF_ERR_RANGE;
         } else {
             result = coeff;
         }

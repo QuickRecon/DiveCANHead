@@ -60,6 +60,37 @@ Numeric_t analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff);
 /* ---- Calibration math ---- */
 
 /**
+ * @brief Sentinel returned by *_cal_coefficient() on math/hardware failure.
+ *
+ * Indicates a zero-or-near-zero divisor, near-zero cell sample, or any other
+ * arithmetic failure that prevented coefficient computation. The calibration
+ * pipeline maps this to CAL_RESULT_FAILED → DIVECAN_CAL_FAIL_GEN (the legacy
+ * "general failure" code).
+ */
+static const CalCoeff_t CAL_COEFF_ERR_MATH = -1.0f;
+
+/**
+ * @brief Sentinel returned by *_cal_coefficient() on out-of-envelope coefficient.
+ *
+ * Indicates the coefficient was computed successfully but falls outside the
+ * cell-type's valid range (ANALOG_CAL_LOWER..UPPER, DIVEO2_CAL_LOWER..UPPER,
+ * O2S_CAL_LOWER..UPPER). Mirrors the legacy `CELL_NEED_CAL`-after-calibrate
+ * condition. The calibration pipeline maps this to CAL_RESULT_OUT_OF_RANGE
+ * → DIVECAN_CAL_FAIL_FO2_RANGE so the handset shows the specific reason.
+ */
+static const CalCoeff_t CAL_COEFF_ERR_RANGE = -2.0f;
+
+/**
+ * @brief Discriminator threshold: coeff <= this is a range-error sentinel.
+ *
+ * Real coefficients are always >= 0. CAL_COEFF_ERR_MATH is -1.0f and
+ * CAL_COEFF_ERR_RANGE is -2.0f, so any value at or below -1.5f is the
+ * range-error sentinel and any value in (-1.5f, 0.0f) is the math-error
+ * sentinel. Use this constant instead of comparing floats for equality.
+ */
+static const CalCoeff_t CAL_COEFF_ERR_RANGE_THRESHOLD = -1.5f;
+
+/**
  * @brief Compute target PPO2 in centibar from fO2 (percent) and pressure (mbar).
  *
  * @param fo2           Fraction of O2 in percent (0-100)
@@ -73,7 +104,8 @@ int16_t cal_compute_target_ppo2(FO2_t fo2, uint16_t pressure_mbar);
  *
  * @param adc_counts  Raw ADS1115 counts at calibration gas
  * @param target_ppo2 Expected PPO2 in centibar at calibration conditions
- * @return Calibration coefficient, or negative value on error (zero divisor, out-of-bounds)
+ * @return Calibration coefficient, CAL_COEFF_ERR_MATH on divisor near zero,
+ *         or CAL_COEFF_ERR_RANGE on coefficient outside ANALOG_CAL_LOWER..UPPER.
  */
 CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2);
 
@@ -82,7 +114,8 @@ CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2);
  *
  * @param cell_sample Raw DiveO2 sensor reading at calibration gas
  * @param target_ppo2 Expected PPO2 in centibar at calibration conditions
- * @return Calibration coefficient, or negative value on error (zero divisor, out-of-bounds)
+ * @return Calibration coefficient, CAL_COEFF_ERR_MATH on zero target/sample,
+ *         or CAL_COEFF_ERR_RANGE on coefficient outside DIVEO2_CAL_LOWER..UPPER.
  */
 CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2);
 
@@ -91,7 +124,8 @@ CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2);
  *
  * @param cell_sample Raw O2S sensor reading at calibration gas
  * @param target_ppo2 Expected PPO2 in centibar at calibration conditions
- * @return Calibration coefficient, or negative value on error (zero divisor, out-of-bounds)
+ * @return Calibration coefficient, CAL_COEFF_ERR_MATH on near-zero sample,
+ *         or CAL_COEFF_ERR_RANGE on coefficient outside O2S_CAL_LOWER..UPPER.
  */
 CalCoeff_t o2s_cal_coefficient(Numeric_t cell_sample, PPO2_t target_ppo2);
 

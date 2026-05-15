@@ -27,6 +27,25 @@
 #include "errors.h"
 #include "common.h"
 
+/**
+ * @brief Map a raw coefficient sentinel from *_cal_coefficient() to a CalResult_t.
+ *
+ * The math layer returns CAL_COEFF_ERR_RANGE (-2.0f) when the computed
+ * coefficient is outside the cell-type's valid envelope and
+ * CAL_COEFF_ERR_MATH (-1.0f) for divisor / zero-sample faults. Use the
+ * RANGE_THRESHOLD discriminator to avoid float-equality comparisons.
+ */
+static CalResult_t cal_classify_coeff_error(CalCoeff_t coeff)
+{
+    CalResult_t result;
+    if (coeff <= CAL_COEFF_ERR_RANGE_THRESHOLD) {
+        result = CAL_RESULT_OUT_OF_RANGE;
+    } else {
+        result = CAL_RESULT_FAILED;
+    }
+    return result;
+}
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -574,23 +593,29 @@ static CalResult_t cal_read_coefficient(uint8_t cell_num, PPO2_t target_ppo2,
 /**
  * @brief Validate a newly computed coefficient, persist it, and verify the round-trip.
  *
- * Rejects coefficients < 0 (computation error or zero-divisor guard triggered).
+ * Negative coefficients are the math layer's failure sentinels:
+ *   - CAL_COEFF_ERR_RANGE → CAL_RESULT_OUT_OF_RANGE (out-of-envelope, was old
+ *     DIVECAN_CAL_FAIL_FO2_RANGE)
+ *   - CAL_COEFF_ERR_MATH  → CAL_RESULT_FAILED (math/hardware fault, was old
+ *     DIVECAN_CAL_FAIL_GEN)
  * On success, reads the value back from settings to confirm the write was lossless.
  *
  * @param cell_num  Zero-based cell index (0–2).
  * @param new_coeff Coefficient to validate and store; must be >= 0.
- * @return CAL_RESULT_OK on success, CAL_RESULT_REJECTED if the coefficient is negative,
- *         CAL_RESULT_FAILED if the settings write or readback fails.
+ * @return CAL_RESULT_OK on success, CAL_RESULT_OUT_OF_RANGE if the coefficient
+ *         was rejected by the envelope check, CAL_RESULT_FAILED for math or
+ *         settings write/readback failures.
  */
 static CalResult_t cal_validate_and_save(uint8_t cell_num, Numeric_t new_coeff)
 {
     CalResult_t result = CAL_RESULT_OK;
 
     if (new_coeff < 0.0f) {
-        /* Coefficient out of bounds or computation error */
-        result = CAL_RESULT_REJECTED;
-        LOG_WRN("validate cell %u: REJECTED (coeff=%.6f < 0)",
-                cell_num, (double)new_coeff);
+        result = cal_classify_coeff_error(new_coeff);
+        LOG_WRN("validate cell %u: %s (coeff=%.6f)",
+                cell_num,
+                (CAL_RESULT_OUT_OF_RANGE == result) ? "OUT_OF_RANGE" : "FAILED",
+                (double)new_coeff);
     }
     else {
         Status_t save_err = cal_save_coefficient(cell_num, new_coeff);
