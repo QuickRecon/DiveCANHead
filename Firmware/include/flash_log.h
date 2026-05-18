@@ -69,7 +69,21 @@ typedef enum {
 
 /* ---- Stats ---- */
 
-/** @brief Per-FCB instance statistics returned by flash_log_stats(). */
+/** @brief Per-FCB instance statistics returned by flash_log_stats().
+ *
+ * @var FlashLogFcbStats_t::boot_id_current Monotonic boot counter for this session.
+ * @var FlashLogFcbStats_t::boot_id_oldest Lowest boot_id still resident in this FCB
+ *      (derived from the reader index). 0 until the index is built.
+ * @var FlashLogFcbStats_t::dive_id_latest Highest dive_number seen in a
+ *      DIVE_START marker (reader index). 0 if no dives are logged.
+ * @var FlashLogFcbStats_t::entries_total_estimate Lower bound on entries
+ *      stored: marker count (boot + dive_start) summed from the index.
+ *      Real entry count is higher; field name reflects the imprecision.
+ * @var FlashLogFcbStats_t::drops_since_boot Producer-side overflow count
+ *      for this session.
+ * @var FlashLogFcbStats_t::sectors_free Free sectors right now (fcb_free_sector_cnt).
+ * @var FlashLogFcbStats_t::sectors_total Total sectors allocated to this FCB.
+ */
 typedef struct {
     uint32_t boot_id_current;
     uint32_t boot_id_oldest;

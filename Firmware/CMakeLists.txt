@@ -99,6 +99,7 @@ target_sources_ifdef(CONFIG_FLASH_LOG app PRIVATE
     src/flash_log/flash_log.c
     src/flash_log/flash_log_listeners.c
     src/flash_log/flash_log_backend.c
+    src/flash_log/flash_log_index.c
     src/flash_log/flash_log_reader.c
     src/divecan/uds/uds_log_download.c
 )

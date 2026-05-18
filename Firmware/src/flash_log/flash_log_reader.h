@@ -19,6 +19,7 @@
 #include <zephyr/fs/fcb.h>
 
 #include "flash_log.h"
+#include "flash_log_internal.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,6 +46,22 @@ typedef struct {
 
 /** @brief Force the next selector call to rebuild its in-RAM index. */
 void flash_log_reader_invalidate_index(void);
+
+/**
+ * @brief Build (if needed) the reader index for `dest` and reduce it to a
+ *        boot/dive summary.
+ *
+ * Used by `flash_log_stats()` to populate the `boot_id_oldest`,
+ * `dive_id_latest`, and entry-count fields without exposing the index
+ * array to the producer path. Triggers a one-shot `fcb_walk()` over
+ * the FCB if the index isn't already valid.
+ *
+ * @param dest Telemetry or text FCB.
+ * @param out  Receives the summary; zeroed on no markers.
+ * @return 0 on success, negative errno on FCB walk failure.
+ */
+int flash_log_reader_index_summary(FlashLogDest_t dest,
+                                   FlashLogIndexSummary_t *out);
 
 /** @brief Resolve "the latest boot on `dest`" into an iterable range. */
 int flash_log_reader_resolve_latest_boot(FlashLogDest_t dest,

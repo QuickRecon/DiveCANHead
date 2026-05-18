@@ -15,6 +15,8 @@
 
 #include "flash_log.h"
 #include "flash_log_entries.h"
+#include "flash_log_internal.h"
+#include "flash_log_reader.h"
 #include "heartbeat.h"
 
 #include <zephyr/kernel.h>
@@ -744,6 +746,30 @@ uint32_t flash_log_get_boot_id(void)
 
 /* ---- Stats ---- */
 
+/**
+ * @brief Populate per-FCB index-derived fields on a FlashLogFcbStats_t.
+ *
+ * Triggers a one-shot reader index build (~one fcb_walk over markers
+ * only) on first call per boot. Failures are non-fatal — the existing
+ * stats fields stay populated and the index-derived fields stay zero.
+ */
+static void fl_populate_index_stats(FlashLogDest_t dest,
+                                    FlashLogFcbStats_t *fcb_stats)
+{
+    FlashLogIndexSummary_t summary;
+    if (0 == flash_log_reader_index_summary(dest, &summary)) {
+        fcb_stats->boot_id_oldest = summary.boot_id_oldest;
+        fcb_stats->dive_id_latest = summary.dive_id_latest;
+        /* Markers are a strict subset of total entries; use the marker
+         * count as a non-overestimating lower bound. The exact entry
+         * count would require a second fcb_walk, which is more cost
+         * than this stat justifies. Downstream tooling treats this as
+         * an estimate per the field name. */
+        fcb_stats->entries_total_estimate =
+            (uint32_t)summary.boot_count + (uint32_t)summary.dive_count;
+    }
+}
+
 int flash_log_stats(FlashLogStats_t *out)
 {
     int rc = 0;
@@ -758,6 +784,7 @@ int flash_log_stats(FlashLogStats_t *out)
             (uint16_t)fcb_free_sector_cnt(&fl_telemetry_fcb);
         out->telemetry.drops_since_boot =
             (uint32_t)atomic_get(&fl_drops_telemetry);
+        fl_populate_index_stats(FL_DEST_TELEMETRY, &out->telemetry);
 
         out->text.boot_id_current = fl_boot_id;
         out->text.sectors_total = FL_SECTOR_COUNT;
@@ -765,6 +792,7 @@ int flash_log_stats(FlashLogStats_t *out)
             (uint16_t)fcb_free_sector_cnt(&fl_text_fcb);
         out->text.drops_since_boot =
             (uint32_t)atomic_get(&fl_drops_text);
+        fl_populate_index_stats(FL_DEST_TEXT, &out->text);
     }
     return rc;
 }

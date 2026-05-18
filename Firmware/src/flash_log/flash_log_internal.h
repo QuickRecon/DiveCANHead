@@ -10,6 +10,7 @@
 #define FLASH_LOG_INTERNAL_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include <zephyr/fs/fcb.h>
 
 #include "flash_log.h"
@@ -17,6 +18,54 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/** @brief Sentinel for "no boot marker recorded for this sector". */
+#define FL_INVALID_BOOT_ID UINT32_MAX
+/** @brief Sentinel for "no dive marker recorded for this sector". */
+#define FL_INVALID_DIVE_ID UINT16_MAX
+
+/** Flag bits set in FlashLogIndexEntry_t.flags by the reader walk. */
+#define FL_INDEX_FLAG_HAS_BOOT       (1U << 0)
+#define FL_INDEX_FLAG_HAS_DIVE_START (1U << 1)
+#define FL_INDEX_FLAG_HAS_DIVE_END   (1U << 2)
+
+/** @brief Per-sector summary recorded by the reader's index walk. */
+typedef struct {
+    uint32_t first_boot_id;  /**< FL_INVALID_BOOT_ID if no boot marker landed here */
+    uint16_t first_dive_id;  /**< FL_INVALID_DIVE_ID if no dive marker landed here */
+    uint16_t flags;          /**< FL_INDEX_FLAG_* */
+} FlashLogIndexEntry_t;
+
+/**
+ * @brief Reduced view over a built FlashLogIndexEntry_t[] array.
+ *
+ * Populated by flash_log_index_summarize() — pure function over the
+ * index, no flash access. Used by flash_log_stats() to surface the
+ * boot/dive range without exposing the index storage to the producer
+ * path. All fields are zero when the index contains no markers.
+ */
+typedef struct {
+    uint32_t boot_id_oldest;  /**< Lowest first_boot_id seen, or 0 if none */
+    uint32_t boot_id_latest;  /**< Highest first_boot_id seen, or 0 if none */
+    uint16_t dive_id_latest;  /**< Highest first_dive_id from a HAS_DIVE_START sector, or 0 */
+    uint16_t dive_count;      /**< Sectors with FL_INDEX_FLAG_HAS_DIVE_START set */
+    uint16_t boot_count;      /**< Sectors with FL_INDEX_FLAG_HAS_BOOT set */
+} FlashLogIndexSummary_t;
+
+/**
+ * @brief Reduce an index array to min/max boot ids, max dive id and counts.
+ *
+ * Pure function — no OS or flash access — so tests can feed it
+ * synthetic arrays. Tolerates `index == NULL` and `count == 0` by
+ * returning a zeroed summary.
+ *
+ * @param index Pointer to a `count`-element FlashLogIndexEntry_t array.
+ * @param count Element count; capped internally to a sane upper bound.
+ * @param out   Receives the summary; must not be NULL.
+ */
+void flash_log_index_summarize(const FlashLogIndexEntry_t *index,
+                               size_t count,
+                               FlashLogIndexSummary_t *out);
 
 /** @brief Hand out the FCB instance for the given destination, or NULL. */
 struct fcb *flash_log_internal_get_fcb(FlashLogDest_t dest);

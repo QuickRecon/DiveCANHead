@@ -30,18 +30,10 @@
 LOG_MODULE_REGISTER(flash_log_reader, LOG_LEVEL_NONE);
 
 #define FL_INDEX_MAX_SECTORS 100U
-#define FL_INDEX_FLAG_HAS_BOOT      (1U << 0)
-#define FL_INDEX_FLAG_HAS_DIVE_START (1U << 1)
-#define FL_INDEX_FLAG_HAS_DIVE_END  (1U << 2)
-#define FL_INVALID_BOOT_ID UINT32_MAX
-#define FL_INVALID_DIVE_ID UINT16_MAX
 
-/** @brief Per-sector summary captured during the index walk. */
-typedef struct {
-    uint32_t first_boot_id;     /* FL_INVALID_BOOT_ID if no boot marker landed here */
-    uint16_t first_dive_id;     /* FL_INVALID_DIVE_ID if no dive marker landed here */
-    uint16_t flags;             /* FL_INDEX_FLAG_* */
-} FlashLogIndexEntry_t;
+/* FlashLogIndexEntry_t and the FL_INDEX_FLAG_* / FL_INVALID_* sentinels
+ * live in flash_log_internal.h so flash_log.c (stats path) can share
+ * the layout with the reader's index walk. */
 
 static FlashLogIndexEntry_t fl_index_telemetry[FL_INDEX_MAX_SECTORS];
 static FlashLogIndexEntry_t fl_index_text[FL_INDEX_MAX_SECTORS];
@@ -171,6 +163,29 @@ void flash_log_reader_invalidate_index(void)
 {
     atomic_set(&fl_index_valid[FL_DEST_TELEMETRY], 0);
     atomic_set(&fl_index_valid[FL_DEST_TEXT], 0);
+}
+
+/* ---- Index summary entrypoint (pure reducer lives in flash_log_index.c) ---- */
+
+int flash_log_reader_index_summary(FlashLogDest_t dest,
+                                   FlashLogIndexSummary_t *out)
+{
+    int rc = 0;
+
+    if ((out == NULL) || (dest >= FL_DEST_COUNT)) {
+        rc = -EINVAL;
+    } else {
+        rc = fl_ensure_index(dest);
+        if (0 == rc) {
+            const FlashLogIndexEntry_t *index = fl_index_for(dest);
+            if (index == NULL) {
+                rc = -EINVAL;
+            } else {
+                flash_log_index_summarize(index, FL_INDEX_MAX_SECTORS, out);
+            }
+        }
+    }
+    return rc;
 }
 
 /* ---- Selector resolution ----
