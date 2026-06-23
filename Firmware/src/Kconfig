@@ -202,7 +202,13 @@ config CAL_MODE_DEFAULT_TOTAL_ABSOLUTE
 
 config CAL_MODE_DEFAULT_FLUSH
 	bool "Solenoid flush calibration"
-	depends on HAS_FLUSH_SOLENOID
+	depends on HAS_FLUSH_SOLENOID || HAS_O2_SOLENOID
+	help
+	  Flushes the loop with oxygen before a total-absolute cal. Uses the
+	  dedicated O2 flush solenoid when present, otherwise falls back to
+	  the O2 inject solenoid (see cal_solenoid_flush() in calibration.c).
+	  Single-solenoid heads (e.g. AP-style) therefore support flush cal
+	  via the inject solenoid alone — hence HAS_O2_SOLENOID is sufficient.
 
 endchoice
 

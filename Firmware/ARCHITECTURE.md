@@ -81,6 +81,9 @@ Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_set
 | Variant | Description |
 |---------|-------------|
 | `dev_full.conf` | All features enabled — mixed cell types, all 4 solenoids, all runtime options |
+| `AP_Aren.conf` | AP-style single-solenoid head — 3× DiveO2, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery-only, 2S Li |
+| `eCCR_classic.conf` | Classic single-solenoid eCCR — 3× analog, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery+CAN, 9V |
+| `Poseidon_Aren.conf` | 2× DiveO2 head — solenoid map + control/cal/depth defaults match `dev_full` (all 4 solenoids, PID, flush, depth comp); battery-only, 1S Li |
 
 ## Configuration Split: Compile-Time vs Runtime
 

@@ -1,0 +1,32 @@
+/*
+ * Device-tree overlay for the "Poseidon_Aren" variant.
+ *
+ * Cell mix: 2x DiveO2 digital cells (CELL_COUNT=2).
+ *
+ *   Cell 1 = DiveO2  → USART1
+ *   Cell 2 = DiveO2  → USART2
+ *   (no Cell 3)      → USART3 unused
+ *
+ * No analog cells, so neither ADS1115 is spoken to, and with only two
+ * cells USART3 is also idle. Disabling the unused nodes elides each
+ * driver's DEVICE_DT_INST_DEFINE, reclaiming ~1,472 B per ADS1115 and
+ * ~354 B per USART that would otherwise be allocated at link time.
+ * See dev_full.overlay for the full rationale.
+ *
+ * If the cell mix changes (a third cell, or an analog cell), re-enable
+ * the matching node here or the build will fail with a missing DT-node
+ * reference from the cell driver.
+ */
+
+/* Only two cells, both digital — USART3 and both ADS1115 ADCs are unused. */
+&usart3 {
+    status = "disabled";
+};
+
+&adc_ext1 {
+    status = "disabled";
+};
+
+&adc_ext2 {
+    status = "disabled";
+};
