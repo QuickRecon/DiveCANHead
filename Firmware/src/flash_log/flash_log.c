@@ -716,6 +716,9 @@ int flash_log_set_rtt_level(uint8_t level)
         fl_rtt_level = level;
         rc = settings_save_one("log/rtt_level", &fl_rtt_level,
                        sizeof(fl_rtt_level));
+        if (0 != rc) {
+            op_error_publish(OP_ERR_FLASH, (uint32_t)(-rc));
+        }
     }
     return rc;
 }
@@ -735,6 +738,9 @@ int flash_log_set_can_verbose(uint8_t bitmask)
         fl_can_verbose = bitmask;
         rc = settings_save_one("log/can_verbose", &fl_can_verbose,
                        sizeof(fl_can_verbose));
+        if (0 != rc) {
+            op_error_publish(OP_ERR_FLASH, (uint32_t)(-rc));
+        }
     }
     return rc;
 }

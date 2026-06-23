@@ -508,7 +508,7 @@ static void RespCal(const DiveCANMessage_t *message)
             .fo2 = fo2,
             .pressure_mbar = pressure,
         };
-        (void)zbus_chan_pub(&chan_cal_request, &req, K_MSEC(100));
+        zbus_pub_checked(&chan_cal_request, &req, K_MSEC(100));
     }
 }
 
@@ -520,7 +520,7 @@ static void RespCal(const DiveCANMessage_t *message)
 static void RespSetpoint(const DiveCANMessage_t *message)
 {
     PPO2_t setpoint = message->data[0];
-    (void)zbus_chan_pub(&chan_setpoint, &setpoint, K_MSEC(100));
+    zbus_pub_checked(&chan_setpoint, &setpoint, K_MSEC(100));
 }
 
 /**
@@ -533,7 +533,7 @@ static void RespAtmos(const DiveCANMessage_t *message)
     uint16_t pressure = (uint16_t)(
         ((uint16_t)((uint16_t)message->data[2] << DIVECAN_BYTE_WIDTH)) |
         message->data[3]);
-    (void)zbus_chan_pub(&chan_atmos_pressure, &pressure, K_MSEC(100));
+    zbus_pub_checked(&chan_atmos_pressure, &pressure, K_MSEC(100));
 }
 
 /**
@@ -548,7 +548,7 @@ static void RespShutdown(void)
      * management subsystem handle the sequence asynchronously instead
      * of blocking the CAN task for up to 2 seconds. */
     bool shutdown = true;
-    (void)zbus_chan_pub(&chan_shutdown_request, &shutdown, K_MSEC(100));
+    zbus_pub_checked(&chan_shutdown_request, &shutdown, K_MSEC(100));
     LOG_INF("Shutdown requested via BUS_OFF");
 }
 
@@ -573,7 +573,7 @@ static void RespDiving(const DiveCANMessage_t *message)
         .dive_number = diveNumber,
         .unix_timestamp = unixTimestamp,
     };
-    (void)zbus_chan_pub(&chan_dive_state, &state, K_MSEC(100));
+    zbus_pub_checked(&chan_dive_state, &state, K_MSEC(100));
 
     if (state.diving) {
         LOG_INF("Dive #%u started at %u", diveNumber, unixTimestamp);

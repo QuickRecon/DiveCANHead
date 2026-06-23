@@ -17,6 +17,8 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 
+#include "errors.h"
+
 LOG_MODULE_REGISTER(solenoid, CONFIG_SOLENOID_LOG_LEVEL);
 
 #define MAX_CHANNELS 4
@@ -53,6 +55,9 @@ static void deadman_isr(const struct device *counter_dev, uint8_t chan_id,
     const struct device *dev = user_data;
     const struct solenoid_config *cfg = dev->config;
 
+    /* ISR context: a failed GPIO write cannot be reported via the zbus
+     * error channel (op_error_publish takes a mutex), so the return is
+     * dropped here.  The thread-context off-paths below capture it. */
     for (uint8_t i = 0; i < cfg->num_channels; i++) {
         (void)gpio_pin_set_dt(&cfg->gpios[i], 0);
     }
@@ -122,7 +127,12 @@ int solenoid_fire(const struct device *dev, uint8_t channel,
     int ret = arm_timer(dev, duration_us);
 
     if (ret == 0) {
-        (void)gpio_pin_set_dt(&cfg->gpios[channel], 1);
+        int set_ret = gpio_pin_set_dt(&cfg->gpios[channel], 1);
+
+        if (0 != set_ret) {
+            OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-set_ret));
+            ret = set_ret;
+        }
     }
     return ret;
 }
@@ -138,7 +148,11 @@ void solenoid_off(const struct device *dev, uint8_t channel)
     const struct solenoid_config *cfg = dev->config;
 
     if (channel < cfg->num_channels) {
-        (void)gpio_pin_set_dt(&cfg->gpios[channel], 0);
+        int ret = gpio_pin_set_dt(&cfg->gpios[channel], 0);
+
+        if (0 != ret) {
+            OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-ret));
+        }
     }
 }
 
@@ -155,7 +169,11 @@ void solenoid_all_off(const struct device *dev)
     (void)counter_stop(cfg->counter);
 
     for (uint8_t i = 0; i < cfg->num_channels; i++) {
-        (void)gpio_pin_set_dt(&cfg->gpios[i], 0);
+        int ret = gpio_pin_set_dt(&cfg->gpios[i], 0);
+
+        if (0 != ret) {
+            OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-ret));
+        }
     }
 }
 

@@ -201,7 +201,14 @@ typedef enum {
      *  slot. The detail field carries the @ref PostState_t fail reason. */
     OP_ERR_POST_FAIL         = 33,
 
-    OP_ERR_MAX               = 34
+    /** A runtime GPIO read/write/configure call returned an error.
+     *  Detail carries the negated errno. */
+    OP_ERR_GPIO              = 34,
+
+    /** A required device was not ready when accessed at runtime. */
+    OP_ERR_DEVICE_NOT_READY  = 35,
+
+    OP_ERR_MAX               = 36
 } OpError_t;
 
 /** @brief Error event published on chan_error. */
@@ -222,6 +229,21 @@ ZBUS_CHAN_DECLARE(chan_error);
  * @param detail Context-specific detail value (0 if none)
  */
 void op_error_publish(OpError_t code, uint32_t detail);
+
+/**
+ * @brief Publish to a zbus channel, reporting OP_ERR_QUEUE on failure.
+ *
+ * Thin wrapper around zbus_chan_pub() that captures the return code and
+ * raises a non-fatal error when the publish fails (full subscriber queue
+ * or contended channel lock) instead of silently dropping it. Thread
+ * context only — op_error_publish() takes a mutex, so never call from an ISR.
+ *
+ * @param chan    Channel to publish on.
+ * @param msg     Message payload matching the channel's type.
+ * @param timeout Maximum time to wait for the channel lock.
+ */
+void zbus_pub_checked(const struct zbus_channel *chan, const void *msg,
+                      k_timeout_t timeout);
 
 /*
  * OP_ERROR / OP_ERROR_DETAIL — report a non-fatal operational error.

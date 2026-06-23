@@ -196,6 +196,7 @@ static int flash_backend_mark_captured(bool captured)
         result = 0;
     } else {
         LOG_ERR("settings_save_one (%s) failed: %d", FACTORY_FLAG_KEY, rc);
+        OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
         result = rc;
     }
     return result;

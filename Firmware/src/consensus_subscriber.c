@@ -22,6 +22,7 @@
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_math.h"
 #include "heartbeat.h"
+#include "errors.h"
 
 LOG_MODULE_REGISTER(consensus, LOG_LEVEL_INF);
 
@@ -82,7 +83,7 @@ static void consensus_thread_fn(void *p1, void *p2, void *p3)
         ConsensusMsg_t result = consensus_calculate(
             cells, CONFIG_CELL_COUNT, now, staleness);
 
-        (void)zbus_chan_pub(&chan_consensus, &result, K_NO_WAIT);
+        zbus_pub_checked(&chan_consensus, &result, K_NO_WAIT);
 
         k_msleep((int32_t)CONSENSUS_PERIOD_MS);
     }

@@ -242,7 +242,12 @@ static void o2s_send_command(struct o2s_cell_state *cell, const char *command)
         o2s_format_tx_command(command, cell->tx_buf, sizeof(cell->tx_buf));
         size_t len = strnlen((char *)cell->tx_buf, sizeof(cell->tx_buf)) + 1U;
 
-        (void)uart_tx(cell->uart_dev, cell->tx_buf, len, SYS_FOREVER_US);
+        Status_t tx_ret = uart_tx(cell->uart_dev, cell->tx_buf, len,
+                                  SYS_FOREVER_US);
+
+        if (0 != tx_ret) {
+            OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-tx_ret));
+        }
     }
 }
 
@@ -304,7 +309,7 @@ static void o2s_broadcast(struct o2s_cell_state *cell)
         .timestamp_ticks = k_uptime_ticks(),
     };
 
-    (void)zbus_chan_pub(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
+    zbus_pub_checked(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
 }
 
 /**
@@ -407,7 +412,7 @@ static bool o2s_setup(struct o2s_cell_state *cell)
             .status = cell->status,
             .timestamp_ticks = k_uptime_ticks(),
         };
-        (void)zbus_chan_pub(cell->out_chan, &init_msg, ZBUS_PUB_TIMEOUT_MS);
+        zbus_pub_checked(cell->out_chan, &init_msg, ZBUS_PUB_TIMEOUT_MS);
 
         k_msleep(CELL_STARTUP_DELAY_MS);
     }
@@ -436,7 +441,10 @@ __maybe_unused static void o2s_cell_thread(void *p1, void *p2, void *p3)
         heartbeat_register((HeartbeatId_t)(HEARTBEAT_CELL_1 + cell->cell_number));
         while (true) {
             heartbeat_kick((HeartbeatId_t)(HEARTBEAT_CELL_1 + cell->cell_number));
-            /* Ensure RX is stopped before starting a new cycle */
+            /* Ensure RX is stopped before starting a new cycle. The return
+             * is intentionally dropped: when RX is already idle the driver
+             * returns -EFSR ("no active reception"), which is the normal
+             * case here and not an off-normal condition worth reporting. */
             (void)uart_rx_disable(cell->uart_dev);
             k_sem_reset(&cell->rx_sem);
 
@@ -444,9 +452,13 @@ __maybe_unused static void o2s_cell_thread(void *p1, void *p2, void *p3)
              * the command then sends response) */
             (void)memset(cell->rx_buf, 0, sizeof(cell->rx_buf));
             cell->rx_len = 0U;
-            (void)uart_rx_enable(cell->uart_dev, cell->rx_buf,
+            Status_t rx_ret = uart_rx_enable(cell->uart_dev, cell->rx_buf,
                                  sizeof(cell->rx_buf),
                                  UART_RX_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
+
+            if (0 != rx_ret) {
+                OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-rx_ret));
+            }
 
             o2s_send_command(cell, GET_OXY_COMMAND);
 

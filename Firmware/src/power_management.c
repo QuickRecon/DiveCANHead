@@ -139,6 +139,25 @@ static Numeric_t sample_vcc_voltage(const struct power_config *cfg)
 /* ---- Public API ---- */
 
 /**
+ * @brief Drive a GPIO and report a non-fatal error if the write fails.
+ *
+ * Wraps gpio_pin_set_dt() so HAL-layer failures on the power-mux and
+ * CAN-control pins surface on the error channel instead of being silently
+ * dropped. Thread-context (runtime) use only — never call from an ISR.
+ *
+ * @param spec  GPIO to drive.
+ * @param value Logical level to write.
+ */
+static void set_gpio_checked(const struct gpio_dt_spec *spec, int value)
+{
+    Status_t ret = gpio_pin_set_dt(spec, value);
+
+    if (0 != ret) {
+        OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-ret));
+    }
+}
+
+/**
  * @brief Enable the VBUS regulator, optionally configuring the Rev2 power-mux first.
  *
  * On Rev2 hardware the bus_sel GPIOs are set according to the compiled power mode
@@ -161,14 +180,14 @@ Status_t power_vbus_enable(const struct device *dev)
      *   11 = off (shutdown) */
     if (cfg->has_bus_select) {
 #if defined(CONFIG_POWER_MODE_BATTERY)
-        (void)gpio_pin_set_dt(&cfg->bus_sel[0], 0);
-        (void)gpio_pin_set_dt(&cfg->bus_sel[1], 0);
+        set_gpio_checked(&cfg->bus_sel[0], 0);
+        set_gpio_checked(&cfg->bus_sel[1], 0);
 #elif defined(CONFIG_POWER_MODE_BATTERY_THEN_CAN)
-        (void)gpio_pin_set_dt(&cfg->bus_sel[0], 1);
-        (void)gpio_pin_set_dt(&cfg->bus_sel[1], 0);
+        set_gpio_checked(&cfg->bus_sel[0], 1);
+        set_gpio_checked(&cfg->bus_sel[1], 0);
 #elif defined(CONFIG_POWER_MODE_CAN)
-        (void)gpio_pin_set_dt(&cfg->bus_sel[0], 0);
-        (void)gpio_pin_set_dt(&cfg->bus_sel[1], 1);
+        set_gpio_checked(&cfg->bus_sel[0], 0);
+        set_gpio_checked(&cfg->bus_sel[1], 1);
 #endif
     }
 
@@ -190,8 +209,8 @@ Status_t power_vbus_disable(const struct device *dev)
     /* If we have a bus select mux (Rev2), set both high to select
      * MODE_OFF (11) to fully disconnect the mux */
     if (cfg->has_bus_select) {
-        (void)gpio_pin_set_dt(&cfg->bus_sel[0], 1);
-        (void)gpio_pin_set_dt(&cfg->bus_sel[1], 1);
+        set_gpio_checked(&cfg->bus_sel[0], 1);
+        set_gpio_checked(&cfg->bus_sel[1], 1);
     }
 
     return ret;
@@ -314,14 +333,28 @@ bool power_is_can_active(const struct device *dev)
 
     if (cfg->has_can_en) {
         /* Pull up the GPIO pin to avoid capacitance giving a false active */
-        (void)gpio_pin_configure_dt(&cfg->can_en,
-                        GPIO_INPUT | GPIO_PULL_UP);
+        Status_t cfg_ret = gpio_pin_configure_dt(&cfg->can_en,
+                                 GPIO_INPUT | GPIO_PULL_UP);
 
-        /* CAN_EN is active-low: pin LOW means bus is active */
-        active = (gpio_pin_get_dt(&cfg->can_en) != 0);
+        if (0 != cfg_ret) {
+            OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-cfg_ret));
+        }
+
+        /* CAN_EN is active-low: pin LOW means bus is active. A negative
+         * errno here must not be mistaken for a non-zero (active) level. */
+        Status_t level = gpio_pin_get_dt(&cfg->can_en);
+
+        if (level < 0) {
+            OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-level));
+        } else {
+            active = (0 != level);
+        }
 
         /* Return to no pull to save power */
-        (void)gpio_pin_configure_dt(&cfg->can_en, GPIO_INPUT);
+        cfg_ret = gpio_pin_configure_dt(&cfg->can_en, GPIO_INPUT);
+        if (0 != cfg_ret) {
+            OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-cfg_ret));
+        }
     }
 
     return active;
@@ -368,7 +401,7 @@ Status_t power_shutdown(const struct device *dev)
     /* Step 1: silence the CAN transceiver before doing anything else
      * so the bus sees a clean idle state. */
     if (cfg->has_can_shdn) {
-        (void)gpio_pin_set_dt(&cfg->can_shdn, 0);
+        set_gpio_checked(&cfg->can_shdn, 0);
     }
 
     /* Step 2: drop VBUS — peripherals lose power. */
@@ -670,7 +703,7 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
                        (voltage < threshold),
         };
 
-        (void)zbus_chan_pub(&chan_battery_status, &status, K_MSEC(100));
+        zbus_pub_checked(&chan_battery_status, &status, K_MSEC(100));
 
         if (status.low_battery) {
             LOG_WRN("Low battery: %.2fV (threshold %.1fV)",

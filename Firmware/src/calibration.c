@@ -1046,7 +1046,7 @@ static void cal_done_entry(void *obj)
     CalSmCtx_t *sm = (CalSmCtx_t *)obj;
 
     LOG_INF("Cal result: %d", sm->response.result);
-    (void)zbus_chan_pub(&chan_cal_response, &sm->response, K_MSEC(100));
+    zbus_pub_checked(&chan_cal_response, &sm->response, K_MSEC(100));
     smf_set_terminate(SMF_CTX(sm), 1);
 }
 
@@ -1058,7 +1058,7 @@ static void cal_failed_entry(void *obj)
     CalSmCtx_t *sm = (CalSmCtx_t *)obj;
 
     LOG_INF("Cal result: %d", sm->response.result);
-    (void)zbus_chan_pub(&chan_cal_response, &sm->response, K_MSEC(100));
+    zbus_pub_checked(&chan_cal_response, &sm->response, K_MSEC(100));
     smf_set_terminate(SMF_CTX(sm), 1);
 }
 
@@ -1158,8 +1158,8 @@ static void cal_thread_fn(void *p1, void *p2, void *p3)
                     .result = CAL_RESULT_BUSY,
                 };
 
-                (void)zbus_chan_pub(&chan_cal_response, &busy_resp,
-                                   K_MSEC(100));
+                zbus_pub_checked(&chan_cal_response, &busy_resp,
+                                K_MSEC(100));
             }
             else {
                 run_calibration_sm(&req);

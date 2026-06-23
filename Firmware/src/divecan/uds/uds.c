@@ -612,7 +612,7 @@ static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData,
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
         PPO2_t ppo2 = requestData[UDS_DATA_IDX];
-        (void)zbus_chan_pub(&chan_setpoint, &ppo2, K_MSEC(100));
+        zbus_pub_checked(&chan_setpoint, &ppo2, K_MSEC(100));
 
         ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
         ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
@@ -661,7 +661,7 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
                 .fo2 = fo2,
                 .pressure_mbar = atmoPressure,
             };
-            (void)zbus_chan_pub(&chan_cal_request, &req, K_MSEC(100));
+            zbus_pub_checked(&chan_cal_request, &req, K_MSEC(100));
 
             ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
             ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];

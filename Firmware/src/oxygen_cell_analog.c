@@ -126,7 +126,7 @@ static void analog_publish(struct analog_cell_state *cell)
         .raw_sample = (int32_t)cell->last_counts,
     };
 
-    (void)zbus_chan_pub(cell->out_chan, &msg, K_MSEC(100));
+    zbus_pub_checked(cell->out_chan, &msg, K_MSEC(100));
 }
 
 /* ADS1115 ADC resolution in bits */
@@ -247,7 +247,7 @@ static void analog_cell_thread(void *p1, void *p2, void *p3)
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
     };
-    (void)zbus_chan_pub(cell->out_chan, &init_msg, K_MSEC(100));
+    zbus_pub_checked(cell->out_chan, &init_msg, K_MSEC(100));
 
     if (0 != analog_cell_init_adc(cell)) {
         cell->status = CELL_FAIL;

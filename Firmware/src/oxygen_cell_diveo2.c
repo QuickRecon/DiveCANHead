@@ -475,6 +475,9 @@ static void diveo2_send_command(struct diveo2_cell_state *cell,
         if (cell->cell_number == 0) {
             LOG_INF("DIAG c0 uart_tx rc=%d len=%u", tx_rc, (unsigned)len);
         }
+        if (0 != tx_rc) {
+            OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-tx_rc));
+        }
     }
 }
 
@@ -543,7 +546,7 @@ static void diveo2_broadcast(struct diveo2_cell_state *cell)
         .humidity_mRH = cell->humidity,
     };
 
-    (void)zbus_chan_pub(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
+    zbus_pub_checked(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
 }
 
 /**
@@ -699,7 +702,7 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
             .status = cell->status,
             .timestamp_ticks = k_uptime_ticks(),
         };
-        (void)zbus_chan_pub(cell->out_chan, &init_msg, ZBUS_PUB_TIMEOUT_MS);
+        zbus_pub_checked(cell->out_chan, &init_msg, ZBUS_PUB_TIMEOUT_MS);
 
         /* The cell needs 1 second to power up before it accepts commands */
         k_msleep(CELL_STARTUP_DELAY_MS);
@@ -734,7 +737,10 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
 
             /* Ensure RX is stopped before starting a new cycle — avoids
              * "RX already enabled" if the previous cycle's idle timeout
-             * hasn't fully completed yet */
+             * hasn't fully completed yet. The return is intentionally not
+             * reported: an idle RX returns -EFSR ("no active reception"),
+             * the normal case here, so it is captured only for the DIAG log
+             * below. */
             int dis_rc = uart_rx_disable(cell->uart_dev);
             k_sem_reset(&cell->rx_sem);
 
@@ -746,6 +752,9 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
             /* DIAG (bring-up): is RX actually armed each cycle? */
             if (cell->cell_number == 0) {
                 LOG_INF("DIAG c0 rx_disable=%d rx_enable=%d", dis_rc, en_rc);
+            }
+            if (0 != en_rc) {
+                OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-en_rc));
             }
 
             diveo2_send_command(cell, GET_DETAIL_COMMAND);

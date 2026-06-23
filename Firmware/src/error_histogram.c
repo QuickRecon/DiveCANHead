@@ -150,6 +150,7 @@ static void save_to_nvs(void)
         (void)atomic_set(&dirty, 0);
     } else {
         LOG_WRN("NVS save failed: %d", rc);
+        op_error_publish(OP_ERR_FLASH, (uint32_t)(-rc));
     }
 }
 
@@ -166,6 +167,10 @@ static K_WORK_DELAYABLE_DEFINE(save_work, save_work_handler);
 static void save_timer_expiry(struct k_timer *t)
 {
     ARG_UNUSED(t);
+    /* Runs in timer (ISR) context: the return is dropped because
+     * op_error_publish takes a mutex and cannot be called from here. A
+     * failed reschedule only delays one periodic save; the dirty flag
+     * persists and the next tick retries. */
     (void)k_work_schedule(&save_work, K_NO_WAIT);
 }
 
@@ -188,6 +193,7 @@ int error_histogram_clear(void)
         (void)atomic_set(&dirty, 0);
     } else {
         LOG_WRN("NVS clear failed: %d", rc);
+        op_error_publish(OP_ERR_FLASH, (uint32_t)(-rc));
     }
     return rc;
 }

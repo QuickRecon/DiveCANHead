@@ -143,6 +143,16 @@ void op_error_publish(OpError_t code, uint32_t detail)
     (void)zbus_chan_pub(&chan_error, &evt, K_NO_WAIT);
 }
 
+void zbus_pub_checked(const struct zbus_channel *chan, const void *msg,
+                      k_timeout_t timeout)
+{
+    Status_t ret = zbus_chan_pub(chan, msg, timeout);
+
+    if (0 != ret) {
+        OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-ret));
+    }
+}
+
 /* ---- Tier 4: Fatal operational error ---- */
 
 /**

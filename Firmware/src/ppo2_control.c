@@ -178,7 +178,7 @@ static uint16_t read_atmos_pressure(void)
  */
 static void publish_solenoid_status(DiveCANError_t status)
 {
-    (void)zbus_chan_pub(&chan_solenoid_status, &status, K_NO_WAIT);
+    zbus_pub_checked(&chan_solenoid_status, &status, K_NO_WAIT);
 }
 
 /* ---- PID thread ---- */
@@ -232,7 +232,7 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
                 *latest_duty = 0.0f;
                 pid_state_reset_dynamic(state);
                 Numeric_t duty = 0.0f;
-                (void)zbus_chan_pub(&chan_duty_cycle, &duty, K_NO_WAIT);
+                zbus_pub_checked(&chan_duty_cycle, &duty, K_NO_WAIT);
                 sol_o2_inject_off();
                 publish_solenoid_status(DIVECAN_ERR_SOL_UNDERCURRENT);
                 OP_ERROR(OP_ERR_SOLENOID_DISABLED);
@@ -249,7 +249,7 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
                                state);
             *latest_duty = (Numeric_t)duty;
             Numeric_t pub = (Numeric_t)duty;
-            (void)zbus_chan_pub(&chan_duty_cycle, &pub, K_NO_WAIT);
+            zbus_pub_checked(&chan_duty_cycle, &pub, K_NO_WAIT);
 #ifdef CONFIG_FLASH_LOG
             const FlashLogPidSnapshot_t snap = {
                 .integral = (float)state->integralState,
@@ -321,7 +321,7 @@ static void run_pid_fire_cycle(void)
                 .requested_on_us = timing.on_duration_us,
                 .off_us = timing.off_duration_us,
             };
-            (void)zbus_chan_pub(&chan_solenoid_fire, &fire_evt, K_NO_WAIT);
+            zbus_pub_checked(&chan_solenoid_fire, &fire_evt, K_NO_WAIT);
         }
 #endif
         k_usleep((int32_t)timing.on_duration_us);
@@ -332,7 +332,7 @@ static void run_pid_fire_cycle(void)
             .requested_on_us = timing.on_duration_us,
             .off_us = timing.off_duration_us,
         };
-        (void)zbus_chan_pub(&chan_solenoid_fire, &end_evt, K_NO_WAIT);
+        zbus_pub_checked(&chan_solenoid_fire, &end_evt, K_NO_WAIT);
 #endif
         k_usleep((int32_t)timing.off_duration_us);
     }
@@ -373,7 +373,7 @@ static void run_mk15_fire_cycle(void)
                 .requested_on_us = MK15_ON_TIME_MS * US_PER_MS,
                 .off_us = MK15_OFF_TIME_MS * US_PER_MS,
             };
-            (void)zbus_chan_pub(&chan_solenoid_fire, &fire_evt, K_NO_WAIT);
+            zbus_pub_checked(&chan_solenoid_fire, &fire_evt, K_NO_WAIT);
         }
 #endif
         k_msleep((int32_t)MK15_ON_TIME_MS);
@@ -384,7 +384,7 @@ static void run_mk15_fire_cycle(void)
             .requested_on_us = MK15_ON_TIME_MS * US_PER_MS,
             .off_us = MK15_OFF_TIME_MS * US_PER_MS,
         };
-        (void)zbus_chan_pub(&chan_solenoid_fire, &end_evt, K_NO_WAIT);
+        zbus_pub_checked(&chan_solenoid_fire, &end_evt, K_NO_WAIT);
 #endif
     }
 
@@ -450,7 +450,7 @@ void ppo2_control_init(void)
     *getConsensusFailedLatch() = false;
 
     Numeric_t duty = 0.0f;
-    (void)zbus_chan_pub(&chan_duty_cycle, &duty, K_NO_WAIT);
+    zbus_pub_checked(&chan_duty_cycle, &duty, K_NO_WAIT);
     publish_solenoid_status(DIVECAN_ERR_SOL_NORM);
 
     LOG_INF("PPO2 control init: mode=%d depth_comp=%d kp=%.4f ki=%.4f kd=%.4f",

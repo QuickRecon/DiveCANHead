@@ -513,7 +513,11 @@ void factory_image_maybe_capture_async(void)
     if (NULL != get_state()->backend) {
         if (!get_state()->backend->is_captured()) {
             ensure_work_q_started();
-            (void)k_work_submit_to_queue(&factory_work_q, &capture_work);
+            int rc = k_work_submit_to_queue(&factory_work_q, &capture_work);
+
+            if (rc < 0) {
+                OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
+            }
         }
     }
 }
@@ -522,7 +526,11 @@ void factory_image_force_capture_async(void)
 {
     if (NULL != get_state()->backend) {
         ensure_work_q_started();
-        (void)k_work_submit_to_queue(&factory_work_q, &force_capture_work);
+        int rc = k_work_submit_to_queue(&factory_work_q, &force_capture_work);
+
+        if (rc < 0) {
+            OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
+        }
     }
 }
 
