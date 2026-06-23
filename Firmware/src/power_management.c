@@ -369,7 +369,9 @@ bool power_is_can_active(const struct device *dev)
  * get into SHUTDOWN, and a UART that wasn't resumed in the first
  * place doesn't matter.
  */
-static void suspend_uart_if_ready(const struct device *dev)
+/* __maybe_unused: an all-analog binary (e.g. eCCR_classic) disables every cell
+ * USART, so there are no call sites and -Werror=unused-function would fail. */
+__maybe_unused static void suspend_uart_if_ready(const struct device *dev)
 {
     if (device_is_ready(dev)) {
         (void)pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
