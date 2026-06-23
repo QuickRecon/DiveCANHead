@@ -29,8 +29,11 @@ static const PrecisionPPO2_t THIRD_DIVISOR = 3.0;
 static const Numeric_t MIN_DIVISOR = 1e-6f;
 static const Numeric_t CENTIBAR_PER_BAR_F = 100.0f;
 static const Numeric_t MIN_ANALOG_SAMPLE = 1.0f;
+#ifdef CONFIG_ZBUS
+/* Only referenced inside CONFIG_ZBUS error-reporting paths below */
 static const Numeric_t ANALOG_COEFF_REPORT_SCALE = 1000000.0f;
 static const Numeric_t O2S_COEFF_REPORT_SCALE = 1000.0f;
+#endif
 static const uint32_t MBAR_PER_FRACTIONAL_UNIT = 1000U;
 
 /* ---- Internal consensus helpers ---- */

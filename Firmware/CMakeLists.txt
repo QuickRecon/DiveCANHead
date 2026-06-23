@@ -186,3 +186,20 @@ if(CONFIG_INTEGRATION_TEST_SHIM)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/src/test_shim_socket_adapt.c)
     target_link_libraries(native_simulator INTERFACE rt)
 endif()
+
+# --- HIL test manifest -------------------------------------------------------
+# Emit a machine-readable description of this binary's compile-time config
+# (cells/power/solenoids/control + CAN bitrate) so the test rig (divecan_rig)
+# can self-configure and select the tests relevant to the flashed binary.
+# Reads the resolved Kconfig (.config) + devicetree; both exist by build time.
+add_custom_command(
+    TARGET app POST_BUILD
+    COMMAND ${PYTHON_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_test_manifest.py
+            --config ${CMAKE_BINARY_DIR}/zephyr/.config
+            --dt-header ${CMAKE_BINARY_DIR}/zephyr/include/generated/zephyr/devicetree_generated.h
+            --out ${CMAKE_BINARY_DIR}/zephyr/test_manifest.json
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/zephyr/test_manifest.json
+    COMMENT "Emitting HIL test_manifest.json from resolved Kconfig + devicetree"
+    VERBATIM
+)

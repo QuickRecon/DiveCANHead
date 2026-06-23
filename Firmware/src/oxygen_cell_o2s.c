@@ -421,7 +421,8 @@ static bool o2s_setup(struct o2s_cell_state *cell)
  * @param p2  Unused (required by Zephyr thread entry signature).
  * @param p3  Unused (required by Zephyr thread entry signature).
  */
-static void o2s_cell_thread(void *p1, void *p2, void *p3)
+/* Used only when a CONFIG_CELL_n_TYPE_O2S thread is defined below */
+__maybe_unused static void o2s_cell_thread(void *p1, void *p2, void *p3)
 {
     struct o2s_cell_state *cell = p1;
 

@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.20.0)
+
+# Include the app tree as a DTS_ROOT so dts/bindings/vendor-prefixes.txt
+# (registering the 'test' stub vendor prefix) is picked up.
+set(DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(test_parsers)
 

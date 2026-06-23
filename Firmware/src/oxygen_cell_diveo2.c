@@ -679,7 +679,8 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
  * @param p2  Unused (required by Zephyr thread entry signature).
  * @param p3  Unused (required by Zephyr thread entry signature).
  */
-static void diveo2_cell_thread(void *p1, void *p2, void *p3)
+/* Used only when a CONFIG_CELL_n_TYPE_DIVEO2 thread is defined below */
+__maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
 {
     struct diveo2_cell_state *cell = p1;
 
