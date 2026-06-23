@@ -331,11 +331,14 @@ static void o2s_load_cal(struct o2s_cell_state *cell)
                 (int32_t)coeff,
                 (int32_t)((coeff - (int32_t)coeff) * (Numeric_t)MILLI_SCALE));
     } else {
-        /* Bug #3 fix: set CELL_NEED_CAL when cal is missing or out of
-         * range (old code incorrectly defaulted to CELL_OK) */
+        /* O2S is a digital, factory-calibrated cell: the default coefficient
+         * is valid and NO user calibration is required (only analog cells need
+         * cal). Start CELL_FAIL (no reading yet) — the first good response
+         * promotes it to CELL_OK. Must NOT be CELL_NEED_CAL, which the
+         * consensus votes out, pinning PPO2 to 0xFF forever. */
         cell->cal_coeff = O2S_CAL_DEFAULT;
-        cell->status = CELL_NEED_CAL;
-        LOG_WRN("O2S cell %u: no valid cal, defaulting",
+        cell->status = CELL_FAIL;
+        LOG_WRN("O2S cell %u: no stored cal, using default",
                 cell->cell_number);
     }
 }
@@ -473,7 +476,7 @@ __maybe_unused static void o2s_cell_thread(void *p1, void *p2, void *p3)
 static struct o2s_cell_state o2s_cell_1 = {
     .cell_number = 0,
     .cal_coeff = O2S_CAL_DEFAULT,
-    .status = CELL_NEED_CAL,
+    .status = CELL_FAIL,
     .out_chan = &chan_cell_1,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart1)),
 };
@@ -486,7 +489,7 @@ K_THREAD_DEFINE(o2s_thread_1, 768,
 static struct o2s_cell_state o2s_cell_2 = {
     .cell_number = 1,
     .cal_coeff = O2S_CAL_DEFAULT,
-    .status = CELL_NEED_CAL,
+    .status = CELL_FAIL,
     .out_chan = &chan_cell_2,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart2)),
 };
@@ -499,7 +502,7 @@ K_THREAD_DEFINE(o2s_thread_2, 768,
 static struct o2s_cell_state o2s_cell_3 = {
     .cell_number = 2,
     .cal_coeff = O2S_CAL_DEFAULT,
-    .status = CELL_NEED_CAL,
+    .status = CELL_FAIL,
     .out_chan = &chan_cell_3,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart3)),
 };

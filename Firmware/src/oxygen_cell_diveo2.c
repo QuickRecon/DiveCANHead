@@ -74,6 +74,12 @@ LOG_MODULE_REGISTER(cell_diveo2, LOG_LEVEL_INF);
 #define CELL_STARTUP_DELAY_MS       1000
 #define MIN_SAMPLE_INTERVAL_MS      100
 #define UART_RX_TIMEOUT_MS          2000
+/* RX inactivity timeout = end-of-response detection. Must be SHORT (just longer
+ * than the inter-byte gap at 19200 8N1, ~0.5 ms) so RX_RDY/RX_DISABLED fire
+ * promptly after the cell's reply — NOT equal to UART_RX_TIMEOUT_MS, or the
+ * idle flush races (and loses to) the thread's response wait and every poll
+ * times out with the reply discarded. */
+#define UART_RX_IDLE_TIMEOUT_MS     30
 
 /* Local named constants for previously magic values */
 static const Numeric_t VBUS_MV_PER_V = 1000.0f;
@@ -411,11 +417,33 @@ static void diveo2_uart_callback(const struct device *dev,
 
     switch (evt->type) {
     case UART_RX_RDY:
+        if (cell->cell_number == 0) {
+            LOG_INF("DIAG c0 RX_RDY len=%u off=%u",
+                    (unsigned)evt->data.rx.len, (unsigned)evt->data.rx.offset);
+        }
         diveo2_capture_rx(cell, &evt->data.rx);
+        /* The idle-timeout flush delivers the complete reply here (RX stays
+         * enabled, so UART_RX_DISABLED won't fire on success). Wake the thread
+         * now so it processes the response instead of waiting for the timeout. */
+        k_sem_give(&cell->rx_sem);
         break;
     case UART_RX_DISABLED:
         /* RX finished (idle timeout or buffer full) — wake the thread */
+        if (cell->cell_number == 0) {
+            LOG_INF("DIAG c0 RX_DISABLED");
+        }
         k_sem_give(&cell->rx_sem);
+        break;
+    case UART_TX_DONE:
+        /* DIAG (bring-up): TX DMA completed -> bytes clocked out the pin. */
+        if (cell->cell_number == 0) {
+            LOG_INF("DIAG c0 TX_DONE len=%u", (unsigned)evt->data.tx.len);
+        }
+        break;
+    case UART_TX_ABORTED:
+        if (cell->cell_number == 0) {
+            LOG_WRN("DIAG c0 TX_ABORTED");
+        }
         break;
     default:
         break;
@@ -437,9 +465,16 @@ static void diveo2_send_command(struct diveo2_cell_state *cell,
         diveo2_format_tx_command(command, cell->tx_buf, sizeof(cell->tx_buf));
         /* strnlen bounds the scan to sizeof(tx_buf) so we never walk past
          * the buffer even if format_tx_command leaves no trailing '\0'. */
-        size_t len = strnlen((char *)cell->tx_buf, sizeof(cell->tx_buf)) + 1U;
+        /* Send exactly the command bytes (e.g. "#DRAW\r"); do NOT append the
+         * string's NUL terminator — a trailing 0x00 on the wire desyncs the
+         * cell's line parser (the NUL prepends to the next command). */
+        size_t len = strnlen((char *)cell->tx_buf, sizeof(cell->tx_buf));
 
-        (void)uart_tx(cell->uart_dev, cell->tx_buf, len, SYS_FOREVER_US);
+        int tx_rc = uart_tx(cell->uart_dev, cell->tx_buf, len, SYS_FOREVER_US);
+        /* DIAG (bring-up): confirm the DUT is actually transmitting on the wire. */
+        if (cell->cell_number == 0) {
+            LOG_INF("DIAG c0 uart_tx rc=%d len=%u", tx_rc, (unsigned)len);
+        }
     }
 }
 
@@ -533,11 +568,15 @@ static void diveo2_load_cal(struct diveo2_cell_state *cell)
         LOG_INF("DiveO2 cell %u: loaded cal coeff %.0f",
                 cell->cell_number, (PrecisionPPO2_t)coeff);
     } else {
-        /* Bug #3 fix: set CELL_NEED_CAL when cal is missing or out of
-         * range (old code incorrectly defaulted to CELL_OK) */
+        /* DiveO2 is a digital, factory-calibrated cell: the default
+         * coefficient is valid and NO user calibration is required (only
+         * analog cells need cal). Start CELL_FAIL (no reading yet) — the first
+         * good response promotes it to CELL_OK. Must NOT be CELL_NEED_CAL,
+         * which the consensus votes out, pinning PPO2 to 0xFF forever since a
+         * digital cell is never user-calibrated. */
         cell->cal_coeff = DIVEO2_CAL_DEFAULT;
-        cell->status = CELL_NEED_CAL;
-        LOG_WRN("DiveO2 cell %u: no valid cal, defaulting",
+        cell->status = CELL_FAIL;
+        LOG_WRN("DiveO2 cell %u: no stored cal, using default",
                 cell->cell_number);
     }
 }
@@ -696,14 +735,18 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
             /* Ensure RX is stopped before starting a new cycle — avoids
              * "RX already enabled" if the previous cycle's idle timeout
              * hasn't fully completed yet */
-            (void)uart_rx_disable(cell->uart_dev);
+            int dis_rc = uart_rx_disable(cell->uart_dev);
             k_sem_reset(&cell->rx_sem);
 
             (void)memset(cell->rx_buf, 0, sizeof(cell->rx_buf));
             cell->rx_len = 0U;
-            (void)uart_rx_enable(cell->uart_dev, cell->rx_buf,
+            int en_rc = uart_rx_enable(cell->uart_dev, cell->rx_buf,
                                  sizeof(cell->rx_buf),
-                                 UART_RX_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
+                                 UART_RX_IDLE_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
+            /* DIAG (bring-up): is RX actually armed each cycle? */
+            if (cell->cell_number == 0) {
+                LOG_INF("DIAG c0 rx_disable=%d rx_enable=%d", dis_rc, en_rc);
+            }
 
             diveo2_send_command(cell, GET_DETAIL_COMMAND);
 
@@ -744,7 +787,7 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
 static struct diveo2_cell_state diveo2_cell_1 = {
     .cell_number = 0,
     .cal_coeff = DIVEO2_CAL_DEFAULT,
-    .status = CELL_NEED_CAL,
+    .status = CELL_FAIL,
     .out_chan = &chan_cell_1,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart1)),
 };
@@ -757,7 +800,7 @@ K_THREAD_DEFINE(diveo2_thread_1, 1024,
 static struct diveo2_cell_state diveo2_cell_2 = {
     .cell_number = 1,
     .cal_coeff = DIVEO2_CAL_DEFAULT,
-    .status = CELL_NEED_CAL,
+    .status = CELL_FAIL,
     .out_chan = &chan_cell_2,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart2)),
 };
@@ -770,7 +813,7 @@ K_THREAD_DEFINE(diveo2_thread_2, 1024,
 static struct diveo2_cell_state diveo2_cell_3 = {
     .cell_number = 2,
     .cal_coeff = DIVEO2_CAL_DEFAULT,
-    .status = CELL_NEED_CAL,
+    .status = CELL_FAIL,
     .out_chan = &chan_cell_3,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart3)),
 };
