@@ -20,6 +20,20 @@ import sys
 
 DEFAULT_BITRATE = 125000  # DiveCAN is a 125 kbit/s bus
 
+# Battery pack voltages (volts) the rig drives onto BATT_PWR, per chemistry:
+#   chemistry -> (nominal, full, low)
+# - "low" MIRRORS the firmware's power_math.c power_low_battery_threshold_for()
+#   (9V=7.7, LI1S=3.0, LI2S=6.0, LI3S=9.0); keep in sync if that table changes.
+# - "nominal"/"full" are the pack's resting / fully-charged voltages.
+# The rig runs at nominal by default; explicit HIL tests drive full and low and
+# check the voltage the head reports back over DiveCAN.
+BATTERY_VOLTAGE = {
+    "9V":   (9.0, 9.6, 7.7),
+    "LI1S": (3.7, 4.2, 3.0),
+    "LI2S": (7.4, 8.4, 6.0),
+    "LI3S": (11.1, 12.6, 9.0),
+}
+
 
 def parse_config(path: str) -> dict[str, str]:
     cfg: dict[str, str] = {}
@@ -78,6 +92,18 @@ def build_manifest(cfg: dict, dt_header: str | None) -> dict:
     bitrate = (dt_can_bitrate(dt_header)
                or int_cfg(cfg, "CONFIG_CAN_DEFAULT_BITRATE", DEFAULT_BITRATE))
 
+    chemistry = first_set(cfg, [
+        ("9V", "CONFIG_BATTERY_CHEMISTRY_9V"),
+        ("LI1S", "CONFIG_BATTERY_CHEMISTRY_LI1S"),
+        ("LI2S", "CONFIG_BATTERY_CHEMISTRY_LI2S"),
+        ("LI3S", "CONFIG_BATTERY_CHEMISTRY_LI3S")], default="9V")
+    v_nom, v_full, v_low = BATTERY_VOLTAGE.get(chemistry, BATTERY_VOLTAGE["9V"])
+
+    ppo2_default = first_set(cfg, [
+        ("PID", "CONFIG_PPO2_CONTROL_DEFAULT_PID"),
+        ("MK15", "CONFIG_PPO2_CONTROL_DEFAULT_MK15"),
+        ("OFF", "CONFIG_PPO2_CONTROL_DEFAULT_OFF")], default="OFF")
+
     return {
         "schema_version": 1,
         "source": "kconfig+devicetree",
@@ -99,11 +125,12 @@ def build_manifest(cfg: dict, dt_header: str | None) -> dict:
                 ("BATTERY_THEN_CAN", "CONFIG_POWER_MODE_BATTERY_THEN_CAN"),
                 ("CAN", "CONFIG_POWER_MODE_CAN"),
                 ("BATTERY", "CONFIG_POWER_MODE_BATTERY")]),
-            "battery_chemistry": first_set(cfg, [
-                ("9V", "CONFIG_BATTERY_CHEMISTRY_9V"),
-                ("LI1S", "CONFIG_BATTERY_CHEMISTRY_LI1S"),
-                ("LI2S", "CONFIG_BATTERY_CHEMISTRY_LI2S"),
-                ("LI3S", "CONFIG_BATTERY_CHEMISTRY_LI3S")], default="9V"),
+            "battery_chemistry": chemistry,
+            # Volts the rig drives onto BATT_PWR. "low" mirrors the firmware's
+            # power_math.c threshold for this chemistry.
+            "battery_voltage_nominal": v_nom,
+            "battery_voltage_full": v_full,
+            "battery_voltage_low": v_low,
         },
         "solenoids": {
             "has_o2": is_set(cfg, "CONFIG_HAS_O2_SOLENOID"),
@@ -116,16 +143,22 @@ def build_manifest(cfg: dict, dt_header: str | None) -> dict:
             },
         },
         "control": {
-            "ppo2_default": first_set(cfg, [
-                ("PID", "CONFIG_PPO2_CONTROL_DEFAULT_PID"),
-                ("MK15", "CONFIG_PPO2_CONTROL_DEFAULT_MK15"),
-                ("OFF", "CONFIG_PPO2_CONTROL_DEFAULT_OFF")], default="OFF"),
+            "ppo2_default": ppo2_default,
+            "solenoid_pid": ppo2_default == "PID",
             "cal_default": first_set(cfg, [
                 ("DIGITAL_REF", "CONFIG_CAL_MODE_DEFAULT_DIGITAL_REF"),
                 ("ABSOLUTE", "CONFIG_CAL_MODE_DEFAULT_ABSOLUTE"),
                 ("TOTAL_ABSOLUTE", "CONFIG_CAL_MODE_DEFAULT_TOTAL_ABSOLUTE"),
                 ("FLUSH", "CONFIG_CAL_MODE_DEFAULT_FLUSH")], default="ABSOLUTE"),
             "depth_compensation": is_set(cfg, "CONFIG_DEPTH_COMPENSATION_DEFAULT"),
+        },
+        # Bus-level capabilities always built into this firmware (UDS menu/diag,
+        # OTA over UDS, the DiveCAN menu). Emitted so HIL `requires_*` markers can
+        # gate cleanly and so a future build that gates these flips them to false.
+        "features": {
+            "uds": True,
+            "ota": True,
+            "menu": True,
         },
     }
 
