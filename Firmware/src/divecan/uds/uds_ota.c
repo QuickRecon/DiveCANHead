@@ -41,6 +41,7 @@
 #include "isotp.h"
 #include "errors.h"
 #include "common.h"
+#include "heartbeat.h"
 
 LOG_MODULE_REGISTER(uds_ota, LOG_LEVEL_INF);
 
@@ -276,24 +277,52 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
                 UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
                              UDS_NRC_REQUEST_OUT_OF_RANGE);
             } else {
+                /* The OTA writer (flash_img/stream_flash) is built WITHOUT
+                 * erase (CONFIG_IMG_ERASE_PROGRESSIVELY and
+                 * CONFIG_STREAM_FLASH_ERASE are both off), so it assumes slot1
+                 * is already blank. Erase it up front here — a multi-second SPI
+                 * NOR erase — guarded by the heartbeat long-op flag so
+                 * divecan_rx's heartbeat going stale during the blocking erase
+                 * doesn't trip the watchdog (same pattern as factory_image
+                 * restore). Without this, a slot1 holding prior content makes
+                 * the streamed writes land on un-erased NOR and the upload
+                 * stalls/corrupts (the first such write stalled >30 s on HW). */
+                heartbeat_set_long_op(true);
+#ifdef CONFIG_FLASH_LOG
+                /* Hold the flash-log writer off the shared SPI NOR for the
+                 * erase (it would otherwise block behind it / contend). */
+                flash_log_pause();
+#endif
+                rc = flash_area_erase(fa, 0U, fa->fa_size);
+#ifdef CONFIG_FLASH_LOG
+                flash_log_resume();
+#endif
+                heartbeat_set_long_op(false);
                 flash_area_close(fa);
 
-                (void)memset(&sm->flashCtx, 0, sizeof(sm->flashCtx));
-
-                rc = flash_img_init_id(&sm->flashCtx,
-                               PARTITION_ID(slot1_partition));
                 if (0 != rc) {
                     OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
                     UDS_SendNegativeResponse(
                         ctx, UDS_SID_REQUEST_DOWNLOAD,
                         UDS_NRC_GENERAL_PROG_FAIL);
                 } else {
-                    sm->bytesExpected = length;
-                    sm->bytesReceived = 0;
-                    sm->nextSeq = 1U;
-                    LOG_INF("OTA 0x34 download accepted: %u bytes",
-                        length);
-                    ok = true;
+                    (void)memset(&sm->flashCtx, 0, sizeof(sm->flashCtx));
+
+                    rc = flash_img_init_id(&sm->flashCtx,
+                                   PARTITION_ID(slot1_partition));
+                    if (0 != rc) {
+                        OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+                        UDS_SendNegativeResponse(
+                            ctx, UDS_SID_REQUEST_DOWNLOAD,
+                            UDS_NRC_GENERAL_PROG_FAIL);
+                    } else {
+                        sm->bytesExpected = length;
+                        sm->bytesReceived = 0;
+                        sm->nextSeq = 1U;
+                        LOG_INF("OTA 0x34 download accepted: %u bytes",
+                            length);
+                        ok = true;
+                    }
                 }
             }
         }
@@ -428,6 +457,30 @@ static void ota_handle_transfer_exit(OtaSmCtx_t *sm)
             }
         }
     }
+}
+
+/* Quiesce the flash-log writer for the whole block-transfer phase. It streams
+ * dive telemetry to the SAME SPI NOR, and that contention otherwise stalls the
+ * OTA writes and the ISO-TP flow-control (the upload crawled / stalled). Dive
+ * telemetry is irrelevant during an at-surface OTA; OTA errors still land in the
+ * error histogram (NVS, UDS 0xF260) and on the live RTT log. Resumed on exit —
+ * which fires on 0x37 (→ AWAITING_ACTIVATE), on UDS_OTA_Reset (→ IDLE, used when
+ * the programming session downgrades on S3-timeout/dive), so an abandoned
+ * download can't leave the log paused into a dive. No-ops without CONFIG_FLASH_LOG. */
+static void ota_downloading_entry(void *obj)
+{
+    ARG_UNUSED(obj);
+#ifdef CONFIG_FLASH_LOG
+    flash_log_pause();
+#endif
+}
+
+static void ota_downloading_exit(void *obj)
+{
+    ARG_UNUSED(obj);
+#ifdef CONFIG_FLASH_LOG
+    flash_log_resume();
+#endif
 }
 
 static enum smf_state_result ota_downloading_run(void *obj)
@@ -574,7 +627,7 @@ static void ota_activating_entry(void *obj)
 
 static const struct smf_state ota_states[OTA_STATE_COUNT] = {
     [OTA_STATE_IDLE]              = SMF_CREATE_STATE(ota_idle_entry,       ota_idle_run,              NULL, NULL, NULL),
-    [OTA_STATE_DOWNLOADING]       = SMF_CREATE_STATE(NULL,                 ota_downloading_run,       NULL, NULL, NULL),
+    [OTA_STATE_DOWNLOADING]       = SMF_CREATE_STATE(ota_downloading_entry, ota_downloading_run,       ota_downloading_exit, NULL, NULL),
     [OTA_STATE_AWAITING_ACTIVATE] = SMF_CREATE_STATE(NULL,                 ota_awaiting_activate_run, NULL, NULL, NULL),
     [OTA_STATE_ACTIVATING]        = SMF_CREATE_STATE(ota_activating_entry, NULL,                      NULL, NULL, NULL),
 };

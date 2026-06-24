@@ -110,6 +110,7 @@ void UDS_MaintainSession(UDSContext_t *ctx)
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
         uint32_t now = k_uptime_get_32();
+        bool downgraded = false;
 
         /* S3 timeout: programming session reverts to default after
          * UDS_S3_TIMEOUT_MS of inactivity. */
@@ -118,6 +119,7 @@ void UDS_MaintainSession(UDSContext_t *ctx)
             if (elapsed > UDS_S3_TIMEOUT_MS) {
                 LOG_INF("S3 timeout: programming session -> default");
                 ctx->session = UDS_SESSION_DEFAULT;
+                downgraded = true;
             }
         }
 
@@ -127,6 +129,15 @@ void UDS_MaintainSession(UDSContext_t *ctx)
         if ((UDS_SESSION_PROGRAMMING == ctx->session) && UDS_IsInDive()) {
             LOG_WRN("Dive detected: programming session forced -> default");
             ctx->session = UDS_SESSION_DEFAULT;
+            downgraded = true;
+        }
+
+        /* Abort any in-flight OTA when the programming session lapses, so a
+         * download abandoned mid-transfer doesn't strand its resources (e.g.
+         * the flash-log writer is paused while OTA_STATE_DOWNLOADING). This
+         * snaps the OTA state machine back to IDLE, firing its exit handler. */
+        if (downgraded) {
+            UDS_OTA_Reset();
         }
 
         ctx->lastActivityMs = now;

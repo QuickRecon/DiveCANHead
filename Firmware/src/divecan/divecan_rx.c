@@ -37,7 +37,14 @@ LOG_MODULE_REGISTER(divecan_rx, LOG_LEVEL_INF);
 
 /* ---- Configuration ---- */
 
-#define RX_QUEUE_SIZE   10U
+/* Deep enough to hold one full ISO-TP block burst. Our ISO-TP RX advertises an
+ * infinite flow-control block size (FC BS=0), so a sender streams every
+ * consecutive frame of a message back-to-back with no intermediate FC. A maximum
+ * UDS message (256 B over ISO-TP) is 1 FF + ~37 CFs; a 10-deep queue overflowed
+ * and dropped CFs during OTA uploads (each 253 B 0x36 block ≈ 37 frames),
+ * tripping the 1 s N_Cr timeout and stalling/aborting the transfer. 48 covers a
+ * full burst plus margin for interleaved bus traffic. ~0.9 kB RAM. */
+#define RX_QUEUE_SIZE   48U
 #define RX_TIMEOUT_MS   1000
 
 /* Cell index for the third oxygen cell (0-based) */
