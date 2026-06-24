@@ -8,9 +8,14 @@
  * since the previous check, the IWDG is fed; when any slot is stalled
  * the feed is skipped, allowing the IWDG to fire and reset the SoC.
  *
- * Three windows per timeout: WDT_TIMEOUT_MS / WDT_FEED_INTERVAL_MS = 4
- * for the chosen 8000/2000 budget. So a thread can miss up to one
- * intervening kick (one stall + one recovery == still under timeout).
+ * Many windows per timeout: WDT_TIMEOUT_MS / WDT_FEED_INTERVAL_MS = 16
+ * for the chosen 32000/2000 budget. The timeout was raised from 8 s to
+ * the STM32L4 IWDG hardware maximum (~32 s) because the boot-time
+ * flash-log FCB mount can do a one-shot full-partition recovery erase of
+ * the now-48 MB telemetry region, which blocks for far longer than 8 s
+ * and was tripping the IWDG into a reset loop before the head could
+ * broadcast. 32 s buys headroom for that rare recovery path; steady-state
+ * liveness is still enforced every 2 s.
  *
  * Compile-out behaviour: when CONFIG_DIVECAN_WATCHDOG=n the entire
  * translation unit becomes a no-op so native_sim test fixtures (which
@@ -33,13 +38,19 @@ LOG_MODULE_REGISTER(watchdog_feeder, LOG_LEVEL_INF);
 
 #if defined(CONFIG_DIVECAN_WATCHDOG)
 
-/* IWDG window-max (ms). 8000 gives ~3× margin over the slowest registered
- * thread (battery monitor at 2 s) while staying well inside the
- * STM32L4 IWDG max of ~32 s at full LSI prescaler. */
-#define WDT_TIMEOUT_MS       8000U
+/* IWDG window-max (ms). Set to the STM32L4 IWDG hardware maximum (~32 s at
+ * the /256 LSI prescaler). Raised from 8000 because the boot-time flash-log
+ * FCB mount can block on a one-shot full-partition recovery erase of the
+ * 48 MB telemetry region, which overruns an 8 s window and resets the SoC
+ * before it can broadcast. The slowest registered steady-state thread is the
+ * battery monitor at 2 s, so 32 s is still a valid liveness bound in normal
+ * operation; the long window only matters for that rare recovery erase. */
+#define WDT_TIMEOUT_MS       32000U
 
-/* How often the feeder wakes and decides whether to feed. Three checks
- * per timeout window — two consecutive missed feeds before reset. */
+/* How often the feeder wakes and decides whether to feed. With a 32 s
+ * timeout this is 16 checks per window — many consecutive missed feeds are
+ * tolerated before reset, deliberately generous to ride out the recovery
+ * erase above. */
 #define WDT_FEED_INTERVAL_MS 2000U
 
 /* Lowest thread priority used in the app today is 10 (battery_monitor).
@@ -60,19 +71,21 @@ BUILD_ASSERT(DT_NODE_HAS_STATUS(WDT_NODE, okay),
  * hardware shadow registers never accept the writes, leaving the IWDG
  * either running with reset-default values (~512 ms window) or
  * effectively off depending on context. The reset-default RLR is
- * 0xFFF; the value the driver should have programmed for our 8000 ms
- * timeout is 3999, with PR=4 (LL_IWDG_PRESCALER_64). Anything else
+ * 0xFFF; the value the driver should have programmed for our 32000 ms
+ * timeout is 3999, with PR=6 (LL_IWDG_PRESCALER_256). Anything else
  * means our `wdt_setup` claim doesn't match silicon, which we treat
  * as a fatal init failure rather than ship silently.
  *
  *   t_IWDG = (1/LSI) × 4 × 2^PR × (RLR + 1)
  *
- * For WDT_TIMEOUT_MS=8000 and LSI=32 kHz:
- *   ticks = 8000 × 32 = 256000
- *   PR    = 4  → divider = 4 × 2^4 = 64
- *   RLR   = (ticks / divider) − 1 = (256000 / 64) − 1 = 3999
+ * For WDT_TIMEOUT_MS=32000 and LSI=32 kHz:
+ *   ticks = 32000 × 32 = 1024000
+ *   PR    = 6  → divider = 4 × 2^6 = 256
+ *   RLR   = (ticks / divider) − 1 = (1024000 / 256) − 1 = 3999
+ *
+ * (The reload happens to stay 3999: 4× the timeout with 4× the prescaler.)
  */
-#define EXPECTED_IWDG_PR    LL_IWDG_PRESCALER_64
+#define EXPECTED_IWDG_PR    LL_IWDG_PRESCALER_256
 #define EXPECTED_IWDG_RLR   3999U
 
 static int wdt_channel_id_get_or_init(const struct device *wdt)

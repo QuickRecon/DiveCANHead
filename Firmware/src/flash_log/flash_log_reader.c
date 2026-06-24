@@ -29,14 +29,14 @@
 
 LOG_MODULE_REGISTER(flash_log_reader, LOG_LEVEL_NONE);
 
-#define FL_INDEX_MAX_SECTORS 100U
+/* FlashLogIndexEntry_t, the FL_INDEX_FLAG_* / FL_INVALID_* sentinels, and
+ * the per-FCB sector counts live in flash_log_internal.h so flash_log.c
+ * (FCB geometry, stats path) and the reader share one source of truth.
+ * Each index array is sized to its own FCB — telemetry is far larger
+ * than text, so a single shared cap would waste RAM on the small one. */
 
-/* FlashLogIndexEntry_t and the FL_INDEX_FLAG_* / FL_INVALID_* sentinels
- * live in flash_log_internal.h so flash_log.c (stats path) can share
- * the layout with the reader's index walk. */
-
-static FlashLogIndexEntry_t fl_index_telemetry[FL_INDEX_MAX_SECTORS];
-static FlashLogIndexEntry_t fl_index_text[FL_INDEX_MAX_SECTORS];
+static FlashLogIndexEntry_t fl_index_telemetry[FL_TELEMETRY_SECTOR_COUNT];
+static FlashLogIndexEntry_t fl_index_text[FL_TEXT_SECTOR_COUNT];
 
 static atomic_t fl_index_valid[FL_DEST_COUNT] = {
     ATOMIC_INIT(0), ATOMIC_INIT(0),
@@ -95,7 +95,7 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
     }
 
     size_t s_idx = fl_sector_index(ctx->fcb_p, loc_ctx->loc.fe_sector);
-    if (s_idx >= FL_INDEX_MAX_SECTORS) {
+    if (s_idx >= (size_t)ctx->fcb_p->f_sector_cnt) {
         return 0;
     }
     FlashLogIndexEntry_t *e = &ctx->index[s_idx];
@@ -135,7 +135,8 @@ static int fl_build_index(FlashLogDest_t dest)
         return -EINVAL;
     }
 
-    for (size_t i = 0; i < FL_INDEX_MAX_SECTORS; ++i) {
+    size_t sector_cnt = (size_t)fcb_p->f_sector_cnt;
+    for (size_t i = 0; i < sector_cnt; ++i) {
         index[i].first_boot_id = FL_INVALID_BOOT_ID;
         index[i].first_dive_id = FL_INVALID_DIVE_ID;
         index[i].flags = 0U;
@@ -181,7 +182,8 @@ int flash_log_reader_index_summary(FlashLogDest_t dest,
             if (index == NULL) {
                 rc = -EINVAL;
             } else {
-                flash_log_index_summarize(index, FL_INDEX_MAX_SECTORS, out);
+                flash_log_index_summarize(
+                    index, flash_log_internal_sector_count(dest), out);
             }
         }
     }
@@ -244,7 +246,7 @@ int flash_log_reader_resolve_latest_boot(FlashLogDest_t dest,
      * sector. */
     uint32_t best_id = FL_INVALID_BOOT_ID;
     size_t best_sector = SIZE_MAX;
-    for (size_t i = 0; i < FL_INDEX_MAX_SECTORS; ++i) {
+    for (size_t i = 0; i < (size_t)fcb_p->f_sector_cnt; ++i) {
         if ((0U != (index[i].flags & FL_INDEX_FLAG_HAS_BOOT)) &&
             ((best_id == FL_INVALID_BOOT_ID) ||
              (index[i].first_boot_id > best_id))) {
@@ -279,7 +281,7 @@ int flash_log_reader_resolve_boot_id(FlashLogDest_t dest, uint32_t boot_id,
      * until a later sector with a different boot_id (or end of log). */
     size_t first = SIZE_MAX;
     size_t end_sector = SIZE_MAX;
-    for (size_t i = 0; i < FL_INDEX_MAX_SECTORS; ++i) {
+    for (size_t i = 0; i < (size_t)fcb_p->f_sector_cnt; ++i) {
         if (index[i].first_boot_id == boot_id) {
             if (first == SIZE_MAX) {
                 first = i;
@@ -321,7 +323,7 @@ int flash_log_reader_resolve_latest_dive(FlashLogDest_t dest,
     uint16_t best_id = 0U;
     size_t best_sector = SIZE_MAX;
     bool any = false;
-    for (size_t i = 0; i < FL_INDEX_MAX_SECTORS; ++i) {
+    for (size_t i = 0; i < (size_t)fcb_p->f_sector_cnt; ++i) {
         if ((0U != (index[i].flags & FL_INDEX_FLAG_HAS_DIVE_START)) &&
             ((!any) || (index[i].first_dive_id > best_id))) {
             best_id = index[i].first_dive_id;
@@ -354,7 +356,7 @@ int flash_log_reader_resolve_dive_id(FlashLogDest_t dest, uint16_t dive_id,
 
     size_t first = SIZE_MAX;
     size_t end_sector = SIZE_MAX;
-    for (size_t i = 0; i < FL_INDEX_MAX_SECTORS; ++i) {
+    for (size_t i = 0; i < (size_t)fcb_p->f_sector_cnt; ++i) {
         if ((index[i].first_dive_id == dive_id) &&
             (0U != (index[i].flags & FL_INDEX_FLAG_HAS_DIVE_START))) {
             if (first == SIZE_MAX) {

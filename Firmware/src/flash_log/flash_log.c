@@ -41,19 +41,30 @@ LOG_MODULE_REGISTER(flash_log, LOG_LEVEL_NONE);
 
 /* ---- FCB layout ----
  *
- * 100 × 64 KiB logical sectors per FCB. The SPI NOR driver decomposes a
- * 64 KiB flash_area_erase into either 16× 4 KiB sector erases or a
- * single 64 KiB block erase, whichever the JEDEC opcode set supports.
+ * Logical sectors are 256 KiB each. The SPI NOR driver decomposes a
+ * 256 KiB flash_area_erase into the underlying 4 KiB/64 KiB erases its
+ * JEDEC opcode set supports. Per-FCB sector counts are the single source
+ * of truth in flash_log_internal.h (FL_TELEMETRY_SECTOR_COUNT /
+ * FL_TEXT_SECTOR_COUNT), shared with the reader's index arrays.
  *
- * Sector count is dialled down from FCB's max (255) to keep the
- * f_sectors[] array within the STM32L431's 64 KiB SRAM budget. 100
- * sectors × 8 B = 800 B per FCB; 1.6 KiB total for both. Capacity:
- * 100 × 64 KiB = 6.4 MiB per FCB, 12.8 MiB across both.
+ * Counts stay <= FCB's max (255) so f_sector_cnt (uint8_t) and the static
+ * f_sectors[] arrays stay small (8 B/sector: 1536 B telemetry + 256 B
+ * text). Capacity: telemetry 192 × 256 KiB = 48 MiB, text
+ * 32 × 256 KiB = 8 MiB — matching the partition sizes in divecan_jr.dts.
  */
-#define FL_SECTOR_SIZE  (64U * 1024U)
-#define FL_SECTOR_COUNT 100U
-#define FL_FCB_MAGIC    0x44434C47U  /* "DCLG" */
-#define FL_FCB_VERSION  1
+#define FL_SECTOR_SIZE  (256U * 1024U)
+/* "DCLH" — bumped from "DCLG" (0x44434C47) when the FCB geometry changed from
+ * 100 x 64 KiB to 192/32 x 256 KiB. fcb_init() only validates the per-sector
+ * magic (NOT the version), so old-geometry data keeps the same magic and is
+ * accepted as a valid active sector — fcb_init then walks ~256 KiB of stale
+ * entries (fcb_getnext_in_sector), and because flash reads don't yield it
+ * starves the prio-14 watchdog feeder for >32 s → IWDG boot loop. A new magic
+ * makes fcb_init reject the stale sectors at the header (-ENOMSG, before the
+ * entry walk), so the watchdog-safe recovery erase below cleans the partition
+ * once and subsequent mounts are fast. Bump this again on any future on-flash
+ * format/geometry change. */
+#define FL_FCB_MAGIC    0x44434C48U  /* "DCLH" */
+#define FL_FCB_VERSION  2
 
 /* Ingest slot layout — header + bounded payload. The msgq is statically
  * sized to absorb a single block-erase worst case (~400 ms) at the peak
@@ -76,8 +87,8 @@ K_MSGQ_DEFINE(fl_ingest_msgq, sizeof(LogIngestSlot_t),
  * f_magic, f_version, f_sector_cnt, f_scratch_cnt, f_sectors must be
  * filled before fcb_init. fcb_init populates the rest.
  */
-static struct flash_sector fl_telemetry_sectors[FL_SECTOR_COUNT];
-static struct flash_sector fl_text_sectors[FL_SECTOR_COUNT];
+static struct flash_sector fl_telemetry_sectors[FL_TELEMETRY_SECTOR_COUNT];
+static struct flash_sector fl_text_sectors[FL_TEXT_SECTOR_COUNT];
 
 static struct fcb fl_telemetry_fcb;
 static struct fcb fl_text_fcb;
@@ -105,11 +116,20 @@ static uint8_t  fl_can_verbose  = CONFIG_FLASH_LOG_CAN_VERBOSE_DEFAULT;
 /* ---- Internal accessors used by the reader ---- */
 
 struct fcb *flash_log_internal_get_fcb(FlashLogDest_t dest);
-uint8_t flash_log_internal_sector_count(void);
+uint8_t flash_log_internal_sector_count(FlashLogDest_t dest);
 
-uint8_t flash_log_internal_sector_count(void)
+uint8_t flash_log_internal_sector_count(FlashLogDest_t dest)
 {
-    return FL_SECTOR_COUNT;
+    uint8_t result;
+
+    if (FL_DEST_TELEMETRY == dest) {
+        result = FL_TELEMETRY_SECTOR_COUNT;
+    } else if (FL_DEST_TEXT == dest) {
+        result = FL_TEXT_SECTOR_COUNT;
+    } else {
+        result = 0U;
+    }
+    return result;
 }
 
 /* ---- Helpers ---- */
@@ -445,14 +465,28 @@ static int fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
     }
 
     if (0 == rc) {
-        rc = flash_area_write(fcb_p->fap,
-                      FCB_ENTRY_FA_DATA_OFF(loc),
-                      &hdr, sizeof(hdr));
-        if ((0 == rc) && (length > 0U) && (payload != NULL)) {
-            rc = flash_area_write(fcb_p->fap,
-                          FCB_ENTRY_FA_DATA_OFF(loc) +
-                          sizeof(hdr),
-                          payload, length);
+        /* Coalesce header + payload into a SINGLE flash write — one SPI
+         * program instead of two, ~25% fewer ops per entry (each op costs a
+         * page-program + WIP wait). The buffer is bounded by the ingest slot
+         * size (CONFIG_FLASH_LOG_MAX_ENTRY_BYTES); fall back to two writes for
+         * any (unexpected) larger entry. */
+        size_t total = sizeof(hdr) + length;
+        uint8_t wbuf[CONFIG_FLASH_LOG_MAX_ENTRY_BYTES];
+        if (total <= sizeof(wbuf)) {
+            (void)memcpy(wbuf, &hdr, sizeof(hdr));
+            if ((length > 0U) && (payload != NULL)) {
+                (void)memcpy(&wbuf[sizeof(hdr)], payload, length);
+            }
+            rc = flash_area_write(fcb_p->fap, FCB_ENTRY_FA_DATA_OFF(loc),
+                          wbuf, total);
+        } else {
+            rc = flash_area_write(fcb_p->fap, FCB_ENTRY_FA_DATA_OFF(loc),
+                          &hdr, sizeof(hdr));
+            if ((0 == rc) && (length > 0U) && (payload != NULL)) {
+                rc = flash_area_write(fcb_p->fap,
+                              FCB_ENTRY_FA_DATA_OFF(loc) + sizeof(hdr),
+                              payload, length);
+            }
         }
         if (0 == rc) {
             rc = fcb_append_finish(fcb_p, &loc);
@@ -485,6 +519,90 @@ static void fl_emit_drop_marker_if_any(FlashLogDest_t dest)
                     fl_now_us(), &p, sizeof(p));
 }
 
+/* ---- Packed batch staging ----
+ *
+ * Rather than write each entry to the FCB as it arrives (which keeps the SPI
+ * NOR active continuously — ~16 mA, and starves CAN TX), drained entries are
+ * accumulated in a packed RAM buffer and flushed to flash as a single burst
+ * every FL_BATCH_WINDOW_MS (or sooner if the buffer fills, or immediately for
+ * markers). Between bursts the flash idles into DPD. The buffer is packed by
+ * actual entry size (not the 96 B fixed msgq slot) so 2 s of telemetry fits in
+ * a few KB of the limited SRAM. Cost: up to ~2 s of routine telemetry can be
+ * lost on a hard power-cut — acceptable for an after-action dive log; dive
+ * start/end and boot markers are flushed immediately so they are never lost. */
+#define FL_BATCH_WINDOW_MS  2000
+#define FL_BATCH_BUF_BYTES  4096
+/* Packed entry: dest(1) type(1) length(2,LE) ts_us(8,LE) payload(length). */
+#define FL_BATCH_HDR_BYTES  12U
+static uint8_t fl_batch_buf[FL_BATCH_BUF_BYTES];
+static size_t  fl_batch_len;
+
+static bool fl_batch_append(const LogIngestSlot_t *slot)
+{
+    size_t need = FL_BATCH_HDR_BYTES + slot->length;
+    if (fl_batch_len + need > sizeof(fl_batch_buf)) {
+        return false;
+    }
+    uint8_t *p = &fl_batch_buf[fl_batch_len];
+    p[0] = slot->dest;
+    p[1] = slot->type;
+    p[2] = (uint8_t)(slot->length & 0xFFU);
+    p[3] = (uint8_t)((slot->length >> 8) & 0xFFU);
+    for (uint8_t b = 0U; b < 8U; ++b) {
+        p[4U + b] = (uint8_t)((slot->ts_us >> (8U * b)) & 0xFFU);
+    }
+    (void)memcpy(&p[FL_BATCH_HDR_BYTES], slot->payload, slot->length);
+    fl_batch_len += need;
+    return true;
+}
+
+/* Write every staged entry to its FCB in one burst, then reset. Wrapped in
+ * heartbeat_set_long_op so a sector rotation/erase mid-burst can't trip the
+ * watchdog. */
+static void fl_batch_flush(void)
+{
+    if (fl_batch_len == 0U) {
+        return;
+    }
+    heartbeat_set_long_op(true);
+
+    fl_emit_drop_marker_if_any(FL_DEST_TELEMETRY);
+    fl_emit_drop_marker_if_any(FL_DEST_TEXT);
+
+    size_t off = 0U;
+    while (off + FL_BATCH_HDR_BYTES <= fl_batch_len) {
+        const uint8_t *p = &fl_batch_buf[off];
+        FlashLogDest_t dest = (FlashLogDest_t)p[0];
+        uint8_t type = p[1];
+        uint16_t length = (uint16_t)p[2] | ((uint16_t)p[3] << 8);
+        uint64_t ts = 0U;
+        for (uint8_t b = 0U; b < 8U; ++b) {
+            ts |= ((uint64_t)p[4U + b]) << (8U * b);
+        }
+        off += FL_BATCH_HDR_BYTES + length;
+        if (off > fl_batch_len) {
+            break; /* truncation guard — should never happen */
+        }
+        const uint8_t *payload = &p[FL_BATCH_HDR_BYTES];
+
+        struct fcb *primary = fl_get_fcb(dest);
+        if (primary != NULL) {
+            (void)fl_write_entry_to_fcb(primary, type, 0U, ts, payload, length);
+        }
+        if (fl_is_marker_type(type)) {
+            FlashLogDest_t mirror_dest =
+                (FL_DEST_TELEMETRY == dest) ? FL_DEST_TEXT : FL_DEST_TELEMETRY;
+            struct fcb *mirror = fl_get_fcb(mirror_dest);
+            if (mirror != NULL) {
+                (void)fl_write_entry_to_fcb(mirror, type, 0U, ts, payload, length);
+            }
+        }
+    }
+    fl_batch_len = 0U;
+
+    heartbeat_set_long_op(false);
+}
+
 static void fl_writer_thread(void *arg1, void *arg2, void *arg3)
 {
     ARG_UNUSED(arg1);
@@ -492,53 +610,49 @@ static void fl_writer_thread(void *arg1, void *arg2, void *arg3)
     ARG_UNUSED(arg3);
 
     heartbeat_register(HEARTBEAT_FLASH_LOG);
+    int64_t next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
 
     while (true) {
         heartbeat_kick(HEARTBEAT_FLASH_LOG);
 
-        /* Honour pause without spinning hot. */
+        /* Honour pause without spinning hot and without flushing (the flash must
+         * stay quiet during e.g. an OTA). Held entries flush after resume. */
         if (atomic_get(&fl_paused)) {
             k_msleep(50);
+            next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
             continue;
         }
+
+        /* Block for the next entry, but wake at least every 250 ms to kick the
+         * heartbeat and check the flush deadline. */
+        int64_t to_flush = next_flush - k_uptime_get();
+        uint32_t wait = (to_flush <= 0) ? 0U :
+                        ((to_flush < 250) ? (uint32_t)to_flush : 250U);
 
         LogIngestSlot_t slot;
-        int rc = k_msgq_get(&fl_ingest_msgq, &slot, K_MSEC(1000));
-        if (-EAGAIN == rc) {
-            /* Idle — nothing to write. Continue and re-poll. */
-            continue;
-        }
-        if (0 != rc) {
-            /* Anything else is a kernel-level error; back off briefly. */
-            k_msleep(50);
-            continue;
-        }
-
-        FlashLogDest_t dest = (FlashLogDest_t)slot.dest;
-
-        fl_emit_drop_marker_if_any(dest);
-
-        struct fcb *primary = fl_get_fcb(dest);
-        if (primary != NULL) {
-            uint8_t flags = 0U;
-            (void)fl_write_entry_to_fcb(primary, slot.type, flags,
-                            slot.ts_us, slot.payload,
-                            slot.length);
-        }
-
-        /* Mirror markers to the other FCB. */
-        if (fl_is_marker_type(slot.type)) {
-            FlashLogDest_t mirror_dest =
-                (FL_DEST_TELEMETRY == dest) ?
-                FL_DEST_TEXT : FL_DEST_TELEMETRY;
-            struct fcb *mirror = fl_get_fcb(mirror_dest);
-            fl_emit_drop_marker_if_any(mirror_dest);
-            if (mirror != NULL) {
-                (void)fl_write_entry_to_fcb(mirror, slot.type,
-                                0U, slot.ts_us,
-                                slot.payload,
-                                slot.length);
+        int rc = k_msgq_get(&fl_ingest_msgq, &slot, K_MSEC(wait));
+        if (0 == rc) {
+            if (!fl_batch_append(&slot)) {
+                /* Buffer full before the window elapsed — flush now, then stage
+                 * the entry that didn't fit. */
+                fl_batch_flush();
+                next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
+                (void)fl_batch_append(&slot);
             }
+            /* Markers are critical — flush immediately so a power-cut can't lose
+             * a dive start/end or boot record. */
+            if (fl_is_marker_type(slot.type)) {
+                fl_batch_flush();
+                next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
+            }
+        } else if (-EAGAIN != rc) {
+            /* Kernel-level error; back off briefly. */
+            k_msleep(50);
+        }
+
+        if (k_uptime_get() >= next_flush) {
+            fl_batch_flush();
+            next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
         }
     }
 }
@@ -585,31 +699,48 @@ SETTINGS_STATIC_HANDLER_DEFINE(flash_log_settings, "log", NULL,
 
 /* ---- FCB mount ---- */
 
-static void fl_populate_sectors(struct flash_sector *arr, off_t base)
+static void fl_populate_sectors(struct flash_sector *arr, off_t base,
+                                uint8_t count)
 {
-    for (size_t i = 0; i < FL_SECTOR_COUNT; ++i) {
-        arr[i].fs_off = base + (off_t)(i * FL_SECTOR_SIZE);
+    /* flash_sector.fs_off is RELATIVE to the flash area: fcb_flash_read/write pass
+     * it straight to flash_area_read/write, which add the partition's fa_off
+     * themselves. Adding `base` (= the partition offset) here double-counted it,
+     * so fcb read/wrote a shifted view AND ran off the end of the partition
+     * (sector >= 92 → flash_area_read out of bounds → -EIO), making fcb_init fail
+     * and re-erase the whole partition every boot (HIT_LIST #6/#1/#2). */
+    ARG_UNUSED(base);
+    for (size_t i = 0; i < count; ++i) {
+        arr[i].fs_off = (off_t)(i * FL_SECTOR_SIZE);
         arr[i].fs_size = FL_SECTOR_SIZE;
     }
 }
 
 static int fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
-            int area_id, off_t partition_offset)
+            int area_id, off_t partition_offset, uint8_t sector_count)
 {
-    fl_populate_sectors(sectors, partition_offset);
+    fl_populate_sectors(sectors, partition_offset, sector_count);
 
     fcb_p->f_magic = FL_FCB_MAGIC;
     fcb_p->f_version = FL_FCB_VERSION;
-    fcb_p->f_sector_cnt = FL_SECTOR_COUNT;
+    fcb_p->f_sector_cnt = sector_count;
     fcb_p->f_scratch_cnt = 1U;
     fcb_p->f_sectors = sectors;
 
     int rc = fcb_init(area_id, fcb_p);
     if (0 != rc) {
-        /* One-shot recovery: erase the partition and retry. */
+        /* One-shot recovery: erase the partition and retry. fcb_init bails fast
+         * here (sector-0 magic mismatch → -ENOMSG, no entry walk) on stale or
+         * foreign content, so we reach this point without starving the feeder.
+         * The erase itself is long on the 48 MB telemetry FCB, so assert long-op
+         * around it: heartbeat_check_all_alive() returns true and the feeder keeps
+         * feeding. The spi_nor driver k_sleeps while polling WIP
+         * (CONFIG_SPI_NOR_SLEEP_WHILE_WAITING_UNTIL_READY), so the low-prio feeder
+         * still gets scheduled during the erase. */
         const struct flash_area *fa;
         if (0 == flash_area_open(area_id, &fa)) {
+            heartbeat_set_long_op(true);
             (void)flash_area_erase(fa, 0U, fa->fa_size);
+            heartbeat_set_long_op(false);
             flash_area_close(fa);
             rc = fcb_init(area_id, fcb_p);
         }
@@ -632,11 +763,13 @@ int flash_log_init(void)
     int rc_telemetry = fl_mount_fcb(&fl_telemetry_fcb,
                     fl_telemetry_sectors,
                     PARTITION_ID(log_telemetry_partition),
-                    PARTITION_OFFSET(log_telemetry_partition));
+                    PARTITION_OFFSET(log_telemetry_partition),
+                    FL_TELEMETRY_SECTOR_COUNT);
     int rc_text = fl_mount_fcb(&fl_text_fcb,
                    fl_text_sectors,
                    PARTITION_ID(log_text_partition),
-                   PARTITION_OFFSET(log_text_partition));
+                   PARTITION_OFFSET(log_text_partition),
+                   FL_TEXT_SECTOR_COUNT);
 
     if ((0 != rc_telemetry) || (0 != rc_text)) {
         /* Persistent failure — keep initialized=true so producers
@@ -755,25 +888,25 @@ uint32_t flash_log_get_boot_id(void)
 /**
  * @brief Populate per-FCB index-derived fields on a FlashLogFcbStats_t.
  *
- * Triggers a one-shot reader index build (~one fcb_walk over markers
- * only) on first call per boot. Failures are non-fatal — the existing
- * stats fields stay populated and the index-derived fields stay zero.
+ * Deliberately a no-op. The index-derived fields (boot_id_oldest,
+ * dive_id_latest, entries_total_estimate) would require a full reader
+ * index build (one fcb_walk over the whole ring). flash_log_stats() is
+ * called from the boot preamble, and that walk runs on the main thread:
+ * on a populated ring it takes long enough to starve the (lowest-prio)
+ * watchdog feeder, tripping the IWDG into a boot loop.
+ *
+ * The reader index is designed to be built lazily on the first UDS
+ * log-download selector call (see flash_log_reader.c), so leaving these
+ * fields zero here costs only the boot-preamble "boots=X..Y dives=Z"
+ * reporting — the download path rebuilds the index on demand and is
+ * unaffected. The remaining stats fields (sectors, drops, current boot
+ * id) are populated cheaply by flash_log_stats() without a walk.
  */
 static void fl_populate_index_stats(FlashLogDest_t dest,
                                     FlashLogFcbStats_t *fcb_stats)
 {
-    FlashLogIndexSummary_t summary;
-    if (0 == flash_log_reader_index_summary(dest, &summary)) {
-        fcb_stats->boot_id_oldest = summary.boot_id_oldest;
-        fcb_stats->dive_id_latest = summary.dive_id_latest;
-        /* Markers are a strict subset of total entries; use the marker
-         * count as a non-overestimating lower bound. The exact entry
-         * count would require a second fcb_walk, which is more cost
-         * than this stat justifies. Downstream tooling treats this as
-         * an estimate per the field name. */
-        fcb_stats->entries_total_estimate =
-            (uint32_t)summary.boot_count + (uint32_t)summary.dive_count;
-    }
+    ARG_UNUSED(dest);
+    ARG_UNUSED(fcb_stats);
 }
 
 int flash_log_stats(FlashLogStats_t *out)
@@ -785,7 +918,7 @@ int flash_log_stats(FlashLogStats_t *out)
     } else {
         (void)memset(out, 0, sizeof(*out));
         out->telemetry.boot_id_current = fl_boot_id;
-        out->telemetry.sectors_total = FL_SECTOR_COUNT;
+        out->telemetry.sectors_total = FL_TELEMETRY_SECTOR_COUNT;
         out->telemetry.sectors_free =
             (uint16_t)fcb_free_sector_cnt(&fl_telemetry_fcb);
         out->telemetry.drops_since_boot =
@@ -793,7 +926,7 @@ int flash_log_stats(FlashLogStats_t *out)
         fl_populate_index_stats(FL_DEST_TELEMETRY, &out->telemetry);
 
         out->text.boot_id_current = fl_boot_id;
-        out->text.sectors_total = FL_SECTOR_COUNT;
+        out->text.sectors_total = FL_TEXT_SECTOR_COUNT;
         out->text.sectors_free =
             (uint16_t)fcb_free_sector_cnt(&fl_text_fcb);
         out->text.drops_since_boot =

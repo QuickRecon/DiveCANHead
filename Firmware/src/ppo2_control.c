@@ -342,6 +342,25 @@ static void run_pid_fire_cycle(void)
     }
 }
 
+/* MK15's phase sleeps (ON ~1.5 s, OFF ~6 s) are long relative to the watchdog
+ * feeder's ~2 s liveness window, so a single kick per fire cycle leaves
+ * HEARTBEAT_SOLENOID_FIRE looking stalled. Sleep in ~2 s steps and kick at the
+ * start of every step so the heartbeat keeps advancing through both phases and
+ * the feeder stays comfortably fed. */
+static const uint32_t MK15_HEARTBEAT_STEP_MS = 2000U;
+
+static void mk15_sleep_kicking(uint32_t total_ms)
+{
+    uint32_t remaining = total_ms;
+    while (remaining > 0U) {
+        heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
+        uint32_t chunk = (remaining < MK15_HEARTBEAT_STEP_MS) ?
+                         remaining : MK15_HEARTBEAT_STEP_MS;
+        k_msleep((int32_t)chunk);
+        remaining -= chunk;
+    }
+}
+
 /**
  * @brief One MK15-mode purge cycle.
  *
@@ -376,7 +395,7 @@ static void run_mk15_fire_cycle(void)
             zbus_pub_checked(&chan_solenoid_fire, &fire_evt, K_NO_WAIT);
         }
 #endif
-        k_msleep((int32_t)MK15_ON_TIME_MS);
+        mk15_sleep_kicking(MK15_ON_TIME_MS);
         sol_o2_inject_off();
 #ifdef CONFIG_FLASH_LOG
         const SolenoidFireEvent_t end_evt = {
@@ -389,7 +408,7 @@ static void run_mk15_fire_cycle(void)
     }
 
     /* Do our off time before waiting again */
-    k_msleep((int32_t)MK15_OFF_TIME_MS);
+    mk15_sleep_kicking(MK15_OFF_TIME_MS);
 }
 
 /**

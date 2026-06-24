@@ -306,8 +306,8 @@
  *   NVS storage lives at the top of the external NOR.
  *
  * External 64 MB (W25Q512JV): slot1 (220 KB) + scratch (64 KB) +
- *   factory image backup (220 KB) + flash log (telemetry + text) +
- *   NVS storage (32 KB at top).
+ *   factory image backup (220 KB) + flash log (48 MB telemetry +
+ *   8 MB text) + NVS storage (32 KB at top).
  *
  * Labels are MCUBoot-conformant: mcuboot, image-0, image-1,
  * image-scratch enable the bootloader's swap-area discovery. The
@@ -366,34 +366,38 @@
 		};
 		/* Flash log — split into two parallel FCB instances.
 		 *
-		 * Each FCB caps at 255 sectors (uint8_t f_sector_cnt) but
-		 * we run with 100 × 64 KiB block-erase logical sectors per
-		 * FCB (= 6.4 MiB / partition) to keep the in-RAM
-		 * f_sectors[] arrays within the STM32L431's 64 KiB SRAM
-		 * budget. 100 × 8 B = 800 B per FCB; 1.6 KiB across both.
+		 * Each FCB caps at 255 sectors (uint8_t f_sector_cnt) and
+		 * needs an in-RAM 8-byte descriptor per sector. To unlock
+		 * the full chip without blowing the STM32L431's 64 KiB SRAM
+		 * budget we use 256 KiB logical sectors (the SPI NOR driver
+		 * decomposes each into 4× 64 KiB block erases on rotate)
+		 * rather than more, smaller descriptors:
+		 *   - telemetry: 192 × 256 KiB = 48 MB (192 × 8 B = 1536 B)
+		 *   - text:       32 × 256 KiB =  8 MB ( 32 × 8 B =  256 B)
+		 * 1.75 KiB of descriptors across both. At the measured
+		 * ~168 KiB/min telemetry rate, 48 MB ≈ 4.9 h of continuous
+		 * high-rate logging before the ring wraps.
 		 *
 		 * Markers (BOOT/DIVE_START/DIVE_END) are mirrored across
 		 * both so each stream can be partitioned by boot or dive
 		 * independently for UDS bulk download.
 		 *
-		 * Remaining flash between log_text_partition and
-		 * storage_partition is unallocated for now (future custom
-		 * log layer or hardware revision can claim it). See
-		 * docs/FLASH_LOG.md.
+		 * ~7.5 MB between log_text_partition and storage_partition
+		 * stays unallocated (future custom log layer or hardware
+		 * revision can claim it). See docs/FLASH_LOG.md.
+		 *
+		 * Each FCB sector is now 256 KiB, so partitions must start
+		 * on a 256 KiB boundary. factory_partition ends at 0x7E000;
+		 * the next 256 KiB-aligned address is 0x80000. The 8 KiB
+		 * between 0x7E000 and 0x80000 stays unallocated.
 		 */
-		/* Each FCB sector is 64 KiB block-erase; partitions
-		 * must start on a 64 KiB boundary. After the
-		 * factory_partition grew to 220 KB and shifted to
-		 * 0x47000–0x7E000, the next 64 KiB-aligned address is
-		 * 0x80000. The 8 KiB between 0x7E000 and 0x80000 stays
-		 * unallocated. */
 		log_telemetry_partition: partition@80000 {
 			label = "log-telemetry";
-			reg = <0x00080000 DT_SIZE_K(6400)>;
+			reg = <0x00080000 DT_SIZE_M(48)>;
 		};
-		log_text_partition: partition@6c0000 {
+		log_text_partition: partition@3080000 {
 			label = "log-text";
-			reg = <0x006c0000 DT_SIZE_K(6400)>;
+			reg = <0x03080000 DT_SIZE_M(8)>;
 		};
 		storage_partition: partition@3ff8000 {
 			label = "storage";

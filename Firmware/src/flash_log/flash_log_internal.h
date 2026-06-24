@@ -19,6 +19,14 @@
 extern "C" {
 #endif
 
+/* Per-FCB logical sector counts. Single source of truth shared by
+ * flash_log.c (FCB geometry, f_sectors[] arrays) and the reader (index
+ * arrays sized to match). 256 KiB sectors → telemetry 48 MiB, text
+ * 8 MiB. Must stay <= 255 (FCB's uint8_t f_sector_cnt) and match the
+ * partition sizes in boards/quickrecon/divecan_jr/divecan_jr.dts. */
+#define FL_TELEMETRY_SECTOR_COUNT 192U
+#define FL_TEXT_SECTOR_COUNT      32U
+
 /** @brief Sentinel for "no boot marker recorded for this sector". */
 #define FL_INVALID_BOOT_ID UINT32_MAX
 /** @brief Sentinel for "no dive marker recorded for this sector". */
@@ -70,8 +78,8 @@ void flash_log_index_summarize(const FlashLogIndexEntry_t *index,
 /** @brief Hand out the FCB instance for the given destination, or NULL. */
 struct fcb *flash_log_internal_get_fcb(FlashLogDest_t dest);
 
-/** @brief Number of logical sectors per FCB. */
-uint8_t flash_log_internal_sector_count(void);
+/** @brief Number of logical sectors in the given destination's FCB. */
+uint8_t flash_log_internal_sector_count(FlashLogDest_t dest);
 
 #ifdef __cplusplus
 }

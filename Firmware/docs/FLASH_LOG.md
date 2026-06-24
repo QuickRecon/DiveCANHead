@@ -19,14 +19,21 @@ Source:
 A single FCB caps at 255 logical sectors (`uint8_t f_sector_cnt`) and
 needs an in-RAM 8-byte descriptor per sector. The STM32L431 has only
 64 KiB SRAM — running one FCB at the native 4 KiB sector size would
-cover ~1 MiB of flash, which is too small for multi-dive history.
-Bumping to 64 KiB block-erase "logical sectors" raises the per-FCB
-cap to 16 MiB, but the project budget for stack-instrumented builds
-forces a lower 100-sector working point ≈ 6.4 MiB per FCB.
+cover ~1 MiB of flash, which is too small for multi-dive history. The
+descriptor RAM, not the 64 MB chip, is the binding constraint, so the
+lever for capacity is sector *size*: at 256 KiB logical sectors the
+SPI NOR driver decomposes each `flash_area_erase` into 4× 64 KiB block
+erases on rotate, and a handful of descriptors map most of the chip.
 
-Splitting into telemetry + text doubles the addressable space at
-the cost of a second `f_sectors` array, giving ~12.8 MiB total log
-capacity at ~1.6 KiB RAM.
+The two FCBs are sized independently — telemetry is the hot stream,
+text is low-rate:
+- telemetry: 192 × 256 KiB = **48 MiB** (1536 B descriptors)
+- text:       32 × 256 KiB = **8 MiB**  ( 256 B descriptors)
+
+~1.75 KiB of descriptor RAM across both. At the measured
+~168 KiB/min telemetry rate, 48 MiB ≈ **4.9 h** of continuous
+high-rate logging before the ring wraps (was ~39 min at the previous
+100 × 64 KiB / 6.4 MiB working point).
 
 ## Partition layout
 
@@ -34,14 +41,16 @@ Defined in `boards/quickrecon/divecan_jr/divecan_jr.dts`:
 
 | Label                    | Offset       | Size      | Purpose                          |
 |--------------------------|--------------|-----------|----------------------------------|
-| `log-telemetry`          | `0x00070000` | 6400 KiB  | FCB-A: structured telemetry      |
-| `log-text`               | `0x006b0000` | 6400 KiB  | FCB-B: LOG_x text capture        |
-| (unallocated)            | `0x00cf0000` | ≈47 MiB   | reserved for future expansion    |
+| `log-telemetry`          | `0x00080000` | 48 MiB    | FCB-A: structured telemetry      |
+| `log-text`               | `0x03080000` | 8 MiB     | FCB-B: LOG_x text capture        |
+| (unallocated)            | `0x03880000` | ≈7.5 MiB  | reserved for future expansion    |
 | `storage`                | `0x03ff8000` | 32 KiB    | Zephyr NVS (settings)            |
 
-Each FCB declares 100 × 64 KiB logical sectors. The SPI NOR driver
-decomposes a 64 KiB `flash_area_erase` into either 16× 4 KiB sector
-erases or a single 64 KiB block erase based on JEDEC opcode support.
+Each FCB declares 256 KiB logical sectors (telemetry 192, text 32).
+The SPI NOR driver decomposes a 256 KiB `flash_area_erase` into 4×
+64 KiB block erases (or 64× 4 KiB sector erases) based on JEDEC opcode
+support. Partition offsets and sizes must stay 256 KiB-aligned and
+match the per-FCB sector counts in `flash_log.c`.
 
 ## Stream allocation
 
@@ -127,7 +136,7 @@ producers (ISR / threads / log backend) → │ k_msgq (CONFIG_FLASH_LOG_   │
                                             │                          │
                                 ┌───────────▼────────────┐   ┌─────────▼──────────┐
                                 │ telemetry FCB          │   │ text FCB           │
-                                │ 100 × 64 KiB sectors   │   │ 100 × 64 KiB       │
+                                │ 192 × 256 KiB (48 MiB) │   │ 32 × 256 KiB (8MiB)│
                                 │ f_scratch_cnt = 1      │   │ f_scratch_cnt = 1  │
                                 └────────────────────────┘   └────────────────────┘
 ```
@@ -197,8 +206,9 @@ Bulk download is over UDS. The protocol — RoutineControl selectors,
 stream framing — is documented in `UDS.md` under
 [Flash Log Download Protocol](../UDS.md#flash-log-download-protocol-0xf1xx--0x340x360x37).
 
-The reader uses a lazy per-FCB sector index (100 × 8 B = 800 B per
-FCB). Built by one `fcb_walk` that inspects only marker entries.
+The reader uses a lazy per-FCB sector index (one `FlashLogIndexEntry_t`
+per logical sector — 192 for telemetry, 32 for text). Built by one
+`fcb_walk` that inspects only marker entries.
 Invalidated and rebuilt on entry to a UDS programming session.
 
 ## Runtime knobs
