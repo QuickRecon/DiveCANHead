@@ -417,10 +417,6 @@ static void diveo2_uart_callback(const struct device *dev,
 
     switch (evt->type) {
     case UART_RX_RDY:
-        if (cell->cell_number == 0) {
-            LOG_INF("DIAG c0 RX_RDY len=%u off=%u",
-                    (unsigned)evt->data.rx.len, (unsigned)evt->data.rx.offset);
-        }
         diveo2_capture_rx(cell, &evt->data.rx);
         /* The idle-timeout flush delivers the complete reply here (RX stays
          * enabled, so UART_RX_DISABLED won't fire on success). Wake the thread
@@ -429,21 +425,7 @@ static void diveo2_uart_callback(const struct device *dev,
         break;
     case UART_RX_DISABLED:
         /* RX finished (idle timeout or buffer full) — wake the thread */
-        if (cell->cell_number == 0) {
-            LOG_INF("DIAG c0 RX_DISABLED");
-        }
         k_sem_give(&cell->rx_sem);
-        break;
-    case UART_TX_DONE:
-        /* DIAG (bring-up): TX DMA completed -> bytes clocked out the pin. */
-        if (cell->cell_number == 0) {
-            LOG_INF("DIAG c0 TX_DONE len=%u", (unsigned)evt->data.tx.len);
-        }
-        break;
-    case UART_TX_ABORTED:
-        if (cell->cell_number == 0) {
-            LOG_WRN("DIAG c0 TX_ABORTED");
-        }
         break;
     default:
         break;
@@ -471,10 +453,6 @@ static void diveo2_send_command(struct diveo2_cell_state *cell,
         size_t len = strnlen((char *)cell->tx_buf, sizeof(cell->tx_buf));
 
         int tx_rc = uart_tx(cell->uart_dev, cell->tx_buf, len, SYS_FOREVER_US);
-        /* DIAG (bring-up): confirm the DUT is actually transmitting on the wire. */
-        if (cell->cell_number == 0) {
-            LOG_INF("DIAG c0 uart_tx rc=%d len=%u", tx_rc, (unsigned)len);
-        }
         if (0 != tx_rc) {
             OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-tx_rc));
         }
@@ -739,9 +717,8 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
              * "RX already enabled" if the previous cycle's idle timeout
              * hasn't fully completed yet. The return is intentionally not
              * reported: an idle RX returns -EFSR ("no active reception"),
-             * the normal case here, so it is captured only for the DIAG log
-             * below. */
-            int dis_rc = uart_rx_disable(cell->uart_dev);
+             * which is the normal case here. */
+            (void)uart_rx_disable(cell->uart_dev);
             k_sem_reset(&cell->rx_sem);
 
             (void)memset(cell->rx_buf, 0, sizeof(cell->rx_buf));
@@ -749,10 +726,6 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
             int en_rc = uart_rx_enable(cell->uart_dev, cell->rx_buf,
                                  sizeof(cell->rx_buf),
                                  UART_RX_IDLE_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
-            /* DIAG (bring-up): is RX actually armed each cycle? */
-            if (cell->cell_number == 0) {
-                LOG_INF("DIAG c0 rx_disable=%d rx_enable=%d", dis_rc, en_rc);
-            }
             if (0 != en_rc) {
                 OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-en_rc));
             }
