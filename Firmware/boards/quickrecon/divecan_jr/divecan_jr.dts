@@ -183,11 +183,14 @@
 	status = "okay";
 };
 
-/* Cell 2: PA2 (TX), PA3 (RX) — Rev2 has swap enabled */
+/* Cell 2: PA2 (TX), PA3 (RX). JR+ Rev2 wires USART2 with TX/RX swapped
+ * (ADVFEATURE_SWAP_ENABLE in the Rev2 .ioc); verified empirically on the rig
+ * 2026-06-23 — cell2 only polls its CellSim with the swap applied. */
 &usart2 {
 	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
 	pinctrl-names = "default";
 	current-speed = <19200>;
+	tx-rx-swap;
 	dmas = <&dma1 6 2 (STM32_DMA_PERIPH_TO_MEMORY | STM32_DMA_MEM_INC |
 			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>,
 	       <&dma1 7 2 (STM32_DMA_MEMORY_TO_PERIPH | STM32_DMA_MEM_INC |
@@ -196,11 +199,13 @@
 	status = "okay";
 };
 
-/* Cell 3: PC4 (TX), PC5 (RX) — Rev2 has swap enabled */
+/* Cell 3: PC4 (TX), PC5 (RX). JR+ Rev2 wires USART3 with TX/RX swapped too
+ * (USART1 is NOT swapped). See the usart2 note above. */
 &usart3 {
 	pinctrl-0 = <&usart3_tx_pc4 &usart3_rx_pc5>;
 	pinctrl-names = "default";
 	current-speed = <19200>;
+	tx-rx-swap;
 	dmas = <&dma1 3 2 (STM32_DMA_PERIPH_TO_MEMORY | STM32_DMA_MEM_INC |
 			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>,
 	       <&dma1 2 2 (STM32_DMA_MEMORY_TO_PERIPH | STM32_DMA_MEM_INC |
