@@ -11,7 +11,9 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <assert.h>
 #include <autoconf.h>
+#include <zephyr/sys/util.h>
 #include "common.h"
 #include "oxygen_cell_types.h"
 
@@ -57,7 +59,11 @@ static const CalibrationMode_t valid_cal_modes[] = {
 #endif
     CAL_ANALOG_ABSOLUTE,
     CAL_TOTAL_ABSOLUTE,
-#ifdef CONFIG_HAS_FLUSH_SOLENOID
+#if defined(CONFIG_HAS_FLUSH_SOLENOID) || defined(CONFIG_HAS_O2_SOLENOID)
+    /* Flush cal works with EITHER a dedicated flush solenoid OR the O2 inject
+     * solenoid — cal_solenoid_flush() falls back to sol_o2_inject_fire() when
+     * there is no flush solenoid (same procedure, just a slower O2 flush). So
+     * FLUSH is valid whenever the unit can dose O2. */
     CAL_SOLENOID_FLUSH,
 #endif
 };
@@ -71,6 +77,19 @@ static const CalibrationMode_t valid_cal_modes[] = {
 #else
 #define CAL_MODE_DEFAULT CAL_SOLENOID_FLUSH
 #endif
+
+/* The compile-time default cal mode MUST be in valid_cal_modes[] for the
+ * configured hardware — otherwise a factory-fresh / NVS-wiped unit loads invalid
+ * defaults and runtime_settings_validate() rejects EVERY settings write (NRC
+ * 0x31). Absolute and Total-Absolute are always valid; the two hardware-gated
+ * modes are checked here. (See the FLUSH-without-flush-solenoid bug, 2026-06-25.) */
+static_assert(!IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_DIGITAL_REF) ||
+          IS_ENABLED(CONFIG_HAS_DIGITAL_CELL),
+          "Default cal mode Dig-Ref requires CONFIG_HAS_DIGITAL_CELL");
+static_assert(!IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_FLUSH) ||
+          IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID) ||
+          IS_ENABLED(CONFIG_HAS_O2_SOLENOID),
+          "Default cal mode Flush requires an O2 or flush solenoid");
 
 /* ---- Battery Chemistry ----
  * Selects the low-battery cutoff voltage. Defaults from CONFIG_BATTERY_CHEMISTRY_*

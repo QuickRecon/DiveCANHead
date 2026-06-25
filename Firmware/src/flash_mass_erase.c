@@ -16,11 +16,13 @@ LOG_MODULE_REGISTER(flash_mass_erase, LOG_LEVEL_INF);
 
 #define EXT_FLASH_NODE DT_NODELABEL(spi_flash)
 
+#if DT_NODE_EXISTS(EXT_FLASH_NODE)
+
 /* Erase in chunks so the IWDG is fed between them. Each 256 KiB chunk is
  * 4 x 64 KiB block erases; at the W25Q512JV's ~2 s worst-case per 64 KiB block
  * that is <= ~8 s, comfortably inside the 32 s IWDG window. We feed the dog
- * DIRECTLY here rather than via heartbeat_set_long_op(), because this runs in a
- * higher-priority thread (main, on the one-shot boot path) that preempts the
+ * DIRECTLY here rather than via heartbeat_set_long_op(), because this runs in
+ * the divecan_rx thread (the UDS factory-erase path), which preempts the
  * lowest-priority feeder thread — long_op alone would not save us. */
 #define ERASE_CHUNK_BYTES   (256U * 1024U)
 
@@ -62,3 +64,13 @@ int flash_mass_erase_external(void)
 	LOG_WRN("MASS ERASE complete — external NOR is blank");
 	return 0;
 }
+
+#else  /* !DT_NODE_EXISTS(spi_flash) — e.g. native_sim has no external NOR */
+
+int flash_mass_erase_external(void)
+{
+	LOG_WRN("flash_mass_erase: no external flash node on this build — no-op");
+	return -ENODEV;
+}
+
+#endif /* DT_NODE_EXISTS(EXT_FLASH_NODE) */

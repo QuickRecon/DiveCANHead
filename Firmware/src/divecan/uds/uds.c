@@ -25,6 +25,8 @@
 #include "errors.h"
 #include "error_histogram.h"
 #include "factory_image.h"
+#include "flash_mass_erase.h"
+#include "isotp_tx_queue.h"
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
 #include "uds_log_download.h"
@@ -56,6 +58,13 @@ static const uint8_t OTA_WRITE_MAGIC = 0x01U;
  * time to drain the response onto the bus before the controller goes
  * down. Matches the equivalent delay inside uds_ota.c's 0x31 path. */
 static const uint32_t OTA_WRITE_REBOOT_DELAY_MS = 200U;
+
+/* Pump count/interval to flush a queued UDS response from the handler thread
+ * before the factory-flash-erase blocks the divecan_rx poll loop (which would
+ * otherwise be the only thing that transmits it). 30 x 10 ms = 300 ms ceiling;
+ * a single-frame ACK drains in the first poll or two. */
+static const uint32_t FLASH_ERASE_TX_FLUSH_POLLS = 30U;
+static const uint32_t FLASH_ERASE_TX_FLUSH_POLL_MS = 10U;
 
 /* SID 0x10 subfunction reply length: SID echo + subfunction byte */
 static const uint16_t UDS_SESSION_CTRL_REQ_LEN = 2U;
@@ -900,6 +909,52 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
 }
 
 /**
+ * @brief Handle a WDBI write to UDS_DID_FACTORY_FLASH_ERASE (0xF278).
+ *
+ * Chip-erases the entire external SPI-NOR (slot1/OTA, image-scratch, factory
+ * backup, flash log, NVS/settings) and reboots into a clean state. The internal
+ * flash — MCUboot and the running slot0 image — is untouched, so the unit keeps
+ * executing through the erase. Destructive recovery tool, gated on the
+ * programming session + magic byte. The ACK is sent BEFORE the multi-minute
+ * erase (the bus goes dark during it); the unit reboots when done.
+ */
+static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
+                                      const uint8_t *requestData,
+                                      uint16_t requestLength)
+{
+    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+
+    if (0U != nrc) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
+    } else {
+        LOG_WRN("Factory flash erase: wiping external NOR (~minutes), then reboot");
+        /* ACK now. The ISO-TP TX queue is normally drained by the divecan_rx
+         * poll loop — which THIS handler is about to block for minutes in the
+         * erase — so pump it here until the ACK is physically transmitted before
+         * we start. Without this the queued ACK is never sent and the tool sees
+         * a timeout even though the erase proceeds. After the ACK the bus goes
+         * dark; the tool should expect the unit to drop off then reboot. */
+        buildWriteDidPositiveResponse(ctx, requestData);
+        UDS_SendResponse(ctx);
+        for (uint32_t i = 0U; i < FLASH_ERASE_TX_FLUSH_POLLS; ++i) {
+            ISOTP_TxQueue_Poll(k_uptime_get_32());
+            if (!ISOTP_TxQueue_IsBusy() &&
+                (0U == ISOTP_TxQueue_GetPendingCount())) {
+                break;
+            }
+            k_msleep(FLASH_ERASE_TX_FLUSH_POLL_MS);
+        }
+#ifdef CONFIG_FLASH_LOG
+        flash_log_pause();
+#endif
+        (void)flash_mass_erase_external();   /* watchdog-fed via watchdog_kick() */
+        sys_reboot(SYS_REBOOT_COLD);
+    }
+    return true;
+}
+
+/**
  * @brief Handle a WDBI write to UDS_DID_OTA_RESTORE_FACTORY (0xF276).
  *
  * Re-stages the captured factory backup image into slot1 and reboots.
@@ -1123,6 +1178,8 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
             (void)writeRestoreFactoryDID(ctx, requestData, requestLength);
         } else if (UDS_DID_OTA_FACTORY_CAPTURE == did) {
             (void)writeFactoryCaptureDID(ctx, requestData, requestLength);
+        } else if (UDS_DID_FACTORY_FLASH_ERASE == did) {
+            (void)writeFactoryFlashEraseDID(ctx, requestData, requestLength);
 #ifdef CONFIG_FLASH_LOG
         } else if (UDS_DID_LOG_ERASE == did) {
             (void)writeLogEraseDID(ctx, requestData, requestLength);

@@ -30,7 +30,6 @@
 #endif
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
-#include "flash_mass_erase.h"
 #endif
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
@@ -398,13 +397,6 @@ Status_t main(void)
      * loop is obvious by eye: healthy boot = one burst then steady heartbeat;
      * reset loop = burst repeating at the reset period. */
     boot_indicator();
-
-#ifdef CONFIG_DIVECAN_ONESHOT_FLASH_ERASE
-    /* RECOVERY one-shot (see CONFIG_DIVECAN_ONESHOT_FLASH_ERASE): chip-erase the
-     * external NOR before anything mounts it, so the flash-log FCB and NVS come
-     * up clean. Runs first so flash_log_init() below sees blank flash. */
-    (void)flash_mass_erase_external();
-#endif
 
 #ifdef CONFIG_FLASH_LOG
     /* Mount FCBs and bump the persisted boot counter. Record the boot

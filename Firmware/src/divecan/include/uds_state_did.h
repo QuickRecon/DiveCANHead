@@ -62,6 +62,7 @@
 #define UDS_DID_OTA_FORCE_REVERT      0xF275U  /**< write-only, magic 0x01: re-stage slot1 (1-step rollback) */
 #define UDS_DID_OTA_RESTORE_FACTORY   0xF276U  /**< write-only, magic 0x01: copy factory backup into slot1 + reboot */
 #define UDS_DID_OTA_FACTORY_CAPTURE   0xF277U  /**< write-only, magic 0x01: force re-capture of slot0 into factory backup */
+#define UDS_DID_FACTORY_FLASH_ERASE   0xF278U  /**< write-only, magic 0x01: chip-erase the external NOR (slot1/factory/log/NVS) + reboot */
 
 /* Flash log management DIDs (0xF28x) — see docs/FLASH_LOG.md */
 #define UDS_DID_LOG_STATS             0xF280U  /**< 48 B: FlashLogStats_t per-FCB breakdown */
