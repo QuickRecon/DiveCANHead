@@ -29,6 +29,7 @@
 #include "oxygen_cell_types.h"
 #include "power_management.h"
 #include "calibration.h"
+#include "runtime_settings.h"
 #include "errors.h"
 #include "common.h"
 #include "heartbeat.h"
@@ -509,9 +510,11 @@ static void RespCal(const DiveCANMessage_t *message)
         /* Acknowledge the calibration request to the handset immediately */
         txCalAck(device_spec.type);
 
-        /* Publish to cal_request channel — calibration thread subscribes */
+        /* Publish to cal_request channel — calibration thread subscribes.
+         * Honor the Cal Mode setting rather than hardcoding the method, so
+         * Total-Absolute (digital-cell) cal etc. can be selected. */
         CalRequest_t req = {
-            .method = CAL_DIGITAL_REFERENCE,
+            .method = runtime_settings_get_calibration_mode(),
             .fo2 = fo2,
             .pressure_mbar = pressure,
         };

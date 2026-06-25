@@ -21,6 +21,7 @@
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_types.h"
 #include "calibration.h"
+#include "runtime_settings.h"
 #include "errors.h"
 #include "error_histogram.h"
 #include "factory_image.h"
@@ -667,8 +668,9 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
             uint16_t atmoPressure = 1013;
             (void)zbus_chan_read(&chan_atmos_pressure, &atmoPressure, K_NO_WAIT);
 
+            /* Honor the Cal Mode setting rather than hardcoding the method. */
             CalRequest_t req = {
-                .method = CAL_DIGITAL_REFERENCE,
+                .method = runtime_settings_get_calibration_mode(),
                 .fo2 = fo2,
                 .pressure_mbar = atmoPressure,
             };

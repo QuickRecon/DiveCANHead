@@ -182,4 +182,16 @@ bool runtime_settings_validate(const RuntimeSettings_t *settings);
  */
 BatteryType_t runtime_settings_get_battery_type(void);
 
+/**
+ * @brief Return the currently-cached calibration method (Cal Mode setting).
+ *
+ * Reads from the in-memory cache populated by runtime_settings_load(). Used by
+ * the DiveCAN/UDS calibrate entry points so a CalRequest_t uses the user's Cal
+ * Mode setting rather than a hardcoded method.
+ *
+ * @return Cached calibration mode (CalibrationMode_t is a typedef of CalMethod_t);
+ *         falls back to the default if the settings cache is uninitialised.
+ */
+CalibrationMode_t runtime_settings_get_calibration_mode(void);
+
 #endif

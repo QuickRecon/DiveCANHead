@@ -233,6 +233,18 @@
 		 * (16 MB). DTS is authoritative — confirmed by physical
 		 * hardware inspection. */
 		size = <DT_SIZE_M(64)>;
+		/* This 64 MB part needs 4-byte addressing to reach anything above
+		 * 16 MB (the storage_partition/NVS lives at 0x3ff8000 ≈ 64 MB).
+		 * Use dedicated 4-byte-address opcodes (0x13/0x12/0x21/0xDC) for
+		 * accesses > 16 MB. NOTE: with CONFIG_SPI_NOR_SFDP_RUNTIME the
+		 * `enter-4byte-addr` DT property is compiled out and ignored, and
+		 * the chip otherwise stays in 3-byte mode — so reads above 16 MB
+		 * silently WRAP into the low 16 MB and writes/erases hang in the
+		 * driver's no-timeout WIP poll. `use-4b-addr-opcodes` is honored
+		 * under SFDP_RUNTIME and survives the MCUboot→app handoff (no
+		 * volatile mode bit to lose). This is the fix for the broken
+		 * settings/cal NVS persistence (HIT_LIST #5 / settings-persist). */
+		use-4b-addr-opcodes;
 		has-dpd;
 		t-enter-dpd = <3000>;
 		t-exit-dpd = <30000>;

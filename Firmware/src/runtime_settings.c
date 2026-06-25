@@ -394,3 +394,18 @@ BatteryType_t runtime_settings_get_battery_type(void)
 {
     return getCached()->batteryType;
 }
+
+/**
+ * @brief Return the currently-cached calibration method (Cal Mode setting).
+ *
+ * Reads from the in-memory cache. The DiveCAN/UDS calibrate entry points use
+ * this to pick the CalMethod_t for a CalRequest_t, so the user's Cal Mode
+ * setting (Dig Ref / Absolute / Total Absolute / Solenoid Flush) is honored
+ * instead of a hardcoded method.
+ *
+ * @return Cached calibration mode (CalibrationMode_t is a typedef of CalMethod_t).
+ */
+CalibrationMode_t runtime_settings_get_calibration_mode(void)
+{
+    return getCached()->calibrationMode;
+}
