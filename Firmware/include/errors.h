@@ -28,6 +28,7 @@ typedef struct {
     uint32_t pc;     /**< Program counter at the time of the fault */
     uint32_t lr;     /**< Link register at the time of the fault */
     uint32_t cfsr;   /**< Cortex-M Configurable Fault Status Register */
+    uint32_t thread; /**< Faulting thread object pointer (k_current_get()) */
 } CrashInfo_t;
 
 /**

@@ -62,7 +62,13 @@ LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
 #define CAL_SETTLE_MS       4000U       /* settle time before reading cells */
 #define CAL_CELL_SLOT_2     2U          /* cell index for third cell (0-based) */
 #define CAL_KEY_BUF_LEN     16U         /* settings key string buffer length */
-#define CAL_THREAD_STACK    1024U       /* calibration thread stack size (bytes) */
+/* Raised 1024->2048 (HIT_LIST #5): at 1024 the cal thread overflowed its stack
+ * during a calibration -> K_ERR_STACK_CHK_FAIL (reason 2) at k_sem_take,
+ * rebooting the head mid-cal (confirmed by crash-record thread=cal_thread). The
+ * deep path is cal_total_absolute -> cal_validate_and_save -> settings_save_one +
+ * settings_load_subtree("cal") (the deliberate read-back-from-flash) on top of the
+ * CalSmCtx_t local. 2048 clears the real depth. */
+#define CAL_THREAD_STACK    2048U       /* calibration thread stack size (bytes) */
 #define CAL_FO2_TO_PPO2_SCALE 1000.0f  /* scale factor: mbar -> centibar * fO2 */
 
 /* ---- Atomic calibration guard (bug #7 fix) ---- */

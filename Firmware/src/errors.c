@@ -74,9 +74,9 @@ static Status_t errors_init(void)
         had_crash = true;
         crash_noinit.magic = 0U;
 
-        LOG_ERR("Previous crash: reason=%u pc=0x%08x lr=0x%08x cfsr=0x%08x",
+        LOG_ERR("Previous crash: reason=%u pc=0x%08x lr=0x%08x cfsr=0x%08x thread=0x%08x",
             last_crash.reason, last_crash.pc,
-            last_crash.lr, last_crash.cfsr);
+            last_crash.lr, last_crash.cfsr, last_crash.thread);
     }
 
     return 0;
@@ -237,6 +237,11 @@ void k_sys_fatal_error_handler(uint32_t reason,
 
     crash_noinit.magic = CRASH_MAGIC;
     crash_noinit.reason = reason;
+    /* Record the faulting thread so a stack overflow (K_ERR_STACK_CHK_FAIL=2)
+     * can be attributed to a specific thread on the next boot. */
+    crash_noinit.thread = (uint32_t)(uintptr_t)k_current_get();
+    printk("*** FATAL thread=%s (%p) ***\n",
+           k_thread_name_get(k_current_get()), (void *)k_current_get());
 
 #if defined(CONFIG_CPU_CORTEX_M)
     crash_noinit.cfsr = SCB->CFSR;
