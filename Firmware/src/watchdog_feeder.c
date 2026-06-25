@@ -142,6 +142,21 @@ static int wdt_channel_id_get_or_init(const struct device *wdt)
     return cached_channel_id;
 }
 
+void watchdog_kick(void)
+{
+    const struct device *wdt = DEVICE_DT_GET(WDT_NODE);
+
+    if (!device_is_ready(wdt)) {
+        return;
+    }
+
+    int channel = wdt_channel_id_get_or_init(wdt);
+
+    if (channel >= 0) {
+        (void)wdt_feed(wdt, channel);
+    }
+}
+
 static void watchdog_feeder_thread(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1);

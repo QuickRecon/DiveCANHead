@@ -50,6 +50,8 @@ target_sources(app PRIVATE
 # source must not be compiled. Guard accordingly.
 target_sources_ifdef(CONFIG_THREAD_ANALYZER app PRIVATE
     src/thread_analyzer_paced.c)
+target_sources_ifdef(CONFIG_DIVECAN_ONESHOT_FLASH_ERASE app PRIVATE
+    src/flash_mass_erase.c)
 target_sources_ifdef(CONFIG_FACTORY_IMAGE app PRIVATE src/factory_image.c)
 target_sources_ifdef(CONFIG_FACTORY_IMAGE_BACKEND_FLASH app PRIVATE
     src/factory_image_backend_flash.c)

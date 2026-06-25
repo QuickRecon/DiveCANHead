@@ -30,6 +30,7 @@
 #endif
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
+#include "flash_mass_erase.h"
 #endif
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
@@ -43,6 +44,36 @@ static const uint32_t STARTUP_DELAY_MS = 1000U;
 
 /* Heartbeat LED blink period (ms) */
 static const uint32_t BLINK_PERIOD_MS = 500U;
+
+/* Boot indicator: a short, fast LED burst at the very top of main() — before
+ * any flash/FCB work — so each boot is visually distinct from the steady ~1 Hz
+ * heartbeat. A healthy boot shows the burst ONCE then the slow heartbeat; a
+ * unit stuck resetting (e.g. a long flash op overrunning the watchdog) shows
+ * the burst repeating at the reset period, making a boot loop obvious by eye. */
+#define BOOT_BLINK_COUNT   6U
+#define BOOT_BLINK_ON_MS   60U
+#define BOOT_BLINK_OFF_MS  60U
+
+/**
+ * @brief Flash the heartbeat LED in a short burst to mark the start of a boot.
+ *
+ * Runs before flash_log_init so it fires on every (re)boot regardless of how
+ * far boot gets. Safe to call before the main heartbeat loop reconfigures the
+ * same LED.
+ */
+static void boot_indicator(void)
+{
+    if (!device_is_ready(led.port)) {
+        return;
+    }
+    (void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+    for (uint32_t i = 0U; i < BOOT_BLINK_COUNT; ++i) {
+        (void)gpio_pin_set_dt(&led, 1);
+        k_msleep(BOOT_BLINK_ON_MS);
+        (void)gpio_pin_set_dt(&led, 0);
+        k_msleep(BOOT_BLINK_OFF_MS);
+    }
+}
 
 /* Max preamble line length (after format expansion). 128 fits the
  * longest expected line ("Solenoids: O2_inject=… O2_flush=… …") with
@@ -362,6 +393,18 @@ static void emit_startup_preamble(void)
 Status_t main(void)
 {
     Status_t ret = 0;
+
+    /* Visual boot marker (fast LED burst) before any flash/FCB work, so a reset
+     * loop is obvious by eye: healthy boot = one burst then steady heartbeat;
+     * reset loop = burst repeating at the reset period. */
+    boot_indicator();
+
+#ifdef CONFIG_DIVECAN_ONESHOT_FLASH_ERASE
+    /* RECOVERY one-shot (see CONFIG_DIVECAN_ONESHOT_FLASH_ERASE): chip-erase the
+     * external NOR before anything mounts it, so the flash-log FCB and NVS come
+     * up clean. Runs first so flash_log_init() below sees blank flash. */
+    (void)flash_mass_erase_external();
+#endif
 
 #ifdef CONFIG_FLASH_LOG
     /* Mount FCBs and bump the persisted boot counter. Record the boot

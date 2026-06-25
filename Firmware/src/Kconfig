@@ -234,6 +234,23 @@ config DIVECAN_WATCHDOG
 	  via heartbeat.h) has advanced since the last check.
 	  Disable for native_sim test builds where IWDG hardware is absent.
 
+config DIVECAN_ONESHOT_FLASH_ERASE
+	bool "RECOVERY: chip-erase the external NOR once at boot"
+	default n
+	depends on FLASH
+	help
+	  When set, main() chip-erases the ENTIRE external SPI-NOR very early in
+	  boot (before flash_log_init), wiping slot1/OTA, the image scratch, the
+	  factory backup, the flash log, and NVS/settings. The internal flash
+	  (MCUboot + the running slot0 image) is untouched. The erase is chunked
+	  and feeds the IWDG directly so it survives the watchdog.
+
+	  Use ONCE to recover a unit whose external flash is corrupted (e.g. stale
+	  >16 MB content exposed by the SPI-NOR 4-byte-addressing fix that the FCB
+	  recovery erase cannot clear within the watchdog window). Flash a build
+	  with this enabled, let it erase and boot clean, then reflash a normal
+	  build with this OFF. NOT for production — it fires on every boot while set.
+
 rsource "Kconfig.firmware_confirm"
 rsource "Kconfig.factory_image"
 
