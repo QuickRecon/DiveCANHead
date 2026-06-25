@@ -284,6 +284,34 @@ def test_power_cycle_bus_on_recovery(dut, firmware) -> None:
         stop_native_sim_firmware(new_proc)
 
 
+@pytest.mark.skipif(
+    "build-coverage" in os.environ.get("DIVECAN_FW_BIN", "")
+    or os.environ.get("DIVECAN_RT_RATIO_MAX") is not None,
+    reason="See test_power_cycle_bus_off_then_shutdown — same root cause.",
+)
+def test_power_cycle_shutdown_then_bus_off(dut, firmware) -> None:
+    """The OTHER ordering: the ``BUS_OFF`` message arrives FIRST (over the
+    still-live bus) and the bus goes quiet AFTER.  This is what real hardware
+    and the HIL rig actually do — a CAN frame can only be received while the
+    bus is live, so CAN_EN is necessarily still asserted when BUS_OFF lands and
+    de-asserts a moment later.  Dual-action shutdown must honour this ordering
+    just like bus-then-message.  Mirrors the legacy
+    ``HW Testing/Tests/test_pwr_management.py::test_power_cycle_msg_then_bus``."""
+    can_bus, shim = dut
+    proc = firmware
+
+    can_bus.send(divecan.build_shutdown())
+    shim.set_bus_off()
+
+    # power_shutdown → sys_reboot → posix_exit on native_sim.
+    _expect_firmware_exit(proc, SHUTDOWN_DEADLINE_S)
+
+    can_bus.flush_rx()
+    assert can_bus.wait_no_response(divecan.PPO2_RESP_ID, timeout=1.0), (
+        "PPO2 broadcast continued after firmware shutdown"
+    )
+
+
 def test_power_aborts_on_bus_held_active(dut, firmware) -> None:
     """The shutdown thread aborts when the CAN bus is held active
     during its 20×100 ms observation window.  Hold ``bus_on`` and
@@ -300,6 +328,35 @@ def test_power_aborts_on_bus_held_active(dut, firmware) -> None:
     assert proc.poll() is None, (
         f"firmware exited (rc={proc.returncode}) despite bus_on being held — "
         f"abort window should have kept it alive"
+    )
+
+    # PPO2 broadcasts should still be flowing.
+    can_bus.flush_rx()
+    msg = can_bus.wait_for(divecan.PPO2_RESP_ID, timeout=2.0)
+    assert msg.arbitration_id == divecan.PPO2_RESP_ID
+
+
+def test_power_aborts_on_bus_reasserted(dut, firmware) -> None:
+    """Dual-action re-assert guard: if CAN_EN comes back active *after* going
+    quiet but still within the abort window, the shutdown is cancelled and the
+    firmware stays up.  Protects against a spurious BUS_OFF + momentary bus drop
+    powering the head down while the bus is really still in use."""
+    can_bus, shim = dut
+    proc = firmware
+
+    # Bus goes quiet and the shutdown request arrives — the head should be
+    # part-way through its observation window...
+    shim.set_bus_off()
+    can_bus.send(divecan.build_shutdown())
+    helpers.sim_sleep(shim, 0.5)  # let it observe "quiet" for part of the window
+
+    # ...then the bus re-asserts before the window expires → abort.
+    shim.set_bus_on()
+    helpers.sim_sleep(shim, SHUTDOWN_ABORT_WINDOW_S + 0.5)
+
+    assert proc.poll() is None, (
+        f"firmware exited (rc={proc.returncode}) despite the bus re-asserting "
+        f"within the abort window — the re-assert guard should have kept it alive"
     )
 
     # PPO2 broadcasts should still be flowing.

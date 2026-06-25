@@ -67,7 +67,13 @@ LOG_WRN that lands in the text stream. Runtime toggle via UDS DID
 
 ## On-flash format
 
-FCB handles framing (length encoding + per-entry CRC + end marker).
+FCB handles framing (length encoding + end marker). The per-entry **CRC
+is disabled** (`FCB_FLAGS_CRC_DISABLED`, set on both FCB instances at
+their definition in `flash_log.c`; requires `CONFIG_FCB_ALLOW_FIXED_
+ENDMARKER`) — entries are validated by a fixed end-marker byte, not a
+CRC. This is a boot-time performance requirement, not a preference; see
+[Boot mount cost & the active-sector walk](#boot-mount-cost--the-active-sector-walk).
+
 Each entry's *payload* is a TLV record:
 
 ```c
@@ -99,8 +105,17 @@ Followed by `length` bytes of type-specific payload (see
 | `0x22` | CELL_RAW_ANALOG   | telem   | idx, ppo2, raw_adc i32, millivolts u16                   |
 | `0x30` | ERROR_EVENT       | telem   | code u32 + detail u32                                    |
 | `0x40` | LOG_TEXT          | text    | level u8 + module_id u16 + text bytes (length-bound)     |
+| `0xFD` | BATCH             | telem   | container: packed `[fl_entry_hdr + sub-payload]×N` (one flush of telemetry sub-records) |
 | `0xFE` | DROP_MARKER       | either  | count u32 + last_dropped_type u8 (synthetic, per-FCB)    |
 | `0xFF` | END_OF_STREAM     | —       | — (download-only synthetic, never on flash)              |
+
+Telemetry records are not written one-per-FCB-entry; one `BATCH` entry
+holds all the telemetry sub-records from a single 2 s flush (see
+[Boot mount cost](#boot-mount-cost--the-active-sector-walk)). A `BATCH`
+payload is a packed sequence of `[fl_entry_hdr + sub-payload]`, byte-for-
+byte the same layout a standalone entry would have on flash, so a reader
+just recurses into it. Markers (`BOOT_MARKER`/`DIVE_START`/`DIVE_END`)
+and `LOG_TEXT` are still written as individual entries.
 
 ### Capture cadence
 
@@ -187,17 +202,56 @@ so the marker is still distinguishable but flagged as uncertain.
 ## Power-loss recovery
 
 FCB drops half-written entries on the next mount: each entry carries
-an inline CRC + end-marker, and `fcb_init` skips records whose
-framing doesn't match. The currently-in-progress entry at brownout
-is lost; anything still in the ingest queue is also lost. No
-battery-backed RAM tier — this is documented and accepted.
+an end-marker (CRC disabled — see On-flash format), and `fcb_init`
+stops the active-sector walk at the first record whose framing/marker
+doesn't match. The currently-in-progress entry at brownout is lost;
+anything still in the ingest queue is also lost. No battery-backed RAM
+tier — this is documented and accepted.
 
-If `fcb_init` fails outright (corrupt sector at mount), the init
-path tries one full-partition erase + re-init. If that also fails,
-the writer thread suspends itself, the producers still increment
-drop counters (so the failure is observable), and `OP_ERR_FLASH` is
-published to `chan_error`. The head never reboots on flash-log
-failure — log loss is not a safety event.
+If `fcb_init` fails outright (corrupt sector at mount), the init path
+tries one full-partition erase + re-init, wrapped in
+`heartbeat_set_long_op` so the multi-second erase of the 48 MiB
+telemetry partition can't trip the IWDG (the spi_nor driver k_sleeps
+on WIP, so the low-prio feeder still runs and feeds during the erase).
+`fcb_init` bails fast (`-ENOMSG`, before any entry walk) when sector 0's
+magic doesn't match `FL_FCB_MAGIC`, so a format/geometry change is a
+quick reject → erase → clean re-init; **bump `FL_FCB_MAGIC` on any
+on-flash format change** (it is also the lever to force a one-shot
+recovery erase). If the re-init also fails, the writer thread suspends
+itself, producers still increment drop counters (so the failure is
+observable), and `OP_ERR_FLASH` is published to `chan_error`. The head
+never reboots on flash-log failure — log loss is not a safety event.
+
+## Boot mount cost & the active-sector walk
+
+`fcb_init` walks the **active sector** on every boot to find the append
+point. Two properties of this walk drove the on-flash format choices
+above; getting them wrong makes the head **hang at boot** (not reset —
+the SPI reads k_sleep, so the watchdog stays fed and the board sits at
+~15 mA grinding SPI, never reaching normal operation):
+
+1. **CRC disabled / fixed end-marker.** With per-entry CRC, the walk
+   must *read every byte of every entry* to recompute the CRC — i.e.
+   read the whole (up to 256 KiB) active sector over the 6 MHz SPI NOR
+   on every boot (6 MHz is the ceiling at the 12 MHz low-power SYSCLK).
+   On a filled sector that grinds for tens of seconds to minutes. The
+   fixed end-marker lets the walk read only the ~3-byte header+marker
+   per entry, so cost scales with entry **count**, not entry **data**.
+
+2. **Telemetry batched into one entry per flush.** Even reading 3 bytes
+   per entry, the walk scales with entry *count*. At one FCB entry per
+   telemetry record (≈10–15/s), a 256 KiB sector holds thousands of
+   entries and the walk still grinds on this slow/flaky flash. Writing
+   one `BATCH` entry per 2 s flush cuts that to ~one entry per flush
+   (≈30/min), bounding the walk regardless of dive length. (Markers stay
+   individual so the lazy reader index — which only inspects marker
+   entries — still finds dive/boot markers without a deep walk.)
+
+Verified on the rig: a 10-minute fill that previously hung 100 s+
+boots in ~2–6 s with both changes. The 192-sector / 256 KiB geometry is
+forced by FCB's `uint8_t f_sector_cnt` (≤255) over a 48 MiB partition —
+so the per-boot walk is inherent and these two levers (not a faster bus,
+which is clock-capped) are what keep it bounded.
 
 ## Retrieval
 

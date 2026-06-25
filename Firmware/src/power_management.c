@@ -746,6 +746,10 @@ K_THREAD_DEFINE(battery_monitor, 512,
 
 #define SHUTDOWN_ABORT_WINDOW_ATTEMPTS 20U
 #define SHUTDOWN_ABORT_POLL_MS 100
+/* Consecutive inactive CAN_EN reads required to declare the bus "gone quiet".
+ * Debounces the active→inactive edge as the handset de-asserts CAN_EN just
+ * after sending BUS_OFF, so a single noise glitch can't latch the quiet state. */
+#define SHUTDOWN_CONFIRM_INACTIVE_POLLS 2U
 
 ZBUS_MSG_SUBSCRIBER_DEFINE(shutdown_sub);
 ZBUS_CHAN_ADD_OBS(chan_shutdown_request, shutdown_sub, 0);
@@ -771,21 +775,48 @@ static void shutdown_thread_fn(void *p1, void *p2, void *p3)
 
         LOG_INF("Shutdown requested — entering abort window");
 
-        bool committed = true;
+        /* Dual-action shutdown. Powering down requires BOTH a BUS_OFF message
+         * (which woke this thread) AND the CAN bus going quiet (CAN_EN inactive)
+         * — so neither a spurious message nor a spurious BUS_EN blip alone can
+         * shut us down. Order is irrelevant: BUS_OFF may arrive before or after
+         * the bus goes quiet. BUS_OFF is a CAN frame, so it can only arrive over
+         * a LIVE bus — CAN_EN is typically still asserted at this instant and the
+         * handset de-asserts it shortly after; so we WAIT for the bus to go quiet
+         * rather than aborting on the initial active state (the old logic aborted
+         * immediately on that and the head could never sleep on real hardware).
+         *
+         * We watch the WHOLE window: commit only if the bus went quiet and STAYED
+         * quiet through to the end. Abort if the bus is held active the entire
+         * window (spurious message, handset still using the bus) OR if CAN_EN
+         * comes back active after going quiet (re-assert — a spurious shutdown we
+         * must not honour). */
+        bool saw_quiet = false;       /* bus confirmed inactive at least once */
+        bool reasserted = false;      /* came back active after going quiet */
+        uint8_t inactive_run = 0;
         for (uint8_t i = 0; i < SHUTDOWN_ABORT_WINDOW_ATTEMPTS; ++i) {
             if (power_is_can_active(dev)) {
-                LOG_INF("Bus reasserted during abort window — staying up");
-                committed = false;
-                break;
+                inactive_run = 0;
+                if (saw_quiet) {
+                    /* Re-assertion within the window — bail out. */
+                    reasserted = true;
+                    break;
+                }
+            } else if (++inactive_run >= SHUTDOWN_CONFIRM_INACTIVE_POLLS) {
+                saw_quiet = true;
             }
             k_msleep(SHUTDOWN_ABORT_POLL_MS);
         }
 
-        if (!committed) {
+        if (reasserted) {
+            LOG_INF("Bus reasserted during abort window — staying up");
+            continue;
+        }
+        if (!saw_quiet) {
+            LOG_INF("Bus held active through abort window — staying up");
             continue;
         }
 
-        LOG_INF("Committing to shutdown");
+        LOG_INF("Bus went quiet and stayed quiet — committing to shutdown");
         (void)power_shutdown(dev);
         /* power_shutdown() does not return on a healthy build.  If it
          * does (e.g. HAL refused to enter SHUTDOWN), fall through to
