@@ -56,6 +56,12 @@ typedef enum {
     FL_TYPE_CELL_RAW_ANALOG     = 0x22, /* T */
     FL_TYPE_ERROR_EVENT         = 0x30, /* T */
     FL_TYPE_LOG_TEXT            = 0x40, /* X */
+    /* Batch container: one FCB entry holds many telemetry sub-records, written
+     * once per 2 s flush. Keeps fcb_init()'s per-boot active-sector walk bounded
+     * by FLUSH count, not record count (see fl_write_telemetry_batch). Payload is
+     * a packed sequence of [fl_entry_hdr_t + sub-payload]. T-stream only; markers
+     * stay as individual entries so the boot index walk still finds them. */
+    FL_TYPE_BATCH               = 0xFD, /* T (container) */
     FL_TYPE_DROP_MARKER         = 0xFE, /* synthetic, per-FCB */
     FL_TYPE_END_OF_STREAM       = 0xFF, /* synthetic, download-only */
 } FlashLogType_t;

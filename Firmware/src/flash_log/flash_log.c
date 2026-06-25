@@ -63,7 +63,10 @@ LOG_MODULE_REGISTER(flash_log, LOG_LEVEL_NONE);
  * entry walk), so the watchdog-safe recovery erase below cleans the partition
  * once and subsequent mounts are fast. Bump this again on any future on-flash
  * format/geometry change. */
-#define FL_FCB_MAGIC    0x44434C48U  /* "DCLH" */
+#define FL_FCB_MAGIC    0x44434C4CU  /* "DCLL" — CRC-disabled fixed-end-marker +
+                                      * batched-telemetry entry format. Bump on any
+                                      * on-flash format change (also forces a
+                                      * one-shot recovery erase of older data). */
 #define FL_FCB_VERSION  2
 
 /* Ingest slot layout — header + bounded payload. The msgq is statically
@@ -90,8 +93,10 @@ K_MSGQ_DEFINE(fl_ingest_msgq, sizeof(LogIngestSlot_t),
 static struct flash_sector fl_telemetry_sectors[FL_TELEMETRY_SECTOR_COUNT];
 static struct flash_sector fl_text_sectors[FL_TEXT_SECTOR_COUNT];
 
-static struct fcb fl_telemetry_fcb;
-static struct fcb fl_text_fcb;
+/* f_flags is a const member of struct fcb, so the CRC-disabled / fixed-end-marker
+ * mode must be set here at definition (see fl_mount_fcb for the rationale). */
+static struct fcb fl_telemetry_fcb = { .f_flags = FCB_FLAGS_CRC_DISABLED };
+static struct fcb fl_text_fcb = { .f_flags = FCB_FLAGS_CRC_DISABLED };
 
 static atomic_t fl_drops_telemetry = ATOMIC_INIT(0);
 static atomic_t fl_drops_text      = ATOMIC_INIT(0);
@@ -556,8 +561,124 @@ static bool fl_batch_append(const LogIngestSlot_t *slot)
     return true;
 }
 
-/* Write every staged entry to its FCB in one burst, then reset. Wrapped in
- * heartbeat_set_long_op so a sector rotation/erase mid-burst can't trip the
+/* Write all TELEMETRY non-marker records staged in fl_batch_buf as ONE FCB entry
+ * (a FL_TYPE_BATCH container). The fast-filling telemetry ring then gets ~one FCB
+ * entry per 2 s flush instead of one per record, so fcb_init()'s per-boot
+ * active-sector walk is bounded by FLUSH count, not RECORD count — the fix for the
+ * boot grind on the 48 MB / 256 KiB geometry over slow SPI NOR. The batch payload
+ * is a packed sequence of [fl_entry_hdr_t + sub-payload], identical to how
+ * standalone entries are laid out on flash, so a reader just recurses into it. */
+static void fl_write_telemetry_batch(void)
+{
+    struct fcb *fcb_p = fl_get_fcb(FL_DEST_TELEMETRY);
+    if (fcb_p == NULL) {
+        return;
+    }
+
+    /* Pass A: total sub-record bytes + first timestamp. */
+    size_t total = 0U;
+    uint64_t first_ts = 0U;
+    bool have = false;
+    size_t off = 0U;
+    while (off + FL_BATCH_HDR_BYTES <= fl_batch_len) {
+        const uint8_t *p = &fl_batch_buf[off];
+        FlashLogDest_t dest = (FlashLogDest_t)p[0];
+        uint8_t type = p[1];
+        uint16_t length = (uint16_t)p[2] | ((uint16_t)p[3] << 8);
+        size_t rec = FL_BATCH_HDR_BYTES + length;
+        if (off + rec > fl_batch_len) {
+            break;
+        }
+        if ((FL_DEST_TELEMETRY == dest) && !fl_is_marker_type(type)) {
+            if (!have) {
+                for (uint8_t b = 0U; b < 8U; ++b) {
+                    first_ts |= ((uint64_t)p[4U + b]) << (8U * b);
+                }
+                have = true;
+            }
+            total += sizeof(fl_entry_hdr_t) + length;
+        }
+        off += rec;
+    }
+    if (!have) {
+        return;
+    }
+
+    /* Reserve one FCB entry for the whole batch (rotate once on a full ring). */
+    fl_entry_hdr_t bhdr = {
+        .type = FL_TYPE_BATCH,
+        .flags = 0U,
+        .length = (uint16_t)total,
+        .ts_boot_us = first_ts,
+    };
+    struct fcb_entry loc;
+    int rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
+    if (-ENOSPC == rc) {
+        rc = fcb_rotate(fcb_p);
+        if (0 == rc) {
+            rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
+        }
+    }
+    if (0 != rc) {
+        return;
+    }
+
+    off_t woff = FCB_ENTRY_FA_DATA_OFF(loc);
+    rc = flash_area_write(fcb_p->fap, woff, &bhdr, sizeof(bhdr));
+    woff += (off_t)sizeof(bhdr);
+
+    /* Pass B: write each telemetry sub-record [fl_entry_hdr_t + payload],
+     * coalesced into one flash write per sub-record. */
+    off = 0U;
+    while ((0 == rc) && (off + FL_BATCH_HDR_BYTES <= fl_batch_len)) {
+        const uint8_t *p = &fl_batch_buf[off];
+        FlashLogDest_t dest = (FlashLogDest_t)p[0];
+        uint8_t type = p[1];
+        uint16_t length = (uint16_t)p[2] | ((uint16_t)p[3] << 8);
+        size_t rec = FL_BATCH_HDR_BYTES + length;
+        if (off + rec > fl_batch_len) {
+            break;
+        }
+        if ((FL_DEST_TELEMETRY == dest) && !fl_is_marker_type(type)) {
+            uint64_t ts = 0U;
+            for (uint8_t b = 0U; b < 8U; ++b) {
+                ts |= ((uint64_t)p[4U + b]) << (8U * b);
+            }
+            fl_entry_hdr_t sh = {
+                .type = type,
+                .flags = 0U,
+                .length = length,
+                .ts_boot_us = ts,
+            };
+            uint8_t wbuf[sizeof(fl_entry_hdr_t) + CONFIG_FLASH_LOG_MAX_ENTRY_BYTES];
+            size_t wlen = sizeof(sh) + length;
+            if (wlen <= sizeof(wbuf)) {
+                (void)memcpy(wbuf, &sh, sizeof(sh));
+                if (length > 0U) {
+                    (void)memcpy(&wbuf[sizeof(sh)], &p[FL_BATCH_HDR_BYTES], length);
+                }
+                rc = flash_area_write(fcb_p->fap, woff, wbuf, wlen);
+            } else {
+                rc = flash_area_write(fcb_p->fap, woff, &sh, sizeof(sh));
+                if ((0 == rc) && (length > 0U)) {
+                    rc = flash_area_write(fcb_p->fap, woff + (off_t)sizeof(sh),
+                                  &p[FL_BATCH_HDR_BYTES], length);
+                }
+            }
+            woff += (off_t)wlen;
+        }
+        off += rec;
+    }
+
+    if (0 == rc) {
+        (void)fcb_append_finish(fcb_p, &loc);
+    }
+}
+
+/* Write every staged entry to its FCB in one burst, then reset. Markers (mirrored
+ * to both FCBs) and TEXT records go as individual entries; TELEMETRY records are
+ * coalesced into one FL_TYPE_BATCH entry (see fl_write_telemetry_batch). Wrapped
+ * in heartbeat_set_long_op so a sector rotation/erase mid-burst can't trip the
  * watchdog. */
 static void fl_batch_flush(void)
 {
@@ -569,37 +690,46 @@ static void fl_batch_flush(void)
     fl_emit_drop_marker_if_any(FL_DEST_TELEMETRY);
     fl_emit_drop_marker_if_any(FL_DEST_TEXT);
 
+    /* Pass 1: markers (mirrored) + TEXT records → individual entries, so the
+     * boot-time index walk still finds dive/boot markers and the (slow) text ring
+     * keeps per-message granularity. */
     size_t off = 0U;
     while (off + FL_BATCH_HDR_BYTES <= fl_batch_len) {
         const uint8_t *p = &fl_batch_buf[off];
         FlashLogDest_t dest = (FlashLogDest_t)p[0];
         uint8_t type = p[1];
         uint16_t length = (uint16_t)p[2] | ((uint16_t)p[3] << 8);
-        uint64_t ts = 0U;
-        for (uint8_t b = 0U; b < 8U; ++b) {
-            ts |= ((uint64_t)p[4U + b]) << (8U * b);
-        }
-        off += FL_BATCH_HDR_BYTES + length;
-        if (off > fl_batch_len) {
+        size_t rec = FL_BATCH_HDR_BYTES + length;
+        if (off + rec > fl_batch_len) {
             break; /* truncation guard — should never happen */
         }
-        const uint8_t *payload = &p[FL_BATCH_HDR_BYTES];
-
-        struct fcb *primary = fl_get_fcb(dest);
-        if (primary != NULL) {
-            (void)fl_write_entry_to_fcb(primary, type, 0U, ts, payload, length);
-        }
-        if (fl_is_marker_type(type)) {
-            FlashLogDest_t mirror_dest =
-                (FL_DEST_TELEMETRY == dest) ? FL_DEST_TEXT : FL_DEST_TELEMETRY;
-            struct fcb *mirror = fl_get_fcb(mirror_dest);
-            if (mirror != NULL) {
-                (void)fl_write_entry_to_fcb(mirror, type, 0U, ts, payload, length);
+        bool marker = fl_is_marker_type(type);
+        if (marker || (FL_DEST_TEXT == dest)) {
+            uint64_t ts = 0U;
+            for (uint8_t b = 0U; b < 8U; ++b) {
+                ts |= ((uint64_t)p[4U + b]) << (8U * b);
+            }
+            const uint8_t *payload = &p[FL_BATCH_HDR_BYTES];
+            struct fcb *primary = fl_get_fcb(dest);
+            if (primary != NULL) {
+                (void)fl_write_entry_to_fcb(primary, type, 0U, ts, payload, length);
+            }
+            if (marker) {
+                FlashLogDest_t mirror_dest =
+                    (FL_DEST_TELEMETRY == dest) ? FL_DEST_TEXT : FL_DEST_TELEMETRY;
+                struct fcb *mirror = fl_get_fcb(mirror_dest);
+                if (mirror != NULL) {
+                    (void)fl_write_entry_to_fcb(mirror, type, 0U, ts, payload, length);
+                }
             }
         }
+        off += rec;
     }
-    fl_batch_len = 0U;
 
+    /* Pass 2: all TELEMETRY non-marker records → one batched entry. */
+    fl_write_telemetry_batch();
+
+    fl_batch_len = 0U;
     heartbeat_set_long_op(false);
 }
 
@@ -725,7 +855,13 @@ static int fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
     fcb_p->f_sector_cnt = sector_count;
     fcb_p->f_scratch_cnt = 1U;
     fcb_p->f_sectors = sectors;
-
+    /* NOTE: f_flags = FCB_FLAGS_CRC_DISABLED is set at the static fcb definition
+     * (it is a const member). That makes fcb_init()'s per-boot active-sector walk
+     * read only the ~3-byte header+marker per entry instead of READING EVERY BYTE
+     * to recompute a CRC — which on a filled 256 KiB sector over 6 MHz SPI NOR
+     * grinds for tens of seconds and the board never reaches normal operation.
+     * Trade-off: entries are validated by the fixed end-marker, not a CRC (still
+     * catches truncated/torn writes). See the fcb defs + FL_FCB_MAGIC bump. */
     int rc = fcb_init(area_id, fcb_p);
     if (0 != rc) {
         /* One-shot recovery: erase the partition and retry. fcb_init bails fast
