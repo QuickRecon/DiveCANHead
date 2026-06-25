@@ -182,6 +182,32 @@ int runtime_settings_load(RuntimeSettings_t *out);
 int runtime_settings_save(const RuntimeSettings_t *settings);
 
 /**
+ * @brief Apply settings to the in-memory cache WITHOUT persisting to NVS.
+ *
+ * Volatile counterpart to runtime_settings_save(): the live config (everything
+ * that reads getCached(), e.g. the calibrate path's Cal Mode) changes
+ * immediately, but the value is lost on reboot. Used by the UDS volatile
+ * setting-value write (DID 0x9130+i) so a session override takes effect.
+ *
+ * @param settings Settings to apply (must not be NULL)
+ * @return 0 on success, -EINVAL if the settings fail validation
+ */
+int runtime_settings_set_volatile(const RuntimeSettings_t *settings);
+
+/**
+ * @brief Copy the current in-memory settings cache into *out.
+ *
+ * Returns the LIVE config (boot-loaded values plus any volatile overrides from
+ * runtime_settings_set_volatile()) WITHOUT re-reading NVS — so it reflects
+ * volatile writes and never clobbers them. Contrast runtime_settings_load(),
+ * which reloads the cache from NVS (only boot should do that). The cache is kept
+ * in sync with NVS by runtime_settings_save(). Use for reads of current values.
+ *
+ * @param out Destination (must not be NULL)
+ */
+void runtime_settings_get(RuntimeSettings_t *out);
+
+/**
  * @brief Validate that all fields are within the compile-time allowed sets.
  *
  * @param settings Settings to check (must not be NULL)

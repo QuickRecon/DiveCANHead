@@ -203,8 +203,9 @@ uint64_t UDS_GetSettingValue(uint8_t index)
 {
     uint64_t result = 0U;
 
+    /* Read the LIVE cache (reflects volatile 0x9130 writes), not an NVS reload. */
     RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
-    (void)runtime_settings_load(&rs);
+    runtime_settings_get(&rs);
 
     switch (index) {
     case SETTING_INDEX_FW_COMMIT:
@@ -262,8 +263,10 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
         } else if (value > setting->maxValue) {
             OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, index);
         } else {
+            /* Start from the LIVE cache so volatile overrides stack (each set
+             * builds on prior ones) rather than reverting to NVS. */
             RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
-            (void)runtime_settings_load(&rs);
+            runtime_settings_get(&rs);
 
             switch (index) {
             case SETTING_INDEX_PPO2_MODE:
@@ -294,7 +297,10 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
                 break;
             }
 
-            if (runtime_settings_validate(&rs)) {
+            /* Apply to the live cache (volatile, no NVS). Previously this only
+             * VALIDATED and discarded rs, so the 0x9130 write ACKed but never
+             * took effect. set_volatile re-validates and commits to getCached().*/
+            if (0 == runtime_settings_set_volatile(&rs)) {
                 result = true;
             }
             else {

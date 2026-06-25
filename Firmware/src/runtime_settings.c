@@ -381,6 +381,29 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
     return rc;
 }
 
+Status_t runtime_settings_set_volatile(const RuntimeSettings_t *s)
+{
+    Status_t rc = 0;
+
+    if (!runtime_settings_validate(s)) {
+        rc = -EINVAL;
+    }
+    else {
+        /* Apply to the in-memory cache only — live config changes immediately
+         * (e.g. the calibrate path reads getCached()->calibrationMode) but is
+         * NOT persisted to NVS. Mirrors runtime_settings_save()'s cache update
+         * minus the settings_save_one writes. */
+        *getCached() = *s;
+    }
+
+    return rc;
+}
+
+void runtime_settings_get(RuntimeSettings_t *out)
+{
+    *out = *getCached();
+}
+
 /**
  * @brief Return the currently-cached battery chemistry.
  *
