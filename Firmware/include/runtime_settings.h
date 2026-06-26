@@ -42,6 +42,26 @@ static const PPO2ControlMode_t valid_ppo2_control_modes[] = {
 #define PPO2_CONTROL_MODE_DEFAULT PPO2CONTROL_OFF
 #endif
 
+/* ---- PPO2 setpoint range ----
+ * The DiveCAN setpoint contract is 0.40–1.60 bar inclusive. Requests outside
+ * this range (whether from a DiveCAN setpoint frame or the UDS 0xF240 write) are
+ * clamped to the nearest bound, so a malformed or out-of-spec handset request can
+ * never drive the loop to an unsafe (hypoxic / hyperoxic) setpoint. */
+#define PPO2_SETPOINT_MIN_CB 40U   /* 0.40 bar */
+#define PPO2_SETPOINT_MAX_CB 160U  /* 1.60 bar */
+
+/** @brief Clamp a centibar setpoint to the valid 0.40–1.60 bar range. */
+static inline PPO2_t clamp_setpoint_cb(PPO2_t setpoint_cb)
+{
+    if (setpoint_cb < PPO2_SETPOINT_MIN_CB) {
+        return (PPO2_t)PPO2_SETPOINT_MIN_CB;
+    }
+    if (setpoint_cb > PPO2_SETPOINT_MAX_CB) {
+        return (PPO2_t)PPO2_SETPOINT_MAX_CB;
+    }
+    return setpoint_cb;
+}
+
 /* ---- Calibration Mode ----
  * The enum values themselves live in `oxygen_cell_types.h` as `CalMethod_t`
  * (the wire-format type carried in CalRequest_t).  CalibrationMode_t here

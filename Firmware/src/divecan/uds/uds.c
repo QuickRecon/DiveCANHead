@@ -632,7 +632,9 @@ static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData,
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        PPO2_t ppo2 = requestData[UDS_DATA_IDX];
+        /* Clamp to the valid 0.40–1.60 bar range (see runtime_settings.h) so an
+         * out-of-range write can never apply an unsafe setpoint. */
+        PPO2_t ppo2 = clamp_setpoint_cb(requestData[UDS_DATA_IDX]);
         zbus_pub_checked(&chan_setpoint, &ppo2, K_MSEC(100));
 
         ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;

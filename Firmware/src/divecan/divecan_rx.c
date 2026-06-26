@@ -529,7 +529,9 @@ static void RespCal(const DiveCANMessage_t *message)
  */
 static void RespSetpoint(const DiveCANMessage_t *message)
 {
-    PPO2_t setpoint = message->data[0];
+    /* Clamp to the valid 0.40–1.60 bar range: an out-of-spec handset request must
+     * never drive the loop to an unsafe setpoint (see runtime_settings.h). */
+    PPO2_t setpoint = clamp_setpoint_cb(message->data[0]);
     zbus_pub_checked(&chan_setpoint, &setpoint, K_MSEC(100));
 }
 
