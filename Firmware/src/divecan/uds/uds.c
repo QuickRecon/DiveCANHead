@@ -49,7 +49,7 @@ static const size_t SI_COUNT_OFF = 4U;
 static const uint16_t UDS_SINGLE_VALUE_LEN = 5U;
 static const uint16_t SETTING_VALUE_WRITE_LEN = 12U;
 
-/* Magic data byte required on the OTA-action write DIDs (0xF275–0xF277).
+/* Magic data byte required on the OTA-action / erase write DIDs (0xF275–0xF279).
  * Treating these as "command" DIDs that demand a deliberate non-zero byte
  * keeps an accidental zero-fill write from triggering a reboot. */
 static const uint8_t OTA_WRITE_MAGIC = 0x01U;
@@ -955,6 +955,63 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
 }
 
 /**
+ * @brief Handle a WDBI write to UDS_DID_NVS_ERASE (0xF279).
+ *
+ * Erases ONLY the "storage" partition (the Zephyr settings/NVS backend) and
+ * reboots, so the unit comes back up on its compiled-in defaults
+ * (RUNTIME_SETTINGS_DEFAULT). Unlike the factory-flash-erase (0xF278) this
+ * leaves the flash log and OTA slot1/factory-image partitions intact, and is a
+ * single 32 KB area erase (sub-second) rather than a multi-minute chip erase.
+ * Note: cal coefficients live in the same partition (the "cal" subtree), so they
+ * are cleared too. Destructive provisioning tool, gated on the programming
+ * session + magic byte.
+ */
+static bool writeNvsEraseDID(UDSContext_t *ctx,
+                             const uint8_t *requestData,
+                             uint16_t requestLength)
+{
+    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+
+    if (0U != nrc) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
+    } else {
+        LOG_WRN("NVS erase: wiping settings (storage) partition, then reboot");
+        /* ACK before the erase + reboot and pump the ISO-TP TX queue so the
+         * response is physically on the bus first — same reason as the
+         * factory-flash-erase path (the erase + reboot would otherwise drop the
+         * queued ACK). */
+        buildWriteDidPositiveResponse(ctx, requestData);
+        UDS_SendResponse(ctx);
+        for (uint32_t i = 0U; i < FLASH_ERASE_TX_FLUSH_POLLS; ++i) {
+            ISOTP_TxQueue_Poll(k_uptime_get_32());
+            if (!ISOTP_TxQueue_IsBusy() &&
+                (0U == ISOTP_TxQueue_GetPendingCount())) {
+                break;
+            }
+            k_msleep(FLASH_ERASE_TX_FLUSH_POLL_MS);
+        }
+#ifdef CONFIG_FLASH_LOG
+        /* The settings partition shares the SPI NOR with the log; pause the log
+         * writer so its sector-erase waits don't fight this erase for the bus. */
+        flash_log_pause();
+#endif
+        const struct flash_area *fa = NULL;
+        int rc = flash_area_open(PARTITION_ID(storage_partition), &fa);
+        if (0 == rc) {
+            rc = flash_area_erase(fa, 0U, fa->fa_size);
+            flash_area_close(fa);
+        }
+        if (0 != rc) {
+            OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+            LOG_ERR("NVS erase failed: %d", rc);
+        }
+        sys_reboot(SYS_REBOOT_COLD);
+    }
+    return true;
+}
+
+/**
  * @brief Handle a WDBI write to UDS_DID_OTA_RESTORE_FACTORY (0xF276).
  *
  * Re-stages the captured factory backup image into slot1 and reboots.
@@ -1180,6 +1237,8 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
             (void)writeFactoryCaptureDID(ctx, requestData, requestLength);
         } else if (UDS_DID_FACTORY_FLASH_ERASE == did) {
             (void)writeFactoryFlashEraseDID(ctx, requestData, requestLength);
+        } else if (UDS_DID_NVS_ERASE == did) {
+            (void)writeNvsEraseDID(ctx, requestData, requestLength);
 #ifdef CONFIG_FLASH_LOG
         } else if (UDS_DID_LOG_ERASE == did) {
             (void)writeLogEraseDID(ctx, requestData, requestLength);

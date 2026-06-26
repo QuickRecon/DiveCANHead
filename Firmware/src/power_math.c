@@ -63,7 +63,10 @@ static Numeric_t power_low_battery_threshold_for(BatteryType_t type)
         threshold = 7.7f;
         break;
     case BATTERY_TYPE_LI1S:
-        threshold = 3.0f;
+        /* 3.5 V (raised from the 3.0 V cell-contingency limit): the 3.3 V LDO
+         * loses regulation as the 1S pack sags, so warn above the dropout region
+         * rather than at the absolute floor. */
+        threshold = 3.5f;
         break;
     case BATTERY_TYPE_LI2S:
         threshold = 6.0f;

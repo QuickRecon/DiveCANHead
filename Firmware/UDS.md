@@ -200,6 +200,8 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF275 | 1     | uint8=1  | W         | Force-revert (1-step rollback via slot1 re-swap)         |
 | 0xF276 | 1     | uint8=1  | W         | Restore factory image into slot1 + reboot                |
 | 0xF277 | 1     | uint8=1  | W         | Force re-capture of current slot0 into factory backup    |
+| 0xF278 | 1     | uint8=1  | W         | Chip-erase the whole external NOR (slot1/factory/log/NVS) + reboot — gated to programming + !in_dive; multi-minute |
+| 0xF279 | 1     | uint8=1  | W         | Erase ONLY the NVS/settings (storage) partition + reboot — keeps log + OTA slot1/factory; cal lives in NVS so it is cleared too; gated to programming + !in_dive |
 | 0xF280 | 48    | struct   | R         | Flash log stats (per-FCB breakdown — see [Flash Log DIDs](#flash-log-dids-0xf280-0xf284)) |
 | 0xF281 | 20    | struct   | R         | Selector result from the most recent 0x31 0xF10x routine |
 | 0xF282 | 2     | u8+u8    | W         | Erase flash log (stream mask + magic 0xA5) — gated to programming + !in_dive |

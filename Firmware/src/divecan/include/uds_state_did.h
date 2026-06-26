@@ -63,6 +63,7 @@
 #define UDS_DID_OTA_RESTORE_FACTORY   0xF276U  /**< write-only, magic 0x01: copy factory backup into slot1 + reboot */
 #define UDS_DID_OTA_FACTORY_CAPTURE   0xF277U  /**< write-only, magic 0x01: force re-capture of slot0 into factory backup */
 #define UDS_DID_FACTORY_FLASH_ERASE   0xF278U  /**< write-only, magic 0x01: chip-erase the external NOR (slot1/factory/log/NVS) + reboot */
+#define UDS_DID_NVS_ERASE             0xF279U  /**< write-only, magic 0x01: erase ONLY the NVS/settings (storage) partition + reboot; keeps flash log + OTA slot1/factory (cal lives in NVS, so it is cleared too) */
 
 /* Flash log management DIDs (0xF28x) — see docs/FLASH_LOG.md */
 #define UDS_DID_LOG_STATS             0xF280U  /**< 48 B: FlashLogStats_t per-FCB breakdown */

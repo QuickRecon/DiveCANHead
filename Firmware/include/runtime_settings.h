@@ -99,7 +99,7 @@ static_assert(!IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_FLUSH) ||
 /** @brief Battery chemistry, controls the low-battery threshold voltage. */
 typedef enum {
     BATTERY_TYPE_9V   = 0, /**< 9V alkaline; threshold 7.7 V */
-    BATTERY_TYPE_LI1S = 1, /**< 1S Li-ion (3.7V nominal); threshold 3.0 V */
+    BATTERY_TYPE_LI1S = 1, /**< 1S Li-ion (3.7V nominal); threshold 3.5 V (above the 3.3 V LDO dropout) */
     BATTERY_TYPE_LI2S = 2, /**< 2S Li-ion (7.4V nominal); threshold 6.0 V */
     BATTERY_TYPE_LI3S = 3, /**< 3S Li-ion (11.1V nominal); threshold 9.0 V */
     BATTERY_TYPE_COUNT

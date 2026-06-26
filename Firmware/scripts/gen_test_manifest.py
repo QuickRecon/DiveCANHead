@@ -29,7 +29,7 @@ DEFAULT_BITRATE = 125000  # DiveCAN is a 125 kbit/s bus
 # check the voltage the head reports back over DiveCAN.
 BATTERY_VOLTAGE = {
     "9V":   (9.0, 9.6, 7.7),
-    "LI1S": (3.7, 4.2, 3.0),
+    "LI1S": (3.7, 4.2, 3.5),
     "LI2S": (7.4, 8.4, 6.0),
     "LI3S": (11.1, 12.6, 9.0),
 }
