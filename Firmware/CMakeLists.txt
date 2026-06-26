@@ -7,8 +7,10 @@ set(DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 # Analyzer false positives in CMSIS/HAL inline asm and Zephyr internals are demoted
 # from -Werror to plain warnings; see COMPROMISE.md for the full list and rationale.
 # Disabled on native_sim: host toolchain path doesn't populate GCC_COMPILER_VERSION
-# before the SCA check runs, causing a false version-too-old error.
-if(NOT BOARD STREQUAL "native_sim")
+# before the SCA check runs, causing a false version-too-old error. Match the
+# whole native_sim family (e.g. native_sim/native/64, required on aarch64 hosts),
+# not just the bare "native_sim" string.
+if(NOT BOARD MATCHES "native_sim")
     set(ZEPHYR_SCA_VARIANT gcc)
 endif()
 set(GCC_SCA_OPTS
@@ -107,6 +109,7 @@ target_sources_ifdef(CONFIG_FLASH_LOG app PRIVATE
 target_include_directories(app PRIVATE src/flash_log)
 
 add_subdirectory(drivers/solenoid)
+add_subdirectory(drivers/ads1x1x)
 add_subdirectory_ifdef(CONFIG_GPIO_SIM drivers/gpio_sim)
 
 # Build-time version string. We pass it in as an already-quoted string literal

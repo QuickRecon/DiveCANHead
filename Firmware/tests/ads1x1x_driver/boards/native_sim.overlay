@@ -1,0 +1,49 @@
+/* Two analog channels (different differential MUX pairs) on ONE emulated
+ * ADS1115, mirroring the real hardware's shared-chip layout (cells 1 & 2 on
+ * adc_ext1). The board-local driver must read each channel from its own MUX. */
+#include <zephyr/dt-bindings/adc/adc.h>
+
+/ {
+	test_i2c: i2c@100 {
+		compatible = "zephyr,i2c-emul-controller";
+		reg = <0x100 4>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clock-frequency = <100000>;
+		status = "okay";
+
+		ads_a: ads1115@48 {
+			compatible = "ti,ads1115";
+			reg = <0x48>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			#io-channel-cells = <1>;
+
+			channel@0 {	/* AIN0-AIN1 differential */
+				reg = <0>;
+				zephyr,gain = "ADC_GAIN_8";
+				zephyr,reference = "ADC_REF_INTERNAL";
+				zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+				zephyr,resolution = <16>;
+				zephyr,differential;
+				zephyr,input-positive = <0>;
+				zephyr,input-negative = <1>;
+			};
+
+			channel@1 {	/* AIN2-AIN3 differential */
+				reg = <1>;
+				zephyr,gain = "ADC_GAIN_8";
+				zephyr,reference = "ADC_REF_INTERNAL";
+				zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+				zephyr,resolution = <16>;
+				zephyr,differential;
+				zephyr,input-positive = <2>;
+				zephyr,input-negative = <3>;
+			};
+		};
+	};
+
+	zephyr,user {
+		io-channels = <&ads_a 0>, <&ads_a 1>;
+	};
+};

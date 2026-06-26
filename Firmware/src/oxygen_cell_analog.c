@@ -34,14 +34,12 @@ LOG_MODULE_REGISTER(cell_analog, LOG_LEVEL_INF);
 #define ANALOG_SAMPLE_INTERVAL_MS 10
 
 /*
- * ADC channel mapping (from DTS):
- *   Cell 1: adc_ext1 (ADS1115 @ 0x48), channel 0 (diff pair 1)
- *   Cell 2: adc_ext1 (ADS1115 @ 0x48), channel 1 (diff pair 2)
- *   Cell 3: adc_ext2 (ADS1115 @ 0x49), channel 0 (diff pair 1)
- *
- * The ADS1115 in differential mode uses channels 0-3 where:
- *   ch 0 = AIN0-AIN1 (diff pair 1)
- *   ch 1 = AIN2-AIN3 (diff pair 2)
+ * ADC channel mapping now lives in devicetree, not here. The board DTS defines
+ * a channel@N node per analog cell (device + differential AIN pair + gain) and
+ * a zephyr,user `io-channels` list in cell order; each cell pulls its spec with
+ * ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), cell_index). Distribution across
+ * the two ADS1115s (and which AIN pair) is therefore configuration, not code.
+ * See boards/quickrecon/divecan_jr/divecan_jr.dts.
  */
 
 struct analog_cell_state {
@@ -51,10 +49,7 @@ struct analog_cell_state {
     int16_t last_counts;
     int64_t last_reading_ticks;
     const struct zbus_channel *out_chan;
-    const struct device *adc_dev;
-    uint8_t adc_channel_id;
-    uint8_t adc_input_positive;
-    uint8_t adc_input_negative;
+    const struct adc_dt_spec *adc;   /* device + channel config, from DT */
     int16_t adc_sample_buf;
     struct adc_sequence adc_seq;
 };
@@ -70,7 +65,7 @@ static Status_t analog_adc_read(struct analog_cell_state *cell)
     cell->adc_seq.buffer = &cell->adc_sample_buf;
     cell->adc_seq.buffer_size = sizeof(cell->adc_sample_buf);
 
-    Status_t ret = adc_read(cell->adc_dev, &cell->adc_seq);
+    Status_t ret = adc_read_dt(cell->adc, &cell->adc_seq);
 
     if (0 == ret) {
         cell->last_counts = cell->adc_sample_buf;
@@ -129,50 +124,32 @@ static void analog_publish(struct analog_cell_state *cell)
     zbus_pub_checked(cell->out_chan, &msg, K_MSEC(100));
 }
 
-/* ADS1115 ADC resolution in bits */
-static const uint8_t ADS1115_RESOLUTION_BITS = 16U;
-
 /**
- * @brief Configure the ADS1115 ADC channel for differential mode and prepare
- *        the adc_sequence struct in the cell state.
+ * @brief Configure the cell's ADC channel and prepare its adc_sequence, all
+ *        from the devicetree spec (gain/reference/differential/AIN pair and
+ *        resolution come from the channel@N node).
  *
- * @param cell Cell state containing device pointer and channel/pin assignments.
+ * @param cell Cell state holding a pointer to its DT adc_dt_spec.
  * @return 0 on success, -ENODEV if the device is not ready, or a negative
- *         errno forwarded from adc_channel_setup().
+ *         errno forwarded from adc_channel_setup_dt().
  */
 static Status_t analog_cell_init_adc(struct analog_cell_state *cell)
 {
     Status_t result = 0;
 
-    if (!device_is_ready(cell->adc_dev)) {
+    if (!adc_is_ready_dt(cell->adc)) {
         LOG_ERR("ADC device not ready for cell %u", cell->cell_number);
         result = -ENODEV;
     } else {
-        /* ADS1115 differential mode: +/-0.256V PGA, 128 SPS.
-         * input_positive/negative select the MUX pair on the ADS1115:
-         *   Cell 1: AIN0-AIN1 (pos=0, neg=1)
-         *   Cell 2: AIN2-AIN3 (pos=2, neg=3)
-         *   Cell 3: AIN0-AIN1 on second ADS1115 (pos=0, neg=1) */
-        struct adc_channel_cfg ch_cfg = {
-            .gain = ADC_GAIN_8,   /* PGA ±0.256V on ADS1115 */
-            .reference = ADC_REF_INTERNAL,
-            .acquisition_time = ADC_ACQ_TIME_DEFAULT,
-            .channel_id = cell->adc_channel_id,
-            .differential = 1,
-            .input_positive = cell->adc_input_positive,
-            .input_negative = cell->adc_input_negative,
-        };
-
-        Status_t ret = adc_channel_setup(cell->adc_dev, &ch_cfg);
+        Status_t ret = adc_channel_setup_dt(cell->adc);
 
         if (0 != ret) {
             LOG_ERR("ADC channel setup failed for cell %u: %d",
                 cell->cell_number, ret);
             result = ret;
         } else {
-            cell->adc_seq.channels = BIT(cell->adc_channel_id);
-            cell->adc_seq.resolution = ADS1115_RESOLUTION_BITS;
-            cell->adc_seq.oversampling = 0;
+            /* Fills channels/resolution/oversampling from the DT spec. */
+            (void)adc_sequence_init_dt(cell->adc, &cell->adc_seq);
             cell->adc_seq.buffer = &cell->adc_sample_buf;
             cell->adc_seq.buffer_size = sizeof(cell->adc_sample_buf);
         }
@@ -306,21 +283,20 @@ ZBUS_LISTENER_DEFINE(analog_cal_done_listener, analog_cal_done_cb);
 ZBUS_CHAN_ADD_OBS(chan_cal_response, analog_cal_done_listener, 10);
 
 /* ---- Per-cell static state and threads ----
- * Cell 1: ADS1115 @ 0x48, channel 0 (diff pair AIN0-AIN1)
- * Cell 2: ADS1115 @ 0x48, channel 1 (diff pair AIN2-AIN3)
- * Cell 3: ADS1115 @ 0x49, channel 0 (diff pair AIN0-AIN1)
+ * The device + differential AIN pair for each cell comes from the zephyr,user
+ * io-channels list in the board DTS, indexed in DiveCAN cell order (cell 1 -> 0,
+ * cell 2 -> 1, cell 3 -> 2). See divecan_jr.dts.
  */
 
 #if defined(CONFIG_CELL_1_TYPE_ANALOG)
+static const struct adc_dt_spec cell_1_adc =
+    ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
 static struct analog_cell_state cell_1_state = {
     .cell_number = 0,
     .cal_coeff = 0.0f,
     .status = CELL_NEED_CAL,
     .out_chan = &chan_cell_1,
-    .adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc_ext1)),
-    .adc_channel_id = 0,
-    .adc_input_positive = 0,   /* AIN0 */
-    .adc_input_negative = 1,   /* AIN1 */
+    .adc = &cell_1_adc,
 };
 K_THREAD_DEFINE(analog_cell_1, 768,
         analog_cell_thread, &cell_1_state, NULL, NULL,
@@ -328,15 +304,14 @@ K_THREAD_DEFINE(analog_cell_1, 768,
 #endif
 
 #if defined(CONFIG_CELL_2_TYPE_ANALOG) && CONFIG_CELL_COUNT >= 2
+static const struct adc_dt_spec cell_2_adc =
+    ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 1);
 static struct analog_cell_state cell_2_state = {
     .cell_number = 1,
     .cal_coeff = 0.0f,
     .status = CELL_NEED_CAL,
     .out_chan = &chan_cell_2,
-    .adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc_ext1)),
-    .adc_channel_id = 1,
-    .adc_input_positive = 2,   /* AIN2 */
-    .adc_input_negative = 3,   /* AIN3 */
+    .adc = &cell_2_adc,
 };
 K_THREAD_DEFINE(analog_cell_2, 768,
         analog_cell_thread, &cell_2_state, NULL, NULL,
@@ -344,15 +319,14 @@ K_THREAD_DEFINE(analog_cell_2, 768,
 #endif
 
 #if defined(CONFIG_CELL_3_TYPE_ANALOG) && CONFIG_CELL_COUNT >= 3
+static const struct adc_dt_spec cell_3_adc =
+    ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 2);
 static struct analog_cell_state cell_3_state = {
     .cell_number = 2,
     .cal_coeff = 0.0f,
     .status = CELL_NEED_CAL,
     .out_chan = &chan_cell_3,
-    .adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc_ext2)),
-    .adc_channel_id = 0,
-    .adc_input_positive = 0,   /* AIN0 */
-    .adc_input_negative = 1,   /* AIN1 */
+    .adc = &cell_3_adc,
 };
 K_THREAD_DEFINE(analog_cell_3, 768,
         analog_cell_thread, &cell_3_state, NULL, NULL,

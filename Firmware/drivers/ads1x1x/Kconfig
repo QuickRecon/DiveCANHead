@@ -1,0 +1,37 @@
+# Board-local multi-channel ADS1X1X ADC driver
+#
+# Fork of the upstream ti,ads1x1x driver that supports multiple logical
+# channels (channel@N) on one ADS1115, each with its own differential MUX pair.
+# Build this INSTEAD of the upstream driver: set CONFIG_ADC_ADS1X1X=n so only
+# one driver instantiates the ti,ads1115 devicetree nodes.
+
+config ADC_ADS1X1X_LOCAL
+	bool "Board-local multi-channel ADS1X1X ADC driver"
+	default y
+	depends on ADC
+	depends on DT_HAS_TI_ADS1115_ENABLED
+	select I2C
+	select ADC_CONFIGURABLE_INPUTS
+	help
+	  Enable the board-local ADS1X1X driver. Unlike the upstream driver it
+	  supports several channel@N nodes per ADS1115 so two analog cells can
+	  share one chip on different differential pairs. Requires
+	  CONFIG_ADC_ADS1X1X=n to avoid duplicate device instantiation.
+
+if ADC_ADS1X1X_LOCAL
+
+config ADC_ADS1X1X_LOCAL_INIT_PRIORITY
+	int "Init priority"
+	default 80
+	help
+	  ADS1X1X ADC device driver initialization priority (after I2C).
+
+config ADC_ADS1X1X_LOCAL_ACQUISITION_THREAD_PRIO
+	int "Priority for the ADC data acquisition thread"
+	default 0
+
+config ADC_ADS1X1X_LOCAL_ACQUISITION_THREAD_STACK_SIZE
+	int "Stack size for the ADC data acquisition thread"
+	default 1024
+
+endif # ADC_ADS1X1X_LOCAL

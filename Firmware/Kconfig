@@ -1,6 +1,7 @@
 mainmenu "DiveCAN Jr Firmware"
 
 rsource "drivers/solenoid/Kconfig"
+rsource "drivers/ads1x1x/Kconfig"
 rsource "src/Kconfig"
 
 source "Kconfig.zephyr"

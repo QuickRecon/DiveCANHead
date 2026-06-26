@@ -1,0 +1,6 @@
+# Pull in the board-local ADS1X1X driver's Kconfig (defines
+# CONFIG_ADC_ADS1X1X_LOCAL and its thread/init-priority symbols) so this test
+# builds the real driver under test.
+rsource "../../drivers/ads1x1x/Kconfig"
+
+source "Kconfig.zephyr"

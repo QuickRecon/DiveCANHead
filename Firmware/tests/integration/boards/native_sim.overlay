@@ -21,6 +21,8 @@
  *   12:    CAN shutdown
  */
 
+#include <zephyr/dt-bindings/adc/adc.h>
+
 /* Disable the default gpio_emul so we can replace it with gpio-sim */
 &gpio0 {
     status = "disabled";
@@ -121,17 +123,60 @@
     adc_ext1: adc_ext1 {
         compatible = "zephyr,adc-emul";
         nchannels = <2>;
+        #address-cells = <1>;
+        #size-cells = <0>;
         #io-channel-cells = <1>;
         ref-internal-mv = <256>;
         status = "okay";
+
+        channel@0 {	/* Cell 1: AIN0-AIN1 differential */
+            reg = <0>;
+            zephyr,gain = "ADC_GAIN_8";
+            zephyr,reference = "ADC_REF_INTERNAL";
+            zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+            zephyr,resolution = <16>;
+            zephyr,differential;
+            zephyr,input-positive = <0>;
+            zephyr,input-negative = <1>;
+        };
+
+        channel@1 {	/* Cell 2: AIN2-AIN3 differential */
+            reg = <1>;
+            zephyr,gain = "ADC_GAIN_8";
+            zephyr,reference = "ADC_REF_INTERNAL";
+            zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+            zephyr,resolution = <16>;
+            zephyr,differential;
+            zephyr,input-positive = <2>;
+            zephyr,input-negative = <3>;
+        };
     };
 
     adc_ext2: adc_ext2 {
         compatible = "zephyr,adc-emul";
         nchannels = <2>;
+        #address-cells = <1>;
+        #size-cells = <0>;
         #io-channel-cells = <1>;
         ref-internal-mv = <256>;
         status = "okay";
+
+        channel@0 {	/* Cell 3: AIN0-AIN1 differential */
+            reg = <0>;
+            zephyr,gain = "ADC_GAIN_8";
+            zephyr,reference = "ADC_REF_INTERNAL";
+            zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+            zephyr,resolution = <16>;
+            zephyr,differential;
+            zephyr,input-positive = <0>;
+            zephyr,input-negative = <1>;
+        };
+    };
+
+    /* Analog cell -> ADC channel map (cell order), mirroring the board DTS so
+     * oxygen_cell_analog.c's ADC_DT_SPEC_GET_BY_IDX(zephyr_user, n) resolves. */
+    zephyr,user {
+        io-channels = <&adc_ext1 0>, <&adc_ext1 1>, <&adc_ext2 0>;
     };
 
     /* ---- Emulated UARTs for digital oxygen cells ---- */

@@ -1,6 +1,7 @@
 /dts-v1/;
 #include <st/l4/stm32l431Xc.dtsi>
 #include <st/l4/stm32l431r(b-c)tx-pinctrl.dtsi>
+#include <zephyr/dt-bindings/adc/adc.h>
 
 / {
 	model = "QuickRecon DiveCAN Jr";
@@ -138,6 +139,12 @@
 /* ---- I2C1 — ADS1115 external ADCs ----
  * Two devices: 0x48 (cells 1+2), 0x49 (cell 3 + aux)
  * PA9 = SCL, PA10 = SDA
+ *
+ * Analog cell -> ADC channel distribution lives here in DT (consumed by
+ * src/oxygen_cell_analog.c via the zephyr,user io-channels list below), NOT in
+ * C. Each channel@N is a logical channel_id; zephyr,input-positive/negative
+ * select the physical ADS1115 differential AIN pair. Galvanic cells are ~60 mV
+ * full scale, so use the ±0.256 V PGA range (ADC_GAIN_8).
  */
 &i2c1 {
 	pinctrl-0 = <&i2c1_scl_pa9 &i2c1_sda_pa10>;
@@ -148,13 +155,60 @@
 	adc_ext1: ads1115@48 {
 		compatible = "ti,ads1115";
 		reg = <0x48>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 		#io-channel-cells = <1>;
+
+		channel@0 {		/* Cell 1: AIN0-AIN1 differential */
+			reg = <0>;
+			zephyr,gain = "ADC_GAIN_8";
+			zephyr,reference = "ADC_REF_INTERNAL";
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <16>;
+			zephyr,differential;
+			zephyr,input-positive = <0>;
+			zephyr,input-negative = <1>;
+		};
+
+		channel@1 {		/* Cell 2: AIN2-AIN3 differential */
+			reg = <1>;
+			zephyr,gain = "ADC_GAIN_8";
+			zephyr,reference = "ADC_REF_INTERNAL";
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <16>;
+			zephyr,differential;
+			zephyr,input-positive = <2>;
+			zephyr,input-negative = <3>;
+		};
 	};
 
 	adc_ext2: ads1115@49 {
 		compatible = "ti,ads1115";
 		reg = <0x49>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 		#io-channel-cells = <1>;
+
+		channel@0 {		/* Cell 3: AIN0-AIN1 differential */
+			reg = <0>;
+			zephyr,gain = "ADC_GAIN_8";
+			zephyr,reference = "ADC_REF_INTERNAL";
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <16>;
+			zephyr,differential;
+			zephyr,input-positive = <0>;
+			zephyr,input-negative = <1>;
+		};
+	};
+};
+
+/* Analog cell -> ADC channel map, in DiveCAN cell order (cell 1, 2, 3).
+ * oxygen_cell_analog.c pulls each cell's ADC spec with
+ * ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), cell_index). Redistributing
+ * cells across chips/pairs is a one-line edit here — no C changes. */
+/ {
+	zephyr,user {
+		io-channels = <&adc_ext1 0>, <&adc_ext1 1>, <&adc_ext2 0>;
 	};
 };
 
