@@ -199,6 +199,10 @@ struct ads1x1x_data {
 	struct ads1x1x_channel_cfg channel_cfg[ADS1X1X_MAX_CHANNELS];
 	atomic_t channels;
 	uint8_t active_channel;
+	/* Last channel that ran a KEPT conversion on this (possibly shared) chip, or -1
+	 * at init. Used to discard one conversion after a MUX change so a high-impedance
+	 * input settles before the kept conversion. */
+	int last_converted_channel;
 #ifdef ADC_ADS1X1X_TRIGGER
 	struct gpio_callback gpio_cb;
 	struct k_work work;
@@ -641,6 +645,27 @@ static int ads1x1x_adc_start_read(const struct device *dev, const struct adc_seq
 
 	data->buffer = sequence->buffer;
 
+	/* Discard one conversion after a MUX change so the high-impedance (~10k) cell
+	 * input settles before the KEPT conversion. The two cells on a shared ADS1115
+	 * alternate, so the mux changes every read; with single-shot conversions the first
+	 * sample after a mux switch is unsettled (intermittent ~0 reads, worse the larger
+	 * the other channel's voltage — confirmed on-rig). This throwaway runs under the
+	 * same adc_context lock as the kept read (so the other cell can't re-switch the mux
+	 * between them) and uses the synchronous OS-poll wait; the kept conversion (and the
+	 * ALERT/RDY interrupt, if configured) is started below, so the RDY pin is not armed
+	 * for this throwaway. A lone cell (mux never changes) only discards on its first
+	 * read. Defence-in-depth alongside the slower 32 SPS rate. */
+	if ((int)data->active_channel != data->last_converted_channel) {
+		rc = ads1x1x_start_conversion(dev);
+		if (rc == 0) {
+			rc = ads1x1x_wait_data_ready(dev);
+		}
+		if (rc != 0) {
+			return rc;
+		}
+	}
+	data->last_converted_channel = (int)data->active_channel;
+
 #ifdef ADC_ADS1X1X_TRIGGER
 	const struct ads1x1x_config *config = dev->config;
 
@@ -814,6 +839,7 @@ static int ads1x1x_init(const struct device *dev)
 	struct ads1x1x_data *data = dev->data;
 
 	data->dev = dev;
+	data->last_converted_channel = -1;
 
 	k_sem_init(&data->acq_sem, 0, 1);
 

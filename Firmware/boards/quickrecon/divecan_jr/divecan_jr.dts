@@ -158,12 +158,20 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		#io-channel-cells = <1>;
+		/* ALRT_ADC1 -> PA11 is wired for a conversion-ready IRQ, but the data-ready
+		 * interrupt path is NOT yet enabled: with no external pull-up on the open-drain
+		 * ALERT/RDY, the weak (~40k) STM32 internal pull-up couldn't reconstruct the
+		 * brief (~8us) RDY pulse, so reads stalled (all cells -> 0). Needs scope bring-up
+		 * (real pull-up and/or latching comparator + clear-on-read) before re-enabling:
+		 *   alert-rdy-gpios = <&gpioa 11 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		 * Until then the driver uses its OS-bit polling path (works). 32 SPS + the
+		 * discard-after-mux-change handle the settling. */
 
 		channel@0 {		/* Cell 1: AIN0-AIN1 differential */
 			reg = <0>;
 			zephyr,gain = "ADC_GAIN_8";
 			zephyr,reference = "ADC_REF_INTERNAL";
-			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 2)>;	/* 32 SPS (~31ms): longer settle for the high-Z (~10k) cell inputs */
 			zephyr,resolution = <16>;
 			zephyr,differential;
 			zephyr,input-positive = <0>;
@@ -174,7 +182,7 @@
 			reg = <1>;
 			zephyr,gain = "ADC_GAIN_8";
 			zephyr,reference = "ADC_REF_INTERNAL";
-			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 2)>;	/* 32 SPS (~31ms): longer settle for the high-Z (~10k) cell inputs */
 			zephyr,resolution = <16>;
 			zephyr,differential;
 			zephyr,input-positive = <2>;
@@ -188,12 +196,15 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		#io-channel-cells = <1>;
+		/* ALRT_ADC2 -> PA12 wired for conversion-ready IRQ; NOT enabled yet (see @48 —
+		 * needs pull-up/scope bring-up). Polling path in use.
+		 *   alert-rdy-gpios = <&gpioa 12 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; */
 
 		channel@0 {		/* Cell 3: AIN0-AIN1 differential */
 			reg = <0>;
 			zephyr,gain = "ADC_GAIN_8";
 			zephyr,reference = "ADC_REF_INTERNAL";
-			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 2)>;	/* 32 SPS (~31ms): longer settle for the high-Z (~10k) cell inputs */
 			zephyr,resolution = <16>;
 			zephyr,differential;
 			zephyr,input-positive = <0>;
