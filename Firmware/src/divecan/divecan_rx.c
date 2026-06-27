@@ -118,8 +118,12 @@ static atomic_t *get_bus_id_count(void)
  */
 static void bump_saturating(atomic_t *count)
 {
-    atomic_val_t current = atomic_get(count);
-    if (current < (atomic_val_t)UINT32_MAX) {
+    /* Compare as uint32_t: atomic_val_t is a SIGNED 32-bit long on Cortex-M, so
+     * (atomic_val_t)UINT32_MAX is -1 and the old guard `current < -1` never let
+     * the counter advance on the target (it worked on 64-bit native_sim). Same
+     * latent bug as divecan_send's tx counter — froze the POST HANDSET-stage
+     * BUS_ID/BUS_INIT counters at 0. */
+    if ((uint32_t)atomic_get(count) < UINT32_MAX) {
         (void)atomic_inc(count);
     }
 }

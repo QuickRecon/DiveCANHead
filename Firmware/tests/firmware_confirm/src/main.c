@@ -15,6 +15,7 @@
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/dfu/mcuboot.h>   /* BOOT_SWAP_TYPE_* for the init-decision tests */
 
 #include <setjmp.h>
 #include <string.h>
@@ -405,4 +406,46 @@ ZTEST(firmware_confirm, test_handset_one_bus_id_only_passes)
 
     zassert_equal(firmware_confirm_get_state(), POST_CONFIRMED,
                   "BUS_ID-only handset evidence must pass the gate");
+}
+
+/* ---- firmware_confirm_init decision matrix --------------------------------
+ *
+ * Regression coverage for the bug where POST was DEFERRED on a freshly-swapped
+ * image. firmware_confirm_init() reads boot_is_img_confirmed() + mcuboot_swap_type()
+ * and routes via firmware_confirm_decide(); that pure decision is unit-tested here
+ * over the full (confirmed, swap_type) space so the REVERT case can never silently
+ * regress to "deferred" again. (The HIL test_full_swap exercises the live lifecycle;
+ * this catches the decision instantly in native_sim.)
+ */
+ZTEST_SUITE(firmware_confirm_decide, NULL, NULL, NULL, NULL, NULL);
+
+ZTEST(firmware_confirm_decide, test_confirmed_is_silent_any_swap)
+{
+    zassert_equal(firmware_confirm_decide(true, BOOT_SWAP_TYPE_NONE), POST_ACTION_SILENT,
+                  "a confirmed image must be POST-silent");
+    zassert_equal(firmware_confirm_decide(true, BOOT_SWAP_TYPE_REVERT), POST_ACTION_SILENT,
+                  "confirmed wins over any swap type");
+    zassert_equal(firmware_confirm_decide(true, BOOT_SWAP_TYPE_TEST), POST_ACTION_SILENT,
+                  "confirmed wins over any swap type");
+}
+
+ZTEST(firmware_confirm_decide, test_unconfirmed_revert_runs_post)
+{
+    /* THE regression: a freshly-swapped, unconfirmed image reports REVERT and MUST
+     * run POST so it can be validated + confirmed (else every OTA reverts). */
+    zassert_equal(firmware_confirm_decide(false, BOOT_SWAP_TYPE_REVERT), POST_ACTION_RUN,
+                  "unconfirmed + REVERT (just-swapped image) must RUN POST, not defer");
+}
+
+ZTEST(firmware_confirm_decide, test_unconfirmed_none_runs_post)
+{
+    zassert_equal(firmware_confirm_decide(false, BOOT_SWAP_TYPE_NONE), POST_ACTION_RUN,
+                  "unconfirmed + NONE (e.g. factory image) must RUN POST");
+}
+
+ZTEST(firmware_confirm_decide, test_unconfirmed_test_swap_defers)
+{
+    /* TEST = a swap queued for next boot; we are still on the OLD image — defer. */
+    zassert_equal(firmware_confirm_decide(false, BOOT_SWAP_TYPE_TEST), POST_ACTION_DEFER,
+                  "unconfirmed + queued TEST swap must defer to the next boot");
 }

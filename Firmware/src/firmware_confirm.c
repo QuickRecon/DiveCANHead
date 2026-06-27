@@ -518,6 +518,11 @@ uint32_t firmware_confirm_get_pass_mask(void)
     return (uint32_t)atomic_get(&s_post_pass_mask);
 }
 
+uint32_t firmware_confirm_get_tx_baseline(void)
+{
+    return (uint32_t)atomic_get(&s_post_tx_baseline);
+}
+
 #ifdef CONFIG_ZTEST
 void firmware_confirm_run_sync_for_test(void)
 {
@@ -543,6 +548,24 @@ void firmware_confirm_reset_for_test(void)
  * the suite drives run_post_sequence() inline.
  */
 
+/* Pure decision function — compiled in BOTH production and CONFIG_ZTEST builds so
+ * the native_sim suite can unit-test the swap-decision directly (this is exactly
+ * where the "POST deferred on a swapped REVERT image" regression lived). */
+PostInitAction_t firmware_confirm_decide(bool confirmed, int swap_type)
+{
+    if (confirmed) {
+        return POST_ACTION_SILENT;
+    }
+    /* Defer ONLY a queued TEST swap (still running the old image). A freshly-SWAPPED
+     * unconfirmed image reports BOOT_SWAP_TYPE_REVERT ("revert next boot unless
+     * confirmed") and MUST be validated — the earlier `!= NONE` check wrongly deferred
+     * it, so POST never ran on a swapped image and every OTA reverted. */
+    if (BOOT_SWAP_TYPE_TEST == swap_type) {
+        return POST_ACTION_DEFER;
+    }
+    return POST_ACTION_RUN;   /* REVERT (swapped, awaiting confirm) or NONE */
+}
+
 #ifndef CONFIG_ZTEST
 
 static void post_thread_entry(void *p1, void *p2, void *p3)
@@ -562,20 +585,23 @@ void firmware_confirm_init(void)
     bool confirmed = boot_is_img_confirmed();
     int swap = mcuboot_swap_type();
 
-    if (confirmed) {
+    switch (firmware_confirm_decide(confirmed, swap)) {
+    case POST_ACTION_SILENT:
         (void)atomic_set(&s_post_state, (atomic_val_t)POST_CONFIRMED);
         LOG_INF("Image already confirmed — POST silent");
-    } else if (BOOT_SWAP_TYPE_NONE != swap) {
-        /* A swap is queued for the next boot; the unit is still
-         * running the OLD image (test cycle hasn't started yet on
-         * this boot). Don't run POST on the running image — we'll
-         * POST after the next reset. */
+        break;
+    case POST_ACTION_DEFER:
+        /* NB effectively unreachable at init: the old image boots confirmed; kept
+         * defensively so a queued TEST swap never POSTs the wrong (old) image. */
         (void)atomic_set(&s_post_state, (atomic_val_t)POST_CONFIRMED);
-        LOG_INF("Swap pending — POST deferred to next boot");
-    } else {
-        LOG_INF("Image not yet confirmed — running POST (%d ms deadline)",
-                (int)POST_DEADLINE_MS);
+        LOG_INF("TEST swap queued — POST deferred to next boot");
+        break;
+    case POST_ACTION_RUN:
+    default:
+        LOG_INF("Image not yet confirmed (swap=%d) — running POST (%d ms deadline)",
+                swap, (int)POST_DEADLINE_MS);
         k_thread_start(firmware_confirm_thread);
+        break;
     }
 }
 

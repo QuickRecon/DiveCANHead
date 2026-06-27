@@ -43,8 +43,13 @@ static atomic_t *get_tx_count(void)
 static void bump_tx_count(void)
 {
     atomic_t *count = get_tx_count();
-    atomic_val_t current = atomic_get(count);
-    if (current < (atomic_val_t)UINT32_MAX) {
+    /* Compare as uint32_t — atomic_val_t is a SIGNED long (32-bit on Cortex-M),
+     * so the old `current < (atomic_val_t)UINT32_MAX` cast 0xFFFFFFFF to -1 and
+     * the guard was `current < -1`: false for every normal count, so the counter
+     * NEVER incremented on the STM32 target (it worked on 64-bit native_sim,
+     * hiding the bug from the ztests). That froze the POST PPO2_TX liveness gate
+     * at 0 and reverted every OTA. */
+    if ((uint32_t)atomic_get(count) < UINT32_MAX) {
         (void)atomic_inc(count);
     }
 }

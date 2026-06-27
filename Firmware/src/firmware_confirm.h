@@ -49,6 +49,36 @@ typedef enum {
 } PostState_t;
 
 /**
+ * @brief What firmware_confirm_init() should do at boot, given the boot state.
+ *
+ * Factored out as a PURE function (firmware_confirm_decide) so the (confirmed,
+ * swap_type) decision is unit-testable without stubbing mcuboot or starting the
+ * POST thread — the decision is exactly where the "POST deferred on a swapped
+ * image" regression lived.
+ */
+typedef enum {
+    POST_ACTION_SILENT,  /**< Image already confirmed — nothing to validate. */
+    POST_ACTION_DEFER,   /**< A TEST swap is QUEUED; this boot still runs the OLD image. */
+    POST_ACTION_RUN,     /**< Unconfirmed image to validate (freshly-swapped REVERT, or NONE). */
+} PostInitAction_t;
+
+/**
+ * @brief Decide whether to run POST at init, purely from boot state.
+ *
+ * @param confirmed  result of boot_is_img_confirmed()
+ * @param swap_type  result of mcuboot_swap_type() (a BOOT_SWAP_TYPE_* value)
+ * @return the action firmware_confirm_init() then performs.
+ *
+ * CRITICAL CASE: a freshly-SWAPPED, unconfirmed image reports swap_type
+ * BOOT_SWAP_TYPE_REVERT (the pending "revert unless confirmed") — that image is
+ * exactly what POST must validate, so it returns POST_ACTION_RUN. Only a
+ * BOOT_SWAP_TYPE_TEST swap (queued for next boot, still running the old image)
+ * defers. The earlier `!= BOOT_SWAP_TYPE_NONE` check wrongly deferred REVERT, so
+ * POST never ran on a swapped image and every OTA reverted on the next boot.
+ */
+PostInitAction_t firmware_confirm_decide(bool confirmed, int swap_type);
+
+/**
  * @brief Bit positions within the pass-mask atomic.
  *
  * Each completed check sets its own bit. firmware_confirm_get_pass_mask()
@@ -76,11 +106,15 @@ typedef enum {
  *  - If the running image is already confirmed (boot_is_img_confirmed()
  *    returns true), the POST thread does not run — the state stays at
  *    ::POST_CONFIRMED.
- *  - If a swap is pending (mcuboot_swap_type() != BOOT_SWAP_TYPE_NONE),
- *    the POST thread does not run — the swap will resolve on the next
- *    boot.
- *  - Otherwise the POST thread wakes up and walks the state machine
- *    against a wall-clock deadline of CONFIG_FIRMWARE_CONFIRM_DEADLINE_MS.
+ *  - If a TEST swap is QUEUED (mcuboot_swap_type() == BOOT_SWAP_TYPE_TEST,
+ *    i.e. still running the OLD image), the POST thread does not run — the
+ *    swap, and POST, happen on the next boot.
+ *  - Otherwise (unconfirmed and swap_type REVERT — a freshly-swapped image
+ *    awaiting confirmation — or NONE) the POST thread wakes up and walks the
+ *    state machine against CONFIG_FIRMWARE_CONFIRM_DEADLINE_MS, calling
+ *    boot_write_img_confirmed() on a full pass.
+ *
+ * See firmware_confirm_decide() for the unit-tested decision.
  *
  * Safe to call exactly once from main() after error_histogram_init().
  */
@@ -102,6 +136,15 @@ PostState_t firmware_confirm_get_state(void);
  * surfaces.
  */
 uint32_t firmware_confirm_get_pass_mask(void);
+
+/**
+ * @brief DIAG: tx_count snapshot captured at POST start.
+ *
+ * The PPO2_TX gate passes when (divecan_send_get_tx_count() - this) >=
+ * POST_REQUIRED_PPO2_TX_COUNT. Exposed via DID 0xF271 so the HIL can watch the
+ * delta live. 0 before POST runs (confirmed image).
+ */
+uint32_t firmware_confirm_get_tx_baseline(void);
 
 /**
  * @brief Test-only entry point: run the POST sequence synchronously.

@@ -6,16 +6,20 @@
 
 config FIRMWARE_CONFIRM_DEADLINE_MS
 	int "POST overall deadline (milliseconds)"
-	default 45000
-	range 200 600000
+	default 660000
+	range 200 660000
 	help
 	  Wall-clock deadline for the firmware-confirm POST gate. If every
 	  subsystem (cells, consensus, PPO2 TX, handset RX, solenoid) does
 	  not report healthy within this window, the unit reboots without
 	  calling boot_write_img_confirmed() so MCUBoot reverts the new
-	  image. Default 45 s (matches the plan); test builds typically
-	  override to a few hundred milliseconds to keep ztest runtimes
-	  short.
+	  image. Sized to bound the 10-minute consensus (manual-calibration)
+	  sub-window plus the remaining fast stages: an operator must
+	  calibrate the freshly-updated firmware to confirm it (consensus is
+	  FAIL until the cells are calibrated — see
+	  FIRMWARE_CONFIRM_CONSENSUS_TIMEOUT_MS); if they do not, the unit
+	  auto-reverts to the known-good image. Default 11 min. Test builds
+	  override to a few hundred milliseconds to keep ztest runtimes short.
 
 config FIRMWARE_CONFIRM_CELL_TIMEOUT_MS
 	int "POST per-cell liveness sub-timeout (milliseconds)"
@@ -28,12 +32,19 @@ config FIRMWARE_CONFIRM_CELL_TIMEOUT_MS
 
 config FIRMWARE_CONFIRM_CONSENSUS_TIMEOUT_MS
 	int "POST consensus liveness sub-timeout (milliseconds)"
-	default 5000
-	range 50 60000
+	default 600000
+	range 50 600000
 	help
 	  How long the voted consensus output has to publish a non-fail PPO2
-	  reading. Always longer than at least one cell timeout in practice
-	  because the consensus subscriber needs cell data first.
+	  reading before POST gives up and reverts. This is the post-update
+	  MANUAL-CALIBRATION window: a freshly-swapped image runs with the
+	  cells uncalibrated (consensus = FAIL → solenoid suppressed), so an
+	  operator must run a calibration to bring consensus alive, which is
+	  what confirms the new firmware. Default 10 min gives ample time for
+	  that; if no valid consensus appears in the window the unit reverts
+	  to the known-good image. The cell sub-timeout still fail-fasts a
+	  genuinely dead cell first; this only extends the wait for the
+	  human-in-the-loop calibration step.
 
 config FIRMWARE_CONFIRM_PPO2_TX_TIMEOUT_MS
 	int "POST PPO2 TX evidence sub-timeout (milliseconds)"
