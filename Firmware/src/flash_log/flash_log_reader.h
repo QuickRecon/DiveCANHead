@@ -42,6 +42,13 @@ typedef struct {
     struct fcb_entry cursor;
     bool started;
     bool finished;
+    /* Partial-entry streaming: an FCB entry (esp. a FL_TYPE_BATCH container,
+     * up to FL_BATCH_BUF_BYTES) can be larger than one download chunk, so a
+     * single entry is emitted across multiple next() calls. have_entry means
+     * `cursor` is positioned on an entry being streamed; emit_off is how many
+     * of its bytes have already been emitted. */
+    bool have_entry;
+    uint32_t emit_off;
 } FlashLogReader_t;
 
 /** @brief Force the next selector call to rebuild its in-RAM index. */

@@ -55,6 +55,11 @@ BUILD_ROOT = FIRMWARE_ROOT / "build-native"
 COVERAGE_BUILD_ROOT = FIRMWARE_ROOT / "build-coverage"
 COVERAGE_OVERLAY = TESTS_DIR / "coverage.conf"
 
+# native_sim defaults to a 32-bit posix build; on a 64-bit host userspace (e.g. the
+# aarch64 Pi rig) that fails to link ("CONFIG_64BIT=n but this machine has a 64-bit
+# userspace"), so target the explicit 64-bit board variant there.
+NATIVE_BOARD = "native_sim/native/64" if sys.maxsize > 2**32 else "native_sim"
+
 
 def _root_for(coverage: bool) -> Path:
     return COVERAGE_BUILD_ROOT if coverage else BUILD_ROOT
@@ -105,7 +110,7 @@ def build_one(name: str, coverage: bool = False) -> int:
     cmd = [
         "west", "build",
         "-d", str(out),
-        "-b", "native_sim",
+        "-b", NATIVE_BOARD,
         str(src),
     ]
     if coverage:

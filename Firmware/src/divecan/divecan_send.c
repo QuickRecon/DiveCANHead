@@ -38,20 +38,19 @@ static atomic_t *get_tx_count(void)
 }
 
 /**
- * @brief Bump the TX counter, saturating at UINT32_MAX
+ * @brief Bump the TX counter.
+ *
+ * Unconditional: the sole consumer is POST's "advanced by N" delta
+ * (now - baseline), which is unsigned-modular and therefore wrap-tolerant, and
+ * the counter would take ~decades to wrap at the broadcast rate. The previous
+ * saturation guard mitigated nothing real, yet — by casting UINT32_MAX to the
+ * signed atomic_val_t (= -1 on the 32-bit target) — it inverted to `current < -1`
+ * and silently no-op'd every increment, freezing the POST gate and reverting
+ * every OTA. atomic_inc wraps cleanly (modular two's-complement), so no guard.
  */
 static void bump_tx_count(void)
 {
-    atomic_t *count = get_tx_count();
-    /* Compare as uint32_t — atomic_val_t is a SIGNED long (32-bit on Cortex-M),
-     * so the old `current < (atomic_val_t)UINT32_MAX` cast 0xFFFFFFFF to -1 and
-     * the guard was `current < -1`: false for every normal count, so the counter
-     * NEVER incremented on the STM32 target (it worked on 64-bit native_sim,
-     * hiding the bug from the ztests). That froze the POST PPO2_TX liveness gate
-     * at 0 and reverted every OTA. */
-    if ((uint32_t)atomic_get(count) < UINT32_MAX) {
-        (void)atomic_inc(count);
-    }
+    (void)atomic_inc(get_tx_count());
 }
 
 uint32_t divecan_send_get_tx_count(void)

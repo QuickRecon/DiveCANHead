@@ -17,6 +17,7 @@
 #include "flash_log_reader.h"
 #include "flash_log_entries.h"
 #include "flash_log_internal.h"
+#include "watchdog_feeder.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
@@ -28,6 +29,16 @@
 #include <errno.h>
 
 LOG_MODULE_REGISTER(flash_log_reader, LOG_LEVEL_NONE);
+
+/* The index-build walk visits EVERY entry in the FCB. On a full 48 MiB
+ * telemetry ring that is a very large number of entries and takes well over
+ * the 32 s IWDG window, and it runs in the divecan_rx/UDS thread (the selector
+ * call path), which preempts the lowest-priority watchdog feeder — so
+ * heartbeat_set_long_op() alone would NOT keep the dog fed (same rationale as
+ * flash_mass_erase.c). Feed the IWDG directly every Nth entry instead. Without
+ * this the first UDS log-download selector on a populated ring resets the DUT
+ * mid-walk (confirmed on hardware: each selector call bumped the boot id). */
+#define FL_INDEX_WALK_WDT_KICK 256U
 
 /* FlashLogIndexEntry_t, the FL_INDEX_FLAG_* / FL_INVALID_* sentinels, and
  * the per-FCB sector counts live in flash_log_internal.h so flash_log.c
@@ -67,6 +78,7 @@ static FlashLogIndexEntry_t *fl_index_for(FlashLogDest_t dest)
 typedef struct {
     FlashLogIndexEntry_t *index;
     const struct fcb *fcb_p;
+    uint32_t walked;   /* entries visited so far — drives periodic IWDG feed */
 } fl_index_build_ctx_t;
 
 static size_t fl_sector_index(const struct fcb *fcb_p,
@@ -79,6 +91,12 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
 {
     fl_index_build_ctx_t *ctx = arg;
     fl_entry_hdr_t hdr;
+
+    /* Keep the IWDG fed across the (potentially very long) full-ring walk. */
+    ctx->walked += 1U;
+    if (0U == (ctx->walked % FL_INDEX_WALK_WDT_KICK)) {
+        watchdog_kick();
+    }
 
     int rc = flash_area_read(loc_ctx->fap,
                  FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc),
@@ -142,7 +160,8 @@ static int fl_build_index(FlashLogDest_t dest)
         index[i].flags = 0U;
     }
 
-    fl_index_build_ctx_t ctx = { .index = index, .fcb_p = fcb_p };
+    fl_index_build_ctx_t ctx = { .index = index, .fcb_p = fcb_p, .walked = 0U };
+    watchdog_kick();   /* feed once before the walk begins */
     int rc = fcb_walk(fcb_p, NULL, fl_index_walk_cb, &ctx);
     if (0 == rc) {
         atomic_set(&fl_index_valid[dest], 1);
@@ -395,11 +414,13 @@ void flash_log_reader_open(FlashLogReader_t *r, const FlashLogRange_t *range)
     r->cursor = range->begin;
     r->started = false;
     r->finished = false;
+    r->have_entry = false;
+    r->emit_off = 0U;
 }
 
 int flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_size)
 {
-    if ((r == NULL) || (buf == NULL)) {
+    if ((r == NULL) || (buf == NULL) || (buf_size == 0U)) {
         return -EINVAL;
     }
     if (r->finished) {
@@ -410,45 +431,53 @@ int flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_size)
         return -EINVAL;
     }
 
-    int rc = fcb_getnext(fcb_p, &r->cursor);
-    if (0 != rc) {
-        r->finished = true;
-        return 0;
-    }
-    r->started = true;
-
-    /* End test: if range.end is set and we walked past it, stop. */
-    if (r->range.end.fe_sector != NULL) {
-        if ((r->cursor.fe_sector == r->range.end.fe_sector) &&
-            (r->cursor.fe_elem_off >= r->range.end.fe_elem_off)) {
+    /* Advance to the next entry only once the current one is fully emitted.
+     * A single FCB entry may span several next() calls (see have_entry). */
+    if (!r->have_entry) {
+        int rc = fcb_getnext(fcb_p, &r->cursor);
+        if (0 != rc) {
             r->finished = true;
             return 0;
         }
+        r->started = true;
+
+        /* End test: if range.end is set and we walked past it, stop. */
+        if (r->range.end.fe_sector != NULL) {
+            if ((r->cursor.fe_sector == r->range.end.fe_sector) &&
+                (r->cursor.fe_elem_off >= r->range.end.fe_elem_off)) {
+                r->finished = true;
+                return 0;
+            }
+        }
+        r->have_entry = true;
+        r->emit_off = 0U;
     }
 
-    /* Total bytes = header (12) + payload. */
-    size_t total = sizeof(fl_entry_hdr_t) + r->cursor.fe_data_len;
-    if (total > buf_size) {
-        return -ENOSPC;
-    }
+    /* The clean wire entry is exactly the FCB entry's data: the writer stored
+     * [fl_entry_hdr_t | payload] as one fcb_append of fe_data_len bytes, which
+     * is precisely the TLV the client's parser expects — so stream those bytes
+     * verbatim (no separate header read; the old +sizeof(hdr) double-counted
+     * it). Emit at most buf_size of the remaining entry; the rest follows on
+     * the next call, so an entry larger than one download chunk is split across
+     * chunks and reassembled by simple concatenation on the client. */
+    size_t total = (size_t)r->cursor.fe_data_len;
+    size_t remaining = total - r->emit_off;
+    size_t n = (remaining < buf_size) ? remaining : buf_size;
 
-    /* Read TLV header. */
-    rc = flash_area_read(fcb_p->fap,
-                 FCB_ENTRY_FA_DATA_OFF(r->cursor),
-                 buf, sizeof(fl_entry_hdr_t));
-    if (0 != rc) {
-        return rc;
-    }
-    if (r->cursor.fe_data_len > 0U) {
-        rc = flash_area_read(fcb_p->fap,
-                     FCB_ENTRY_FA_DATA_OFF(r->cursor) +
-                     sizeof(fl_entry_hdr_t),
-                     &buf[sizeof(fl_entry_hdr_t)],
-                     r->cursor.fe_data_len);
+    if (n > 0U) {
+        int rc = flash_area_read(fcb_p->fap,
+                     FCB_ENTRY_FA_DATA_OFF(r->cursor) + r->emit_off,
+                     buf, n);
         if (0 != rc) {
             return rc;
         }
     }
+    r->emit_off += (uint32_t)n;
+    if (r->emit_off >= total) {
+        /* Whole entry emitted — next call advances to the following entry. */
+        r->have_entry = false;
+        r->emit_off = 0U;
+    }
 
-    return (int)total;
+    return (int)n;
 }

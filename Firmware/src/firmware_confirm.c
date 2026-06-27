@@ -518,11 +518,6 @@ uint32_t firmware_confirm_get_pass_mask(void)
     return (uint32_t)atomic_get(&s_post_pass_mask);
 }
 
-uint32_t firmware_confirm_get_tx_baseline(void)
-{
-    return (uint32_t)atomic_get(&s_post_tx_baseline);
-}
-
 #ifdef CONFIG_ZTEST
 void firmware_confirm_run_sync_for_test(void)
 {

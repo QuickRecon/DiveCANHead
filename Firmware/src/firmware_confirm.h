@@ -138,15 +138,6 @@ PostState_t firmware_confirm_get_state(void);
 uint32_t firmware_confirm_get_pass_mask(void);
 
 /**
- * @brief DIAG: tx_count snapshot captured at POST start.
- *
- * The PPO2_TX gate passes when (divecan_send_get_tx_count() - this) >=
- * POST_REQUIRED_PPO2_TX_COUNT. Exposed via DID 0xF271 so the HIL can watch the
- * delta live. 0 before POST runs (confirmed image).
- */
-uint32_t firmware_confirm_get_tx_baseline(void);
-
-/**
  * @brief Test-only entry point: run the POST sequence synchronously.
  *
  * Bypasses the K_THREAD_DEFINE wrapper so ztests can drive the state

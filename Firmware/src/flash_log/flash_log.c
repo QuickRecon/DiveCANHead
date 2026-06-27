@@ -18,6 +18,7 @@
 #include "flash_log_internal.h"
 #include "flash_log_reader.h"
 #include "heartbeat.h"
+#include "watchdog_feeder.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
@@ -1074,6 +1075,28 @@ int flash_log_stats(FlashLogStats_t *out)
 
 /* ---- Erase ---- */
 
+/* Watchdog-fed equivalent of fcb_clear(): rotate the FCB empty one sector at a
+ * time, feeding the IWDG before each rotate. fcb_clear() erases every sector via
+ * fcb_rotate (one 256 KiB telemetry sector per rotation, up to ~8 s on the W25Q512
+ * — 4x 64 KiB block erases), and runs in the divecan_rx/UDS thread which preempts
+ * the lowest-priority feeder — so an unfed full-ring clear (48 MiB) overruns the
+ * 32 s IWDG and reboots the head (same hazard as the index-build walk; see
+ * flash_log_reader.c). Feed directly, like flash_mass_erase. */
+static int fl_fcb_clear_fed(struct fcb *fcbp)
+{
+    int rc = 0;
+
+    while (!fcb_is_empty(fcbp)) {
+        watchdog_kick();
+        rc = fcb_rotate(fcbp);
+        if (0 != rc) {
+            break;
+        }
+    }
+    watchdog_kick();
+    return rc;
+}
+
 int flash_log_erase(uint8_t stream_mask)
 {
     int rc = 0;
@@ -1084,13 +1107,13 @@ int flash_log_erase(uint8_t stream_mask)
         /* Hold writes off while we erase. */
         flash_log_pause();
         if (0U != (stream_mask & 0x01U)) {
-            int r = fcb_clear(&fl_telemetry_fcb);
+            int r = fl_fcb_clear_fed(&fl_telemetry_fcb);
             if (0 != r) {
                 rc = r;
             }
         }
         if ((0 == rc) && (0U != (stream_mask & 0x02U))) {
-            int r = fcb_clear(&fl_text_fcb);
+            int r = fl_fcb_clear_fed(&fl_text_fcb);
             if (0 != r) {
                 rc = r;
             }

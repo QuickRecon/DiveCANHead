@@ -112,20 +112,19 @@ static atomic_t *get_bus_id_count(void)
 }
 
 /**
- * @brief Bump an atomic counter, saturating at UINT32_MAX
+ * @brief Bump an atomic RX counter.
+ *
+ * Unconditional (see bump_tx_count in divecan_send.c): the consumers are POST's
+ * wrap-tolerant "advanced since baseline" delta checks, and the counter takes
+ * ~decades to wrap. The previous saturation guard cast UINT32_MAX to the signed
+ * atomic_val_t (= -1 on the 32-bit target), inverting to `current < -1`, which
+ * silently froze the BUS_ID/BUS_INIT counters and failed the POST HANDSET stage.
  *
  * @param count Counter to bump
  */
-static void bump_saturating(atomic_t *count)
+static void bump_count(atomic_t *count)
 {
-    /* Compare as uint32_t: atomic_val_t is a SIGNED 32-bit long on Cortex-M, so
-     * (atomic_val_t)UINT32_MAX is -1 and the old guard `current < -1` never let
-     * the counter advance on the target (it worked on 64-bit native_sim). Same
-     * latent bug as divecan_send's tx counter — froze the POST HANDSET-stage
-     * BUS_ID/BUS_INIT counters at 0. */
-    if ((uint32_t)atomic_get(count) < UINT32_MAX) {
-        (void)atomic_inc(count);
-    }
+    (void)atomic_inc(count);
 }
 
 uint32_t divecan_rx_get_bus_init_count(void)
@@ -287,7 +286,7 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
             switch (message_id) {
             case BUS_ID_ID:
                 /* Respond to pings */
-                bump_saturating(get_bus_id_count());
+                bump_count(get_bus_id_count());
                 RespPing(&message);
                 break;
             case BUS_NAME_ID:
@@ -328,7 +327,7 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
                 break;
             case BUS_INIT_ID:
                 /* Bus Init */
-                bump_saturating(get_bus_init_count());
+                bump_count(get_bus_init_count());
                 RespBusInit(&message);
                 break;
             case RMS_TEMP_ID:
@@ -584,8 +583,10 @@ static void RespDiving(const DiveCANMessage_t *message)
         ((uint32_t)message->data[5] << DIVECAN_BYTE_WIDTH) |
         (uint32_t)message->data[6];
 
+    /* Per the DiveCAN spec (QuickRecon/DiveCAN, Messaging/Device Metadata.md) byte 0:
+     * 0x00 = Begin (diving), 0x01 = End. (Was inverted — read 0x01 as begin.) */
     DiveState_t state = {
-        .diving = (1U == message->data[0]),
+        .diving = (0U == message->data[0]),
         .dive_number = diveNumber,
         .unix_timestamp = unixTimestamp,
     };
