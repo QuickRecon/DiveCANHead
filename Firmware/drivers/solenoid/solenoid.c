@@ -31,27 +31,24 @@ struct solenoid_config {
 };
 
 struct solenoid_data {
-    struct counter_alarm_cfg alarm;
+    struct counter_top_cfg top;
 };
 
 /**
- * @brief Counter alarm ISR — force all solenoid channels off when the deadman fires
+ * @brief Counter top/overflow ISR — force all solenoid channels off when the deadman fires
  *
- * Called from interrupt context when the maximum-on-time alarm expires.
- * Forces every channel's GPIO low regardless of its current state.
+ * Called from interrupt context when the deadman overflow (UPDATE event) expires.
+ * The deadman is driven by the counter's TOP/overflow rather than a compare-channel
+ * alarm because the assigned timer (TIM7) is an STM32 BASIC timer with NO
+ * capture/compare channels — `counter_set_channel_alarm()` returns -ENOTSUP on it.
+ * Forces every channel's GPIO low and STOPS the counter so the overflow is one-shot
+ * (counter_set_top_value reloads ARR, so without the stop it would re-fire each period).
  *
- * @param counter_dev Counter device that triggered the alarm (unused)
- * @param chan_id     Counter channel that fired (unused)
- * @param ticks       Tick value at expiry (unused)
+ * @param counter_dev Counter device that triggered the overflow
  * @param user_data   Pointer to the solenoid struct device
  */
-static void deadman_isr(const struct device *counter_dev, uint8_t chan_id,
-            uint32_t ticks, void *user_data)
+static void deadman_top_cb(const struct device *counter_dev, void *user_data)
 {
-    ARG_UNUSED(counter_dev);
-    ARG_UNUSED(chan_id);
-    ARG_UNUSED(ticks);
-
     const struct device *dev = user_data;
     const struct solenoid_config *cfg = dev->config;
 
@@ -61,6 +58,10 @@ static void deadman_isr(const struct device *counter_dev, uint8_t chan_id,
     for (uint8_t i = 0; i < cfg->num_channels; i++) {
         (void)gpio_pin_set_dt(&cfg->gpios[i], 0);
     }
+
+    /* One-shot: stop so the periodic overflow doesn't re-enter every ARR period.
+     * The next solenoid_fire() re-arms via arm_timer(). */
+    (void)counter_stop(counter_dev);
 }
 
 /**
@@ -83,15 +84,17 @@ static int arm_timer(const struct device *dev, uint32_t duration_us)
         duration_us = cfg->max_on_time_us;
     }
 
-    (void)counter_cancel_channel_alarm(cfg->counter, 0);
+    /* Re-arm cleanly: stop, then reprogram the overflow. The deadman uses the
+     * counter TOP/overflow (UPDATE IRQ), NOT a compare-channel alarm — TIM7 is a
+     * basic timer with 0 CC channels (counter_set_channel_alarm -> -ENOTSUP). */
     (void)counter_stop(cfg->counter);
 
-    data->alarm.flags = 0;
-    data->alarm.ticks = counter_us_to_ticks(cfg->counter, duration_us);
-    data->alarm.callback = deadman_isr;
-    data->alarm.user_data = (void *)dev;
+    data->top.ticks = counter_us_to_ticks(cfg->counter, duration_us);
+    data->top.callback = deadman_top_cb;
+    data->top.user_data = (void *)dev;
+    data->top.flags = 0;  /* reset the counter to 0 on (re)arm */
 
-    int ret = counter_set_channel_alarm(cfg->counter, 0, &data->alarm);
+    int ret = counter_set_top_value(cfg->counter, &data->top);
 
     if (ret == 0) {
         ret = counter_start(cfg->counter);
@@ -165,7 +168,7 @@ void solenoid_all_off(const struct device *dev)
 {
     const struct solenoid_config *cfg = dev->config;
 
-    (void)counter_cancel_channel_alarm(cfg->counter, 0);
+    /* Stop the deadman overflow (no compare-channel alarm to cancel — basic timer). */
     (void)counter_stop(cfg->counter);
 
     for (uint8_t i = 0; i < cfg->num_channels; i++) {

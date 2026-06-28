@@ -85,6 +85,21 @@ def dt_can_bitrate(dt_header: str | None) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def dt_solenoid_channels(dt_header: str | None) -> int:
+    """Number of GPIO channels on the `solenoids` devicetree node — i.e. how many
+    raw channels solenoid_fire()/the 0xF242 override can drive (4 on the Jr). The
+    role->channel map (o2_inject etc.) only advertises *named* roles, so the raw
+    count comes from devicetree, not Kconfig."""
+    if not dt_header:
+        return 0
+    try:
+        text = open(dt_header).read()
+    except OSError:
+        return 0
+    idxs = re.findall(r"DT_N_S_solenoids_P_gpios_IDX_(\d+)_", text)
+    return (max(int(i) for i in idxs) + 1) if idxs else 0
+
+
 def build_manifest(cfg: dict, dt_header: str | None) -> dict:
     count = int_cfg(cfg, "CONFIG_CELL_COUNT", 0)
     types = [cell_type(cfg, n) for n in range(1, count + 1)]
@@ -135,6 +150,16 @@ def build_manifest(cfg: dict, dt_header: str | None) -> dict:
         "solenoids": {
             "has_o2": is_set(cfg, "CONFIG_HAS_O2_SOLENOID"),
             "has_flush": is_set(cfg, "CONFIG_HAS_FLUSH_SOLENOID"),
+            # Raw GPIO channels the driver (and the 0xF242 override) can drive.
+            "drivable_channels": dt_solenoid_channels(dt_header),
+            # HIL capped raw-fire capability — see writeSolenoidOverrideDID().
+            "override": {
+                "supported": is_set(cfg, "CONFIG_HAS_O2_SOLENOID"),
+                "did": "0xF242",
+                "on_time_ms": 1500,
+                "requires_programming_session": True,
+                "magic": "0x5A",
+            },
             "channels": {
                 "o2_inject": int_cfg(cfg, "CONFIG_SOL_O2_INJECT_CHANNEL"),
                 "o2_inject_2": int_cfg(cfg, "CONFIG_SOL_O2_INJECT_2_CHANNEL"),
@@ -145,11 +170,20 @@ def build_manifest(cfg: dict, dt_header: str | None) -> dict:
         "control": {
             "ppo2_default": ppo2_default,
             "solenoid_pid": ppo2_default == "PID",
+            # Selectable control algorithms (mirror valid_ppo2_control_modes[],
+            # which is gated on a solenoid being present). Switching modes is
+            # boot-latched in ppo2_control_init -> the rig must persist + reboot.
+            "modes": (["OFF", "PID", "MK15"]
+                      if is_set(cfg, "CONFIG_HAS_O2_SOLENOID") else ["OFF"]),
+            "mode_switch_requires_reboot": True,
             "cal_default": first_set(cfg, [
                 ("DIGITAL_REF", "CONFIG_CAL_MODE_DEFAULT_DIGITAL_REF"),
                 ("ABSOLUTE", "CONFIG_CAL_MODE_DEFAULT_ABSOLUTE"),
                 ("TOTAL_ABSOLUTE", "CONFIG_CAL_MODE_DEFAULT_TOTAL_ABSOLUTE"),
                 ("FLUSH", "CONFIG_CAL_MODE_DEFAULT_FLUSH")], default="ABSOLUTE"),
+            # depth_compensation = boot default; depth_comp_capable = the feature
+            # exists at all (Kconfig depends on HAS_O2_SOLENOID).
+            "depth_comp_capable": is_set(cfg, "CONFIG_HAS_O2_SOLENOID"),
             "depth_compensation": is_set(cfg, "CONFIG_DEPTH_COMPENSATION_DEFAULT"),
         },
         # Bus-level capabilities always built into this firmware (UDS menu/diag,

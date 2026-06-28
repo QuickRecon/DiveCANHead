@@ -23,6 +23,7 @@
 
 #include <stdint.h>
 #include "common.h"
+#include "runtime_settings.h"
 
 /** @brief Read-only snapshot of live PID state for UDS state DIDs. */
 typedef struct {
@@ -58,5 +59,17 @@ void ppo2_control_init(void);
  * @param out Destination snapshot (must not be NULL — silent no-op if NULL)
  */
 void ppo2_control_get_snapshot(PPO2ControlSnapshot_t *out);
+
+/**
+ * @brief Return the control mode the threads actually latched at init.
+ *
+ * This is the live behaviour of the control loop (boot-latched from
+ * `runtime_settings`), NOT a possibly-newer volatile settings-cache value.
+ * Used by the UDS solenoid-override handler to refuse firing unless the
+ * control loop is `PPO2CONTROL_OFF` (so the loop always has uncontended
+ * ownership of the shared solenoid timer/GPIOs).  On a no-solenoid variant
+ * this always returns `PPO2CONTROL_OFF`.
+ */
+PPO2ControlMode_t ppo2_control_get_active_mode(void);
 
 #endif /* PPO2_CONTROL_H */

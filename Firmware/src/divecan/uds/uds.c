@@ -22,6 +22,8 @@
 #include "oxygen_cell_types.h"
 #include "calibration.h"
 #include "runtime_settings.h"
+#include "ppo2_control.h"
+#include "solenoid_roles.h"
 #include "errors.h"
 #include "error_histogram.h"
 #include "factory_image.h"
@@ -54,6 +56,16 @@ static const uint16_t SETTING_VALUE_WRITE_LEN = 12U;
  * keeps an accidental zero-fill write from triggering a reboot. */
 static const uint8_t OTA_WRITE_MAGIC = 0x01U;
 
+#ifdef CONFIG_HAS_O2_SOLENOID
+/* Solenoid override (0xF242): HIL-only raw-channel fire. Fixed on-time with NO
+ * caller-controlled duration -> a single write can never lock a solenoid on
+ * (the hardware deadman is the backstop). A deliberate non-zero magic byte
+ * keeps a zero-fill write from firing. */
+static const uint8_t  SOLENOID_OVERRIDE_MAGIC = 0x5AU;
+static const uint32_t SOLENOID_OVERRIDE_ON_US = 1500000U; /* 1.5 s; capped by DT max-on-time-us */
+static const uint16_t SOLENOID_OVERRIDE_LEN   = 6U;       /* pad+SID+DID_HI+DID_LO+channel+magic */
+#endif
+
 /* Pause between the positive UDS response and sys_reboot — gives ISO-TP
  * time to drain the response onto the bus before the controller goes
  * down. Matches the equivalent delay inside uds_ota.c's 0x31 path. */
@@ -79,6 +91,10 @@ static bool readSettingValueDID(uint16_t did, uint8_t *buf, uint16_t dataOffset,
 static bool readSettingLabelDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
 static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static bool writeCalibrationTriggerDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
+#ifdef CONFIG_HAS_O2_SOLENOID
+static bool writeSolenoidOverrideDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
+static void buildWriteDidPositiveResponse(UDSContext_t *ctx, const uint8_t *requestData);
+#endif
 static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
 static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
 
@@ -698,6 +714,72 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
     return true;
 }
 
+#ifdef CONFIG_HAS_O2_SOLENOID
+/**
+ * @brief Handle a WDBI write to the solenoid-override DID (0xF242).
+ *
+ * HIL-only: fires one raw solenoid channel for a FIXED ~1.5 s. There is no
+ * caller-controlled duration, so a single write can never lock a solenoid on
+ * (the hardware deadman is the ultimate backstop). It auto-releases when the
+ * fixed on-time expires.
+ *
+ * CONTROL-LOOP PRIORITY (no simultaneous access): the override is refused
+ * unless the PPO2 control loop is OFF (fire thread suspended) AND no
+ * calibration is running. The control loop / cal flush therefore always have
+ * uncontended ownership of the shared deadman timer + solenoid GPIOs — the two
+ * are mutually exclusive by gate, never by lock.
+ *
+ * Wire format: [pad][2E][F2][42][channel][magic=0x5A]. Gated to the programming
+ * session + not-in-dive, mirroring the OTA action DIDs.
+ *
+ * @return true (always; error paths send NRC and still return true)
+ */
+static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
+                                     const uint8_t *requestData,
+                                     uint16_t requestLength)
+{
+    if (requestLength != SOLENOID_OVERRIDE_LEN) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
+    } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_SERVICE_NOT_IN_SESSION);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_SERVICE_NOT_IN_SESSION);
+    } else if (UDS_IsInDive()) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+    } else if (SOLENOID_OVERRIDE_MAGIC != requestData[UDS_DATA_IDX + 1U]) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+    } else if (PPO2CONTROL_OFF != ppo2_control_get_active_mode()) {
+        /* Control loop owns the solenoid while running — refuse so the two can
+         * never contend for the shared deadman timer / GPIOs. */
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+    } else if (calibration_is_running()) {
+        /* Calibration flush also owns the solenoid. */
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+    } else {
+        uint8_t channel = requestData[UDS_DATA_IDX];
+        if (channel >= solenoid_channel_count(SOL_DEVICE)) {
+            OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        } else {
+            int rc = solenoid_fire(SOL_DEVICE, channel, SOLENOID_OVERRIDE_ON_US);
+            if (0 != rc) {
+                OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+            } else {
+                buildWriteDidPositiveResponse(ctx, requestData);
+                UDS_SendResponse(ctx);
+            }
+        }
+    }
+
+    return true;
+}
+#endif /* CONFIG_HAS_O2_SOLENOID */
+
 /**
  * @brief Handle a WDBI write to a setting save DID (persists to flash)
  *
@@ -1229,6 +1311,10 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
             (void)writeSetpointDID(ctx, requestData, requestLength);
         } else if (UDS_DID_CALIBRATION_TRIGGER == did) {
             (void)writeCalibrationTriggerDID(ctx, requestData, requestLength);
+#ifdef CONFIG_HAS_O2_SOLENOID
+        } else if (UDS_DID_SOLENOID_OVERRIDE == did) {
+            (void)writeSolenoidOverrideDID(ctx, requestData, requestLength);
+#endif
         } else if (UDS_DID_ERROR_HISTOGRAM_CLEAR == did) {
             (void)writeHistogramClearDID(ctx, requestData, requestLength);
         } else if (UDS_DID_OTA_FORCE_REVERT == did) {

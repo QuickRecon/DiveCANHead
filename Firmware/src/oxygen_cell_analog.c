@@ -33,6 +33,11 @@ LOG_MODULE_REGISTER(cell_analog, LOG_LEVEL_INF);
  * returns instantly (e.g. zephyr,adc-emul under native_sim). */
 #define ANALOG_SAMPLE_INTERVAL_MS 10
 
+/* Per-cell sample-thread stack (bytes). On-rig thread_analyzer showed the old
+ * 768 B running at 92% (only 56 B free) — too close to the K_ERR_STACK_CHK_FAIL
+ * edge the solenoid-fire thread already hit. 1024 B restores margin. */
+#define ANALOG_CELL_STACK_SIZE 1024
+
 /*
  * ADC channel mapping now lives in devicetree, not here. The board DTS defines
  * a channel@N node per analog cell (device + differential AIN pair + gain) and
@@ -298,7 +303,7 @@ static struct analog_cell_state cell_1_state = {
     .out_chan = &chan_cell_1,
     .adc = &cell_1_adc,
 };
-K_THREAD_DEFINE(analog_cell_1, 768,
+K_THREAD_DEFINE(analog_cell_1, ANALOG_CELL_STACK_SIZE,
         analog_cell_thread, &cell_1_state, NULL, NULL,
         7, 0, 0);
 #endif
@@ -313,7 +318,7 @@ static struct analog_cell_state cell_2_state = {
     .out_chan = &chan_cell_2,
     .adc = &cell_2_adc,
 };
-K_THREAD_DEFINE(analog_cell_2, 768,
+K_THREAD_DEFINE(analog_cell_2, ANALOG_CELL_STACK_SIZE,
         analog_cell_thread, &cell_2_state, NULL, NULL,
         7, 0, 0);
 #endif
@@ -328,7 +333,7 @@ static struct analog_cell_state cell_3_state = {
     .out_chan = &chan_cell_3,
     .adc = &cell_3_adc,
 };
-K_THREAD_DEFINE(analog_cell_3, 768,
+K_THREAD_DEFINE(analog_cell_3, ANALOG_CELL_STACK_SIZE,
         analog_cell_thread, &cell_3_state, NULL, NULL,
         7, 0, 0);
 #endif

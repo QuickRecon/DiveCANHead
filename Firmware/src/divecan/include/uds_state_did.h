@@ -41,6 +41,7 @@
 /* Control DIDs (writable) - 0xF24x */
 #define UDS_DID_SETPOINT_WRITE      0xF240U
 #define UDS_DID_CALIBRATION_TRIGGER 0xF241U
+#define UDS_DID_SOLENOID_OVERRIDE   0xF242U  /**< write-only [channel,magic 0x5A]: HIL — fire one raw solenoid channel for a fixed ~1.5 s (can't lock on); refused unless PPO2 mode is OFF + programming session + !in_dive */
 
 /* Crash-info DIDs (0xF25x) — populated from errors_get_last_crash() */
 #define UDS_DID_CRASH_VALID         0xF250U  /**< uint8: 1 if last boot was a crash, else 0 */

@@ -656,13 +656,15 @@ static int ads1x1x_adc_start_read(const struct device *dev, const struct adc_seq
 	 * for this throwaway. A lone cell (mux never changes) only discards on its first
 	 * read. Defence-in-depth alongside the slower 32 SPS rate. */
 	if ((int)data->active_channel != data->last_converted_channel) {
-		rc = ads1x1x_start_conversion(dev);
-		if (rc == 0) {
-			rc = ads1x1x_wait_data_ready(dev);
-		}
+		rc = ads1x1x_start_conversion(dev);   /* sets data->ready_time for this channel */
 		if (rc != 0) {
 			return rc;
 		}
+		/* Just wait the conversion time for the input to settle; we discard the
+		 * result, so DON'T wait_data_ready() (its I2C read of CONFIG runs on the
+		 * caller's — the analog cell — thread and pushed those threads to ~92% stack
+		 * high-water). A bare k_sleep keeps the discard off the cell-thread stack. */
+		k_sleep(data->ready_time);
 	}
 	data->last_converted_channel = (int)data->active_channel;
 

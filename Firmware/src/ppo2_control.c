@@ -77,8 +77,12 @@ static const PPO2_t DEFAULT_SETPOINT_CB = 70U;
  *  768 B gives ~3× margin. The legacy 2 KiB allocation was inherited from
  *  the FreeRTOS+SD-logging era and is no longer needed. */
 #define PPO2_PID_STACK_SIZE 768
-/** Solenoid fire thread stack (bytes). Static WCS = 272 B; 512 B = ~2× margin. */
-#define SOLENOID_FIRE_STACK_SIZE 512
+/** Solenoid fire thread stack (bytes). The static fstack-usage WCS (~272 B) MISSES
+ *  the dynamic libc path: run_pid_fire_cycle's float math + a heap-allocating call
+ *  (picolibc float formatting / k_heap alloc_chunk) overflowed 512 B and tripped
+ *  K_ERR_STACK_CHK_FAIL once PID actually ran (HW, 2026-06-28). 1024 B gives real
+ *  headroom for that path. */
+#define SOLENOID_FIRE_STACK_SIZE 1024
 /** Both threads run at priority 6 — one step lower than consensus_subscriber
  *  (5) and divecan_rx (5), matching the legacy CAN_PPO2_TX_PRIORITY tier. */
 #define PPO2_THREAD_PRIORITY 6
@@ -96,11 +100,31 @@ static PIDState_t *getPidState(void)
     return &pidState;
 }
 
+/* The control threads start at boot (K_THREAD_DEFINE delay 0) BEFORE
+ * ppo2_control_init() runs from main() — so they must not read the mode until
+ * init has loaded it from NVS, or they latch the PPO2CONTROL_OFF default and
+ * suspend forever (the loop would never run on real hardware). init gives this
+ * semaphore once per control thread; each thread takes one before reading the
+ * mode. (k_sem avoids a CONFIG_EVENTS dependency; the give-count must match the
+ * number of waiting threads below — currently 2: PID + solenoid-fire.) */
+#define PPO2_CONTROL_THREAD_COUNT 2U
+static K_SEM_DEFINE(ppo2_ready_sem, 0, PPO2_CONTROL_THREAD_COUNT);
+
+static void wait_for_ppo2_init(void)
+{
+    (void)k_sem_take(&ppo2_ready_sem, K_FOREVER);
+}
+
 /** Active control mode, latched at init from runtime_settings. */
 static PPO2ControlMode_t *getActiveMode(void)
 {
     static PPO2ControlMode_t activeMode = PPO2CONTROL_OFF;
     return &activeMode;
+}
+
+PPO2ControlMode_t ppo2_control_get_active_mode(void)
+{
+    return *getActiveMode();
 }
 
 /** Depth compensation enable, latched at init from runtime_settings. */
@@ -198,6 +222,7 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
+    wait_for_ppo2_init();  /* don't read the mode until init has loaded it from NVS */
     PPO2ControlMode_t mode = *getActiveMode();
     if (mode != PPO2CONTROL_PID) {
         LOG_INF("PID thread suspended (mode %d)", (int)mode);
@@ -285,6 +310,21 @@ static bool *getDepthSkipLatch(void)
     return &depthSkipLatch;
 }
 
+/* Sleep total_us while feeding HEARTBEAT_SOLENOID_FIRE every <=1.5 s. The PID
+ * on/off phases can be up to ~5 s — longer than the watchdog feeder's liveness
+ * window — so a single kick per cycle leaves the fire thread looking stalled
+ * (the mk15 path solves this with mk15_sleep_kicking; this is the PID equivalent). */
+static void pid_sleep_kicking_us(uint32_t total_us)
+{
+    const uint32_t step_us = 1500000U;
+    while (total_us > 0U) {
+        heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
+        uint32_t chunk = (total_us < step_us) ? total_us : step_us;
+        k_usleep((int32_t)chunk);
+        total_us -= chunk;
+    }
+}
+
 static void run_pid_fire_cycle(void)
 {
     bool *depth_skip_latch = getDepthSkipLatch();
@@ -324,7 +364,7 @@ static void run_pid_fire_cycle(void)
             zbus_pub_checked(&chan_solenoid_fire, &fire_evt, K_NO_WAIT);
         }
 #endif
-        k_usleep((int32_t)timing.on_duration_us);
+        pid_sleep_kicking_us(timing.on_duration_us);
         sol_o2_inject_off();
 #ifdef CONFIG_FLASH_LOG
         const SolenoidFireEvent_t end_evt = {
@@ -334,11 +374,11 @@ static void run_pid_fire_cycle(void)
         };
         zbus_pub_checked(&chan_solenoid_fire, &end_evt, K_NO_WAIT);
 #endif
-        k_usleep((int32_t)timing.off_duration_us);
+        pid_sleep_kicking_us(timing.off_duration_us);
     }
     else {
         /* Below minimum duty — full-cycle quiet sleep. */
-        k_usleep((int32_t)timing.off_duration_us);
+        pid_sleep_kicking_us(timing.off_duration_us);
     }
 }
 
@@ -422,6 +462,7 @@ static void solenoid_fire_thread_fn(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
+    wait_for_ppo2_init();  /* don't read the mode until init has loaded it from NVS */
     PPO2ControlMode_t mode = *getActiveMode();
     if (PPO2CONTROL_OFF == mode) {
         LOG_INF("Solenoid fire thread suspended (mode OFF)");
@@ -476,11 +517,20 @@ void ppo2_control_init(void)
         (int)*getActiveMode(), (int)*getDepthCompEnabled(),
         (double)settings.pidKp, (double)settings.pidKi,
         (double)settings.pidKd);
+
+    /* Release the control threads now the mode/depth-comp/PID state are loaded;
+     * before this they must not read the (still-default OFF) mode and suspend.
+     * One give per waiting thread (max-count semaphore holds them if init runs
+     * before the threads reach their take). */
+    for (uint32_t i = 0U; i < PPO2_CONTROL_THREAD_COUNT; ++i) {
+        k_sem_give(&ppo2_ready_sem);
+    }
 }
 
 #else /* !CONFIG_HAS_O2_SOLENOID */
 
 void ppo2_control_init(void) { /* No solenoid on this variant — nothing to init. */ }
+PPO2ControlMode_t ppo2_control_get_active_mode(void) { return PPO2CONTROL_OFF; }
 void ppo2_control_get_snapshot(PPO2ControlSnapshot_t *out)
 {
     if (out != NULL) {
