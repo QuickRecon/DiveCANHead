@@ -331,12 +331,17 @@ bool diveo2_parse_simple_response(const char *message, int32_t *ppo2,
                 *status = diveo2_parse_error_code(fields[FIELD_IDX_ERR_CODE]);
                 success = true;
             } else {
-                /* Missing fields */
+                /* Right header but missing fields — a genuinely malformed
+                 * measurement frame, so flag it. */
                 OP_ERROR(OP_ERR_CELL_FAILURE);
             }
         } else {
-            /* Wrong command or null */
-            OP_ERROR(OP_ERR_CELL_FAILURE);
+            /* Header is not "#?OXY" — this is simply not a simple-format
+             * measurement (e.g. a "#DRAW" detailed frame, a "#BCST" command
+             * echo, or a cell ack). NOT a cell failure: the caller tries the
+             * other parser and treats a non-match as a frame to skip, so
+             * raising OP_ERROR here just floods the error path on every
+             * detailed frame and every command echo. Return false quietly. */
         }
     } else {
         /* Null arguments */
@@ -388,12 +393,16 @@ bool diveo2_parse_detailed_response(const char *message,
                 out->status = diveo2_parse_error_code(fields[FIELD_IDX_ERR_CODE]);
                 success = true;
             } else {
-                /* Missing fields */
+                /* Right header but missing fields — a genuinely malformed
+                 * detailed frame, so flag it. */
                 OP_ERROR(OP_ERR_CELL_FAILURE);
             }
         } else {
-            /* Wrong command or null */
-            OP_ERROR(OP_ERR_CELL_FAILURE);
+            /* Header is not "#?RAW" — not a detailed measurement (a simple
+             * "#?OXY" frame, a "#BCST" command echo, or a cell ack). The caller
+             * falls through to the simple parser, so this is an expected
+             * non-match, not a cell failure. Return false quietly rather than
+             * raising OP_ERROR on every non-detailed frame. */
         }
     } else {
         /* Null arguments */
@@ -771,10 +780,13 @@ static bool diveo2_process_rx(struct diveo2_cell_state *cell)
         valid = true;
     } else {
         /* Not a measurement (e.g. an #ERRO from the wrong-family probe, or a
-         * #BCST echo) — let the caller decide whether to retry/re-detect. No
-         * sleep here: in broadcast mode a backoff would stall the listen loop
-         * and re-desync; the per-loop MIN_SAMPLE_INTERVAL_MS floor paces us. */
-        LOG_WRN("Cell %u: unknown message: %s",
+         * #BCST command echo) — let the caller decide whether to retry/re-detect.
+         * No sleep here: in broadcast mode a backoff would stall the listen loop
+         * and re-desync; the per-loop MIN_SAMPLE_INTERVAL_MS floor paces us.
+         * LOG_DBG, not LOG_WRN: command echoes arrive on EVERY broadcast toggle,
+         * and a warning here lands in the flash log + UDS log-push every time,
+         * flooding the log/flash path (and starving fl_writer) during toggling. */
+        LOG_DBG("Cell %u: unknown message: %s",
                 cell->cell_number, msgArray);
     }
 
@@ -851,6 +863,57 @@ static void diveo2_set_cell_broadcast(struct diveo2_cell_state *cell, bool on)
 }
 
 /**
+ * @brief Query whether the cell is CURRENTLY streaming, by observation.
+ *
+ * Drops any pending frame, then passively listens (NO poll sent) for up to
+ * @p timeout_ms. An unsolicited measurement frame within that window means the
+ * cell is broadcasting; a timeout means it is not (a polled cell only answers a
+ * request). This is the only way the head can read the cell's real broadcast
+ * state — the DiveO2 UART protocol has no "read broadcast" command, and the
+ * head's cached cell->mode is only a belief that can disagree with reality
+ * (e.g. a cell that was power-cycled or externally reconfigured).
+ *
+ * @param cell        Cell state (RX stays continuously enabled).
+ * @param timeout_ms  Listen window; size it >= one broadcast interval.
+ * @return true if an unsolicited frame arrived (cell is broadcasting).
+ */
+static bool diveo2_observe_broadcasting(struct diveo2_cell_state *cell,
+                                        int32_t timeout_ms)
+{
+    diveo2_rx_sync(cell);
+    return diveo2_wait_frame(cell, timeout_ms);
+}
+
+/**
+ * @brief Drive the cell to the desired broadcast state, writing #BCST ONLY when
+ *        the cell's OBSERVED state differs from desired.
+ *
+ * #BCST persists to the cell's onboard flash, so re-issuing it when the cell is
+ * already in the desired state needlessly wears that flash. We therefore observe
+ * the real streaming state first and skip the write when it already matches —
+ * rather than trusting cell->mode (which can be stale) or writing
+ * unconditionally. cell->mode is updated to the desired state regardless, since
+ * after this call the cell is (or already was) in that state.
+ *
+ * @param cell     Cell state.
+ * @param want_on  Desired state: true = streaming, false = polled.
+ */
+static void diveo2_apply_broadcast(struct diveo2_cell_state *cell, bool want_on)
+{
+    bool is_on = diveo2_observe_broadcasting(cell, DETECT_LISTEN_MS);
+
+    if (want_on != is_on) {
+        diveo2_set_cell_broadcast(cell, want_on);
+    } else {
+        /* Cell already in the desired streaming state — no #BCST, no flash
+         * write. */
+        LOG_DBG("Cell %u: broadcast already %s, skip #BCST",
+                cell->cell_number, want_on ? "on" : "off");
+    }
+    cell->mode = want_on ? CELL_MODE_BROADCAST : CELL_MODE_POLLED;
+}
+
+/**
  * @brief Perform one auto-detection step (one UART operation per call).
  *
  * Cycles across three phases so each call performs a single bounded UART wait
@@ -900,6 +963,13 @@ static void diveo2_detect_step(struct diveo2_cell_state *cell)
         runtime_settings_get(&rs);
         bool enforce = (cell->cell_number < CELL_MAX_COUNT) &&
                        rs.enforceBroadcast[cell->cell_number];
+        /* Query-then-write: detection has JUST measured the real state into
+         * cell->mode (the passive phase 0 catches a cell that booted already
+         * streaming; the active phases prove it answers polls = not streaming).
+         * So a CELL_MODE_POLLED here means the cell is genuinely not broadcasting
+         * and #BCST must be written; a BROADCAST cell is already enforced and we
+         * skip the write — never re-writing the cell's flash-backed #BCST when it
+         * is already correct. */
         if (enforce && (CELL_MODE_POLLED == cell->mode)) {
             diveo2_set_cell_broadcast(cell, true);
             cell->mode = CELL_MODE_BROADCAST;
@@ -1008,19 +1078,22 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
             int64_t loop_start = k_uptime_ticks();
 
             /* Consume a pending live broadcast on/off request — but only once the
-             * protocol is known (otherwise hold it until detection completes). */
+             * protocol is known (otherwise hold it until detection completes).
+             * diveo2_apply_broadcast OBSERVES the cell's real streaming state and
+             * only writes #BCST when it differs from the request: this honours an
+             * explicit command even when cell->mode is a stale belief (the
+             * desync the HIL exposes — a broadcast-ON was previously a silent
+             * no-op when mode was wrongly cached BROADCAST) WITHOUT re-writing
+             * the cell's flash-backed #BCST setting when it is already correct. */
             if (CELL_PROTO_UNKNOWN != cell->protocol) {
                 atomic_val_t req = atomic_set(&cell->broadcast_req, BCST_REQ_NONE);
 
-                if ((BCST_REQ_ON == req) && (CELL_MODE_BROADCAST != cell->mode)) {
-                    diveo2_set_cell_broadcast(cell, true);
-                    cell->mode = CELL_MODE_BROADCAST;
-                } else if ((BCST_REQ_OFF == req) &&
-                           (CELL_MODE_POLLED != cell->mode)) {
-                    diveo2_set_cell_broadcast(cell, false);
-                    cell->mode = CELL_MODE_POLLED;
+                if (BCST_REQ_ON == req) {
+                    diveo2_apply_broadcast(cell, true);
+                } else if (BCST_REQ_OFF == req) {
+                    diveo2_apply_broadcast(cell, false);
                 } else {
-                    /* No actionable request. */
+                    /* No pending request (BCST_REQ_NONE). */
                 }
             }
 
@@ -1063,6 +1136,20 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
  * Cell → UART mapping: USART1 = Cell 1, USART2 = Cell 2, USART3 = Cell 3
  */
 
+/* Per-cell thread stack. Raised from 1024 to 2048: the broadcast/auto-detect
+ * additions deepened the worst-case call chain (the loop nests
+ * diveo2_process_rx's msgArray[86] into a parser's msgCopy[86] plus the
+ * tokeniser, and the detect/broadcast paths add a RuntimeSettings_t and the
+ * OxygenCellMsg_t publish frame). On-target RTT thread-analyzer caught the
+ * thread at 928/1024 (96 B free, 90 %) while toggling broadcast — close enough
+ * that a hard fault landing at peak depth could overrun the guard region and,
+ * with CONFIG_HW_STACK_PROTECTION, MPU-fault the SoC into a reset. 2048 restores
+ * a comfortable margin (the deepest path — a parser OP_ERROR + its
+ * error-histogram/logging chain on a header mismatch — is now removed from the
+ * hot echo path, so 1536 leaves ~600 B over the observed 928 B peak while still
+ * fitting the STM32L431's tight RAM). */
+#define DIVEO2_THREAD_STACK_SIZE 1536
+
 #if defined(CONFIG_CELL_1_TYPE_DIVEO2)
 static struct diveo2_cell_state diveo2_cell_1 = {
     .cell_number = 0,
@@ -1072,7 +1159,7 @@ static struct diveo2_cell_state diveo2_cell_1 = {
     .out_chan = &chan_cell_1,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart1)),
 };
-K_THREAD_DEFINE(diveo2_thread_1, 1024,
+K_THREAD_DEFINE(diveo2_thread_1, DIVEO2_THREAD_STACK_SIZE,
         diveo2_cell_thread, &diveo2_cell_1, NULL, NULL,
         7, 0, 0);
 #endif
@@ -1086,7 +1173,7 @@ static struct diveo2_cell_state diveo2_cell_2 = {
     .out_chan = &chan_cell_2,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart2)),
 };
-K_THREAD_DEFINE(diveo2_thread_2, 1024,
+K_THREAD_DEFINE(diveo2_thread_2, DIVEO2_THREAD_STACK_SIZE,
         diveo2_cell_thread, &diveo2_cell_2, NULL, NULL,
         7, 0, 0);
 #endif
@@ -1100,7 +1187,7 @@ static struct diveo2_cell_state diveo2_cell_3 = {
     .out_chan = &chan_cell_3,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart3)),
 };
-K_THREAD_DEFINE(diveo2_thread_3, 1024,
+K_THREAD_DEFINE(diveo2_thread_3, DIVEO2_THREAD_STACK_SIZE,
         diveo2_cell_thread, &diveo2_cell_3, NULL, NULL,
         7, 0, 0);
 #endif
