@@ -222,6 +222,35 @@ config DEPTH_COMPENSATION_DEFAULT
 
 endmenu # Runtime Setting Defaults
 
+# ---- LF transmitter (optional, proprietary out-of-tree module) ----
+
+menu "LF Transmitter"
+
+config WANT_LF_TX
+	bool "Request the proprietary LF (125 kHz) TX feature"
+	default n
+	help
+	  Set by variants that require the out-of-tree LF TX module
+	  (proprietary/lf_tx/, git-ignored, populated by manual clone).
+	  This symbol is always present so variants can request the feature
+	  and the build can fail clearly if the module is absent. The actual
+	  implementation symbol (LF_TX) is provided by the module and gated
+	  on the lf-tx devicetree node; if WANT_LF_TX is set but LF_TX cannot
+	  be realised the application CMakeLists raises a fatal error.
+
+config LF_TX_ID_DEFAULT
+	int "Default LF transmitter ID (0..4095)"
+	default 0
+	range 0 4095
+	depends on WANT_LF_TX
+	help
+	  Seed value for the per-unit 12-bit LF transmitter ID. The live ID is
+	  a runtime NVS setting provisioned per unit over UDS (it is used for
+	  deconfliction, so each unit must carry a distinct value); this is
+	  only the factory default applied before provisioning.
+
+endmenu # LF Transmitter
+
 menu "Safety"
 
 config DIVECAN_WATCHDOG

@@ -156,6 +156,21 @@ typedef enum {
 /** @brief Default PID derivative gain. */
 #define PID_DEFAULT_KD 0.0f
 
+/* ---- LF transmitter ID ----
+ * 12-bit per-unit identifier for the proprietary LF transmitter, used for
+ * deconfliction between co-located units. Per-unit by nature, so it lives in
+ * NVS and is provisioned over UDS — the Kconfig value is only a factory seed.
+ * Only present on builds that request the LF feature. */
+
+#ifdef CONFIG_WANT_LF_TX
+/** @brief LF transmitter ID (12-bit, 0..4095). */
+typedef uint16_t LFID_t;
+/** @brief Minimum accepted LF transmitter ID. */
+#define LFID_MIN 0U
+/** @brief Maximum accepted LF transmitter ID (12-bit field width). */
+#define LFID_MAX 4095U
+#endif
+
 /* ---- Runtime Settings Structure ----
  * Stored in NVS. Changeable via UDS at runtime.
  * Valid values are bounded by the compile-time tables above. */
@@ -170,7 +185,18 @@ typedef struct {
     Numeric_t pidKd;                   /**< PID derivative gain (HAS_O2_SOLENOID variants) */
     BatteryType_t batteryType;         /**< Battery chemistry, drives low-battery threshold */
     bool enforceBroadcast[CELL_MAX_COUNT]; /**< Per-cell: force the UART cell into broadcast at boot */
+#ifdef CONFIG_WANT_LF_TX
+    LFID_t lfTransmitterID;            /**< 12-bit per-unit LF transmitter ID */
+#endif
 } RuntimeSettings_t;
+
+/* Conditional default for the LF transmitter ID — kept as a sub-macro because a
+ * #define body cannot contain a #ifdef. Expands to nothing when LF is absent. */
+#ifdef CONFIG_WANT_LF_TX
+#define RUNTIME_SETTINGS_LF_DEFAULT .lfTransmitterID = (LFID_t)CONFIG_LF_TX_ID_DEFAULT,
+#else
+#define RUNTIME_SETTINGS_LF_DEFAULT
+#endif
 
 #define RUNTIME_SETTINGS_DEFAULT {                                       \
     .ppo2ControlMode = PPO2_CONTROL_MODE_DEFAULT,                    \
@@ -181,6 +207,7 @@ typedef struct {
     .pidKd = PID_DEFAULT_KD,                                         \
     .batteryType = BATTERY_TYPE_DEFAULT,                             \
     .enforceBroadcast = {0},                                        \
+    RUNTIME_SETTINGS_LF_DEFAULT                                     \
 }
 
 /* ---- Validation ---- */
@@ -213,6 +240,9 @@ typedef enum {
     RT_FIELD_KD,        /**< pidKd -> "rt/kd" */
     RT_FIELD_BATTERY,   /**< batteryType -> "rt/bat" */
     RT_FIELD_BCST,      /**< enforceBroadcast[] -> "rt/bcst" (whole array, one key) */
+#ifdef CONFIG_WANT_LF_TX
+    RT_FIELD_LF_ID,     /**< lfTransmitterID -> "rt/lfid" */
+#endif
 } RuntimeSettingField_t;
 
 /**
@@ -289,5 +319,19 @@ BatteryType_t runtime_settings_get_battery_type(void);
  *         falls back to the default if the settings cache is uninitialised.
  */
 CalibrationMode_t runtime_settings_get_calibration_mode(void);
+
+#ifdef CONFIG_WANT_LF_TX
+/**
+ * @brief Return the currently-cached LF transmitter ID.
+ *
+ * Reads from the in-memory settings cache (no NVS access), so it is cheap and
+ * safe to call from the LF transmit thread on every packet. The value is the
+ * per-unit ID provisioned over UDS (DID 0x935B), falling back to
+ * CONFIG_LF_TX_ID_DEFAULT on a factory-fresh unit.
+ *
+ * @return Cached 12-bit LF transmitter ID (0..4095).
+ */
+LFID_t runtime_settings_get_lfid(void);
+#endif
 
 #endif

@@ -271,6 +271,27 @@ payload). A write to `0x9350 + N` persists it to NVS.
 DID = 0x9150 + (optionIndex << 4) + settingIndex
 ```
 
+### Setting index map
+
+Indices are assigned in `uds_settings.c`. The base set is fixed; the per-cell
+broadcast block and the LF-ID setting are variant-dependent:
+
+| Index | Setting | Notes |
+|-------|---------|-------|
+| 0 | FW Commit | read-only |
+| 1 | PPO2 Mode | enum |
+| 2 | Cal Mode | enum |
+| 3 | Depth Comp | bool |
+| 4–6 | PID Kp/Ki/Kd | ×1000 milliunits |
+| 7 | Battery | enum |
+| 8 .. 8+CELL_MAX_COUNT-1 | Cn Bcst | per-cell enforce-broadcast |
+| 8+CELL_MAX_COUNT | **LF TX ID** | only when `CONFIG_WANT_LF_TX`; NUMBER, 0..4095 |
+
+With the default `CELL_MAX_COUNT = 3`, the LF TX ID is index 11 → value DID
+`0x913B`, persist DID `0x935B`, info DID `0x911B`. It is the per-unit 12-bit LF
+transmitter ID (used for deconfliction), provisioned per unit and persisted to
+NVS like any other setting.
+
 ## Log Streaming DID (0xA100)
 
 Log streaming is always enabled. Messages are pushed to the Bluetooth client

@@ -58,11 +58,15 @@ REPORT_DIR = FIRMWARE_ROOT / "coverage-report"
 HARNESS_DIR = TESTS_DIR / "integration" / "harness"
 
 # Sources we measure. Everything else (Zephyr kernel, NCS modules,
-# tests/, drivers/gpio_sim/) is excluded from the report.
+# tests/, drivers/gpio_sim/, proprietary/) is excluded from the report.
+# COVERAGE_FILTER already restricts to src/, so the closed-source out-of-tree
+# module under proprietary/ is outside scope; it is listed explicitly too as
+# belt-and-braces.
 COVERAGE_FILTER = str(FIRMWARE_ROOT / "src")
 COVERAGE_EXCLUDES = [
     str(FIRMWARE_ROOT / "tests"),
     str(FIRMWARE_ROOT / "drivers" / "gpio_sim"),
+    str(FIRMWARE_ROOT / "proprietary"),
 ]
 
 
