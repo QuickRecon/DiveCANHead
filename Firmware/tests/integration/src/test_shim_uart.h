@@ -7,6 +7,7 @@
 typedef enum {
     SHIM_CELL_MODE_DIVEO2 = 0,
     SHIM_CELL_MODE_O2S = 1,
+    SHIM_CELL_MODE_PYRO = 2,  /* Pyroscience: same protocol, 'M' command prefix */
 } shim_cell_mode_t;
 
 /**

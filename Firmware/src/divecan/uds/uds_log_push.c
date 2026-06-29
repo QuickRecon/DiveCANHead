@@ -111,6 +111,12 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
          * Source is SOLO (0x04), Target is bluetooth client (0xFF) */
         ISOTP_Init(isotpCtx, DIVECAN_SOLO,
                (DiveCANType_t)ISOTP_BROADCAST_ADDR, MENU_ID);
+
+        /* Mark this stream preemptible: log push is passive and droppable, so an
+         * active UDS request/response dialog (non-preemptible) takes priority on
+         * the shared TX state machine rather than stalling behind a log transfer
+         * whose far client is slow/absent. See ISOTP_TxQueue_Enqueue. */
+        isotpCtx->preemptible = true;
     }
 }
 

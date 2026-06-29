@@ -18,12 +18,14 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/zbus/zbus.h>
 
 #include "common.h"
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
 #include "power_management.h"
+#include "runtime_settings.h"
 #include "errors.h"
 #include "heartbeat.h"
 
@@ -36,7 +38,8 @@ LOG_MODULE_REGISTER(cell_diveo2, LOG_LEVEL_INF);
 /* Newline for terminating uart message */
 #define DIVEO2_NEWLINE        0x0DU
 #define DIVEO2_RX_BUFFER_LEN  86U
-#define DIVEO2_TX_BUFFER_LEN  8U
+/* TX buffer holds the longest command we emit: "#BCST 10000\r" (12 bytes). */
+#define DIVEO2_TX_BUFFER_LEN  16U
 #define DIVEO2_KEY_BUFFER_LEN 16U
 
 /* Digital cell error codes */
@@ -64,16 +67,34 @@ LOG_MODULE_REGISTER(cell_diveo2, LOG_LEVEL_INF);
 #define FIELD_IDX_PRESSURE      6U
 #define FIELD_IDX_HUMIDITY      7U
 
-/* Cell commands */
-#define GET_DETAIL_COMMAND   "#DRAW"
-#define GET_OXY_COMMAND      "#DOXY"
+/* Cell commands. The detail/simple poll commands are protocol-specific (D vs M
+ * prefix); #BCST is common to both families. */
+#define DIVEO2_DETAIL_COMMAND   "#DRAW"
+#define DIVEO2_OXY_COMMAND      "#DOXY"
+#define PYRO_DETAIL_COMMAND     "#MRAW"
+#define PYRO_OXY_COMMAND        "#MOXY"
 #define STRTOL_BASE          10
+
+/* Broadcast (streaming) mode: #BCST <interval_ms>; 0 disables. The cell then
+ * streams unsolicited #?RAW frames. 250 ms (4 Hz) sits comfortably under the
+ * DIGITAL_RESPONSE_TIMEOUT_MS staleness guard so a healthy stream never trips
+ * it, while a stalled stream still fails the cell within ~1 s. */
+#define DIVEO2_BCST_INTERVAL_MS 250
 
 /* Timeouts */
 #define DIGITAL_RESPONSE_TIMEOUT_MS 1000
 #define CELL_STARTUP_DELAY_MS       1000
 #define MIN_SAMPLE_INTERVAL_MS      100
 #define UART_RX_TIMEOUT_MS          2000
+/* Max wait for a TX DMA to drain tx_buf before reusing it (a few bytes at
+ * 19200 8N1 take ~5 ms; 50 ms is a generous ceiling that also bounds a stuck TX). */
+#define UART_TX_TIMEOUT_MS          50
+/* Passive listen window used at detection: one max broadcast interval, long
+ * enough to catch an unsolicited frame from a cell that is already streaming. */
+#define DETECT_LISTEN_MS            1200
+/* Per-frame wait while in broadcast mode: longer than the stream interval so a
+ * stalled stream surfaces as a staleness fail rather than a spurious timeout. */
+#define BROADCAST_WAIT_MS           1000
 /* RX inactivity timeout = end-of-response detection. Must be SHORT (just longer
  * than the inter-byte gap at 19200 8N1, ~0.5 ms) so RX_RDY/RX_DISABLED fire
  * promptly after the cell's reply — NOT equal to UART_RX_TIMEOUT_MS, or the
@@ -81,13 +102,23 @@ LOG_MODULE_REGISTER(cell_diveo2, LOG_LEVEL_INF);
  * times out with the reply discarded. */
 #define UART_RX_IDLE_TIMEOUT_MS     30
 
+/* Live broadcast-request signal values (atomic per-cell mailbox). */
+#define BCST_REQ_NONE (-1)
+#define BCST_REQ_OFF  (0)
+#define BCST_REQ_ON   (1)
+
+/* Cell run mode: request/response polling vs listen-only broadcast streaming. */
+typedef enum {
+    CELL_MODE_POLLED = 0,
+    CELL_MODE_BROADCAST,
+} CellMode_t;
+
 /* Local named constants for previously magic values */
 static const Numeric_t VBUS_MV_PER_V = 1000.0f;
 static const Numeric_t VBUS_MIN_VOLTAGE = 3.25f;
 static const PrecisionPPO2_t CENTIBAR_PER_BAR_D = 100.0;
 static const PrecisionPPO2_t PPO2_OVERRANGE_LIMIT = 255.0;
 static const uint32_t UART_TIMEOUT_US_PER_MS = 1000U;
-static const int32_t RECOVERY_BACKOFF_MS = 500;
 static const k_timeout_t ZBUS_PUB_TIMEOUT_MS = K_MSEC(100);
 
 /* ---- Detailed reading aggregate (replaces an over-long parameter list) ---- */
@@ -218,6 +249,51 @@ static bool diveo2_all_non_null(const char *const *fields, uint8_t count)
 }
 
 /**
+ * @brief Test whether a command header matches either protocol family.
+ *
+ * Accepts "#D<suffix>" (DiveO2) or "#M<suffix>" (Pyroscience) — the two
+ * families differ only in the prefix letter, so a single check parses both.
+ *
+ * @param hdr     Header token (e.g. "#DRAW" / "#MRAW").
+ * @param suffix  Expected 3-char body after the prefix letter (e.g. "RAW","OXY").
+ * @return true if hdr is "#D<suffix>" or "#M<suffix>".
+ */
+static bool diveo2_header_is(const char *hdr, const char *suffix)
+{
+    return (hdr != NULL) && ('#' == hdr[0]) &&
+           (('D' == hdr[1]) || ('M' == hdr[1])) &&
+           (0 == strcmp(&hdr[2], suffix));
+}
+
+/**
+ * @brief Classify the protocol family of a (cleaned) cell message by its prefix.
+ *
+ * Pure helper used by both the runtime auto-detection and the parser tests.
+ * Only the family-distinguishing prefix letter is inspected; field validation
+ * is the parse functions' job.
+ *
+ * @param message  Cleaned, null-terminated message (e.g. "#DRAW 12340 ...").
+ * @return CELL_PROTO_DIVEO2 for a '#D...' header, CELL_PROTO_PYRO for '#M...',
+ *         else CELL_PROTO_UNKNOWN.
+ */
+CellProtocol_t diveo2_detect_protocol(const char *message)
+{
+    CellProtocol_t proto = CELL_PROTO_UNKNOWN;
+
+    if ((message != NULL) && ('#' == message[0])) {
+        if ('D' == message[1]) {
+            proto = CELL_PROTO_DIVEO2;
+        } else if ('M' == message[1]) {
+            proto = CELL_PROTO_PYRO;
+        } else {
+            /* Unknown family — leave UNKNOWN. */
+        }
+    }
+
+    return proto;
+}
+
+/**
  * @brief Parse a DiveO2 "#DOXY <ppo2> <temp> <errcode>" simple response.
  *
  * @param message      Cleaned, null-terminated message string.
@@ -242,8 +318,7 @@ bool diveo2_parse_simple_response(const char *message, int32_t *ppo2,
         char *saveptr = NULL;
         const char *cmdName = strtok_r(msgCopy, sep, &saveptr);
 
-        if ((cmdName != NULL) &&
-            (0 == strcmp(cmdName, GET_OXY_COMMAND))) {
+        if (diveo2_header_is(cmdName, "OXY")) {
             const char *fields[DIVEO2_SIMPLE_FIELD_COUNT] = {0};
 
             for (uint8_t i = 0U; i < DIVEO2_SIMPLE_FIELD_COUNT; ++i) {
@@ -294,8 +369,7 @@ bool diveo2_parse_detailed_response(const char *message,
         char *saveptr = NULL;
         const char *cmdName = strtok_r(msgCopy, sep, &saveptr);
 
-        if ((cmdName != NULL) &&
-            (0 == strcmp(cmdName, GET_DETAIL_COMMAND))) {
+        if (diveo2_header_is(cmdName, "RAW")) {
             const char *fields[DIVEO2_DETAILED_FIELD_COUNT] = {0};
 
             for (uint8_t i = 0U; i < DIVEO2_DETAILED_FIELD_COUNT; ++i) {
@@ -354,6 +428,10 @@ void diveo2_format_tx_command(const char *command, uint8_t *txBuf,
 struct diveo2_cell_state {
     uint8_t cell_number;
     const struct device *uart_dev;
+    CellProtocol_t protocol;     /**< Detected family (UNKNOWN until detected) */
+    CellMode_t mode;             /**< Polled (request/response) vs broadcast (listen) */
+    uint8_t detect_phase;        /**< Auto-detect cursor: 0=passive,1=DiveO2,2=Pyro */
+    atomic_t broadcast_req;      /**< Live UDS mailbox: BCST_REQ_NONE/OFF/ON */
     CalCoeff_t cal_coeff;
     CellStatus_t status;
     int32_t cell_sample;
@@ -366,9 +444,17 @@ struct diveo2_cell_state {
     int32_t humidity;
     int64_t last_ppo2_ticks;
     char last_message[DIVEO2_RX_BUFFER_LEN];
-    uint8_t rx_buf[DIVEO2_RX_BUFFER_LEN];
+    /* Continuous RX with CR line accumulation. RX stays enabled for the cell's
+     * lifetime (double-buffered) so a broadcast stream is never re-synced
+     * mid-frame; bytes accumulate in rx_line until a CR delivers a complete
+     * frame to last_message. */
+    uint8_t rx_buf[2][DIVEO2_RX_BUFFER_LEN];
+    uint8_t rx_active;
+    char rx_line[DIVEO2_RX_BUFFER_LEN];
+    size_t rx_line_len;
     uint8_t tx_buf[DIVEO2_TX_BUFFER_LEN];
     struct k_sem rx_sem;
+    struct k_sem tx_sem;   /**< Available(1) when tx_buf is free; given on TX done */
     size_t rx_len;
     const struct zbus_channel *out_chan;
 };
@@ -385,47 +471,72 @@ struct diveo2_cell_state {
  * size and the framework-fixed parameter types are not negotiable, so the
  * memcpy step is factored out to satisfy S1151 and the suppressions in
  * sonar-project.properties cover the rest. */
-static void diveo2_capture_rx(struct diveo2_cell_state *cell,
-                              const struct uart_event_rx *rx)
+static void diveo2_feed_rx(struct diveo2_cell_state *cell,
+                           const struct uart_event_rx *rx)
 {
-    if (rx->len < DIVEO2_RX_BUFFER_LEN) {
-        (void)memcpy(cell->last_message,
-                     &rx->buf[rx->offset],
-                     rx->len);
-        cell->last_message[rx->len] = '\0';
-        cell->rx_len = rx->len;
+    for (size_t i = 0U; i < rx->len; ++i) {
+        char c = (char)rx->buf[rx->offset + i];
+
+        if (('\r' == c) || ('\n' == c)) {
+            /* Complete frame — hand it to the thread. Empty lines (back-to-back
+             * CR/LF) are ignored so framing survives CR+LF terminators. */
+            if (cell->rx_line_len > 0U) {
+                (void)memcpy(cell->last_message, cell->rx_line,
+                             cell->rx_line_len);
+                cell->last_message[cell->rx_line_len] = '\0';
+                cell->rx_len = cell->rx_line_len;
+                cell->rx_line_len = 0U;
+                k_sem_give(&cell->rx_sem);
+            }
+        } else if (cell->rx_line_len < (DIVEO2_RX_BUFFER_LEN - 1U)) {
+            cell->rx_line[cell->rx_line_len++] = c;
+        } else {
+            /* Overrun (no terminator within a frame) — drop and resync. */
+            cell->rx_line_len = 0U;
+        }
     }
 }
 
 /**
  * @brief UART async callback for the DiveO2 cell driver.
  *
- * On UART_RX_RDY captures received bytes; on UART_RX_DISABLED releases the
- * semaphore to unblock the cell thread.
+ * RX is kept continuously enabled (double-buffered) so a broadcast stream is
+ * never re-synced mid-frame. On UART_RX_RDY bytes are accumulated into a line
+ * buffer and a complete CR/LF-delimited frame wakes the cell thread. On
+ * UART_RX_BUF_REQUEST the spare buffer is handed back so reception never stops;
+ * UART_RX_DISABLED (buffer exhaustion / error) re-enables RX.
  *
  * @param dev        UART device (unused; Zephyr callback contract).
  * @param evt        UART event describing the type and associated data.
  * @param user_data  Pointer to the diveo2_cell_state for this cell.
  */
-/* UART async callback — signals the cell thread when RX completes or idles */
 static void diveo2_uart_callback(const struct device *dev,
                                  struct uart_event *evt, void *user_data)
 {
-    ARG_UNUSED(dev);
-
     struct diveo2_cell_state *cell = user_data;
 
     switch (evt->type) {
+    case UART_TX_DONE:
+    case UART_TX_ABORTED:
+        /* tx_buf is free again — let the next diveo2_send_command reuse it. */
+        k_sem_give(&cell->tx_sem);
+        break;
     case UART_RX_RDY:
-        diveo2_capture_rx(cell, &evt->data.rx);
-        /* The idle-timeout flush delivers the complete reply here (RX stays
-         * enabled, so UART_RX_DISABLED won't fire on success). Wake the thread
-         * now so it processes the response instead of waiting for the timeout. */
-        k_sem_give(&cell->rx_sem);
+        diveo2_feed_rx(cell, &evt->data.rx);
+        break;
+    case UART_RX_BUF_REQUEST:
+        /* Supply the spare buffer so async RX double-buffers and never stops. */
+        cell->rx_active ^= 1U;
+        (void)uart_rx_buf_rsp(dev, cell->rx_buf[cell->rx_active],
+                              DIVEO2_RX_BUFFER_LEN);
         break;
     case UART_RX_DISABLED:
-        /* RX finished (idle timeout or buffer full) — wake the thread */
-        k_sem_give(&cell->rx_sem);
+        /* Should not happen in steady state; re-arm to recover. */
+        cell->rx_line_len = 0U;
+        cell->rx_active = 0U;
+        (void)uart_rx_enable(cell->uart_dev, cell->rx_buf[0],
+                             DIVEO2_RX_BUFFER_LEN,
+                             UART_RX_IDLE_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
         break;
     default:
         break;
@@ -433,10 +544,18 @@ static void diveo2_uart_callback(const struct device *dev,
 }
 
 /**
+ * @brief Return the detailed-poll command for a protocol family ("#DRAW"/"#MRAW").
+ */
+static const char *diveo2_detail_cmd(CellProtocol_t proto)
+{
+    return (CELL_PROTO_PYRO == proto) ? PYRO_DETAIL_COMMAND : DIVEO2_DETAIL_COMMAND;
+}
+
+/**
  * @brief Format and transmit a command string to the DiveO2 cell via UART.
  *
  * @param cell     Cell state providing the UART device handle and TX buffer.
- * @param command  Null-terminated ASCII command string (e.g. GET_DETAIL_COMMAND).
+ * @param command  Null-terminated ASCII command string (e.g. "#DRAW").
  */
 static void diveo2_send_command(struct diveo2_cell_state *cell,
                                 const char *command)
@@ -444,6 +563,16 @@ static void diveo2_send_command(struct diveo2_cell_state *cell,
     if ((NULL == cell) || (NULL == command)) {
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
+        /* Wait for any in-flight TX to finish before reusing tx_buf. The async
+         * uart_tx() DMA reads from tx_buf after returning, so re-formatting it
+         * for the next command (e.g. a #DRAW poll issued the same loop iteration
+         * as a #BCST mode-change) would corrupt the bytes still on the wire and
+         * the cell would see garbage / never apply the command. tx_sem is given
+         * on UART_TX_DONE/ABORTED. */
+        if (0 != k_sem_take(&cell->tx_sem, K_MSEC(UART_TX_TIMEOUT_MS))) {
+            OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)UART_TX_TIMEOUT_MS);
+        }
+
         diveo2_format_tx_command(command, cell->tx_buf, sizeof(cell->tx_buf));
         /* strnlen bounds the scan to sizeof(tx_buf) so we never walk past
          * the buffer even if format_tx_command leaves no trailing '\0'. */
@@ -455,6 +584,8 @@ static void diveo2_send_command(struct diveo2_cell_state *cell,
         int tx_rc = uart_tx(cell->uart_dev, cell->tx_buf, len, SYS_FOREVER_US);
         if (0 != tx_rc) {
             OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-tx_rc));
+            /* TX never started — release the slot so we don't deadlock. */
+            k_sem_give(&cell->tx_sem);
         }
     }
 }
@@ -609,12 +740,15 @@ static void diveo2_apply_simple(struct diveo2_cell_state *cell, int32_t ppo2,
 /**
  * @brief Clean and parse the last received UART message, updating cell state.
  *
- * Attempts the detailed (#DRAW) format first, falls back to simple (#DOXY).
+ * Attempts the detailed (#?RAW) format first, falls back to simple (#?OXY),
+ * accepting either the DiveO2 ('D') or Pyroscience ('M') prefix. On a valid
+ * measurement the cell's protocol family is latched from the message prefix.
  * Backs off briefly on parse failure to avoid flooding logs.
  *
  * @param cell  Cell state containing last_message and per-cell fields to update.
+ * @return true if a valid measurement frame was parsed and applied.
  */
-static void diveo2_process_rx(struct diveo2_cell_state *cell)
+static bool diveo2_process_rx(struct diveo2_cell_state *cell)
 {
     char msgArray[DIVEO2_RX_BUFFER_LEN] = {0};
 
@@ -625,17 +759,151 @@ static void diveo2_process_rx(struct diveo2_cell_state *cell)
     int32_t ppo2 = 0;
     int32_t temp = 0;
     CellStatus_t rx_status = CELL_FAIL;
+    bool valid = false;
 
     /* Try detailed response first, then simple */
     if (diveo2_parse_detailed_response(msgArray, &reading)) {
         diveo2_apply_detailed(cell, &reading);
+        valid = true;
     } else if (diveo2_parse_simple_response(msgArray, &ppo2, &temp,
                                             &rx_status)) {
         diveo2_apply_simple(cell, ppo2, temp, rx_status);
+        valid = true;
     } else {
+        /* Not a measurement (e.g. an #ERRO from the wrong-family probe, or a
+         * #BCST echo) — let the caller decide whether to retry/re-detect. No
+         * sleep here: in broadcast mode a backoff would stall the listen loop
+         * and re-desync; the per-loop MIN_SAMPLE_INTERVAL_MS floor paces us. */
         LOG_WRN("Cell %u: unknown message: %s",
                 cell->cell_number, msgArray);
-        k_msleep(RECOVERY_BACKOFF_MS);
+    }
+
+    if (valid) {
+        /* Latch the protocol family from the first valid frame. */
+        cell->protocol = diveo2_detect_protocol(msgArray);
+    }
+
+    return valid;
+}
+
+/**
+ * @brief Drop any stale frame and partial line so the next wait gets a fresh one.
+ *
+ * RX stays continuously enabled (see diveo2_setup); this only clears the
+ * completion semaphore and the in-progress line accumulator. Use before a
+ * polled request so the response — not a leftover broadcast frame — is matched.
+ *
+ * @param cell  Cell state.
+ */
+static void diveo2_rx_sync(struct diveo2_cell_state *cell)
+{
+    unsigned int key = irq_lock();
+
+    cell->rx_line_len = 0U;
+    irq_unlock(key);
+    k_sem_reset(&cell->rx_sem);
+}
+
+/**
+ * @brief Wait up to @p timeout_ms for a complete UART frame, then parse it.
+ *
+ * RX is always enabled; the callback delivers a CR/LF-delimited frame via the
+ * semaphore. On timeout the line accumulator is cleared so a future partial
+ * does not prepend to the next frame.
+ *
+ * @param cell        Cell state.
+ * @param timeout_ms  Maximum time to wait for the next frame.
+ * @return true if a valid measurement frame was received and applied.
+ */
+static bool diveo2_wait_frame(struct diveo2_cell_state *cell, int32_t timeout_ms)
+{
+    bool valid = false;
+
+    if (0 == k_sem_take(&cell->rx_sem, K_MSEC(timeout_ms))) {
+        valid = diveo2_process_rx(cell);
+    } else {
+        OP_ERROR(OP_ERR_TIMEOUT);
+    }
+
+    return valid;
+}
+
+/**
+ * @brief Command the connected cell to start or stop broadcast streaming.
+ *
+ * Sends "#BCST <interval>" (start) or "#BCST 0" (stop). #BCST is common to both
+ * protocol families, so no protocol prefix is needed.
+ *
+ * @param cell  Cell state providing the UART device and TX buffer.
+ * @param on    true → start at DIVEO2_BCST_INTERVAL_MS; false → stop.
+ */
+static void diveo2_set_cell_broadcast(struct diveo2_cell_state *cell, bool on)
+{
+    char cmd[DIVEO2_TX_BUFFER_LEN] = {0};
+
+    if (on) {
+        (void)snprintf(cmd, sizeof(cmd), "#BCST %u", DIVEO2_BCST_INTERVAL_MS);
+    } else {
+        (void)snprintf(cmd, sizeof(cmd), "#BCST 0");
+    }
+    diveo2_send_command(cell, cmd);
+    LOG_INF("Cell %u: broadcast %s", cell->cell_number, on ? "on" : "off");
+}
+
+/**
+ * @brief Perform one auto-detection step (one UART operation per call).
+ *
+ * Cycles across three phases so each call performs a single bounded UART wait
+ * (keeping the per-loop heartbeat cadence intact):
+ *   phase 0 — passively listen for an unsolicited frame (cell already streaming
+ *             → adopt broadcast mode);
+ *   phase 1 — actively poll #DRAW (DiveO2 guess);
+ *   phase 2 — actively poll #MRAW (Pyroscience guess).
+ * On the first valid frame, diveo2_process_rx latches cell->protocol; this then
+ * applies the persistent enforce-broadcast setting once.
+ *
+ * @param cell  Cell state to detect on.
+ */
+static void diveo2_detect_step(struct diveo2_cell_state *cell)
+{
+    diveo2_rx_sync(cell);
+
+    if (0U == cell->detect_phase) {
+        /* Passive: a cell that boots already broadcasting will stream to us. */
+        if (diveo2_wait_frame(cell, DETECT_LISTEN_MS) &&
+            (CELL_PROTO_UNKNOWN != cell->protocol)) {
+            cell->mode = CELL_MODE_BROADCAST;
+        }
+    } else {
+        CellProtocol_t guess = (1U == cell->detect_phase) ?
+                               CELL_PROTO_DIVEO2 : CELL_PROTO_PYRO;
+
+        diveo2_send_command(cell, diveo2_detail_cmd(guess));
+        if (diveo2_wait_frame(cell, UART_RX_TIMEOUT_MS) &&
+            (CELL_PROTO_UNKNOWN != cell->protocol)) {
+            cell->mode = CELL_MODE_POLLED;
+        }
+    }
+
+    if (CELL_PROTO_UNKNOWN == cell->protocol) {
+        /* Advance to the next detection phase next loop. */
+        cell->detect_phase = (uint8_t)((cell->detect_phase + 1U) % 3U);
+    } else {
+        LOG_INF("Cell %u: detected %s, %s mode", cell->cell_number,
+                (CELL_PROTO_PYRO == cell->protocol) ? "Pyro" : "DiveO2",
+                (CELL_MODE_BROADCAST == cell->mode) ? "broadcast" : "polled");
+        /* Apply the persistent enforce-broadcast setting once, at detection.
+         * Read it HERE (not at thread start): the cell thread auto-starts at
+         * boot and would race main()'s runtime_settings_load(), reading the
+         * default. By detection (>1 s in) NVS settings are loaded. */
+        RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
+        runtime_settings_get(&rs);
+        bool enforce = (cell->cell_number < CELL_MAX_COUNT) &&
+                       rs.enforceBroadcast[cell->cell_number];
+        if (enforce && (CELL_MODE_POLLED == cell->mode)) {
+            diveo2_set_cell_broadcast(cell, true);
+            cell->mode = CELL_MODE_BROADCAST;
+        }
     }
 }
 
@@ -652,6 +920,16 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
     bool ok = true;
 
     k_sem_init(&cell->rx_sem, 0, 1);
+    /* tx_sem starts available (1): tx_buf is free until the first send. */
+    k_sem_init(&cell->tx_sem, 1, 1);
+
+    /* Re-detect protocol/mode from scratch each (re)start. */
+    cell->protocol = CELL_PROTO_UNKNOWN;
+    cell->mode = CELL_MODE_POLLED;
+    cell->detect_phase = 0U;
+    cell->rx_line_len = 0U;
+    cell->rx_active = 0U;
+    atomic_set(&cell->broadcast_req, BCST_REQ_NONE);
 
     if (!device_is_ready(cell->uart_dev)) {
         LOG_ERR("UART not ready for cell %u", cell->cell_number);
@@ -663,6 +941,22 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
         if (0 != ret) {
             LOG_ERR("Failed to set UART callback for cell %u: %d",
                     cell->cell_number, ret);
+            ok = false;
+        }
+    }
+
+    if (ok) {
+        /* Enable async RX ONCE and keep it running for the cell's lifetime.
+         * Continuous double-buffered reception (the callback hands back the
+         * spare buffer on UART_RX_BUF_REQUEST) means a broadcast stream is never
+         * re-synced mid-frame — the root-cause fix for broadcast mis-framing. */
+        int en_rc = uart_rx_enable(cell->uart_dev, cell->rx_buf[0],
+                                   DIVEO2_RX_BUFFER_LEN,
+                                   UART_RX_IDLE_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
+        if (0 != en_rc) {
+            OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-en_rc));
+            LOG_ERR("Failed to enable RX for cell %u: %d",
+                    cell->cell_number, en_rc);
             ok = false;
         }
     }
@@ -713,32 +1007,36 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
             heartbeat_kick((HeartbeatId_t)(HEARTBEAT_CELL_1 + cell->cell_number));
             int64_t loop_start = k_uptime_ticks();
 
-            /* Ensure RX is stopped before starting a new cycle — avoids
-             * "RX already enabled" if the previous cycle's idle timeout
-             * hasn't fully completed yet. The return is intentionally not
-             * reported: an idle RX returns -EFSR ("no active reception"),
-             * which is the normal case here. */
-            (void)uart_rx_disable(cell->uart_dev);
-            k_sem_reset(&cell->rx_sem);
+            /* Consume a pending live broadcast on/off request — but only once the
+             * protocol is known (otherwise hold it until detection completes). */
+            if (CELL_PROTO_UNKNOWN != cell->protocol) {
+                atomic_val_t req = atomic_set(&cell->broadcast_req, BCST_REQ_NONE);
 
-            (void)memset(cell->rx_buf, 0, sizeof(cell->rx_buf));
-            cell->rx_len = 0U;
-            int en_rc = uart_rx_enable(cell->uart_dev, cell->rx_buf,
-                                 sizeof(cell->rx_buf),
-                                 UART_RX_IDLE_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
-            if (0 != en_rc) {
-                OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-en_rc));
+                if ((BCST_REQ_ON == req) && (CELL_MODE_BROADCAST != cell->mode)) {
+                    diveo2_set_cell_broadcast(cell, true);
+                    cell->mode = CELL_MODE_BROADCAST;
+                } else if ((BCST_REQ_OFF == req) &&
+                           (CELL_MODE_POLLED != cell->mode)) {
+                    diveo2_set_cell_broadcast(cell, false);
+                    cell->mode = CELL_MODE_POLLED;
+                } else {
+                    /* No actionable request. */
+                }
             }
 
-            diveo2_send_command(cell, GET_DETAIL_COMMAND);
-
-            /* Wait for RX complete (idle line detection) or timeout */
-            if (0 == k_sem_take(&cell->rx_sem,
-                                K_MSEC(UART_RX_TIMEOUT_MS))) {
-                diveo2_process_rx(cell);
+            if (CELL_PROTO_UNKNOWN == cell->protocol) {
+                /* Auto-detect family + initial mode (one bounded UART op/loop). */
+                diveo2_detect_step(cell);
+            } else if (CELL_MODE_BROADCAST == cell->mode) {
+                /* Listen-only: the cell streams unsolicited #?RAW frames; sending
+                 * a poll command here would corrupt the stream (per datasheet).
+                 * RX is continuously enabled, so we just take the next frame. */
+                (void)diveo2_wait_frame(cell, BROADCAST_WAIT_MS);
             } else {
-                OP_ERROR(OP_ERR_TIMEOUT);
-                (void)uart_rx_disable(cell->uart_dev);
+                /* Request/response poll: drop any stale frame, ask, await reply. */
+                diveo2_rx_sync(cell);
+                diveo2_send_command(cell, diveo2_detail_cmd(cell->protocol));
+                (void)diveo2_wait_frame(cell, UART_RX_TIMEOUT_MS);
             }
 
             diveo2_broadcast(cell);
@@ -770,6 +1068,7 @@ static struct diveo2_cell_state diveo2_cell_1 = {
     .cell_number = 0,
     .cal_coeff = DIVEO2_CAL_DEFAULT,
     .status = CELL_FAIL,
+    .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
     .out_chan = &chan_cell_1,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart1)),
 };
@@ -783,6 +1082,7 @@ static struct diveo2_cell_state diveo2_cell_2 = {
     .cell_number = 1,
     .cal_coeff = DIVEO2_CAL_DEFAULT,
     .status = CELL_FAIL,
+    .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
     .out_chan = &chan_cell_2,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart2)),
 };
@@ -796,6 +1096,7 @@ static struct diveo2_cell_state diveo2_cell_3 = {
     .cell_number = 2,
     .cal_coeff = DIVEO2_CAL_DEFAULT,
     .status = CELL_FAIL,
+    .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
     .out_chan = &chan_cell_3,
     .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart3)),
 };
@@ -831,3 +1132,38 @@ static void diveo2_cal_done_cb(const struct zbus_channel *chan)
 
 ZBUS_LISTENER_DEFINE(diveo2_cal_done_listener, diveo2_cal_done_cb);
 ZBUS_CHAN_ADD_OBS(chan_cal_response, diveo2_cal_done_listener, 10);
+
+/* ---- Live broadcast control (called from the UDS WDBI handler) ----
+ *
+ * Posts an on/off request to the addressed cell's atomic mailbox; the cell
+ * thread performs the actual #BCST UART write on its next loop iteration. This
+ * keeps the UART transaction off the UDS/divecan_rx context (non-blocking),
+ * so the positive response is not delayed by a cell round-trip.
+ */
+void diveo2_request_broadcast(uint8_t cell_number, bool on)
+{
+    atomic_t *req = NULL;
+
+#if defined(CONFIG_CELL_1_TYPE_DIVEO2)
+    if (0U == cell_number) {
+        req = &diveo2_cell_1.broadcast_req;
+    }
+#endif
+#if defined(CONFIG_CELL_2_TYPE_DIVEO2) && CONFIG_CELL_COUNT >= 2
+    if (1U == cell_number) {
+        req = &diveo2_cell_2.broadcast_req;
+    }
+#endif
+#if defined(CONFIG_CELL_3_TYPE_DIVEO2) && CONFIG_CELL_COUNT >= 3
+    if (2U == cell_number) {
+        req = &diveo2_cell_3.broadcast_req;
+    }
+#endif
+
+    if (req != NULL) {
+        atomic_set(req, on ? (atomic_val_t)BCST_REQ_ON : (atomic_val_t)BCST_REQ_OFF);
+    } else {
+        /* Not a DiveO2/UART cell on this build — reject. */
+        OP_ERROR_DETAIL(OP_ERR_CONFIG, cell_number);
+    }
+}

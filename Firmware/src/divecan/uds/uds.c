@@ -97,6 +97,7 @@ static void buildWriteDidPositiveResponse(UDSContext_t *ctx, const uint8_t *requ
 #endif
 static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
 static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
+static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
 
 /**
  * @brief Initialize UDS context
@@ -862,6 +863,42 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
 }
 
 /**
+ * @brief Handle a WDBI write to a per-cell broadcast DID (0xF4N + 0x0D)
+ *
+ * Live, transient command: 0 stops the addressed cell's UART broadcast, any
+ * non-zero value starts it (the cell driver sends #BCST asynchronously on its
+ * own thread). Distinct from the persistent "enforce broadcast" NVS setting.
+ *
+ * @param ctx           UDS context
+ * @param did           Cell broadcast DID (UDS_DID_CELL_BASE + cell*range + 0x0D)
+ * @param requestData   Full request bytes; one data byte expected
+ * @param requestLength Total byte count of requestData
+ * @return true (always; error path sends NRC and still returns true)
+ */
+static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did,
+                                  const uint8_t *requestData,
+                                  uint16_t requestLength)
+{
+    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
+    } else {
+        uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
+        bool on = (0U != requestData[UDS_DATA_IDX]);
+
+        diveo2_request_broadcast(cellNum, on);
+
+        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
+        ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
+        ctx->responseLength = UDS_POS_RESP_HDR;
+        UDS_SendResponse(ctx);
+    }
+
+    return true;
+}
+
+/**
  * @brief Handle a WDBI write to the error-histogram clear DID
  *
  * Any byte payload triggers the clear — the handset does not need to encode
@@ -1335,6 +1372,11 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
         } else if (UDS_DID_LOG_CAN_VERBOSE == did) {
             (void)writeLogCanVerboseDID(ctx, requestData, requestLength);
 #endif
+        } else if ((did >= UDS_DID_CELL_BASE) &&
+               (did < (UDS_DID_CELL_BASE + (CELL_MAX_COUNT * UDS_DID_CELL_RANGE))) &&
+               (CELL_DID_BROADCAST ==
+                    ((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE))) {
+            (void)writeCellBroadcastDID(ctx, did, requestData, requestLength);
         } else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
                (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))) {
             (void)writeSettingSaveDID(ctx, did, requestData, requestLength);

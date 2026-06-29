@@ -169,6 +169,7 @@ typedef struct {
     Numeric_t pidKi;                   /**< PID integral gain (HAS_O2_SOLENOID variants) */
     Numeric_t pidKd;                   /**< PID derivative gain (HAS_O2_SOLENOID variants) */
     BatteryType_t batteryType;         /**< Battery chemistry, drives low-battery threshold */
+    bool enforceBroadcast[CELL_MAX_COUNT]; /**< Per-cell: force the UART cell into broadcast at boot */
 } RuntimeSettings_t;
 
 #define RUNTIME_SETTINGS_DEFAULT {                                       \
@@ -179,6 +180,7 @@ typedef struct {
     .pidKi = PID_DEFAULT_KI,                                         \
     .pidKd = PID_DEFAULT_KD,                                         \
     .batteryType = BATTERY_TYPE_DEFAULT,                             \
+    .enforceBroadcast = {0},                                        \
 }
 
 /* ---- Validation ---- */

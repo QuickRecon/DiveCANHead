@@ -66,6 +66,31 @@ typedef enum {
     CELL_NEED_CAL,    /**< Cell requires calibration before readings are trusted */
 } CellStatus_t;
 
+/** @brief UART fluorescence-cell protocol family.
+ *
+ * DiveO2 and Pyroscience cells speak a byte-identical ASCII protocol that
+ * differs only in the command-prefix letter: DiveO2 uses 'D' (#DOXY/#DRAW),
+ * Pyroscience uses 'M' (#MOXY/#MRAW). #BCST/#VERS etc. are common to both.
+ * The driver auto-detects which family a connected cell uses at runtime.
+ */
+typedef enum {
+    CELL_PROTO_UNKNOWN = 0, /**< Not yet detected */
+    CELL_PROTO_DIVEO2,      /**< DiveO2 — 'D' prefix */
+    CELL_PROTO_PYRO,        /**< Pyroscience — 'M' prefix */
+} CellProtocol_t;
+
+/**
+ * @brief Request that a UART fluorescence cell enter or leave broadcast mode.
+ *
+ * Live (transient) per-cell command issued from the UDS handler. The actual
+ * #BCST UART write happens asynchronously on the cell's own thread, so this is
+ * a non-blocking signal — safe to call from the divecan_rx/UDS context.
+ *
+ * @param cell_number Zero-based cell index (0..CELL_MAX_COUNT-1).
+ * @param on          true → start broadcast at the default interval; false → stop.
+ */
+void diveo2_request_broadcast(uint8_t cell_number, bool on);
+
 /* ---- zbus message types ---- */
 
 /** @brief Per-cell reading published on chan_cell_1..3.

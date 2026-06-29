@@ -454,7 +454,8 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
         /* Enqueue to centralized TX queue instead of direct send.
          * This ensures all ISO-TP messages are serialized. */
         result = ISOTP_TxQueue_Enqueue(ctx->source, ctx->target,
-                           ctx->messageId, data, length);
+                           ctx->messageId, data, length,
+                           ctx->preemptible);
 
         if (result) {
             /* Set completion flag - message is queued and will be sent in order */

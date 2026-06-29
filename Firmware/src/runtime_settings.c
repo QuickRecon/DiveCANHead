@@ -219,6 +219,17 @@ static void load_battery(settings_read_cb cb, void *arg, RuntimeSettings_t *cach
     }
 }
 
+static void load_bcst(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    bool vals[CELL_MAX_COUNT] = {0};
+    ssize_t got = cb(arg, vals, sizeof(vals));
+    if (sizeof(vals) == (size_t)got) {
+        for (size_t i = 0; i < CELL_MAX_COUNT; ++i) {
+            cached->enforceBroadcast[i] = (vals[i] != false);
+        }
+    }
+}
+
 /**
  * @brief Zephyr settings handler callback — deserialise one key into the cache
  *
@@ -259,6 +270,9 @@ static Status_t settings_set(const char *name, size_t len,
     }
     else if (0 == strcmp(name, "bat")) {
         load_battery(read_cb, cb_arg, cached);
+    }
+    else if (0 == strcmp(name, "bcst")) {
+        load_bcst(read_cb, cb_arg, cached);
     }
     else
     {
@@ -344,7 +358,7 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
         uint8_t cal_val = (uint8_t)s->calibrationMode;
         uint8_t bat_val = (uint8_t)s->batteryType;
 
-        enum { SAVE_FIELD_COUNT = 7 };
+        enum { SAVE_FIELD_COUNT = 8 };
         const Status_t rc_codes[SAVE_FIELD_COUNT] = {
             settings_save_one(SETTINGS_SUBTREE "/ppo2",
                       &ppo2_val, sizeof(ppo2_val)),
@@ -361,6 +375,9 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
                       &s->pidKd, sizeof(s->pidKd)),
             settings_save_one(SETTINGS_SUBTREE "/bat",
                       &bat_val, sizeof(bat_val)),
+            settings_save_one(SETTINGS_SUBTREE "/bcst",
+                      s->enforceBroadcast,
+                      sizeof(s->enforceBroadcast)),
         };
 
         Status_t first_err = 0;

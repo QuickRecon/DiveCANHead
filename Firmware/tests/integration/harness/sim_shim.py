@@ -24,6 +24,7 @@ class ShimDigitalCellType(IntEnum):
 
     DIVEO2 = 0
     O2S = 1
+    PYRO = 2  # Pyroscience: same protocol as DiveO2 with an 'M' command prefix
 
 
 # ---------------------------------------------------------------------------

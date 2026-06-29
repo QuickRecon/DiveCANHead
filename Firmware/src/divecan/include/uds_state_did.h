@@ -93,7 +93,10 @@
 #define CELL_DID_AMBIENT_LIGHT      0x0AU
 #define CELL_DID_PRESSURE           0x0BU
 #define CELL_DID_HUMIDITY           0x0CU
+/* Highest READABLE cell offset; CELL_DID_BROADCAST below is write-only and is
+ * handled by the WDBI dispatcher, not the read path. */
 #define CELL_DID_MAX_OFFSET         0x0CU
+#define CELL_DID_BROADCAST          0x0DU  /**< write-only, 1 B: 0=stop, nonzero=start this cell's UART broadcast (sends #BCST) */
 
 /**
  * @brief Check whether a DID falls within the state-DID ranges handled by this module.

@@ -18,16 +18,31 @@
 LOG_MODULE_REGISTER(uds_settings, LOG_LEVEL_INF);
 
 /* Setting indices — #defines for switch case labels */
-#define SETTING_INDEX_FW_COMMIT    0U
-#define SETTING_INDEX_PPO2_MODE    1U
-#define SETTING_INDEX_CAL_MODE     2U
-#define SETTING_INDEX_DEPTH_COMP   3U
-#define SETTING_INDEX_PID_KP       4U
-#define SETTING_INDEX_PID_KI       5U
-#define SETTING_INDEX_PID_KD       6U
-#define SETTING_INDEX_BATTERY_TYPE 7U
+#define SETTING_INDEX_FW_COMMIT      0U
+#define SETTING_INDEX_PPO2_MODE      1U
+#define SETTING_INDEX_CAL_MODE       2U
+#define SETTING_INDEX_DEPTH_COMP     3U
+#define SETTING_INDEX_PID_KP         4U
+#define SETTING_INDEX_PID_KI         5U
+#define SETTING_INDEX_PID_KD         6U
+#define SETTING_INDEX_BATTERY_TYPE   7U
+/* Per-cell "enforce broadcast" flags occupy a contiguous block so the handler
+ * can map an index back to a cell number arithmetically. */
+#define SETTING_INDEX_CELL_BCST_BASE 8U
 
-#define SETTING_COUNT 8U
+#define SETTING_COUNT (SETTING_INDEX_CELL_BCST_BASE + CELL_MAX_COUNT)
+
+/* True if @p idx addresses a per-cell enforce-broadcast setting; if so, sets
+ * *cell to the zero-based cell number. */
+static bool setting_is_cell_bcst(uint8_t idx, uint8_t *cell)
+{
+    bool match = (idx >= SETTING_INDEX_CELL_BCST_BASE) && (idx < SETTING_COUNT);
+
+    if (match && (cell != NULL)) {
+        *cell = (uint8_t)(idx - SETTING_INDEX_CELL_BCST_BASE);
+    }
+    return match;
+}
 
 /* PID gains are stored as floats in NVS but exposed as uint64 milliunits
  * over the wire (handset and SettingValue u64 BE format). The factor 1000
@@ -161,8 +176,38 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .maxValue = (uint64_t)(BATTERY_TYPE_COUNT - 1),
         .options = batteryTypeOptions,
         .optionCount = (uint8_t)BATTERY_TYPE_COUNT
+    },
+    /* Index 8..8+CELL_MAX_COUNT-1: per-cell enforce-broadcast (UART cells).
+     * Labels are fixed-width "Cn Bcst"; this block assumes CELL_MAX_COUNT == 3. */
+    {
+        .label = "C1 Bcst",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .maxValue = 1,
+        .options = boolOptions,
+        .optionCount = 2
+    },
+    {
+        .label = "C2 Bcst",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .maxValue = 1,
+        .options = boolOptions,
+        .optionCount = 2
+    },
+    {
+        .label = "C3 Bcst",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .maxValue = 1,
+        .options = boolOptions,
+        .optionCount = 2
     }
 };
+
+/* The per-cell broadcast settings block above hard-codes one entry per cell. */
+BUILD_ASSERT(CELL_MAX_COUNT == 3,
+             "per-cell broadcast settings table assumes CELL_MAX_COUNT == 3");
 
 /**
  * @brief Return the total number of configurable settings
@@ -206,6 +251,11 @@ uint64_t UDS_GetSettingValue(uint8_t index)
     /* Read the LIVE cache (reflects volatile 0x9130 writes), not an NVS reload. */
     RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
     runtime_settings_get(&rs);
+
+    uint8_t bcstCell = 0U;
+    if (setting_is_cell_bcst(index, &bcstCell)) {
+        return rs.enforceBroadcast[bcstCell] ? 1U : 0U;
+    }
 
     switch (index) {
     case SETTING_INDEX_FW_COMMIT:
@@ -268,6 +318,10 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
             RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
             runtime_settings_get(&rs);
 
+            uint8_t bcstCell = 0U;
+            if (setting_is_cell_bcst(index, &bcstCell)) {
+                rs.enforceBroadcast[bcstCell] = (value != 0U);
+            } else {
             switch (index) {
             case SETTING_INDEX_PPO2_MODE:
                 rs.ppo2ControlMode = (PPO2ControlMode_t)value;
@@ -295,6 +349,7 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
                 break;
             default:
                 break;
+            }
             }
 
             /* Apply to the live cache (volatile, no NVS). Previously this only
@@ -332,6 +387,10 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
         RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
         (void)runtime_settings_load(&rs);
 
+        uint8_t bcstCell = 0U;
+        if (setting_is_cell_bcst(index, &bcstCell)) {
+            rs.enforceBroadcast[bcstCell] = (value != 0U);
+        } else {
         switch (index) {
         case SETTING_INDEX_PPO2_MODE:
             rs.ppo2ControlMode = (PPO2ControlMode_t)value;
@@ -359,6 +418,7 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
             break;
         default:
             break;
+        }
         }
 
         if (0 == runtime_settings_save(&rs)) {

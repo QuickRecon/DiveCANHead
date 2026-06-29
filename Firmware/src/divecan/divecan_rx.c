@@ -649,10 +649,13 @@ static void PollISOTPContexts(uint32_t now)
         ISOTP_Poll(&udsState->isotpContext, now);
     }
 
-    /* Also poll log push ISO-TP and module */
+    /* Poll the log-push ISO-TP context for timeouts here, but DON'T drive a new
+     * log transmission yet — UDS_LogPush_Poll() runs at the end of
+     * ProcessISOTPCompletion (after the RX-completed dialog reply is enqueued and
+     * pumped) so a passive log push never claims the idle TX window ahead of an
+     * active dialog reply for this same iteration. */
     if (udsState->logPushInitialized) {
         ISOTP_Poll(&udsState->logPushIsoTpContext, now);
-        UDS_LogPush_Poll();
     }
 }
 
@@ -682,6 +685,15 @@ static void ProcessISOTPCompletion(uint32_t now)
     /* Poll TX queue AFTER processing RX - ensures responses enqueued
      * by UDS handler are sent immediately in the same iteration */
     ISOTP_TxQueue_Poll(now);
+
+    /* Drive log push LAST: any UDS dialog reply for this iteration is now
+     * enqueued/sent, so a passive log transfer can't grab the TX state machine
+     * ahead of it (and a non-preemptible reply would otherwise abort it anyway —
+     * see ISOTP_TxQueue_Enqueue). Dropping logs under heavy dialog load is the
+     * accepted trade for never stalling an active conversation. */
+    if (udsState->logPushInitialized) {
+        UDS_LogPush_Poll();
+    }
 }
 
 /**

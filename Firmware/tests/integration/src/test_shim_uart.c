@@ -65,28 +65,42 @@ struct cell_state {
     /* Scratch buffer for accumulating TX bytes until we see a terminator */
     uint8_t tx_scan_buf[TX_SCAN_BUF_LEN];
     size_t tx_scan_len;
+
+    /* Broadcast (#BCST) emulation — inert until the firmware enables it. */
+    struct k_timer bcst_timer;
+    struct k_work  bcst_work;
+    uint32_t       bcst_ms;
 };
 
 static struct cell_state cells[CELL_COUNT];
 
-/* ---- DiveO2 response builders ---- */
+static bool mode_is_pyro(const struct cell_state *cell)
+{
+    return cell->mode == SHIM_CELL_MODE_PYRO;
+}
 
-static int build_diveo2_doxy_response(struct cell_state *cell,
-                                      char *out, size_t out_size)
+/* ---- DiveO2 / Pyroscience response builders ----
+ *
+ * The two families share an identical body; only the command header prefix
+ * differs ('D' vs 'M'), so the header is passed in. */
+
+static int build_oxy_response(struct cell_state *cell, const char *hdr,
+                              char *out, size_t out_size)
 {
     /* O = ppO2 in 10^-3 hPa. At 1 atm, ppO2_bar * 1013250 ~ pPa = (bar * 1000) hPa
      * = bar * 1e6 mhPa. So O = ppo2_bar * 1e6. */
     int32_t o = (int32_t)(cell->ppo2_bar * 1000000.0f);
-    return snprintf(out, out_size, "#DOXY %d %d %u\r",
-                    o, DIVEO2_DEFAULT_TEMP_MC,
+    return snprintf(out, out_size, "%s %d %d %u\r",
+                    hdr, o, DIVEO2_DEFAULT_TEMP_MC,
                     (unsigned)DIVEO2_DEFAULT_STATUS);
 }
 
-static int build_diveo2_draw_response(struct cell_state *cell,
-                                      char *out, size_t out_size)
+static int build_raw_response(struct cell_state *cell, const char *hdr,
+                              char *out, size_t out_size)
 {
     int32_t o = (int32_t)(cell->ppo2_bar * 1000000.0f);
-    return snprintf(out, out_size, "#DRAW %d %d %u %d %d %d %d %d\r",
+    return snprintf(out, out_size, "%s %d %d %u %d %d %d %d %d\r",
+                    hdr,
                     o,
                     DIVEO2_DEFAULT_TEMP_MC,
                     (unsigned)DIVEO2_DEFAULT_STATUS,
@@ -111,12 +125,9 @@ static int build_o2s_response(struct cell_state *cell,
 
 /* ---- Command dispatch ---- */
 
-static void handle_command(struct cell_state *cell, const char *cmd)
+/* Refresh this cell's injected PPO2 + protocol mode from shared memory. */
+static void shim_refresh_state(struct cell_state *cell)
 {
-    char response[RESPONSE_BUF_LEN];
-    int len = 0;
-
-    /* Pull state from shared memory (zero-copy path). */
     struct shim_shared_state *sh = shim_shared_get();
     if (sh != NULL) {
         unsigned int idx = (unsigned int)(cell - cells);
@@ -125,22 +136,12 @@ static void handle_command(struct cell_state *cell, const char *cmd)
             cell->mode = (shim_cell_mode_t)sh->digital_mode[idx];
         }
     }
+}
 
-    if (strncmp(cmd, "#DRAW", 5) == 0) {
-        len = build_diveo2_draw_response(cell, response, sizeof(response));
-    } else if (strncmp(cmd, "#DOXY", 5) == 0) {
-        len = build_diveo2_doxy_response(cell, response, sizeof(response));
-    } else if (strcmp(cmd, "Mm") == 0 || strcmp(cmd, "Mn") == 0) {
-        len = build_o2s_response(cell, response, sizeof(response));
-    } else if (cmd[0] == '#') {
-        /* Unknown DiveO2 command — return generic error per datasheet */
-        len = snprintf(response, sizeof(response), "#ERRO -26\r");
-    } else {
-        /* Unknown — silently drop */
-        return;
-    }
-
-    if (len > 0 && len < (int)sizeof(response)) {
+/* Inject a built response onto the cell's RX line and flush it. */
+static void shim_inject(struct cell_state *cell, const char *response, int len)
+{
+    if (len > 0 && len < (int)RESPONSE_BUF_LEN) {
         uint32_t injected = uart_emul_put_rx_data(
             cell->uart_dev,
             (const uint8_t *)response,
@@ -157,6 +158,84 @@ static void handle_command(struct cell_state *cell, const char *cmd)
          * response. */
         (void)uart_rx_disable(cell->uart_dev);
     }
+}
+
+/* Start or stop this cell's broadcast stream in response to "#BCST <ms>". */
+static void shim_handle_bcst(struct cell_state *cell, const char *cmd)
+{
+    const char *p = cmd + 5;  /* skip "#BCST" */
+    while (*p == ' ') {
+        ++p;
+    }
+    long ms = strtol(p, NULL, 10);
+
+    if (ms <= 0) {
+        k_timer_stop(&cell->bcst_timer);
+        cell->bcst_ms = 0;
+    } else {
+        cell->bcst_ms = (uint32_t)ms;
+        k_timer_start(&cell->bcst_timer, K_MSEC(ms), K_MSEC(ms));
+    }
+}
+
+/* Broadcast timer expiry → defer the (RX-injecting) work to a workqueue. */
+static void bcst_work_fn(struct k_work *w)
+{
+    struct cell_state *cell = CONTAINER_OF(w, struct cell_state, bcst_work);
+    char response[RESPONSE_BUF_LEN];
+
+    shim_refresh_state(cell);
+    int len = build_raw_response(cell, mode_is_pyro(cell) ? "#MRAW" : "#DRAW",
+                                 response, sizeof(response));
+    shim_inject(cell, response, len);
+}
+
+static void bcst_timer_fn(struct k_timer *t)
+{
+    struct cell_state *cell = CONTAINER_OF(t, struct cell_state, bcst_timer);
+    (void)k_work_submit(&cell->bcst_work);
+}
+
+static void handle_command(struct cell_state *cell, const char *cmd)
+{
+    char response[RESPONSE_BUF_LEN];
+    int len = 0;
+
+    shim_refresh_state(cell);
+
+    const bool pyro = mode_is_pyro(cell);
+    const char *erro = "#ERRO -26\r";
+
+    if (cell->mode == SHIM_CELL_MODE_O2S) {
+        if (strcmp(cmd, "Mm") == 0 || strcmp(cmd, "Mn") == 0) {
+            len = build_o2s_response(cell, response, sizeof(response));
+        } else {
+            return;  /* O2S ignores everything else */
+        }
+    } else if (strncmp(cmd, "#BCST", 5) == 0) {
+        /* Common to both families: start/stop streaming, then echo. */
+        shim_handle_bcst(cell, cmd);
+        len = snprintf(response, sizeof(response), "%s\r", cmd);
+    } else if (strncmp(cmd, "#DRAW", 5) == 0) {
+        len = pyro ? snprintf(response, sizeof(response), "%s", erro)
+                   : build_raw_response(cell, "#DRAW", response, sizeof(response));
+    } else if (strncmp(cmd, "#DOXY", 5) == 0) {
+        len = pyro ? snprintf(response, sizeof(response), "%s", erro)
+                   : build_oxy_response(cell, "#DOXY", response, sizeof(response));
+    } else if (strncmp(cmd, "#MRAW", 5) == 0) {
+        len = pyro ? build_raw_response(cell, "#MRAW", response, sizeof(response))
+                   : snprintf(response, sizeof(response), "%s", erro);
+    } else if (strncmp(cmd, "#MOXY", 5) == 0) {
+        len = pyro ? build_oxy_response(cell, "#MOXY", response, sizeof(response))
+                   : snprintf(response, sizeof(response), "%s", erro);
+    } else if (cmd[0] == '#') {
+        /* Unknown command for this family — generic error per datasheet. */
+        len = snprintf(response, sizeof(response), "%s", erro);
+    } else {
+        return;  /* Unknown — silently drop */
+    }
+
+    shim_inject(cell, response, len);
 }
 
 /* Strip the protocol terminator and surrounding whitespace from a TX line. */
@@ -239,7 +318,8 @@ int shim_uart_set_digital_mode(uint8_t cell, shim_cell_mode_t mode)
     if (cell < 1 || cell > CELL_COUNT) {
         return -EINVAL;
     }
-    if (mode != SHIM_CELL_MODE_DIVEO2 && mode != SHIM_CELL_MODE_O2S) {
+    if (mode != SHIM_CELL_MODE_DIVEO2 && mode != SHIM_CELL_MODE_O2S &&
+        mode != SHIM_CELL_MODE_PYRO) {
         return -EINVAL;
     }
     cells[cell - 1].mode = mode;
@@ -263,6 +343,9 @@ static int shim_uart_init(void)
         cells[i].mode = SHIM_CELL_MODE_DIVEO2;
         cells[i].ppo2_bar = 0.21f;
         cells[i].tx_scan_len = 0;
+        cells[i].bcst_ms = 0;
+        k_timer_init(&cells[i].bcst_timer, bcst_timer_fn, NULL);
+        k_work_init(&cells[i].bcst_work, bcst_work_fn);
 
         if (!device_is_ready(uarts[i])) {
             LOG_ERR("usart%u not ready", i + 1);

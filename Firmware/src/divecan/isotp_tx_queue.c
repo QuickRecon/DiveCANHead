@@ -57,6 +57,9 @@ typedef struct {
     DiveCANType_t source;               /**< Source address */
     DiveCANType_t target;               /**< Target address */
     uint32_t messageId;                 /**< Base CAN ID */
+    bool preemptible;                   /**< Passive (log-push) transfer: may be
+                                         *   aborted to let an active UDS dialog
+                                         *   reply jump the queue. */
 } ISOTPTxRequest_t;
 
 /* ---- TX state machine ---- */
@@ -330,7 +333,7 @@ void ISOTP_TxQueue_Init(void)
 
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
                 uint32_t messageId, const uint8_t *data,
-                uint16_t length)
+                uint16_t length, bool preemptible)
 {
     bool result = false;
 
@@ -345,11 +348,58 @@ bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
         reqBuffer->source = source;
         reqBuffer->target = target;
         reqBuffer->messageId = messageId;
+        reqBuffer->preemptible = preemptible;
+
+        /* Active UDS dialog preempts a passive (log-push) transfer.
+         *
+         * The uds_log_push stream and a real UDS request/response share this one
+         * TX state machine AND the same wire addressing (the BT-bridge client is
+         * a genuine node, not a broadcast sentinel — gating on target address
+         * would wrongly abort real dialogs with that client). They are told apart
+         * by KIND: only the log-push context is flagged `preemptible`.
+         *
+         * A passive log transfer that has sent its FF sits in WAIT_FC until its
+         * FC arrives or N_Bs (1 s) expires; if the far client is slow/absent that
+         * window stalls every dialog reply queued behind it (the observed UDS
+         * flakiness). So when a NON-preemptible (dialog) message is enqueued and
+         * the SM is mid-flight on a PREEMPTIBLE (log) transfer, abort the log
+         * transfer (drop its remaining CFs — acceptable for non-critical logs) so
+         * this reply goes out on the next poll, same iteration. A real dialog
+         * response is never preemptible, so it is never disturbed. Runs on the RX
+         * thread, the SM's sole owner — no re-entrancy. */
+        if (!preemptible) {
+            TxSmCtx_t *sm = getTxSm();
+            if (!tx_sm_is_idle(sm) && sm->current.preemptible) {
+                smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
+            }
+        }
 
         /* Non-blocking put */
         Status_t ret = k_msgq_put(&isotp_tx_msgq, reqBuffer, K_NO_WAIT);
         if (0 != ret) {
-            OP_ERROR(OP_ERR_QUEUE);
+            /* Queue full. The drain only stalls when an in-flight multi-frame
+             * TX is stuck in WAIT_FC (its FC was lost or never came): the SM
+             * stops pulling new requests, so every subsequent UDS reply is
+             * dropped HERE and UDS stays dead until reboot — while broadcasts
+             * (which don't use this queue) keep flowing, so the stall is
+             * invisible to liveness checks. If the current transfer has blown
+             * the N_Bs deadline it is dead: reap it back to IDLE, drain one
+             * pending request to free a slot, and retry so the responder
+             * self-heals instead of wedging. */
+            TxSmCtx_t *sm = getTxSm();
+            if (!tx_sm_is_idle(sm) &&
+                ((k_uptime_get_32() - sm->txLastFrameTime) > ISOTP_TIMEOUT_N_BS)) {
+                smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
+                sm->event = TX_EVT_TICK;
+                (void)smf_run_state(SMF_CTX(sm));
+                sm->event = TX_EVT_NONE;
+                ret = k_msgq_put(&isotp_tx_msgq, reqBuffer, K_NO_WAIT);
+            }
+            if (0 != ret) {
+                OP_ERROR(OP_ERR_QUEUE);
+            } else {
+                result = true;
+            }
         } else {
             result = true;
         }

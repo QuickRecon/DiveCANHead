@@ -41,6 +41,7 @@ extern bool diveo2_parse_detailed_response(const char *message,
                                            DiveO2DetailedReading_t *out);
 extern void diveo2_format_tx_command(const char *command, uint8_t *txBuf,
                                      size_t bufLen);
+extern CellProtocol_t diveo2_detect_protocol(const char *message);
 
 #define DIVEO2_RX_BUF_LEN 86U
 #define DIVEO2_TX_BUF_LEN 8U
@@ -514,4 +515,88 @@ ZTEST(diveo2_format, test_exact_fit)
     zassert_equal('#', buf[0]);
     zassert_equal('F', buf[6]);
     zassert_equal(0x0D, buf[7]);
+}
+
+/* ============================================================================
+ * Pyroscience protocol (M prefix) — same parser must accept #MOXY / #MRAW
+ * ============================================================================ */
+
+/** @brief Suite: Pyroscience ('M' prefix) frames share the DiveO2 parsers. */
+ZTEST_SUITE(diveo2_pyro, NULL, NULL, NULL, NULL, NULL);
+
+/** @brief A #MOXY simple frame parses identically to #DOXY (only the prefix differs). */
+ZTEST(diveo2_pyro, test_moxy_simple)
+{
+    int32_t ppo2, temp;
+    CellStatus_t status;
+
+    zassert_true(diveo2_parse_simple_response(
+        "#MOXY 12340 2500 0", &ppo2, &temp, &status));
+    zassert_equal(12340, ppo2);
+    zassert_equal(2500, temp);
+    zassert_equal(CELL_OK, status);
+}
+
+/** @brief A #MRAW detailed frame parses all 8 fields like #DRAW. */
+ZTEST(diveo2_pyro, test_mraw_detailed)
+{
+    DiveO2DetailedReading_t r = {0};
+
+    zassert_true(diveo2_parse_detailed_response(
+        "#MRAW 12340 2500 0 1000 5000 200 1013250 45000", &r));
+    zassert_equal(12340, r.ppo2);
+    zassert_equal(2500, r.temperature);
+    zassert_equal(1000, r.phase);
+    zassert_equal(45000, r.humidity);
+    zassert_equal(CELL_OK, r.status);
+}
+
+/** @brief The simple parser still rejects a detailed (#MRAW) frame — wrong suffix. */
+ZTEST(diveo2_pyro, test_mraw_rejected_by_simple)
+{
+    int32_t ppo2, temp;
+    CellStatus_t status;
+
+    zassert_false(diveo2_parse_simple_response(
+        "#MRAW 12340 2500 0 1000 5000 200 1013250 45000",
+        &ppo2, &temp, &status));
+}
+
+/** @brief A foreign prefix (#XRAW) is rejected by the detailed parser. */
+ZTEST(diveo2_pyro, test_foreign_prefix_rejected)
+{
+    DiveO2DetailedReading_t r = {0};
+
+    zassert_false(diveo2_parse_detailed_response(
+        "#XRAW 12340 2500 0 1000 5000 200 1013250 45000", &r));
+}
+
+/* ============================================================================
+ * Protocol auto-detection (diveo2_detect_protocol)
+ * ============================================================================ */
+
+/** @brief Suite: classify a cell message's protocol family by its prefix. */
+ZTEST_SUITE(diveo2_protocol, NULL, NULL, NULL, NULL, NULL);
+
+/** @brief A '#D...' header classifies as DiveO2 (both simple and detailed). */
+ZTEST(diveo2_protocol, test_detect_diveo2)
+{
+    zassert_equal(CELL_PROTO_DIVEO2, diveo2_detect_protocol("#DRAW 1 2 3 4 5 6 7 8"));
+    zassert_equal(CELL_PROTO_DIVEO2, diveo2_detect_protocol("#DOXY 1 2 3"));
+}
+
+/** @brief A '#M...' header classifies as Pyroscience. */
+ZTEST(diveo2_protocol, test_detect_pyro)
+{
+    zassert_equal(CELL_PROTO_PYRO, diveo2_detect_protocol("#MRAW 1 2 3 4 5 6 7 8"));
+    zassert_equal(CELL_PROTO_PYRO, diveo2_detect_protocol("#MOXY 1 2 3"));
+}
+
+/** @brief Junk / error / NULL inputs classify as UNKNOWN. */
+ZTEST(diveo2_protocol, test_detect_unknown)
+{
+    zassert_equal(CELL_PROTO_UNKNOWN, diveo2_detect_protocol("#ERRO -26"));
+    zassert_equal(CELL_PROTO_UNKNOWN, diveo2_detect_protocol("garbage"));
+    zassert_equal(CELL_PROTO_UNKNOWN, diveo2_detect_protocol(""));
+    zassert_equal(CELL_PROTO_UNKNOWN, diveo2_detect_protocol(NULL));
 }
