@@ -1,0 +1,11 @@
+mainmenu "runtime_settings persistence test"
+
+# Pull in the full product-topology menu so runtime_settings.c's BUILD_ASSERTs
+# (exactly-one-cell-type, exactly-one-power-mode) and runtime_settings.h's
+# default/valid-mode tables resolve from real Kconfig defaults rather than
+# hand-maintained -D defines. The all-default config (3 analog cells, battery
+# power, LI2S, no solenoid) is internally consistent: PPO2 default Off, Cal
+# default Absolute — both in their valid sets.
+rsource "../../src/Kconfig"
+
+source "Kconfig.zephyr"

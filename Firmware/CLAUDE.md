@@ -4,15 +4,17 @@ AI assistant directives for the `Firmware/` subtree. This supplements the projec
 
 ## Build Command
 
+On the DiveCAN test-rig host, use the installed upstream Zephyr venv and SDK.
+The older `/home/aren/ncs/...` and `/opt/zephyr-sdk` paths do not exist there.
+
 ```bash
-NCS=/home/aren/ncs/toolchains/927563c840
-PATH=$NCS/usr/local/bin:$PATH \
-LD_LIBRARY_PATH=$NCS/usr/local/lib:$LD_LIBRARY_PATH \
-ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk \
-west build -d build -b divecan_jr/stm32l431xx . \
-  -- -DBOARD_ROOT=. \
-     -DEXTRA_CONF_FILE=variants/dev_full.conf \
-     -DEXTRA_DTC_OVERLAY_FILE=variants/dev_full.overlay
+export PATH=/home/aren/zephyr-venv/bin:$PATH
+export ZEPHYR_SDK_INSTALL_DIR=/home/aren/zephyr-sdk-1.0.1
+
+west build -d build -b divecan_jr/stm32l431xx . --sysbuild -p always -- \
+  -DBOARD_ROOT=. \
+  -DEXTRA_CONF_FILE=variants/<name>.conf \
+  -DEXTRA_DTC_OVERLAY_FILE=variants/<name>.overlay
 ```
 
 Each variant has a matching `.overlay` next to its `.conf` that
@@ -22,7 +24,8 @@ hardware that's compiled-in but never spoken to (~1.5 KB per unused
 ADS1115, ~350 B per unused USART). Always pass both `EXTRA_*` flags
 for a given variant — they're a pair.
 
-Clean build: delete `build/` first. Incremental: just re-run.
+Use a pristine rebuild when changing variants. Sysbuild produces MCUBoot, the
+signed app, the merged hex, and the HIL test manifest.
 
 ## Native (host) test runner
 
@@ -35,12 +38,12 @@ The `scripts/native_test.py` wrapper handles toolchain env, build-dir
 naming, and aggregation. Use it instead of raw `west build -d build_test_*`:
 
 ```bash
-scripts/native_test.py list                     # show every discovered test
-scripts/native_test.py build ppo2_control_math  # build one
-scripts/native_test.py run   ppo2_control_math  # run a built binary
-scripts/native_test.py build-all                # build every test
-scripts/native_test.py run-all                  # build + run every test
-scripts/native_test.py clean                    # nuke build-native/
+python3 scripts/native_test.py list                     # show every discovered test
+python3 scripts/native_test.py build ppo2_control_math  # build one
+python3 scripts/native_test.py run   ppo2_control_math  # run a built binary
+python3 scripts/native_test.py build-all                # build every test
+python3 scripts/native_test.py run-all                  # build + run every test
+python3 scripts/native_test.py clean                    # nuke build-native/
 ```
 
 ### VSCode Test Explorer integration
@@ -134,28 +137,28 @@ flow. The overlay that adds `--coverage` to the compiler is
 Typical full-sweep invocation:
 
 ```bash
-scripts/coverage.py all                  # build + run-tests + run-pytest + report
+python3 scripts/coverage.py all          # build + run-tests + run-pytest + report
 xdg-open coverage-report/index.html      # browse line/branch heatmap
 ```
 
 Granular subcommands when iterating on a specific gap:
 
 ```bash
-scripts/coverage.py build-tests          # build every ztest with --coverage
-scripts/coverage.py build-integration    # build the integration firmware
-scripts/coverage.py run-tests            # run the ztest binaries
-scripts/coverage.py run-pytest <args>    # pytest with DIVECAN_FW_BIN set
+python3 scripts/coverage.py build-tests       # build every ztest with --coverage
+python3 scripts/coverage.py build-integration # build the integration firmware
+python3 scripts/coverage.py run-tests         # run the ztest binaries
+python3 scripts/coverage.py run-pytest <args> # pytest with DIVECAN_FW_BIN set
                                          # and a longer SIGTERM grace
-scripts/coverage.py report               # gcovr → coverage-report/
-scripts/coverage.py clean                # wipe build-coverage/ + coverage-report/
+python3 scripts/coverage.py report       # gcovr → coverage-report/
+python3 scripts/coverage.py clean        # wipe build-coverage/ + coverage-report/
 ```
 
 `scripts/native_test.py` also gained a `--coverage` flag for single-test
 iteration:
 
 ```bash
-scripts/native_test.py build --coverage ppo2_control_math
-scripts/native_test.py run   --coverage ppo2_control_math
+python3 scripts/native_test.py build --coverage ppo2_control_math
+python3 scripts/native_test.py run   --coverage ppo2_control_math
 ```
 
 `.gcda` files are flushed by libgcov's `atexit` hook when the process

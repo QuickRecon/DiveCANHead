@@ -398,6 +398,65 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
     return rc;
 }
 
+Status_t runtime_settings_save_field(RuntimeSettingField_t field)
+{
+    RuntimeSettings_t *cached = getCached();
+
+    /* The live cache is the source of truth; the value being saved was already
+     * applied + validated via runtime_settings_set_volatile(). Re-validate the
+     * whole struct as a cheap guard, but persist ONLY the one key — no NVS
+     * reload, so other fields' volatile edits remain live and unpersisted. */
+    if (!runtime_settings_validate(cached)) {
+        return -EINVAL;
+    }
+
+    Status_t rc;
+    switch (field) {
+    case RT_FIELD_PPO2: {
+        uint8_t v = (uint8_t)cached->ppo2ControlMode;
+        rc = settings_save_one(SETTINGS_SUBTREE "/ppo2", &v, sizeof(v));
+        break;
+    }
+    case RT_FIELD_CAL: {
+        uint8_t v = (uint8_t)cached->calibrationMode;
+        rc = settings_save_one(SETTINGS_SUBTREE "/cal", &v, sizeof(v));
+        break;
+    }
+    case RT_FIELD_DEPTH:
+        rc = settings_save_one(SETTINGS_SUBTREE "/depth",
+                       &cached->depthCompensation,
+                       sizeof(cached->depthCompensation));
+        break;
+    case RT_FIELD_KP:
+        rc = settings_save_one(SETTINGS_SUBTREE "/kp",
+                       &cached->pidKp, sizeof(cached->pidKp));
+        break;
+    case RT_FIELD_KI:
+        rc = settings_save_one(SETTINGS_SUBTREE "/ki",
+                       &cached->pidKi, sizeof(cached->pidKi));
+        break;
+    case RT_FIELD_KD:
+        rc = settings_save_one(SETTINGS_SUBTREE "/kd",
+                       &cached->pidKd, sizeof(cached->pidKd));
+        break;
+    case RT_FIELD_BATTERY: {
+        uint8_t v = (uint8_t)cached->batteryType;
+        rc = settings_save_one(SETTINGS_SUBTREE "/bat", &v, sizeof(v));
+        break;
+    }
+    case RT_FIELD_BCST:
+        rc = settings_save_one(SETTINGS_SUBTREE "/bcst",
+                       cached->enforceBroadcast,
+                       sizeof(cached->enforceBroadcast));
+        break;
+    default:
+        rc = -EINVAL;
+        break;
+    }
+
+    return rc;
+}
+
 Status_t runtime_settings_set_volatile(const RuntimeSettings_t *s)
 {
     Status_t rc = 0;

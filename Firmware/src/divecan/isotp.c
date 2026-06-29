@@ -452,10 +452,11 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
         OP_ERROR_DETAIL(OP_ERR_ISOTP_OVERFLOW, length);
     } else {
         /* Enqueue to centralized TX queue instead of direct send.
-         * This ensures all ISO-TP messages are serialized. */
+         * This ensures all ISO-TP messages are serialized. Broadcast
+         * transfers (target 0xFF, e.g. log-push) are sent fire-and-forget by
+         * the queue so they never stall an addressed reply. */
         result = ISOTP_TxQueue_Enqueue(ctx->source, ctx->target,
-                           ctx->messageId, data, length,
-                           ctx->preemptible);
+                           ctx->messageId, data, length);
 
         if (result) {
             /* Set completion flag - message is queued and will be sent in order */

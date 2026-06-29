@@ -203,6 +203,35 @@ int runtime_settings_load(RuntimeSettings_t *out);
  */
 int runtime_settings_save(const RuntimeSettings_t *settings);
 
+/** @brief Identifies a single persistable runtime setting (one NVS key). */
+typedef enum {
+    RT_FIELD_PPO2 = 0,  /**< ppo2ControlMode -> "rt/ppo2" */
+    RT_FIELD_CAL,       /**< calibrationMode -> "rt/cal"  */
+    RT_FIELD_DEPTH,     /**< depthCompensation -> "rt/depth" */
+    RT_FIELD_KP,        /**< pidKp -> "rt/kp" */
+    RT_FIELD_KI,        /**< pidKi -> "rt/ki" */
+    RT_FIELD_KD,        /**< pidKd -> "rt/kd" */
+    RT_FIELD_BATTERY,   /**< batteryType -> "rt/bat" */
+    RT_FIELD_BCST,      /**< enforceBroadcast[] -> "rt/bcst" (whole array, one key) */
+} RuntimeSettingField_t;
+
+/**
+ * @brief Persist a SINGLE field from the live cache to NVS.
+ *
+ * Writes only the one NVS key for @p field, taking the value from the live
+ * cache (runtime_settings_get()). Unlike runtime_settings_save(), it does NOT
+ * touch the cache and does NOT reload NVS — so a volatile (0x9130) edit to a
+ * DIFFERENT field stays live (it just isn't persisted until its own save), and
+ * a save costs one NOR key write instead of eight. This is the persist path for
+ * the UDS save DID (0x9350): the handset reads the trialed value back and
+ * commits exactly that field.
+ *
+ * @param field Which setting to persist
+ * @return 0 on success, -EINVAL if the live cache fails validation, or a
+ *         negative errno from the settings backend
+ */
+int runtime_settings_save_field(RuntimeSettingField_t field);
+
 /**
  * @brief Apply settings to the in-memory cache WITHOUT persisting to NVS.
  *

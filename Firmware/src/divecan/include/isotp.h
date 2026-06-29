@@ -144,11 +144,11 @@ typedef struct {
     DiveCANType_t target; /**< Remote device type */
     uint32_t messageId;   /**< Base CAN ID (e.g., MENU_ID = 0xD0A0000) */
 
-    /* TX policy */
-    bool preemptible;     /**< Passive stream (e.g. uds_log_push): its in-flight
-                           *   TX may be aborted so an active UDS dialog reply
-                           *   isn't stalled behind it. Default false (dialogs);
-                           *   set true only on the log-push context. */
+    /* TX traffic class is derived from the target address: a broadcast target
+     * (ISOTP_BROADCAST_ADDR, e.g. the log-push stream) is sent fire-and-forget
+     * by the centralized TX queue and never waits for Flow Control, so it
+     * cannot stall an addressed UDS reply. No per-context TX policy flag is
+     * needed. */
 
     /* Per-tick SMF input. ISOTP_ProcessRxFrame / ISOTP_Poll populate
      * these before calling smf_run_state; the state run reads them and

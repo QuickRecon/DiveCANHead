@@ -155,10 +155,10 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF000–0xF001  | Device identification                         |
 | 0xF200–0xF22F  | PPO2 control state                            |
 | 0xF230–0xF235  | Power monitoring                              |
-| 0xF240–0xF241  | Control writes (setpoint, calibration)        |
+| 0xF240–0xF242  | Control writes (setpoint, calibration, HIL solenoid override) |
 | 0xF250–0xF254  | Crash info (next-boot diagnostic)             |
 | 0xF260–0xF261  | Error histogram                               |
-| 0xF270–0xF277  | MCUBoot / OTA / factory backup                |
+| 0xF270–0xF279  | MCUBoot / OTA / factory and NVS management    |
 | 0xF280–0xF284  | Flash log management (see [Flash Log DIDs](#flash-log-dids-0xf280-0xf284)) |
 | 0xF400–0xF42F  | Per-cell data (3 cells × 16 sub-IDs)          |
 | 0x9100–0x935F  | Settings (count, info, value, label, save)    |
@@ -185,6 +185,7 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF235 | 1     | uint8    | R         | Power sources (Jr: always 0)                             |
 | 0xF240 | 1     | uint8    | W         | Setpoint write (centibar; 0–255 → 0.00–2.55 bar)         |
 | 0xF241 | 1     | uint8    | W         | Calibration trigger (FO2 0–100 %)                        |
+| 0xF242 | 2     | u8+u8    | W         | HIL raw solenoid fire `[channel, 0x5A]`; fixed 1.5 s; requires Programming, surface, and PPO2 mode OFF |
 | 0xF250 | 1     | uint8    | R         | Crash valid flag (1 if last boot was a recorded crash)   |
 | 0xF251 | 4     | uint32   | R         | Crash reason code (`K_ERR_*` / `FatalOpError_t`)         |
 | 0xF252 | 4     | uint32   | R         | Crash program counter                                    |
@@ -481,6 +482,11 @@ DiveO2-cell-only offsets (analog/O2S leave these zero):
 | 0x0B   | 4     | uint32   | Pressure (µhPa)        |
 | 0x0C   | 4     | int32    | Humidity (m-RH)        |
 
+DiveO2-configured UART cells also expose write-only offset `0x0D`.
+Writing one byte sends a transient command to the physical cell:
+`0` stops broadcast mode and any nonzero value starts it. This does not persist;
+the settings table below carries the per-cell boot-enforcement policy.
+
 Reading an offset that isn't supported for the cell's compile-time type
 returns NRC `0x31` (mirrors the legacy STM32 firmware behaviour). O2S
 cells only support the universal offsets.
@@ -535,6 +541,9 @@ Setting kinds:
 | 5   | PID Ki x1k  | NUMBER | yes      | 0–`PID_GAIN_MAX_WIRE` (milliunits)                    |
 | 6   | PID Kd x1k  | NUMBER | yes      | 0–`PID_GAIN_MAX_WIRE` (milliunits)                    |
 | 7   | Battery     | TEXT   | yes      | "9V" / "Li 1S" / "Li 2S" / "Li 3S"|
+| 8   | C1 Bcst     | TEXT   | yes      | "Off" / "On"; enforce UART cell broadcast after protocol detection |
+| 9   | C2 Bcst     | TEXT   | yes      | "Off" / "On"; present when cell 2 is configured |
+| 10  | C3 Bcst     | TEXT   | yes      | "Off" / "On"; present when cell 3 is configured |
 
 The table grows over time — query 0x9100 + 0x9110+i at runtime for the
 authoritative list.
@@ -545,6 +554,10 @@ The firmware emits **unsolicited** WDBI frames at DID `0xA100` to push
 log messages to the handset / bluetooth bridge. Always-on; the handset
 sees these as WDBI requests (SID `0x2E`) but should treat them as
 events rather than responses.
+
+Log push has its own ISO-TP context but shares the centralized TX queue. Its
+transfers are preemptible: a solicited UDS response aborts or bypasses passive
+log traffic rather than waiting behind a missing or slow Flow Control response.
 
 Payload: up to 253 bytes of UTF-8 text. Layout:
 
@@ -565,14 +578,14 @@ response channel — see `uds_log_push.c`.
 | 0x14 | `UDS_NRC_RESPONSE_TOO_LONG`               | Multi-DID response exceeds 256-byte response buffer         |
 | 0x22 | `UDS_NRC_CONDITIONS_NOT_CORRECT`          | Session transition / OTA action refused (dive, slot1 empty, factory missing, image unconfirmed, calibration already running) |
 | 0x24 | `UDS_NRC_REQUEST_SEQUENCE_ERR`            | OTA 0x36/0x37 sent outside `OTA_DOWNLOADING` / 0x31 sent outside `OTA_AWAITING_ACTIVATE` |
-| 0x31 | `UDS_NRC_REQUEST_OUT_OF_RANGE`            | Unknown DID, invalid data value (e.g. magic byte ≠ 0x01 on 0xF275/76/77, FO2 > 100 on 0xF241), unknown OTA RID |
+| 0x31 | `UDS_NRC_REQUEST_OUT_OF_RANGE`            | Unknown DID or invalid data value, magic, or channel         |
 | 0x33 | `UDS_NRC_SECURITY_ACCESS_DENIED`          | Reserved — not currently raised                             |
 | 0x70 | `UDS_NRC_UPLOAD_DOWNLOAD_NOT_ACCEPTED`    | Reserved — not currently raised                             |
 | 0x71 | `UDS_NRC_TRANSFER_DATA_SUSPENDED`         | Reserved — not currently raised                             |
 | 0x72 | `UDS_NRC_GENERAL_PROG_FAIL`               | Flash operation failed during OTA (open, erase, init, request_upgrade) |
 | 0x73 | `UDS_NRC_WRONG_BLOCK_SEQ_COUNTER`         | 0x36 received with the wrong sequence byte                  |
 | 0x7E | `UDS_NRC_SUBFUNC_NOT_IN_SESSION`          | Reserved — not currently raised                             |
-| 0x7F | `UDS_NRC_SERVICE_NOT_IN_SESSION`          | OTA SID (0x34/0x36/0x37/0x31) or write DID (0xF275/76/77) sent outside Programming |
+| 0x7F | `UDS_NRC_SERVICE_NOT_IN_SESSION`          | Programming-only OTA/service/write request sent in the default session |
 
 Negative response wire format:
 
@@ -746,7 +759,7 @@ Response: 00 62 F2 70
 - `BENCHTEST.md` Section 5 — hardware-in-the-loop checklist for every
   OTA / status DID.
 - `tests/uds_state_did_ota/` — 31-case native ztest coverage of the
-  full 0xF270–0xF277 dispatch.
+  full 0xF270–0xF279 dispatch.
 - `tests/integration/harness/test_uds_did_ota.py` — 14-case pytest
   coverage against the native_sim integration firmware.
 - `tests/uds_ota/` — 0x34/0x36/0x37/0x31 pipeline coverage.

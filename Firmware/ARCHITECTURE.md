@@ -14,7 +14,7 @@ This document captures the design decisions made during the port from the FreeRT
 
 - **MCU**: STM32L431RCTx (Cortex-M4F, 256KB flash, 64KB RAM)
 - **Clock**: 12MHz HSE, PLL to 80MHz SYSCLK
-- **CAN**: DiveCAN @ 250kbps (CAN1, PB8/PB9)
+- **CAN**: DiveCAN @ 125 kbit/s (CAN1, PB8/PB9)
 - **ADC**: Dual ADS1115 on I2C1 (0x48, 0x49) for oxygen cell voltage
 - **UARTs**: 3x at 19200 baud for digital oxygen sensors
 - **Flash**: Winbond W25Q512JV SPI NOR (64MB) replacing SD card — used for OTA secondary slot, scratch, factory image backup, NVS settings, and data logging
@@ -31,32 +31,30 @@ lives on the external W25Q512JV NOR.
 
 | Region | Node | Label | Range | Size |
 |--------|------|-------|-------|------|
-| Bootloader | `boot_partition` | `mcuboot` | 0x00000000 – 0x00010000 | 64 KB |
-| Primary slot | `slot0_partition` | `image-0` | 0x00010000 – 0x00040000 | 192 KB |
+| Bootloader | `boot_partition` | `mcuboot` | 0x00000000 – 0x00009000 | 36 KB |
+| Primary slot | `slot0_partition` | `image-0` | 0x00009000 – 0x00040000 | 220 KB |
 
 MCUBoot is built with `BOOT_SIGNATURE_TYPE_NONE` (SHA-256 integrity
-only, no asymmetric crypto). Measured 56 KB with `BOOT_VALIDATE_SLOT0=y`
-and the I2C/ADC drivers carried in from the board defconfig — fits in
-64 KB with ~14 % headroom. A future optimisation pass with a
-dedicated `divecan_jr_mcuboot_defconfig` (stripping app-only
-peripherals) is expected to recover ~16 KB and enable a 48 KB
-MCUBoot / 208 KB slot0 split.
+only, no asymmetric crypto). The sysbuild MCUBoot overlay disables
+application-only peripherals; the image is approximately 32 KB in a 36 KB
+partition. Monitor this narrow margin after Zephyr/MCUBoot upgrades.
 
 ### External NOR (W25Q512JV, 64 MB)
 
 | Region | Node | Label | Range | Size |
 |--------|------|-------|-------|------|
-| Secondary slot | `slot1_partition` | `image-1` | 0x00000000 – 0x00030000 | 192 KB |
-| Swap scratch | `scratch_partition` | `image-scratch` | 0x00030000 – 0x00040000 | 64 KB |
-| Factory image backup | `factory_partition` | `factory-image` | 0x00040000 – 0x00070000 | 192 KB |
-| (free / future dive-log space) | — | — | 0x00070000 – 0x03FF8000 | ~63.5 MB |
+| Secondary slot | `slot1_partition` | `image-1` | 0x00000000 – 0x00037000 | 220 KB |
+| Swap scratch | `scratch_partition` | `image-scratch` | 0x00037000 – 0x00047000 | 64 KB |
+| Factory image backup | `factory_partition` | `factory-image` | 0x00047000 – 0x0007E000 | 220 KB |
+| Alignment gap | — | — | 0x0007E000 – 0x00080000 | 8 KB |
+| Telemetry FCB | `log_telemetry_partition` | `log-telemetry` | 0x00080000 – 0x03080000 | 48 MB |
+| Text FCB | `log_text_partition` | `log-text` | 0x03080000 – 0x03880000 | 8 MB |
+| Unallocated | — | — | 0x03880000 – 0x03FF8000 | ~7.5 MB |
 | NVS settings | `storage_partition` | `storage` | 0x03FF8000 – 0x04000000 | 32 KB |
 
-The NVS partition is parked at the top of the chip so the free middle
-region can grow upward (rotating dive-log writes) without
-re-partitioning. Settings writes are infrequent and benefit from
-being far from the log write hot zone (reduces inadvertent wear
-interaction).
+The log partitions use 256 KiB logical FCB sectors to fit the descriptor
+budget. At the measured high-rate capture cadence the 48 MB telemetry ring holds
+about 4.9 hours before wrapping. NVS remains at the top of the chip.
 
 The factory partition holds a permanent known-good copy of the
 first-confirmed image, captured automatically on first boot after a
@@ -84,6 +82,7 @@ Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_set
 | `AP_Aren.conf` | AP-style single-solenoid head — 3× DiveO2, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery-only, 2S Li |
 | `eCCR_classic.conf` | Classic single-solenoid eCCR — 3× analog, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery+CAN, 9V |
 | `Poseidon_Aren.conf` | 2× DiveO2 head — solenoid map + control/cal/depth defaults match `dev_full` (all 4 solenoids, PID, flush, depth comp); battery-only, 1S Li |
+| `Sidewinder_Gabriel.conf` | 3× DiveO2 manual CCR. Intended solenoid and battery topology currently contradict the executable config; resolve before qualification. |
 
 ## Configuration Split: Compile-Time vs Runtime
 
@@ -269,7 +268,7 @@ The DiveCAN subsystem lives in `src/divecan/` and handles all CAN bus communicat
 │  TX composers + CAN driver send layer        │
 │  src/divecan/divecan_tx.c, divecan_send.c    │
 ├──────────────────────────────────────────────┤
-│  Zephyr CAN Driver (bxCAN @ 250kbps)         │
+│  Zephyr CAN Driver (bxCAN @ 125 kbit/s)      │
 │  DTS: &can1, chosen: zephyr,canbus           │
 └──────────────────────────────────────────────┘
 ```

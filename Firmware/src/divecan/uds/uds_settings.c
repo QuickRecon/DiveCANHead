@@ -272,14 +272,21 @@ uint64_t UDS_GetSettingValue(uint8_t index)
             result = 1U;
         }
         break;
+    /* PID gains are stored as float but exposed as integer milliunits. ROUND
+     * (not truncate) on the way out: a wire value W set as W/1000 lands at the
+     * nearest float, and W/1000*1000 can fall just under W (e.g. 9 -> 0.009f ->
+     * 8.999...). +0.5 before the integer cast recovers W exactly for the whole
+     * 0..100000 range (float32 resolution there is far finer than 0.5), so any
+     * gain written round-trips losslessly. Gains are validated >= 0, so the
+     * symmetric +0.5 rounding is correct. */
     case SETTING_INDEX_PID_KP:
-        result = (uint64_t)((double)rs.pidKp * (double)PID_GAIN_SCALE_TO_WIRE);
+        result = (uint64_t)((double)rs.pidKp * (double)PID_GAIN_SCALE_TO_WIRE + 0.5);
         break;
     case SETTING_INDEX_PID_KI:
-        result = (uint64_t)((double)rs.pidKi * (double)PID_GAIN_SCALE_TO_WIRE);
+        result = (uint64_t)((double)rs.pidKi * (double)PID_GAIN_SCALE_TO_WIRE + 0.5);
         break;
     case SETTING_INDEX_PID_KD:
-        result = (uint64_t)((double)rs.pidKd * (double)PID_GAIN_SCALE_TO_WIRE);
+        result = (uint64_t)((double)rs.pidKd * (double)PID_GAIN_SCALE_TO_WIRE + 0.5);
         break;
     case SETTING_INDEX_BATTERY_TYPE:
         result = (uint64_t)rs.batteryType;
@@ -367,11 +374,38 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
     return result;
 }
 
+/* Map a UDS setting index to the runtime field it persists. Returns false for
+ * non-persistable indices (out of range, or the read-only FW Commit at 0). */
+static bool setting_index_to_field(uint8_t index, RuntimeSettingField_t *field)
+{
+    uint8_t bcstCell = 0U;
+    if (setting_is_cell_bcst(index, &bcstCell)) {
+        *field = RT_FIELD_BCST; /* the whole enforceBroadcast[] is one key */
+        return true;
+    }
+
+    bool ok = true;
+    switch (index) {
+    case SETTING_INDEX_PPO2_MODE:    *field = RT_FIELD_PPO2;    break;
+    case SETTING_INDEX_CAL_MODE:     *field = RT_FIELD_CAL;     break;
+    case SETTING_INDEX_DEPTH_COMP:   *field = RT_FIELD_DEPTH;   break;
+    case SETTING_INDEX_PID_KP:       *field = RT_FIELD_KP;      break;
+    case SETTING_INDEX_PID_KI:       *field = RT_FIELD_KI;      break;
+    case SETTING_INDEX_PID_KD:       *field = RT_FIELD_KD;      break;
+    case SETTING_INDEX_BATTERY_TYPE: *field = RT_FIELD_BATTERY; break;
+    default:                         ok = false;                break;
+    }
+    return ok;
+}
+
 /**
- * @brief Validate, apply, and persist a setting value to flash
+ * @brief Validate, apply, and persist a single setting value to flash
  *
- * Calls UDS_SetSettingValue for validation, then writes the RuntimeSettings
- * struct to NVS. Raises OP_ERR_FLASH on write failure.
+ * Applies the value to the live cache via UDS_SetSettingValue (which validates
+ * it), then persists ONLY that field's NVS key from the live cache. The persist
+ * path no longer reloads NVS into the cache, so a volatile (0x9130) edit to a
+ * different field is not clobbered (it simply isn't persisted until its own
+ * save). Raises OP_ERR_FLASH on write failure.
  *
  * @param index Zero-based setting index; must be < UDS_GetSettingCount()
  * @param value New value; must be <= the setting's maxValue
@@ -384,44 +418,10 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
     if (!UDS_SetSettingValue(index, value)) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, index);
     } else {
-        RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
-        (void)runtime_settings_load(&rs);
-
-        uint8_t bcstCell = 0U;
-        if (setting_is_cell_bcst(index, &bcstCell)) {
-            rs.enforceBroadcast[bcstCell] = (value != 0U);
-        } else {
-        switch (index) {
-        case SETTING_INDEX_PPO2_MODE:
-            rs.ppo2ControlMode = (PPO2ControlMode_t)value;
-            break;
-        case SETTING_INDEX_CAL_MODE:
-            rs.calibrationMode = (CalibrationMode_t)value;
-            break;
-        case SETTING_INDEX_DEPTH_COMP:
-            rs.depthCompensation = (value != 0U);
-            break;
-        case SETTING_INDEX_PID_KP:
-            rs.pidKp = (Numeric_t)((double)value /
-                        (double)PID_GAIN_SCALE_TO_WIRE);
-            break;
-        case SETTING_INDEX_PID_KI:
-            rs.pidKi = (Numeric_t)((double)value /
-                        (double)PID_GAIN_SCALE_TO_WIRE);
-            break;
-        case SETTING_INDEX_PID_KD:
-            rs.pidKd = (Numeric_t)((double)value /
-                        (double)PID_GAIN_SCALE_TO_WIRE);
-            break;
-        case SETTING_INDEX_BATTERY_TYPE:
-            rs.batteryType = (BatteryType_t)value;
-            break;
-        default:
-            break;
-        }
-        }
-
-        if (0 == runtime_settings_save(&rs)) {
+        RuntimeSettingField_t field = RT_FIELD_PPO2;
+        if (!setting_index_to_field(index, &field)) {
+            OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
+        } else if (0 == runtime_settings_save_field(field)) {
             result = true;
         } else {
             OP_ERROR(OP_ERR_FLASH);

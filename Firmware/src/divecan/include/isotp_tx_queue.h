@@ -37,15 +37,15 @@ void ISOTP_TxQueue_Init(void);
  * @param messageId Base CAN message ID (e.g., MENU_ID)
  * @param data Data to transmit
  * @param length Data length (1-256 bytes)
- * @param preemptible Passive transfer (log-push): the in-flight transfer may be
- *                    aborted to let an active (non-preemptible) UDS dialog reply
- *                    take the TX state machine immediately. Pass false for UDS
- *                    request/response traffic.
  * @return true if enqueued successfully, false if queue full or invalid params
+ *
+ * @note A broadcast transfer (target == ISOTP_BROADCAST_ADDR) is sent
+ *       fire-and-forget — the whole message goes out on the next poll without
+ *       waiting for Flow Control — so it never stalls an addressed reply.
  */
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
                 uint32_t messageId, const uint8_t *data,
-                uint16_t length, bool preemptible);
+                uint16_t length);
 
 /**
  * @brief Process Flow Control frame for active TX

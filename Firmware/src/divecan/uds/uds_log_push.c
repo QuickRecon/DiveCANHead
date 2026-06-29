@@ -107,16 +107,14 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
 
         k_msgq_purge(&log_push_msgq);
 
-        /* Initialize ISO-TP context for push (SOLO -> bluetooth client)
-         * Source is SOLO (0x04), Target is bluetooth client (0xFF) */
+        /* Initialize ISO-TP context for push (SOLO -> bluetooth client).
+         * Source is SOLO (0x04), Target is the bluetooth client broadcast
+         * address (0xFF). Because the target is broadcast, the TX queue sends
+         * this stream fire-and-forget (no WAIT_FC), so a slow/absent bridge
+         * can no longer stall an addressed UDS reply. See ISOTP_TxQueue
+         * tx_idle_run. */
         ISOTP_Init(isotpCtx, DIVECAN_SOLO,
                (DiveCANType_t)ISOTP_BROADCAST_ADDR, MENU_ID);
-
-        /* Mark this stream preemptible: log push is passive and droppable, so an
-         * active UDS request/response dialog (non-preemptible) takes priority on
-         * the shared TX state machine rather than stalling behind a log transfer
-         * whose far client is slow/absent. See ISOTP_TxQueue_Enqueue. */
-        isotpCtx->preemptible = true;
     }
 }
 

@@ -1163,7 +1163,7 @@ static bool writeRestoreFactoryDID(UDSContext_t *ctx,
         UDS_SendResponse(ctx);
         k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
 #ifdef CONFIG_FLASH_LOG
-        /* Factory restore reads ~192 KB from the factory partition and
+        /* Factory restore reads 220 KB from the factory partition and
          * writes it to slot1 — both adjacent to the log partitions on
          * the same SPI NOR. Pause the log writer so its sector-erase
          * waits don't fight the restore for the bus. */

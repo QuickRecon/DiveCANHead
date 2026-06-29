@@ -11,10 +11,9 @@
  * Without this overlay MCUBoot drags in ~18 KB of application-layer
  * peripheral drivers (uart_stm32, adc_ads1x1x, can_stm32_bxcan,
  * adc_stm32, dma_stm32, counter_stm32_timer). Disabling them lets
- * MCUBoot fit in ~40 KB instead of ~56 KB, which in turn lets us
- * shrink the MCUBoot partition from 64 KB to 48 KB and grow slot0
- * from 192 KB to 208 KB (see boards/.../divecan_jr.dts partition
- * comment for the rationale that pre-dated this overlay).
+ * MCUBoot fit in about 32 KB instead of ~56 KB, which lets the current
+ * partition map use 36 KB for MCUBoot and 220 KB for slot0. The board DTS is
+ * authoritative for exact boundaries.
  *
  * What MCUBoot actually needs to keep:
  *   - spi2 + spi_flash (W25Q on SPI2 — slot1/scratch/factory live there)

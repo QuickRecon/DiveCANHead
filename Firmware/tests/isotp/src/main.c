@@ -410,6 +410,120 @@ ZTEST(isotp_tx, test_fc_ovflw_aborts)
     zassert_false(ISOTP_TxQueue_IsBusy());
 }
 
+/* ---- Broadcast / log-push TX contract ----
+ *
+ * A broadcast transfer (target == ISOTP_BROADCAST_ADDR, 0xFF) can NEVER receive
+ * a Flow Control frame — nobody is addressed to answer it. The log-push stream
+ * uses exactly this addressing. Yet the TX state machine currently parks such a
+ * multi-frame transfer in WAIT_FC until the N_Bs (1 s) timeout, head-of-line
+ * blocking any UDS dialog reply queued behind it (the ISO-TP flakiness saga).
+ *
+ * The intended architecture is "fire-and-forget" for broadcast: after the FF,
+ * stream all CFs (implicit CTS, BS=0) straight back to IDLE, never entering
+ * WAIT_FC. These tests pin that contract. Until the Phase-2 refactor lands the
+ * first one is EXPECTED RED (only the FF is sent, the SM stays busy). */
+
+/** @brief Reconfigure the shared context as the broadcast (log-push) sender.
+ *
+ * The broadcast traffic class is identified purely by the target address
+ * (0xFF) — the TX queue sends it fire-and-forget. No per-context flag. */
+static void make_broadcast_ctx(void)
+{
+    ISOTP_Init(&ctx, SRC, (DiveCANType_t)0xFF, MSG_ID);
+}
+
+/** @brief Scan captured frames for an SF addressed to `target` carrying `firstByte` at data[2]. */
+static bool captured_sf_to(uint8_t target, uint8_t firstByte)
+{
+    for (int i = 0; i < test_get_frame_count(); i++) {
+        const DiveCANMessage_t *f = test_get_frame(i);
+        uint8_t fTarget = (uint8_t)((f->id >> 8) & 0x0F);
+        bool isSF = (f->data[0] & 0xF0) == 0x00; /* SF PCI high nibble */
+        if ((fTarget == (target & 0x0F)) && isSF && (f->data[2] == firstByte)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Broadcast multi-frame is fire-and-forget: one poll sends FF + all CFs and returns to IDLE.
+ *
+ * EXPECTED RED until the Phase-2 broadcast refactor — today the SM sends only
+ * the FF and parks in WAIT_FC awaiting an FC that a broadcast can never receive.
+ */
+ZTEST(isotp_tx, test_broadcast_multiframe_fire_and_forget)
+{
+    make_broadcast_ctx();
+
+    /* 10 bytes > 6 → multi-frame: FF carries 5, one CF carries the remaining 5. */
+    uint8_t payload[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    bool ok = ISOTP_Send(&ctx, payload, 10);
+    zassert_true(ok);
+
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+
+    /* A broadcast transfer cannot wait for FC — the whole message must be on the
+     * wire after a single poll, and the queue must be idle (ready for the next
+     * message) without any 1 s N_Bs stall. */
+    zassert_equal(test_get_frame_count(), 2,
+              "broadcast multi-frame must emit FF + CF in one poll (got %d)",
+              test_get_frame_count());
+    zassert_false(ISOTP_TxQueue_IsBusy(),
+              "broadcast transfer must not park in WAIT_FC");
+}
+
+/**
+ * @brief A broadcast (log-push) transfer must not stall a UDS dialog reply queued behind it.
+ *
+ * Implementation-agnostic contract: after a broadcast multi-frame is in progress
+ * and a dialog SF is enqueued, polling (with NO time advance, so the N_Bs timeout
+ * cannot have fired) must still get the dialog SF onto the wire. If the dialog
+ * were head-of-line blocked behind the broadcast's WAIT_FC it would not appear
+ * until 1 s elapsed. Guards the Phase-2 removal of the preemption patches.
+ */
+ZTEST(isotp_tx, test_broadcast_does_not_stall_dialog)
+{
+    /* Start a broadcast multi-frame transfer. */
+    make_broadcast_ctx();
+    uint8_t bcast[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    (void)ISOTP_Send(&ctx, bcast, 10);
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+
+    /* A real UDS dialog reply (addressed, non-preemptible) is now produced. */
+    ISOTPContext_t dialog;
+    ISOTP_Init(&dialog, SRC, TGT, MSG_ID); /* preemptible = false by default */
+    uint8_t reply[] = {0xAA, 0xBB};
+    (void)ISOTP_Send(&dialog, reply, 2);
+
+    /* Drain WITHOUT advancing time — a stall would require the 1 s N_Bs timeout. */
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+
+    zassert_true(captured_sf_to((uint8_t)TGT, 0xAA),
+             "dialog reply must reach the wire without waiting on the broadcast's FC");
+    zassert_false(ISOTP_TxQueue_IsBusy());
+}
+
+/**
+ * @brief Regression guard: ADDRESSED multi-frame transfers must still honour Flow Control.
+ *
+ * The broadcast fire-and-forget path must not leak into normal addressed UDS
+ * transfers — those must still send only the FF and wait for an FC. Green now
+ * and must stay green after the refactor.
+ */
+ZTEST(isotp_tx, test_addressed_multiframe_still_waits_fc)
+{
+    /* Default ctx is addressed (target == DIVECAN_CONTROLLER). */
+    uint8_t payload[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    (void)ISOTP_Send(&ctx, payload, 10);
+
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+
+    zassert_equal(test_get_frame_count(), 1, "addressed transfer sends only the FF before FC");
+    zassert_true(ISOTP_TxQueue_IsBusy(), "addressed transfer must wait for FC");
+}
+
 /** @brief Block size (BS) in FC limits CFs per window; a second FC is needed to send the final CF. */
 ZTEST(isotp_tx, test_block_size_handling)
 {

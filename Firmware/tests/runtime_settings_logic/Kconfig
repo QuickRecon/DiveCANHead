@@ -1,0 +1,6 @@
+mainmenu "runtime_settings logic test (stubbed backend)"
+
+# Same product topology as the persistence suite so the validate tables match.
+rsource "../../src/Kconfig"
+
+source "Kconfig.zephyr"

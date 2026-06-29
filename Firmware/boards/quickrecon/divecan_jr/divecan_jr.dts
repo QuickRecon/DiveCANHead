@@ -123,10 +123,9 @@
 	apb2-prescaler = <1>;
 };
 
-/* ---- CAN bus — DiveCAN @ 250kbps ----
- * Rev2 .ioc: Prescaler=6, BS1=13TQ, BS2=2TQ, SJW=4TQ
- * At 12MHz → 125kbps. Firmware overrides to 250kbps at runtime.
- * Jr at 80MHz: prescaler & segments set via Zephyr bus-speed.
+/* ---- CAN bus — DiveCAN @ 125 kbit/s ----
+ * Jr at 80 MHz: prescaler and segments are derived from the Zephyr bitrate and
+ * sample-point properties below.
  */
 &can1 {
 	pinctrl-0 = <&can1_rx_pb8 &can1_tx_pb9>;
@@ -390,14 +389,8 @@
  * image-scratch enable the bootloader's swap-area discovery. The
  * "storage" label is what Zephyr's settings/NVS subsystem looks up
  * by default.
- *
- * History: the original layout was MCUBoot 64 KB + slot0 192 KB,
- * sized for an MCUBoot build that pulled in the full application
- * board DTS (UART/CAN/ADC drivers compiled into the bootloader as
- * dead weight). The sysbuild/mcuboot.overlay disables those nodes
- * for the MCUBoot child image, shrinking the bootloader from
- * ~56 KB to ~32 KB. We reclaim 28 KB and hand it to slot0, growing
- * slot0 from 192 KB to 220 KB. slot1/factory grow to match.
+ * The sysbuild MCUBoot overlay disables application-only peripherals so
+ * the bootloader fits the 36 KB partition with limited growth margin.
  */
 &flash0 {
 	partitions {

@@ -1,0 +1,4 @@
+tests:
+  divecan.runtime_settings_logic:
+    platform_allow: native_sim
+    tags: divecan settings nvs

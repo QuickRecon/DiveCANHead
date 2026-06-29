@@ -57,9 +57,6 @@ typedef struct {
     DiveCANType_t source;               /**< Source address */
     DiveCANType_t target;               /**< Target address */
     uint32_t messageId;                 /**< Base CAN ID */
-    bool preemptible;                   /**< Passive (log-push) transfer: may be
-                                         *   aborted to let an active UDS dialog
-                                         *   reply jump the queue. */
 } ISOTPTxRequest_t;
 
 /* ---- TX state machine ---- */
@@ -255,8 +252,26 @@ static enum smf_state_result tx_idle_run(void *obj)
             if (sm->current.length <= ISOTP_SF_MAX_WITH_PAD) {
                 /* SF: send and stay IDLE. */
                 send_single_frame(&sm->current);
+            } else if ((uint8_t)sm->current.target == ISOTP_BROADCAST_ADDR) {
+                /* Broadcast multi-frame is fire-and-forget. A broadcast
+                 * (e.g. the always-on log-push to the BT bridge at 0xFF)
+                 * can NEVER receive a Flow Control frame — nobody is
+                 * addressed to answer it — so parking in WAIT_FC for the
+                 * N_Bs (1 s) timeout would only head-of-line-block the next
+                 * addressed UDS reply. Instead stream the FF then all CFs
+                 * immediately (implicit CTS, BS=0, STmin=0) and stay IDLE.
+                 * This separation of the broadcast traffic class from the
+                 * FC-driven dialog class is what keeps UDS replies prompt;
+                 * it replaces the prior preemption/purge special-casing. */
+                send_first_frame(&sm->current);
+                sm->txBytesSent = ISOTP_FF_DATA_WITH_PAD;
+                sm->txBlockSize = 0;
+                sm->txSTmin = 0;
+                sm->txBlockCounter = 0;
+                (void)send_consecutive_frames(sm);
+                /* Payload exhausted; remain IDLE for the next message. */
             } else {
-                /* Multi-frame: send FF, expect FC. */
+                /* Addressed multi-frame: send FF, expect FC. */
                 send_first_frame(&sm->current);
                 sm->txBytesSent = ISOTP_FF_DATA_WITH_PAD;
                 sm->txLastFrameTime = k_uptime_get_32();
@@ -333,46 +348,28 @@ void ISOTP_TxQueue_Init(void)
 
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
                 uint32_t messageId, const uint8_t *data,
-                uint16_t length, bool preemptible)
+                uint16_t length)
 {
     bool result = false;
 
     if ((NULL == data) || (0U == length) || (length > ISOTP_TX_BUFFER_SIZE)) {
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
-        /* Use static buffer to avoid large stack allocation */
+        /* Use static buffer to avoid large stack allocation.
+         *
+         * No traffic-class special-casing is needed here: broadcast transfers
+         * (log-push) are fire-and-forget at send time (see tx_idle_run) so they
+         * never sit in WAIT_FC and cannot head-of-line-block an addressed UDS
+         * reply. This replaces the former preemptible-purge/in-flight-abort
+         * dance. */
         ISOTPTxRequest_t *reqBuffer = getTxRequestBuffer();
+
         (void)memset(reqBuffer, 0, sizeof(ISOTPTxRequest_t));
         (void)memcpy(reqBuffer->data, data, length);
         reqBuffer->length = length;
         reqBuffer->source = source;
         reqBuffer->target = target;
         reqBuffer->messageId = messageId;
-        reqBuffer->preemptible = preemptible;
-
-        /* Active UDS dialog preempts a passive (log-push) transfer.
-         *
-         * The uds_log_push stream and a real UDS request/response share this one
-         * TX state machine AND the same wire addressing (the BT-bridge client is
-         * a genuine node, not a broadcast sentinel — gating on target address
-         * would wrongly abort real dialogs with that client). They are told apart
-         * by KIND: only the log-push context is flagged `preemptible`.
-         *
-         * A passive log transfer that has sent its FF sits in WAIT_FC until its
-         * FC arrives or N_Bs (1 s) expires; if the far client is slow/absent that
-         * window stalls every dialog reply queued behind it (the observed UDS
-         * flakiness). So when a NON-preemptible (dialog) message is enqueued and
-         * the SM is mid-flight on a PREEMPTIBLE (log) transfer, abort the log
-         * transfer (drop its remaining CFs — acceptable for non-critical logs) so
-         * this reply goes out on the next poll, same iteration. A real dialog
-         * response is never preemptible, so it is never disturbed. Runs on the RX
-         * thread, the SM's sole owner — no re-entrancy. */
-        if (!preemptible) {
-            TxSmCtx_t *sm = getTxSm();
-            if (!tx_sm_is_idle(sm) && sm->current.preemptible) {
-                smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
-            }
-        }
 
         /* Non-blocking put */
         Status_t ret = k_msgq_put(&isotp_tx_msgq, reqBuffer, K_NO_WAIT);

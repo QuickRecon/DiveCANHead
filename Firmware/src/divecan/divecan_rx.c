@@ -686,11 +686,12 @@ static void ProcessISOTPCompletion(uint32_t now)
      * by UDS handler are sent immediately in the same iteration */
     ISOTP_TxQueue_Poll(now);
 
-    /* Drive log push LAST: any UDS dialog reply for this iteration is now
-     * enqueued/sent, so a passive log transfer can't grab the TX state machine
-     * ahead of it (and a non-preemptible reply would otherwise abort it anyway —
-     * see ISOTP_TxQueue_Enqueue). Dropping logs under heavy dialog load is the
-     * accepted trade for never stalling an active conversation. */
+    /* Drive log push LAST: any UDS dialog reply for this iteration is already
+     * enqueued/sent first, giving dialogs priority on the TX queue. The log
+     * stream is broadcast (target 0xFF) so the queue sends it fire-and-forget
+     * and it never parks in WAIT_FC — it cannot stall a dialog even if it does
+     * get queued. Dropping logs under heavy dialog load (log_push_msgq
+     * overwrites oldest) is the accepted trade. */
     if (udsState->logPushInitialized) {
         UDS_LogPush_Poll();
     }
