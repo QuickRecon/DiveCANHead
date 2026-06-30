@@ -228,8 +228,16 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
             /* Special case: Shearwater FC quirk (accept FC with source=0xFF) */
             bool isShearwaterFC = (ISOTP_PCI_FC == pci) && (ISOTP_BROADCAST_ADDR == msgSource);
 
-            /* Check if message is from expected peer (or Shearwater FC broadcast) */
-            if ((msgSource != ctx->target) && (!isShearwaterFC)) {
+            /* Check if message is from expected peer (or Shearwater FC broadcast).
+             * A context configured for BROADCAST TX (target 0xFF, e.g. the
+             * fire-and-forget log-push stream) must NOT be retargeted to a
+             * unicast sender: doing so moves its multi-frame traffic onto the
+             * addressed UDS dialog channel, where a log push stalled across a
+             * blocking op (e.g. the OTA 0x34 slot1 erase) leaves the host ISO-TP
+             * mid-reassembly and swallows the subsequent UDS reply. Broadcast
+             * stays broadcast so logs never collide with addressed replies. */
+            if ((msgSource != ctx->target) && (!isShearwaterFC) &&
+                (ISOTP_BROADCAST_ADDR != ctx->target)) {
                 ctx->target = msgSource; /* Update target to sender */
             }
 

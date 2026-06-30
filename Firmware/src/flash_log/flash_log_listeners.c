@@ -65,8 +65,12 @@ static void cell_listener_cb(const struct zbus_channel *chan)
 
 ZBUS_LISTENER_DEFINE(fl_cell_listener, cell_listener_cb);
 ZBUS_CHAN_ADD_OBS(chan_cell_1, fl_cell_listener, 4);
+#if CONFIG_CELL_COUNT >= 2
 ZBUS_CHAN_ADD_OBS(chan_cell_2, fl_cell_listener, 4);
+#endif
+#if CONFIG_CELL_COUNT >= 3
 ZBUS_CHAN_ADD_OBS(chan_cell_3, fl_cell_listener, 4);
+#endif
 
 /* ---- chan_dive_state ---- */
 

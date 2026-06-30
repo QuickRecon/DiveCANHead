@@ -97,7 +97,9 @@ static void buildWriteDidPositiveResponse(UDSContext_t *ctx, const uint8_t *requ
 #endif
 static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
 static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
+#ifdef CONFIG_HAS_DIVEO2_CELL
 static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
+#endif
 
 /**
  * @brief Initialize UDS context
@@ -875,6 +877,7 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
  * @param requestLength Total byte count of requestData
  * @return true (always; error path sends NRC and still returns true)
  */
+#ifdef CONFIG_HAS_DIVEO2_CELL
 static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did,
                                   const uint8_t *requestData,
                                   uint16_t requestLength)
@@ -897,6 +900,7 @@ static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did,
 
     return true;
 }
+#endif /* CONFIG_HAS_DIVEO2_CELL */
 
 /**
  * @brief Handle a WDBI write to the error-histogram clear DID
@@ -1372,12 +1376,16 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
         } else if (UDS_DID_LOG_CAN_VERBOSE == did) {
             (void)writeLogCanVerboseDID(ctx, requestData, requestLength);
 #endif
-        } else if ((did >= UDS_DID_CELL_BASE) &&
+        }
+#ifdef CONFIG_HAS_DIVEO2_CELL
+        else if ((did >= UDS_DID_CELL_BASE) &&
                (did < (UDS_DID_CELL_BASE + (CELL_MAX_COUNT * UDS_DID_CELL_RANGE))) &&
                (CELL_DID_BROADCAST ==
                     ((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE))) {
             (void)writeCellBroadcastDID(ctx, did, requestData, requestLength);
-        } else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
+        }
+#endif
+        else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
                (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))) {
             (void)writeSettingSaveDID(ctx, did, requestData, requestLength);
         } else if ((did >= UDS_DID_SETTING_VALUE_BASE) &&
