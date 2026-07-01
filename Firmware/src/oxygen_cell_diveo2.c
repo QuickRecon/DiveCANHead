@@ -249,6 +249,37 @@ static bool diveo2_all_non_null(const char *const *fields, uint8_t count)
 }
 
 /**
+ * @brief Strictly parse a whole token as a base-10 int32.
+ *
+ * Unlike a bare strtol(tok, NULL, 10) — which silently returns 0 for an empty
+ * or non-numeric token — this requires the token to be non-empty and FULLY
+ * consumed (no leading/trailing garbage). A genuine "0" parses to 0 and is
+ * preserved; only a corrupt/partial field is rejected, so a garbage field
+ * surfaces as a parse failure (a visible cell FAIL) instead of a bogus zero.
+ *
+ * @param tok  Null-terminated field token from strtok_r (may be NULL).
+ * @param out  Output value, written only on success.
+ * @return true if the entire token is a valid integer.
+ */
+static bool diveo2_parse_i32(const char *tok, int32_t *out)
+{
+    if ((tok == NULL) || (out == NULL) || ('\0' == tok[0])) {
+        return false;
+    }
+
+    char *end = NULL;
+    long val = strtol(tok, &end, STRTOL_BASE);
+
+    /* Reject if nothing was consumed or any trailing character remains. */
+    if ((end == tok) || ('\0' != *end)) {
+        return false;
+    }
+
+    *out = (int32_t)val;
+    return true;
+}
+
+/**
  * @brief Test whether a command header matches either protocol family.
  *
  * Accepts "#D<suffix>" (DiveO2) or "#M<suffix>" (Pyroscience) — the two
@@ -263,6 +294,35 @@ static bool diveo2_header_is(const char *hdr, const char *suffix)
     return (hdr != NULL) && ('#' == hdr[0]) &&
            (('D' == hdr[1]) || ('M' == hdr[1])) &&
            (0 == strcmp(&hdr[2], suffix));
+}
+
+/**
+ * @brief True if the cleaned message begins with a #?RAW or #?OXY measurement
+ *        header (either protocol family).
+ *
+ * Lets diveo2_process_rx tell a CORRUPT measurement (right header, unparseable
+ * fields — a genuine fault to surface as CELL_FAIL) from a non-measurement
+ * frame such as a #BCST command echo or a cross-family probe reply (which must
+ * be skipped quietly, never flagged — see the process_rx comment).
+ *
+ * @param msg  Cleaned, null-terminated message string.
+ * @return true if the first token is a measurement header.
+ */
+static bool diveo2_is_measurement(const char *msg)
+{
+    if (msg == NULL) {
+        return false;
+    }
+
+    char copy[DIVEO2_RX_BUFFER_LEN] = {0};
+
+    (void)strncpy(copy, msg, sizeof(copy) - 1U);
+    copy[sizeof(copy) - 1U] = '\0';
+
+    char *saveptr = NULL;
+    const char *hdr = strtok_r(copy, " ", &saveptr);
+
+    return diveo2_header_is(hdr, "RAW") || diveo2_header_is(hdr, "OXY");
 }
 
 /**
@@ -325,14 +385,23 @@ bool diveo2_parse_simple_response(const char *message, int32_t *ppo2,
                 fields[i] = strtok_r(NULL, sep, &saveptr);
             }
 
-            if (diveo2_all_non_null(fields, DIVEO2_SIMPLE_FIELD_COUNT)) {
-                *ppo2 = strtol(fields[FIELD_IDX_PPO2], NULL, STRTOL_BASE);
-                *temperature = strtol(fields[FIELD_IDX_TEMPERATURE], NULL, STRTOL_BASE);
+            int32_t p = 0;
+            int32_t t = 0;
+            int32_t e = 0;
+
+            if (diveo2_all_non_null(fields, DIVEO2_SIMPLE_FIELD_COUNT) &&
+                diveo2_parse_i32(fields[FIELD_IDX_PPO2], &p) &&
+                diveo2_parse_i32(fields[FIELD_IDX_TEMPERATURE], &t) &&
+                diveo2_parse_i32(fields[FIELD_IDX_ERR_CODE], &e)) {
+                *ppo2 = p;
+                *temperature = t;
                 *status = diveo2_parse_error_code(fields[FIELD_IDX_ERR_CODE]);
                 success = true;
             } else {
-                /* Right header but missing fields — a genuinely malformed
-                 * measurement frame, so flag it. */
+                /* Right header but a field is missing OR non-numeric/garbage —
+                 * a genuinely malformed measurement frame. Flag it and return
+                 * false: the caller turns a right-header parse failure into a
+                 * visible CELL_FAIL rather than latching strtol's silent 0. */
                 OP_ERROR(OP_ERR_CELL_FAILURE);
             }
         } else {
@@ -381,20 +450,33 @@ bool diveo2_parse_detailed_response(const char *message,
                 fields[i] = strtok_r(NULL, sep, &saveptr);
             }
 
-            if (diveo2_all_non_null(fields, DIVEO2_DETAILED_FIELD_COUNT)) {
-                out->ppo2 = strtol(fields[FIELD_IDX_PPO2], NULL, STRTOL_BASE);
-                out->temperature = strtol(fields[FIELD_IDX_TEMPERATURE], NULL, STRTOL_BASE);
-                out->err_code = strtol(fields[FIELD_IDX_ERR_CODE], NULL, STRTOL_BASE);
-                out->phase = strtol(fields[FIELD_IDX_PHASE], NULL, STRTOL_BASE);
-                out->intensity = strtol(fields[FIELD_IDX_INTENSITY], NULL, STRTOL_BASE);
-                out->ambient_light = strtol(fields[FIELD_IDX_AMBIENT], NULL, STRTOL_BASE);
-                out->pressure = strtol(fields[FIELD_IDX_PRESSURE], NULL, STRTOL_BASE);
-                out->humidity = strtol(fields[FIELD_IDX_HUMIDITY], NULL, STRTOL_BASE);
+            int32_t vals[DIVEO2_DETAILED_FIELD_COUNT] = {0};
+            bool all_numeric = diveo2_all_non_null(
+                fields, DIVEO2_DETAILED_FIELD_COUNT);
+
+            for (uint8_t i = 0U; all_numeric &&
+                                 (i < DIVEO2_DETAILED_FIELD_COUNT); ++i) {
+                if (!diveo2_parse_i32(fields[i], &vals[i])) {
+                    all_numeric = false;
+                }
+            }
+
+            if (all_numeric) {
+                out->ppo2 = vals[FIELD_IDX_PPO2];
+                out->temperature = vals[FIELD_IDX_TEMPERATURE];
+                out->err_code = vals[FIELD_IDX_ERR_CODE];
+                out->phase = vals[FIELD_IDX_PHASE];
+                out->intensity = vals[FIELD_IDX_INTENSITY];
+                out->ambient_light = vals[FIELD_IDX_AMBIENT];
+                out->pressure = vals[FIELD_IDX_PRESSURE];
+                out->humidity = vals[FIELD_IDX_HUMIDITY];
                 out->status = diveo2_parse_error_code(fields[FIELD_IDX_ERR_CODE]);
                 success = true;
             } else {
-                /* Right header but missing fields — a genuinely malformed
-                 * detailed frame, so flag it. */
+                /* Right header but a field is missing OR non-numeric/garbage —
+                 * a genuinely malformed detailed frame. Flag it and return
+                 * false so the caller surfaces a visible CELL_FAIL instead of
+                 * latching strtol's silent 0 for the corrupt field(s). */
                 OP_ERROR(OP_ERR_CELL_FAILURE);
             }
         } else {
@@ -778,6 +860,19 @@ static bool diveo2_process_rx(struct diveo2_cell_state *cell)
                                             &rx_status)) {
         diveo2_apply_simple(cell, ppo2, temp, rx_status);
         valid = true;
+    } else if (diveo2_is_measurement(msgArray)) {
+        /* Right measurement header (#?RAW / #?OXY) but neither parser accepted
+         * it: a field is missing, non-numeric, or truncated. This is a genuine
+         * reception fault — surface it as CELL_FAIL for THIS cycle rather than
+         * latching a misleading value or letting strtol's silent 0 reach the
+         * bus. We deliberately do NOT touch cell_sample or last_ppo2_ticks, so
+         * the next good frame promotes the cell straight back to CELL_OK (and a
+         * persistent fault also trips the diveo2_broadcast staleness timeout).
+         * A parsing problem must be VISIBLE as a fail, never a wrong reading. */
+        cell->status = CELL_FAIL;
+        OP_ERROR(OP_ERR_CELL_FAILURE);
+        LOG_WRN("Cell %u: malformed measurement: %s",
+                cell->cell_number, msgArray);
     } else {
         /* Not a measurement (e.g. an #ERRO from the wrong-family probe, or a
          * #BCST command echo) — let the caller decide whether to retry/re-detect.

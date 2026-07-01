@@ -3,6 +3,13 @@
 
 #include <zephyr/kernel.h>
 
+/* Bounded publish wait: a K_NO_WAIT publish can DROP under mutex contention,
+ * leaving consumers (poseidon accessories, the alarm-state DID) reading the
+ * previous alarm mask as if current — a stale alarm read as valid. 10 ms is
+ * negligible vs the alarm update cadence and safe to hold under alarm_lock
+ * (chan_alarm_state has no synchronous listeners to re-enter it). */
+#define ALARM_PUB_TIMEOUT_MS 10
+
 static K_MUTEX_DEFINE(alarm_lock);
 static AlarmMask_t alarm_state = ALARM_PPO2_INVALID;
 
@@ -30,7 +37,8 @@ void alarm_update(AlarmMask_t owned_mask, AlarmMask_t active_mask)
     AlarmMask_t next = (alarm_state & ~owned_mask) | active_mask;
     if (next != alarm_state) {
         alarm_state = next;
-        (void)zbus_chan_pub(&chan_alarm_state, &alarm_state, K_NO_WAIT);
+        (void)zbus_chan_pub(&chan_alarm_state, &alarm_state,
+                            K_MSEC(ALARM_PUB_TIMEOUT_MS));
     }
     k_mutex_unlock(&alarm_lock);
 }

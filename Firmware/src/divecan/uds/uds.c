@@ -723,9 +723,11 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
         } else {
-            /* Read current atmos pressure from zbus */
+            /* Read current atmos pressure from zbus. Bounded (UDS handler
+             * thread, not a listener): a miss would silently calibrate against
+             * the 1013 default instead of the real pressure. */
             uint16_t atmoPressure = 1013;
-            (void)zbus_chan_read(&chan_atmos_pressure, &atmoPressure, K_NO_WAIT);
+            (void)zbus_chan_read(&chan_atmos_pressure, &atmoPressure, K_MSEC(10));
 
             /* Honor the Cal Mode setting rather than hardcoding the method. */
             CalRequest_t req = {

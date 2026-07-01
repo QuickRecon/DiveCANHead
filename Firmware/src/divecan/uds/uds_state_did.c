@@ -41,6 +41,14 @@ LOG_MODULE_REGISTER(uds_state_did, LOG_LEVEL_INF);
 /* Time conversion constant */
 static const uint32_t MS_PER_SECOND = 1000U;
 
+/* Bounded wait for the telemetry channels (consensus/setpoint/cell/alarm) that
+ * back the state DIDs. A K_NO_WAIT read can lose the mutex race with the ~100 ms
+ * publishers and leave the destination zero-initialised, so a DID poll would
+ * momentarily report 0 (0 PPO2, cell "not included", etc.). A DID read already
+ * costs several ISO-TP ms, so a 10 ms mutex wait is negligible and eliminates
+ * the phantom-zero. */
+#define STATE_DID_READ_TIMEOUT_MS 10
+
 /* Byte indices for little-endian serialization */
 static const uint8_t BYTE_IDX_0 = 0U;
 static const uint8_t BYTE_IDX_1 = 1U;
@@ -411,20 +419,20 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
 
     switch (did) {
     case UDS_DID_CONSENSUS_PPO2:
-        (void)zbus_chan_read(&chan_consensus, &consensus, K_NO_WAIT);
+        (void)zbus_chan_read(&chan_consensus, &consensus, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
         writeFloat32(buf, (Numeric_t)consensus.precision_consensus);
         *len = sizeof(Numeric_t);
         break;
 
     case UDS_DID_SETPOINT:
-        (void)zbus_chan_read(&chan_setpoint, &setpoint, K_NO_WAIT);
+        (void)zbus_chan_read(&chan_setpoint, &setpoint, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
         writeFloat32(buf, (Numeric_t)setpoint / 100.0f);
         *len = sizeof(Numeric_t);
         break;
 
     case UDS_DID_CELLS_VALID:
     {
-        (void)zbus_chan_read(&chan_consensus, &consensus, K_NO_WAIT);
+        (void)zbus_chan_read(&chan_consensus, &consensus, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
         uint8_t valid = 0U;
         for (uint8_t i = 0U; i < CELL_MAX_COUNT; ++i) {
             if (consensus.include_array[i]) {
@@ -440,7 +448,7 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
 #ifdef CONFIG_ALARM
     {
         AlarmMask_t alarms = 0U;
-        (void)zbus_chan_read(&chan_alarm_state, &alarms, K_NO_WAIT);
+        (void)zbus_chan_read(&chan_alarm_state, &alarms, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
         writeUint32(buf, alarms);
         *len = sizeof(alarms);
         break;
@@ -732,7 +740,7 @@ static bool handleUniversalCellDID(uint8_t cellNum, uint8_t offset,
         result = true;
     } else if (CELL_DID_INCLUDED == offset) {
         ConsensusMsg_t consensus = {0};
-        (void)zbus_chan_read(&chan_consensus, &consensus, K_NO_WAIT);
+        (void)zbus_chan_read(&chan_consensus, &consensus, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
         if (consensus.include_array[cellNum]) {
             buf[0] = 1U;
         } else {
@@ -882,7 +890,7 @@ static bool handleCellDID(uint8_t cellNum, uint8_t offset,
         };
 
         if ((cellNum < ARRAY_SIZE(cell_chans)) && (NULL != cell_chans[cellNum])) {
-            (void)zbus_chan_read(cell_chans[cellNum], &cellMsg, K_NO_WAIT);
+            (void)zbus_chan_read(cell_chans[cellNum], &cellMsg, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
         }
 
         CellKind_t kind = cellKindFor(cellNum);

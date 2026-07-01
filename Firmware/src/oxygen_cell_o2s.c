@@ -134,8 +134,21 @@ bool o2s_parse_response(const char *message, Numeric_t *ppo2)
             const char *ppo2Str = strtok_r(NULL, sep, &saveptr);
 
             if (ppo2Str != NULL) {
-                *ppo2 = strtof(ppo2Str, NULL);
-                success = true;
+                /* Strictly parse the whole value token: strtof(str, NULL) would
+                 * silently return 0.0 for a non-numeric/corrupt field, latching
+                 * a bogus zero as a valid reading. Require the token to be
+                 * non-empty and FULLY consumed so a garbage field fails to parse
+                 * and surfaces as a cell FAIL instead. A genuine "0.00" still
+                 * parses and is preserved. */
+                char *end = NULL;
+                Numeric_t value = strtof(ppo2Str, &end);
+
+                if ((end != ppo2Str) && ('\0' == *end)) {
+                    *ppo2 = value;
+                    success = true;
+                }
+                /* else: right command but non-numeric value — malformed;
+                 * return false so the caller flags a visible cell failure. */
             }
             /* NULL ppo2Str means we got echo only — return false */
         }
@@ -354,6 +367,50 @@ static void o2s_load_cal(struct o2s_cell_state *cell)
  *
  * @param cell  Cell state containing last_message and output channel.
  */
+/**
+ * @brief True if the message is an O2S measurement response ("Mn"/"Mm") whose
+ *        value token is present but fails to parse as a number.
+ *
+ * Distinguishes a CORRUPT reading (right command, garbage value — surface as
+ * CELL_FAIL) from an echo-only frame ("Mm" with no value) or an unknown
+ * command, both of which are skipped quietly.
+ *
+ * @param msg  Cleaned, null-terminated message string.
+ * @return true if this is a measurement command with a present-but-unparseable value.
+ */
+static bool o2s_is_malformed_measurement(const char *msg)
+{
+    if (msg == NULL) {
+        return false;
+    }
+
+    char copy[O2S_RX_BUFFER_LEN] = {0};
+
+    (void)strncpy(copy, msg, sizeof(copy) - 1U);
+    copy[sizeof(copy) - 1U] = '\0';
+
+    char *saveptr = NULL;
+    const char *cmd = strtok_r(copy, STRTOF_SEP, &saveptr);
+
+    if ((cmd == NULL) ||
+        ((0 != strcmp(cmd, GET_OXY_RESPONSE)) &&
+         (0 != strcmp(cmd, GET_OXY_COMMAND)))) {
+        return false; /* not a measurement command */
+    }
+
+    const char *val = strtok_r(NULL, STRTOF_SEP, &saveptr);
+
+    if (val == NULL) {
+        return false; /* echo only, no value present — not malformed */
+    }
+
+    /* A value is present: malformed iff it is not a fully-consumed number. */
+    char *end = NULL;
+
+    (void)strtof(val, &end);
+    return (end == val) || ('\0' != *end);
+}
+
 static void o2s_process_rx(struct o2s_cell_state *cell)
 {
     char msgArray[O2S_RX_BUFFER_LEN] = {0};
@@ -367,6 +424,17 @@ static void o2s_process_rx(struct o2s_cell_state *cell)
         cell->cell_sample = ppo2;
         cell->status = CELL_OK;
         cell->last_ppo2_ticks = k_uptime_ticks();
+        o2s_broadcast(cell);
+    } else if (o2s_is_malformed_measurement(msgArray)) {
+        /* Right command header but a non-numeric/corrupt value — a genuine
+         * reception fault. Fail the cell for THIS reading and broadcast it
+         * rather than latching strtof's silent 0. Do NOT update cell_sample or
+         * last_ppo2_ticks, so the next good frame restores CELL_OK. A parsing
+         * problem must be VISIBLE as a fail, never a wrong reading. */
+        cell->status = CELL_FAIL;
+        OP_ERROR(OP_ERR_CELL_FAILURE);
+        LOG_WRN("O2S cell %u: malformed measurement: %s",
+                cell->cell_number, msgArray);
         o2s_broadcast(cell);
     } else {
         LOG_WRN("O2S cell %u: unknown: %s",

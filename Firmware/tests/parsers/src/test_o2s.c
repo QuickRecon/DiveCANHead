@@ -232,6 +232,23 @@ ZTEST(o2s_parse, test_negative_value)
     zassert_within(ppo2, -0.01f, 0.001f);
 }
 
+/** @brief A non-numeric value ("Mn:abc") is REJECTED, not silently read as 0.0.
+ *  Pre-fix, strtof(NULL) returned 0.0 and the frame latched a bogus zero. */
+ZTEST(o2s_parse, test_garbage_value_rejected)
+{
+    float ppo2;
+
+    zassert_false(o2s_parse_response("Mn:abc", &ppo2));
+}
+
+/** @brief A value with trailing garbage ("Mn:1.6x") is rejected. */
+ZTEST(o2s_parse, test_trailing_garbage_rejected)
+{
+    float ppo2;
+
+    zassert_false(o2s_parse_response("Mn:1.6x", &ppo2));
+}
+
 /* ============================================================================
  * TX Command Formatting
  * ============================================================================ */

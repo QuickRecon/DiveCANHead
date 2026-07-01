@@ -43,6 +43,10 @@ static void consensus_listener_cb(const struct zbus_channel *chan)
         return;
     }
 
+    /* K_NO_WAIT is REQUIRED: this is a zbus listener (fired synchronously inside
+     * a chan_consensus publish), where a blocking cross-channel read risks
+     * deadlock / stalls the publisher. On a rare miss the flash-log record simply
+     * carries setpoint 0 — a logging artefact, not a live control/display value. */
     PPO2_t setpoint = 0U;
     (void)zbus_chan_read(&chan_setpoint, &setpoint, K_NO_WAIT);
 

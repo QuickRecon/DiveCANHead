@@ -40,6 +40,35 @@ static const uint32_t CONSENSUS_PERIOD_MS = 100U;
 /* Index of cell 2 in the cells array */
 static const uint8_t CELL_IDX_2 = 2U;
 
+/* Bounded wait for a channel mutex (cell reads + the consensus publish). A
+ * K_NO_WAIT read can lose the mutex race and leave the destination
+ * zero-initialised — which, as a zeroed OxygenCellMsg, reads as a LIVE cell at
+ * CELL_OK with ppo2 0 and gets voted out as a phantom zero (an intermittent
+ * single-cell dropout). A K_NO_WAIT publish can likewise DROP, leaving consumers
+ * reading the previous consensus as if current (stale). 10 ms is far longer than
+ * the brief critical sections yet well under the 100 ms recompute period. */
+#define CHAN_OP_TIMEOUT_MS 10
+
+/**
+ * @brief Snapshot one cell channel, marking it FAILED if the read can't complete.
+ *
+ * On a mutex-contention failure we do NOT leave the caller's zero-initialised
+ * message in place (that would masquerade as a healthy 0 PPO2 reading). Instead
+ * the cell is flagged CELL_FAIL / PPO2_FAIL so consensus excludes it as a
+ * failure for this cycle — honest, and consistent with a compiled-out cell.
+ */
+static void read_cell_or_fail(const struct zbus_channel *chan,
+                              OxygenCellMsg_t *out)
+{
+    int rc = zbus_chan_read(chan, out, K_MSEC(CHAN_OP_TIMEOUT_MS));
+
+    if (0 != rc) {
+        OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
+        out->status = CELL_FAIL;
+        out->ppo2 = PPO2_FAIL;
+    }
+}
+
 /**
  * @brief Consensus thread entry point
  *
@@ -64,17 +93,17 @@ static void consensus_thread_fn(void *p1, void *p2, void *p3)
 
         OxygenCellMsg_t cells[CELL_MAX_COUNT] = {0};
 
-        (void)zbus_chan_read(&chan_cell_1, &cells[0], K_NO_WAIT);
+        read_cell_or_fail(&chan_cell_1, &cells[0]);
 
 #if CONFIG_CELL_COUNT >= 2
-        (void)zbus_chan_read(&chan_cell_2, &cells[1], K_NO_WAIT);
+        read_cell_or_fail(&chan_cell_2, &cells[1]);
 #else
         cells[1].status = CELL_FAIL;
         cells[1].ppo2 = PPO2_FAIL;
 #endif
 
 #if CONFIG_CELL_COUNT >= 3
-        (void)zbus_chan_read(&chan_cell_3, &cells[CELL_IDX_2], K_NO_WAIT);
+        read_cell_or_fail(&chan_cell_3, &cells[CELL_IDX_2]);
 #else
         cells[CELL_IDX_2].status = CELL_FAIL;
         cells[CELL_IDX_2].ppo2 = PPO2_FAIL;
@@ -90,7 +119,7 @@ static void consensus_thread_fn(void *p1, void *p2, void *p3)
         alarm_update(ALARM_PPO2_MASK,
              alarm_ppo2_reasons(result.consensus_ppo2, result.confidence));
 #endif
-        zbus_pub_checked(&chan_consensus, &result, K_NO_WAIT);
+        zbus_pub_checked(&chan_consensus, &result, K_MSEC(CHAN_OP_TIMEOUT_MS));
 
         k_msleep((int32_t)CONSENSUS_PERIOD_MS);
     }

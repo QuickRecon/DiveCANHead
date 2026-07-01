@@ -128,7 +128,12 @@ FUNC_NORETURN void must_succeed_failed(const char *expr, Status_t rc,
  * @brief Publish a non-fatal operational error to chan_error
  *
  * Uses K_NO_WAIT — if the channel is busy the event is silently dropped
- * rather than blocking the caller.
+ * rather than blocking the caller. This MUST stay non-blocking: op errors are
+ * raised from arbitrary contexts (including inside other zbus operations), so a
+ * bounded/blocking publish here could deadlock or stall a critical path. A
+ * dropped event is acceptable because chan_error is best-effort telemetry — the
+ * durable error record is the noinit-RAM histogram (error_histogram / DID
+ * 0xF260), not this channel.
  *
  * @param code   Error code identifying the fault condition
  * @param detail Optional numeric detail (e.g. peripheral address, status register)

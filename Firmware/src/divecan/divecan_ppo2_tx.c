@@ -23,10 +23,18 @@
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_types.h"
 #include "calibration.h"
+#include "errors.h"
 
 LOG_MODULE_REGISTER(divecan_ppo2_tx, LOG_LEVEL_INF);
 
 #define PPO2_TX_INTERVAL_MS 500
+
+/* Bounded wait for the consensus channel mutex. consensus_subscriber publishes
+ * chan_consensus every 100 ms and the PID thread also reads it, so a K_NO_WAIT
+ * read here loses the mutex race often enough to matter (~1 frame in 200 on
+ * bench). 10 ms is far longer than the brief publish/read critical sections yet
+ * well under the 500 ms TX period. Matches firmware_confirm.c. */
+#define CONSENSUS_READ_TIMEOUT_MS 10
 
 static const DiveCANType_t dev_type = DIVECAN_SOLO;
 
@@ -55,7 +63,24 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
 
     while (true) {
         ConsensusMsg_t consensus = {0};
-        (void)zbus_chan_read(&chan_consensus, &consensus, K_NO_WAIT);
+        int rc = zbus_chan_read(&chan_consensus, &consensus,
+                                K_MSEC(CONSENSUS_READ_TIMEOUT_MS));
+
+        if (0 != rc) {
+            /* Couldn't read a coherent consensus (mutex contention). Broadcast an
+             * explicit FAIL (0xFF) for every cell instead of either the
+             * zero-initialised struct (0.00 read as a valid live reading) OR
+             * skipping the cycle (which leaves the handset displaying its last
+             * value as if current). Stale/zero data mistaken for valid is worse
+             * than a clear failure signal — so fail loud. */
+            OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
+            for (uint8_t i = 0U; i < CELL_MAX_COUNT; ++i) {
+                consensus.ppo2_array[i] = PPO2_FAIL;
+                consensus.status_array[i] = CELL_FAIL;
+                consensus.include_array[i] = false;
+            }
+            consensus.consensus_ppo2 = PPO2_FAIL;
+        }
 
         /* Go through each cell and if any need cal, flag cal.
          * Also check for fail and mark the cell value as fail. */

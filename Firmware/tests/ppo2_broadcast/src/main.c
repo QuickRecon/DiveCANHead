@@ -28,6 +28,26 @@ ZTEST(ppo2_broadcast, test_all_cells_ok_unchanged)
     zassert_equal(ppo2[2], 100);
 }
 
+/**
+ * @brief A genuine zero reading on a healthy cell is transmitted as 0, NOT FAIL.
+ *
+ * A real 0.00 ATA (dead/depleted cell, hypoxic loop) is valid data. The overlay
+ * keys failure off CELL_FAIL status, never off the numeric value, so a zero from
+ * a CELL_OK cell must survive to the wire. Corrupt readings are turned into
+ * CELL_FAIL upstream (in the cell driver), not by blanket-zeroing here.
+ */
+ZTEST(ppo2_broadcast, test_genuine_zero_ok_preserved)
+{
+    PPO2_t ppo2[] = {0, 99, 100};
+    CellStatus_t status[] = {CELL_OK, CELL_OK, CELL_OK};
+
+    divecan_set_failed_cells(ppo2, status, 3, false);
+
+    zassert_equal(ppo2[0], 0);
+    zassert_equal(ppo2[1], 99);
+    zassert_equal(ppo2[2], 100);
+}
+
 /** @brief One CELL_FAIL entry has its PPO2 replaced with PPO2_FAIL; others are unchanged. */
 ZTEST(ppo2_broadcast, test_one_cell_fail)
 {

@@ -176,7 +176,10 @@ static void accessories_thread(void *a, void *b, void *c)
     AlarmMask_t alarms = ALARM_PPO2_INVALID;
     heartbeat_register(HEARTBEAT_ACCESSORIES);
     while (true) {
-        (void)zbus_chan_read(&chan_alarm_state, &alarms, K_NO_WAIT);
+        /* Bounded (this is a plain thread, not a zbus listener): a mutex-race
+         * miss would otherwise drive the accessory outputs from the previous
+         * alarm mask as if current — stale alarm state read as valid. */
+        (void)zbus_chan_read(&chan_alarm_state, &alarms, K_MSEC(10));
         refresh_outputs(alarms);
         heartbeat_kick(HEARTBEAT_ACCESSORIES);
         const struct zbus_channel *chan;

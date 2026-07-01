@@ -335,6 +335,51 @@ ZTEST(diveo2_simple, test_large_values)
     zassert_equal(1000000, temp);
 }
 
+/** @brief A genuine zero PPO2 in a well-formed frame is PRESERVED (not a fault).
+ *  This is the anti-regression guard for the fix: a real 0.00 reading must stay
+ *  0/CELL_OK, only corrupt frames may become FAIL. */
+ZTEST(diveo2_simple, test_zero_ppo2_preserved)
+{
+    int32_t ppo2, temp;
+    CellStatus_t status;
+
+    zassert_true(diveo2_parse_simple_response(
+        "#DOXY 0 2500 0", &ppo2, &temp, &status));
+    zassert_equal(0, ppo2);
+    zassert_equal(CELL_OK, status);
+}
+
+/** @brief A non-numeric PPO2 field is REJECTED, not silently read as 0.
+ *  Pre-fix, strtol("12x40") returned 0 and the frame parsed as a valid zero. */
+ZTEST(diveo2_simple, test_garbage_ppo2_rejected)
+{
+    int32_t ppo2, temp;
+    CellStatus_t status;
+
+    zassert_false(diveo2_parse_simple_response(
+        "#DOXY 12x40 2500 0", &ppo2, &temp, &status));
+}
+
+/** @brief A PPO2 field with trailing garbage ("1234abc") is rejected. */
+ZTEST(diveo2_simple, test_trailing_garbage_ppo2_rejected)
+{
+    int32_t ppo2, temp;
+    CellStatus_t status;
+
+    zassert_false(diveo2_parse_simple_response(
+        "#DOXY 1234abc 2500 0", &ppo2, &temp, &status));
+}
+
+/** @brief A non-numeric error-code field is rejected (would otherwise read 0=OK). */
+ZTEST(diveo2_simple, test_garbage_errcode_rejected)
+{
+    int32_t ppo2, temp;
+    CellStatus_t status;
+
+    zassert_false(diveo2_parse_simple_response(
+        "#DOXY 12340 2500 x", &ppo2, &temp, &status));
+}
+
 /* ============================================================================
  * Detailed Response Parsing (#DRAW)
  * ============================================================================ */
@@ -569,6 +614,35 @@ ZTEST(diveo2_pyro, test_foreign_prefix_rejected)
 
     zassert_false(diveo2_parse_detailed_response(
         "#XRAW 12340 2500 0 1000 5000 200 1013250 45000", &r));
+}
+
+/** @brief A genuine zero PPO2 in a well-formed detailed frame is preserved. */
+ZTEST(diveo2_detailed, test_zero_ppo2_preserved)
+{
+    DiveO2DetailedReading_t r = {0};
+
+    zassert_true(diveo2_parse_detailed_response(
+        "#DRAW 0 2500 0 1000 5000 200 1013250 45000", &r));
+    zassert_equal(0, r.ppo2);
+    zassert_equal(CELL_OK, r.status);
+}
+
+/** @brief A non-numeric field anywhere in a detailed frame is rejected, not read as 0. */
+ZTEST(diveo2_detailed, test_garbage_field_rejected)
+{
+    DiveO2DetailedReading_t r = {0};
+
+    zassert_false(diveo2_parse_detailed_response(
+        "#DRAW 12340 2500 0 1000 5000 abc 1013250 45000", &r));
+}
+
+/** @brief A field with trailing garbage ("12340x") is rejected. */
+ZTEST(diveo2_detailed, test_trailing_garbage_rejected)
+{
+    DiveO2DetailedReading_t r = {0};
+
+    zassert_false(diveo2_parse_detailed_response(
+        "#DRAW 12340x 2500 0 1000 5000 200 1013250 45000", &r));
 }
 
 /* ============================================================================

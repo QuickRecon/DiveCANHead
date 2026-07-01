@@ -413,8 +413,13 @@ static void cal_response_cb(const struct zbus_channel *chan)
          * divecan_result already set to DIVECAN_CAL_FAIL_GEN */
     }
 
-    /* chan_cal_request is a DIFFERENT channel — not locked here — so
-     * zbus_chan_read with K_NO_WAIT works to fetch the last request. */
+    /* K_NO_WAIT is REQUIRED here, not just an optimisation: this runs inside a
+     * zbus listener (cal_response_cb, fired synchronously while chan_cal_response
+     * is locked), and a bounded/blocking read from a listener risks deadlock and
+     * stalls the publisher. chan_cal_request is a different channel, so K_NO_WAIT
+     * normally succeeds; on the rare mutex-race miss last_req stays {0} and we
+     * only echo fo2/pressure 0 back in the cal-response frame (cosmetic — the
+     * cal result itself is unaffected). */
     CalRequest_t last_req = {0};
     (void)zbus_chan_read(&chan_cal_request, &last_req, K_NO_WAIT);
 
@@ -475,9 +480,12 @@ static void RespPing(const DiveCANMessage_t *message)
         }
 #endif
 
-        /* Read current setpoint from zbus */
+        /* Read current setpoint from zbus. Bounded (RespPing runs in the RX
+         * thread, not a zbus listener, so it may block briefly): a mutex-race
+         * miss would otherwise report setpoint 0 on the handset status frame —
+         * stale/wrong data shown as valid. */
         PPO2_t setpoint = 0;
-        (void)zbus_chan_read(&chan_setpoint, &setpoint, K_NO_WAIT);
+        (void)zbus_chan_read(&chan_setpoint, &setpoint, K_MSEC(10));
 
         /* Read solenoid status from zbus.  The PPO2 controller publishes
          * DIVECAN_ERR_SOL_NORM at init and on recovery, and
@@ -485,7 +493,10 @@ static void RespPing(const DiveCANMessage_t *message)
          * solenoid (e.g. on cell-failure).  Default to SOL_NORM if the
          * channel has no published value (variant without a controller). */
         DiveCANError_t sol_err = DIVECAN_ERR_SOL_NORM;
-        (void)zbus_chan_read(&chan_solenoid_status, &sol_err, K_NO_WAIT);
+        /* Bounded: a miss would report SOL_NORM even if the controller has
+         * suppressed the solenoid — a dangerous stale-as-valid status. The
+         * SOL_NORM default still stands in only for a no-controller variant. */
+        (void)zbus_chan_read(&chan_solenoid_status, &sol_err, K_MSEC(10));
 
         /* DiveCANError_t bits 0–1 carry battery state, bits 2–3 carry
          * solenoid state — designed to be OR-combined into a single byte. */

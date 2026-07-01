@@ -55,6 +55,12 @@ LOG_MODULE_REGISTER(ppo2_control, LOG_LEVEL_INF);
 
 /** PID update period in milliseconds. */
 static const uint32_t PID_PERIOD_MS = 100U;
+/** Bounded wait for a zbus channel mutex (read or publish). A K_NO_WAIT read can lose the
+ *  race with a ~100 ms publisher and leave the destination unchanged — for a
+ *  zero-initialised local that reads as a phantom 0 (0.00 bar PPO2, 0 setpoint,
+ *  0 duty), driving the loop against stale/wrong data. 10 ms >> the publish
+ *  critical section and << PID_PERIOD_MS. */
+static const uint32_t CHAN_OP_TIMEOUT_MS = 10U;
 /** Solenoid PWM cycle length in milliseconds. */
 static const uint32_t SOLENOID_CYCLE_MS = 5000U;
 /** Hardware-minimum solenoid on-time (ms). Below this, the solenoid is not fired. */
@@ -175,7 +181,10 @@ static PPO2_t read_setpoint_or_default(void)
 {
     PPO2_t sp = DEFAULT_SETPOINT_CB;
 
-    (void)zbus_chan_read(&chan_setpoint, &sp, K_NO_WAIT);
+    /* Bounded read so a mutex-race miss can't silently substitute the default
+     * for a real, different setpoint (stale/wrong target read as valid). The
+     * default only stands in when no setpoint has ever been published. */
+    (void)zbus_chan_read(&chan_setpoint, &sp, K_MSEC(CHAN_OP_TIMEOUT_MS));
     return sp;
 }
 
@@ -190,7 +199,10 @@ static uint16_t read_atmos_pressure(void)
 {
     uint16_t p = 0U;
 
-    (void)zbus_chan_read(&chan_atmos_pressure, &p, K_NO_WAIT);
+    /* Bounded read; 0 (no value) is the defined "compensation unavailable"
+     * sentinel handled downstream, so a genuine miss fails safe (comp skipped)
+     * rather than fabricating a pressure. */
+    (void)zbus_chan_read(&chan_atmos_pressure, &p, K_MSEC(CHAN_OP_TIMEOUT_MS));
     return p;
 }
 
@@ -202,7 +214,11 @@ static uint16_t read_atmos_pressure(void)
  */
 static void publish_solenoid_status(DiveCANError_t status)
 {
-    zbus_pub_checked(&chan_solenoid_status, &status, K_NO_WAIT);
+    /* Bounded publish: this status is echoed to the handset (RespPing). A
+     * dropped update would leave the channel showing the previous state — e.g.
+     * SOL_NORM after the controller has actually suppressed the solenoid — i.e.
+     * stale state read as current. Fail loud, not stale. */
+    zbus_pub_checked(&chan_solenoid_status, &status, K_MSEC(CHAN_OP_TIMEOUT_MS));
 }
 
 /* ---- PID thread ---- */
@@ -239,7 +255,20 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
     while (true) {
         heartbeat_kick(HEARTBEAT_PPO2_PID);
         ConsensusMsg_t consensus = {0};
-        (void)zbus_chan_read(&chan_consensus, &consensus, K_NO_WAIT);
+        int rc = zbus_chan_read(&chan_consensus, &consensus,
+                                K_MSEC(CHAN_OP_TIMEOUT_MS));
+
+        if (0 != rc) {
+            /* Couldn't read a coherent consensus (mutex contention). Force the
+             * cell-failure path (PPO2_FAIL) rather than acting on the
+             * zero-initialised struct (phantom 0.00 bar → commands full O2) or
+             * holding the last duty (stale control input treated as current).
+             * Unknown PPO2 => fail safe: the branch below zeroes duty and forces
+             * the solenoid off. */
+            OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
+            consensus.consensus_ppo2 = PPO2_FAIL;
+        }
+
         PPO2_t setpoint = read_setpoint_or_default();
 
         PIDNumeric_t d_setpoint =
@@ -257,7 +286,7 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
                 *latest_duty = 0.0f;
                 pid_state_reset_dynamic(state);
                 Numeric_t duty = 0.0f;
-                zbus_pub_checked(&chan_duty_cycle, &duty, K_NO_WAIT);
+                zbus_pub_checked(&chan_duty_cycle, &duty, K_MSEC(CHAN_OP_TIMEOUT_MS));
                 sol_o2_inject_off();
                 publish_solenoid_status(DIVECAN_ERR_SOL_UNDERCURRENT);
                 OP_ERROR(OP_ERR_SOLENOID_DISABLED);
@@ -274,7 +303,7 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
                                state);
             *latest_duty = (Numeric_t)duty;
             Numeric_t pub = (Numeric_t)duty;
-            zbus_pub_checked(&chan_duty_cycle, &pub, K_NO_WAIT);
+            zbus_pub_checked(&chan_duty_cycle, &pub, K_MSEC(CHAN_OP_TIMEOUT_MS));
 #ifdef CONFIG_FLASH_LOG
             const FlashLogPidSnapshot_t snap = {
                 .integral = (float)state->integralState,
@@ -330,7 +359,9 @@ static void run_pid_fire_cycle(void)
     bool *depth_skip_latch = getDepthSkipLatch();
 
     Numeric_t duty = 0.0f;
-    (void)zbus_chan_read(&chan_duty_cycle, &duty, K_NO_WAIT);
+    /* Bounded read; 0 (no value) fails safe (below the min fire time → no fire)
+     * rather than firing on a stale duty. */
+    (void)zbus_chan_read(&chan_duty_cycle, &duty, K_MSEC(CHAN_OP_TIMEOUT_MS));
     uint16_t pressure_mbar = read_atmos_pressure();
 
     FireTiming_t timing = pid_compute_fire_timing(
@@ -356,6 +387,10 @@ static void run_pid_fire_cycle(void)
         }
 #ifdef CONFIG_FLASH_LOG
         else {
+            /* chan_solenoid_fire is flash-log TELEMETRY, published from the fire
+             * thread mid-cycle. Deliberately K_NO_WAIT: a dropped log entry is
+             * benign (no state/display consequence), whereas a bounded wait here
+             * would perturb solenoid fire timing. */
             const SolenoidFireEvent_t fire_evt = {
                 .kind = 0U,
                 .requested_on_us = timing.on_duration_us,
@@ -412,7 +447,17 @@ static void mk15_sleep_kicking(uint32_t total_ms)
 static void run_mk15_fire_cycle(void)
 {
     ConsensusMsg_t consensus = {0};
-    (void)zbus_chan_read(&chan_consensus, &consensus, K_NO_WAIT);
+    int rc = zbus_chan_read(&chan_consensus, &consensus,
+                            K_MSEC(CHAN_OP_TIMEOUT_MS));
+
+    if (0 != rc) {
+        /* Couldn't read consensus (mutex contention). Treat as FAILED so the
+         * fire test below can't fire on a phantom 0.00 bar measurement; the
+         * off-time wait at the end still paces the loop. */
+        OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
+        consensus.consensus_ppo2 = PPO2_FAIL;
+    }
+
     PPO2_t setpoint = read_setpoint_or_default();
 
     PIDNumeric_t d_setpoint = (PIDNumeric_t)setpoint / CENTIBAR_TO_BAR;
@@ -510,7 +555,7 @@ void ppo2_control_init(void)
     *getConsensusFailedLatch() = false;
 
     Numeric_t duty = 0.0f;
-    zbus_pub_checked(&chan_duty_cycle, &duty, K_NO_WAIT);
+    zbus_pub_checked(&chan_duty_cycle, &duty, K_MSEC(CHAN_OP_TIMEOUT_MS));
     publish_solenoid_status(DIVECAN_ERR_SOL_NORM);
 
     LOG_INF("PPO2 control init: mode=%d depth_comp=%d kp=%.4f ki=%.4f kd=%.4f",
