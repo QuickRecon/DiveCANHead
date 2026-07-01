@@ -28,34 +28,30 @@ set(GCC_SCA_OPTS
     -Wno-error=analyzer-tainted-offset
 )
 
-# Optional out-of-tree proprietary LF (125 kHz) TX module. The encoder is
-# closed-source and never lives in this tree; it is populated out-of-band by a
-# manual clone into proprietary/lf_tx/ (git-ignored — see proprietary/README.md).
-# Wired in only when actually present, and appended HERE (inside the app image's
-# own CMakeLists, before its find_package) so it stays image-local: the MCUBoot
-# child image runs its own find_package and never pulls it in. Never pass
-# EXTRA_ZEPHYR_MODULES on the command line / env / cache — that would leak the
-# module into the bootloader image.
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/proprietary/lf_tx/zephyr/module.yml)
-    list(APPEND EXTRA_ZEPHYR_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/proprietary/lf_tx)
-endif()
+# Optional out-of-tree proprietary modules. Closed-source Zephyr modules that
+# must never live in this tree are dropped into proprietary/<name>/ (git-ignored
+# except the pointer doc — see proprietary/README.md). Any such module that
+# supplies a zephyr/module.yml is discovered and wired in HERE (inside the app
+# image's own CMakeLists, before its find_package) so it stays image-local: the
+# MCUBoot child image runs its own find_package and never pulls it in. Never
+# pass EXTRA_ZEPHYR_MODULES on the command line / env / cache — that would leak
+# the module into the bootloader image.
+#
+# This is the generic hook retained for future proprietary subsystems. A module
+# that a variant can *request* should follow the WANT_<FEATURE> / <FEATURE>
+# Kconfig pattern (the variant sets CONFIG_WANT_<FEATURE>=y; the module defines
+# the implementation symbol gated on its own devicetree node) and add its own
+# "requested but unavailable" FATAL_ERROR check after find_package() below.
+file(GLOB proprietary_module_manifests
+     ${CMAKE_CURRENT_SOURCE_DIR}/proprietary/*/zephyr/module.yml)
+foreach(module_manifest ${proprietary_module_manifests})
+    get_filename_component(module_dir ${module_manifest} DIRECTORY) # .../<name>/zephyr
+    get_filename_component(module_dir ${module_dir} DIRECTORY)      # .../<name>
+    list(APPEND EXTRA_ZEPHYR_MODULES ${module_dir})
+endforeach()
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(divecan_jr)
-
-# Fail clearly if a variant requested the LF feature (CONFIG_WANT_LF_TX=y) but it
-# could not be realised — either the module source is absent (CONFIG_LF_TX never
-# defined) or it is present but the variant overlay didn't instantiate the lf-tx
-# devicetree node (CONFIG_LF_TX gated off by DT_HAS_QUICKRECON_LF_TX_ENABLED).
-# A benign "no binding found for node /lf_tx" dtc warning may precede this; the
-# message below is the authoritative one. No private URL here by design.
-if(CONFIG_WANT_LF_TX AND NOT CONFIG_LF_TX)
-    message(FATAL_ERROR
-        "Variant requests the proprietary LF TX feature (CONFIG_WANT_LF_TX=y) "
-        "but it is unavailable. Populate proprietary/lf_tx/ (see "
-        "proprietary/README.md) and ensure the variant overlay instantiates the "
-        "lf-tx devicetree node.")
-endif()
 
 target_sources(app PRIVATE
     src/main.c

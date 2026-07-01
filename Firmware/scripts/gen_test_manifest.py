@@ -206,16 +206,6 @@ def build_manifest(cfg: dict, dt_header: str | None, variant: str = "unknown") -
             "battery_address": 0x43,
             "fuel_gauge_stale_ms": 12000,
         },
-        # Proprietary LF (125 kHz) transmitter. Present only when the variant
-        # pulled in the out-of-tree module (CONFIG_LF_TX). The carrier is on the
-        # only timer-capable solenoid pin, PA7 = the 4th solenoid GPIO (firmware
-        # channel index 3); the rig routes that channel through its output mux
-        # (SOL_CHANNEL_TO_MUX[3]) onto the tuned-coil load for bringup.
-        "lf": {
-            "enabled": is_set(cfg, "CONFIG_LF_TX"),
-            "carrier_hz": 125000,
-            "solenoid_channel": 3,
-        },
     }
 
 

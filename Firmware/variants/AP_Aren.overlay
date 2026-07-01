@@ -15,11 +15,6 @@
  * If the cell mix changes (e.g. a cell becomes analog), update this
  * overlay to re-enable the matching ADS1115 or the build will fail with
  * a missing DT-node reference from the cell driver.
- *
- * This is also the LF-transmitter variant: PA7 (solenoid channel 3) is
- * repurposed as the 125 kHz carrier output (TIM1_CH1N) for the proprietary
- * lf_tx module, so it is removed from the solenoid gpios list below and an
- * lf_tx node is instantiated. Paired with CONFIG_WANT_LF_TX=y in AP_Aren.conf.
  */
 
 #include <zephyr/dt-bindings/gpio/gpio.h>
@@ -31,28 +26,4 @@
 
 &adc_ext2 {
     status = "disabled";
-};
-
-/* Free PA7 for the LF carrier: re-list the solenoid channels without channel 3
- * (<&gpioa 7>). AP_Aren only uses channel 0 (O2 inject), so dropping the unused
- * channels 1-3 down to the inject channel + spares is safe. Keep channels 0-2
- * so existing channel indices are unchanged. */
-&solenoids {
-    gpios = <&gpiob 4 GPIO_ACTIVE_HIGH>,
-            <&gpioc 11 GPIO_ACTIVE_HIGH>,
-            <&gpiob 5 GPIO_ACTIVE_HIGH>;
-};
-
-/* LF (125 kHz) transmitter on TIM1_CH1N / PA7. The timer node is referenced
- * for its base address, clock, and update IRQ; the driver programs it via LL
- * and is the sole owner, so timers1 is left disabled (no competing Zephyr
- * timer/pwm driver binds it). */
-/ {
-    lf_tx: lf_tx {
-        compatible = "quickrecon,lf-tx";
-        timer = <&timers1>;
-        pinctrl-0 = <&tim1_ch1n_pa7>;
-        pinctrl-names = "default";
-        status = "okay";
-    };
 };

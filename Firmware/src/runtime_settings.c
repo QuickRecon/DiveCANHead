@@ -107,21 +107,6 @@ static bool battery_type_valid(BatteryType_t val)
     return val < BATTERY_TYPE_COUNT;
 }
 
-#ifdef CONFIG_WANT_LF_TX
-/**
- * @brief Check whether a candidate LF transmitter ID is within range
- *
- * @param val Candidate LF transmitter ID
- * @return true if val fits the 12-bit field (val <= LFID_MAX)
- */
-static bool lfid_valid(LFID_t val)
-{
-    /* Lower bound omitted: LFID_t is unsigned and LFID_MIN==0, so the
-     * `val >= LFID_MIN` half is always true (compiler -Wtype-limits). */
-    return val <= (LFID_t)LFID_MAX;
-}
-#endif
-
 /**
  * @brief Check whether a candidate PID gain is finite and within bounds
  *
@@ -165,11 +150,6 @@ bool runtime_settings_validate(const RuntimeSettings_t *s)
     else if (!battery_type_valid(s->batteryType)) {
         result = false;
     }
-#ifdef CONFIG_WANT_LF_TX
-    else if (!lfid_valid(s->lfTransmitterID)) {
-        result = false;
-    }
-#endif
     else
     {
 #ifndef CONFIG_HAS_O2_SOLENOID
@@ -250,17 +230,6 @@ static void load_bcst(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
     }
 }
 
-#ifdef CONFIG_WANT_LF_TX
-static void load_lfid(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
-{
-    LFID_t val = 0U;
-    ssize_t got = cb(arg, &val, sizeof(val));
-    if ((sizeof(val) == (size_t)got) && lfid_valid(val)) {
-        cached->lfTransmitterID = val;
-    }
-}
-#endif
-
 /**
  * @brief Zephyr settings handler callback — deserialise one key into the cache
  *
@@ -305,11 +274,6 @@ static Status_t settings_set(const char *name, size_t len,
     else if (0 == strcmp(name, "bcst")) {
         load_bcst(read_cb, cb_arg, cached);
     }
-#ifdef CONFIG_WANT_LF_TX
-    else if (0 == strcmp(name, "lfid")) {
-        load_lfid(read_cb, cb_arg, cached);
-    }
-#endif
     else
     {
         rc = -ENOENT;
@@ -394,11 +358,7 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
         uint8_t cal_val = (uint8_t)s->calibrationMode;
         uint8_t bat_val = (uint8_t)s->batteryType;
 
-        enum { SAVE_FIELD_COUNT = 8
-#ifdef CONFIG_WANT_LF_TX
-                       + 1
-#endif
-        };
+        enum { SAVE_FIELD_COUNT = 8 };
         const Status_t rc_codes[SAVE_FIELD_COUNT] = {
             settings_save_one(SETTINGS_SUBTREE "/ppo2",
                       &ppo2_val, sizeof(ppo2_val)),
@@ -418,11 +378,6 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
             settings_save_one(SETTINGS_SUBTREE "/bcst",
                       s->enforceBroadcast,
                       sizeof(s->enforceBroadcast)),
-#ifdef CONFIG_WANT_LF_TX
-            settings_save_one(SETTINGS_SUBTREE "/lfid",
-                      &s->lfTransmitterID,
-                      sizeof(s->lfTransmitterID)),
-#endif
         };
 
         Status_t first_err = 0;
@@ -494,13 +449,6 @@ Status_t runtime_settings_save_field(RuntimeSettingField_t field)
                        cached->enforceBroadcast,
                        sizeof(cached->enforceBroadcast));
         break;
-#ifdef CONFIG_WANT_LF_TX
-    case RT_FIELD_LF_ID:
-        rc = settings_save_one(SETTINGS_SUBTREE "/lfid",
-                       &cached->lfTransmitterID,
-                       sizeof(cached->lfTransmitterID));
-        break;
-#endif
     default:
         rc = -EINVAL;
         break;
@@ -560,19 +508,3 @@ CalibrationMode_t runtime_settings_get_calibration_mode(void)
 {
     return getCached()->calibrationMode;
 }
-
-#ifdef CONFIG_WANT_LF_TX
-/**
- * @brief Return the currently-cached LF transmitter ID.
- *
- * Reads only from the in-memory cache; no NVS access. Safe to call from the LF
- * transmit thread on every packet. Tracks runtime UDS edits (volatile or
- * persisted) immediately.
- *
- * @return Cached 12-bit LF transmitter ID (0..4095).
- */
-LFID_t runtime_settings_get_lfid(void)
-{
-    return getCached()->lfTransmitterID;
-}
-#endif

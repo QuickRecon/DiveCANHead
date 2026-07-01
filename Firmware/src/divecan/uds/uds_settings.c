@@ -34,13 +34,7 @@ LOG_MODULE_REGISTER(uds_settings, LOG_LEVEL_INF);
  * cell-bcst entries. */
 #define SETTING_INDEX_CELL_BCST_END  (SETTING_INDEX_CELL_BCST_BASE + CELL_MAX_COUNT)
 
-/* Optional LF transmitter ID setting is appended after the per-cell block. */
-#ifdef CONFIG_WANT_LF_TX
-#define SETTING_INDEX_LF_ID  SETTING_INDEX_CELL_BCST_END
-#define SETTING_COUNT        (SETTING_INDEX_CELL_BCST_END + 1U)
-#else
 #define SETTING_COUNT        SETTING_INDEX_CELL_BCST_END
-#endif
 
 /* True if @p idx addresses a per-cell enforce-broadcast setting; if so, sets
  * *cell to the zero-based cell number. */
@@ -214,18 +208,6 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .options = boolOptions,
         .optionCount = 2
     },
-#ifdef CONFIG_WANT_LF_TX
-    /* Index SETTING_INDEX_LF_ID: 12-bit per-unit LF transmitter ID (0..4095).
-     * Exposed as a free-entry NUMBER; range-enforced by maxValue. */
-    {
-        .label = "LF TX ID",
-        .kind = SETTING_KIND_NUMBER,
-        .editable = true,
-        .maxValue = (uint64_t)LFID_MAX,
-        .options = NULL,
-        .optionCount = 0
-    },
-#endif
 };
 
 /* The per-cell broadcast settings block above hard-codes one entry per cell. */
@@ -248,9 +230,6 @@ BUILD_ASSERT(SETTING_INDEX_PID_KI         == 5U, "PID Ki must be storage index 5
 BUILD_ASSERT(SETTING_INDEX_PID_KD         == 6U, "PID Kd must be storage index 6");
 BUILD_ASSERT(SETTING_INDEX_BATTERY_TYPE   == 7U, "Battery must be storage index 7");
 BUILD_ASSERT(SETTING_INDEX_CELL_BCST_BASE == 8U, "Cell-broadcast block must start at storage index 8");
-#ifdef CONFIG_WANT_LF_TX
-BUILD_ASSERT(SETTING_INDEX_LF_ID          == 11U, "LF TX ID must be storage index 11 when enabled");
-#endif
 
 /* ---- Handset menu order (per-variant, CONFIG_MENU_ORDER_n) ----
  * The handset renders only the first ~5 settings it enumerates. The Kconfig
@@ -454,11 +433,6 @@ uint64_t UDS_GetSettingValue(uint8_t index)
     case SETTING_INDEX_BATTERY_TYPE:
         result = (uint64_t)rs.batteryType;
         break;
-#ifdef CONFIG_WANT_LF_TX
-    case SETTING_INDEX_LF_ID:
-        result = (uint64_t)rs.lfTransmitterID;
-        break;
-#endif
     default:
         OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
         break;
@@ -523,12 +497,6 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
             case SETTING_INDEX_BATTERY_TYPE:
                 rs.batteryType = (BatteryType_t)value;
                 break;
-#ifdef CONFIG_WANT_LF_TX
-            case SETTING_INDEX_LF_ID:
-                /* value already range-checked against maxValue (LFID_MAX). */
-                rs.lfTransmitterID = (LFID_t)value;
-                break;
-#endif
             default:
                 break;
             }
@@ -568,9 +536,6 @@ static bool setting_index_to_field(uint8_t index, RuntimeSettingField_t *field)
     case SETTING_INDEX_PID_KI:       *field = RT_FIELD_KI;      break;
     case SETTING_INDEX_PID_KD:       *field = RT_FIELD_KD;      break;
     case SETTING_INDEX_BATTERY_TYPE: *field = RT_FIELD_BATTERY; break;
-#ifdef CONFIG_WANT_LF_TX
-    case SETTING_INDEX_LF_ID:        *field = RT_FIELD_LF_ID;   break;
-#endif
     default:                         ok = false;                break;
     }
     return ok;
