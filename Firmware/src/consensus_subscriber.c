@@ -23,6 +23,9 @@
 #include "oxygen_cell_math.h"
 #include "heartbeat.h"
 #include "errors.h"
+#ifdef CONFIG_ALARM
+#include "alarm.h"
+#endif
 
 LOG_MODULE_REGISTER(consensus, LOG_LEVEL_INF);
 
@@ -83,6 +86,10 @@ static void consensus_thread_fn(void *p1, void *p2, void *p3)
         ConsensusMsg_t result = consensus_calculate(
             cells, CONFIG_CELL_COUNT, now, staleness);
 
+#ifdef CONFIG_ALARM
+        alarm_update(ALARM_PPO2_MASK,
+             alarm_ppo2_reasons(result.consensus_ppo2, result.confidence));
+#endif
         zbus_pub_checked(&chan_consensus, &result, K_NO_WAIT);
 
         k_msleep((int32_t)CONSENSUS_PERIOD_MS);

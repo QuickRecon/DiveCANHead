@@ -151,7 +151,10 @@ def build_manifest(cfg: dict, dt_header: str | None) -> dict:
             "has_o2": is_set(cfg, "CONFIG_HAS_O2_SOLENOID"),
             "has_flush": is_set(cfg, "CONFIG_HAS_FLUSH_SOLENOID"),
             # Raw GPIO channels the driver (and the 0xF242 override) can drive.
-            "drivable_channels": dt_solenoid_channels(dt_header),
+            # Zero when the solenoid driver is compiled out (CONFIG_SOLENOID=n),
+            # even though the devicetree node may still list GPIOs.
+            "drivable_channels": (dt_solenoid_channels(dt_header)
+                                  if is_set(cfg, "CONFIG_SOLENOID") else 0),
             # HIL capped raw-fire capability — see writeSolenoidOverrideDID().
             "override": {
                 "supported": is_set(cfg, "CONFIG_HAS_O2_SOLENOID"),
@@ -193,6 +196,14 @@ def build_manifest(cfg: dict, dt_header: str | None) -> dict:
             "uds": True,
             "ota": True,
             "menu": True,
+            "poseidon_accessories": is_set(cfg, "CONFIG_POSEIDON_ACCESSORIES"),
+        },
+        "poseidon": {
+            "enabled": is_set(cfg, "CONFIG_POSEIDON_ACCESSORIES"),
+            "hud_address": 0x40,
+            "display_address": 0x41,
+            "battery_address": 0x43,
+            "fuel_gauge_stale_ms": 12000,
         },
         # Proprietary LF (125 kHz) transmitter. Present only when the variant
         # pulled in the out-of-tree module (CONFIG_LF_TX). The carrier is on the

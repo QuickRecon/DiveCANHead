@@ -114,6 +114,22 @@ endchoice
 
 endmenu # Product Topology
 
+config ALARM
+	bool "Generic alarm-state pathway"
+	default n
+	help
+	  Enable the generic alarm-state channel. Select this from each alert
+	  consumer so alarm producers remain independent of output hardware.
+
+config POSEIDON_ACCESSORIES
+	bool "Poseidon HUD and battery I2C accessories"
+	default n
+	select ALARM
+	select I2C_TARGET
+	help
+	  Enable the Poseidon HUD/Battery protocol and receive fuel percentage
+	  broadcasts at the Display address.
+
 # ---- Solenoid Role Mapping ----
 
 menu "Solenoid Role Mapping"

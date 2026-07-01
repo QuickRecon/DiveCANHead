@@ -5,18 +5,28 @@
  * Thin inline wrappers around solenoid_fire() / solenoid_off() that map
  * Kconfig channel numbers to semantic role names.  Roles absent on a
  * given variant (channel == SOL_ROLE_NOT_PRESENT) return -ENODEV.
+ *
+ * On variants with no solenoid hardware at all (CONFIG_SOLENOID=n, e.g.
+ * a manual CCR) every role is absent: the helpers are stubs that return
+ * -ENODEV / no-op, so callers (PPO2 control, calibration, UDS) still
+ * compile and link without the solenoid driver.
  */
 #ifndef SOLENOID_ROLES_H
 #define SOLENOID_ROLES_H
 
-#include <solenoid.h>
-#include <zephyr/devicetree.h>
+#include <errno.h>
+#include <zephyr/sys/util.h>
 #include <autoconf.h>
-
-#define SOL_DEVICE DEVICE_DT_GET(DT_NODELABEL(solenoids))
 
 /** @brief Sentinel value for a solenoid role that is not wired on this variant. */
 #define SOL_ROLE_NOT_PRESENT (-1)
+
+#ifdef CONFIG_SOLENOID
+
+#include <solenoid.h>
+#include <zephyr/devicetree.h>
+
+#define SOL_DEVICE DEVICE_DT_GET(DT_NODELABEL(solenoids))
 
 /**
  * @brief Fire the O2 injection solenoid for the given duration.
@@ -88,5 +98,37 @@ static inline int sol_o2_inject_2_fire(uint32_t duration_us)
     return -ENODEV;
 #endif
 }
+
+#else /* !CONFIG_SOLENOID — no solenoid hardware on this variant */
+
+static inline int sol_o2_inject_fire(uint32_t duration_us)
+{
+    ARG_UNUSED(duration_us);
+    return -ENODEV;
+}
+
+static inline void sol_o2_inject_off(void)
+{
+}
+
+static inline int sol_o2_flush_fire(uint32_t duration_us)
+{
+    ARG_UNUSED(duration_us);
+    return -ENODEV;
+}
+
+static inline int sol_dil_flush_fire(uint32_t duration_us)
+{
+    ARG_UNUSED(duration_us);
+    return -ENODEV;
+}
+
+static inline int sol_o2_inject_2_fire(uint32_t duration_us)
+{
+    ARG_UNUSED(duration_us);
+    return -ENODEV;
+}
+
+#endif /* CONFIG_SOLENOID */
 
 #endif

@@ -35,6 +35,7 @@ target_sources(app PRIVATE
 # native_sim. Stubs for the symbols uds.c needs from them live in main.c.
 
 target_include_directories(app PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${APP_SRC}/divecan/include
     ${APP_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include

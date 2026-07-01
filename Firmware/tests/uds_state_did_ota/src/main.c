@@ -98,6 +98,22 @@ int error_histogram_clear(void) { return 0; }
 
 bool calibration_is_running(void) { return false; }
 
+CalibrationMode_t runtime_settings_get_calibration_mode(void)
+{
+    return CAL_ANALOG_ABSOLUTE;
+}
+
+void ISOTP_TxQueue_Poll(uint32_t currentTime)
+{
+    ARG_UNUSED(currentTime);
+}
+
+bool ISOTP_TxQueue_IsBusy(void) { return false; }
+
+uint8_t ISOTP_TxQueue_GetPendingCount(void) { return 0U; }
+
+int flash_mass_erase_external(void) { return 0; }
+
 /* Settings / OTA dispatcher stubs — uds.c links them through but we
  * don't drive the corresponding wire paths from this test. */
 

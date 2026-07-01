@@ -73,6 +73,9 @@ target_sources(app PRIVATE
     src/firmware_confirm.c
     src/flash_mass_erase.c
 )
+target_sources_ifdef(CONFIG_ALARM app PRIVATE src/alarm.c)
+target_sources_ifdef(CONFIG_POSEIDON_ACCESSORIES app PRIVATE
+    src/poseidon_accessories.c)
 # The paced thread-analyzer wrapper calls thread_analyzer_run(), which
 # Zephyr only provides when CONFIG_THREAD_ANALYZER=y. That symbol has
 # `depends on !ARCH_POSIX`, so on native_sim it is unavailable and the

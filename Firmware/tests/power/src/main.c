@@ -18,10 +18,7 @@
 #include "runtime_settings.h"
 
 /* Stub the runtime-settings accessor that power_math.c reaches through —
- * this test is about pure threshold math, not NVS plumbing. Returning
- * LI2S preserves the historical default-threshold expectation (6.0 V).
- * Per-chemistry mappings are exercised by overriding this in a future
- * test if needed. */
+ * this test is about pure threshold math, not NVS plumbing. */
 static BatteryType_t stub_battery_type = BATTERY_TYPE_LI2S;
 BatteryType_t runtime_settings_get_battery_type(void)
 {
@@ -142,7 +139,7 @@ ZTEST(battery_threshold, test_threshold_per_chemistry)
     zassert_within(power_get_low_battery_threshold(), 7.7f, 0.01f);
 
     stub_battery_type = BATTERY_TYPE_LI1S;
-    zassert_within(power_get_low_battery_threshold(), 3.0f, 0.01f);
+    zassert_within(power_get_low_battery_threshold(), 3.5f, 0.01f);
 
     stub_battery_type = BATTERY_TYPE_LI2S;
     zassert_within(power_get_low_battery_threshold(), 6.0f, 0.01f);

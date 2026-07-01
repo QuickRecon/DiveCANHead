@@ -11,6 +11,14 @@
 
 #include <zephyr/ztest.h>
 #include "oxygen_cell_math.h"
+#include "alarm.h"
+#include "errors.h"
+
+void op_error_publish(OpError_t code, uint32_t detail)
+{
+    ARG_UNUSED(code);
+    ARG_UNUSED(detail);
+}
 
 /* Staleness timeout used across all tests: 10 seconds at 1kHz tick rate */
 #define STALENESS_TICKS 10000LL
@@ -551,4 +559,18 @@ ZTEST(consensus, test_overflow_saturates)
 
     /* 2.55 bar * 100 = 255 > MAX_VALID_PPO2(254), must saturate */
     zassert_equal(result.consensus_ppo2, PPO2_FAIL);
+}
+
+ZTEST(consensus, test_alarm_exact_boundaries)
+{
+    zassert_equal(alarm_ppo2_reasons(39, 2), ALARM_PPO2_LOW);
+    zassert_equal(alarm_ppo2_reasons(40, 2), 0U);
+    zassert_equal(alarm_ppo2_reasons(160, 2), 0U);
+    zassert_equal(alarm_ppo2_reasons(161, 2), ALARM_PPO2_HIGH);
+}
+
+ZTEST(consensus, test_alarm_invalid_or_no_confidence)
+{
+    zassert_equal(alarm_ppo2_reasons(PPO2_FAIL, 2), ALARM_PPO2_INVALID);
+    zassert_equal(alarm_ppo2_reasons(100, 0), ALARM_PPO2_INVALID);
 }

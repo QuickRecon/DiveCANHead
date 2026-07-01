@@ -27,6 +27,7 @@
 #include "divecan_channels.h"
 #include "error_histogram.h"
 #include "calibration.h"
+#include "runtime_settings.h"
 
 /* ---- Stubs for symbols uds.c references but we don't need to exercise ----
  *
@@ -83,6 +84,27 @@ bool UDS_SetSettingValue(uint8_t idx, uint64_t value)
 int error_histogram_clear(void) { return 0; }
 
 bool calibration_is_running(void) { return false; }
+
+CalibrationMode_t runtime_settings_get_calibration_mode(void)
+{
+    return CAL_ANALOG_ABSOLUTE;
+}
+
+void ISOTP_TxQueue_Poll(uint32_t currentTime)
+{
+    ARG_UNUSED(currentTime);
+}
+
+bool ISOTP_TxQueue_IsBusy(void) { return false; }
+
+uint8_t ISOTP_TxQueue_GetPendingCount(void) { return 0U; }
+
+int flash_mass_erase_external(void) { return 0; }
+
+void heartbeat_set_long_op(bool in_progress)
+{
+    ARG_UNUSED(in_progress);
+}
 
 /* factory_image_* are referenced by uds.c's OTA write-DID handlers
  * (0xF276 / 0xF277). The uds_ota suite doesn't exercise those write

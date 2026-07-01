@@ -25,6 +25,12 @@
 #include "firmware_confirm.h"
 #include "errors.h"
 #include "common.h"
+#ifdef CONFIG_ALARM
+#include "alarm.h"
+#endif
+#ifdef CONFIG_POSEIDON_ACCESSORIES
+#include "poseidon_accessories.h"
+#endif
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
 #include "uds_log_download.h"
@@ -430,6 +436,20 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         break;
     }
 
+    case UDS_DID_ALARM_STATE:
+#ifdef CONFIG_ALARM
+    {
+        AlarmMask_t alarms = 0U;
+        (void)zbus_chan_read(&chan_alarm_state, &alarms, K_NO_WAIT);
+        writeUint32(buf, alarms);
+        *len = sizeof(alarms);
+        break;
+    }
+#else
+        result = false;
+        break;
+#endif
+
     case UDS_DID_DUTY_CYCLE:
     {
         PPO2ControlSnapshot_t snap = {0};
@@ -493,6 +513,24 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         buf[0] = 0;
         *len = sizeof(uint8_t);
         break;
+
+    case UDS_DID_POSEIDON_GAUGE:
+#ifdef CONFIG_POSEIDON_ACCESSORIES
+    {
+        PoseidonGaugeStatus_t gauge = {0};
+        poseidon_gauge_status(&gauge);
+        buf[0] = gauge.percent;
+        buf[1] = (uint8_t)((gauge.ever_received ? 1U : 0U) |
+                           (gauge.fresh ? 2U : 0U) |
+                           (gauge.fresh ? 0U : 4U));
+        writeUint16(&buf[2], gauge.age_seconds);
+        *len = 4U;
+        break;
+    }
+#else
+        result = false;
+        break;
+#endif
 
     case UDS_DID_CRASH_VALID:
     {

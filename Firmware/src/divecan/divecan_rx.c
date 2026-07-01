@@ -28,6 +28,9 @@
 #endif
 #include "oxygen_cell_types.h"
 #include "power_management.h"
+#ifdef CONFIG_POSEIDON_ACCESSORIES
+#include "poseidon_accessories.h"
+#endif
 #include "calibration.h"
 #include "runtime_settings.h"
 #include "errors.h"
@@ -465,6 +468,12 @@ static void RespPing(const DiveCANMessage_t *message)
          * to send over the wire */
         Numeric_t scaledV = supplyVoltage * (Numeric_t)BATTERY_FLOAT_TO_INT;
         BatteryV_t batteryV = (BatteryV_t)scaledV;
+#ifdef CONFIG_POSEIDON_ACCESSORIES
+        uint8_t gauge_v = 0U;
+        if (poseidon_gauge_voltage_byte(&gauge_v)) {
+            batteryV = gauge_v;
+        }
+#endif
 
         /* Read current setpoint from zbus */
         PPO2_t setpoint = 0;

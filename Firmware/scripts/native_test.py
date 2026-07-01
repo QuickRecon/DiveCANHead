@@ -109,6 +109,7 @@ def build_one(name: str, coverage: bool = False) -> int:
 
     cmd = [
         "west", "build",
+        "--pristine", "auto",
         "-d", str(out),
         "-b", NATIVE_BOARD,
         str(src),

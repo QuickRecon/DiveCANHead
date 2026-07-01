@@ -41,6 +41,10 @@ config FLASH_LOG_MAX_ENTRY_BYTES
 config FLASH_LOG_WRITER_STACK
 	int "log_writer thread stack size"
 	default 1024
+	help
+	  Stack for fl_writer_thread (the only thread on the FCB write path).
+	  The effective value is pinned in prj.conf; see the comment there for the
+	  high-water history and the still-open fcb_rotate() worst-case measurement.
 
 config FLASH_LOG_WRITER_PRIORITY
 	int "log_writer thread priority"

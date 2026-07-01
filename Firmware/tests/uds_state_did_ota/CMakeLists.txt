@@ -33,6 +33,7 @@ target_sources(app PRIVATE
     ${APP_SRC}/divecan/uds/uds_state_did.c
     ${APP_SRC}/divecan/divecan_channels.c
     ${APP_SRC}/oxygen_cell_channels.c
+    ${APP_SRC}/alarm.c
     ${APP_SRC}/errors.c
 )
 # uds_ota.c, uds_settings.c are deliberately excluded — they pull in

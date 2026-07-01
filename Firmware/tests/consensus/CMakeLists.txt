@@ -5,6 +5,7 @@ project(test_consensus)
 target_sources(app PRIVATE
     src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/oxygen_cell_math.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/alarm.c
 )
 target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include

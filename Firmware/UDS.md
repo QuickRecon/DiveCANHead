@@ -154,7 +154,7 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 |----------------|-----------------------------------------------|
 | 0xF000–0xF001  | Device identification                         |
 | 0xF200–0xF22F  | PPO2 control state                            |
-| 0xF230–0xF235  | Power monitoring                              |
+| 0xF230–0xF236  | Power and external battery monitoring         |
 | 0xF240–0xF242  | Control writes (setpoint, calibration, HIL solenoid override) |
 | 0xF250–0xF254  | Crash info (next-boot diagnostic)             |
 | 0xF260–0xF261  | Error histogram                               |
@@ -173,6 +173,7 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF200 | 4     | float32  | R         | Consensus PPO2 (bar)                                     |
 | 0xF202 | 4     | float32  | R         | Current setpoint (bar)                                   |
 | 0xF203 | 1     | uint8    | R         | Cells valid bitfield (bit 0 = cell 1, etc.)              |
+| 0xF204 | 4     | uint32   | R         | Active generic alarm-reason bitmask                       |
 | 0xF210 | 4     | float32  | R         | Solenoid duty cycle (0.0–1.0)                            |
 | 0xF211 | 4     | float32  | R         | PID integral accumulator                                 |
 | 0xF212 | 2     | uint16   | R         | PID saturation event counter                             |
@@ -183,6 +184,7 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF233 | 4     | float32  | R         | CAN bus voltage (V)                                      |
 | 0xF234 | 4     | float32  | R         | Low-battery threshold (V, derived from battery setting)  |
 | 0xF235 | 1     | uint8    | R         | Power sources (Jr: always 0)                             |
+| 0xF236 | 4     | struct   | R         | Poseidon gauge: percent, flags, age seconds (LE); Poseidon builds only |
 | 0xF240 | 1     | uint8    | W         | Setpoint write (centibar; 0–255 → 0.00–2.55 bar)         |
 | 0xF241 | 1     | uint8    | W         | Calibration trigger (FO2 0–100 %)                        |
 | 0xF242 | 2     | u8+u8    | W         | HIL raw solenoid fire `[channel, 0x5A]`; fixed 1.5 s; requires Programming, surface, and PPO2 mode OFF |

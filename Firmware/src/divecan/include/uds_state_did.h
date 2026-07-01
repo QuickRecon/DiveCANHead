@@ -25,6 +25,7 @@
 #define UDS_DID_CONSENSUS_PPO2      0xF200U  /**< float32: Voted PPO2 (bar) */
 #define UDS_DID_SETPOINT            0xF202U  /**< float32: Current setpoint (bar) */
 #define UDS_DID_CELLS_VALID         0xF203U  /**< uint8: Bitfield - cells in voting */
+#define UDS_DID_ALARM_STATE         0xF204U  /**< uint32: active AlarmMask_t reasons */
 #define UDS_DID_DUTY_CYCLE          0xF210U  /**< float32: Solenoid duty (0.0-1.0) */
 #define UDS_DID_INTEGRAL_STATE      0xF211U  /**< float32: PID integral accumulator */
 #define UDS_DID_SATURATION_COUNT    0xF212U  /**< uint16: PID saturation events */
@@ -37,6 +38,7 @@
 #define UDS_DID_CAN_VOLTAGE         0xF233U
 #define UDS_DID_THRESHOLD_VOLTAGE   0xF234U
 #define UDS_DID_POWER_SOURCES       0xF235U
+#define UDS_DID_POSEIDON_GAUGE      0xF236U  /**< 4 B: percent, flags, age_s LE */
 
 /* Control DIDs (writable) - 0xF24x */
 #define UDS_DID_SETPOINT_WRITE      0xF240U

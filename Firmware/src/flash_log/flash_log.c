@@ -446,6 +446,16 @@ void flash_log_enqueue_text(uint8_t level, uint16_t module_id,
  *   5. Kick heartbeat.
  */
 
+/* Single-writer coalescing scratch (header + payload composed into one flash
+ * write). ONLY fl_writer_thread reaches the FCB write path, and the passes that
+ * use this — drop markers, Pass 1 individual entries (fl_write_entry_to_fcb) and
+ * Pass 2 telemetry sub-records (fl_write_telemetry_batch) — run sequentially on
+ * that one thread with no reentrancy, so a single shared static is safe. Keeping
+ * these ~100 B buffers off the stack reclaims ~200 B of the writer's peak depth
+ * (fl_writer_tid high-water was 984/1024, only 40 B free — HIT_LIST #3). Sized to
+ * the larger of the two original buffers. */
+static uint8_t fl_writer_scratch[sizeof(fl_entry_hdr_t) + CONFIG_FLASH_LOG_MAX_ENTRY_BYTES];
+
 static int fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
                  uint8_t flags, uint64_t ts_us,
                  const void *payload, uint16_t length)
@@ -477,14 +487,13 @@ static int fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
          * size (CONFIG_FLASH_LOG_MAX_ENTRY_BYTES); fall back to two writes for
          * any (unexpected) larger entry. */
         size_t total = sizeof(hdr) + length;
-        uint8_t wbuf[CONFIG_FLASH_LOG_MAX_ENTRY_BYTES];
-        if (total <= sizeof(wbuf)) {
-            (void)memcpy(wbuf, &hdr, sizeof(hdr));
+        if (total <= sizeof(fl_writer_scratch)) {
+            (void)memcpy(fl_writer_scratch, &hdr, sizeof(hdr));
             if ((length > 0U) && (payload != NULL)) {
-                (void)memcpy(&wbuf[sizeof(hdr)], payload, length);
+                (void)memcpy(&fl_writer_scratch[sizeof(hdr)], payload, length);
             }
             rc = flash_area_write(fcb_p->fap, FCB_ENTRY_FA_DATA_OFF(loc),
-                          wbuf, total);
+                          fl_writer_scratch, total);
         } else {
             rc = flash_area_write(fcb_p->fap, FCB_ENTRY_FA_DATA_OFF(loc),
                           &hdr, sizeof(hdr));
@@ -651,14 +660,13 @@ static void fl_write_telemetry_batch(void)
                 .length = length,
                 .ts_boot_us = ts,
             };
-            uint8_t wbuf[sizeof(fl_entry_hdr_t) + CONFIG_FLASH_LOG_MAX_ENTRY_BYTES];
             size_t wlen = sizeof(sh) + length;
-            if (wlen <= sizeof(wbuf)) {
-                (void)memcpy(wbuf, &sh, sizeof(sh));
+            if (wlen <= sizeof(fl_writer_scratch)) {
+                (void)memcpy(fl_writer_scratch, &sh, sizeof(sh));
                 if (length > 0U) {
-                    (void)memcpy(&wbuf[sizeof(sh)], &p[FL_BATCH_HDR_BYTES], length);
+                    (void)memcpy(&fl_writer_scratch[sizeof(sh)], &p[FL_BATCH_HDR_BYTES], length);
                 }
-                rc = flash_area_write(fcb_p->fap, woff, wbuf, wlen);
+                rc = flash_area_write(fcb_p->fap, woff, fl_writer_scratch, wlen);
             } else {
                 rc = flash_area_write(fcb_p->fap, woff, &sh, sizeof(sh));
                 if ((0 == rc) && (length > 0U)) {

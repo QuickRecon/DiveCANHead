@@ -326,11 +326,15 @@ static void emit_startup_preamble(void)
     preamble_line("Battery chemistry (compile): %s", BATTERY_CHEMISTRY_STR);
 #endif
 
+#ifdef CONFIG_SOLENOID
     preamble_line("Solenoids: O2_inject=%d O2_inject_2=%d O2_flush=%d dil_flush=%d",
                   CONFIG_SOL_O2_INJECT_CHANNEL,
                   CONFIG_SOL_O2_INJECT_2_CHANNEL,
                   CONFIG_SOL_O2_FLUSH_CHANNEL,
                   CONFIG_SOL_DIL_FLUSH_CHANNEL);
+#else
+    preamble_line("Solenoids: none (solenoid driver disabled)");
+#endif
     preamble_line("Has flags: o2_sol=%s flush_sol=%s digital_cell=%s analog_cell=%s",
                   IS_ENABLED(CONFIG_HAS_O2_SOLENOID)   ? "Y" : "N",
                   IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID) ? "Y" : "N",
