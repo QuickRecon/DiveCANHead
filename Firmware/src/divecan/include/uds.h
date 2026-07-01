@@ -71,8 +71,13 @@ typedef enum {
 typedef enum {
     UDS_DID_FIRMWARE_VERSION = 0xF000,
     UDS_DID_HARDWARE_VERSION = 0xF001,
+    UDS_DID_VARIANT_NAME = 0xF002,
     UDS_DID_LOG_MESSAGE = 0xA100
 } UDS_DID_t;
+
+/* Max bytes of the build-variant string served by UDS_DID_VARIANT_NAME. Sized
+ * for the longest variant name ("Sidewinder_Gabriel" = 18) with headroom. */
+#define UDS_VARIANT_NAME_MAX 31U
 
 /* UDS maximum message sizes — matched to ISOTP_MAX_PAYLOAD (256) so the
  * full ISO-TP buffer can be used for OTA TransferData blocks. */

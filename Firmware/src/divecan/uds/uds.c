@@ -348,6 +348,13 @@ static void HandleDiagnosticSessionControl(UDSContext_t *ctx,
 #define APP_BUILD_VERSION_STR "dev"
 #endif
 
+/* APP_BUILD_VARIANT_STR is injected as a quoted string literal by CMake
+ * (`-DAPP_BUILD_VARIANT_STR=\"<variant>\"`), derived from the selected
+ * variants/<name>.conf. Fallback covers builds with no variant conf. */
+#ifndef APP_BUILD_VARIANT_STR
+#define APP_BUILD_VARIANT_STR "dev"
+#endif
+
 /**
  * @brief Return the build commit hash string injected by CMake
  *
@@ -356,6 +363,19 @@ static void HandleDiagnosticSessionControl(UDSContext_t *ctx,
 static const char *getCommitHash(void)
 {
     return APP_BUILD_VERSION_STR;
+}
+
+/**
+ * @brief Return the build variant name injected by CMake
+ *
+ * Lets the HIL rig assert the flashed binary's variant matches the test
+ * manifest it is qualifying against (guards the wrong-build-flashed mistake).
+ *
+ * @return Null-terminated variant name (e.g. "Poseidon_Aren"), or "dev"
+ */
+static const char *getVariantName(void)
+{
+    return APP_BUILD_VARIANT_STR;
 }
 
 /**
@@ -412,6 +432,15 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
              * because the runtime detection result is not exposed. */
             buf[dataOffset] = 0;
             *bytesWritten = dataOffset + 1U;
+            result = true;
+        } else if (UDS_DID_VARIANT_NAME == did) {
+            const char *variant = getVariantName();
+            uint16_t vlen = (uint16_t)strnlen(variant, UDS_VARIANT_NAME_MAX);
+            if (vlen > (maxAvailable - dataOffset)) {
+                vlen = maxAvailable - dataOffset;
+            }
+            (void)memcpy(&buf[dataOffset], variant, vlen);
+            *bytesWritten = dataOffset + vlen;
             result = true;
         } else if (UDS_DID_SETTING_COUNT == did) {
             buf[dataOffset] = UDS_GetSettingCount();

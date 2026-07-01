@@ -100,7 +100,7 @@ def dt_solenoid_channels(dt_header: str | None) -> int:
     return (max(int(i) for i in idxs) + 1) if idxs else 0
 
 
-def build_manifest(cfg: dict, dt_header: str | None) -> dict:
+def build_manifest(cfg: dict, dt_header: str | None, variant: str = "unknown") -> dict:
     count = int_cfg(cfg, "CONFIG_CELL_COUNT", 0)
     types = [cell_type(cfg, n) for n in range(1, count + 1)]
 
@@ -122,6 +122,7 @@ def build_manifest(cfg: dict, dt_header: str | None) -> dict:
     return {
         "schema_version": 1,
         "source": "kconfig+devicetree",
+        "variant": variant,
         "board": cfg.get("CONFIG_BOARD", "unknown"),
         "soc": cfg.get("CONFIG_SOC", "unknown"),
         "can": {"bitrate": bitrate},
@@ -223,16 +224,20 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", required=True, help="path to zephyr/.config")
     ap.add_argument("--dt-header", help="devicetree_generated.h (for CAN bitrate)")
+    ap.add_argument("--variant", default="unknown",
+                    help="build variant name (from the selected variants/<name>.conf); "
+                         "the HIL rig asserts the flashed firmware reports this same name")
     ap.add_argument("--out", required=True, help="output JSON path")
     args = ap.parse_args(argv)
 
     cfg = parse_config(args.config)
-    manifest = build_manifest(cfg, args.dt_header)
+    manifest = build_manifest(cfg, args.dt_header, args.variant)
     with open(args.out, "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
     print(f"[gen_test_manifest] wrote {args.out} "
-          f"(board={manifest['board']}, cells={manifest['cells']['types']}, "
+          f"(variant={manifest['variant']}, board={manifest['board']}, "
+          f"cells={manifest['cells']['types']}, "
           f"can={manifest['can']['bitrate']})", file=sys.stderr)
     return 0
 

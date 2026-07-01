@@ -159,6 +159,19 @@ target_compile_definitions(app PRIVATE
     APP_BUILD_VERSION_STR="${APP_BUILD_VERSION_RAW}"
 )
 
+# Build-time variant string, derived from the selected variant conf
+# (-DEXTRA_CONF_FILE=variants/<Name>.conf). Baked into the binary (served over
+# UDS DID 0xF002) AND written into test_manifest.json below, both from this one
+# value, so the HIL rig can assert the flashed variant matches the manifest it
+# is qualifying against. Falls back to "dev" when no variant conf is selected.
+set(APP_BUILD_VARIANT_RAW "dev")
+if(DEFINED EXTRA_CONF_FILE AND EXTRA_CONF_FILE MATCHES "variants/([^/;]+)\\.conf")
+    set(APP_BUILD_VARIANT_RAW "${CMAKE_MATCH_1}")
+endif()
+target_compile_definitions(app PRIVATE
+    APP_BUILD_VARIANT_STR="${APP_BUILD_VARIANT_RAW}"
+)
+
 # App-only hardening flags (not applied to Zephyr kernel/drivers).
 #
 # Scope: this is an open-source, deliberately-hackable platform — there
@@ -231,6 +244,7 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_test_manifest.py
             --config ${CMAKE_BINARY_DIR}/zephyr/.config
             --dt-header ${CMAKE_BINARY_DIR}/zephyr/include/generated/zephyr/devicetree_generated.h
+            --variant ${APP_BUILD_VARIANT_RAW}
             --out ${CMAKE_BINARY_DIR}/zephyr/test_manifest.json
     BYPRODUCTS ${CMAKE_BINARY_DIR}/zephyr/test_manifest.json
     COMMENT "Emitting HIL test_manifest.json from resolved Kconfig + devicetree"
