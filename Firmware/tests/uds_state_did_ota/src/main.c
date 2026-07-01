@@ -149,6 +149,20 @@ bool UDS_SetSettingValue(uint8_t idx, uint64_t value)
     return false;
 }
 
+void UDS_DecodeSettingLabelDID(uint16_t did, uint8_t *settingIndex,
+                   uint8_t *optionIndex)
+{
+    ARG_UNUSED(did);
+    if (settingIndex != NULL) { *settingIndex = 0U; }
+    if (optionIndex != NULL) { *optionIndex = 0U; }
+}
+
+uint16_t UDS_FormatOptionLabel(const char *label, uint8_t *out, uint16_t width)
+{
+    ARG_UNUSED(label); ARG_UNUSED(out);
+    return width;
+}
+
 void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *requestData,
                     uint16_t requestLength)
 {
