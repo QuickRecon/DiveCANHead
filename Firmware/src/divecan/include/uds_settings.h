@@ -10,7 +10,9 @@
  * - 0x9100: SettingCount
  * - 0x9110+i: SettingInfo (kind, editable)
  * - 0x9130+i: SettingValue (u64 BE)
- * - 0x9150+i+(j<<4): SettingLabel (option label j for setting i)
+ * - 0x9150+(i<<4)+j: SettingLabel (option label j for setting i; setting index
+ *                    in the HIGH nibble, option index in the LOW nibble — this
+ *                    is the on-wire convention the OEM handset uses)
  * - 0x9350+i: SettingSave (persist to NVS)
  */
 
@@ -105,5 +107,52 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value);
  */
 const char *UDS_GetSettingOptionLabel(uint8_t settingIndex,
                      uint8_t optionIndex);
+
+/**
+ * @brief Decode an option-label DID into its setting and option indices.
+ *
+ * Wire convention (OEM handset): DID = 0x9150 + (settingIndex << 4) +
+ * optionIndex — setting index in the HIGH nibble, option index in the LOW
+ * nibble. Single source of truth for the nibble mapping (used by the UDS read
+ * dispatcher and exercised directly by the native tests).
+ *
+ * @param did          Option-label DID (>= UDS_DID_SETTING_LABEL_BASE)
+ * @param settingIndex Out: wire setting index (high nibble)
+ * @param optionIndex  Out: option index (low nibble)
+ */
+void UDS_DecodeSettingLabelDID(uint16_t did, uint8_t *settingIndex,
+                   uint8_t *optionIndex);
+
+/**
+ * @brief Serialise an option label as a fixed-width, space-padded field.
+ *
+ * Writes exactly @p width bytes into @p out: the label, space-padded (0x20) with
+ * NO null terminator — the wire format the handset requires for the value slot
+ * (short/variable labels get dropped and the previous row is repeated). Labels
+ * longer than @p width are truncated.
+ *
+ * @param label Null-terminated source label
+ * @param out   Destination buffer, capacity >= width
+ * @param width Fixed field width to emit
+ * @return width (bytes written)
+ */
+uint16_t UDS_FormatOptionLabel(const char *label, uint8_t *out, uint16_t width);
+
+/**
+ * @brief Compute the handset menu order (wire index -> storage index).
+ *
+ * Pure, testable core of the per-variant CONFIG_MENU_ORDER_n mapping: writes a
+ * full permutation of [0, settingCount) into @p out — the valid, in-range,
+ * de-duplicated @p cfg entries first (curated leading menu slots), then every
+ * remaining storage index in natural order (so nothing is hidden from UDS).
+ *
+ * @param cfg          Configured slot values (may hold -1 / out-of-range)
+ * @param cfgLen       Number of configured slots
+ * @param out          Output buffer, capacity >= settingCount
+ * @param settingCount Number of storage settings in this build
+ * @return Number of entries written (== settingCount)
+ */
+uint8_t UDS_ComputeMenuOrder(const int16_t *cfg, uint8_t cfgLen,
+                 uint8_t *out, uint8_t settingCount);
 
 #endif /* UDS_SETTINGS_H */

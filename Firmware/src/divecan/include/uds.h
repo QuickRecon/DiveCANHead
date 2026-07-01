@@ -103,8 +103,13 @@ static const size_t UDS_DID_SIZE = 2U;
 /* Setting value response length: max value (uint64) + current value (uint64) */
 #define SETTING_VALUE_RESP_LEN (2U * sizeof(uint64_t))
 
-/* Settings DID range limits */
-static const uint16_t UDS_DID_SETTING_LABEL_END = 0x9200U;
+/* Settings DID range limits. Option-label DIDs are 0x9150 + (settingIndex<<4)
+ * + optionIndex — the setting index lives in the HIGH nibble, so a wire setting
+ * index up to 0xF reaches 0x9150 + 0xF0 + 0xF = 0x924F. The end bound must clear
+ * that (it previously stopped at 0x9200, sized for the old — swapped — nibble
+ * layout, which clipped labels for wire setting indices >= 11). SAVE_BASE is
+ * 0x9350, so 0x9250 stays clear of it. */
+static const uint16_t UDS_DID_SETTING_LABEL_END = 0x9250U;
 static const size_t SETTING_LABEL_MAX_LEN = 9U;
 
 /**

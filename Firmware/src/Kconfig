@@ -267,6 +267,53 @@ config LF_TX_ID_DEFAULT
 
 endmenu # LF Transmitter
 
+# ---- Handset menu order (per-variant) ----
+
+menu "Handset Menu"
+
+# The handset renders only the first ~5 settings it enumerates over UDS. These
+# ints name, per variant, which settings (by STORAGE index into settings[] in
+# uds_settings.c) fill those leading slots and in what order. Settings not named
+# here are appended after them in natural order, so they stay reachable over UDS
+# (web UI / rig) — this REORDERS the wire list, it never hides settings.
+#
+# The storage-index legend is the authoritative BUILD_ASSERT block in
+# uds_settings.c (kept in lockstep via those asserts):
+#   0 FW Commit   1 PPO2 Mode   2 Cal Mode    3 DepthComp
+#   4 PID Kp      5 PID Ki      6 PID Kd      7 Battery
+#   8 C1 Bcst     9 C2 Bcst    10 C3 Bcst    (11 LF TX ID, if WANT_LF_TX)
+#
+# -1 leaves a slot empty. A slot naming a setting absent from this build is
+# silently skipped. Defaults reproduce the historical order (0,1,2,3,4), so
+# production variants are unchanged unless they override these.
+
+config MENU_ORDER_1
+	int "Handset menu slot 1 -> setting storage index (-1 = empty)"
+	default 0
+	range -1 15
+
+config MENU_ORDER_2
+	int "Handset menu slot 2 -> setting storage index (-1 = empty)"
+	default 1
+	range -1 15
+
+config MENU_ORDER_3
+	int "Handset menu slot 3 -> setting storage index (-1 = empty)"
+	default 2
+	range -1 15
+
+config MENU_ORDER_4
+	int "Handset menu slot 4 -> setting storage index (-1 = empty)"
+	default 3
+	range -1 15
+
+config MENU_ORDER_5
+	int "Handset menu slot 5 -> setting storage index (-1 = empty)"
+	default 4
+	range -1 15
+
+endmenu # Handset Menu
+
 menu "Safety"
 
 config DIVECAN_WATCHDOG

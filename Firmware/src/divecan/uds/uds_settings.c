@@ -232,6 +232,144 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
 BUILD_ASSERT(CELL_MAX_COUNT == 3,
              "per-cell broadcast settings table assumes CELL_MAX_COUNT == 3");
 
+/* ---- Canonical storage-index lock ----
+ * These asserts ARE the authoritative storage-index map for settings[]. The
+ * Kconfig CONFIG_MENU_ORDER_n values, its legend, and the switch() statements in
+ * the value get/set paths all reference these numbers, so pin every one here:
+ * renumbering an index (or reordering settings[] without updating the SETTING_
+ * INDEX_* defines) trips the build instead of silently scrambling the menu map
+ * and the RuntimeSettings routing. */
+BUILD_ASSERT(SETTING_INDEX_FW_COMMIT      == 0U, "FW Commit must be storage index 0");
+BUILD_ASSERT(SETTING_INDEX_PPO2_MODE      == 1U, "PPO2 Mode must be storage index 1");
+BUILD_ASSERT(SETTING_INDEX_CAL_MODE       == 2U, "Cal Mode must be storage index 2");
+BUILD_ASSERT(SETTING_INDEX_DEPTH_COMP     == 3U, "DepthComp must be storage index 3");
+BUILD_ASSERT(SETTING_INDEX_PID_KP         == 4U, "PID Kp must be storage index 4");
+BUILD_ASSERT(SETTING_INDEX_PID_KI         == 5U, "PID Ki must be storage index 5");
+BUILD_ASSERT(SETTING_INDEX_PID_KD         == 6U, "PID Kd must be storage index 6");
+BUILD_ASSERT(SETTING_INDEX_BATTERY_TYPE   == 7U, "Battery must be storage index 7");
+BUILD_ASSERT(SETTING_INDEX_CELL_BCST_BASE == 8U, "Cell-broadcast block must start at storage index 8");
+#ifdef CONFIG_WANT_LF_TX
+BUILD_ASSERT(SETTING_INDEX_LF_ID          == 11U, "LF TX ID must be storage index 11 when enabled");
+#endif
+
+/* ---- Handset menu order (per-variant, CONFIG_MENU_ORDER_n) ----
+ * The handset renders only the first ~5 settings it enumerates. The Kconfig
+ * ints below name which settings (STORAGE index) fill those leading slots per
+ * variant; every other setting is appended in natural order so it stays
+ * reachable over UDS (web UI / rig). This REORDERS the wire list, it never
+ * hides settings, so UDS_GetSettingCount() is unchanged. Fallbacks let this
+ * file also build in unit-test harnesses that don't source src/Kconfig; they
+ * mirror the historical order (slots 0..4 = storage 0..4). */
+#ifndef CONFIG_MENU_ORDER_1
+#define CONFIG_MENU_ORDER_1 0
+#endif
+#ifndef CONFIG_MENU_ORDER_2
+#define CONFIG_MENU_ORDER_2 1
+#endif
+#ifndef CONFIG_MENU_ORDER_3
+#define CONFIG_MENU_ORDER_3 2
+#endif
+#ifndef CONFIG_MENU_ORDER_4
+#define CONFIG_MENU_ORDER_4 3
+#endif
+#ifndef CONFIG_MENU_ORDER_5
+#define CONFIG_MENU_ORDER_5 4
+#endif
+
+#define MENU_CONFIG_SLOTS 5U
+static const int16_t menuConfigSlots[MENU_CONFIG_SLOTS] = {
+    CONFIG_MENU_ORDER_1, CONFIG_MENU_ORDER_2, CONFIG_MENU_ORDER_3,
+    CONFIG_MENU_ORDER_4, CONFIG_MENU_ORDER_5,
+};
+
+/* Wire (handset-facing) index -> storage index into settings[]. Full permutation
+ * of the SETTING_COUNT present settings, built once, lazily (0 == not yet
+ * built; SETTING_COUNT is always >= 1). UDS runs single-threaded on the
+ * divecan_rx thread, so the lazy build needs no lock. */
+static uint8_t menuOrder[SETTING_COUNT];
+static uint8_t menuOrderLen;
+
+uint8_t UDS_ComputeMenuOrder(const int16_t *cfg, uint8_t cfgLen,
+                 uint8_t *out, uint8_t settingCount)
+{
+    uint8_t n = 0U;
+
+    /* 1. Curated leading slots: valid, in range, de-duplicated. */
+    for (uint8_t i = 0U; (cfg != NULL) && (i < cfgLen); i++) {
+        int16_t s = cfg[i];
+        if ((s < 0) || (s >= (int16_t)settingCount)) {
+            continue; /* empty slot (-1) or a setting absent from this build */
+        }
+        bool dup = false;
+        for (uint8_t k = 0U; k < n; k++) {
+            if (out[k] == (uint8_t)s) {
+                dup = true;
+            }
+        }
+        if (!dup) {
+            out[n++] = (uint8_t)s;
+        }
+    }
+
+    /* 2. Append every remaining setting in natural order (kept reachable). */
+    for (uint8_t s = 0U; s < settingCount; s++) {
+        bool present = false;
+        for (uint8_t k = 0U; k < n; k++) {
+            if (out[k] == s) {
+                present = true;
+            }
+        }
+        if (!present) {
+            out[n++] = s;
+        }
+    }
+
+    return n;
+}
+
+static void menu_order_ensure(void)
+{
+    if (menuOrderLen == 0U) {
+        menuOrderLen = UDS_ComputeMenuOrder(menuConfigSlots, MENU_CONFIG_SLOTS,
+                            menuOrder, SETTING_COUNT);
+    }
+}
+
+/* Translate a wire setting index to a storage index into settings[], or
+ * SETTING_COUNT (an always-invalid index) when out of range, so callers'
+ * existing `>= SETTING_COUNT` bounds checks reject it. */
+static uint8_t menu_to_storage(uint8_t wireIndex)
+{
+    menu_order_ensure();
+    return (wireIndex < menuOrderLen) ? menuOrder[wireIndex] : SETTING_COUNT;
+}
+
+void UDS_DecodeSettingLabelDID(uint16_t did, uint8_t *settingIndex,
+                   uint8_t *optionIndex)
+{
+    /* DID = UDS_DID_SETTING_LABEL_BASE + (settingIndex << 4) + optionIndex:
+     * setting index in the HIGH nibble, option index in the LOW nibble. */
+    uint16_t offset = (uint16_t)(did - (uint16_t)UDS_DID_SETTING_LABEL_BASE);
+    if (settingIndex != NULL) {
+        *settingIndex = (uint8_t)((offset >> 4U) & 0x0FU);
+    }
+    if (optionIndex != NULL) {
+        *optionIndex = (uint8_t)(offset & 0x0FU);
+    }
+}
+
+uint16_t UDS_FormatOptionLabel(const char *label, uint8_t *out, uint16_t width)
+{
+    /* FIXED-WIDTH, SPACE-padded, NO null terminator — the wire format the handset
+     * requires for the value slot. A variable-length / short label under-fills the
+     * slot and the handset drops it (repeating the previous row). Labels longer
+     * than width are truncated. See handset-menu-option-label-format. */
+    uint16_t labelLen = (uint16_t)strnlen(label, width);
+    (void)memcpy(out, label, labelLen);
+    (void)memset(&out[labelLen], ' ', (size_t)(width - labelLen));
+    return width;
+}
+
 /**
  * @brief Return the total number of configurable settings
  *
@@ -251,11 +389,12 @@ uint8_t UDS_GetSettingCount(void)
 const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
 {
     const SettingDefinition_t *result = NULL;
+    uint8_t storage = menu_to_storage(index); /* wire (handset) -> storage */
 
-    if (index >= SETTING_COUNT) {
+    if (storage >= SETTING_COUNT) {
         OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
     } else {
-        result = &settings[index];
+        result = &settings[storage];
     }
 
     return result;
@@ -270,6 +409,7 @@ const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
 uint64_t UDS_GetSettingValue(uint8_t index)
 {
     uint64_t result = 0U;
+    index = menu_to_storage(index); /* wire (handset) -> storage */
 
     /* Read the LIVE cache (reflects volatile 0x9130 writes), not an NVS reload. */
     RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
@@ -337,6 +477,7 @@ uint64_t UDS_GetSettingValue(uint8_t index)
 bool UDS_SetSettingValue(uint8_t index, uint64_t value)
 {
     bool result = false;
+    index = menu_to_storage(index); /* wire (handset) -> storage */
 
     if (index >= SETTING_COUNT) {
         OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
@@ -452,11 +593,15 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
 {
     bool result = false;
 
+    /* UDS_SetSettingValue takes the WIRE index and translates it itself — pass
+     * `index` straight through (translating here too would double-map). The
+     * field lookup below needs the STORAGE index, so translate once for that. */
     if (!UDS_SetSettingValue(index, value)) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, index);
     } else {
+        uint8_t storage = menu_to_storage(index);
         RuntimeSettingField_t field = RT_FIELD_PPO2;
-        if (!setting_index_to_field(index, &field)) {
+        if (!setting_index_to_field(storage, &field)) {
             OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
         } else if (0 == runtime_settings_save_field(field)) {
             result = true;
@@ -479,11 +624,12 @@ const char *UDS_GetSettingOptionLabel(uint8_t settingIndex,
                      uint8_t optionIndex)
 {
     const char *result = NULL;
+    uint8_t storage = menu_to_storage(settingIndex); /* wire (handset) -> storage */
 
-    if (settingIndex >= SETTING_COUNT) {
+    if (storage >= SETTING_COUNT) {
         OP_ERROR_DETAIL(OP_ERR_CONFIG, settingIndex);
     } else {
-        const SettingDefinition_t *setting = &settings[settingIndex];
+        const SettingDefinition_t *setting = &settings[storage];
 
         if (optionIndex >= setting->optionCount) {
             OP_ERROR_DETAIL(OP_ERR_CONFIG, optionIndex);

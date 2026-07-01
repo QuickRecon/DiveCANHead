@@ -214,7 +214,7 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0x9100 | 1     | uint8    | R         | Setting count                                            |
 | 0x9110 + index | var | struct | R       | Setting info (label + kind + editable + maxValue + opt count) |
 | 0x9130 + index | 16  | u64+u64 | R/W    | Setting value (max + current, big-endian u64)            |
-| 0x9150 + (option<<4) + index | var | string | R | Option label (null-terminated)                  |
+| 0x9150 + (index<<4) + option | var | string | R | Option label (null-terminated; setting index in HIGH nibble, option in LOW) |
 | 0x9350 + index | var | u64 BE  | W      | Setting save (persists to NVS)                           |
 | 0xA100 | var   | string   | Push      | Log message (Head → handset, unsolicited WDBI)           |
 
@@ -520,8 +520,9 @@ exposed through:
   optionCount). See `uds_settings.h` for the on-wire layout.
 - **0x9130 + index** — current value (read returns `[max(8B BE)][cur(8B BE)]`,
   write stages the value in RAM only).
-- **0x9150 + (option << 4) + index** — option label string (null-
-  terminated, max 9 bytes).
+- **0x9150 + (index << 4) + option** — option label string (null-
+  terminated, max 9 bytes). Setting index is the HIGH nibble, option index
+  the LOW nibble — the on-wire convention the OEM handset uses.
 - **0x9350 + index** — write-only; persists the staged value to NVS.
 
 Setting kinds:

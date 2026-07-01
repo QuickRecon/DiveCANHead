@@ -639,21 +639,31 @@ static bool readSettingLabelDID(uint16_t did, uint8_t *buf,
                 uint16_t *bytesWritten)
 {
     bool result = false;
-    uint16_t offset = did - UDS_DID_SETTING_LABEL_BASE;
-    uint8_t settingIndex = (uint8_t)(offset & ISOTP_SEQ_MASK);
-    uint8_t optionIndex = (uint8_t)((offset >> DIVECAN_HALF_BYTE_WIDTH) & ISOTP_SEQ_MASK);
+    /* Decode via the shared helper: setting index is the HIGH nibble, option
+     * index the LOW nibble (the OEM handset's on-wire convention). These were
+     * previously swapped here, which served every field's option labels out of
+     * the wrong setting — the handset showed the FW-hash option for every text
+     * field and cross-contaminated the editable option lists. */
+    uint8_t settingIndex = 0U;
+    uint8_t optionIndex = 0U;
+    UDS_DecodeSettingLabelDID(did, &settingIndex, &optionIndex);
 
     const char *label = UDS_GetSettingOptionLabel(settingIndex, optionIndex);
     if (NULL == label) {
         OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, did);
     } else {
-        uint16_t optLabelLen = (uint16_t)strnlen(label, SETTING_LABEL_MAX_LEN);
-        if (optLabelLen > (maxAvailable - dataOffset - 1U)) {
-            optLabelLen = maxAvailable - dataOffset - 1U;
+        /* The handset renders the value from a FIXED-WIDTH, SPACE-padded option
+         * label — the format the reference Shearwater head uses (see
+         * DiveCAN/Messaging/Bus Devices Menu.md). A variable-length / short label
+         * ("Off", "On") under-fills the handset's value slot, so its list view
+         * discards the response and repeats the previous row (the observed
+         * "hash, hash, SolFlsh, SolFlsh" bug). Emit exactly SETTING_LABEL_MAX_LEN
+         * bytes, space-padded, NO null terminator (width is implicit). */
+        uint16_t width = (uint16_t)SETTING_LABEL_MAX_LEN;
+        if (width > (maxAvailable - dataOffset)) {
+            width = (uint16_t)(maxAvailable - dataOffset);
         }
-        (void)memcpy(&buf[dataOffset], label, optLabelLen);
-        buf[dataOffset + optLabelLen] = 0;
-        *bytesWritten = dataOffset + optLabelLen + 1U;
+        *bytesWritten = dataOffset + UDS_FormatOptionLabel(label, &buf[dataOffset], width);
         result = true;
     }
 
