@@ -22,6 +22,7 @@
 #include "common.h"
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
+#include "oxygen_cell_math.h"
 #include "power_management.h"
 #include "errors.h"
 #include "heartbeat.h"
@@ -308,7 +309,7 @@ static void o2s_broadcast(struct o2s_cell_state *cell)
         cell->status = CELL_FAIL;
         OP_ERROR_DETAIL(OP_ERR_CELL_OVERRANGE, (uint32_t)temp_ppo2);
     }
-    ppo2 = (PPO2_t)(temp_ppo2);
+    ppo2 = ppo2_centibar_to_wire(temp_ppo2);
 
     PrecisionPPO2_t precision_ppo2 = (PrecisionPPO2_t)cell->cell_sample *
                                      (PrecisionPPO2_t)cell->cal_coeff;

@@ -38,6 +38,26 @@ ConsensusMsg_t consensus_calculate(const OxygenCellMsg_t cells[],
  */
 uint8_t consensus_confidence(const ConsensusMsg_t *consensus);
 
+/* ---- PPO2 wire-format conversion ---- */
+
+/**
+ * @brief Convert a floating-point PPO2 in centibar to the uint8 wire value.
+ *
+ * Rounds to nearest rather than truncating. A plain C cast truncates toward
+ * zero, which biases every reading up to a full centibar low: a true 0.70 bar
+ * (70.0 cbar, but 69.9999997 in floating point) truncates to 69 and is
+ * broadcast as 0.69. Rounding removes that systematic bias.
+ *
+ * The result is clamped to [0, MAX_VALID_PPO2] so a near-full-scale reading
+ * can never round up to 255 (0xFF), which is the PPO2_FAIL sentinel — a valid
+ * reading must never alias a failure. Over-range readings are flagged as
+ * CELL_FAIL by the caller independently of this conversion.
+ *
+ * @param centibar_ppo2 PPO2 in centibar (may be fractional / out of range)
+ * @return PPO2 in centibar as PPO2_t, in [0, MAX_VALID_PPO2]
+ */
+PPO2_t ppo2_centibar_to_wire(PrecisionPPO2_t centibar_ppo2);
+
 /* ---- Analog cell math ---- */
 
 /**
@@ -53,7 +73,8 @@ Millivolts_t analog_counts_to_mv(int16_t adc_counts);
  *
  * @param adc_counts Raw ADS1115 counts
  * @param cal_coeff  Calibration coefficient (from analog_cal_coefficient())
- * @return PPO2 in centibar as Numeric_t; caller truncates to uint8_t with range check
+ * @return PPO2 in centibar as Numeric_t; caller converts to uint8_t via
+ *         ppo2_centibar_to_wire() (rounds + clamps, does not truncate)
  */
 Numeric_t analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff);
 

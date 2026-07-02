@@ -112,7 +112,7 @@ static void analog_publish(struct analog_cell_state *cell)
         cell->status = CELL_FAIL;
         OP_ERROR_DETAIL(OP_ERR_CELL_OVERRANGE, (uint32_t)cal_ppo2);
     }
-    ppo2 = (PPO2_t)(cal_ppo2);
+    ppo2 = ppo2_centibar_to_wire(cal_ppo2);
 
     Millivolts_t millivolts = analog_counts_to_mv(cell->last_counts);
 

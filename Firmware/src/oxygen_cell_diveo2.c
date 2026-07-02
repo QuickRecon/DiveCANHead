@@ -24,6 +24,7 @@
 #include "common.h"
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
+#include "oxygen_cell_math.h"
 #include "power_management.h"
 #include "runtime_settings.h"
 #include "errors.h"
@@ -727,7 +728,7 @@ static void diveo2_broadcast(struct diveo2_cell_state *cell)
         cell->status = CELL_FAIL;
         OP_ERROR_DETAIL(OP_ERR_CELL_OVERRANGE, (uint32_t)temp_ppo2);
     }
-    ppo2 = (PPO2_t)(temp_ppo2);
+    ppo2 = ppo2_centibar_to_wire(temp_ppo2);
 
     OxygenCellMsg_t msg = {
         .cell_number = cell->cell_number,

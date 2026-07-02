@@ -36,6 +36,20 @@ static const Numeric_t O2S_COEFF_REPORT_SCALE = 1000.0f;
 #endif
 static const uint32_t MBAR_PER_FRACTIONAL_UNIT = 1000U;
 
+/* ---- PPO2 wire-format conversion ---- */
+
+PPO2_t ppo2_centibar_to_wire(PrecisionPPO2_t centibar_ppo2)
+{
+    PrecisionPPO2_t rounded = round(centibar_ppo2);
+    if (rounded < 0.0) {
+        rounded = 0.0;
+    }
+    if (rounded > (PrecisionPPO2_t)MAX_VALID_PPO2) {
+        rounded = (PrecisionPPO2_t)MAX_VALID_PPO2;
+    }
+    return (PPO2_t)rounded;
+}
+
 /* ---- Internal consensus helpers ---- */
 
 /**
@@ -82,7 +96,7 @@ static ConsensusMsg_t two_cell_consensus(ConsensusMsg_t consensus)
 #endif
             consensus.consensus_ppo2 = PPO2_FAIL;
         } else {
-            consensus.consensus_ppo2 = (PPO2_t)(average);
+            consensus.consensus_ppo2 = ppo2_centibar_to_wire(average);
         }
         consensus.precision_consensus = average / CENTIBAR_PER_BAR;
     }
@@ -161,7 +175,7 @@ static ConsensusMsg_t three_cell_consensus(ConsensusMsg_t consensus)
 #endif
             consensus.consensus_ppo2 = PPO2_FAIL;
         } else {
-            consensus.consensus_ppo2 = (PPO2_t)(total_average);
+            consensus.consensus_ppo2 = ppo2_centibar_to_wire(total_average);
         }
         consensus.precision_consensus = pairwise_averages[min_index];
     } else {
@@ -180,7 +194,7 @@ static ConsensusMsg_t three_cell_consensus(ConsensusMsg_t consensus)
 #endif
             consensus.consensus_ppo2 = PPO2_FAIL;
         } else {
-            consensus.consensus_ppo2 = (PPO2_t)(total_average);
+            consensus.consensus_ppo2 = ppo2_centibar_to_wire(total_average);
         }
         consensus.precision_consensus = total_average / CENTIBAR_PER_BAR;
     }

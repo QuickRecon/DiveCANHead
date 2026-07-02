@@ -221,7 +221,10 @@ ZTEST(consensus, test_excludes_very_low)
  */
 ZTEST(consensus, test_excludes_timed_out_cell)
 {
-    uint8_t expected_consensus[] = {107, 109, 112};
+    /* Round-to-nearest of the two-cell average (ppo2_centibar_to_wire):
+     * i=0 -> 107.4999 -> 107, i=1 -> 109.9999 -> 110, i=2 -> 112.5 -> 113.
+     * (Truncation used to floor these to 107/109/112 — the 0.01-low bias.) */
+    uint8_t expected_consensus[] = {107, 110, 113};
 
     for (int i = 0; i < 3; i++) {
         int64_t stale = -15000LL; /* 15s in the past relative to now=0 */
@@ -255,7 +258,10 @@ ZTEST(consensus, test_excludes_timed_out_cell)
  */
 ZTEST(consensus, test_excludes_failed_cell)
 {
-    uint8_t expected_consensus[] = {107, 109, 112};
+    /* Round-to-nearest of the two-cell average (ppo2_centibar_to_wire):
+     * i=0 -> 107.4999 -> 107, i=1 -> 109.9999 -> 110, i=2 -> 112.5 -> 113.
+     * (Truncation used to floor these to 107/109/112 — the 0.01-low bias.) */
+    uint8_t expected_consensus[] = {107, 110, 113};
 
     for (int i = 0; i < 3; i++) {
         OxygenCellMsg_t c1 = make_cell(0, 115, 1.15f, 0,
@@ -284,7 +290,10 @@ ZTEST(consensus, test_excludes_failed_cell)
 /** @brief A cell with CELL_NEED_CAL status is excluded from voting. */
 ZTEST(consensus, test_excludes_cal_cell)
 {
-    uint8_t expected_consensus[] = {107, 109, 112};
+    /* Round-to-nearest of the two-cell average (ppo2_centibar_to_wire):
+     * i=0 -> 107.4999 -> 107, i=1 -> 109.9999 -> 110, i=2 -> 112.5 -> 113.
+     * (Truncation used to floor these to 107/109/112 — the 0.01-low bias.) */
+    uint8_t expected_consensus[] = {107, 110, 113};
 
     for (int i = 0; i < 3; i++) {
         OxygenCellMsg_t c1 = make_cell(0, 115, 1.15f, 0,
@@ -313,7 +322,10 @@ ZTEST(consensus, test_excludes_cal_cell)
 /** @brief A cell with CELL_DEGRADED status is excluded from voting. */
 ZTEST(consensus, test_excludes_degraded_cell)
 {
-    uint8_t expected_consensus[] = {107, 109, 112};
+    /* Round-to-nearest of the two-cell average (ppo2_centibar_to_wire):
+     * i=0 -> 107.4999 -> 107, i=1 -> 109.9999 -> 110, i=2 -> 112.5 -> 113.
+     * (Truncation used to floor these to 107/109/112 — the 0.01-low bias.) */
+    uint8_t expected_consensus[] = {107, 110, 113};
 
     for (int i = 0; i < 3; i++) {
         OxygenCellMsg_t c1 = make_cell(0, 115, 1.15f, 0,
@@ -573,4 +585,85 @@ ZTEST(consensus, test_alarm_invalid_or_no_confidence)
 {
     zassert_equal(alarm_ppo2_reasons(PPO2_FAIL, 2), ALARM_PPO2_INVALID);
     zassert_equal(alarm_ppo2_reasons(100, 0), ALARM_PPO2_INVALID);
+}
+
+/* ---- PPO2 wire-format conversion (ppo2_centibar_to_wire) ---- */
+
+/**
+ * @brief Rounding regression: the wire conversion must round, not truncate.
+ *
+ * A plain (PPO2_t) cast truncates toward zero, biasing every reading up to a
+ * full centibar low. The classic symptom: three perfect 0.70 bar cells whose
+ * centibar product is 69.9999997 in floating point would truncate to 69 and be
+ * broadcast as 0.69. This test pins round-to-nearest at each half-boundary so
+ * the truncation bug cannot silently return.
+ */
+ZTEST(consensus, test_wire_rounds_not_truncates)
+{
+    /* The exact symptom from the HIL rig: a hair under an integer rounds up. */
+    zassert_equal(ppo2_centibar_to_wire(69.9999997), 70,
+              "0.70 bar must not read 0.69 (truncation bug)");
+    zassert_equal(ppo2_centibar_to_wire(70.0), 70);
+    zassert_equal(ppo2_centibar_to_wire(70.4), 70, "rounds down below .5");
+    zassert_equal(ppo2_centibar_to_wire(70.5), 71, "rounds up at .5");
+    zassert_equal(ppo2_centibar_to_wire(70.6), 71);
+    zassert_equal(ppo2_centibar_to_wire(0.4), 0);
+    zassert_equal(ppo2_centibar_to_wire(0.5), 1);
+}
+
+/**
+ * @brief Range clamp: a valid high reading must never alias the 0xFF sentinel.
+ *
+ * MAX_VALID_PPO2 is 254; 255 (0xFF) is PPO2_FAIL. Without the clamp, rounding a
+ * 254.5-254.99 cbar reading up to 255 would make a real (if implausibly high)
+ * PPO2 indistinguishable from a failed cell. Also guards the low end so a
+ * slightly-negative value can't wrap to a huge uint8.
+ */
+ZTEST(consensus, test_wire_clamps_range)
+{
+    zassert_equal(ppo2_centibar_to_wire(254.4), 254);
+    zassert_equal(ppo2_centibar_to_wire(254.6), 254,
+              "must clamp to 254, never round up to 0xFF (fail sentinel)");
+    zassert_true(ppo2_centibar_to_wire(254.9) != PPO2_FAIL);
+    zassert_equal(ppo2_centibar_to_wire(300.0), 254);
+    zassert_equal(ppo2_centibar_to_wire(-5.0), 0, "negative clamps to 0, no wrap");
+}
+
+/**
+ * @brief End-to-end regression mirroring the HIL symptom: three numerically
+ *        perfect cells must produce an unbiased consensus.
+ *
+ * Before the rounding fix, three cells at exactly 0.70 bar produced a consensus
+ * of 69 centibar (0.69) instead of 70. This drives the full consensus path with
+ * agreeing perfect cells at two setpoints and asserts no downward bias.
+ */
+ZTEST(consensus, test_perfect_cells_consensus_not_low)
+{
+    OxygenCellMsg_t a = make_cell(0, 70, 0.70, 42, CELL_OK, 0);
+    OxygenCellMsg_t b = make_cell(1, 70, 0.70, 42, CELL_OK, 0);
+    OxygenCellMsg_t c = make_cell(2, 70, 0.70, 42, CELL_OK, 0);
+    OxygenCellMsg_t at_070[3] = {a, b, c};
+
+    ConsensusMsg_t r70 = consensus_calculate(at_070, 3, NOW_TICKS,
+                          STALENESS_TICKS);
+    zassert_equal(r70.consensus_ppo2, 70,
+              "three perfect 0.70 cells must read 70, not 69");
+
+    OxygenCellMsg_t d = make_cell(0, 130, 1.30, 78, CELL_OK, 0);
+    OxygenCellMsg_t e = make_cell(1, 130, 1.30, 78, CELL_OK, 0);
+    OxygenCellMsg_t f = make_cell(2, 130, 1.30, 78, CELL_OK, 0);
+    OxygenCellMsg_t at_130[3] = {d, e, f};
+
+    ConsensusMsg_t r130 = consensus_calculate(at_130, 3, NOW_TICKS,
+                           STALENESS_TICKS);
+    zassert_equal(r130.consensus_ppo2, 130,
+              "three perfect 1.30 cells must read 130, not 129");
+
+    /* Two-cell path shares the same conversion — verify it too. */
+    OxygenCellMsg_t two[2] = {
+        make_cell(0, 70, 0.70, 42, CELL_OK, 0),
+        make_cell(1, 70, 0.70, 42, CELL_OK, 0),
+    };
+    ConsensusMsg_t r2 = consensus_calculate(two, 2, NOW_TICKS, STALENESS_TICKS);
+    zassert_equal(r2.consensus_ppo2, 70, "two perfect 0.70 cells must read 70");
 }
