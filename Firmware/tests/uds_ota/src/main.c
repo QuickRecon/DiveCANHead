@@ -14,6 +14,7 @@
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/dfu/flash_img.h>
 #include <zephyr/dfu/mcuboot.h>
+#include <zephyr/drivers/hwinfo.h>
 
 #include <errno.h>
 #include <setjmp.h>
@@ -93,6 +94,23 @@ uint16_t UDS_FormatOptionLabel(const char *label, uint8_t *out, uint16_t width)
 {
     ARG_UNUSED(label); ARG_UNUSED(out);
     return width;
+}
+
+/* CONFIG_HWINFO is off in this test build, so the hwinfo backend isn't linked.
+ * Serve a deterministic fake 96-bit UID so the 0xF003 serial DID path links and
+ * returns a known payload. */
+static const uint8_t STUB_DEVICE_ID[] = {
+    0xDEU, 0xADU, 0xBEU, 0xEFU, 0x00U, 0x11U,
+    0x22U, 0x33U, 0x44U, 0x55U, 0x66U, 0x77U};
+
+ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
+{
+    size_t n = length;
+    if (n > sizeof(STUB_DEVICE_ID)) {
+        n = sizeof(STUB_DEVICE_ID);
+    }
+    (void)memcpy(buffer, STUB_DEVICE_ID, n);
+    return (ssize_t)n;
 }
 
 int error_histogram_clear(void) { return 0; }

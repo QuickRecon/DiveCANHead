@@ -152,7 +152,7 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 
 | Range          | Purpose                                       |
 |----------------|-----------------------------------------------|
-| 0xF000–0xF001  | Device identification                         |
+| 0xF000–0xF003  | Device identification                         |
 | 0xF200–0xF22F  | PPO2 control state                            |
 | 0xF230–0xF236  | Power and external battery monitoring         |
 | 0xF240–0xF242  | Control writes (setpoint, calibration, HIL solenoid override) |
@@ -170,6 +170,8 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 |--------|-------|----------|-----------|----------------------------------------------------------|
 | 0xF000 | var   | string   | R         | Firmware commit hash (e.g. `2506ec4-dirty`)              |
 | 0xF001 | 1     | uint8    | R         | Hardware version (informational; gate is in `hw_version.c`)|
+| 0xF002 | var   | string   | R         | Build-variant name (e.g. `AP_Aren`)                     |
+| 0xF003 | 12    | bytes    | R         | Board serial: raw STM32 96-bit factory UID via `hwinfo_get_device_id()`. Encodes lot/wafer/X-Y — usable to validate a valid lot number in HIL. |
 | 0xF200 | 4     | float32  | R         | Consensus PPO2 (bar)                                     |
 | 0xF202 | 4     | float32  | R         | Current setpoint (bar)                                   |
 | 0xF203 | 1     | uint8    | R         | Cells valid bitfield (bit 0 = cell 1, etc.)              |

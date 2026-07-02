@@ -11,6 +11,7 @@
 #include <zephyr/dfu/mcuboot.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/drivers/hwinfo.h>
 #include <string.h>
 
 #include "uds.h"
@@ -442,6 +443,23 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
             (void)memcpy(&buf[dataOffset], variant, vlen);
             *bytesWritten = dataOffset + vlen;
             result = true;
+        } else if (UDS_DID_SERIAL_NUMBER == did) {
+            /* Raw factory device unique ID (STM32L4 96-bit UID). Read live from
+             * the hwinfo backend — it is read-only silicon, not a configurable
+             * per-unit NVS value, so it is served directly rather than stored. */
+            uint8_t uid[UDS_SERIAL_NUMBER_MAX] = {0};
+            uint16_t uidMax = maxAvailable - dataOffset;
+            if (uidMax > (uint16_t)sizeof(uid)) {
+                uidMax = (uint16_t)sizeof(uid);
+            }
+            ssize_t uidLen = hwinfo_get_device_id(uid, uidMax);
+            if (uidLen > 0) {
+                (void)memcpy(&buf[dataOffset], uid, (size_t)uidLen);
+                *bytesWritten = dataOffset + (uint16_t)uidLen;
+                result = true;
+            } else {
+                OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, UDS_DID_SERIAL_NUMBER);
+            }
         } else if (UDS_DID_SETTING_COUNT == did) {
             buf[dataOffset] = UDS_GetSettingCount();
             *bytesWritten = dataOffset + 1U;
