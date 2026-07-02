@@ -241,6 +241,31 @@ void txCellState(DiveCANType_t deviceType, bool cell1, bool cell2,
     (void)divecan_send(&message);
 }
 
+/** @brief Transmit an HP tank pressure reading
+ *
+ * Byte 0 carries the cylinder designator, bytes 1-2 the pressure in
+ * decibar big-endian (0x0203 = 51.5 bar), per DiveCAN Messaging/Pressure.md.
+ *
+ * @param deviceType the device type of this device
+ * @param cylinder Cylinder designator (DIVECAN_TANK_O2 / DIVECAN_TANK_DIL)
+ * @param pressure_decibar Pressure in decibar (TANK_PRESSURE_FAIL = sensor error)
+ */
+void txTankPressure(DiveCANType_t deviceType, uint8_t cylinder,
+            TankPressure_t pressure_decibar)
+{
+    static const uint8_t TANK_PRESSURE_MSG_LEN = 3U;
+    const DiveCANMessage_t message = {
+        .id = TANK_PRESSURE_ID | (uint32_t)deviceType,
+        .data = {cylinder,
+             (uint8_t)((pressure_decibar >> DIVECAN_BYTE_WIDTH) &
+                   DIVECAN_BYTE_MASK),
+             (uint8_t)(pressure_decibar & DIVECAN_BYTE_MASK),
+             0x00, 0x00, 0x00, 0x00, 0x00},
+        .length = TANK_PRESSURE_MSG_LEN,
+    };
+    (void)divecan_send(&message);
+}
+
 /* Calibration */
 
 /** @brief Acknowledge the request to go into calibration of the cells

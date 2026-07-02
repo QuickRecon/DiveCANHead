@@ -88,6 +88,36 @@ ZTEST(divecan_tx, test_txCellState_all_included)
     zassert_equal(f->data[0], 0x07);
 }
 
+/** @brief txTankPressure packs the cylinder designator in byte[0] and the
+ *         decibar pressure big-endian in bytes [1..2] (Pressure.md example:
+ *         0x0203 = 51.5 bar). */
+ZTEST(divecan_tx, test_txTankPressure_byte_layout)
+{
+    txTankPressure(DIVECAN_SOLO, DIVECAN_TANK_O2, 0x0203);
+
+    const DiveCANMessage_t *f = test_tx_last();
+    zassert_not_null(f);
+    zassert_equal(f->id & 0x1FFFF000U, TANK_PRESSURE_ID);
+    zassert_equal(f->data[0], DIVECAN_TANK_O2);
+    zassert_equal(f->data[1], 0x02);
+    zassert_equal(f->data[2], 0x03);
+    zassert_equal(f->length, 3);
+}
+
+/** @brief txTankPressure carries the diluent designator (0x10) and the
+ *         0xFFFF sensor-error value unmangled. */
+ZTEST(divecan_tx, test_txTankPressure_dil_fail_value)
+{
+    txTankPressure(DIVECAN_SOLO, DIVECAN_TANK_DIL, TANK_PRESSURE_FAIL);
+
+    const DiveCANMessage_t *f = test_tx_last();
+    zassert_not_null(f);
+    zassert_equal(f->data[0], DIVECAN_TANK_DIL);
+    zassert_equal(f->data[1], 0xFF);
+    zassert_equal(f->data[2], 0xFF);
+    zassert_equal(f->length, 3);
+}
+
 /** @brief txStatus places battery voltage in byte[0], setpoint in byte[5], error byte in byte[7]. */
 ZTEST(divecan_tx, test_txStatus_battery_and_setpoint)
 {

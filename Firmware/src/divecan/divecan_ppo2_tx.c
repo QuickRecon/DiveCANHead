@@ -24,6 +24,9 @@
 #include "oxygen_cell_types.h"
 #include "calibration.h"
 #include "errors.h"
+#ifdef CONFIG_HAS_PRESSURE_TRANSDUCER
+#include "tank_pressure.h"
+#endif
 
 LOG_MODULE_REGISTER(divecan_ppo2_tx, LOG_LEVEL_INF);
 
@@ -42,6 +45,45 @@ static const DiveCANType_t dev_type = DIVECAN_SOLO;
 static const uint8_t CELL_IDX_0 = 0U;
 static const uint8_t CELL_IDX_1 = 1U;
 static const uint8_t CELL_IDX_2 = 2U;
+
+#ifdef CONFIG_HAS_PRESSURE_TRANSDUCER
+
+/* The tank pressure sampler publishes every 500 ms and deliberately carries
+ * no watchdog heartbeat (a wedged pressure gauge must not reboot the PPO2
+ * loop mid-dive), so staleness is policed here: 3 s of silence means the
+ * sampler stopped, and stale pressure read as current is worse than an
+ * explicit sensor-error value on the handset. */
+#define TANK_PRESSURE_STALE_MS 3000
+
+/**
+ * @brief Broadcast HP tank pressures from chan_tank_pressure.
+ *
+ * Reads the latest sampler message and transmits one TANK_PRESSURE_ID frame
+ * per configured cylinder. A read failure or a message older than
+ * TANK_PRESSURE_STALE_MS substitutes TANK_PRESSURE_FAIL so the handset shows
+ * a sensor error instead of a stale value.
+ */
+static void tx_tank_pressures(void)
+{
+    TankPressureMsg_t tank = {0};
+    int rc = zbus_chan_read(&chan_tank_pressure, &tank,
+                            K_MSEC(CONSENSUS_READ_TIMEOUT_MS));
+    int64_t stale_ticks = k_ms_to_ticks_ceil64(TANK_PRESSURE_STALE_MS);
+
+    if ((0 != rc) ||
+        ((k_uptime_ticks() - tank.timestamp_ticks) > stale_ticks)) {
+        tank.o2_decibar = (TankPressure_t)TANK_PRESSURE_FAIL;
+        tank.dil_decibar = (TankPressure_t)TANK_PRESSURE_FAIL;
+    }
+
+#if CONFIG_O2_TRANSDUCER_CHANNEL >= 0
+    txTankPressure(dev_type, DIVECAN_TANK_O2, tank.o2_decibar);
+#endif
+#if CONFIG_DIL_TRANSDUCER_CHANNEL >= 0
+    txTankPressure(dev_type, DIVECAN_TANK_DIL, tank.dil_decibar);
+#endif
+}
+#endif /* CONFIG_HAS_PRESSURE_TRANSDUCER */
 
 
 /**
@@ -98,6 +140,10 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
                 consensus.include_array[CELL_IDX_1],
                 consensus.include_array[CELL_IDX_2],
                 consensus.consensus_ppo2);
+
+#ifdef CONFIG_HAS_PRESSURE_TRANSDUCER
+        tx_tank_pressures();
+#endif
 
         k_msleep(PPO2_TX_INTERVAL_MS);
     }

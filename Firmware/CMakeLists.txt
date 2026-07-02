@@ -85,6 +85,9 @@ target_sources_ifdef(CONFIG_DIVECAN_OPTION_BYTES_CHECK app PRIVATE
     src/option_bytes.c)
 target_sources_ifdef(CONFIG_DIVECAN_WATCHDOG app PRIVATE src/watchdog_feeder.c)
 target_sources_ifdef(CONFIG_HAS_ANALOG_CELL app PRIVATE src/oxygen_cell_analog.c)
+target_sources_ifdef(CONFIG_HAS_PRESSURE_TRANSDUCER app PRIVATE
+    src/tank_pressure.c
+    src/tank_pressure_math.c)
 target_sources_ifdef(CONFIG_HAS_DIVEO2_CELL app PRIVATE src/oxygen_cell_diveo2.c)
 target_sources_ifdef(CONFIG_HAS_O2S_CELL app PRIVATE src/oxygen_cell_o2s.c)
 

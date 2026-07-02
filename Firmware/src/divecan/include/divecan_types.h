@@ -193,6 +193,14 @@ static const uint32_t DIVECAN_SEVEN_BYTE_WIDTH = 56U;
 static const uint32_t DIVECAN_HALF_BYTE_WIDTH = 4U;
 static const uint8_t DIVECAN_BYTE_MASK = 0xFFU;
 
+/* ---- Tank pressure (TANK_PRESSURE_ID) cylinder designators ---- */
+
+/** @brief Byte 0 of a TANK_PRESSURE_ID frame: oxygen cylinder. */
+#define DIVECAN_TANK_O2  0x00U
+
+/** @brief Byte 0 of a TANK_PRESSURE_ID frame: diluent cylinder. */
+#define DIVECAN_TANK_DIL 0x10U
+
 /* ---- FO2 limits ---- */
 
 /** @brief Maximum valid FO2 percentage (100% O2). */

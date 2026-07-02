@@ -81,7 +81,7 @@ Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_set
 | `dev_full.conf` | All features enabled — mixed cell types, all 4 solenoids, all runtime options |
 | `AP_Aren.conf` | AP-style single-solenoid head — 3× DiveO2, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery-only, 2S Li |
 | `eCCR_classic.conf` | Classic single-solenoid eCCR — 3× analog, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery+CAN, 9V |
-| `Poseidon_Aren.conf` | 2× DiveO2 head — solenoid map + control/cal/depth defaults match `dev_full` (all 4 solenoids, PID, flush, depth comp); battery-only, 1S Li |
+| `Poseidon_Aren.conf` | 2× DiveO2 head — solenoid map + control/cal/depth defaults match `dev_full` (all 4 solenoids, PID, flush, depth comp); battery-only, 1S Li; HP O2/dil tank transducers on the spare adc_ext1 channels (0.3–1.8 V ↔ 0–300 bar, `ADC_GAIN_1` set in the overlay) |
 | `Sidewinder_Gabriel.conf` | 3× DiveO2 manual CCR. Intended solenoid and battery topology currently contradict the executable config; resolve before qualification. |
 
 ## Configuration Split: Compile-Time vs Runtime
@@ -178,6 +178,7 @@ Defined channels:
 | `chan_duty_cycle` | `Numeric_t` | PPO2 PID controller | Solenoid fire thread |
 | `chan_solenoid_status` | `DiveCANError_t` | PPO2 PID controller | DiveCAN RespPing (OR-combined into status byte) |
 | `chan_solenoid_fire` | `SolenoidFireEvent_t` | PPO2 solenoid fire thread (start + end of each cycle) | Flash log listener (FL_TYPE_SOLENOID_FIRE) — `CONFIG_FLASH_LOG` only |
+| `chan_tank_pressure` | `TankPressureMsg_t` | Tank pressure sampler thread | DiveCAN PPO2 TX (TANK_PRESSURE_ID frames) — `CONFIG_HAS_PRESSURE_TRANSDUCER` only |
 
 `chan_cell_2` and `chan_cell_3` are conditionally compiled based on `CONFIG_CELL_COUNT`.
 
@@ -246,6 +247,17 @@ Currently registered slots:
 Slots not registered are ignored — variants without a given thread (e.g. cell 3 unconfigured, no solenoid) skip registration and the feeder doesn't expect a kick from them.
 
 A reset caused by missed feeds surfaces on the next boot through the existing crash-DID infrastructure: the IWDG reset flag in `RCC_CSR` is captured by `errors.c` and exposed via `UDS_DID_CRASH_REASON` (0xF251).
+
+## Tank Pressure Transducers
+
+Analog HP tank pressure senders (O2 and/or diluent) ride on spare entries of the same `zephyr,user` io-channels list the analog oxygen cells use. `CONFIG_O2_TRANSDUCER_CHANNEL` / `CONFIG_DIL_TRANSDUCER_CHANNEL` pick the channel index per variant (-1 = absent, and the whole subsystem compiles out via the derived `CONFIG_HAS_PRESSURE_TRANSDUCER`); `CONFIG_*_TRANSDUCER_MIN` / `_MAX` give the output voltage (mV) at 0 bar and at full scale, and `CONFIG_*_TRANSDUCER_LIMIT` the full-scale pressure (bar).
+
+Design points:
+
+- **Gain comes from DT, not code.** Conversion uses `adc_raw_to_millivolts_dt()` so the variant overlay chooses the ADS1115 PGA range (`ADC_GAIN_1` = ±2.048 V for 0.3–1.8 V senders); the analog cells' hardcoded ±0.256 V constant never applies. The variant overlay must re-enable the owning ADS1115 node and override the channel gain.
+- **Out-of-range ⇒ explicit failure.** Voltages outside [MIN, MAX] (open/shorted sender), ADC errors, and init failures all map to `TANK_PRESSURE_FAIL` (0xFFFF) in the DiveCAN pressure field rather than a plausible-but-wrong value. The mapping itself is pure math in `tank_pressure_math.c` (ztest: `tests/tank_pressure_math`).
+- **Sampler is display-only, no heartbeat.** The 500 ms sampler thread deliberately doesn't register with the watchdog — a wedged pressure gauge must not reboot the head mid-dive. Instead `divecan_ppo2_tx` checks the message timestamp and substitutes `TANK_PRESSURE_FAIL` after 3 s of silence.
+- **Wire format** is `TANK_PRESSURE_ID` (0x0D0B0000) per the DiveCAN spec `Messaging/Pressure.md`: byte 0 designates the cylinder (0x00 O2, 0x10 dil), bytes 1-2 carry decibar big-endian. One frame per configured cylinder every PPO2 broadcast cycle (500 ms).
 
 ## DiveCAN Protocol
 
@@ -348,7 +360,8 @@ Firmware/
 │   ├── oxygen_cell_types.h         Shared types: OxygenCellMsg_t, ConsensusMsg_t, etc.
 │   ├── runtime_settings.h          NVS-backed runtime config types
 │   ├── solenoid.h                  Driver public API
-│   └── solenoid_roles.h            Kconfig role → driver channel mapping
+│   ├── solenoid_roles.h            Kconfig role → driver channel mapping
+│   └── tank_pressure.h             HP transducer types, chan_tank_pressure, mapping API
 ├── src/
 │   ├── main.c                      Entry point, heartbeat LED
 │   ├── calibration.c               Calibration thread, atomic guard, settings, rollback
@@ -362,6 +375,8 @@ Firmware/
 │   ├── power_management.c          Power driver: regulator, ADC voltage, shutdown
 │   ├── power_math.c                Pure power math (voltage conversion, thresholds)
 │   ├── runtime_settings.c          NVS load/save/validate, topology BUILD_ASSERTs
+│   ├── tank_pressure.c             HP transducer sampler thread, zbus publish
+│   ├── tank_pressure_math.c        Pure mV → decibar mapping (no OS deps)
 │   ├── Kconfig                     Product topology, solenoid roles, runtime defaults
 │   └── divecan/                    DiveCAN protocol subsystem
 │       ├── include/                Protocol headers (types, TX, ISO-TP, UDS)

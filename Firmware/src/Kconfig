@@ -176,6 +176,94 @@ config HAS_FLUSH_SOLENOID
 
 endmenu # Solenoid Role Mapping
 
+# ---- Tank Pressure Transducers ----
+
+menu "Tank Pressure Transducers"
+
+config O2_TRANSDUCER_CHANNEL
+	int "O2 tank pressure transducer ADC channel (-1 = not present)"
+	default -1
+	range -1 2
+	help
+	  Index into the zephyr,user io-channels list (the analog-cell ADC
+	  channel map in the board DTS) that the O2 HP transducer's analog
+	  output is wired to. The variant overlay must re-enable the ADS1115
+	  that owns the channel and set a PGA gain wide enough for the
+	  transducer's full output swing — the cell default of ADC_GAIN_8
+	  (+/-0.256 V) clips a 1.8 V transducer; use ADC_GAIN_1 (+/-2.048 V).
+	  Set to -1 if this system has no O2 pressure transducer.
+
+config O2_TRANSDUCER_MIN
+	int "O2 transducer output at 0 bar (millivolts)"
+	depends on O2_TRANSDUCER_CHANNEL >= 0
+	default 300
+	range 0 6144
+	help
+	  Transducer output voltage corresponding to 0 bar gauge pressure.
+	  Readings below this are reported as the DiveCAN error value
+	  (0xFFFF) — an open circuit or failed sensor reads near 0 mV.
+
+config O2_TRANSDUCER_MAX
+	int "O2 transducer output at full-scale pressure (millivolts)"
+	depends on O2_TRANSDUCER_CHANNEL >= 0
+	default 1800
+	range 0 6144
+	help
+	  Transducer output voltage corresponding to O2_TRANSDUCER_LIMIT.
+	  Readings above this are reported as the DiveCAN error value
+	  (0xFFFF) — a shorted sensor reads near supply voltage.
+
+config O2_TRANSDUCER_LIMIT
+	int "O2 transducer full-scale pressure (bar)"
+	depends on O2_TRANSDUCER_CHANNEL >= 0
+	default 300
+	range 1 6000
+	help
+	  Gauge pressure at O2_TRANSDUCER_MAX. The 0 bar .. LIMIT range is
+	  mapped linearly across MIN .. MAX millivolts.
+
+config DIL_TRANSDUCER_CHANNEL
+	int "Diluent tank pressure transducer ADC channel (-1 = not present)"
+	default -1
+	range -1 2
+	help
+	  Index into the zephyr,user io-channels list for the diluent HP
+	  transducer. See O2_TRANSDUCER_CHANNEL for the DT gain requirement.
+	  Set to -1 if this system has no diluent pressure transducer.
+
+config DIL_TRANSDUCER_MIN
+	int "Diluent transducer output at 0 bar (millivolts)"
+	depends on DIL_TRANSDUCER_CHANNEL >= 0
+	default 300
+	range 0 6144
+	help
+	  Transducer output voltage corresponding to 0 bar gauge pressure.
+	  Readings below this are reported as the DiveCAN error value.
+
+config DIL_TRANSDUCER_MAX
+	int "Diluent transducer output at full-scale pressure (millivolts)"
+	depends on DIL_TRANSDUCER_CHANNEL >= 0
+	default 1800
+	range 0 6144
+	help
+	  Transducer output voltage corresponding to DIL_TRANSDUCER_LIMIT.
+	  Readings above this are reported as the DiveCAN error value.
+
+config DIL_TRANSDUCER_LIMIT
+	int "Diluent transducer full-scale pressure (bar)"
+	depends on DIL_TRANSDUCER_CHANNEL >= 0
+	default 300
+	range 1 6000
+	help
+	  Gauge pressure at DIL_TRANSDUCER_MAX. The 0 bar .. LIMIT range is
+	  mapped linearly across MIN .. MAX millivolts.
+
+config HAS_PRESSURE_TRANSDUCER
+	bool
+	default y if O2_TRANSDUCER_CHANNEL >= 0 || DIL_TRANSDUCER_CHANNEL >= 0
+
+endmenu # Tank Pressure Transducers
+
 # ---- Runtime Setting Constraints ----
 # These define which runtime options are compiled in and
 # what their defaults are. The actual values live in NVS

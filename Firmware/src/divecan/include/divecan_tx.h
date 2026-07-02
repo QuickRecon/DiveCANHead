@@ -12,6 +12,7 @@
 #include <zephyr/device.h>
 
 #include "divecan_types.h"
+#include "tank_pressure.h"
 #include "common.h"
 
 /**
@@ -128,6 +129,20 @@ void txMillivolts(DiveCANType_t deviceType, Millivolts_t cell1,
  */
 void txCellState(DiveCANType_t deviceType, bool cell1, bool cell2,
          bool cell3, PPO2_t ppo2);
+
+/**
+ * @brief Transmit an HP tank pressure reading (TANK_PRESSURE_ID).
+ *
+ * Wire format per DiveCAN Messaging/Pressure.md: byte 0 is the cylinder
+ * designator (DIVECAN_TANK_O2 / DIVECAN_TANK_DIL), bytes 1-2 the pressure
+ * in decibar, big-endian (0x0203 = 51.5 bar).
+ *
+ * @param deviceType       Our device type
+ * @param cylinder         Cylinder designator (DIVECAN_TANK_O2 / DIVECAN_TANK_DIL)
+ * @param pressure_decibar Pressure in decibar (TANK_PRESSURE_FAIL = sensor error)
+ */
+void txTankPressure(DiveCANType_t deviceType, uint8_t cylinder,
+            TankPressure_t pressure_decibar);
 
 /* Calibration */
 

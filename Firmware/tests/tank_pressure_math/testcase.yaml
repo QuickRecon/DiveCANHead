@@ -1,0 +1,4 @@
+tests:
+  tank_pressure.math:
+    platform_allow: native_sim
+    tags: tank_pressure
