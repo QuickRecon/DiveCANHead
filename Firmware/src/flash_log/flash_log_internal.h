@@ -81,6 +81,14 @@ struct fcb *flash_log_internal_get_fcb(FlashLogDest_t dest);
 /** @brief Number of logical sectors in the given destination's FCB. */
 uint8_t flash_log_internal_sector_count(FlashLogDest_t dest);
 
+/** @brief Monotonic count of index-relevant writes (boot/dive markers written,
+ * log erases). The reader compares this against the value captured when its
+ * lazy sector index was built and rebuilds on mismatch — without it the index
+ * built by the FIRST selector after boot goes silently stale, making any dive
+ * recorded later that boot unfindable by number (and select-latest-dive return
+ * the PREVIOUS dive) until a reboot. */
+uint32_t flash_log_internal_index_epoch(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -199,6 +199,23 @@ static bool fl_is_marker_type(uint8_t type)
            (FL_TYPE_DIVE_END == type);
 }
 
+/* Bumped whenever an index-RELEVANT write lands (boot/dive marker, erase).
+ * The reader's lazy sector index snapshots this at build time and rebuilds on
+ * mismatch. Ordinary telemetry batches deliberately do NOT bump it: they never
+ * change what the index resolves (boot/dive keys, sector boundaries), and
+ * bumping per batch would force a full-ring re-walk on nearly every selector. */
+static atomic_t fl_index_epoch = ATOMIC_INIT(0);
+
+uint32_t flash_log_internal_index_epoch(void)
+{
+    return (uint32_t)atomic_get(&fl_index_epoch);
+}
+
+static void fl_bump_index_epoch(void)
+{
+    (void)atomic_inc(&fl_index_epoch);
+}
+
 /* ---- Enqueue dispatch (producer side) ----
  *
  * Build a slot, push to k_msgq with K_NO_WAIT. On overflow bump the
@@ -730,6 +747,9 @@ static void fl_batch_flush(void)
                 if (mirror != NULL) {
                     (void)fl_write_entry_to_fcb(mirror, type, 0U, ts, payload, length);
                 }
+                /* A new boot/dive key is now on flash — any index built
+                 * before this point no longer resolves it. */
+                fl_bump_index_epoch();
             }
         }
         off += rec;
@@ -1126,6 +1146,9 @@ int flash_log_erase(uint8_t stream_mask)
                 rc = r;
             }
         }
+        /* The erase rewrote the ring's boot/dive layout wholesale — a
+         * previously-built reader index now points at dead sectors. */
+        fl_bump_index_epoch();
         flash_log_resume();
     }
     return rc;

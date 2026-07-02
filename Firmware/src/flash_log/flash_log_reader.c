@@ -145,6 +145,13 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
     return 0;
 }
 
+/* Writer index-epoch captured when each dest's index was built. A mismatch with
+ * the live epoch means an index-relevant write (boot/dive marker, erase) landed
+ * after the build — the index would silently miss that key (or resolve
+ * "latest" to a stale answer), so it is rebuilt. Ordinary telemetry batches do
+ * not move the epoch, keeping the rebuild off the steady-state selector path. */
+static uint32_t fl_index_built_epoch[FL_DEST_COUNT];
+
 static int fl_build_index(FlashLogDest_t dest)
 {
     FlashLogIndexEntry_t *index = fl_index_for(dest);
@@ -160,10 +167,15 @@ static int fl_build_index(FlashLogDest_t dest)
         index[i].flags = 0U;
     }
 
+    /* Snapshot BEFORE the walk: a marker landing mid-walk may or may not be
+     * seen, so attribute the build to the pre-walk epoch — the next ensure
+     * then rebuilds again rather than trusting a maybe-incomplete index. */
+    uint32_t epoch = flash_log_internal_index_epoch();
     fl_index_build_ctx_t ctx = { .index = index, .fcb_p = fcb_p, .walked = 0U };
     watchdog_kick();   /* feed once before the walk begins */
     int rc = fcb_walk(fcb_p, NULL, fl_index_walk_cb, &ctx);
     if (0 == rc) {
+        fl_index_built_epoch[dest] = epoch;
         atomic_set(&fl_index_valid[dest], 1);
     }
     return rc;
@@ -173,10 +185,86 @@ static int fl_ensure_index(FlashLogDest_t dest)
 {
     int rc = 0;
 
-    if (!atomic_get(&fl_index_valid[dest])) {
+    if (!atomic_get(&fl_index_valid[dest]) ||
+        (fl_index_built_epoch[dest] != flash_log_internal_index_epoch())) {
         rc = fl_build_index(dest);
     }
     return rc;
+}
+
+/* ---- Exact-marker scan fallback ----
+ *
+ * The sector index keys only the FIRST boot/dive id per sector, so a second
+ * marker landing in the same (256 KiB) sector is invisible to the exact-match
+ * resolvers — e.g. two short dives without a ring rotation between them make
+ * the second dive unfindable by number (confirmed on hardware 2026-07-02).
+ * On an index miss the resolvers therefore fall back to this watchdog-fed
+ * full walk for the exact marker. Cost is one index-build-sized walk, paid
+ * only on the miss path (a hit in the index stays index-fast).
+ */
+
+typedef struct {
+    const struct fcb *fcb_p;
+    uint8_t marker_type;    /* FL_TYPE_BOOT_MARKER or FL_TYPE_DIVE_START */
+    uint32_t id;            /* boot_id, or dive_number (fits in u16) */
+    size_t found_sector;    /* SIZE_MAX until found */
+    uint32_t walked;
+} fl_marker_scan_ctx_t;
+
+static int fl_marker_scan_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
+{
+    fl_marker_scan_ctx_t *ctx = arg;
+    fl_entry_hdr_t hdr;
+
+    ctx->walked += 1U;
+    if (0U == (ctx->walked % FL_INDEX_WALK_WDT_KICK)) {
+        watchdog_kick();
+    }
+
+    int rc = flash_area_read(loc_ctx->fap,
+                 FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc),
+                 &hdr, sizeof(hdr));
+    if ((0 != rc) || (hdr.type != ctx->marker_type)) {
+        return 0;
+    }
+
+    off_t payload_off = FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc) + sizeof(hdr);
+    uint32_t entry_id = 0U;
+    if (FL_TYPE_BOOT_MARKER == ctx->marker_type) {
+        fl_payload_boot_marker_t p;
+        if (0 != flash_area_read(loc_ctx->fap, payload_off, &p, sizeof(p))) {
+            return 0;
+        }
+        entry_id = p.boot_id;
+    } else {
+        fl_payload_dive_marker_t p;
+        if (0 != flash_area_read(loc_ctx->fap, payload_off, &p, sizeof(p))) {
+            return 0;
+        }
+        entry_id = p.dive_number;
+    }
+
+    if (entry_id != ctx->id) {
+        return 0;
+    }
+    ctx->found_sector = fl_sector_index(ctx->fcb_p, loc_ctx->loc.fe_sector);
+    return 1;   /* nonzero stops fcb_walk */
+}
+
+/* Sector containing the exact marker, or SIZE_MAX. */
+static size_t fl_scan_for_marker(struct fcb *fcb_p, uint8_t marker_type,
+                 uint32_t id)
+{
+    fl_marker_scan_ctx_t ctx = {
+        .fcb_p = fcb_p,
+        .marker_type = marker_type,
+        .id = id,
+        .found_sector = SIZE_MAX,
+        .walked = 0U,
+    };
+    watchdog_kick();
+    (void)fcb_walk(fcb_p, NULL, fl_marker_scan_cb, &ctx);
+    return ctx.found_sector;
 }
 
 void flash_log_reader_invalidate_index(void)
@@ -312,7 +400,19 @@ int flash_log_reader_resolve_boot_id(FlashLogDest_t dest, uint32_t boot_id,
         }
     }
     if (first == SIZE_MAX) {
-        return -ENOENT;
+        /* Index keys only the FIRST boot per sector — a quick reboot whose
+         * marker shares a sector with the previous boot's is invisible to
+         * it. Walk for the exact marker before declaring no-match. */
+        first = fl_scan_for_marker(fcb_p, FL_TYPE_BOOT_MARKER, boot_id);
+        if (first == SIZE_MAX) {
+            return -ENOENT;
+        }
+        for (size_t i = first + 1U; i < (size_t)fcb_p->f_sector_cnt; ++i) {
+            if (0U != (index[i].flags & FL_INDEX_FLAG_HAS_BOOT)) {
+                end_sector = i;
+                break;
+            }
+        }
     }
 
     fl_range_clear(out, dest);
@@ -390,7 +490,23 @@ int flash_log_reader_resolve_dive_id(FlashLogDest_t dest, uint16_t dive_id,
         }
     }
     if (first == SIZE_MAX) {
-        return -ENOENT;
+        /* Index keys only the FIRST dive per sector — a second short dive
+         * in the same sector (no ring rotation between them) is invisible
+         * to it (hardware-confirmed 2026-07-02). Walk for the exact
+         * DIVE_START before declaring no-match. */
+        first = fl_scan_for_marker(fcb_p, FL_TYPE_DIVE_START,
+                       (uint32_t)dive_id);
+        if (first == SIZE_MAX) {
+            return -ENOENT;
+        }
+        for (size_t i = first + 1U; i < (size_t)fcb_p->f_sector_cnt; ++i) {
+            if (0U != (index[i].flags &
+                   (FL_INDEX_FLAG_HAS_DIVE_START |
+                    FL_INDEX_FLAG_HAS_DIVE_END))) {
+                end_sector = i;
+                break;
+            }
+        }
     }
 
     fl_range_clear(out, dest);
