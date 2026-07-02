@@ -43,6 +43,9 @@ static const size_t   LOG_HEADER_BYTES = 16U;
 
 /* 0x34 request: [pad][SID][dataFmt][addrLenFmt][addr 4][size 4] = 12 B */
 static const uint16_t LOG_DOWNLOAD_REQ_LEN = 12U;
+/* Floor for a client-negotiated chunk (0x34 size field): the first chunk must
+ * carry the 16-byte DCLG stream header with room left for record bytes. */
+static const uint16_t LOG_DOWNLOAD_MIN_BLOCK = 32U;
 static const uint16_t LOG_DOWNLOAD_RESP_LEN = 4U;
 static const uint8_t  LOG_DOWNLOAD_ADDR_LEN_FMT = 0x44U;
 
@@ -94,6 +97,42 @@ static LogDownloadSM_t *fl_sm(void)
 {
     static LogDownloadSM_t sm;
     return &sm;
+}
+
+/* While a stream is live the flash-log WRITER is paused, so the download is a
+ * bounded point-in-time capture instead of chasing entries the writer appends
+ * mid-transfer (over a slow/bridged link the two rates are comparable — the
+ * BLE path measured ~400 B/s downloaded vs ~0.5-1 KB/s written). The writer
+ * drops (and drop-marks) samples for the duration; a download is an explicit,
+ * usually-post-dive action so that is the accepted trade.
+ *
+ * SAFETY: the writer MUST resume even if the client abandons the stream. Log
+ * download runs in the DEFAULT session, so the OTA-style S3/dive session-lapse
+ * abort never fires here — instead fl_maybe_abort_stale() (driven by
+ * UDS_LogDownload_Poll from the divecan_rx loop) resumes logging if no 0x36
+ * arrives for LOG_STREAM_INACTIVITY_MS. Every transition OUT of LD_STREAMING
+ * goes through fl_stop_streaming() so the resume can't be missed. */
+#define LOG_STREAM_INACTIVITY_MS 10000U
+static uint32_t fl_stream_last_activity_ms;
+
+static void fl_start_streaming(void)
+{
+    LogDownloadSM_t *sm = fl_sm();
+    flash_log_pause();
+    sm->state = LD_STREAMING;
+    fl_stream_last_activity_ms = k_uptime_get_32();
+}
+
+/* Leave LD_STREAMING for ``next_state`` (SELECTED on a fresh selector, IDLE on
+ * exit/abort), resuming the writer. Idempotent for non-streaming states so it
+ * is safe to call unconditionally on any transition. */
+static void fl_stop_streaming(LogDownloadState_t next_state)
+{
+    LogDownloadSM_t *sm = fl_sm();
+    if (sm->state == LD_STREAMING) {
+        flash_log_resume();
+    }
+    sm->state = next_state;
 }
 
 /* ---- Selector result helpers ---- */
@@ -261,11 +300,14 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
             nrc = UDS_NRC_REQUEST_SEQUENCE_ERR;
         } else {
             flash_log_reader_open(&sm->reader, &sm->range);
-            sm->state = LD_STREAMING;
             sm->header_sent = false;
+            fl_start_streaming();   /* pauses the writer for the capture */
         }
     } else if ((rid >= RID_SELECT_BY_RANGE) &&
            (rid <= RID_SELECT_LATEST_DIVE)) {
+        /* A fresh selector supersedes any live stream — resume the writer
+         * before re-resolving (the resolve below sets LD_SELECTED). */
+        fl_stop_streaming(LD_IDLE);
         const uint8_t *params = &requestData[UDS_SID_IDX + 4U];
         uint16_t params_len = (requestLength > 5U) ?
             (uint16_t)(requestLength - 5U) : 0U;
@@ -335,8 +377,29 @@ static void fl_handle_request_download(UDSContext_t *ctx,
     }
 
     /* Block size = UDS_MAX_RESPONSE_LENGTH minus 0x36 response framing
-     * (pad + SID + seq = 3 B) so the body fits a single ISO-TP message. */
-    sm->max_block_length = UDS_MAX_RESPONSE_LENGTH - 3U;
+     * (pad + SID + seq = 3 B) so the body fits a single ISO-TP message.
+     *
+     * The request's SIZE field (historically unused zeros for the log
+     * sentinel) is the CLIENT's maximum receivable block, little-endian to
+     * match this sentinel's addr field. The download path can be BRIDGED:
+     * the handset's BLE bridge FC-OVERFLOWs a full 253-byte chunk's First
+     * Frame (hardware-confirmed 2026-07-02 — "ISO 15765 RX: Sent FF
+     * overflow" on the handset display), so a BT client must be able to ask
+     * for chunks its bridge can reassemble. 0 keeps the full size (existing
+     * clients unchanged); nonzero requests below the floor are raised to it
+     * (the 16-byte stream header must fit the first chunk with headroom). */
+    uint16_t cap = UDS_MAX_RESPONSE_LENGTH - 3U;
+    uint32_t req_max = ((uint32_t)requestData[8]) |
+               ((uint32_t)requestData[9] << BYTE_SHIFT_8) |
+               ((uint32_t)requestData[10] << BYTE_SHIFT_16) |
+               ((uint32_t)requestData[11] << BYTE_SHIFT_24);
+    if ((req_max != 0U) && (req_max < (uint32_t)cap)) {
+        sm->max_block_length = (req_max < LOG_DOWNLOAD_MIN_BLOCK)
+                       ? LOG_DOWNLOAD_MIN_BLOCK
+                       : (uint16_t)req_max;
+    } else {
+        sm->max_block_length = cap;
+    }
     sm->next_seq = 0x01U;
     sm->header_sent = false;
 
@@ -397,6 +460,7 @@ static void fl_handle_transfer_data(UDSContext_t *ctx,
                      UDS_NRC_WRONG_BLOCK_SEQ_COUNTER);
         return;
     }
+    fl_stream_last_activity_ms = k_uptime_get_32();   /* stall-abort watchdog */
 
     /* Build chunk into responseBuffer starting at offset 3 (pad+SID+seq). */
     uint8_t *out = &ctx->responseBuffer[3];
@@ -461,7 +525,7 @@ static void fl_handle_transfer_exit(UDSContext_t *ctx,
         return;
     }
 
-    sm->state = LD_IDLE;
+    fl_stop_streaming(LD_IDLE);   /* resumes the writer */
     sm->header_sent = false;
     sm->next_seq = 0U;
 
@@ -469,6 +533,24 @@ static void fl_handle_transfer_exit(UDSContext_t *ctx,
         UDS_SID_REQUEST_TRANSFER_EXIT + UDS_RESPONSE_SID_OFFSET;
     ctx->responseLength = 1U;
     UDS_SendResponse(ctx);
+}
+
+void UDS_LogDownload_Poll(void)
+{
+    LogDownloadSM_t *sm = fl_sm();
+    if (sm->state != LD_STREAMING) {
+        return;
+    }
+    /* Wrap-safe: a client that stops pulling 0x36 (BLE dropout, app closed)
+     * must not strand the writer paused on a dive device. */
+    uint32_t idle = k_uptime_get_32() - fl_stream_last_activity_ms;
+    if (idle > LOG_STREAM_INACTIVITY_MS) {
+        LOG_WRN("log-download stream idle %u ms — aborting, resuming writer",
+            (unsigned int)idle);
+        fl_stop_streaming(LD_IDLE);
+        sm->header_sent = false;
+        sm->next_seq = 0U;
+    }
 }
 
 /* ---- Top-level dispatch ---- */

@@ -59,6 +59,18 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
  */
 void UDS_LogDownload_FillSelectorResult(uint8_t *buf, size_t buf_size);
 
+/**
+ * @brief Periodic tick — aborts a stalled stream and RESUMES the flash-log
+ *        writer if a live download goes idle past the inactivity timeout.
+ *
+ * Must be called from the divecan_rx loop. The writer is paused for the
+ * duration of a stream (bounded point-in-time capture); because log download
+ * runs in the default session there is no session-lapse abort, so this poll is
+ * the safety net that guarantees logging resumes if the client vanishes
+ * mid-transfer.
+ */
+void UDS_LogDownload_Poll(void);
+
 #ifdef __cplusplus
 }
 #endif

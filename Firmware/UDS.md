@@ -387,6 +387,14 @@ pipeline (also wired to those SIDs) — `uds_log_download.c`'s
 selection is live AND the 0x34 memory address is the sentinel
 `0xFFFFFFFE`. All other 0x34s fall through to OTA.
 
+The 0x34 SIZE field (little-endian, matching the sentinel addr field) is the
+CLIENT's maximum receivable block: 0 keeps the firmware default (253), a
+nonzero value caps every 0x36 response chunk (floor 32 — the 16-byte DCLG
+header must fit the first chunk). Required for BRIDGED transports: the
+handset's BLE bridge cannot reassemble a 253-byte ISO-TP message (it answers
+FlowControl-OVERFLOW; hardware-confirmed 2026-07-02), so Bluetooth clients
+request a smaller chunk (the rig's BLE tests use 61 → a 64-byte message).
+
 **RoutineControl selector RIDs (0x31 subfunction 0x01):**
 
 | RID    | Name                 | Request payload (after pad+SID+subfunc+RID) |

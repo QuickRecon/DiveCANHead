@@ -22,6 +22,9 @@
 #include "isotp_tx_queue.h"
 #include "uds.h"
 #include "uds_log_push.h"
+#ifdef CONFIG_FLASH_LOG
+#include "uds_log_download.h"
+#endif
 #include "oxygen_cell_channels.h"
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
@@ -759,6 +762,11 @@ static void ProcessISOTPCompletion(uint32_t now)
     if (udsState->logPushInitialized) {
         UDS_LogPush_Poll();
     }
+#ifdef CONFIG_FLASH_LOG
+    /* Resume the flash-log writer if a download stream was abandoned mid-
+     * transfer (safety net — see UDS_LogDownload_Poll). */
+    UDS_LogDownload_Poll();
+#endif
 }
 
 /**
