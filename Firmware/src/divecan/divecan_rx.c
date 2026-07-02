@@ -36,6 +36,7 @@
 #include "errors.h"
 #include "common.h"
 #include "heartbeat.h"
+#include "handset_failsafe.h"
 
 LOG_MODULE_REGISTER(divecan_rx, LOG_LEVEL_INF);
 
@@ -275,6 +276,13 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
     LOG_INF("DiveCAN RX thread started");
     heartbeat_register(HEARTBEAT_DIVECAN_RX);
 
+    /* Handset-loss setpoint failsafe state. Touched only from this thread
+     * (updated on BUS_ID receipt, evaluated in the poll section below), so no
+     * atomics are needed. */
+    uint32_t last_handset_ping_ms = 0U;
+    bool handset_seen = false;         /* a controller ping has arrived at least once */
+    bool handset_lost_applied = false; /* the 0.70 bar fallback has been published */
+
     while (true) {
         heartbeat_kick(HEARTBEAT_DIVECAN_RX);
         DiveCANMessage_t message = {0};
@@ -290,6 +298,18 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
             case BUS_ID_ID:
                 /* Respond to pings */
                 bump_count(get_bus_id_count());
+                /* Track handset liveness for the setpoint failsafe. Only the
+                 * handset (DIVECAN_CONTROLLER) counts — mirror RespPing's
+                 * low-nibble sender extraction. Re-arm the failsafe on every
+                 * ping, but do NOT restore the pre-loss setpoint: once the
+                 * fallback has latched to 0.70 bar the diver must actively
+                 * re-select their setpoint on the returning handset. */
+                if ((uint8_t)(message.id & 0x0FU) ==
+                    (uint8_t)DIVECAN_CONTROLLER) {
+                    last_handset_ping_ms = k_uptime_get_32();
+                    handset_seen = true;
+                    handset_lost_applied = false;
+                }
                 RespPing(&message);
                 break;
             case BUS_NAME_ID:
@@ -361,6 +381,30 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
         uint32_t now = k_uptime_get_32();
         PollISOTPContexts(now);
         ProcessISOTPCompletion(now);
+
+        /* Handset-loss setpoint failsafe. If the handset has stopped pinging
+         * for HANDSET_PING_TIMEOUT_MS, publish a safe 0.70 bar setpoint so the
+         * control loop (and the bus status report) fall back to a conservative
+         * target. Edge-triggered and latched: published once on the alive→lost
+         * transition and held until a handset ping re-arms it (see the BUS_ID
+         * case). Unsigned subtraction is wrap-safe across the k_uptime_get_32
+         * rollover. The latch is only set on a confirmed publish, so a rare
+         * contended-lock miss retries next iteration rather than leaving a
+         * high setpoint in place. */
+        if (handset_failsafe_should_revert(now, last_handset_ping_ms,
+                           handset_seen, handset_lost_applied,
+                           HANDSET_PING_TIMEOUT_MS)) {
+            PPO2_t safe_setpoint = HANDSET_LOST_SETPOINT_CB;
+            int rc = zbus_chan_pub(&chan_setpoint, &safe_setpoint,
+                        K_MSEC(100));
+            if (0 == rc) {
+                handset_lost_applied = true;
+                LOG_WRN("Handset ping lost >%u ms; setpoint reverted to 0.70 bar",
+                    HANDSET_PING_TIMEOUT_MS);
+            } else {
+                OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
+            }
+        }
     }
 }
 
