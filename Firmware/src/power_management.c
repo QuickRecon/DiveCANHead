@@ -65,6 +65,11 @@ struct power_data {
 /* ADC resolution in bits for the STM32L4 internal ADC */
 static const uint8_t ADC_RESOLUTION_BITS = 12U;
 
+/* Fixed-point scale for logging volts as integer whole.fraction pairs.
+ * Avoids pulling libc float formatting (CONFIG_CBPRINTF_FP_SUPPORT) into
+ * the image, which we don't have the flash budget for. */
+static const int32_t MILLIVOLTS_PER_VOLT = 1000;
+
 /* ---- ADC voltage sampling ---- */
 
 /**
@@ -708,8 +713,15 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
         zbus_pub_checked(&chan_battery_status, &status, K_MSEC(100));
 
         if (status.low_battery) {
-            LOG_WRN("Low battery: %.2fV (threshold %.1fV)",
-                (double)voltage, (double)threshold);
+            /* Integer millivolts: whole = mv/1000, fraction = mv%1000.
+             * Both values are strictly positive here (low_battery requires
+             * voltage > 0 and the threshold is positive), so the modulo
+             * fraction never comes out negative. */
+            int32_t voltage_mv = (int32_t)(voltage * (Numeric_t)MILLIVOLTS_PER_VOLT);
+            int32_t threshold_mv = (int32_t)(threshold * (Numeric_t)MILLIVOLTS_PER_VOLT);
+            LOG_WRN("Low battery: %d.%03dV (threshold %d.%03dV)",
+                voltage_mv / MILLIVOLTS_PER_VOLT, voltage_mv % MILLIVOLTS_PER_VOLT,
+                threshold_mv / MILLIVOLTS_PER_VOLT, threshold_mv % MILLIVOLTS_PER_VOLT);
         }
 
         k_msleep(BATTERY_SAMPLE_INTERVAL_MS);
