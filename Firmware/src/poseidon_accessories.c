@@ -19,6 +19,15 @@ LOG_MODULE_REGISTER(poseidon_accessories, LOG_LEVEL_INF);
 #define GAUGE_STALE_MS 12000
 #define PERIOD_MS 2000
 
+/* Battery speaker (CMD 0x0E) takes a beeper *pattern index* (0x00..0x03), not
+ * the active-low ON/OFF byte the LEDs/vibrator use. Per battery.bin control
+ * flow (2026-07-03 cross-check): 0x00 low-freq pattern, 0x01 HIGH-freq TONE
+ * (NOT silence — this is the tone that was sounding continuously in the
+ * no-alarm path), 0x02 patterned alarm, 0x03 stop/cancel. So idle must send
+ * 0x03 to silence, and alarm sends 0x02. */
+#define BEEP_PATTERN_ALARM 0x02U
+#define BEEP_PATTERN_STOP  0x03U
+
 static const struct device *const bus = DEVICE_DT_GET(DT_NODELABEL(i2c1));
 static uint8_t rx[9];
 static uint8_t rx_len;
@@ -143,13 +152,16 @@ static void refresh_outputs(AlarmMask_t alarms)
 {
     static bool hud_failed;
     static bool battery_failed;
+    /* LEDs/vibrator (0x0B/0x0C/0x0D) are active-low ON/OFF: alarm -> 0x00 (ON).
+     * The speaker (0x0E) is a pattern index, not on/off — keep it separate. */
     uint8_t state = alarms ? 0x00U : 0x01U;
+    uint8_t beep = alarms ? BEEP_PATTERN_ALARM : BEEP_PATTERN_STOP;
     int hud_rc = send_retry(HUD_ADDR, 0x00U, 0x00U);
     hud_rc |= send_retry(HUD_ADDR, 0x0BU, state);
     hud_rc |= send_retry(HUD_ADDR, 0x0CU, state);
     int battery_rc = send_retry(BATTERY_ADDR, 0x00U, 0x00U);
     battery_rc |= send_retry(BATTERY_ADDR, 0x0DU, state);
-    battery_rc |= send_retry(BATTERY_ADDR, 0x0EU, state);
+    battery_rc |= send_retry(BATTERY_ADDR, 0x0EU, beep);
     if ((hud_rc != 0) && !hud_failed) {
         OP_ERROR_DETAIL(OP_ERR_I2C_BUS, ((uint32_t)HUD_ADDR << 24) |
                         (uint32_t)(-hud_rc & 0xFFFF));
