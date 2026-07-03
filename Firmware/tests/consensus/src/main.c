@@ -12,7 +12,12 @@
 #include <zephyr/ztest.h>
 #include "oxygen_cell_math.h"
 #include "alarm.h"
+#include "runtime_settings.h"
 #include "errors.h"
+
+/* A normal (non-hypoxic) setpoint, used where the setpoint is irrelevant to the
+ * alarm result so the intent of each assertion stays obvious. */
+#define SP_NORMAL_CB 70U
 
 void op_error_publish(OpError_t code, uint32_t detail)
 {
@@ -575,16 +580,59 @@ ZTEST(consensus, test_overflow_saturates)
 
 ZTEST(consensus, test_alarm_exact_boundaries)
 {
-    zassert_equal(alarm_ppo2_reasons(39, 2), ALARM_PPO2_LOW);
-    zassert_equal(alarm_ppo2_reasons(40, 2), 0U);
-    zassert_equal(alarm_ppo2_reasons(160, 2), 0U);
-    zassert_equal(alarm_ppo2_reasons(161, 2), ALARM_PPO2_HIGH);
+    zassert_equal(alarm_ppo2_reasons(39, 2, SP_NORMAL_CB), ALARM_PPO2_LOW);
+    zassert_equal(alarm_ppo2_reasons(40, 2, SP_NORMAL_CB), 0U);
+    zassert_equal(alarm_ppo2_reasons(160, 2, SP_NORMAL_CB), 0U);
+    zassert_equal(alarm_ppo2_reasons(161, 2, SP_NORMAL_CB), ALARM_PPO2_HIGH);
 }
 
 ZTEST(consensus, test_alarm_invalid_or_no_confidence)
 {
-    zassert_equal(alarm_ppo2_reasons(PPO2_FAIL, 2), ALARM_PPO2_INVALID);
-    zassert_equal(alarm_ppo2_reasons(100, 0), ALARM_PPO2_INVALID);
+    zassert_equal(alarm_ppo2_reasons(PPO2_FAIL, 2, SP_NORMAL_CB),
+              ALARM_PPO2_INVALID);
+    zassert_equal(alarm_ppo2_reasons(100, 0, SP_NORMAL_CB), ALARM_PPO2_INVALID);
+}
+
+/**
+ * @brief The 0.19 bar hypoxic-diluent setpoint drops the low alarm to 0.16 bar.
+ *
+ * At that setpoint the low-PPO2 alarm must be suppressed across the whole
+ * diluent-PPO2 band (0.16–0.40 bar) yet still fire below 0.16 bar; the high
+ * alarm and the normal-setpoint low threshold are unaffected.
+ */
+ZTEST(consensus, test_alarm_hypoxic_setpoint_threshold)
+{
+    const uint8_t sp = PPO2_SETPOINT_HYPOXIC_CB; /* 19 cb = 0.19 bar */
+
+    /* Suppressed across 0.16–0.40 bar */
+    zassert_equal(alarm_ppo2_reasons(16, 2, sp), 0U);
+    zassert_equal(alarm_ppo2_reasons(30, 2, sp), 0U);
+    zassert_equal(alarm_ppo2_reasons(39, 2, sp), 0U);
+
+    /* Still fires below 0.16 bar */
+    zassert_equal(alarm_ppo2_reasons(15, 2, sp), ALARM_PPO2_LOW);
+
+    /* High threshold unchanged */
+    zassert_equal(alarm_ppo2_reasons(161, 2, sp), ALARM_PPO2_HIGH);
+
+    /* Invalid still wins over the suppressed low band */
+    zassert_equal(alarm_ppo2_reasons(15, 0, sp), ALARM_PPO2_INVALID);
+
+    /* Control: the SAME 0.39 bar reading DOES alarm at a normal setpoint */
+    zassert_equal(alarm_ppo2_reasons(39, 2, SP_NORMAL_CB), ALARM_PPO2_LOW);
+}
+
+/**
+ * @brief The setpoint clamp honours exactly 0.19 bar and clamps everything else.
+ */
+ZTEST(consensus, test_clamp_setpoint_hypoxic)
+{
+    zassert_equal(clamp_setpoint_cb(PPO2_SETPOINT_HYPOXIC_CB),
+              PPO2_SETPOINT_HYPOXIC_CB);        /* 19 stays 19 */
+    zassert_equal(clamp_setpoint_cb(18), PPO2_SETPOINT_MIN_CB);  /* 18 -> 40 */
+    zassert_equal(clamp_setpoint_cb(20), PPO2_SETPOINT_MIN_CB);  /* 20 -> 40 */
+    zassert_equal(clamp_setpoint_cb(70), 70U);                   /* in range */
+    zassert_equal(clamp_setpoint_cb(200), PPO2_SETPOINT_MAX_CB); /* 200 -> 160 */
 }
 
 /* ---- PPO2 wire-format conversion (ppo2_centibar_to_wire) ---- */

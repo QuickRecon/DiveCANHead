@@ -17,6 +17,12 @@
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
 
+/* The consensus thread now reads chan_setpoint (for the hypoxic-setpoint alarm
+ * threshold). In the real build that channel lives in divecan_channels.c, which
+ * this integration test does not compile; define it here so the subscriber
+ * links. Seed 70 cb (normal setpoint) to match the production default. */
+ZBUS_CHAN_DEFINE(chan_setpoint, PPO2_t, NULL, NULL, ZBUS_OBSERVERS_EMPTY, 70);
+
 /** @brief Suite: full zbus channel wiring from cell publishers to consensus subscriber. */
 ZTEST_SUITE(zbus_integration, NULL, NULL, NULL, NULL, NULL);
 

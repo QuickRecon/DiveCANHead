@@ -46,13 +46,27 @@ static const PPO2ControlMode_t valid_ppo2_control_modes[] = {
  * The DiveCAN setpoint contract is 0.40–1.60 bar inclusive. Requests outside
  * this range (whether from a DiveCAN setpoint frame or the UDS 0xF240 write) are
  * clamped to the nearest bound, so a malformed or out-of-spec handset request can
- * never drive the loop to an unsafe (hypoxic / hyperoxic) setpoint. */
-#define PPO2_SETPOINT_MIN_CB 40U   /* 0.40 bar */
-#define PPO2_SETPOINT_MAX_CB 160U  /* 1.60 bar */
+ * never drive the loop to an unsafe (hypoxic / hyperoxic) setpoint.
+ *
+ * ONE deliberate exception: exactly 0.19 bar (PPO2_SETPOINT_HYPOXIC_CB) is a
+ * valid discrete "diluent" setpoint for diluent-flush / hypoxic-diluent handling,
+ * where the loop PPO2 legitimately sits well below the 0.40 bar floor. Selecting
+ * it lowers the low-PPO2 alarm threshold to 0.16 bar (see alarm.c) so the alarm
+ * does not nuisance-fire the HUD/buzzer across the diluent-PPO2 band; it still
+ * fires below 0.16 bar. Only the exact value is honoured — every other
+ * out-of-range request still clamps to [0.40, 1.60] — so the safety hole is as
+ * small as possible. */
+#define PPO2_SETPOINT_MIN_CB 40U      /* 0.40 bar */
+#define PPO2_SETPOINT_MAX_CB 160U     /* 1.60 bar */
+#define PPO2_SETPOINT_HYPOXIC_CB 19U  /* 0.19 bar diluent setpoint (alarm-suppressing) */
 
-/** @brief Clamp a centibar setpoint to the valid 0.40–1.60 bar range. */
+/** @brief Clamp a centibar setpoint to the valid 0.40–1.60 bar range, honouring
+ *         the exact 0.19 bar hypoxic-diluent setpoint as a special exception. */
 static inline PPO2_t clamp_setpoint_cb(PPO2_t setpoint_cb)
 {
+    if (setpoint_cb == PPO2_SETPOINT_HYPOXIC_CB) {
+        return (PPO2_t)PPO2_SETPOINT_HYPOXIC_CB;
+    }
     if (setpoint_cb < PPO2_SETPOINT_MIN_CB) {
         return (PPO2_t)PPO2_SETPOINT_MIN_CB;
     }

@@ -1,5 +1,6 @@
 #include "alarm.h"
 #include "oxygen_cell_types.h"
+#include "runtime_settings.h"   /* PPO2_SETPOINT_HYPOXIC_CB */
 
 #include <zephyr/kernel.h>
 
@@ -16,15 +17,21 @@ static AlarmMask_t alarm_state = ALARM_PPO2_INVALID;
 ZBUS_CHAN_DEFINE(chan_alarm_state, AlarmMask_t, NULL, NULL,
                  ZBUS_OBSERVERS_EMPTY, ALARM_PPO2_INVALID);
 
-AlarmMask_t alarm_ppo2_reasons(uint8_t ppo2, uint8_t confidence)
+AlarmMask_t alarm_ppo2_reasons(uint8_t ppo2, uint8_t confidence,
+                               uint8_t setpoint_cb)
 {
     if ((ppo2 == PPO2_FAIL) || (confidence == 0U)) {
         return ALARM_PPO2_INVALID;
     }
-    if (ppo2 < 40U) {
+    /* The 0.19 bar hypoxic-diluent setpoint suppresses the low alarm down to
+     * 0.16 bar; every other setpoint uses the normal 0.40 bar floor. */
+    uint8_t low_cb = (setpoint_cb == PPO2_SETPOINT_HYPOXIC_CB)
+                         ? ALARM_PPO2_LOW_HYPOXIC_CB
+                         : ALARM_PPO2_LOW_DEFAULT_CB;
+    if (ppo2 < low_cb) {
         return ALARM_PPO2_LOW;
     }
-    if (ppo2 > 160U) {
+    if (ppo2 > ALARM_PPO2_HIGH_CB) {
         return ALARM_PPO2_HIGH;
     }
     return 0U;
