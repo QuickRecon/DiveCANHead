@@ -46,9 +46,16 @@ LOG_MODULE_REGISTER(tank_pressure, LOG_LEVEL_INF);
  * masters, so a conversion-trigger write can lose the bus and return -EBUSY
  * (or -EAGAIN on arbitration loss). i2c1_bus_lock() removes the collisions
  * against our own masters; these retries ride out the external ones. Tank
- * pressure is slow and display-only, so a few short retries are free. */
+ * pressure is slow and display-only, so a few short retries are free.
+ *
+ * Backoff is exponential with jitter (BASE << attempt, plus 0..JITTER-1 ms):
+ * a fixed delay lets two contending masters retry in lockstep and livelock,
+ * so we grow the gap and de-phase it. k_msleep also yields the CPU so the
+ * competing Poseidon master and the external display can drain and release
+ * the bus. Worst case ~2+4+8 ms + jitter, well inside the 500 ms cadence. */
 #define TANK_ADC_MAX_ATTEMPTS 4
-#define TANK_ADC_RETRY_DELAY_MS 3
+#define TANK_ADC_RETRY_BASE_MS 2U
+#define TANK_ADC_RETRY_JITTER_MS 3U
 
 /* The analog cell threads measured ~712 B runtime high-water with the same
  * ADC-read + zbus-publish call chains PLUS a settings/snprintf cal-load path
@@ -121,6 +128,19 @@ static bool adc_error_is_transient(Status_t ret)
 }
 
 /**
+ * @brief Sleep an exponentially-growing, jittered backoff before a read retry.
+ *
+ * @param prev_attempts Number of attempts already made (0 for the first retry).
+ */
+static void tank_adc_backoff(uint8_t prev_attempts)
+{
+    uint32_t delay_ms = (uint32_t)TANK_ADC_RETRY_BASE_MS << prev_attempts;
+    uint32_t jitter_ms = k_cycle_get_32() % TANK_ADC_RETRY_JITTER_MS;
+
+    k_msleep((int32_t)(delay_ms + jitter_ms));
+}
+
+/**
  * @brief Read the ADS1115 channel, retrying on transient i2c1 contention.
  *
  * The transfer is serialised against the other STM32 i2c1 masters via
@@ -139,12 +159,21 @@ static Status_t transducer_read_retry(struct transducer_state *t)
          (attempt < TANK_ADC_MAX_ATTEMPTS) && adc_error_is_transient(ret);
          ++attempt) {
         if (attempt > 0U) {
-            k_msleep(TANK_ADC_RETRY_DELAY_MS);
+            tank_adc_backoff(attempt - 1U);
         }
 
         i2c1_bus_lock();
         ret = adc_read_dt(t->adc, &t->adc_seq);
         i2c1_bus_unlock();
+    }
+
+    if (adc_error_is_transient(ret)) {
+        /* BUSY never cleared across every attempt. With the Poseidon i2c
+         * target attached the STM32 keeps the peripheral enabled, so a latched
+         * BUSY flag will not self-clear by waiting — it wedges every future
+         * read. Bit-bang a STOP to unwedge the bus; this cycle still reports
+         * FAIL, but the next one proceeds instead of latching off. */
+        (void)i2c1_bus_recover();
     }
 
     return ret;

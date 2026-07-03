@@ -29,6 +29,12 @@ LOG_MODULE_REGISTER(poseidon_accessories, LOG_LEVEL_INF);
 #define BEEP_PATTERN_ALARM 0x02U
 #define BEEP_PATTERN_STOP  0x03U
 
+/* Exponential-backoff-with-jitter parameters for send_retry(): a fixed retry
+ * delay can livelock against the external Poseidon masters we share i2c1 with,
+ * so the gap grows (BASE << attempt) and is de-phased by cycle-counter jitter. */
+#define POSEIDON_RETRY_BASE_MS 2U
+#define POSEIDON_RETRY_JITTER_MS 3U
+
 static const struct device *const bus = DEVICE_DT_GET(DT_NODELABEL(i2c1));
 static uint8_t rx[9];
 static uint8_t rx_len;
@@ -36,6 +42,17 @@ static uint8_t percent;
 static int64_t percent_at;
 static bool percent_seen;
 static struct k_spinlock gauge_lock;
+
+/* Clean-shutdown handoff. poseidon_accessories_shutdown() (called from the power
+ * shutdown thread at the commit point) latches shutdown_active, then waits for
+ * the periodic thread to finish any in-flight refresh_outputs() and set
+ * accessory_parked before it drives the bus — so a normal heartbeat (data=0x00)
+ * can't land after the deliberate-shutdown frame (data=0x01) and re-wake the
+ * peers. Plain atomics avoid adding a kernel object on this RAM-tight variant. */
+static atomic_t shutdown_active;
+static atomic_t accessory_parked;
+#define SHUTDOWN_DRAIN_MS 500
+#define SHUTDOWN_DRAIN_POLL_MS 10
 
 ZBUS_MSG_SUBSCRIBER_DEFINE(poseidon_alarm_sub);
 ZBUS_CHAN_ADD_OBS(chan_alarm_state, poseidon_alarm_sub, 0);
@@ -150,7 +167,9 @@ static int send_retry(uint8_t addr, uint8_t cmd, uint8_t data)
         if (rc == 0) {
             return 0;
         }
-        k_msleep(2);
+        uint32_t delay_ms = (uint32_t)POSEIDON_RETRY_BASE_MS << attempt;
+        uint32_t jitter_ms = k_cycle_get_32() % POSEIDON_RETRY_JITTER_MS;
+        k_msleep((int32_t)(delay_ms + jitter_ms));
     }
     return rc;
 }
@@ -159,6 +178,15 @@ static void refresh_outputs(AlarmMask_t alarms)
 {
     static bool hud_failed;
     static bool battery_failed;
+    /* One-shot battery runtime/alarm init (CMD 0x2D). The battery boots in a
+     * non-alarm-ready state ([state0=0x00,state2=0x06,state7=0x10]); a CMD 0x2D
+     * after the first heartbeat queues its event 0x07, which advances state2 to
+     * 0x05 and makes the CMD 0x0E alarm transitions reachable. Without it every
+     * speaker command is silently ignored (EMULATOR_SPEC_BATTERY_HUD.md §6.2.2).
+     * The HUD self-initialises on reset and needs no equivalent (§5.1.1).
+     * Battery and head are powered from the same cell, so they reset together —
+     * a plain boot-once flag is sufficient. */
+    static bool battery_inited;
     /* LEDs/vibrator (0x0B/0x0C/0x0D) are active-low ON/OFF: alarm -> 0x00 (ON).
      * The speaker (0x0E) is a pattern index, not on/off — keep it separate. */
     uint8_t state = alarms ? 0x00U : 0x01U;
@@ -166,9 +194,20 @@ static void refresh_outputs(AlarmMask_t alarms)
     int hud_rc = send_retry(HUD_ADDR, 0x00U, 0x00U);
     hud_rc |= send_retry(HUD_ADDR, 0x0BU, state);
     hud_rc |= send_retry(HUD_ADDR, 0x0CU, state);
+    /* Order per §6.2.2: heartbeat, then the one-shot init, then LED/speaker.
+     * Only latch the init once the 0x2D write actually lands, and defer the
+     * speaker (0x0E) until the following cycle so the battery has a ~2 s window
+     * to complete its DS2782/EEPROM init and master-mode replies first. */
+    bool speaker_armed = battery_inited;
     int battery_rc = send_retry(BATTERY_ADDR, 0x00U, 0x00U);
+    if (!battery_inited && (battery_rc == 0)) {
+        battery_rc |= send_retry(BATTERY_ADDR, 0x2DU, 0x00U);
+        battery_inited = (battery_rc == 0);
+    }
     battery_rc |= send_retry(BATTERY_ADDR, 0x0DU, state);
-    battery_rc |= send_retry(BATTERY_ADDR, 0x0EU, beep);
+    if (speaker_armed) {
+        battery_rc |= send_retry(BATTERY_ADDR, 0x0EU, beep);
+    }
     if ((hud_rc != 0) && !hud_failed) {
         OP_ERROR_DETAIL(OP_ERR_I2C_BUS, ((uint32_t)HUD_ADDR << 24) |
                         (uint32_t)(-hud_rc & 0xFFFF));
@@ -179,6 +218,39 @@ static void refresh_outputs(AlarmMask_t alarms)
     }
     hud_failed = hud_rc != 0;
     battery_failed = battery_rc != 0;
+}
+
+void poseidon_accessories_shutdown(void)
+{
+    /* Runs in the power shutdown thread's context at the commit point, before
+     * VBUS (and with it the HUD/Battery) loses power. Guard re-entry. */
+    if (!atomic_cas(&shutdown_active, 0, 1)) {
+        return;
+    }
+    /* Wait (bounded) for the periodic thread to see the flag, finish any
+     * in-flight refresh_outputs() and park so it can't slip a normal heartbeat
+     * in after our shutdown frame. Send anyway on timeout — a best-effort
+     * shutdown sequence beats blocking the power-down. */
+    for (int i = 0; (i < (SHUTDOWN_DRAIN_MS / SHUTDOWN_DRAIN_POLL_MS)) &&
+                    !atomic_get(&accessory_parked); ++i) {
+        k_msleep(SHUTDOWN_DRAIN_POLL_MS);
+    }
+
+    /* Documented low-power shutdown sequence (EMULATOR_SPEC_BATTERY_HUD.md §6.6):
+     * turn the controllable loads off first so the peers' final state doesn't
+     * depend on the current alarm/actuator state, then send the deliberate
+     * shutdown heartbeat (CMD 0x00 data=0x01) to each peer, Battery last. Each
+     * send_retry() blocks until its write completes, satisfying "wait for ACK
+     * before the next frame". We drive only the HUD and Battery here — this head
+     * IS the system Head, so it does not address 0x42 (itself). Merely stopping
+     * heartbeats is NOT enough: without the explicit shutdown frame the HUD's
+     * 120 s watchdog would later fire its LED/vibrator alarm and raise current. */
+    (void)send_retry(HUD_ADDR, 0x0BU, 0x01U);                 /* vibrator off */
+    (void)send_retry(HUD_ADDR, 0x0CU, 0x01U);                 /* red LED off */
+    (void)send_retry(BATTERY_ADDR, 0x0DU, 0x01U);             /* buddy LED off */
+    (void)send_retry(BATTERY_ADDR, 0x0EU, BEEP_PATTERN_STOP); /* speaker stop */
+    (void)send_retry(HUD_ADDR, 0x00U, 0x01U);                 /* HUD shutdown */
+    (void)send_retry(BATTERY_ADDR, 0x00U, 0x01U);             /* Battery shutdown (last) */
 }
 
 static void accessories_thread(void *a, void *b, void *c)
@@ -195,6 +267,17 @@ static void accessories_thread(void *a, void *b, void *c)
     AlarmMask_t alarms = ALARM_PPO2_INVALID;
     heartbeat_register(HEARTBEAT_ACCESSORIES);
     while (true) {
+        if (atomic_get(&shutdown_active)) {
+            /* Clean shutdown committed: hand the bus to
+             * poseidon_accessories_shutdown() and stop driving the peers. Keep
+             * feeding our watchdog slot (never touching I2C again) until the
+             * rails drop. */
+            atomic_set(&accessory_parked, 1);
+            while (true) {
+                heartbeat_kick(HEARTBEAT_ACCESSORIES);
+                k_msleep(100);
+            }
+        }
         /* Bounded (this is a plain thread, not a zbus listener): a mutex-race
          * miss would otherwise drive the accessory outputs from the previous
          * alarm mask as if current — stale alarm state read as valid. */

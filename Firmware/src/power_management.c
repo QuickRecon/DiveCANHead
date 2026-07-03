@@ -30,6 +30,9 @@
 #include "power_management.h"
 #include "errors.h"
 #include "common.h"
+#if defined(CONFIG_POSEIDON_ACCESSORIES)
+#include "poseidon_accessories.h"
+#endif
 
 LOG_MODULE_REGISTER(power, LOG_LEVEL_INF);
 
@@ -884,6 +887,13 @@ static void shutdown_thread_fn(void *p1, void *p2, void *p3)
         }
 
         LOG_INF("Bus went quiet and stayed quiet — committing to shutdown");
+#if defined(CONFIG_POSEIDON_ACCESSORIES)
+        /* Send the Poseidon HUD/Battery their documented low-power shutdown
+         * sequence while VBUS is still up (power_shutdown() drops it almost
+         * immediately). Committed path only — an aborted shutdown never reaches
+         * here, so the peers are never told to sleep mid-dive. */
+        poseidon_accessories_shutdown();
+#endif
         (void)power_shutdown(dev);
         /* power_shutdown() does not return on a healthy build.  If it
          * does (e.g. HAL refused to enter SHUTDOWN), fall through to

@@ -36,4 +36,19 @@ void i2c1_bus_lock(void);
  */
 void i2c1_bus_unlock(void);
 
+/**
+ * @brief Recover a wedged i2c1 bus (bit-banged 9 SCL pulses + STOP).
+ *
+ * With a Poseidon i2c target registered the STM32 keeps the I2C peripheral
+ * enabled between transfers, so a BUSY flag latched by a multimaster collision
+ * never self-clears and every subsequent controller transfer returns -EBUSY.
+ * This drives a STOP on the wire (via the board's scl/sda-gpios) to clear it.
+ * Takes i2c1_bus_lock() internally so it cannot race a concurrent transfer.
+ *
+ * @return 0 on success; -ENODEV if i2c1 is absent from the devicetree (e.g.
+ *         native_sim); -ENOSYS if CONFIG_I2C_STM32_BUS_RECOVERY is not enabled
+ *         for this build; or a driver error code.
+ */
+int i2c1_bus_recover(void);
+
 #endif /* I2C_BUS_LOCK_H */
