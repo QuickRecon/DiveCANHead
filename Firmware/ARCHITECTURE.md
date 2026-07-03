@@ -235,6 +235,12 @@ On boot, the firmware waits 1 second for peripherals to stabilize, then checks i
 
 `power_shutdown()` enters STM32 SHUTDOWN mode via direct HAL calls (`HAL_PWREx_EnterSHUTDOWNMode()`), draws < 1 µA, and arms `PWR_WAKEUP_PIN2_LOW` (PC13 = CAN_EN, active-low). When CAN traffic re-asserts CAN_EN low, the wakeup is a power-on reset — execution restarts at the reset vector and the boot path re-evaluates whether to stay up. Zephyr's STM32L4 PM layer doesn't expose SHUTDOWN, so the HAL is called directly (see COMPROMISE.md).
 
+### CAN transceiver control and warm-start recovery
+
+The TCAN334 transceiver has two control lines the power subsystem owns: `can-shutdown-gpios` (PC14, SHDN — active-high power-down) and `can-silent-gpios` (PC15, S — active-high listen-only). Both are driven **inactive at init** (transceiver powered, normal mode). Going into shutdown, `power_shutdown()` asserts the silent line, then arms `PWR_PUCRx` pulls (SHDN/S high) so the transceiver stays powered down and quiet through sleep.
+
+Those PWR pull registers live in the always-on VDD domain. Because VCC never drops on this board, **a wake-from-SHUTDOWN does not reset them** — unlike a cold power-on. Left applied, the retained pull-up on the silent line (PC15) overrides the TCAN334's internal pull-down and holds the transceiver in listen-only: the head boots but can neither ACK nor transmit, so the handset shows "no connection". `power_init()` therefore calls `HAL_PWREx_DisablePullUpPullDownConfig()` (plus per-pin clears for PC13/14/15) on every boot to release the latched pulls, and the silent line is a **driven output** rather than a passive input so its state is deterministic on cold and warm starts alike.
+
 ### Watchdog
 
 The IWDG is enabled in DTS and fed by `src/watchdog_feeder.c` at priority 14 (lower than every safety-critical thread). The feeder only kicks the watchdog when **every registered thread** in the heartbeat module (`include/heartbeat.h`) has advanced its atomic counter since the previous check — a stalled thread → no feed → SoC reset within the IWDG timeout window (8 s, three feed attempts per window).

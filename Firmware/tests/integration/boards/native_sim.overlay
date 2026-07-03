@@ -65,14 +65,6 @@
         led1 = &led_5;
     };
 
-    /* ---- CAN silent pin (gpio_keys) ---- */
-    gpio_keys {
-        compatible = "gpio-keys";
-        can_silent: can_silent {
-            gpios = <&gpio_sim0 6 GPIO_ACTIVE_HIGH>;
-        };
-    };
-
     /* ---- Hardware version detection ---- */
     hw_version: hw-version {
         compatible = "quickrecon,hw-version";
@@ -110,6 +102,7 @@
         battery-divider-ratio = <7250>;
         can-enable-gpios = <&gpio_sim0 11 GPIO_ACTIVE_LOW>;
         can-shutdown-gpios = <&gpio_sim0 12 GPIO_ACTIVE_HIGH>;
+        can-silent-gpios = <&gpio_sim0 6 GPIO_ACTIVE_HIGH>;
     };
 
     /* ---- Emulated external ADCs (replace I2C ADS1115) ----

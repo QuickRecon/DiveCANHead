@@ -49,6 +49,8 @@ struct power_config {
     bool has_can_en;
     struct gpio_dt_spec can_shdn;
     bool has_can_shdn;
+    struct gpio_dt_spec can_silent;
+    bool has_can_silent;
     /* Rev2 only */
     struct gpio_dt_spec bus_sel[2];
     bool has_bus_select;
@@ -405,8 +407,14 @@ Status_t power_shutdown(const struct device *dev)
 
     LOG_INF("Entering shutdown");
 
-    /* Step 1: silence the CAN transceiver before doing anything else
-     * so the bus sees a clean idle state. */
+    /* Step 1: put the CAN transceiver into listen-only before doing anything
+     * else so the bus sees a clean idle state. Assert the silent line (drives
+     * the TCAN334 S pin high); the PWR pull-up armed in step 4 then holds it
+     * through sleep. can_shdn is left inactive here — the shutdown pull in
+     * step 4 raises SHDN to fully power the transceiver down. */
+    if (cfg->has_can_silent) {
+        set_gpio_checked(&cfg->can_silent, 1);
+    }
     if (cfg->has_can_shdn) {
         set_gpio_checked(&cfg->can_shdn, 0);
     }
@@ -498,6 +506,30 @@ Status_t power_shutdown(const struct device *dev)
 
 /* ---- Driver init ---- */
 
+#if defined(CONFIG_SOC_FAMILY_STM32)
+/**
+ * @brief Release the STM32 Standby/Shutdown GPIO pull configuration latched on the way into shutdown.
+ *
+ * power_shutdown() arms PWR_PUCRx/PWR_PDCRx pulls (via APC) so the CAN
+ * transceiver control lines hold a safe state while the SoC sleeps. Those
+ * registers live in the always-on VDD domain: on this board VCC never drops,
+ * so waking from SHUTDOWN does NOT reset them. Left applied, the retained
+ * pull-up on the transceiver silent line (PC15) overrides the TCAN334's
+ * internal pull-down and holds it in listen-only mode — the head powers up
+ * but can neither ACK nor transmit, so the handset reports "no connection".
+ * A cold boot never sees this because a true power-on reset clears the PWR
+ * block. Clearing APC here neutralises every latched pull; the individual
+ * CAN pins are cleared explicitly too so the PUCR bits themselves are reset.
+ */
+static void clear_standby_pull_config(void)
+{
+    (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_13);
+    (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_14);
+    (void)HAL_PWREx_DisableGPIOPullUp(PWR_GPIO_C, PWR_GPIO_BIT_15);
+    HAL_PWREx_DisablePullUpPullDownConfig();
+}
+#endif
+
 /**
  * @brief Zephyr driver init: configure ADC, CAN GPIOs, and optional bus-select mux.
  *
@@ -513,6 +545,13 @@ static Status_t power_init(const struct device *dev)
     const struct power_config *cfg = dev->config;
     struct power_data *data = dev->data;
     Status_t result = 0;
+
+#if defined(CONFIG_SOC_FAMILY_STM32)
+    /* Release any GPIO pulls latched by a previous power_shutdown(). Must run
+     * before the CAN control pins are reconfigured below so a warm start comes
+     * up in the same state as a cold boot. */
+    clear_standby_pull_config();
+#endif
 
     /* Verify the VBUS regulator device is ready */
     if (!device_is_ready(cfg->vbus_reg)) {
@@ -569,6 +608,20 @@ static Status_t power_init(const struct device *dev)
                             GPIO_OUTPUT_INACTIVE);
             if (0 != ret) {
                 LOG_ERR("CAN shutdown GPIO config failed: %d", ret);
+                result = ret;
+            }
+        }
+
+        /* Configure CAN silent output if present. Driven INACTIVE (silent
+         * line low → transceiver in normal mode). A push-pull output holds
+         * this regardless of the TCAN334's internal pull-down or any pull
+         * left over from a previous shutdown, so the bus comes up on every
+         * boot — cold or warm. */
+        if ((0 == result) && cfg->has_can_silent) {
+            ret = gpio_pin_configure_dt(&cfg->can_silent,
+                            GPIO_OUTPUT_INACTIVE);
+            if (0 != ret) {
+                LOG_ERR("CAN silent GPIO config failed: %d", ret);
                 result = ret;
             }
         }
@@ -646,6 +699,8 @@ static Status_t power_init(const struct device *dev)
         .has_can_en = POWER_HAS_PROP(inst, can_enable_gpios),          \
         .can_shdn = POWER_GPIO_OR_EMPTY(inst, can_shutdown_gpios),     \
         .has_can_shdn = POWER_HAS_PROP(inst, can_shutdown_gpios),      \
+        .can_silent = POWER_GPIO_OR_EMPTY(inst, can_silent_gpios),     \
+        .has_can_silent = POWER_HAS_PROP(inst, can_silent_gpios),      \
         .bus_sel = {                                                    \
             POWER_GPIO_BY_IDX_OR_EMPTY(inst, bus_select_gpios, 0), \
             POWER_GPIO_BY_IDX_OR_EMPTY(inst, bus_select_gpios, 1), \

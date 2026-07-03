@@ -58,6 +58,16 @@ properties:
     type: phandle-array
     description: CAN transceiver power/shutdown control output.
 
+  can-silent-gpios:
+    type: phandle-array
+    description: |
+      CAN transceiver silent/listen-only (Rs) control output. Driven
+      inactive (normal mode) at init so the transceiver can drive the bus,
+      and active (silent/recessive) as part of the shutdown sequence. Owning
+      this pin as a driven output — rather than leaving it a passive input —
+      guarantees normal mode on a warm start, where the STM32 standby pull
+      configuration would otherwise leave it asserted silent.
+
   # ---- Rev2 only (optional) ----
 
   bus-select-gpios:

@@ -35,14 +35,6 @@
 		};
 	};
 
-	gpio_keys {
-		compatible = "gpio-keys";
-
-		can_silent: can_silent {
-			gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>;
-		};
-	};
-
 	/* Hardware version detection — halts with blink code on mismatch.
 	 * JR2: all three pins wired to ground → expected [0, 0, 0] */
 	hw_version: hw-version {
@@ -93,6 +85,11 @@
 		vcc-sense = <&vbat>;
 		can-enable-gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
 		can-shutdown-gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;
+		/* CAN transceiver silent/Rs line. Driven low (normal mode) at
+		 * init; asserted high (silent) going into shutdown. Owned as an
+		 * output — not a passive input — so a warm start reliably clears
+		 * silent mode. See power_management.c. */
+		can-silent-gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>;
 	};
 };
 
