@@ -24,11 +24,14 @@
 #include "tank_pressure.h"
 #include "errors.h"
 #include "common.h"
+#include "i2c_bus_lock.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/adc.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/logging/log.h>
+
+#include <errno.h>
 
 LOG_MODULE_REGISTER(tank_pressure, LOG_LEVEL_INF);
 
@@ -38,6 +41,14 @@ LOG_MODULE_REGISTER(tank_pressure, LOG_LEVEL_INF);
 
 /* Same publish timeout the cell drivers use for their zbus channels. */
 #define TANK_PUBLISH_TIMEOUT_MS 100
+
+/* On the Poseidon variant the ADS1115 shares i2c1 with the Poseidon accessory
+ * masters, so a conversion-trigger write can lose the bus and return -EBUSY
+ * (or -EAGAIN on arbitration loss). i2c1_bus_lock() removes the collisions
+ * against our own masters; these retries ride out the external ones. Tank
+ * pressure is slow and display-only, so a few short retries are free. */
+#define TANK_ADC_MAX_ATTEMPTS 4
+#define TANK_ADC_RETRY_DELAY_MS 3
 
 /* The analog cell threads measured ~712 B runtime high-water with the same
  * ADC-read + zbus-publish call chains PLUS a settings/snprintf cal-load path
@@ -95,6 +106,51 @@ static void transducer_init(struct transducer_state *t)
 }
 
 /**
+ * @brief Whether an ADC read error is a transient i2c1 bus-arbitration failure.
+ *
+ * -EBUSY is the STM32 controller reporting the bus was busy at transfer start
+ * (a Poseidon master mid-frame); -EAGAIN is an arbitration loss. Both clear on
+ * their own and warrant a retry; anything else is a hard error.
+ *
+ * @param ret Return code from adc_read_dt().
+ * @return true if the read should be retried.
+ */
+static bool adc_error_is_transient(Status_t ret)
+{
+    return (-EBUSY == ret) || (-EAGAIN == ret);
+}
+
+/**
+ * @brief Read the ADS1115 channel, retrying on transient i2c1 contention.
+ *
+ * The transfer is serialised against the other STM32 i2c1 masters via
+ * i2c1_bus_lock(); external Poseidon masters can still collide, so a bounded
+ * retry with a short backoff absorbs the residual multimaster -EBUSY/-EAGAIN.
+ *
+ * @param t Transducer state (must have been through transducer_init()).
+ * @return 0 on success (t->adc_sample_buf holds the raw count), else the last
+ *         adc_read_dt() error.
+ */
+static Status_t transducer_read_retry(struct transducer_state *t)
+{
+    Status_t ret = (Status_t)(-EBUSY);
+
+    for (uint8_t attempt = 0U;
+         (attempt < TANK_ADC_MAX_ATTEMPTS) && adc_error_is_transient(ret);
+         ++attempt) {
+        if (attempt > 0U) {
+            k_msleep(TANK_ADC_RETRY_DELAY_MS);
+        }
+
+        i2c1_bus_lock();
+        ret = adc_read_dt(t->adc, &t->adc_seq);
+        i2c1_bus_unlock();
+    }
+
+    return ret;
+}
+
+/**
  * @brief Read one transducer and convert to decibar.
  *
  * @param t Transducer state (must have been through transducer_init()).
@@ -109,7 +165,7 @@ static TankPressure_t transducer_sample(struct transducer_state *t)
         t->adc_seq.buffer = &t->adc_sample_buf;
         t->adc_seq.buffer_size = sizeof(t->adc_sample_buf);
 
-        Status_t ret = adc_read_dt(t->adc, &t->adc_seq);
+        Status_t ret = transducer_read_retry(t);
 
         if (0 == ret) {
             int32_t millivolts = t->adc_sample_buf;

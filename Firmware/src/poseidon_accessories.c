@@ -2,6 +2,7 @@
 #include "alarm.h"
 #include "heartbeat.h"
 #include "errors.h"
+#include "i2c_bus_lock.h"
 
 #include <errno.h>
 #include <string.h>
@@ -101,7 +102,13 @@ static int send_frame(uint8_t addr, uint8_t cmd, uint8_t data)
     uint8_t frame[4] = {cmd, 0x02U, data, 0};
     uint8_t wire[4] = {(uint8_t)(addr << 1), cmd, 0x02U, data};
     frame[3] = poseidon_crc8(wire, sizeof(wire));
-    return i2c_write(bus, frame, sizeof(frame), addr);
+    /* Serialise against the tank-pressure ADS1115 reads that share i2c1 so the
+     * two STM32 masters never collide (the residual external-master contention
+     * is absorbed by send_retry() and the ADS-side retry). */
+    i2c1_bus_lock();
+    int rc = i2c_write(bus, frame, sizeof(frame), addr);
+    i2c1_bus_unlock();
+    return rc;
 }
 
 bool poseidon_gauge_voltage_byte(uint8_t *value)

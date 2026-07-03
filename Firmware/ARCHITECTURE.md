@@ -268,6 +268,7 @@ Design points:
 - **Gain comes from DT, not code.** Conversion uses `adc_raw_to_millivolts_dt()` so the variant overlay chooses the ADS1115 PGA range (`ADC_GAIN_1` = ±2.048 V for 0.3–1.8 V senders); the analog cells' hardcoded ±0.256 V constant never applies. The variant overlay must re-enable the owning ADS1115 node and override the channel gain.
 - **Out-of-range ⇒ explicit failure.** Voltages outside [MIN, MAX] (open/shorted sender), ADC errors, and init failures all map to `TANK_PRESSURE_FAIL` (0xFFFF) in the DiveCAN pressure field rather than a plausible-but-wrong value. The mapping itself is pure math in `tank_pressure_math.c` (ztest: `tests/tank_pressure_math`).
 - **Sampler is display-only, no heartbeat.** The 500 ms sampler thread deliberately doesn't register with the watchdog — a wedged pressure gauge must not reboot the head mid-dive. Instead `divecan_ppo2_tx` checks the message timestamp and substitutes `TANK_PRESSURE_FAIL` after 3 s of silence.
+- **i2c1 is multi-master on Poseidon.** On `Poseidon_Aren` the transducer ADS1115 shares i2c1 with the Poseidon accessory bus (`poseidon_accessories.c` drives the HUD/battery as master and answers the display as target). An ADS conversion-trigger write racing a Poseidon output frame previously surfaced as intermittent `-EBUSY` (`OP_ERR_EXT_ADC` detail 0x10). Both STM32-initiated masters now serialise through `i2c1_bus_lock()` (`src/i2c_bus_lock.c`, an unconditional `K_MUTEX`), and the sampler additionally retries the read on the transient `-EBUSY`/`-EAGAIN` that the *external* Poseidon masters can still cause and which the mutex cannot arbitrate. The lock is uncontended (near-free) on variants that don't share the bus.
 - **Wire format** is `TANK_PRESSURE_ID` (0x0D0B0000) per the DiveCAN spec `Messaging/Pressure.md`: byte 0 designates the cylinder (0x00 O2, 0x10 dil), bytes 1-2 carry decibar big-endian. One frame per configured cylinder every PPO2 broadcast cycle (500 ms).
 
 ## DiveCAN Protocol
@@ -379,6 +380,7 @@ Firmware/
 │   ├── calibration.c               Calibration thread, atomic guard, settings, rollback
 │   ├── consensus_subscriber.c      zbus subscriber: cell channels → vote → consensus
 │   ├── errors.c                    Fatal handler, zbus channel, crash persistence
+│   ├── i2c_bus_lock.c              Shared K_MUTEX serialising STM32 i2c1 masters
 │   ├── oxygen_cell_analog.c        Analog cell: ADS1115 ADC read, cal, zbus publish
 │   ├── oxygen_cell_channels.c      zbus channel definitions (6 channels)
 │   ├── oxygen_cell_diveo2.c        DiveO2 cell: UART async, parse, zbus publish

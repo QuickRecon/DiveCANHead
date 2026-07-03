@@ -65,6 +65,7 @@ target_sources(app PRIVATE
     src/power_math.c
     src/power_management.c
     src/heartbeat.c
+    src/i2c_bus_lock.c
     src/error_histogram.c
     src/firmware_confirm.c
     src/flash_mass_erase.c
