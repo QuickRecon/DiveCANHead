@@ -43,6 +43,13 @@ typedef struct {
     uint32_t off_duration_us;     /**< Solenoid off-time for this cycle (µs) */
 } FireTiming_t;
 
+/** @brief Which flush solenoid (if any) a setpoint change calls for. */
+typedef enum {
+    SETPOINT_FLUSH_NONE = 0,  /**< Setpoint unchanged — no flush */
+    SETPOINT_FLUSH_O2,        /**< Setpoint increased — fire the O2 flush solenoid */
+    SETPOINT_FLUSH_DIL,       /**< Setpoint decreased — fire the diluent flush solenoid */
+} SetpointFlushDirection_t;
+
 /**
  * @brief Initialise a PIDState_t with the legacy defaults.
  *
@@ -134,5 +141,20 @@ FireTiming_t pid_compute_fire_timing(PIDNumeric_t duty,
                      uint32_t total_cycle_ms,
                      uint32_t min_fire_ms,
                      uint32_t max_fire_ms);
+
+/**
+ * @brief Decide which flush solenoid (if any) a setpoint change calls for.
+ *
+ * A setpoint increase calls for an O2 flush (drive loop PPO2 up toward the
+ * new target); a decrease calls for a diluent flush (drive it down). Equal
+ * values call for no flush. Parameters are uint8_t — the underlying type of
+ * PPO2_t (centibar) — so this TU stays free of kernel/domain headers.
+ *
+ * @param previous_cb Setpoint at the last check, in centibar
+ * @param current_cb Setpoint now, in centibar
+ * @return The flush direction the change calls for
+ */
+SetpointFlushDirection_t setpoint_flush_direction(uint8_t previous_cb,
+                          uint8_t current_cb);
 
 #endif /* PPO2_CONTROL_MATH_H */

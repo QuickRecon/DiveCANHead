@@ -20,7 +20,6 @@ west build -d build-native/integration-asan -b native_sim . \
   -- -DBOARD_ROOT=. \
      -DDTC_OVERLAY_FILE=tests/integration/boards/native_sim.overlay \
      "-DEXTRA_CONF_FILE=tests/integration/integration.conf;\
-                        variants/dev_full.conf;\
                         tests/integration/sanitizers.conf"
 ```
 

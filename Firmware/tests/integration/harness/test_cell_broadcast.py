@@ -40,7 +40,7 @@ from sim_shim import SharedMemShim
 
 RT_RATIO: float = 100.0
 
-# Cell 1 is the DiveO2 UART cell in the dev_full topology.
+# Cell 1 is the DiveO2 UART cell in the integration topology.
 _CELL = 1
 _CELL_TYPE = CellType.DIVEO2
 

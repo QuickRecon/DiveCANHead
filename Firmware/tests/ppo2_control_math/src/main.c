@@ -419,3 +419,60 @@ ZTEST(fire_timing_suite, test_negative_duty_floors_to_zero)
     zassert_equal(t.on_duration_us, 0U, NULL);
     zassert_equal(t.off_duration_us, FIRE_CYCLE_MS * US_PER_MS, NULL);
 }
+
+/* ---- setpoint_flush_direction ---- */
+
+ZTEST_SUITE(flush_direction_suite, NULL, NULL, NULL, NULL, NULL);
+
+/** @brief Equal setpoints call for no flush. */
+ZTEST(flush_direction_suite, test_equal_setpoints_none)
+{
+    zassert_equal(setpoint_flush_direction(70U, 70U),
+              SETPOINT_FLUSH_NONE, NULL);
+}
+
+/** @brief Setpoint increase (0.70 -> 1.30 bar) calls for an O2 flush. */
+ZTEST(flush_direction_suite, test_increase_selects_o2)
+{
+    zassert_equal(setpoint_flush_direction(70U, 130U),
+              SETPOINT_FLUSH_O2, NULL);
+}
+
+/** @brief Setpoint decrease (1.30 -> 0.70 bar) calls for a diluent flush. */
+ZTEST(flush_direction_suite, test_decrease_selects_dil)
+{
+    zassert_equal(setpoint_flush_direction(130U, 70U),
+              SETPOINT_FLUSH_DIL, NULL);
+}
+
+/** @brief A single-centibar increase still selects the O2 flush. */
+ZTEST(flush_direction_suite, test_minimal_increment)
+{
+    zassert_equal(setpoint_flush_direction(100U, 101U),
+              SETPOINT_FLUSH_O2, NULL);
+}
+
+/** @brief A single-centibar decrease still selects the diluent flush. */
+ZTEST(flush_direction_suite, test_minimal_decrement)
+{
+    zassert_equal(setpoint_flush_direction(101U, 100U),
+              SETPOINT_FLUSH_DIL, NULL);
+}
+
+/** @brief Full-range swings (0.40 <-> 1.60 bar) resolve by sign of change. */
+ZTEST(flush_direction_suite, test_extremes)
+{
+    zassert_equal(setpoint_flush_direction(40U, 160U),
+              SETPOINT_FLUSH_O2, NULL);
+    zassert_equal(setpoint_flush_direction(160U, 40U),
+              SETPOINT_FLUSH_DIL, NULL);
+}
+
+/** @brief The hypoxic 0.19 bar "diluent" setpoint behaves as a plain value. */
+ZTEST(flush_direction_suite, test_hypoxic_setpoint)
+{
+    zassert_equal(setpoint_flush_direction(70U, 19U),
+              SETPOINT_FLUSH_DIL, NULL);
+    zassert_equal(setpoint_flush_direction(19U, 130U),
+              SETPOINT_FLUSH_O2, NULL);
+}

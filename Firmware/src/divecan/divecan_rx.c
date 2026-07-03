@@ -603,6 +603,9 @@ static void RespSetpoint(const DiveCANMessage_t *message)
      * never drive the loop to an unsafe setpoint (see runtime_settings.h). */
     PPO2_t setpoint = clamp_setpoint_cb(message->data[0]);
     zbus_pub_checked(&chan_setpoint, &setpoint, K_MSEC(100));
+    /* Diver-commanded mirror: drives the setpoint-change flush. The
+     * handset-loss failsafe deliberately does not publish here. */
+    zbus_pub_checked(&chan_setpoint_cmd, &setpoint, K_MSEC(100));
 }
 
 /**

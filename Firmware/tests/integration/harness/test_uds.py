@@ -421,9 +421,9 @@ def test_rdbi_setting_info_multiframe(dut) -> None:
 # Per-cell DIDs (0xF4Nx, N=cell index)
 # ---------------------------------------------------------------------------
 #
-# Cell topology in the dev_full variant (see helpers.DEV_FULL_CELLS):
+# Cell topology in the integration build (see helpers.INTEGRATION_CELLS):
 #   cell 0 (DID 0xF40x): DiveO2 (type=0)
-#   cell 1 (DID 0xF41x): O2S    (type=2)
+#   cell 1 (DID 0xF41x): DiveO2 (type=0)
 #   cell 2 (DID 0xF42x): Analog (type=1)
 
 
@@ -436,7 +436,7 @@ CELL_OFFSET_INCLUDED = 0x02
 CELL_OFFSET_STATUS = 0x03
 CELL_OFFSET_MILLIVOLTS = 0x05
 
-EXPECTED_CELL_TYPES = [0, 2, 1]  # DiveO2, O2S, Analog
+EXPECTED_CELL_TYPES = [0, 0, 1]  # DiveO2, DiveO2, Analog
 
 
 def _cell_did(cell_idx: int, offset: int) -> int:
@@ -464,7 +464,7 @@ def test_rdbi_cell_ppo2_matches_injection(calibrated_dut) -> None:
     can_bus, shim = calibrated_dut
 
     # Inject 0.80 bar on cell 1 (DiveO2 by topology).
-    helpers.configure_cell(shim, 1, helpers.DEV_FULL_CELLS[0], 80)
+    helpers.configure_cell(shim, 1, helpers.INTEGRATION_CELLS[0], 80)
     helpers.sim_sleep(shim, helpers.CAL_SETTLE_S)
 
     can_bus.flush_rx()

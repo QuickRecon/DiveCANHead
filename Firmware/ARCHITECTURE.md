@@ -69,7 +69,7 @@ Hardware topology is defined at compile time via Kconfig, applied through `EXTRA
 - **Cell topology**: Count (1-3) and per-cell type (Analog / DiveO2 / O2S)
 - **Power mode**: Battery only, battery+CAN fallback, CAN only
 - **Battery chemistry**: 9V alkaline, 1S/2S/3S lithium
-- **Solenoid role mapping**: Which physical channel serves which function (O2 inject, O2 flush, dil flush, secondary inject)
+- **Solenoid role mapping**: Which physical channel serves which function (O2 inject, O2 flush, dil flush, secondary inject). When a secondary inject is wired, the fire thread alternates fires between the two inject channels. `CONFIG_SOL_FLUSH_TIME` (ms, 0 = off) adds a flush on diver-commanded setpoint changes: O2 flush on an increase, dil flush on a decrease, fired for the configured time at the start of the next fire cycle (BUILD_ASSERT-bounded by the deadman window)
 - **Runtime defaults**: PPO2 control mode, calibration method, depth compensation
 
 Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_settings.c` catches configuration errors at compile time. Derived bools (`HAS_DIGITAL_CELL`, `HAS_O2_SOLENOID`, `HAS_FLUSH_SOLENOID`) gate feature availability.
@@ -78,11 +78,15 @@ Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_set
 
 | Variant | Description |
 |---------|-------------|
-| `dev_full.conf` | All features enabled — mixed cell types, all 4 solenoids, all runtime options |
 | `AP_Aren.conf` | AP-style single-solenoid head — 3× DiveO2, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery-only, 2S Li |
 | `eCCR_classic.conf` | Classic single-solenoid eCCR — 3× analog, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery+CAN, 9V |
-| `Poseidon_Aren.conf` | 2× DiveO2 head — solenoid map + control/cal/depth defaults match `dev_full` (all 4 solenoids, PID, flush, depth comp); battery-only, 1S Li; HP O2/dil tank transducers on the spare adc_ext1 channels (0.3–1.8 V ↔ 0–300 bar, `ADC_GAIN_1` set in the overlay) |
+| `Poseidon_Aren.conf` | 2× DiveO2 head — all 4 solenoid channels (dual O2 inject alternation, O2/dil flush), PID control, flush cal, depth comp, setpoint-change flush (`CONFIG_SOL_FLUSH_TIME=3000`); battery-only, 1S Li; HP O2/dil tank transducers on the spare adc_ext1 channels (0.3–1.8 V ↔ 0–300 bar, `ADC_GAIN_1` set in the overlay) |
 | `Sidewinder_Gabriel.conf` | 3× DiveO2 manual CCR. Intended solenoid and battery topology currently contradict the executable config; resolve before qualification. |
+
+The native_sim integration tests use their own all-features topology in
+`tests/integration/integration.conf` (DiveO2/DiveO2/Analog cells — O2S is out
+of scope — all 4 solenoid channels, `CONFIG_SOL_FLUSH_TIME=3000`); the former
+`variants/dev_full.conf` was folded into it.
 
 ## Configuration Split: Compile-Time vs Runtime
 
@@ -104,7 +108,7 @@ Runtime settings are validated against compile-time tables — e.g., PID mode is
 
 2. **Driver** (`drivers/solenoid/`): Zephyr device driver using `DEVICE_DT_INST_DEFINE`. Manages GPIO outputs and TIM7 hardware counter. The counter ISR (deadman) forces all outputs low regardless of application state — hardware-enforced safety that the application cannot override.
 
-3. **Role mapping** (`solenoid_roles.h`): `static inline` wrappers that map Kconfig role names (e.g., `sol_o2_inject_fire`) to physical driver channels. Roles not present on a variant (`channel = -1`) compile to `-ENODEV` returns.
+3. **Role mapping** (`solenoid_roles.h`): `static inline` wrappers that map Kconfig role names (e.g., `sol_o2_inject_fire` / `sol_o2_inject_off`, plus `_2`, `o2_flush`, and `dil_flush` variants) to physical driver channels. Roles not present on a variant (`channel = -1`) compile to `-ENODEV` returns (fire) or no-ops (off).
 
 ## Error Handling (Four Tiers)
 
@@ -171,13 +175,14 @@ Defined channels:
 | `chan_cal_request` | `CalRequest_t` | DiveCAN RX, UDS write | Calibration listener |
 | `chan_cal_response` | `CalResponse_t` | Calibration thread | DiveCAN cal response listener |
 | `chan_battery_status` | `BatteryStatus_t` | Battery monitor thread | DiveCAN ping response |
-| `chan_setpoint` | `PPO2_t` | DiveCAN RX, UDS write | PPO2 PID controller, DiveCAN ping |
+| `chan_setpoint` | `PPO2_t` | DiveCAN RX, UDS write, handset-loss failsafe | PPO2 PID controller, DiveCAN ping |
+| `chan_setpoint_cmd` | `PPO2_t` | DiveCAN RX, UDS write (diver-commanded only — the failsafe does NOT publish here) | Solenoid fire thread (setpoint-change flush trigger) |
 | `chan_atmos_pressure` | `uint16_t` | DiveCAN RX | UDS cal trigger, PPO2 PID controller (depth comp) |
 | `chan_shutdown_request` | `bool` | DiveCAN RX (BUS_OFF) | Future power management |
 | `chan_dive_state` | `DiveState_t` | DiveCAN RX (DIVING msg) | Flash log listener (emits DIVE_START/DIVE_END markers) |
 | `chan_duty_cycle` | `Numeric_t` | PPO2 PID controller | Solenoid fire thread |
 | `chan_solenoid_status` | `DiveCANError_t` | PPO2 PID controller | DiveCAN RespPing (OR-combined into status byte) |
-| `chan_solenoid_fire` | `SolenoidFireEvent_t` | PPO2 solenoid fire thread (start + end of each cycle) | Flash log listener (FL_TYPE_SOLENOID_FIRE) — `CONFIG_FLASH_LOG` only |
+| `chan_solenoid_fire` | `SolenoidFireEvent_t` | PPO2 solenoid fire thread (kind 0/1 = inject start/end, 2/3 = flush start/end) | Flash log listener (FL_TYPE_SOLENOID_FIRE) — `CONFIG_FLASH_LOG` only |
 | `chan_tank_pressure` | `TankPressureMsg_t` | Tank pressure sampler thread | DiveCAN PPO2 TX (TANK_PRESSURE_ID frames) — `CONFIG_HAS_PRESSURE_TRANSDUCER` only |
 
 `chan_cell_2` and `chan_cell_3` are conditionally compiled based on `CONFIG_CELL_COUNT`.
@@ -296,7 +301,7 @@ DiveCAN uses a non-standard padding byte in Single Frame and First Frame message
 | `divecan_rx` | 2048 | 5 | CAN RX dispatch, ISO-TP/UDS processing |
 | `divecan_ppo2_tx` | 1024 | 4 | PPO2 broadcast every 500ms (zbus subscriber on `chan_consensus`) |
 | `ppo2_pid_thread` | 2048 | 6 | PPO2 PID controller — 100 ms cycle, publishes duty + solenoid status (suspends in OFF / MK15 modes) |
-| `solenoid_fire_thread` | 1024 | 6 | Solenoid fire timing — 5 s cycle (PID) or 6 s cycle (MK15), drives `sol_o2_inject_fire()` |
+| `solenoid_fire_thread` | 1024 | 6 | Solenoid fire timing — 5 s cycle (PID) or 6 s cycle (MK15); alternates primary/secondary inject when fitted; runs the setpoint-change flush check at each cycle start (`CONFIG_SOL_FLUSH_TIME`) |
 
 ### Message Flow
 
@@ -340,8 +345,9 @@ NCS=/home/aren/ncs/toolchains/927563c840
 PATH=$NCS/usr/local/bin:$PATH \
 LD_LIBRARY_PATH=$NCS/usr/local/lib:$LD_LIBRARY_PATH \
 ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk \
-west build -d build -b divecan_jr/stm32l431xx . \
-  -- -DBOARD_ROOT=. -DEXTRA_CONF_FILE=variants/dev_full.conf
+west build -d build -b divecan_jr/stm32l431xx . --sysbuild \
+  -- -DBOARD_ROOT=. -DEXTRA_CONF_FILE=variants/Poseidon_Aren.conf \
+     -DEXTRA_DTC_OVERLAY_FILE=variants/Poseidon_Aren.overlay
 ```
 
 ## File Layout
@@ -403,7 +409,8 @@ Firmware/
 │   ├── divecan_tx/                 Message composition byte layout (15 tests)
 │   └── ppo2_broadcast/             PPO2 broadcast filtering logic (8 tests)
 ├── variants/
-│   └── dev_full.conf               All-features development variant
+│   └── <variant>.conf/.overlay     Hardware variants (AP_Aren, eCCR_classic,
+│                                   Poseidon_Aren, Sidewinder_Gabriel)
 ├── scripts/
 │   └── lint_variant.sh             CI lint for duplicate Kconfig choices
 ├── prj.conf                        Common Zephyr config (hardening, RTT, logging, zbus)

@@ -56,8 +56,12 @@ from rebreather_model import LOOP_PROFILES, RebreatherModel
 from sim_shim import SharedMemShim
 
 
-# Solenoid channel for O2 inject (CONFIG_SOL_O2_INJECT_CHANNEL=0).
+# Solenoid channels for O2 inject (CONFIG_SOL_O2_INJECT_CHANNEL=0,
+# CONFIG_SOL_O2_INJECT_2_CHANNEL=1). The firmware alternates fires
+# between the two on dual-inject builds, so the plant model must treat
+# "either inject open" as O2 flowing into the loop.
 O2_INJECT_SOLENOID: int = 0
+O2_INJECT_2_SOLENOID: int = 1
 
 # Minimum plant-time step.  The firmware's tightest control loop is
 # the PID at 100 ms; we want at least 4× sampling resolution so the
@@ -308,7 +312,8 @@ def test_controller_does_not_oscillate(dut, firmware,
             dt_s = (now_us - sim_t_last_us) / 1_000_000.0
             sim_t_last_us = now_us
 
-            solenoid = bool(sol_state[O2_INJECT_SOLENOID])
+            solenoid = (bool(sol_state[O2_INJECT_SOLENOID])
+                        or bool(sol_state[O2_INJECT_2_SOLENOID]))
             if dt_s > 0:
                 model.step(dt_s, solenoid_open=solenoid)
             _inject_ppo2_to_cells(shim, model.reported_ppo2)

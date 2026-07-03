@@ -222,3 +222,24 @@ FireTiming_t pid_compute_fire_timing(PIDNumeric_t duty,
 
     return timing;
 }
+
+SetpointFlushDirection_t setpoint_flush_direction(uint8_t previous_cb,
+                          uint8_t current_cb)
+{
+    SetpointFlushDirection_t direction = SETPOINT_FLUSH_NONE;
+
+    if (current_cb > previous_cb)
+    {
+        direction = SETPOINT_FLUSH_O2;
+    }
+    else if (current_cb < previous_cb)
+    {
+        direction = SETPOINT_FLUSH_DIL;
+    }
+    else
+    {
+        /* No change — no flush required. */
+    }
+
+    return direction;
+}

@@ -59,7 +59,7 @@ from typing import List
 
 # Sensor cell time constants taken from the QuickRecon DiveCAN
 # characterisation notes:
-#   - DiveO2 / O2S digital cells: t63 ≈ 2.0 s (electrochemistry only;
+#   - DiveO2 digital cells: t63 ≈ 2.0 s (electrochemistry only;
 #     UART sampling cadence is modelled separately by the firmware's
 #     poll loop, not in this plant model).
 #   - Galvanic analog cells: t90 ≈ 6 s, so t63 ≈ 6 / ln(1/0.1)
@@ -84,7 +84,7 @@ class LoopProfile:
         smaller overshoot.  Modulated empirically against dive-log
         overshoot ratios.
 
-    Cell types must list exactly three entries in the dev_full topology
+    Cell types must list exactly three entries in the integration topology
     order (cell 1, cell 2, cell 3).  Each entry's ``sensor_tau_s`` is
     the cell's electrochemical t63.
     """
@@ -103,7 +103,7 @@ class LoopProfile:
     # Actuator
     solenoid_lpm: float            # O2 injection flow when solenoid open (STP)
 
-    # Sensors (one entry per cell in dev_full topology)
+    # Sensors (one entry per cell in integration topology)
     sensor_tau_s_per_cell: List[float] = field(default_factory=list)
 
     # Operating point

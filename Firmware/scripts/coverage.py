@@ -6,9 +6,9 @@ Orchestrates three things and stitches their .gcda traces into one report:
 
   1. Every ztest module under ``tests/<name>/`` (via native_test.py's
      ``--coverage`` mode). Builds + runs each into build-coverage/<name>/.
-  2. The integration firmware (``tests/integration/integration.conf`` on
-     top of ``variants/dev_full.conf``). Build only — the pytest harness
-     drives the run.
+  2. The integration firmware (``tests/integration/integration.conf``,
+     which carries the full test topology). Build only — the pytest
+     harness drives the run.
   3. The pytest harness under ``tests/integration/harness/``. Points
      ``DIVECAN_FW_BIN`` at the instrumented integration binary so every
      fixture launch produces .gcda files alongside the .gcno files.
@@ -90,13 +90,12 @@ def cmd_build_integration(_args: argparse.Namespace) -> int:
     Mirrors the canonical integration build command from
     ``tests/integration/SANITIZERS.md`` but targets
     ``build-coverage/integration/`` and stacks the coverage overlay on top
-    of the regular integration + dev_full configs.
+    of the self-contained integration config.
     """
     INTEGRATION_BUILD.parent.mkdir(parents=True, exist_ok=True)
 
     extra_conf = ";".join([
         "tests/integration/integration.conf",
-        "variants/dev_full.conf",
         str(COVERAGE_OVERLAY.relative_to(FIRMWARE_ROOT)),
     ])
 

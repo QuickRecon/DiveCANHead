@@ -37,7 +37,7 @@ PPO2_TEST_VALUES = list(range(0, 250, 75))
 
 # Time for each cell driver to poll, parse, publish, and for the PPO2 TX
 # thread to broadcast the new value.  DiveO2 polls every ~100 ms,
-# analog every 10 ms, O2S every 500 ms, and PPO2 TX broadcasts every
+# analog every 10 ms, and PPO2 TX broadcasts every
 # 500 ms — so 800 ms is the worst-case end-to-end propagation time.
 SETTLE_AFTER_CONFIGURE_S = 0.8
 
@@ -100,17 +100,17 @@ def test_ppo2(calibrated_dut, c1: int, c2: int, c3: int) -> None:
     """Each cell's injected PPO2 appears in the periodic PPO2 broadcast."""
     can_bus, shim = calibrated_dut
 
-    configure_cell(shim, 1, helpers.DEV_FULL_CELLS[0], c1)
-    configure_cell(shim, 2, helpers.DEV_FULL_CELLS[1], c2)
-    configure_cell(shim, 3, helpers.DEV_FULL_CELLS[2], c3)
+    configure_cell(shim, 1, helpers.INTEGRATION_CELLS[0], c1)
+    configure_cell(shim, 2, helpers.INTEGRATION_CELLS[1], c2)
+    configure_cell(shim, 3, helpers.INTEGRATION_CELLS[2], c3)
 
     helpers.sim_sleep(shim, SETTLE_AFTER_CONFIGURE_S)
 
     can_bus.flush_rx()
     msg = can_bus.wait_for(divecan.PPO2_RESP_ID)
-    check_cell_ppo2(helpers.DEV_FULL_CELLS[0], msg.data[1], c1)
-    check_cell_ppo2(helpers.DEV_FULL_CELLS[1], msg.data[2], c2)
-    check_cell_ppo2(helpers.DEV_FULL_CELLS[2], msg.data[3], c3)
+    check_cell_ppo2(helpers.INTEGRATION_CELLS[0], msg.data[1], c1)
+    check_cell_ppo2(helpers.INTEGRATION_CELLS[1], msg.data[2], c2)
+    check_cell_ppo2(helpers.INTEGRATION_CELLS[2], msg.data[3], c3)
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +126,7 @@ MILLIS_TEST_VALUES = list(range(0, 250, 36))
 def test_millivolts(calibrated_dut, c3: int) -> None:
     """Analog cell millivolts are reported correctly on the mV frame.
 
-    For the dev_full variant, only cell 3 is analog; cells 1 and 2 are
+    For the integration topology, only cell 3 is analog; cells 1 and 2 are
     digital and the firmware reports 0 for those slots.
     """
     can_bus, shim = calibrated_dut
@@ -147,7 +147,7 @@ def test_millivolts(calibrated_dut, c3: int) -> None:
 # ---------------------------------------------------------------------------
 
 # Inclusion test: small per-cell offset is still averaged in.  The
-# firmware's MAX_DEVIATION is 15 centibar, but the dev_full topology
+# firmware's MAX_DEVIATION is 15 centibar, but the integration topology
 # has one analog cell — at exactly ±10 cb the analog reading's ADC
 # quantization can drift the difference across the boundary, so use
 # ±8 to stay clear of it.  Original HW parametrization was 105 cases
@@ -173,7 +173,7 @@ def test_consensus_averages_cells(
     nominal = (average * 3 - offset_centibar) / 2.0
 
     for cell_num in (1, 2, 3):
-        cell_type = helpers.DEV_FULL_CELLS[cell_num - 1]
+        cell_type = helpers.INTEGRATION_CELLS[cell_num - 1]
         value = offset_centibar if cell_num == outlier_cell else nominal
         configure_cell(shim, cell_num, cell_type, value)
 
@@ -214,7 +214,7 @@ def test_consensus_excludes_outlier(
     offset_centibar = average + offset
 
     for cell_num in (1, 2, 3):
-        cell_type = helpers.DEV_FULL_CELLS[cell_num - 1]
+        cell_type = helpers.INTEGRATION_CELLS[cell_num - 1]
         value = offset_centibar if cell_num == outlier_cell else average
         configure_cell(shim, cell_num, cell_type, value)
 

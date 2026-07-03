@@ -44,10 +44,25 @@
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/devicetree.h>
 
 #ifdef CONFIG_HAS_O2_SOLENOID
 
 LOG_MODULE_REGISTER(ppo2_control, LOG_LEVEL_INF);
+
+/* Dual-inject alternation is compiled in only when the variant wires a
+ * secondary O2 inject solenoid (see solenoid_roles.h / src/Kconfig). */
+#define DUAL_O2_INJECT (CONFIG_SOL_O2_INJECT_2_CHANNEL != SOL_ROLE_NOT_PRESENT)
+
+#if CONFIG_SOL_FLUSH_TIME > 0
+/* The setpoint-change flush is a single solenoid_fire() whose on-time must
+ * fit inside the hardware deadman window, otherwise the deadman expires
+ * mid-flush and force-stops every solenoid channel. 1000 = µs per ms
+ * (US_PER_MS below is a static const, not usable in a constant expression). */
+BUILD_ASSERT((CONFIG_SOL_FLUSH_TIME * 1000) <=
+         DT_PROP(DT_NODELABEL(solenoids), max_on_time_us),
+         "CONFIG_SOL_FLUSH_TIME exceeds the solenoid deadman max-on-time-us");
+#endif
 
 /* ---- Tunables (preserved from STM32/Core/Src/PPO2Control/PPO2Control.c) ----
  * Comments alongside legacy values are corrected from their original
@@ -206,6 +221,61 @@ static uint16_t read_atmos_pressure(void)
     return p;
 }
 
+#if DUAL_O2_INJECT
+/** True when the next inject fire should use the secondary solenoid.
+ *  Fire-thread-only state (single writer — the solenoid fire thread). */
+static bool *getInjectUseSecondary(void)
+{
+    static bool injectUseSecondary;
+    return &injectUseSecondary;
+}
+#endif
+
+/**
+ * @brief Fire the active O2 injection solenoid for the given duration.
+ *
+ * On dual-inject variants, alternates between the primary and secondary
+ * inject solenoids: the toggle flips on every attempt (success or failure)
+ * so alternation stays deterministic and a failing channel cannot pin all
+ * firing onto one valve. Single-inject variants fire the primary only.
+ *
+ * @param duration_us On-time in microseconds (clamped to max-on-time-us)
+ * @return 0 on success, negative errno on failure
+ */
+static Status_t inject_solenoid_fire(uint32_t duration_us)
+{
+    Status_t rc = 0;
+#if DUAL_O2_INJECT
+    bool *use_secondary = getInjectUseSecondary();
+    if (*use_secondary) {
+        rc = sol_o2_inject_2_fire(duration_us);
+    }
+    else {
+        rc = sol_o2_inject_fire(duration_us);
+    }
+    *use_secondary = !(*use_secondary);
+#else
+    rc = sol_o2_inject_fire(duration_us);
+#endif
+    return rc;
+}
+
+/**
+ * @brief Turn off the O2 injection solenoid(s) immediately.
+ *
+ * On dual-inject variants both inject solenoids are driven off — the idle
+ * channel's off is a harmless GPIO write and removes any bookkeeping about
+ * which valve was firing (this is also called from the PID thread's
+ * cell-failure path, which must not depend on fire-thread toggle state).
+ */
+static void inject_solenoid_off(void)
+{
+    sol_o2_inject_off();
+#if DUAL_O2_INJECT
+    sol_o2_inject_2_off();
+#endif
+}
+
 /**
  * @brief Publish the new solenoid status to zbus on transitions only.
  *
@@ -287,7 +357,7 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
                 pid_state_reset_dynamic(state);
                 Numeric_t duty = 0.0f;
                 zbus_pub_checked(&chan_duty_cycle, &duty, K_MSEC(CHAN_OP_TIMEOUT_MS));
-                sol_o2_inject_off();
+                inject_solenoid_off();
                 publish_solenoid_status(DIVECAN_ERR_SOL_UNDERCURRENT);
                 OP_ERROR(OP_ERR_SOLENOID_DISABLED);
             }
@@ -381,7 +451,7 @@ static void run_pid_fire_cycle(void)
     }
 
     if (timing.should_fire) {
-        Status_t rc = sol_o2_inject_fire(timing.on_duration_us);
+        Status_t rc = inject_solenoid_fire(timing.on_duration_us);
         if (rc < 0) {
             OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
         }
@@ -392,7 +462,7 @@ static void run_pid_fire_cycle(void)
              * benign (no state/display consequence), whereas a bounded wait here
              * would perturb solenoid fire timing. */
             const SolenoidFireEvent_t fire_evt = {
-                .kind = 0U,
+                .kind = SOL_FIRE_EVT_INJECT_START,
                 .requested_on_us = timing.on_duration_us,
                 .off_us = timing.off_duration_us,
             };
@@ -400,10 +470,10 @@ static void run_pid_fire_cycle(void)
         }
 #endif
         pid_sleep_kicking_us(timing.on_duration_us);
-        sol_o2_inject_off();
+        inject_solenoid_off();
 #ifdef CONFIG_FLASH_LOG
         const SolenoidFireEvent_t end_evt = {
-            .kind = 1U,
+            .kind = SOL_FIRE_EVT_INJECT_END,
             .requested_on_us = timing.on_duration_us,
             .off_us = timing.off_duration_us,
         };
@@ -466,14 +536,14 @@ static void run_mk15_fire_cycle(void)
     /* Check if now is a time when we fire the solenoid */
     if ((d_setpoint > measurement) &&
         (PPO2_FAIL != consensus.consensus_ppo2)) {
-        Status_t rc = sol_o2_inject_fire(MK15_ON_TIME_MS * US_PER_MS);
+        Status_t rc = inject_solenoid_fire(MK15_ON_TIME_MS * US_PER_MS);
         if (rc < 0) {
             OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
         }
 #ifdef CONFIG_FLASH_LOG
         else {
             const SolenoidFireEvent_t fire_evt = {
-                .kind = 0U,
+                .kind = SOL_FIRE_EVT_INJECT_START,
                 .requested_on_us = MK15_ON_TIME_MS * US_PER_MS,
                 .off_us = MK15_OFF_TIME_MS * US_PER_MS,
             };
@@ -481,10 +551,10 @@ static void run_mk15_fire_cycle(void)
         }
 #endif
         mk15_sleep_kicking(MK15_ON_TIME_MS);
-        sol_o2_inject_off();
+        inject_solenoid_off();
 #ifdef CONFIG_FLASH_LOG
         const SolenoidFireEvent_t end_evt = {
-            .kind = 1U,
+            .kind = SOL_FIRE_EVT_INJECT_END,
             .requested_on_us = MK15_ON_TIME_MS * US_PER_MS,
             .off_us = MK15_OFF_TIME_MS * US_PER_MS,
         };
@@ -495,6 +565,109 @@ static void run_mk15_fire_cycle(void)
     /* Do our off time before waiting again */
     mk15_sleep_kicking(MK15_OFF_TIME_MS);
 }
+
+#if CONFIG_SOL_FLUSH_TIME > 0
+
+/** Diver-commanded setpoint (centibar) seen at the last flush check.
+ *  Fire-thread-only state (single writer — the solenoid fire thread). */
+static PPO2_t *getLastCmdSetpoint(void)
+{
+    static PPO2_t lastCmdSetpoint;
+    return &lastCmdSetpoint;
+}
+
+/**
+ * @brief Read the diver-commanded setpoint from chan_setpoint_cmd.
+ *
+ * Falls back to the legacy 70 cb default on a contended-mutex miss, matching
+ * read_setpoint_or_default(); the channel's seeded initial value means the
+ * default only ever stands in for a genuine read failure.
+ *
+ * @return Last diver-commanded setpoint in centibar
+ */
+static PPO2_t read_cmd_setpoint(void)
+{
+    PPO2_t sp = DEFAULT_SETPOINT_CB;
+
+    (void)zbus_chan_read(&chan_setpoint_cmd, &sp, K_MSEC(CHAN_OP_TIMEOUT_MS));
+    return sp;
+}
+
+/**
+ * @brief Fire a flush solenoid if the diver-commanded setpoint changed.
+ *
+ * Called at the start of every fire cycle (PID and MK15). Compares the
+ * diver-commanded setpoint against the last-seen value: an increase fires
+ * the O2 flush solenoid, a decrease the diluent flush solenoid, each for
+ * CONFIG_SOL_FLUSH_TIME ms (a single fire — BUILD_ASSERT-checked against
+ * the deadman window). The last-seen value updates unconditionally so an
+ * absent or failed flush cannot re-trigger forever. A direction whose
+ * solenoid is not wired on this variant (-ENODEV) is skipped silently.
+ * The handset-loss failsafe publishes only chan_setpoint, never
+ * chan_setpoint_cmd, so it cannot trigger a flush.
+ */
+static void run_setpoint_flush_check(void)
+{
+    const uint32_t flush_on_us = (uint32_t)CONFIG_SOL_FLUSH_TIME * US_PER_MS;
+    PPO2_t current = read_cmd_setpoint();
+    PPO2_t *last = getLastCmdSetpoint();
+    PPO2_t previous = *last;
+    SetpointFlushDirection_t dir = setpoint_flush_direction(previous, current);
+
+    *last = current;
+
+    if (SETPOINT_FLUSH_NONE != dir) {
+        Status_t rc = 0;
+        if (SETPOINT_FLUSH_O2 == dir) {
+            rc = sol_o2_flush_fire(flush_on_us);
+        }
+        else {
+            rc = sol_dil_flush_fire(flush_on_us);
+        }
+
+        if (0 == rc) {
+            const char *dir_name = "dil";
+            if (SETPOINT_FLUSH_O2 == dir) {
+                dir_name = "O2";
+            }
+            LOG_INF("Setpoint %u->%u cb: %s flush for %u ms",
+                (unsigned int)previous, (unsigned int)current,
+                dir_name, (unsigned int)CONFIG_SOL_FLUSH_TIME);
+#ifdef CONFIG_FLASH_LOG
+            const SolenoidFireEvent_t fire_evt = {
+                .kind = SOL_FIRE_EVT_FLUSH_START,
+                .requested_on_us = flush_on_us,
+                .off_us = 0U,
+            };
+            zbus_pub_checked(&chan_solenoid_fire, &fire_evt, K_NO_WAIT);
+#endif
+            pid_sleep_kicking_us(flush_on_us);
+            if (SETPOINT_FLUSH_O2 == dir) {
+                sol_o2_flush_off();
+            }
+            else {
+                sol_dil_flush_off();
+            }
+#ifdef CONFIG_FLASH_LOG
+            const SolenoidFireEvent_t end_evt = {
+                .kind = SOL_FIRE_EVT_FLUSH_END,
+                .requested_on_us = flush_on_us,
+                .off_us = 0U,
+            };
+            zbus_pub_checked(&chan_solenoid_fire, &end_evt, K_NO_WAIT);
+#endif
+        }
+        else if (-ENODEV == rc) {
+            /* Flush solenoid for this direction not wired on this variant. */
+            LOG_DBG("Setpoint flush skipped: role absent (dir %d)", (int)dir);
+        }
+        else {
+            OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
+        }
+    }
+}
+
+#endif /* CONFIG_SOL_FLUSH_TIME > 0 */
 
 /**
  * @brief Solenoid fire thread — dispatches to PID or MK15 fire cycle by mode.
@@ -517,8 +690,17 @@ static void solenoid_fire_thread_fn(void *p1, void *p2, void *p3)
     LOG_INF("Solenoid fire thread started (mode %d)", (int)mode);
     heartbeat_register(HEARTBEAT_SOLENOID_FIRE);
 
+#if CONFIG_SOL_FLUSH_TIME > 0
+    /* Baseline for the flush check: whatever is commanded right now.
+     * Never flush at boot. */
+    *getLastCmdSetpoint() = read_cmd_setpoint();
+#endif
+
     while (true) {
         heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
+#if CONFIG_SOL_FLUSH_TIME > 0
+        run_setpoint_flush_check();
+#endif
         if (PPO2CONTROL_PID == mode) {
             run_pid_fire_cycle();
         }

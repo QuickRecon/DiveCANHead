@@ -170,6 +170,14 @@ def build_manifest(cfg: dict, dt_header: str | None, variant: str = "unknown") -
                 "o2_flush": int_cfg(cfg, "CONFIG_SOL_O2_FLUSH_CHANNEL"),
                 "dil_flush": int_cfg(cfg, "CONFIG_SOL_DIL_FLUSH_CHANNEL"),
             },
+            # Setpoint-change flush burst on-time (ms). 0 = feature disabled
+            # (CONFIG_SOL_FLUSH_TIME). When >0, a diver-commanded setpoint
+            # increase fires the O2 flush solenoid and a decrease the dil flush
+            # solenoid for this duration at the start of the next fire cycle.
+            "flush_on_time_ms": int_cfg(cfg, "CONFIG_SOL_FLUSH_TIME", 0),
+            # True when a secondary O2 inject solenoid is wired: the fire thread
+            # alternates inject fires between the primary and secondary valves.
+            "dual_o2_inject": int_cfg(cfg, "CONFIG_SOL_O2_INJECT_2_CHANNEL") >= 0,
         },
         "control": {
             "ppo2_default": ppo2_default,

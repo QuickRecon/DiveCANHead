@@ -11,8 +11,8 @@ What we verify:
   * The header / footer separators are present.
   * The firmware UID (``APP_BUILD_VERSION_STR``) and Zephyr version
     are emitted.
-  * Compile-time topology matches ``variants/dev_full.conf`` — the
-    same variant the integration build pins.
+  * Compile-time topology matches ``tests/integration/integration.conf``
+    — the self-contained config the integration build pins.
   * The runtime-config section is present and well-formed.
 
 What we *don't* verify here:
@@ -52,10 +52,19 @@ def firmware() -> Generator[None, None, None]:
     _kill_stale_firmware()
     proc = launch_native_sim_firmware()
     try:
-        # The fixture's own time.sleep(0.2) inside launch covers process
-        # startup; the preamble fires very early in main(). Add a small
-        # cushion to absorb LOG-subsystem flush latency.
-        time.sleep(0.3)
+        # emit_startup_preamble() paces ~25 LOG_INF lines with a 50 ms k_msleep
+        # each (main.c preamble_line, to let the priority-3 log thread drain), so
+        # the block takes ~1.5 s of sim/wall time to fully flush — a fixed short
+        # sleep races it and drops the late lines (Solenoids/Has flags/Compile
+        # defaults). Poll the capture until the footer lands (bounded), so the
+        # wait tracks the real emit time instead of guessing.
+        log_path = Path("/tmp/divecan_firmware.log")
+        deadline = time.monotonic() + 8.0
+        while time.monotonic() < deadline:
+            if (log_path.exists() and "===== End preamble ====="
+                    in log_path.read_bytes().decode("utf-8", errors="replace")):
+                break
+            time.sleep(0.1)
         yield
     finally:
         stop_native_sim_firmware(proc)
@@ -98,33 +107,33 @@ def test_preamble_emits_zephyr_and_board(boot_log: str) -> None:
     assert "Board: native_sim" in boot_log
 
 
-def test_preamble_emits_dev_full_cells(boot_log: str) -> None:
-    """variants/dev_full.conf pins cells to DiveO2 / O2S / Analog."""
+def test_preamble_emits_integration_cells(boot_log: str) -> None:
+    """integration.conf pins cells to DiveO2 / DiveO2 / Analog."""
     assert "Cells: 3" in boot_log
     assert "Cell[1]: DIVEO2" in boot_log
-    assert "Cell[2]: O2S" in boot_log
+    assert "Cell[2]: DIVEO2" in boot_log
     assert "Cell[3]: ANALOG" in boot_log
 
 
 def test_preamble_emits_power_mode_battery_then_can(boot_log: str) -> None:
-    """dev_full pins power mode to BATTERY_THEN_CAN with LI2S chemistry."""
+    """integration.conf pins power mode to BATTERY_THEN_CAN with LI2S chemistry."""
     assert "Power mode: BATTERY_THEN_CAN" in boot_log
     assert "Battery chemistry (compile): LI2S" in boot_log
 
 
 def test_preamble_emits_solenoid_channels(boot_log: str) -> None:
-    """dev_full populates all four solenoid channels (0..3)."""
+    """integration.conf populates all four solenoid channels (0..3)."""
     assert "Solenoids: O2_inject=0 O2_inject_2=1 O2_flush=2 dil_flush=3" in boot_log
 
 
 def test_preamble_emits_has_flags(boot_log: str) -> None:
-    """dev_full has both solenoid types and both cell-class flavours."""
+    """integration.conf has both solenoid types and both cell-class flavours."""
     assert "Has flags: o2_sol=Y flush_sol=Y digital_cell=Y analog_cell=Y" in boot_log
 
 
 def test_preamble_emits_compile_defaults(boot_log: str) -> None:
-    """dev_full defaults: PID control, FLUSH cal, depth comp on."""
-    assert "Compile defaults: ppo2=PID cal=FLUSH depth_comp=Y" in boot_log
+    """integration.conf defaults: PID control, DIGITAL_REF cal, depth comp on."""
+    assert "Compile defaults: ppo2=PID cal=DIGITAL_REF depth_comp=Y" in boot_log
 
 
 def test_preamble_emits_runtime_section(boot_log: str) -> None:

@@ -76,7 +76,9 @@ typedef struct {
 
 /** @brief Payload for FL_TYPE_SOLENOID_FIRE. */
 typedef struct {
-    uint8_t  kind;              /* 0=start, 1=end */
+    uint8_t  kind;              /* 0=inject start, 1=inject end,
+                                 * 2=flush start, 3=flush end
+                                 * (SOL_FIRE_EVT_* in flash_log.h) */
     uint32_t requested_on_us;
     uint32_t off_us;
 } __packed fl_payload_solenoid_fire_t;

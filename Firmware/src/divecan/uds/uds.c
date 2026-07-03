@@ -712,6 +712,9 @@ static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData,
          * out-of-range write can never apply an unsafe setpoint. */
         PPO2_t ppo2 = clamp_setpoint_cb(requestData[UDS_DATA_IDX]);
         zbus_pub_checked(&chan_setpoint, &ppo2, K_MSEC(100));
+        /* Diver-commanded mirror: drives the setpoint-change flush (the
+         * handset-loss failsafe publishes only chan_setpoint). */
+        zbus_pub_checked(&chan_setpoint_cmd, &ppo2, K_MSEC(100));
 
         ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
         ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];

@@ -113,8 +113,15 @@ typedef struct {
  * flash_log subsystem agree on the shape. Also published on the new
  * zbus channel `chan_solenoid_fire`.
  */
+/** @brief SolenoidFireEvent_t.kind values. #define (not static const) so
+ *  they remain usable in switch labels and constant expressions. */
+#define SOL_FIRE_EVT_INJECT_START 0U /**< O2 inject solenoid opened */
+#define SOL_FIRE_EVT_INJECT_END   1U /**< O2 inject solenoid closed */
+#define SOL_FIRE_EVT_FLUSH_START  2U /**< Setpoint-change flush solenoid opened */
+#define SOL_FIRE_EVT_FLUSH_END    3U /**< Setpoint-change flush solenoid closed */
+
 typedef struct {
-    uint8_t  kind;             /* 0 = fire_start, 1 = fire_end */
+    uint8_t  kind;             /* SOL_FIRE_EVT_* */
     uint32_t requested_on_us;
     uint32_t off_us;
 } SolenoidFireEvent_t;

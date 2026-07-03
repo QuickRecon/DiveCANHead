@@ -23,7 +23,7 @@ native_sim build.  Covers:
   firmware behaviour either side of the boundary.
 
 The build defaults to ``BATTERY_TYPE_LI2S`` (threshold 6.0 V) per
-``variants/dev_full.conf``.
+``tests/integration/integration.conf``.
 """
 
 from __future__ import annotations

@@ -74,10 +74,21 @@ def build_ping(device_id: int) -> can.Message:
 
 
 def build_cal_request() -> can.Message:
-    """Build a calibration trigger request (sent by the dive computer)."""
+    """Build a calibration trigger request (sent by the dive computer).
+
+    data = [fO2 %, pressure_mbar big-endian]. The firmware calibrates to a target
+    PPO2 of ``fO2 * pressure_mbar / 1000`` bar (calibration.c CAL_FO2_TO_PPO2_SCALE),
+    so the reference pressure MUST match the absolute PPO2 the shim injects at the cal
+    point. ``calibrate_board`` injects the cal cells at an absolute 1.00 bar
+    (``configure_cell(.., 100)``) — the shim models PPO2 as absolute, independent of
+    ambient pressure — so the reference is 100 % O2 at 1000 mbar = a 1.000 bar target.
+    Using 1013/1014 mbar here (a "realistic" sea-level pressure) instead scales the
+    target to ~1.014 bar and bakes a ~+1.4 % gain into every cell's cal coefficient,
+    which fails every exact digital-cell PPO2 assertion (75->76, 150->152, ...).
+    """
     return can.Message(
         arbitration_id=CAL_REQ_ID,
-        data=[0x64, 0x03, 0xF6],
+        data=[0x64, 0x03, 0xE8],  # fO2 = 100 %, pressure = 1000 mbar (0x03E8)
         is_extended_id=True,
     )
 

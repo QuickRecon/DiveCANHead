@@ -90,7 +90,7 @@ def test_cal_analog_out_of_range(dut, bad_mv: float, label: str) -> None:
 
     # Drive digital cells at 1.0 bar so the digital-reference branch can
     # actually proceed and produce a coefficient for the analog slot.
-    for cell_num, cell_type in enumerate(helpers.DEV_FULL_CELLS, start=1):
+    for cell_num, cell_type in enumerate(helpers.INTEGRATION_CELLS, start=1):
         if cell_type == CellType.ANALOG:
             shim.set_analog_millis(cell_num, bad_mv)
         else:
@@ -122,7 +122,7 @@ def test_cal_analog_out_of_range(dut, bad_mv: float, label: str) -> None:
 
     # Find the analog cell slot by scanning the configured topology.
     analog_idx: int | None = None
-    for idx, cell_type in enumerate(helpers.DEV_FULL_CELLS):
+    for idx, cell_type in enumerate(helpers.INTEGRATION_CELLS):
         if cell_type == CellType.ANALOG:
             analog_idx = idx
             break
@@ -148,7 +148,7 @@ def test_cal_request_always_acked(dut) -> None:
     can_bus, shim = dut
 
     # All cells at zero, no reference — cal will fail later.
-    for cell_num, cell_type in enumerate(helpers.DEV_FULL_CELLS, start=1):
+    for cell_num, cell_type in enumerate(helpers.INTEGRATION_CELLS, start=1):
         configure_cell(shim, cell_num, cell_type, 0)
 
     helpers.sim_sleep(shim, helpers.CAL_SETTLE_S)

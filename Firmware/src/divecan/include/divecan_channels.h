@@ -14,6 +14,7 @@
 
 ZBUS_CHAN_DECLARE(
     chan_setpoint,
+    chan_setpoint_cmd,
     chan_atmos_pressure,
     chan_shutdown_request,
     chan_dive_state,

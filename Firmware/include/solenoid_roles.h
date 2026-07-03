@@ -66,6 +66,18 @@ static inline int sol_o2_flush_fire(uint32_t duration_us)
 }
 
 /**
+ * @brief Turn off the O2 flush solenoid immediately.
+ *
+ * No-op if the role is not present on this variant.
+ */
+static inline void sol_o2_flush_off(void)
+{
+#if CONFIG_SOL_O2_FLUSH_CHANNEL != SOL_ROLE_NOT_PRESENT
+    solenoid_off(SOL_DEVICE, CONFIG_SOL_O2_FLUSH_CHANNEL);
+#endif
+}
+
+/**
  * @brief Fire the diluent flush solenoid for the given duration.
  *
  * @param duration_us On-time in microseconds
@@ -83,6 +95,18 @@ static inline int sol_dil_flush_fire(uint32_t duration_us)
 }
 
 /**
+ * @brief Turn off the diluent flush solenoid immediately.
+ *
+ * No-op if the role is not present on this variant.
+ */
+static inline void sol_dil_flush_off(void)
+{
+#if CONFIG_SOL_DIL_FLUSH_CHANNEL != SOL_ROLE_NOT_PRESENT
+    solenoid_off(SOL_DEVICE, CONFIG_SOL_DIL_FLUSH_CHANNEL);
+#endif
+}
+
+/**
  * @brief Fire the secondary O2 injection solenoid for the given duration.
  *
  * @param duration_us On-time in microseconds
@@ -96,6 +120,18 @@ static inline int sol_o2_inject_2_fire(uint32_t duration_us)
 #else
     ARG_UNUSED(duration_us);
     return -ENODEV;
+#endif
+}
+
+/**
+ * @brief Turn off the secondary O2 injection solenoid immediately.
+ *
+ * No-op if the role is not present on this variant.
+ */
+static inline void sol_o2_inject_2_off(void)
+{
+#if CONFIG_SOL_O2_INJECT_2_CHANNEL != SOL_ROLE_NOT_PRESENT
+    solenoid_off(SOL_DEVICE, CONFIG_SOL_O2_INJECT_2_CHANNEL);
 #endif
 }
 
@@ -117,16 +153,28 @@ static inline int sol_o2_flush_fire(uint32_t duration_us)
     return -ENODEV;
 }
 
+static inline void sol_o2_flush_off(void)
+{
+}
+
 static inline int sol_dil_flush_fire(uint32_t duration_us)
 {
     ARG_UNUSED(duration_us);
     return -ENODEV;
 }
 
+static inline void sol_dil_flush_off(void)
+{
+}
+
 static inline int sol_o2_inject_2_fire(uint32_t duration_us)
 {
     ARG_UNUSED(duration_us);
     return -ENODEV;
+}
+
+static inline void sol_o2_inject_2_off(void)
+{
 }
 
 #endif /* CONFIG_SOLENOID */

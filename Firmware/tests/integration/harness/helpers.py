@@ -22,12 +22,13 @@ class CellType(IntEnum):
     O2S = 2
 
 
-# Cell topology configured by ``variants/dev_full.conf`` and the
-# integration overlay. Tests parametrize over (cell_num, cell_type) for
-# each entry below.
-DEV_FULL_CELLS: tuple[CellType, ...] = (
+# Cell topology configured by ``tests/integration/integration.conf`` and
+# the integration overlay. Tests parametrize over (cell_num, cell_type)
+# for each entry below. O2S is out of scope (2026-07): cell 2 is a second
+# DiveO2 so the build still exercises two digital UART cells + one analog.
+INTEGRATION_CELLS: tuple[CellType, ...] = (
     CellType.DIVEO2,   # cell 1 → USART1
-    CellType.O2S,      # cell 2 → USART2
+    CellType.DIVEO2,   # cell 2 → USART2
     CellType.ANALOG,   # cell 3 → ADS1115 channel
 )
 
@@ -101,7 +102,7 @@ def sim_sleep(shim: SharedMemShim, sim_seconds: float,
 def configure_all_cells(
     shim: SharedMemShim,
     centibar_values: Iterable[float],
-    cells: Iterable[CellType] = DEV_FULL_CELLS,
+    cells: Iterable[CellType] = INTEGRATION_CELLS,
 ) -> None:
     """Convenience: drive each of the three cells to the given centibar
     values in one call."""
@@ -138,7 +139,7 @@ generous headroom."""
 def calibrate_board(
     can_client: divecan.CanClient,
     shim: SharedMemShim,
-    cells: Iterable[CellType] = DEV_FULL_CELLS,
+    cells: Iterable[CellType] = INTEGRATION_CELLS,
 ) -> None:
     """Run the calibration happy path.
 
@@ -167,7 +168,7 @@ def calibrate_board(
 def ensure_calibrated(
     can_client: divecan.CanClient,
     shim: SharedMemShim,
-    cells: Iterable[CellType] = DEV_FULL_CELLS,
+    cells: Iterable[CellType] = INTEGRATION_CELLS,
 ) -> None:
     """Trigger a calibration if the most recent PPO2 broadcast indicates the
     cells still report CELL_NEED_CAL (cell bytes == 0xFF)."""

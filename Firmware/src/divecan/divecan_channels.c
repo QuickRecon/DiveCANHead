@@ -29,6 +29,19 @@ ZBUS_CHAN_DEFINE(chan_setpoint,
     ZBUS_OBSERVERS_EMPTY,
     70);
 
+/* Diver-commanded setpoint (centibar). Published ONLY by the handset
+ * setpoint frame and the UDS setpoint write — NOT by the handset-loss
+ * failsafe revert, which publishes chan_setpoint alone. The setpoint-change
+ * flush in ppo2_control.c reads this channel so an automatic failsafe
+ * revert never fires a flush solenoid; the PID/MK15 control target still
+ * comes from chan_setpoint. Seeded to the same 70 cb as chan_setpoint so
+ * the boot-time "last commanded" baseline matches the control default. */
+ZBUS_CHAN_DEFINE(chan_setpoint_cmd,
+    PPO2_t,
+    NULL, NULL,
+    ZBUS_OBSERVERS_EMPTY,
+    70);
+
 /* Atmospheric pressure from handset (mbar) */
 ZBUS_CHAN_DEFINE(chan_atmos_pressure,
     uint16_t,

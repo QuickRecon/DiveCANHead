@@ -166,6 +166,20 @@ config SOL_O2_INJECT_2_CHANNEL
 	  Second oxygen injection solenoid for dual-inject systems.
 	  Set to -1 for single-solenoid systems.
 
+config SOL_FLUSH_TIME
+	int "Setpoint-change flush on-time (milliseconds, 0 = disabled)"
+	default 0
+	range 0 5500
+	help
+	  When nonzero, the solenoid fire thread fires a flush solenoid at the
+	  start of the first fire cycle after a diver-commanded setpoint change:
+	  the O2 flush solenoid on an increase, the diluent flush solenoid on a
+	  decrease. Directions whose flush solenoid is absent on this variant
+	  (channel = -1) are skipped. The handset-loss failsafe setpoint revert
+	  does not trigger a flush. Must not exceed the solenoid deadman
+	  max-on-time-us DTS property (enforced by a BUILD_ASSERT in
+	  ppo2_control.c). 0 disables the feature.
+
 config HAS_O2_SOLENOID
 	bool
 	default y if SOL_O2_INJECT_CHANNEL >= 0

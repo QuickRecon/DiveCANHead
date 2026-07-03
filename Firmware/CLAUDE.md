@@ -131,8 +131,8 @@ report. Builds live under `build-coverage/<name>/` (parallel to
 `build-native/`) so coverage runs never disturb the ordinary developer
 flow. The overlay that adds `--coverage` to the compiler is
 `tests/coverage.conf` — it's layered on top of each test's own
-`prj.conf` (and, for the integration build, on top of
-`variants/dev_full.conf` + `tests/integration/integration.conf`).
+`prj.conf` (and, for the integration build, on top of the
+self-contained `tests/integration/integration.conf`).
 
 Typical full-sweep invocation:
 
@@ -223,7 +223,10 @@ Each entry must include: what changed, why, what still provides coverage, and po
 - Every new source file must `#include <zephyr/logging/log.h>` and register a log module
 - New Kconfig options go in `src/Kconfig` (app topology/features) or driver subdirs
 - When adding zbus channels, document them in ARCHITECTURE.md under the IPC section
-- The only real variant is `dev_full.conf` — verify the build passes with it after changes
+- The real hardware variants are `AP_Aren`, `eCCR_classic`, `Poseidon_Aren`,
+  and `Sidewinder_Gabriel` (each a `.conf` + `.overlay` pair in `variants/`).
+  Verify at least `Poseidon_Aren` (most features) builds after changes; the
+  native test topology lives in `tests/integration/integration.conf`.
 
 ## Channel Semantics
 
