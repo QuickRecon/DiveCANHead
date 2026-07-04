@@ -214,6 +214,28 @@ def build_manifest(cfg: dict, dt_header: str | None, variant: str = "unknown") -
             "battery_address": 0x43,
             "fuel_gauge_stale_ms": 12000,
         },
+        # HP tank pressure transducers on the analog-cell ADC inputs. Per-cylinder
+        # linear map (min_mv -> 0 bar, max_mv -> limit_bar); a channel of -1 means
+        # that cylinder's transducer is not configured. The rig drives the ADC
+        # channel with the matching CellSim and predicts the TANK_PRESSURE_ID
+        # decibar broadcast. stale_ms mirrors TANK_PRESSURE_STALE_MS in
+        # divecan_ppo2_tx.c.
+        "transducer": {
+            "enabled": is_set(cfg, "CONFIG_HAS_PRESSURE_TRANSDUCER"),
+            "o2": {
+                "channel": int_cfg(cfg, "CONFIG_O2_TRANSDUCER_CHANNEL"),
+                "min_mv": int_cfg(cfg, "CONFIG_O2_TRANSDUCER_MIN"),
+                "max_mv": int_cfg(cfg, "CONFIG_O2_TRANSDUCER_MAX"),
+                "limit_bar": int_cfg(cfg, "CONFIG_O2_TRANSDUCER_LIMIT"),
+            },
+            "dil": {
+                "channel": int_cfg(cfg, "CONFIG_DIL_TRANSDUCER_CHANNEL"),
+                "min_mv": int_cfg(cfg, "CONFIG_DIL_TRANSDUCER_MIN"),
+                "max_mv": int_cfg(cfg, "CONFIG_DIL_TRANSDUCER_MAX"),
+                "limit_bar": int_cfg(cfg, "CONFIG_DIL_TRANSDUCER_LIMIT"),
+            },
+            "stale_ms": 3000,
+        },
     }
 
 
