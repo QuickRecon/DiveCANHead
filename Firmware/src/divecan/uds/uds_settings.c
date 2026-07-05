@@ -10,6 +10,7 @@
 #include <zephyr/settings/settings.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
+#include <math.h>   /* lroundf */
 
 #include "uds_settings.h"
 #include "runtime_settings.h"
@@ -417,18 +418,20 @@ uint64_t UDS_GetSettingValue(uint8_t index)
     /* PID gains are stored as float but exposed as integer milliunits. ROUND
      * (not truncate) on the way out: a wire value W set as W/1000 lands at the
      * nearest float, and W/1000*1000 can fall just under W (e.g. 9 -> 0.009f ->
-     * 8.999...). +0.5 before the integer cast recovers W exactly for the whole
-     * 0..100000 range (float32 resolution there is far finer than 0.5), so any
-     * gain written round-trips losslessly. Gains are validated >= 0, so the
-     * symmetric +0.5 rounding is correct. */
+     * 8.999...). lroundf recovers W exactly for the whole 0..100000 range:
+     * worst-case accumulated float32 error there is < 0.01, far inside the
+     * 0.5 rounding guard band, so any gain written round-trips losslessly.
+     * Single-precision on purpose — the double version of this math was one
+     * of the last soft-double callers on this FPU-single-only part. Gains
+     * are validated >= 0, so round-to-nearest is symmetric-safe. */
     case SETTING_INDEX_PID_KP:
-        result = (uint64_t)((double)rs.pidKp * (double)PID_GAIN_SCALE_TO_WIRE + 0.5);
+        result = (uint64_t)lroundf(rs.pidKp * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
         break;
     case SETTING_INDEX_PID_KI:
-        result = (uint64_t)((double)rs.pidKi * (double)PID_GAIN_SCALE_TO_WIRE + 0.5);
+        result = (uint64_t)lroundf(rs.pidKi * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
         break;
     case SETTING_INDEX_PID_KD:
-        result = (uint64_t)((double)rs.pidKd * (double)PID_GAIN_SCALE_TO_WIRE + 0.5);
+        result = (uint64_t)lroundf(rs.pidKd * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
         break;
     case SETTING_INDEX_BATTERY_TYPE:
         result = (uint64_t)rs.batteryType;
@@ -483,16 +486,16 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
                 rs.depthCompensation = (value != 0U);
                 break;
             case SETTING_INDEX_PID_KP:
-                rs.pidKp = (Numeric_t)((double)value /
-                            (double)PID_GAIN_SCALE_TO_WIRE);
+                rs.pidKp = (Numeric_t)value /
+                           (Numeric_t)PID_GAIN_SCALE_TO_WIRE;
                 break;
             case SETTING_INDEX_PID_KI:
-                rs.pidKi = (Numeric_t)((double)value /
-                            (double)PID_GAIN_SCALE_TO_WIRE);
+                rs.pidKi = (Numeric_t)value /
+                           (Numeric_t)PID_GAIN_SCALE_TO_WIRE;
                 break;
             case SETTING_INDEX_PID_KD:
-                rs.pidKd = (Numeric_t)((double)value /
-                            (double)PID_GAIN_SCALE_TO_WIRE);
+                rs.pidKd = (Numeric_t)value /
+                           (Numeric_t)PID_GAIN_SCALE_TO_WIRE;
                 break;
             case SETTING_INDEX_BATTERY_TYPE:
                 rs.batteryType = (BatteryType_t)value;

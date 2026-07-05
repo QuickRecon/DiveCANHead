@@ -12,6 +12,7 @@ project(test_flash_log_reader)
 target_sources(app PRIVATE
     src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/flash_log/flash_log_reader.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/maintenance_arena.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/flash_log/flash_log_index.c
 )
 target_include_directories(app PRIVATE

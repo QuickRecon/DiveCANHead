@@ -392,6 +392,99 @@ static const char *getVariantName(void)
  * @param bytesWritten   Out: total bytes written (DID header + payload)
  * @return true if the DID was recognised and data written, false otherwise
  */
+/* ---- Exact-match read DID handlers ----
+ *
+ * Uniform signature so ReadSingleDID can dispatch them from a const table.
+ * Each writes its payload at buf[dataOffset] and reports the total bytes
+ * (header + payload) via bytesWritten. Range-addressed reads (state DIDs,
+ * setting info/value/label blocks) need arithmetic on the DID and stay as
+ * explicit checks in ReadSingleDID.
+ */
+typedef bool (*UdsReadDidFn)(uint8_t *buf, uint16_t dataOffset,
+                 uint16_t maxAvailable, uint16_t *bytesWritten);
+
+static bool readFirmwareVersionDID(uint8_t *buf, uint16_t dataOffset,
+                   uint16_t maxAvailable, uint16_t *bytesWritten)
+{
+    const char *commitHash = getCommitHash();
+    uint16_t hashLen = (uint16_t)strnlen(commitHash, 10);
+    if (hashLen > (maxAvailable - dataOffset)) {
+        hashLen = maxAvailable - dataOffset;
+    }
+    (void)memcpy(&buf[dataOffset], commitHash, hashLen);
+    *bytesWritten = dataOffset + hashLen;
+    return true;
+}
+
+static bool readHardwareVersionDID(uint8_t *buf, uint16_t dataOffset,
+                   uint16_t maxAvailable, uint16_t *bytesWritten)
+{
+    ARG_UNUSED(maxAvailable);
+    /* Hardware version is enforced by the hw_version DT driver at
+     * boot (see src/hw_version.c). Halt on mismatch is the safety
+     * gate; this DID is informational and currently reports zero
+     * because the runtime detection result is not exposed. */
+    buf[dataOffset] = 0;
+    *bytesWritten = dataOffset + 1U;
+    return true;
+}
+
+static bool readVariantNameDID(uint8_t *buf, uint16_t dataOffset,
+                   uint16_t maxAvailable, uint16_t *bytesWritten)
+{
+    const char *variant = getVariantName();
+    uint16_t vlen = (uint16_t)strnlen(variant, UDS_VARIANT_NAME_MAX);
+    if (vlen > (maxAvailable - dataOffset)) {
+        vlen = maxAvailable - dataOffset;
+    }
+    (void)memcpy(&buf[dataOffset], variant, vlen);
+    *bytesWritten = dataOffset + vlen;
+    return true;
+}
+
+static bool readSerialNumberDID(uint8_t *buf, uint16_t dataOffset,
+                uint16_t maxAvailable, uint16_t *bytesWritten)
+{
+    bool result = false;
+    /* Raw factory device unique ID (STM32L4 96-bit UID). Read live from
+     * the hwinfo backend — it is read-only silicon, not a configurable
+     * per-unit NVS value, so it is served directly rather than stored. */
+    uint8_t uid[UDS_SERIAL_NUMBER_MAX] = {0};
+    uint16_t uidMax = maxAvailable - dataOffset;
+    if (uidMax > (uint16_t)sizeof(uid)) {
+        uidMax = (uint16_t)sizeof(uid);
+    }
+    ssize_t uidLen = hwinfo_get_device_id(uid, uidMax);
+    if (uidLen > 0) {
+        (void)memcpy(&buf[dataOffset], uid, (size_t)uidLen);
+        *bytesWritten = dataOffset + (uint16_t)uidLen;
+        result = true;
+    } else {
+        OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, UDS_DID_SERIAL_NUMBER);
+    }
+    return result;
+}
+
+static bool readSettingCountDID(uint8_t *buf, uint16_t dataOffset,
+                uint16_t maxAvailable, uint16_t *bytesWritten)
+{
+    ARG_UNUSED(maxAvailable);
+    buf[dataOffset] = UDS_GetSettingCount();
+    *bytesWritten = dataOffset + 1U;
+    return true;
+}
+
+static const struct {
+    uint16_t did;
+    UdsReadDidFn fn;
+} readDidTable[] = {
+    { UDS_DID_FIRMWARE_VERSION, readFirmwareVersionDID },
+    { UDS_DID_HARDWARE_VERSION, readHardwareVersionDID },
+    { UDS_DID_VARIANT_NAME,     readVariantNameDID },
+    { UDS_DID_SERIAL_NUMBER,    readSerialNumberDID },
+    { UDS_DID_SETTING_COUNT,    readSettingCountDID },
+};
+
 static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
                uint16_t responseOffset, uint16_t *bytesWritten)
 {
@@ -407,9 +500,21 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
         buf[0] = (uint8_t)(did >> DIVECAN_BYTE_WIDTH);
         buf[1] = (uint8_t)(did);
         uint16_t dataOffset = UDS_DID_SIZE;
+        bool dispatched = false;
 
-        /* Try state DID handler first (0xF2xx, 0xF4xx) */
-        if (UDS_StateDID_IsStateDID(did)) {
+        for (size_t i = 0; i < ARRAY_SIZE(readDidTable); ++i) {
+            if (readDidTable[i].did == did) {
+                result = readDidTable[i].fn(buf, dataOffset,
+                                maxAvailable, bytesWritten);
+                dispatched = true;
+                break;
+            }
+        }
+
+        if (dispatched) {
+            /* Handled via table. */
+        } else if (UDS_StateDID_IsStateDID(did)) {
+            /* State DID ranges (0xF2xx, 0xF4xx) */
             uint16_t dataLen = 0U;
             uint16_t dataMax = maxAvailable - dataOffset;
             if (UDS_StateDID_HandleRead(did, &buf[dataOffset], dataMax,
@@ -417,53 +522,6 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
                 *bytesWritten = dataOffset + dataLen;
                 result = true;
             }
-        } else if (UDS_DID_FIRMWARE_VERSION == did) {
-            const char *commitHash = getCommitHash();
-            uint16_t hashLen = (uint16_t)strnlen(commitHash, 10);
-            if (hashLen > (maxAvailable - dataOffset)) {
-                hashLen = maxAvailable - dataOffset;
-            }
-            (void)memcpy(&buf[dataOffset], commitHash, hashLen);
-            *bytesWritten = dataOffset + hashLen;
-            result = true;
-        } else if (UDS_DID_HARDWARE_VERSION == did) {
-            /* Hardware version is enforced by the hw_version DT driver at
-             * boot (see src/hw_version.c). Halt on mismatch is the safety
-             * gate; this DID is informational and currently reports zero
-             * because the runtime detection result is not exposed. */
-            buf[dataOffset] = 0;
-            *bytesWritten = dataOffset + 1U;
-            result = true;
-        } else if (UDS_DID_VARIANT_NAME == did) {
-            const char *variant = getVariantName();
-            uint16_t vlen = (uint16_t)strnlen(variant, UDS_VARIANT_NAME_MAX);
-            if (vlen > (maxAvailable - dataOffset)) {
-                vlen = maxAvailable - dataOffset;
-            }
-            (void)memcpy(&buf[dataOffset], variant, vlen);
-            *bytesWritten = dataOffset + vlen;
-            result = true;
-        } else if (UDS_DID_SERIAL_NUMBER == did) {
-            /* Raw factory device unique ID (STM32L4 96-bit UID). Read live from
-             * the hwinfo backend — it is read-only silicon, not a configurable
-             * per-unit NVS value, so it is served directly rather than stored. */
-            uint8_t uid[UDS_SERIAL_NUMBER_MAX] = {0};
-            uint16_t uidMax = maxAvailable - dataOffset;
-            if (uidMax > (uint16_t)sizeof(uid)) {
-                uidMax = (uint16_t)sizeof(uid);
-            }
-            ssize_t uidLen = hwinfo_get_device_id(uid, uidMax);
-            if (uidLen > 0) {
-                (void)memcpy(&buf[dataOffset], uid, (size_t)uidLen);
-                *bytesWritten = dataOffset + (uint16_t)uidLen;
-                result = true;
-            } else {
-                OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, UDS_DID_SERIAL_NUMBER);
-            }
-        } else if (UDS_DID_SETTING_COUNT == did) {
-            buf[dataOffset] = UDS_GetSettingCount();
-            *bytesWritten = dataOffset + 1U;
-            result = true;
         } else if ((did >= UDS_DID_SETTING_INFO_BASE) &&
                (did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount()))) {
             result = readSettingInfoDID(did, buf, dataOffset, maxAvailable, bytesWritten);
@@ -1399,6 +1457,35 @@ static bool writeLogCanVerboseDID(UDSContext_t *ctx,
  * @param requestData   Request bytes starting at the SID byte
  * @param requestLength Total byte count of requestData
  */
+/* Exact-match write DIDs, dispatched by table walk. Range-addressed writes
+ * (cell broadcast, setting save/value blocks) need arithmetic on the DID and
+ * stay as explicit checks in HandleWriteDataByIdentifier below. Entries are
+ * compiled in/out with the same CONFIG_* gates the handlers carry. */
+typedef bool (*UdsWriteDidFn)(UDSContext_t *ctx, const uint8_t *requestData,
+                  uint16_t requestLength);
+
+static const struct {
+    uint16_t did;
+    UdsWriteDidFn fn;
+} writeDidTable[] = {
+    { UDS_DID_SETPOINT_WRITE,        writeSetpointDID },
+    { UDS_DID_CALIBRATION_TRIGGER,   writeCalibrationTriggerDID },
+#ifdef CONFIG_HAS_O2_SOLENOID
+    { UDS_DID_SOLENOID_OVERRIDE,     writeSolenoidOverrideDID },
+#endif
+    { UDS_DID_ERROR_HISTOGRAM_CLEAR, writeHistogramClearDID },
+    { UDS_DID_OTA_FORCE_REVERT,      writeForceRevertDID },
+    { UDS_DID_OTA_RESTORE_FACTORY,   writeRestoreFactoryDID },
+    { UDS_DID_OTA_FACTORY_CAPTURE,   writeFactoryCaptureDID },
+    { UDS_DID_FACTORY_FLASH_ERASE,   writeFactoryFlashEraseDID },
+    { UDS_DID_NVS_ERASE,             writeNvsEraseDID },
+#ifdef CONFIG_FLASH_LOG
+    { UDS_DID_LOG_ERASE,             writeLogEraseDID },
+    { UDS_DID_LOG_VERBOSITY,         writeLogVerbosityDID },
+    { UDS_DID_LOG_CAN_VERBOSE,       writeLogCanVerboseDID },
+#endif
+};
+
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
                     const uint8_t *requestData,
                     uint16_t requestLength)
@@ -1410,34 +1497,18 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
         uint16_t did = (uint16_t)((uint16_t)requestData[UDS_DID_HI_IDX] << DIVECAN_BYTE_WIDTH) |
                    (uint16_t)requestData[UDS_DID_LO_IDX];
 
-        if (UDS_DID_SETPOINT_WRITE == did) {
-            (void)writeSetpointDID(ctx, requestData, requestLength);
-        } else if (UDS_DID_CALIBRATION_TRIGGER == did) {
-            (void)writeCalibrationTriggerDID(ctx, requestData, requestLength);
-#ifdef CONFIG_HAS_O2_SOLENOID
-        } else if (UDS_DID_SOLENOID_OVERRIDE == did) {
-            (void)writeSolenoidOverrideDID(ctx, requestData, requestLength);
-#endif
-        } else if (UDS_DID_ERROR_HISTOGRAM_CLEAR == did) {
-            (void)writeHistogramClearDID(ctx, requestData, requestLength);
-        } else if (UDS_DID_OTA_FORCE_REVERT == did) {
-            (void)writeForceRevertDID(ctx, requestData, requestLength);
-        } else if (UDS_DID_OTA_RESTORE_FACTORY == did) {
-            (void)writeRestoreFactoryDID(ctx, requestData, requestLength);
-        } else if (UDS_DID_OTA_FACTORY_CAPTURE == did) {
-            (void)writeFactoryCaptureDID(ctx, requestData, requestLength);
-        } else if (UDS_DID_FACTORY_FLASH_ERASE == did) {
-            (void)writeFactoryFlashEraseDID(ctx, requestData, requestLength);
-        } else if (UDS_DID_NVS_ERASE == did) {
-            (void)writeNvsEraseDID(ctx, requestData, requestLength);
-#ifdef CONFIG_FLASH_LOG
-        } else if (UDS_DID_LOG_ERASE == did) {
-            (void)writeLogEraseDID(ctx, requestData, requestLength);
-        } else if (UDS_DID_LOG_VERBOSITY == did) {
-            (void)writeLogVerbosityDID(ctx, requestData, requestLength);
-        } else if (UDS_DID_LOG_CAN_VERBOSE == did) {
-            (void)writeLogCanVerboseDID(ctx, requestData, requestLength);
-#endif
+        bool dispatched = false;
+        for (size_t i = 0; i < ARRAY_SIZE(writeDidTable); ++i) {
+            if (writeDidTable[i].did == did) {
+                (void)writeDidTable[i].fn(ctx, requestData,
+                              requestLength);
+                dispatched = true;
+                break;
+            }
+        }
+
+        if (dispatched) {
+            /* Handled via table. */
         }
 #ifdef CONFIG_HAS_DIVEO2_CELL
         else if ((did >= UDS_DID_CELL_BASE) &&

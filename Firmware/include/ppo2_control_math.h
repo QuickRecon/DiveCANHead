@@ -8,10 +8,9 @@
  * can be exercised by the host-side twister test target alongside the
  * existing oxygen_cell_math / divecan_ppo2_math primitives.
  *
- * The legacy types and identifiers (PIDNumeric_t = double, PIDState_t field
- * names) are mirrored here so the regression test cases from
- * STM32/Tests/PPO2Control_tests.cpp can be ported line-for-line and produce
- * bit-identical floats.
+ * The legacy identifiers (PIDState_t field names) are mirrored here so the
+ * regression test cases from STM32/Tests/PPO2Control_tests.cpp could be
+ * ported line-for-line.
  */
 #ifndef PPO2_CONTROL_MATH_H
 #define PPO2_CONTROL_MATH_H
@@ -19,9 +18,19 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/** @brief Internal numeric type for PID arithmetic.  Double-precision to
- *  match the legacy STM32 firmware so unit-test bit-equality holds. */
-typedef double PIDNumeric_t;
+/** @brief Internal numeric type for PID arithmetic.
+ *
+ *  Single-precision. The legacy firmware used double (and this port
+ *  originally mirrored that for bit-equality with the ported test vectors),
+ *  but the L431's FPU is single-precision only, so double arithmetic ran in
+ *  softfloat (~7 KB of libgcc + cycles every 100 ms control iteration).
+ *  The regression suite asserts through zassert_within(EPS = 1e-4); float's
+ *  2^-24 relative error on PPO2-range values (0–2.5 bar, gains ≤ 100) is
+ *  orders of magnitude inside that, so the tolerance-based tests are
+ *  unaffected. Keep any new literals/casts in this module single-precision
+ *  (use PIDNumeric_t consts, lroundf, etc.) or the compiler silently
+ *  promotes back to soft-double. */
+typedef float PIDNumeric_t;
 
 /** @brief PID controller state — mirrors the legacy STM32 PIDState_t layout. */
 typedef struct {

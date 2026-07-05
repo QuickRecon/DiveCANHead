@@ -139,7 +139,12 @@ static Numeric_t sample_vcc_voltage(const struct power_config *cfg)
         if (0 != get_ret) {
             OP_ERROR_DETAIL(OP_ERR_INT_ADC, (uint32_t)get_ret);
         } else {
-            result = (Numeric_t)sensor_value_to_double(&val);
+            /* Float variant on purpose: sensor_value_to_double() was the
+             * last double-arithmetic caller in the image and alone pulled
+             * ~2 KB of soft-double libgcc onto this FPU-less build. µV
+             * resolution on a VBAT divider reading is far below the ADC's
+             * own error, so float precision is ample. */
+            result = sensor_value_to_float(&val);
         }
     }
 

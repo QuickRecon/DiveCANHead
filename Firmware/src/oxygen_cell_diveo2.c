@@ -770,7 +770,7 @@ static void diveo2_load_cal(struct diveo2_cell_state *cell)
         cell->cal_coeff = coeff;
         cell->status = CELL_OK;
         LOG_INF("DiveO2 cell %u: loaded cal coeff %.0f",
-                cell->cell_number, (PrecisionPPO2_t)coeff);
+                cell->cell_number, (double)coeff);
     } else {
         /* DiveO2 is a digital, factory-calibrated cell: the default
          * coefficient is valid and NO user calibration is required (only

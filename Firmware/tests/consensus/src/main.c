@@ -227,24 +227,31 @@ ZTEST(consensus, test_excludes_very_low)
 ZTEST(consensus, test_excludes_timed_out_cell)
 {
     /* Round-to-nearest of the two-cell average (ppo2_centibar_to_wire):
-     * i=0 -> 107.4999 -> 107, i=1 -> 109.9999 -> 110, i=2 -> 112.5 -> 113.
-     * (Truncation used to floor these to 107/109/112 — the 0.01-low bias.) */
+     * i=0 -> ~106.99999 -> 107, i=1 -> ~109.99999 -> 110, i=2 -> ~112.99999 -> 113.
+     * (Truncation used to floor these to 106/109/112 — the 0.01-low bias —
+     * so these vectors still regression-test round-vs-truncate.) Vectors are
+     * 1.16/1.10/1.04 rather than the historical 1.15/1.10/1.05: those pair
+     * averages sat on exact x.5 boundaries where float32 arithmetic snaps
+     * the (mathematically x.49999988) intermediate onto x.5 and rounds up,
+     * while the old double math stayed below — a ±1 centibar knife-edge
+     * artifact, not a semantics change. Chosen vectors keep every pair
+     * average ~1e-5 BELOW its integer in both precisions. */
     uint8_t expected_consensus[] = {107, 110, 113};
 
     for (int i = 0; i < 3; i++) {
         int64_t stale = -15000LL; /* 15s in the past relative to now=0 */
 
-        OxygenCellMsg_t c1 = make_cell(0, 115, 1.15f, 0, CELL_OK,
+        OxygenCellMsg_t c1 = make_cell(0, 116, 1.16f, 0, CELL_OK,
                            (i == 0) ? stale : 0);
         OxygenCellMsg_t c2 = make_cell(1, 110, 1.1f, 0, CELL_OK,
                            (i == 1) ? stale : 0);
-        OxygenCellMsg_t c3 = make_cell(2, 105, 1.05f, 0, CELL_OK,
+        OxygenCellMsg_t c3 = make_cell(2, 104, 1.04f, 0, CELL_OK,
                            (i == 2) ? stale : 0);
 
         ConsensusMsg_t expected = {
             .consensus_ppo2 = expected_consensus[i],
             .status_array = {CELL_OK, CELL_OK, CELL_OK},
-            .ppo2_array = {115, 110, 105},
+            .ppo2_array = {116, 110, 104},
             .milli_array = {0, 0, 0},
             .include_array = {
                 (i != 0), (i != 1), (i != 2),
@@ -264,16 +271,23 @@ ZTEST(consensus, test_excludes_timed_out_cell)
 ZTEST(consensus, test_excludes_failed_cell)
 {
     /* Round-to-nearest of the two-cell average (ppo2_centibar_to_wire):
-     * i=0 -> 107.4999 -> 107, i=1 -> 109.9999 -> 110, i=2 -> 112.5 -> 113.
-     * (Truncation used to floor these to 107/109/112 — the 0.01-low bias.) */
+     * i=0 -> ~106.99999 -> 107, i=1 -> ~109.99999 -> 110, i=2 -> ~112.99999 -> 113.
+     * (Truncation used to floor these to 106/109/112 — the 0.01-low bias —
+     * so these vectors still regression-test round-vs-truncate.) Vectors are
+     * 1.16/1.10/1.04 rather than the historical 1.15/1.10/1.05: those pair
+     * averages sat on exact x.5 boundaries where float32 arithmetic snaps
+     * the (mathematically x.49999988) intermediate onto x.5 and rounds up,
+     * while the old double math stayed below — a ±1 centibar knife-edge
+     * artifact, not a semantics change. Chosen vectors keep every pair
+     * average ~1e-5 BELOW its integer in both precisions. */
     uint8_t expected_consensus[] = {107, 110, 113};
 
     for (int i = 0; i < 3; i++) {
-        OxygenCellMsg_t c1 = make_cell(0, 115, 1.15f, 0,
+        OxygenCellMsg_t c1 = make_cell(0, 116, 1.16f, 0,
                            (i == 0) ? CELL_FAIL : CELL_OK, 0);
         OxygenCellMsg_t c2 = make_cell(1, 110, 1.1f, 0,
                            (i == 1) ? CELL_FAIL : CELL_OK, 0);
-        OxygenCellMsg_t c3 = make_cell(2, 105, 1.05f, 0,
+        OxygenCellMsg_t c3 = make_cell(2, 104, 1.04f, 0,
                            (i == 2) ? CELL_FAIL : CELL_OK, 0);
 
         ConsensusMsg_t expected = {
@@ -283,7 +297,7 @@ ZTEST(consensus, test_excludes_failed_cell)
                 (i == 1) ? CELL_FAIL : CELL_OK,
                 (i == 2) ? CELL_FAIL : CELL_OK,
             },
-            .ppo2_array = {115, 110, 105},
+            .ppo2_array = {116, 110, 104},
             .milli_array = {0, 0, 0},
             .include_array = {(i != 0), (i != 1), (i != 2)},
         };
@@ -296,16 +310,23 @@ ZTEST(consensus, test_excludes_failed_cell)
 ZTEST(consensus, test_excludes_cal_cell)
 {
     /* Round-to-nearest of the two-cell average (ppo2_centibar_to_wire):
-     * i=0 -> 107.4999 -> 107, i=1 -> 109.9999 -> 110, i=2 -> 112.5 -> 113.
-     * (Truncation used to floor these to 107/109/112 — the 0.01-low bias.) */
+     * i=0 -> ~106.99999 -> 107, i=1 -> ~109.99999 -> 110, i=2 -> ~112.99999 -> 113.
+     * (Truncation used to floor these to 106/109/112 — the 0.01-low bias —
+     * so these vectors still regression-test round-vs-truncate.) Vectors are
+     * 1.16/1.10/1.04 rather than the historical 1.15/1.10/1.05: those pair
+     * averages sat on exact x.5 boundaries where float32 arithmetic snaps
+     * the (mathematically x.49999988) intermediate onto x.5 and rounds up,
+     * while the old double math stayed below — a ±1 centibar knife-edge
+     * artifact, not a semantics change. Chosen vectors keep every pair
+     * average ~1e-5 BELOW its integer in both precisions. */
     uint8_t expected_consensus[] = {107, 110, 113};
 
     for (int i = 0; i < 3; i++) {
-        OxygenCellMsg_t c1 = make_cell(0, 115, 1.15f, 0,
+        OxygenCellMsg_t c1 = make_cell(0, 116, 1.16f, 0,
                            (i == 0) ? CELL_NEED_CAL : CELL_OK, 0);
         OxygenCellMsg_t c2 = make_cell(1, 110, 1.1f, 0,
                            (i == 1) ? CELL_NEED_CAL : CELL_OK, 0);
-        OxygenCellMsg_t c3 = make_cell(2, 105, 1.05f, 0,
+        OxygenCellMsg_t c3 = make_cell(2, 104, 1.04f, 0,
                            (i == 2) ? CELL_NEED_CAL : CELL_OK, 0);
 
         ConsensusMsg_t expected = {
@@ -315,7 +336,7 @@ ZTEST(consensus, test_excludes_cal_cell)
                 (i == 1) ? CELL_NEED_CAL : CELL_OK,
                 (i == 2) ? CELL_NEED_CAL : CELL_OK,
             },
-            .ppo2_array = {115, 110, 105},
+            .ppo2_array = {116, 110, 104},
             .milli_array = {0, 0, 0},
             .include_array = {(i != 0), (i != 1), (i != 2)},
         };
@@ -328,16 +349,23 @@ ZTEST(consensus, test_excludes_cal_cell)
 ZTEST(consensus, test_excludes_degraded_cell)
 {
     /* Round-to-nearest of the two-cell average (ppo2_centibar_to_wire):
-     * i=0 -> 107.4999 -> 107, i=1 -> 109.9999 -> 110, i=2 -> 112.5 -> 113.
-     * (Truncation used to floor these to 107/109/112 — the 0.01-low bias.) */
+     * i=0 -> ~106.99999 -> 107, i=1 -> ~109.99999 -> 110, i=2 -> ~112.99999 -> 113.
+     * (Truncation used to floor these to 106/109/112 — the 0.01-low bias —
+     * so these vectors still regression-test round-vs-truncate.) Vectors are
+     * 1.16/1.10/1.04 rather than the historical 1.15/1.10/1.05: those pair
+     * averages sat on exact x.5 boundaries where float32 arithmetic snaps
+     * the (mathematically x.49999988) intermediate onto x.5 and rounds up,
+     * while the old double math stayed below — a ±1 centibar knife-edge
+     * artifact, not a semantics change. Chosen vectors keep every pair
+     * average ~1e-5 BELOW its integer in both precisions. */
     uint8_t expected_consensus[] = {107, 110, 113};
 
     for (int i = 0; i < 3; i++) {
-        OxygenCellMsg_t c1 = make_cell(0, 115, 1.15f, 0,
+        OxygenCellMsg_t c1 = make_cell(0, 116, 1.16f, 0,
                            (i == 0) ? CELL_DEGRADED : CELL_OK, 0);
         OxygenCellMsg_t c2 = make_cell(1, 110, 1.1f, 0,
                            (i == 1) ? CELL_DEGRADED : CELL_OK, 0);
-        OxygenCellMsg_t c3 = make_cell(2, 105, 1.05f, 0,
+        OxygenCellMsg_t c3 = make_cell(2, 104, 1.04f, 0,
                            (i == 2) ? CELL_DEGRADED : CELL_OK, 0);
 
         ConsensusMsg_t expected = {
@@ -347,7 +375,7 @@ ZTEST(consensus, test_excludes_degraded_cell)
                 (i == 1) ? CELL_DEGRADED : CELL_OK,
                 (i == 2) ? CELL_DEGRADED : CELL_OK,
             },
-            .ppo2_array = {115, 110, 105},
+            .ppo2_array = {116, 110, 104},
             .milli_array = {0, 0, 0},
             .include_array = {(i != 0), (i != 1), (i != 2)},
         };

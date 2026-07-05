@@ -42,8 +42,16 @@
 #include "errors.h"
 #include "common.h"
 #include "heartbeat.h"
+#include "maintenance_arena.h"
 
 LOG_MODULE_REGISTER(uds_ota, LOG_LEVEL_INF);
+
+/* The flash_img context (with its CONFIG_IMG_BLOCK_BUF_SIZE coalescing
+ * buffer inside) lives in the shared maintenance arena while an OTA is in
+ * flight, instead of as a permanent static. */
+BUILD_ASSERT(sizeof(struct flash_img_context) <= MAINT_ARENA_SIZE,
+             "flash_img_context must fit the maintenance arena "
+             "(did CONFIG_IMG_BLOCK_BUF_SIZE grow?)");
 
 /* ---- Wire-format constants ---- */
 
@@ -123,7 +131,10 @@ typedef enum {
 
 typedef struct {
     struct smf_ctx           smf;
-    struct flash_img_context flashCtx;
+    /* Points into the maintenance arena while the SM is out of IDLE
+     * (claimed in the 0x34 handler, released on every return to IDLE);
+     * NULL otherwise. */
+    struct flash_img_context *flashCtx;
     uint32_t                 bytesExpected;
     uint32_t                 bytesReceived;
     uint8_t                  nextSeq;
@@ -208,7 +219,12 @@ void UDS_OTA_Reset(void)
 /* ---- State action implementations ---- */
 
 /**
- * @brief OTA_STATE_IDLE entry: clear pipeline counters.
+ * @brief OTA_STATE_IDLE entry: clear pipeline counters, return the arena.
+ *
+ * Runs on initial SM setup and on EVERY transition back to IDLE
+ * (UDS_OTA_Reset on session lapse / dive, completion paths), so it is the
+ * single release point for the maintenance-arena claim taken in the 0x34
+ * handler. maint_arena_release is a no-op when OTA is not the holder.
  */
 static void ota_idle_entry(void *obj)
 {
@@ -216,6 +232,8 @@ static void ota_idle_entry(void *obj)
     sm->bytesExpected = 0;
     sm->bytesReceived = 0;
     sm->nextSeq = 1U;
+    sm->flashCtx = NULL;
+    maint_arena_release(MAINT_ARENA_OWNER_OTA);
 }
 
 /**
@@ -276,6 +294,16 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
                         UDS_NRC_REQUEST_OUT_OF_RANGE);
                 UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
                              UDS_NRC_REQUEST_OUT_OF_RANGE);
+            } else if (NULL == (sm->flashCtx = maint_arena_claim(
+                                    MAINT_ARENA_OWNER_OTA))) {
+                /* Maintenance arena busy — a factory capture/restore is
+                 * using the shared scratch region. Transient (capture is a
+                 * one-shot on a freshly-flashed unit); the tester retries. */
+                flash_area_close(fa);
+                OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
+                        UDS_NRC_CONDITIONS_NOT_CORRECT);
+                UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
+                             UDS_NRC_CONDITIONS_NOT_CORRECT);
             } else {
                 /* The OTA writer (flash_img/stream_flash) is built WITHOUT
                  * erase (CONFIG_IMG_ERASE_PROGRESSIVELY and
@@ -306,9 +334,9 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
                         ctx, UDS_SID_REQUEST_DOWNLOAD,
                         UDS_NRC_GENERAL_PROG_FAIL);
                 } else {
-                    (void)memset(&sm->flashCtx, 0, sizeof(sm->flashCtx));
+                    (void)memset(sm->flashCtx, 0, sizeof(*sm->flashCtx));
 
-                    rc = flash_img_init_id(&sm->flashCtx,
+                    rc = flash_img_init_id(sm->flashCtx,
                                    PARTITION_ID(slot1_partition));
                     if (0 != rc) {
                         OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
@@ -339,6 +367,12 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
             UDS_SendResponse(ctx);
             smf_set_state(SMF_CTX(sm),
                       &ota_states[OTA_STATE_DOWNLOADING]);
+        } else if (NULL != sm->flashCtx) {
+            /* Claimed the arena but failed before entering DOWNLOADING —
+             * the SM stays IDLE (no transition, so ota_idle_entry will not
+             * re-run) and the claim must be handed back here. */
+            sm->flashCtx = NULL;
+            maint_arena_release(MAINT_ARENA_OWNER_OTA);
         }
     }
 }
@@ -386,7 +420,7 @@ static void ota_handle_transfer_data(OtaSmCtx_t *sm)
         } else {
             size_t dataLen = requestLength - OTA_TRANSFER_OVERHEAD;
             const uint8_t *data = &requestData[UDS_SID_IDX + 2U];
-            int rc = flash_img_buffered_write(&sm->flashCtx, data,
+            int rc = flash_img_buffered_write(sm->flashCtx, data,
                               dataLen, false);
             if (0 != rc) {
                 OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
@@ -428,7 +462,7 @@ static void ota_handle_transfer_exit(OtaSmCtx_t *sm)
         /* Flush any unwritten bytes from flash_img_buffered_write's
          * internal block buffer. Pass an empty data buffer so only
          * the flush flag has effect. */
-        int rc = flash_img_buffered_write(&sm->flashCtx, NULL, 0, true);
+        int rc = flash_img_buffered_write(sm->flashCtx, NULL, 0, true);
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
             UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_TRANSFER_EXIT,
@@ -783,14 +817,19 @@ static int validateSlot1(void)
             LOG_ERR("validateSlot1: no SHA-256 TLV in slot1");
             result = -EBADMSG;
         } else {
+            /* Only reachable from AWAITING_ACTIVATE, where the OTA claim
+             * taken at 0x34 is still held and flashCtx points at the
+             * arena. */
             OtaSmCtx_t *sm = getOtaSm();
-            (void)memset(&sm->flashCtx, 0, sizeof(sm->flashCtx));
+            __ASSERT(NULL != sm->flashCtx,
+                 "validateSlot1 outside an active OTA claim");
+            (void)memset(sm->flashCtx, 0, sizeof(*sm->flashCtx));
 
             const struct flash_img_check check = {
                 .match = expectedHash,
                 .clen = hashedLen,
             };
-            rc = flash_img_check(&sm->flashCtx, &check,
+            rc = flash_img_check(sm->flashCtx, &check,
                          PARTITION_ID(slot1_partition));
             if (0 != rc) {
                 LOG_ERR("validateSlot1: hash mismatch (%d)", rc);

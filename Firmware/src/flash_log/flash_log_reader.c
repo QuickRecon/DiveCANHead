@@ -7,9 +7,11 @@
  * that sector). Selector calls scan the index for a match, then return
  * a `FlashLogRange_t` the caller can stream via the reader cursor.
  *
- * The index is two arrays of 100 × 8 B = 800 B each — kept compact
- * because STM32L431 RAM is tight. Built by one fcb_walk per FCB that
- * inspects only marker TLV entries (BOOT_MARKER / DIVE_START /
+ * The index is (192+32) × 8 B = 1792 B and lives in the shared
+ * maintenance arena (see maintenance_arena.h) rather than as permanent
+ * statics — STM32L431 RAM is tight and the index is never needed while
+ * an OTA download or factory copy is running. Built by one fcb_walk per
+ * FCB that inspects only marker TLV entries (BOOT_MARKER / DIVE_START /
  * DIVE_END), so it costs ~one flash read per sector at index-build
  * time and only happens after a UDS selector call.
  */
@@ -18,6 +20,7 @@
 #include "flash_log_entries.h"
 #include "flash_log_internal.h"
 #include "watchdog_feeder.h"
+#include "maintenance_arena.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
@@ -46,8 +49,21 @@ LOG_MODULE_REGISTER(flash_log_reader, LOG_LEVEL_NONE);
  * Each index array is sized to its own FCB — telemetry is far larger
  * than text, so a single shared cap would waste RAM on the small one. */
 
-static FlashLogIndexEntry_t fl_index_telemetry[FL_TELEMETRY_SECTOR_COUNT];
-static FlashLogIndexEntry_t fl_index_text[FL_TEXT_SECTOR_COUNT];
+/* Both destinations' index arrays live back-to-back in the shared
+ * maintenance arena: telemetry at offset 0, text after it. The reader is an
+ * EVICTABLE arena tenant — it claims around each resolver call, and treats
+ * a maint_arena_generation() change as "another tenant (OTA download or
+ * factory copy) wrote the arena, contents gone" and rebuilds. Between
+ * claims the contents stay warm, so the steady-state selector path still
+ * skips the rebuild. */
+#define FL_INDEX_TOTAL_ENTRIES (FL_TELEMETRY_SECTOR_COUNT + FL_TEXT_SECTOR_COUNT)
+BUILD_ASSERT(FL_INDEX_TOTAL_ENTRIES * sizeof(FlashLogIndexEntry_t) <=
+             MAINT_ARENA_SIZE,
+             "log reader index must fit the maintenance arena "
+             "(did an FCB sector count grow?)");
+
+static FlashLogIndexEntry_t *fl_index_base; /* arena; valid under claim */
+static uint32_t fl_index_built_gen;         /* arena gen at last build */
 
 static atomic_t fl_index_valid[FL_DEST_COUNT] = {
     ATOMIC_INIT(0), ATOMIC_INIT(0),
@@ -57,14 +73,46 @@ static FlashLogIndexEntry_t *fl_index_for(FlashLogDest_t dest)
 {
     FlashLogIndexEntry_t *r;
 
-    if (FL_DEST_TELEMETRY == dest) {
-        r = fl_index_telemetry;
+    if (NULL == fl_index_base) {
+        r = NULL; /* no claim held */
+    } else if (FL_DEST_TELEMETRY == dest) {
+        r = fl_index_base;
     } else if (FL_DEST_TEXT == dest) {
-        r = fl_index_text;
+        r = &fl_index_base[FL_TELEMETRY_SECTOR_COUNT];
     } else {
         r = NULL;
     }
     return r;
+}
+
+/* Claim the arena for the duration of one resolver call. On success
+ * fl_index_base is set; if another tenant wrote the arena since our last
+ * build (generation moved), both destinations are marked invalid so
+ * fl_ensure_index rebuilds. -EBUSY while an OTA/factory op holds the
+ * arena — the UDS layer surfaces that as a negative response and the
+ * client retries after the maintenance op. */
+static int fl_index_claim(void)
+{
+    void *base = maint_arena_claim(MAINT_ARENA_OWNER_LOG_INDEX);
+
+    if (NULL == base) {
+        return -EBUSY;
+    }
+    fl_index_base = base;
+
+    uint32_t gen = maint_arena_generation();
+    if (gen != fl_index_built_gen) {
+        atomic_set(&fl_index_valid[FL_DEST_TELEMETRY], 0);
+        atomic_set(&fl_index_valid[FL_DEST_TEXT], 0);
+        fl_index_built_gen = gen;
+    }
+    return 0;
+}
+
+static void fl_index_unclaim(void)
+{
+    fl_index_base = NULL;
+    maint_arena_release(MAINT_ARENA_OWNER_LOG_INDEX);
 }
 
 /* ---- Index build ----
@@ -283,15 +331,20 @@ int flash_log_reader_index_summary(FlashLogDest_t dest,
     if ((out == NULL) || (dest >= FL_DEST_COUNT)) {
         rc = -EINVAL;
     } else {
-        rc = fl_ensure_index(dest);
+        rc = fl_index_claim();
         if (0 == rc) {
-            const FlashLogIndexEntry_t *index = fl_index_for(dest);
-            if (index == NULL) {
-                rc = -EINVAL;
-            } else {
-                flash_log_index_summarize(
-                    index, flash_log_internal_sector_count(dest), out);
+            rc = fl_ensure_index(dest);
+            if (0 == rc) {
+                const FlashLogIndexEntry_t *index = fl_index_for(dest);
+                if (index == NULL) {
+                    rc = -EINVAL;
+                } else {
+                    flash_log_index_summarize(
+                        index, flash_log_internal_sector_count(dest),
+                        out);
+                }
             }
+            fl_index_unclaim();
         }
     }
     return rc;
@@ -336,7 +389,7 @@ int flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out)
     return rc;
 }
 
-int flash_log_reader_resolve_latest_boot(FlashLogDest_t dest,
+static int fl_resolve_latest_boot_impl(FlashLogDest_t dest,
                      FlashLogRange_t *out)
 {
     int rc = fl_ensure_index(dest);
@@ -371,7 +424,18 @@ int flash_log_reader_resolve_latest_boot(FlashLogDest_t dest,
     return 0;
 }
 
-int flash_log_reader_resolve_boot_id(FlashLogDest_t dest, uint32_t boot_id,
+int flash_log_reader_resolve_latest_boot(FlashLogDest_t dest,
+                     FlashLogRange_t *out)
+{
+    int rc = fl_index_claim();
+    if (0 == rc) {
+        rc = fl_resolve_latest_boot_impl(dest, out);
+        fl_index_unclaim();
+    }
+    return rc;
+}
+
+static int fl_resolve_boot_id_impl(FlashLogDest_t dest, uint32_t boot_id,
                      FlashLogRange_t *out)
 {
     int rc = fl_ensure_index(dest);
@@ -425,7 +489,18 @@ int flash_log_reader_resolve_boot_id(FlashLogDest_t dest, uint32_t boot_id,
     return 0;
 }
 
-int flash_log_reader_resolve_latest_dive(FlashLogDest_t dest,
+int flash_log_reader_resolve_boot_id(FlashLogDest_t dest, uint32_t boot_id,
+                     FlashLogRange_t *out)
+{
+    int rc = fl_index_claim();
+    if (0 == rc) {
+        rc = fl_resolve_boot_id_impl(dest, boot_id, out);
+        fl_index_unclaim();
+    }
+    return rc;
+}
+
+static int fl_resolve_latest_dive_impl(FlashLogDest_t dest,
                      FlashLogRange_t *out)
 {
     int rc = fl_ensure_index(dest);
@@ -460,7 +535,18 @@ int flash_log_reader_resolve_latest_dive(FlashLogDest_t dest,
     return 0;
 }
 
-int flash_log_reader_resolve_dive_id(FlashLogDest_t dest, uint16_t dive_id,
+int flash_log_reader_resolve_latest_dive(FlashLogDest_t dest,
+                     FlashLogRange_t *out)
+{
+    int rc = fl_index_claim();
+    if (0 == rc) {
+        rc = fl_resolve_latest_dive_impl(dest, out);
+        fl_index_unclaim();
+    }
+    return rc;
+}
+
+static int fl_resolve_dive_id_impl(FlashLogDest_t dest, uint16_t dive_id,
                      FlashLogRange_t *out)
 {
     int rc = fl_ensure_index(dest);
@@ -517,6 +603,17 @@ int flash_log_reader_resolve_dive_id(FlashLogDest_t dest, uint16_t dive_id,
         out->end.fe_elem_off = 0;
     }
     return 0;
+}
+
+int flash_log_reader_resolve_dive_id(FlashLogDest_t dest, uint16_t dive_id,
+                     FlashLogRange_t *out)
+{
+    int rc = fl_index_claim();
+    if (0 == rc) {
+        rc = fl_resolve_dive_id_impl(dest, dive_id, out);
+        fl_index_unclaim();
+    }
+    return rc;
 }
 
 /* ---- Streaming cursor ---- */

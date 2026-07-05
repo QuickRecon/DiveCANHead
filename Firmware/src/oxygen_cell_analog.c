@@ -119,7 +119,7 @@ static void analog_publish(struct analog_cell_state *cell)
     OxygenCellMsg_t msg = {
         .cell_number = cell->cell_number,
         .ppo2 = ppo2,
-        .precision_ppo2 = (PrecisionPPO2_t)cal_ppo2 / 100.0,
+        .precision_ppo2 = (PrecisionPPO2_t)cal_ppo2 / 100.0f,
         .millivolts = millivolts,
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),

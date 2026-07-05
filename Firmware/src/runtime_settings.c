@@ -119,7 +119,11 @@ static bool battery_type_valid(BatteryType_t val)
  */
 static bool pid_gain_valid(Numeric_t g)
 {
-    return isfinite((double)g) && (g >= PID_GAIN_MIN) && (g <= PID_GAIN_MAX);
+    /* isfinite() is type-generic — classifying g at its native float width
+     * avoids the (double) promotion that used to drag the soft-double
+     * compare helpers (and with them the whole libgcc double add/sub
+     * object, ~1.3 KB) into this otherwise double-free image. */
+    return isfinite(g) && (g >= PID_GAIN_MIN) && (g <= PID_GAIN_MAX);
 }
 
 /**

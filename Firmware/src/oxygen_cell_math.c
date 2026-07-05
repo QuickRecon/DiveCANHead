@@ -40,9 +40,9 @@ static const uint32_t MBAR_PER_FRACTIONAL_UNIT = 1000U;
 
 PPO2_t ppo2_centibar_to_wire(PrecisionPPO2_t centibar_ppo2)
 {
-    PrecisionPPO2_t rounded = round(centibar_ppo2);
-    if (rounded < 0.0) {
-        rounded = 0.0;
+    PrecisionPPO2_t rounded = roundf(centibar_ppo2);
+    if (rounded < 0.0f) {
+        rounded = 0.0f;
     }
     if (rounded > (PrecisionPPO2_t)MAX_VALID_PPO2) {
         rounded = (PrecisionPPO2_t)MAX_VALID_PPO2;
@@ -77,7 +77,7 @@ static ConsensusMsg_t two_cell_consensus(ConsensusMsg_t consensus)
     }
 
     /* Check to see if they pass the sniff check */
-    if ((fabs(included_values[0] - included_values[1]) * CENTIBAR_PER_BAR) >
+    if ((fabsf(included_values[0] - included_values[1]) * CENTIBAR_PER_BAR) >
         MAX_DEVIATION) {
         /* Both cells are too far apart, vote them all out */
         for (uint8_t voteIdx = 0U; voteIdx < CELL_MAX_COUNT; ++voteIdx) {
@@ -117,11 +117,11 @@ static ConsensusMsg_t two_cell_consensus(ConsensusMsg_t consensus)
 static ConsensusMsg_t three_cell_consensus(ConsensusMsg_t consensus)
 {
     const PrecisionPPO2_t pairwise_differences[3] = {
-        fabs(consensus.precision_ppo2_array[0] -
+        fabsf(consensus.precision_ppo2_array[0] -
              consensus.precision_ppo2_array[1]),
-        fabs(consensus.precision_ppo2_array[0] -
+        fabsf(consensus.precision_ppo2_array[0] -
              consensus.precision_ppo2_array[2]),
-        fabs(consensus.precision_ppo2_array[1] -
+        fabsf(consensus.precision_ppo2_array[1] -
              consensus.precision_ppo2_array[2]),
     };
 
@@ -161,7 +161,7 @@ static ConsensusMsg_t three_cell_consensus(ConsensusMsg_t consensus)
         }
     }
     /* Check the remainder cell against the average of the 2 */
-    else if ((fabs(consensus.precision_ppo2_array[remainder_cell[min_index]] -
+    else if ((fabsf(consensus.precision_ppo2_array[remainder_cell[min_index]] -
                    pairwise_averages[min_index]) *
               CENTIBAR_PER_BAR) > MAX_DEVIATION) {
         /* Vote out the remainder cell */

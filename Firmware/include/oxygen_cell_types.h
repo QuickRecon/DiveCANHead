@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "common.h"   /* PrecisionPPO2_t */
 
 /* ---- Domain value types ---- */
 
@@ -105,7 +106,7 @@ void diveo2_request_broadcast(uint8_t cell_number, bool on);
 typedef struct {
     uint8_t cell_number;
     PPO2_t ppo2;               /**< PPO2 in centibar; 0xFF = fail */
-    double precision_ppo2;     /**< PPO2 in bar, full precision for PID */
+    PrecisionPPO2_t precision_ppo2; /**< PPO2 in bar, full precision for PID */
     Millivolts_t millivolts;
     CellStatus_t status;
     int64_t timestamp_ticks;   /**< k_uptime_ticks() — 64-bit, no overflow */
@@ -122,9 +123,9 @@ typedef struct {
 /** @brief Voted consensus result published on chan_consensus. */
 typedef struct {
     PPO2_t consensus_ppo2;
-    double precision_consensus;
+    PrecisionPPO2_t precision_consensus;
     PPO2_t ppo2_array[CELL_MAX_COUNT];
-    double precision_ppo2_array[CELL_MAX_COUNT];
+    PrecisionPPO2_t precision_ppo2_array[CELL_MAX_COUNT];
     Millivolts_t milli_array[CELL_MAX_COUNT];
     CellStatus_t status_array[CELL_MAX_COUNT];
     bool include_array[CELL_MAX_COUNT];

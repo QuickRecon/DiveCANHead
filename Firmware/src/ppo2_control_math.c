@@ -14,11 +14,11 @@
 /* Microseconds per millisecond, named to satisfy SonarQube S109. */
 static const uint32_t US_PER_MS = 1000U;
 /* Millibar reference used to convert ambient pressure into a depth-comp
- * coefficient (1000 mbar = 1 bar = surface).  Must be a float literal so
- * the resulting coefficient is double-precision. */
-static const PIDNumeric_t MBAR_PER_BAR = 1000.0;
+ * coefficient (1000 mbar = 1 bar = surface).  Typed as PIDNumeric_t so the
+ * division stays in single precision. */
+static const PIDNumeric_t MBAR_PER_BAR = 1000.0f;
 /* Duty-cycle of 1.0 for use in the "off time = total - on time" calc. */
-static const PIDNumeric_t FULL_DUTY = 1.0;
+static const PIDNumeric_t FULL_DUTY = 1.0f;
 
 void pid_state_init(PIDState_t *state, PIDNumeric_t kp,
             PIDNumeric_t ki, PIDNumeric_t kd)
@@ -142,10 +142,12 @@ static uint32_t duty_to_microseconds(uint32_t cycle_ms, PIDNumeric_t duty_fracti
 {
     PIDNumeric_t cycle_us = (PIDNumeric_t)cycle_ms * (PIDNumeric_t)US_PER_MS;
 
-    /* lround() makes the rounding intent explicit (vs implicit truncation
-     * by a (uint32_t) cast). Caller guarantees inputs are non-negative,
-     * so the long→uint32_t conversion is value-safe. */
-    return (uint32_t)lround(cycle_us * duty_fraction);
+    /* lroundf() makes the rounding intent explicit (vs implicit truncation
+     * by a (uint32_t) cast) and keeps the argument single-precision (plain
+     * lround() takes double and would promote through softfloat). Caller
+     * guarantees inputs are non-negative, so the long→uint32_t conversion
+     * is value-safe. */
+    return (uint32_t)lroundf(cycle_us * duty_fraction);
 }
 
 PIDNumeric_t pid_depth_comp_coeff(uint16_t pressure_mbar)
@@ -193,9 +195,9 @@ FireTiming_t pid_compute_fire_timing(PIDNumeric_t duty,
      * off-duration calculation below. (Legacy code allowed this through
      * because the lower-bound check below would catch it; explicit floor
      * here makes the intent obvious and the math safer.) */
-    if (dutyCycle < 0.0)
+    if (dutyCycle < 0.0f)
     {
-        dutyCycle = 0.0;
+        dutyCycle = 0.0f;
     }
 
     /* Establish the lower bound on the solenoid duty */

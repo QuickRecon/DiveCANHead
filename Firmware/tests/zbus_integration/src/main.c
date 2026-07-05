@@ -89,11 +89,13 @@ ZTEST(zbus_integration, test_one_failed_cell)
 {
     OxygenCellMsg_t c1 = make_cell(0, 100, 1.0, CELL_OK);
     OxygenCellMsg_t c2 = make_cell(1, 110, 1.1f, CELL_FAIL);
-    OxygenCellMsg_t c3 = make_cell(2, 105, 1.05f, CELL_OK);
+    OxygenCellMsg_t c3 = make_cell(2, 104, 1.04f, CELL_OK);
 
     ConsensusMsg_t result = publish_and_read_consensus(&c1, &c2, &c3);
 
-    /* Average of 1.0 and 1.05 = 1.025 → 102 centibar */
+    /* Average of 1.0 and 1.04 = 1.02 → 102 centibar. (Was 1.05: that
+     * average sits on the 102.5 knife edge, where float32 rounds up while
+     * double stayed a hair below — see the consensus suite comment.) */
     zassert_equal(result.consensus_ppo2, 102,
               "consensus=%u", result.consensus_ppo2);
     zassert_equal(result.confidence, 2);
@@ -117,11 +119,12 @@ ZTEST(zbus_integration, test_outlier_excluded)
 {
     OxygenCellMsg_t c1 = make_cell(0, 100, 1.0, CELL_OK);
     OxygenCellMsg_t c2 = make_cell(1, 130, 1.3, CELL_OK);
-    OxygenCellMsg_t c3 = make_cell(2, 105, 1.05f, CELL_OK);
+    OxygenCellMsg_t c3 = make_cell(2, 104, 1.04f, CELL_OK);
 
     ConsensusMsg_t result = publish_and_read_consensus(&c1, &c2, &c3);
 
-    /* c2 is the outlier, pair c1+c3 average = 102 */
+    /* c2 is the outlier, pair c1+c3 average = 1.02 → 102 (1.04 avoids
+     * the 102.5 float32 knife edge the old 1.05 vector sat on) */
     zassert_equal(result.consensus_ppo2, 102,
               "consensus=%u", result.consensus_ppo2);
     zassert_false(result.include_array[1], "outlier should be excluded");

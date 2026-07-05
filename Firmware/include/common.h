@@ -19,7 +19,12 @@
  */
 
 typedef float Numeric_t;                /**< Generic float for in-module math */
-typedef double PrecisionPPO2_t;         /**< Double-precision PPO2 in bar */
+/** Full-precision PPO2 in bar (vs the centibar wire type).  Single-precision:
+ *  the L431 FPU is single-only, so double math runs in softfloat.  PPO2 spans
+ *  0-2.55 bar with centibar wire resolution; float's 2^-24 relative error is
+ *  orders of magnitude inside both the sensor noise floor and the wire
+ *  rounding.  Was double to mirror the legacy STM32 firmware. */
+typedef float PrecisionPPO2_t;
 typedef float Percent_t;                /**< Generic percentage (0-100) */
 typedef float ADCV_t;                   /**< ADC voltage as a float */
 

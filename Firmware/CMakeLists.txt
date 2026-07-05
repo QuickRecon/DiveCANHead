@@ -69,6 +69,7 @@ target_sources(app PRIVATE
     src/error_histogram.c
     src/firmware_confirm.c
     src/flash_mass_erase.c
+    src/maintenance_arena.c
 )
 target_sources_ifdef(CONFIG_ALARM app PRIVATE src/alarm.c)
 target_sources_ifdef(CONFIG_POSEIDON_ACCESSORIES app PRIVATE

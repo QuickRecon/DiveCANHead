@@ -24,6 +24,7 @@
 #include "factory_image_backend.h"
 #include "heartbeat.h"
 #include "errors.h"
+#include "maintenance_arena.h"
 
 LOG_MODULE_REGISTER(factory_image, LOG_LEVEL_INF);
 
@@ -51,6 +52,9 @@ const struct factory_image_backend *factory_image_get_flash_backend(void);
 struct module_state {
     const struct factory_image_backend *backend;
     bool capture_in_progress;
+    /* Chunk buffer in the shared maintenance arena; non-NULL only while a
+     * capture/restore holds the FACTORY claim. */
+    uint8_t *chunk;
 };
 
 static struct module_state *get_state(void)
@@ -59,14 +63,20 @@ static struct module_state *get_state(void)
     return &state;
 }
 
+/* The copy chunk lives in the shared maintenance arena (claimed for the
+ * duration of one capture/restore) instead of a permanent static. Exclusion
+ * against the other arena tenants (OTA download, log-reader index) comes
+ * from the claim itself; the old informal guarantee (capture_in_progress +
+ * single-context restore) still holds for this module's own state. */
+BUILD_ASSERT((size_t)CHUNK_SIZE <= (size_t)MAINT_ARENA_SIZE,
+             "factory chunk must fit the maintenance arena "
+             "(did CONFIG_FACTORY_IMAGE_CHUNK_SIZE grow?)");
+
 static uint8_t *get_chunk_buffer(void)
 {
-    /* One 4 KB buffer reused for both capture and restore. Single-thread
-     * guarantee comes from get_state()->capture_in_progress + the fact
-     * that restore is synchronous and is only ever called from the UDS
-     * dispatcher's single context. */
-    static uint8_t buffer[CHUNK_SIZE];
-    return buffer;
+    __ASSERT(NULL != get_state()->chunk,
+             "factory chunk used outside an arena claim");
+    return get_state()->chunk;
 }
 
 /* ---- Backend resolution ---- */
@@ -202,6 +212,13 @@ static int do_capture(void)
     if (NULL == get_state()->backend) {
         LOG_ERR("Backend not initialised");
         result = -ENODEV;
+    } else if (NULL == (get_state()->chunk =
+                   maint_arena_claim(MAINT_ARENA_OWNER_FACTORY))) {
+        /* Arena busy — an OTA download is in flight. Capture is retried by
+         * the caller's policy (first-boot capture re-arms on next boot;
+         * forced capture is an operator action). */
+        LOG_WRN("Factory capture deferred: maintenance arena busy");
+        result = -EBUSY;
     } else {
         get_state()->capture_in_progress = true;
         set_long_op(true);
@@ -254,6 +271,8 @@ static int do_capture(void)
         }
         set_long_op(false);
         get_state()->capture_in_progress = false;
+        get_state()->chunk = NULL;
+        maint_arena_release(MAINT_ARENA_OWNER_FACTORY);
     }
     return result;
 }
@@ -404,6 +423,10 @@ int factory_image_restore_to_slot1(void)
     } else if (!get_state()->backend->is_captured()) {
         LOG_WRN("Restore requested but no factory image captured");
         result = -ENOENT;
+    } else if (NULL == (get_state()->chunk =
+                   maint_arena_claim(MAINT_ARENA_OWNER_FACTORY))) {
+        LOG_WRN("Factory restore refused: maintenance arena busy (OTA?)");
+        result = -EBUSY;
     } else {
         get_state()->capture_in_progress = true;
         set_long_op(true);
@@ -445,6 +468,8 @@ int factory_image_restore_to_slot1(void)
 
         set_long_op(false);
         get_state()->capture_in_progress = false;
+        get_state()->chunk = NULL;
+        maint_arena_release(MAINT_ARENA_OWNER_FACTORY);
 
         if (0 == result) {
             k_msleep(RESTORE_REBOOT_DELAY_MS);
