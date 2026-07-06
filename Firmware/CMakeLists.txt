@@ -50,6 +50,48 @@ foreach(module_manifest ${proprietary_module_manifests})
     list(APPEND EXTRA_ZEPHYR_MODULES ${module_dir})
 endforeach()
 
+# Required patches to the west-managed zephyr tree, applied at configure time
+# (idempotent, content-checked). Currently one: the spi_nor 4-byte erase-opcode
+# fix — without it every erase on the W25Q512JV lands at the WRONG address,
+# silently corrupting OTA staging, factory capture, and the flash log. The
+# check is content-based (marker symbol), so a manually patched or forked tree
+# also passes; a tree where the patch is missing AND cannot be applied fails
+# the build loudly rather than emitting corrupting firmware. Runs before
+# find_package so the sysbuild MCUBoot image also compiles the patched source.
+set(_zephyr_tree "$ENV{ZEPHYR_BASE}")
+if(NOT _zephyr_tree)
+    execute_process(COMMAND west topdir
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                    OUTPUT_VARIABLE _west_topdir
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    RESULT_VARIABLE _west_rc ERROR_QUIET)
+    if(_west_rc EQUAL 0)
+        set(_zephyr_tree "${_west_topdir}/zephyr")   # zephyr.base in .west/config
+    endif()
+endif()
+if(_zephyr_tree AND EXISTS "${_zephyr_tree}/drivers/flash/spi_nor.c")
+    file(READ "${_zephyr_tree}/drivers/flash/spi_nor.c" _spi_nor_src)
+    string(FIND "${_spi_nor_src}" "spi_nor_erase_opcode_4b" _patch_marker)
+    if(_patch_marker EQUAL -1)
+        set(_spi_nor_patch
+            ${CMAKE_CURRENT_SOURCE_DIR}/patches/zephyr-spi-nor-4byte-erase-opcode.patch)
+        execute_process(COMMAND git -C "${_zephyr_tree}" apply "${_spi_nor_patch}"
+                        RESULT_VARIABLE _patch_rc ERROR_VARIABLE _patch_err)
+        if(NOT _patch_rc EQUAL 0)
+            message(FATAL_ERROR
+                "zephyr spi_nor 4-byte erase-opcode patch is NOT applied and "
+                "auto-apply failed (${_patch_err}). Building without it produces "
+                "firmware that erases the wrong NOR locations. Apply "
+                "${_spi_nor_patch} to ${_zephyr_tree} (rebase it if the zephyr "
+                "revision changed).")
+        endif()
+        message(STATUS "Applied zephyr spi_nor 4-byte erase-opcode patch to ${_zephyr_tree}")
+    endif()
+elseif(NOT BOARD MATCHES "native_sim")
+    message(WARNING "Could not locate the zephyr tree to verify the spi_nor "
+                    "4-byte erase-opcode patch — do not ship this build unverified.")
+endif()
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(divecan_jr)
 
