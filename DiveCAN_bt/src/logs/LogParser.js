@@ -106,6 +106,70 @@ export function parseLogStream(input) {
   return records;
 }
 
+/**
+ * Count the (flattened) records inside a fully-present slice of TLV bytes.
+ * @private
+ */
+function countRecordsIn(buf) {
+  let i = 0;
+  let count = 0;
+  const n = buf.length;
+  while (i + FL_ENTRY_HDR_LEN <= n) {
+    const rtype = buf[i];
+    const length = ByteUtils.leToUint16(buf.slice(i + 2, i + 4));
+    const end = i + FL_ENTRY_HDR_LEN + length;
+    if (end > n) break;
+    if (rtype === FL_TYPE_END_OF_STREAM) break;
+    if (rtype === FL_TYPE_BATCH) {
+      count += countRecordsIn(buf.slice(i + FL_ENTRY_HDR_LEN, end));
+    } else {
+      count += 1;
+    }
+    i = end;
+  }
+  return count;
+}
+
+/**
+ * Create a resumable record counter for a growing download buffer, so a live
+ * progress indicator can count records without re-parsing from scratch (O(total)
+ * overall, not O(total^2)). Feed it the full accumulated buffer each call; it
+ * advances an internal cursor past complete top-level entries and returns the
+ * running record count.
+ * @returns {(buffer: Uint8Array|Array) => number}
+ */
+export function makeRecordCounter() {
+  let offset = -1; // -1 until the DCLG header (if any) is resolved
+  let count = 0;
+  let done = false;
+
+  return function next(buffer) {
+    if (done) return count;
+    const bytes = toBytes(buffer);
+    if (offset < 0) {
+      if (bytes.length < LOG_DCLG_HEADER_LEN) return count;
+      offset = parseDclgHeader(bytes) ? LOG_DCLG_HEADER_LEN : 0;
+    }
+    let i = offset;
+    const n = bytes.length;
+    while (i + FL_ENTRY_HDR_LEN <= n) {
+      const rtype = bytes[i];
+      const length = ByteUtils.leToUint16(bytes.slice(i + 2, i + 4));
+      const end = i + FL_ENTRY_HDR_LEN + length;
+      if (end > n) break; // entry not fully received yet — resume next call
+      if (rtype === FL_TYPE_END_OF_STREAM) { done = true; break; }
+      if (rtype === FL_TYPE_BATCH) {
+        count += countRecordsIn(bytes.slice(i + FL_ENTRY_HDR_LEN, end));
+      } else {
+        count += 1;
+      }
+      i = end;
+    }
+    offset = i;
+    return count;
+  };
+}
+
 /** Decode a BOOT_MARKER payload -> {bootId, fwVersion, resetCause}. */
 export function decodeBootMarker(payload) {
   const p = toBytes(payload);

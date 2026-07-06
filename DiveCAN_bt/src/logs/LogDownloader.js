@@ -16,6 +16,7 @@
 
 import * as constants from '../uds/constants.js';
 import { ByteUtils } from '../utils/ByteUtils.js';
+import { makeRecordCounter } from './LogParser.js';
 
 class EventEmitter {
   constructor() { this.events = {}; }
@@ -169,11 +170,14 @@ export class LogDownloader extends EventEmitter {
     }
 
     // Read the resolved range for a progress denominator (best-effort).
+    // NOTE: the firmware hard-codes total_bytes to 0 (it avoids a pre-walk), so
+    // entry_count is the only usable progress denominator — drive the bar off
+    // the running record count vs this estimate.
     let selector = null;
-    let totalBytes = 0;
+    let entryCount = 0;
     try {
       selector = await this.readSelectorResult();
-      totalBytes = selector?.totalBytes || 0;
+      entryCount = selector?.entryCount || 0;
     } catch { /* selector-result read is advisory */ }
 
     // 2. Arm the stream.
@@ -183,20 +187,34 @@ export class LogDownloader extends EventEmitter {
     const negotiatedBlock = await this.uds.requestDownload(
       constants.LOG_DOWNLOAD_SENTINEL_ADDR, maxChunk, { sizeEndian: 'LE' }, this.timeouts.block);
 
-    // 4. Pull chunks (seq from 1, wrap skipping 0; short chunk = EOS).
-    const chunks = [];
+    // 4. Pull chunks (seq from 1, wrap skipping 0; short chunk = EOS). Bytes are
+    //    appended into a single amortised-growth buffer so the resumable record
+    //    counter (progress) stays O(total), not O(total^2).
     const chunkLens = [];
+    const countRecords = makeRecordCounter();
+    let acc = new Uint8Array(4096);
+    let accLen = 0;
     let received = 0;
     let seq = 1;
     for (let i = 0; i < maxBlocks; i++) {
       if (opts.signal?.aborted) break;
       const resp = await this.uds.transferData(seq, [], this.timeouts.block);
       const body = resp.slice(2); // strip [0x76, seq]
-      chunks.push(body);
+      if (accLen + body.length > acc.length) {
+        let cap = acc.length * 2;
+        while (cap < accLen + body.length) { cap *= 2; }
+        const bigger = new Uint8Array(cap);
+        bigger.set(acc.subarray(0, accLen));
+        acc = bigger;
+      }
+      acc.set(body, accLen);
+      accLen += body.length;
       chunkLens.push(body.length);
       received += body.length;
-      this.emit('progress', { received, total: totalBytes, chunks: chunks.length });
-      if (opts.onProgress) opts.onProgress(received, totalBytes);
+      const records = countRecords(acc.subarray(0, accLen));
+      const progress = { received, records, entryCount, chunks: chunkLens.length };
+      this.emit('progress', progress);
+      if (opts.onProgress) opts.onProgress(progress);
       seq = (seq + 1) & 0xFF;
       if (seq === 0) seq = 1;
       if (body.length < negotiatedBlock) break; // short chunk = end of stream
@@ -206,14 +224,14 @@ export class LogDownloader extends EventEmitter {
     await this.uds.requestTransferExit(this.timeouts.block);
 
     // 6. Anchor on the DCLG magic, trimming any leading garbage.
-    const rawAll = ByteUtils.concat(...chunks);
+    const rawAll = acc.subarray(0, accLen);
     const magic = ByteUtils.uint32ToLE(constants.LOG_DOWNLOAD_MAGIC);
     let idx = -1;
     for (let i = 0; i + 4 <= rawAll.length; i++) {
       if (rawAll[i] === magic[0] && rawAll[i + 1] === magic[1]
         && rawAll[i + 2] === magic[2] && rawAll[i + 3] === magic[3]) { idx = i; break; }
     }
-    const raw = idx < 0 ? rawAll : rawAll.slice(idx);
+    const raw = rawAll.slice(idx < 0 ? 0 : idx);
 
     this.emit('done', { raw, negotiatedBlock, chunkLens });
     return { raw, negotiatedBlock, chunkLens, selector };

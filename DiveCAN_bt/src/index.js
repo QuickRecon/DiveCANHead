@@ -23,7 +23,7 @@ export {
 } from './firmware/McubootStatus.js';
 export { LogDownloader, LOG_TIMEOUTS } from './logs/LogDownloader.js';
 export {
-  parseLogStream, parseDclgHeader, decodeRecord,
+  parseLogStream, parseDclgHeader, decodeRecord, makeRecordCounter,
   decodeBootMarker, decodeDiveMarker, decodeCanFrame, decodeLogText, decodeConsensus
 } from './logs/LogParser.js';
 export { toJSON as logToJSON, toCSV as logToCSV, toRawBin as logToRawBin, triggerDownload } from './logs/LogExport.js';

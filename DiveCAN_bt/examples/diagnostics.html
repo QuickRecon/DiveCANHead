@@ -685,21 +685,37 @@
       transition: width 0.15s ease;
     }
 
+    .settings-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 10px;
+      max-width: 720px;
+    }
+
     .setting-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      padding: 8px;
-      border-bottom: 1px solid #2a2a2a;
+      gap: 12px;
+      padding: 10px 12px;
+      background: #252525;
+      border: 1px solid #333;
+      border-radius: 4px;
     }
 
     .setting-row.dirty { background: #2a2416; }
-    .setting-row label { color: #ccc; font-size: 13px; }
+    .setting-row > label {
+      color: #ccc;
+      font-size: 13px;
+      white-space: nowrap;
+      flex: 0 0 130px;
+    }
     .setting-row select, .setting-row input {
       background: #1a1a1a; border: 1px solid #555; color: #e0e0e0;
       padding: 6px 10px; border-radius: 4px;
     }
+    .setting-row .setting-controls { flex: 1 1 auto; justify-content: flex-end; }
 
     /* Mobile responsive styles */
     @media (max-width: 600px) {
@@ -1021,6 +1037,40 @@
         </div>
         <div id="cal-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
       </div>
+
+      <!-- Setpoint Section (DID 0xF240) -->
+      <div class="tab-section">
+        <h2>Manual Setpoint</h2>
+        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label for="setpoint-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Setpoint (bar)</label>
+            <input type="number" id="setpoint-input" min="0.40" max="1.60" step="0.05" value="0.70"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 100px; font-size: 14px;">
+          </div>
+          <button id="setSetpointButton" disabled>Set Setpoint</button>
+        </div>
+        <div style="color:#666;font-size:12px;margin-top:6px;">Firmware clamps to 0.40–1.60 bar; effective only in a setpoint-controlled PPO2 mode.</div>
+        <div id="setpoint-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+
+      <!-- Solenoid Override Section (DID 0xF242, HIL) -->
+      <div class="tab-section">
+        <h2>Solenoid Override (HIL)</h2>
+        <p style="color: #888; font-size: 12px; margin: 4px 0 10px;">
+          Raw-fires the solenoid for a fixed ~1.5 s. The firmware requires a
+          <strong>programming session at the surface with PPO2 mode OFF</strong>;
+          this enters the programming session for you before firing.
+        </p>
+        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label for="solenoid-channel" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Channel</label>
+            <input type="number" id="solenoid-channel" min="0" max="7" step="1" value="0"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 80px; font-size: 14px;">
+          </div>
+          <button id="fireSolenoidButton" disabled class="danger">Fire Solenoid</button>
+        </div>
+        <div id="solenoid-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
     <!-- End Control Tab -->
     </div>
 
@@ -1031,7 +1081,7 @@
         <button id="readSettingsButton" disabled>Read from Device</button>
         <span id="settingsStatus" class="config-status">(Connect to device to read settings)</span>
       </div>
-      <div id="settingsContainer" class="config-grid">
+      <div id="settingsContainer" class="settings-list">
         <div class="field-inactive">(Connect to device to see settings)</div>
       </div>
     <!-- End Settings Tab -->
@@ -1214,7 +1264,7 @@
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
-    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT } from '../src/uds/constants.js';
+    import { STATE_DIDS, ALL_READ_DIDS, EXTRA_READ_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT, UDS_SESSION_PROGRAMMING } from '../src/uds/constants.js';
     import { parseMcubootImage, formatVersion } from '../src/firmware/McubootImage.js';
     import { parseLogStream, decodeRecord } from '../src/logs/LogParser.js';
     import { toJSON as logToJSON, toCSV as logToCSV, toRawBin as logToRawBin, triggerDownload } from '../src/logs/LogExport.js';
@@ -1292,7 +1342,13 @@
       // Control tab elements
       calFo2Input: document.getElementById('cal-fo2-input'),
       triggerCalButton: document.getElementById('triggerCalButton'),
-      calMessage: document.getElementById('cal-message')
+      calMessage: document.getElementById('cal-message'),
+      setpointInput: document.getElementById('setpoint-input'),
+      setSetpointButton: document.getElementById('setSetpointButton'),
+      setpointMessage: document.getElementById('setpoint-message'),
+      solenoidChannel: document.getElementById('solenoid-channel'),
+      fireSolenoidButton: document.getElementById('fireSolenoidButton'),
+      solenoidMessage: document.getElementById('solenoid-message')
     };
 
     // Subscription state
@@ -1622,6 +1678,24 @@
         cellSection.appendChild(cellGrid);
         container.appendChild(cellSection);
       });
+
+      // Build extra read-only DID sections (identity, diagnostics, firmware, flash log),
+      // grouped by category and in registry order.
+      const extraByCategory = {};
+      for (const [key, info] of Object.entries(EXTRA_READ_DIDS)) {
+        (extraByCategory[info.category] ||= []).push([key, info]);
+      }
+      for (const [category, entries] of Object.entries(extraByCategory)) {
+        const section = document.createElement('div');
+        section.innerHTML = `<div class="did-category">${category}</div>`;
+        const grid = document.createElement('div');
+        grid.className = 'did-grid';
+        for (const [key, info] of entries) {
+          grid.appendChild(createDIDItem(key, info));
+        }
+        section.appendChild(grid);
+        container.appendChild(section);
+      }
     };
 
     // Create a single DID item element
@@ -1697,11 +1771,17 @@
       const valueEl = document.getElementById(`did-value-${didKey}`);
       if (!valueEl) return;
 
-      const info = STATE_DIDS[didKey];
+      const info = ALL_READ_DIDS[didKey];
       if (!info) return;
 
       if (value === undefined || value === null) {
         valueEl.textContent = '--';
+        return;
+      }
+
+      // Extra DIDs are pre-formatted into a string/number by parseExtraDIDValue.
+      if (EXTRA_READ_DIDS[didKey]) {
+        valueEl.textContent = value.toString();
         return;
       }
 
@@ -1741,9 +1821,9 @@
       elements.subscriptionCount.textContent = activeSubscriptions.size;
     };
 
-    // Subscribe to all DIDs
+    // Subscribe to all DIDs (live state + extra read-only DIDs)
     const subscribeToAllDIDs = () => {
-      for (const key of Object.keys(STATE_DIDS)) {
+      for (const key of Object.keys(ALL_READ_DIDS)) {
         const checkbox = document.getElementById(`did-${key}`);
         if (checkbox && !checkbox.checked) {
           checkbox.checked = true;
@@ -1850,6 +1930,7 @@
           row.appendChild(label);
 
           const controls = document.createElement('div');
+          controls.className = 'setting-controls';
           controls.style.display = 'flex';
           controls.style.gap = '8px';
           controls.style.alignItems = 'center';
@@ -2126,9 +2207,10 @@
           stream: Number($('logStreamSelect').value),
           selector: currentSelector(),
           signal: logAbort.signal,
-          onProgress: (received, total) => {
-            if (total > 0) setLogProgress(Math.min(100, (received / total) * 100));
-            $('logMessage').textContent = `Received ${received} bytes${total ? ` / ~${total}` : ''}...`;
+          onProgress: ({ received, records, entryCount }) => {
+            if (entryCount > 0) setLogProgress(Math.min(100, (records / entryCount) * 100));
+            $('logMessage').textContent =
+              `${records}${entryCount ? ` / ~${entryCount}` : ''} records, ${received} bytes...`;
           }
         });
         logRaw = result.raw;
@@ -2231,15 +2313,68 @@
       }
     };
 
+    // Manual setpoint write (DID 0xF240, centibar)
+    const setSetpoint = async () => {
+      if (!stack) { elements.setpointMessage.textContent = 'Not connected'; return; }
+      const bar = Number.parseFloat(elements.setpointInput.value);
+      if (Number.isNaN(bar) || bar < 0 || bar > 2.55) {
+        elements.setpointMessage.textContent = 'Invalid setpoint';
+        return;
+      }
+      const centibar = Math.round(bar * 100);
+      elements.setSetpointButton.disabled = true;
+      try {
+        await stack.uds.writeSetpoint(centibar);
+        elements.setpointMessage.textContent = `Setpoint set to ${bar.toFixed(2)} bar (${centibar} cbar)`;
+      } catch (error) {
+        const desc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        elements.setpointMessage.textContent = 'Failed: ' + desc;
+      } finally {
+        elements.setSetpointButton.disabled = false;
+      }
+    };
+
+    // HIL solenoid override (DID 0xF242) — needs programming session + surface + PPO2 OFF
+    const fireSolenoid = async () => {
+      if (!stack) { elements.solenoidMessage.textContent = 'Not connected'; return; }
+      const channel = Number.parseInt(elements.solenoidChannel.value, 10) || 0;
+      if (!confirm(`Fire solenoid channel ${channel} for ~1.5 s?\n\nRequires PPO2 mode OFF at the surface.`)) {
+        return;
+      }
+      elements.fireSolenoidButton.disabled = true;
+      try {
+        elements.solenoidMessage.textContent = 'Entering programming session...';
+        await stack.uds.enterSession(UDS_SESSION_PROGRAMMING);
+        elements.solenoidMessage.textContent = `Firing solenoid channel ${channel}...`;
+        await stack.uds.writeSolenoidOverride(channel);
+        elements.solenoidMessage.textContent = `Solenoid channel ${channel} fired.`;
+      } catch (error) {
+        let hint = '';
+        if (error.nrc === 0x22) hint = ' (refused — in a dive, or PPO2 mode not OFF)';
+        else if (error.nrc === 0x7F) hint = ' (needs programming session)';
+        else if (error.nrc === 0x31) hint = ' (invalid channel)';
+        const desc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        elements.solenoidMessage.textContent = 'Failed: ' + desc + hint;
+      } finally {
+        elements.fireSolenoidButton.disabled = false;
+      }
+    };
+
     // Reset control tab UI on disconnect
     const resetControlUI = () => {
       elements.triggerCalButton.disabled = true;
+      elements.setSetpointButton.disabled = true;
+      elements.fireSolenoidButton.disabled = true;
       elements.calMessage.textContent = '';
+      elements.setpointMessage.textContent = '';
+      elements.solenoidMessage.textContent = '';
     };
 
     // Enable control tab UI on connect
     const enableControlUI = () => {
       elements.triggerCalButton.disabled = false;
+      elements.setSetpointButton.disabled = false;
+      elements.fireSolenoidButton.disabled = false;
     };
 
     // Current axis selection mode: 'left' or 'right'
@@ -2472,6 +2607,8 @@
 
     // Control tab buttons
     elements.triggerCalButton.addEventListener('click', triggerCalibration);
+    elements.setSetpointButton.addEventListener('click', setSetpoint);
+    elements.fireSolenoidButton.addEventListener('click', fireSolenoid);
 
     // Periodic UI update for cell values
     setInterval(() => {

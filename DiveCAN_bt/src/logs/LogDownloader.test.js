@@ -90,7 +90,8 @@ describe('LogDownloader', () => {
   it('downloads a full stream and parses records', async () => {
     const stream = sampleStream();
     transport.setResponder(logResponder(stream));
-    const result = await logs.downloadLog({ maxChunk: 32 });
+    const progress = [];
+    const result = await logs.downloadLog({ maxChunk: 32, onProgress: (p) => progress.push(p) });
 
     // Anchored on the DCLG magic (0x47434C44 stored little-endian -> D L C G)
     expect(Array.from(result.raw.slice(0, 4))).toEqual([0x44, 0x4C, 0x43, 0x47]);
@@ -101,6 +102,12 @@ describe('LogDownloader', () => {
     const seqs = transport.getAllSent().filter(s => s[0] === 0x36).map(s => s[1]);
     expect(seqs[0]).toBe(1);
     expect(seqs[1]).toBe(2);
+
+    // progress reports record count against the selector's entry_count estimate
+    const final = progress[progress.length - 1];
+    expect(final.entryCount).toBe(2);    // from the 0xF281 selector-result fixture
+    expect(final.records).toBe(2);       // both records counted by the end
+    expect(final.received).toBe(result.raw.length);
   });
 
   it('honours the client max_chunk (block cap)', async () => {

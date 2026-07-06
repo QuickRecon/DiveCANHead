@@ -9,7 +9,9 @@
 
 import {
   CELL_TYPE_NONE,
-  STATE_DIDS
+  STATE_DIDS,
+  EXTRA_READ_DIDS,
+  parseExtraDIDValue
 } from '../uds/constants.js';
 
 export class DataStore {
@@ -161,13 +163,20 @@ export class DataStore {
       throw new Error('UDSClient required for fetchAllDIDs');
     }
 
-    // First fetch cell type DIDs to determine what type each cell is
+    // First fetch cell type DIDs to determine what type each cell is.
+    // Tolerate a failure here (slow/desynced head) so connect still succeeds —
+    // fall back to DiveO2 (type 0) so the rest of the fetch can proceed.
     const typeDIDs = [
       STATE_DIDS.CELL0_TYPE.did,
       STATE_DIDS.CELL1_TYPE.did,
       STATE_DIDS.CELL2_TYPE.did
     ];
-    const typeResult = await this.udsClient.readDIDsParsed(typeDIDs);
+    let typeResult = {};
+    try {
+      typeResult = await this.udsClient.readDIDsParsed(typeDIDs);
+    } catch (error) {
+      console.warn('Cell-type read failed; defaulting cell types to 0:', error.message);
+    }
     this.cellTypes = [
       typeResult.CELL0_TYPE ?? 0,
       typeResult.CELL1_TYPE ?? 0,
@@ -318,6 +327,40 @@ export class DataStore {
   }
 
   /**
+   * Collect subscribed extra (non-STATE) DIDs that must be read individually.
+   * @private
+   * @returns {Array<{key: string, info: Object}>}
+   */
+  _collectSubscribedExtraDIDs() {
+    const extras = [];
+    for (const didKey of this.subscriptions.keys()) {
+      const info = EXTRA_READ_DIDS[didKey];
+      if (info) {
+        extras.push({ key: didKey, info });
+      }
+    }
+    return extras;
+  }
+
+  /**
+   * Read subscribed extra DIDs one at a time (variable-length / struct payloads
+   * can't be bundled). Each read is isolated so one NRC (e.g. a build-specific
+   * DID that's absent) doesn't abort the rest.
+   * @private
+   */
+  async _pollSubscribedExtraDIDs(timestamp) {
+    for (const { key, info } of this._collectSubscribedExtraDIDs()) {
+      try {
+        const data = await this.udsClient.readDataByIdentifier(info.did);
+        const value = parseExtraDIDValue(info, data);
+        this._updateDIDValues({ [key]: value }, timestamp);
+      } catch (error) {
+        // Per-DID failure (unknown/absent DID, NRC) — leave value unchanged.
+      }
+    }
+  }
+
+  /**
    * Update DID values from poll result
    * @private
    */
@@ -344,22 +387,21 @@ export class DataStore {
       return;
     }
 
+    const timestamp = Date.now() / 1000;
     const didsToRead = this._collectSubscribedDIDs();
-    if (didsToRead.length === 0) {
-      return;
-    }
 
-    // Read DIDs (chunked to fit BLE MTU)
+    // Bundled scalar STATE_DIDs (chunked to fit BLE MTU)
     // Request: 1 (SID) + N*2 (DID bytes) + ~5 bytes protocol overhead must fit in 20-byte MTU
     // Max safe: (20 - 5 - 1) / 2 = 7 DIDs, use 4 to be conservative
     const DIDS_PER_REQUEST = 4;
-    const timestamp = Date.now() / 1000;
-
     for (let i = 0; i < didsToRead.length; i += DIDS_PER_REQUEST) {
       const chunk = didsToRead.slice(i, i + DIDS_PER_REQUEST);
       const result = await this.udsClient.readDIDsParsed(chunk);
       this._updateDIDValues(result, timestamp);
     }
+
+    // Extra (variable-length / struct) DIDs, read individually.
+    await this._pollSubscribedExtraDIDs(timestamp);
   }
 
   /**

@@ -21,6 +21,7 @@ import {
   UINT8_VECTORS,
   BOOL_VECTORS
 } from '../../tests/fixtures/did-test-vectors.js';
+import { STATE_DIDS, getDIDInfo } from './constants.js';
 
 describe('UDSClient', () => {
   let client;
@@ -350,6 +351,20 @@ describe('UDSClient', () => {
         await expect(client.triggerCalibration(101)).rejects.toThrow();
       });
     });
+
+    describe('writeSolenoidOverride', () => {
+      it('sends [channel, 0x5A] to DID 0xF242', async () => {
+        transport.queueResponse(buildWDBIResponse(0xF242));
+        await client.writeSolenoidOverride(2);
+        expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x42, 2, 0x5A]);
+      });
+
+      it('defaults to channel 0', async () => {
+        transport.queueResponse(buildWDBIResponse(0xF242));
+        await client.writeSolenoidOverride();
+        expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x42, 0, 0x5A]);
+      });
+    });
   });
 
   describe('generic services', () => {
@@ -459,6 +474,36 @@ describe('UDSClient', () => {
 
       // Total time should be at least the delay (with some margin for execution)
       expect(elapsed).toBeGreaterThanOrEqual(40);
+    });
+  });
+
+  describe('fetchAllState resilience', () => {
+    it('falls back to individual reads when a bundled chunk fails', async () => {
+      const calls = [];
+      // Stub the bundled read: any multi-DID request fails; single-DID reads
+      // succeed (except one "unsupported" DID which always fails).
+      const UNSUPPORTED = STATE_DIDS.POWER_SOURCES.did;
+      client.readDIDsParsed = async (dids) => {
+        calls.push(dids.slice());
+        if (dids.length > 1) {
+          throw Object.assign(new Error('bundle failed'), { nrc: 0x31 });
+        }
+        if (dids[0] === UNSUPPORTED) {
+          throw Object.assign(new Error('unsupported'), { nrc: 0x31 });
+        }
+        const info = getDIDInfo(dids[0]);
+        return info ? { [info.key]: 1 } : {};
+      };
+
+      const result = await client.fetchAllState([1, 1, 1]); // analog cells
+
+      // Both a bundle attempt and individual fallbacks happened
+      expect(calls.some(c => c.length > 1)).toBe(true);
+      expect(calls.some(c => c.length === 1)).toBe(true);
+      // A supported DID came through the individual fallback
+      expect(result.CONSENSUS_PPO2).toBe(1);
+      // The unsupported DID was skipped, not fatal
+      expect(result.POWER_SOURCES).toBeUndefined();
     });
   });
 });

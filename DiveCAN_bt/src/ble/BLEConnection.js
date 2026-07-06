@@ -76,6 +76,9 @@ export class BLEConnection extends EventEmitter {
     this.logger = new Logger('BLE', 'debug');
     this.options = {
       mtu: DEFAULT_MTU,
+      // Pacing between write-without-response fragments. The Petrel re-frames each
+      // fragment onto a 125 kbit/s CAN bus, so back-to-back writes can overrun it.
+      writeGapMs: 8,
       autoReconnect: false,
       ...options
     };
@@ -244,31 +247,34 @@ export class BLEConnection extends EventEmitter {
       throw new BLEError('Not connected');
     }
 
-    // Convert to Uint8Array if needed
-    const dataArray = ByteUtils.toUint8Array(data);
+    // The argument is a complete SLIP-encoded datagram. The Petrel reassembles
+    // by SLIP delimiters, not BLE packet boundaries, so a payload larger than the
+    // MTU is fragmented across sequential writes — each carrying the [0x01,0x00]
+    // transport header. This mirrors the Python handset bridge (_write_chunks);
+    // without it, large client->head payloads (e.g. an OTA 0x36 block) overflow
+    // the MTU. Small payloads (reads, tiny writes) send in a single fragment.
+    const stream = ByteUtils.toUint8Array(data);
+    const chunkSize = Math.max(1, this.options.mtu - BLE_PACKET_HEADER.length);
+    const fragments = Math.ceil(stream.length / chunkSize) || 1;
 
-    // Prepend header: [0x01, 0x00] + data
-    const packet = ByteUtils.concat(BLE_PACKET_HEADER, dataArray);
-
-    // Check MTU
-    if (packet.length > this.options.mtu) {
-      throw new BLEError(`Packet too large: ${packet.length} bytes (MTU: ${this.options.mtu})`, {
-        packetLength: packet.length,
-        mtu: this.options.mtu
-      });
-    }
-
-    this.logger.debug(`BLE write: ${packet.length} bytes`, {
-      data: ByteUtils.toHexString(packet)
+    this.logger.debug(`BLE write: ${stream.length} bytes in ${fragments} fragment(s)`, {
+      data: ByteUtils.toHexString(stream)
     });
 
-    try {
-      await this.characteristic.writeValueWithoutResponse(packet);
-    } catch (error) {
-      throw new BLEError('Write failed', {
-        cause: error,
-        data: ByteUtils.toHexString(packet)
-      });
+    for (let offset = 0, i = 0; offset < stream.length || i === 0; offset += chunkSize, i++) {
+      const packet = ByteUtils.concat(BLE_PACKET_HEADER, stream.slice(offset, offset + chunkSize));
+      try {
+        await this.characteristic.writeValueWithoutResponse(packet);
+      } catch (error) {
+        throw new BLEError('Write failed', {
+          cause: error,
+          data: ByteUtils.toHexString(packet)
+        });
+      }
+      // Pace fragments so the bridge's CAN re-framing doesn't overrun.
+      if (this.options.writeGapMs > 0 && offset + chunkSize < stream.length) {
+        await new Promise(r => setTimeout(r, this.options.writeGapMs));
+      }
     }
   }
 
@@ -284,9 +290,13 @@ export class BLEConnection extends EventEmitter {
       data: ByteUtils.toHexString(data)
     });
 
-    // Strip header [0x01, 0x00] if present
+    // Strip the per-notification transport header if present. The bridge uses
+    // 0x01 for a fresh fragment and 0x02 for a continuation of a fragmented
+    // notification (BLE_RX_HDRS in the Python handset bridge); both have 0x00 as
+    // the second byte. SLIP framing spans notifications, so the header is per
+    // notification and must be stripped from each.
     let payload = data;
-    if (data.length >= 2 && data[0] === 0x01 && data[1] === 0x00) {
+    if (data.length >= 2 && (data[0] === 0x01 || data[0] === 0x02) && data[1] === 0x00) {
       payload = data.slice(2);
     }
 

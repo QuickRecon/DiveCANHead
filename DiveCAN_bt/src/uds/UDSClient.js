@@ -565,6 +565,21 @@ export class UDSClient extends EventEmitter {
     this.logger.info(`Triggered calibration with fO2=${fO2}%`);
   }
 
+  /**
+   * HIL raw solenoid fire (DID 0xF242). Fires the given channel for a fixed
+   * ~1.5 s. Requires a programming session, surface (not in dive), and PPO2
+   * mode OFF — the firmware returns an NRC otherwise.
+   * @param {number} channel - Solenoid channel (0-based)
+   * @returns {Promise<void>}
+   */
+  async writeSolenoidOverride(channel = 0) {
+    await this.writeDataByIdentifier(
+      constants.DID_SOLENOID_OVERRIDE,
+      [channel & 0xFF, constants.SOLENOID_OVERRIDE_MAGIC]
+    );
+    this.logger.info(`Solenoid override fired on channel ${channel}`);
+  }
+
   // ============================================================
   // Multi-DID Read Methods (State DID Support)
   // ============================================================
@@ -740,8 +755,20 @@ export class UDSClient extends EventEmitter {
       }
 
       const chunk = allDIDs.slice(i, i + DIDS_PER_REQUEST);
-      const chunkResult = await this.readDIDsParsed(chunk);
-      Object.assign(result, chunkResult);
+      try {
+        Object.assign(result, await this.readDIDsParsed(chunk));
+      } catch (error) {
+        // A DID in this chunk is unsupported on this variant, or the head is
+        // slow/desynced. Retry each DID individually so a single failure doesn't
+        // blank the whole fetch and break the connect.
+        for (const did of chunk) {
+          try {
+            Object.assign(result, await this.readDIDsParsed([did]));
+          } catch (didError) {
+            // Skip this DID for this cycle.
+          }
+        }
+      }
     }
 
     // Add cell types to result

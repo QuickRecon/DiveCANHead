@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseLogStream, parseDclgHeader, decodeBootMarker, decodeDiveMarker,
-  decodeCanFrame, decodeLogText, decodeRecord
+  decodeCanFrame, decodeLogText, decodeRecord, makeRecordCounter
 } from './LogParser.js';
 import {
   buildStream, buildRecord, buildDclgHeader,
@@ -78,5 +78,38 @@ describe('LogParser', () => {
   it('decodeRecord dispatches by type', () => {
     const rec = { type: FL_TYPE_LOG_TEXT, payload: new Uint8Array(logTextPayload(3, 9, 'x')) };
     expect(decodeRecord(rec)).toEqual({ level: 3, moduleId: 9, text: 'x' });
+  });
+
+  describe('makeRecordCounter (resumable progress)', () => {
+    it('counts records incrementally as bytes arrive, resuming its cursor', () => {
+      const stream = buildStream([
+        buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(1, 'v', 0)),
+        buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'aaaa')),
+        buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'bbbb'))
+      ]);
+      const counter = makeRecordCounter();
+      // Feed the stream one byte at a time; the count only advances past complete
+      // entries and never exceeds the true total.
+      const total = parseLogStream(stream).length;
+      let last = 0;
+      for (let i = 1; i <= stream.length; i++) {
+        const c = counter(stream.subarray(0, i));
+        expect(c).toBeGreaterThanOrEqual(last); // monotonic
+        expect(c).toBeLessThanOrEqual(total);
+        last = c;
+      }
+      expect(last).toBe(total);
+      expect(total).toBe(3);
+    });
+
+    it('flattens BATCH sub-records in the running count', () => {
+      const inner = [
+        ...buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'a')),
+        ...buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'b'))
+      ];
+      const stream = buildStream([buildRecord(FL_TYPE_BATCH, inner)]);
+      const counter = makeRecordCounter();
+      expect(counter(stream)).toBe(2);
+    });
   });
 });

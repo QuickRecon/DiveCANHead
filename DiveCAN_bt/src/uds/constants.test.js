@@ -8,6 +8,9 @@ import {
   getValidCellDIDs,
   getControlStateDIDs,
   STATE_DIDS,
+  EXTRA_READ_DIDS,
+  ALL_READ_DIDS,
+  parseExtraDIDValue,
   CELL_TYPE_ANALOG,
   CELL_TYPE_DIVEO2,
   CELL_TYPE_O2S,
@@ -204,6 +207,36 @@ describe('UDS constants', () => {
           expect(info.size).toBe(1);
         }
       }
+    });
+  });
+
+  describe('extra read-only DIDs', () => {
+    it('ALL_READ_DIDS is the union of state + extra DIDs', () => {
+      expect(ALL_READ_DIDS.CONSENSUS_PPO2).toBe(STATE_DIDS.CONSENSUS_PPO2);
+      expect(ALL_READ_DIDS.FW_COMMIT).toBe(EXTRA_READ_DIDS.FW_COMMIT);
+    });
+
+    it('every extra DID has a did, type, label and category', () => {
+      for (const info of Object.values(EXTRA_READ_DIDS)) {
+        expect(typeof info.did).toBe('number');
+        expect(typeof info.type).toBe('string');
+        expect(typeof info.label).toBe('string');
+        expect(typeof info.category).toBe('string');
+      }
+    });
+
+    it('parseExtraDIDValue decodes strings, scalars, hex and sem_ver', () => {
+      expect(parseExtraDIDValue({ type: 'string' }, new TextEncoder().encode('AP_Aren\0')))
+        .toBe('AP_Aren');
+      expect(parseExtraDIDValue({ type: 'uint8' }, new Uint8Array([4]))).toBe(4);
+      expect(parseExtraDIDValue({ type: 'uint32' }, new Uint8Array([1, 0, 0, 0]))).toBe(1);
+      expect(parseExtraDIDValue({ type: 'hex32' }, new Uint8Array([0xEF, 0xBE, 0xAD, 0xDE])))
+        .toBe('0xdeadbeef');
+      expect(parseExtraDIDValue({ type: 'hex' }, new Uint8Array([0x01, 0xA5]))).toBe('01 a5');
+      // 1.2, revision=3, build=5
+      expect(parseExtraDIDValue({ type: 'semver' }, new Uint8Array([1, 2, 3, 0, 5, 0, 0, 0])))
+        .toBe('1.2.3+5');
+      expect(parseExtraDIDValue({ type: 'semver' }, new Uint8Array(8).fill(0xFF))).toBe('n/a');
     });
   });
 

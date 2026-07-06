@@ -251,7 +251,6 @@ export const STATE_DIDS = {
   CONSENSUS_PPO2:    { did: 0xF200, size: 4, type: 'float32', label: 'Consensus PPO2' },
   SETPOINT:          { did: 0xF202, size: 4, type: 'float32', label: 'Setpoint' },
   CELLS_VALID:       { did: 0xF203, size: 1, type: 'uint8',   label: 'Cells Valid' },
-  ALARM_STATE:       { did: 0xF204, size: 4, type: 'uint32',  label: 'Alarm State' },
   DUTY_CYCLE:        { did: 0xF210, size: 4, type: 'float32', label: 'Duty Cycle' },
   INTEGRAL_STATE:    { did: 0xF211, size: 4, type: 'float32', label: 'Integral State' },
   SATURATION_COUNT:  { did: 0xF212, size: 2, type: 'uint16',  label: 'Saturation Count' },
@@ -375,4 +374,86 @@ export function getControlStateDIDs() {
     }
   }
   return result;
+}
+
+// ============================================================================
+// Extra read-only DIDs (identity, diagnostics, firmware, flash-log state)
+// ============================================================================
+// These are readable but not part of the live-polled STATE_DIDS set — many are
+// variable-length or struct payloads that can't be bundled into a multi-DID
+// read, so they are read one at a time and formatted by `parseExtraDIDValue`.
+// `type`: 'string' | 'uint8' | 'uint32' | 'hex32' | 'semver' | 'hex'.
+
+export const EXTRA_READ_DIDS = {
+  FW_COMMIT:       { did: 0xF000, type: 'string', label: 'Firmware Commit',   category: 'Identity' },
+  HW_VERSION_ID:   { did: 0xF001, type: 'uint8',  label: 'Hardware Version',  category: 'Identity' },
+  VARIANT_NAME:    { did: 0xF002, type: 'string', label: 'Variant Name',      category: 'Identity' },
+  SERIAL_UID:      { did: 0xF003, type: 'hex',    label: 'Serial (MCU UID)',  category: 'Identity' },
+
+  ALARM_STATE:     { did: 0xF204, type: 'hex32',  label: 'Alarm State',       category: 'Diagnostics' },
+  POSEIDON_GAUGE:  { did: 0xF236, type: 'hex',    label: 'Poseidon Gauge',    category: 'Diagnostics' },
+  CRASH_VALID:     { did: 0xF250, type: 'uint8',  label: 'Crash Valid',       category: 'Diagnostics' },
+  CRASH_REASON:    { did: 0xF251, type: 'uint32', label: 'Crash Reason',      category: 'Diagnostics' },
+  CRASH_PC:        { did: 0xF252, type: 'hex32',  label: 'Crash PC',          category: 'Diagnostics' },
+  CRASH_LR:        { did: 0xF253, type: 'hex32',  label: 'Crash LR',          category: 'Diagnostics' },
+  CRASH_CFSR:      { did: 0xF254, type: 'hex32',  label: 'Crash CFSR',        category: 'Diagnostics' },
+  ERROR_HISTOGRAM: { did: 0xF260, type: 'hex',    label: 'Error Histogram',   category: 'Diagnostics' },
+
+  MCUBOOT_STATUS:  { did: 0xF270, type: 'hex',    label: 'MCUBoot Status',    category: 'Firmware' },
+  POST_STATUS:     { did: 0xF271, type: 'hex',    label: 'POST Status',       category: 'Firmware' },
+  SLOT0_VERSION:   { did: 0xF272, type: 'semver', label: 'Slot0 Version',     category: 'Firmware' },
+  SLOT1_VERSION:   { did: 0xF273, type: 'semver', label: 'Slot1 Version',     category: 'Firmware' },
+  FACTORY_VERSION: { did: 0xF274, type: 'semver', label: 'Factory Version',   category: 'Firmware' },
+
+  LOG_STATS_RAW:   { did: 0xF280, type: 'hex',    label: 'Log Stats',         category: 'Flash Log' },
+  LOG_SELECTOR:    { did: 0xF281, type: 'hex',    label: 'Log Selector',      category: 'Flash Log' },
+  LOG_VERBOSITY:   { did: 0xF283, type: 'uint8',  label: 'Log Verbosity',     category: 'Flash Log' },
+  LOG_CAN_VERBOSE: { did: 0xF284, type: 'uint8',  label: 'CAN Capture Mask',  category: 'Flash Log' },
+};
+
+/** Combined registry of every readable DID (live state + extras). */
+export const ALL_READ_DIDS = { ...STATE_DIDS, ...EXTRA_READ_DIDS };
+
+/**
+ * Look up any readable DID's info by key (STATE_DIDS or EXTRA_READ_DIDS).
+ * @param {string} key
+ * @returns {Object|undefined}
+ */
+export function getReadableDIDInfo(key) {
+  return ALL_READ_DIDS[key];
+}
+
+/**
+ * Format a raw extra-DID payload into a displayable value based on its type.
+ * @param {Object} info - Entry from EXTRA_READ_DIDS
+ * @param {Uint8Array} data - Raw response bytes
+ * @returns {string|number|undefined}
+ */
+export function parseExtraDIDValue(info, data) {
+  if (!data) return undefined;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  switch (info.type) {
+    case 'string':
+      return new TextDecoder().decode(data).replace(/\0+$/, '');
+    case 'uint8':
+      return data.length ? data[0] : undefined;
+    case 'uint32':
+      return data.length >= 4 ? view.getUint32(0, true) : undefined;
+    case 'hex32':
+      return data.length >= 4
+        ? `0x${view.getUint32(0, true).toString(16).padStart(8, '0')}`
+        : undefined;
+    case 'semver': {
+      if (data.length < 8) return 'n/a';
+      let allFF = true;
+      for (let i = 0; i < 8; i++) { if (data[i] !== 0xFF) { allFF = false; break; } }
+      if (allFF) return 'n/a';
+      const rev = view.getUint16(2, true);
+      const build = view.getUint32(4, true);
+      return `${data[0]}.${data[1]}.${rev}` + (build ? `+${build}` : '');
+    }
+    case 'hex':
+    default:
+      return Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ');
+  }
 }
