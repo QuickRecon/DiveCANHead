@@ -6,7 +6,7 @@ import { buildMcubootImage } from '../../tests/fixtures/mcuboot-image.js';
 import {
   buildSessionResponse, buildRequestDownloadResponse, buildTransferResponse,
   buildTransferExitResponse, buildRoutineResponse, buildWDBIResponse,
-  buildNegativeResponse
+  buildNegativeResponse, buildRDBIResponse
 } from '../../tests/fixtures/uds-responses.js';
 
 /**
@@ -119,5 +119,94 @@ describe('OTAManager', () => {
     expect(status.confirmed).toBe(true);
     expect(status.slot0Version).toEqual({ major: 1, minor: 2, revision: 3 });
     expect(status.slot1Version).toBeNull();
+  });
+
+  // 16-byte 0xF270 status: [swapType, confirmed, runningSlot, flags, slot0(4), slot1(4), factory(4)]
+  const mcubootStatusBytes = (swapType, confirmed) => [
+    swapType, confirmed, 0, 0,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+  ];
+
+  it('updateFirmware runs the full pipeline and returns confirmed', async () => {
+    let polls = 0;
+    const base = otaResponder({ maxBlock: 64 });
+    transport.setResponder((req) => {
+      if (req[0] === 0x22 && req[1] === 0xF2 && req[2] === 0x70) {
+        polls += 1;
+        // Unconfirmed on the first poll, confirmed thereafter (POST passed).
+        return buildRDBIResponse(0xF270, mcubootStatusBytes(0, polls > 1 ? 1 : 0));
+      }
+      return base(req);
+    });
+    const image = buildMcubootImage({ imageSize: 100 });
+    const phases = [];
+    const result = await ota.updateFirmware(image, {
+      onPhase: (p) => phases.push(p),
+      pollInterval: 1
+    });
+
+    expect(result.confirmed).toBe(true);
+    expect(result.reverted).toBe(false);
+    expect(result.timedOut).toBe(false);
+    expect(phases).toEqual(['session', 'staging', 'activating', 'polling', 'confirmed']);
+    expect(polls).toBeGreaterThanOrEqual(2);
+
+    const sent = transport.getAllSent().map(a => Array.from(a));
+    expect(sent.some(s => s[0] === 0x10 && s[1] === 0x02)).toBe(true); // programming session
+    expect(sent.some(s => s[0] === 0x34)).toBe(true);                  // request download
+    expect(sent.some(s => s[0] === 0x31)).toBe(true);                  // activate
+  });
+
+  it('updateFirmware reports a revert when POST fails', async () => {
+    const base = otaResponder({ maxBlock: 64 });
+    transport.setResponder((req) => {
+      if (req[0] === 0x22 && req[1] === 0xF2 && req[2] === 0x70) {
+        return buildRDBIResponse(0xF270, mcubootStatusBytes(3, 0)); // swapType 3 = Revert
+      }
+      return base(req);
+    });
+    const image = buildMcubootImage({ imageSize: 100 });
+    const result = await ota.updateFirmware(image, { pollInterval: 1 });
+
+    expect(result.reverted).toBe(true);
+    expect(result.confirmed).toBe(false);
+  });
+
+  it('updateFirmware times out if the image never confirms', async () => {
+    const base = otaResponder({ maxBlock: 64 });
+    transport.setResponder((req) => {
+      if (req[0] === 0x22 && req[1] === 0xF2 && req[2] === 0x70) {
+        return buildRDBIResponse(0xF270, mcubootStatusBytes(1, 0)); // stays unconfirmed
+      }
+      return base(req);
+    });
+    const image = buildMcubootImage({ imageSize: 100 });
+    const result = await ota.updateFirmware(image, { pollAttempts: 3, pollInterval: 1 });
+
+    expect(result.timedOut).toBe(true);
+    expect(result.confirmed).toBe(false);
+    expect(result.reverted).toBe(false);
+  });
+
+  it('updateFirmware aborts before activation when signaled', async () => {
+    transport.setResponder(otaResponder({ maxBlock: 64 }));
+    const image = buildMcubootImage({ imageSize: 100 });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(ota.updateFirmware(image, { signal: controller.signal }))
+      .rejects.toMatchObject({ details: { aborted: true } });
+
+    const sent = transport.getAllSent().map(a => Array.from(a));
+    expect(sent.some(s => s[0] === 0x31)).toBe(false); // never activated
+  });
+
+  it('updateFirmware propagates a genuine NRC (0x22 SHA mismatch) from activate', async () => {
+    transport.setResponder(otaResponder({
+      overrides: { 0x31: () => buildNegativeResponse(0x31, 0x22) }
+    }));
+    const image = buildMcubootImage({ imageSize: 100 });
+    await expect(ota.updateFirmware(image, { pollInterval: 1 }))
+      .rejects.toMatchObject({ nrc: 0x22 });
   });
 });

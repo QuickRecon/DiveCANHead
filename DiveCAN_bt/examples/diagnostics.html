@@ -1106,24 +1106,35 @@
         <input type="file" id="fwFileInput" accept=".bin,.hex,.img" disabled>
         <div id="fwFileInfo" style="margin-top: 10px; color: #888; font-size: 13px;">No file selected</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
-          <button id="fwEnterSessionButton" disabled>Enter Programming Session</button>
-          <button id="fwStageButton" disabled>Stage Image</button>
-          <button id="fwActivateButton" disabled class="danger">Activate &amp; Reboot</button>
-          <button id="fwCancelButton" disabled>Cancel</button>
+          <button id="fwUpdateButton" class="danger" disabled>Update OTA</button>
+          <button id="fwUpdateCancelButton" disabled>Cancel</button>
         </div>
         <div class="progress-bar" style="margin-top: 12px;">
           <div class="progress-fill" id="fwProgressFill"></div>
         </div>
         <div id="fwMessage" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+        <p style="color: #888; font-size: 12px; margin: 8px 0 0;">
+          Runs the whole pipeline back-to-back &mdash; programming session &rarr; stage &rarr;
+          activate &amp; reboot &rarr; poll until confirmed &mdash; so no timeout window can be
+          missed. Use <strong>Cancel</strong> to abort before activation.
+        </p>
       </div>
 
-      <div class="tab-section">
-        <h2>Post-Update</h2>
+      <details class="tab-section" id="fwStages">
+        <summary style="cursor: pointer; font-weight: bold;">Stages (manual step-by-step)</summary>
+        <p style="color: #888; font-size: 12px; margin: 8px 0;">
+          Drive each OTA phase by hand. Mind the session and confirmation windows &mdash;
+          the one-click <strong>Update OTA</strong> button above exists to avoid missing them.
+        </p>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button id="fwEnterSessionButton" disabled>Enter Programming Session</button>
+          <button id="fwStageButton" disabled>Stage Image</button>
+          <button id="fwActivateButton" disabled class="danger">Activate &amp; Reboot</button>
+          <button id="fwCancelButton" disabled>Cancel</button>
           <button id="fwConfirmPollButton" disabled>Poll Until Confirmed</button>
           <button id="fwRevertButton" disabled class="danger">Force Revert</button>
         </div>
-      </div>
+      </details>
 
       <details class="tab-section" id="fwDestructive">
         <summary style="cursor: pointer; color: #e74c3c; font-weight: bold;">Advanced / Destructive</summary>
@@ -2044,9 +2055,11 @@
         $('fwFileInfo').textContent =
           `${file.name} — ${fwImageBytes.length} bytes, version ${formatVersion(fwParsedImage.version)} (valid MCUBoot image)`;
         $('fwStageButton').disabled = !stack;
+        $('fwUpdateButton').disabled = !stack;
       } else {
         $('fwFileInfo').textContent = `${file.name} — INVALID: ${fwParsedImage.reason}`;
         $('fwStageButton').disabled = true;
+        $('fwUpdateButton').disabled = true;
       }
     };
 
@@ -2114,6 +2127,53 @@
       $('fwMessage').textContent = 'Timed out waiting for confirmation.';
     };
 
+    // Human-readable narration for each phase of the one-click update flow.
+    const FW_PHASE_MESSAGES = {
+      session: 'Entering programming session...',
+      staging: 'Staging image to slot1...',
+      activating: 'Activating (head validates SHA-256 and reboots)...',
+      polling: 'Polling MCUBoot status until confirmed...',
+      confirmed: 'Image CONFIRMED.',
+      reverted: 'Image REVERTED (POST failed).',
+      timeout: 'Timed out waiting for confirmation.'
+    };
+
+    // One-click OTA: session -> stage -> activate -> poll, with no gaps in which
+    // a session or confirmation window could lapse. Cancel aborts up to activation.
+    const fwUpdate = async () => {
+      if (!stack || !fwImageBytes || !fwParsedImage?.valid) return;
+      fwAbort = new AbortController();
+      $('fwUpdateButton').disabled = true;
+      $('fwUpdateCancelButton').disabled = false;
+      setFwProgress(0);
+      try {
+        const result = await stack.ota.updateFirmware(fwImageBytes, {
+          signal: fwAbort.signal,
+          onProgress: (done, total) => {
+            setFwProgress((done / total) * 100);
+            $('fwMessage').textContent = `Staging block ${done}/${total}...`;
+          },
+          onPhase: (phase) => {
+            if (FW_PHASE_MESSAGES[phase]) $('fwMessage').textContent = FW_PHASE_MESSAGES[phase];
+          }
+        });
+        if (result.confirmed) setFwProgress(100);
+      } catch (e) {
+        if (e?.details?.aborted) {
+          $('fwMessage').textContent = 'Update cancelled.';
+        } else if (e.nrc === 0x22) {
+          $('fwMessage').textContent = `Update refused: ${e.message} — head diving or image failed SHA-256 verification.`;
+        } else {
+          $('fwMessage').textContent = `Update failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+        }
+      } finally {
+        $('fwUpdateButton').disabled = !stack;
+        $('fwUpdateCancelButton').disabled = true;
+        fwAbort = null;
+        await fwRefreshStatus();
+      }
+    };
+
     const fwGuardedAction = async (checkboxId, action, label) => {
       if (!$(checkboxId).checked) { $('fwMessage').textContent = `Tick the box to confirm: ${label}`; return; }
       if (!confirm(`${label}? This is irreversible.`)) return;
@@ -2134,6 +2194,8 @@
         $(id).disabled = !on;
       }
       if (!on) {
+        $('fwUpdateButton').disabled = true;
+        $('fwUpdateCancelButton').disabled = true;
         $('fwStageButton').disabled = true;
         $('fwActivateButton').disabled = true;
         $('fwCancelButton').disabled = true;
@@ -2560,6 +2622,8 @@
     // Firmware Update tab
     $('fwRefreshButton').addEventListener('click', fwRefreshStatus);
     $('fwFileInput').addEventListener('change', (e) => onFwFileSelected(e.target.files[0]));
+    $('fwUpdateButton').addEventListener('click', fwUpdate);
+    $('fwUpdateCancelButton').addEventListener('click', () => fwAbort?.abort());
     $('fwEnterSessionButton').addEventListener('click', fwEnterSession);
     $('fwStageButton').addEventListener('click', fwStage);
     $('fwActivateButton').addEventListener('click', fwActivate);

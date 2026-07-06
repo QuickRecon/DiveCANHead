@@ -48,6 +48,21 @@ export const OTA_TIMEOUTS = {
   management: 8000
 };
 
+/**
+ * Post-activation confirmation poll cadence. The activated image runs
+ * UNCONFIRMED and auto-reverts on the next reboot unless the head's POST
+ * confirms it, so we poll MCUBoot status (0xF270) after activation. 30 x 2 s
+ * covers the reboot + POST window (reads that fail while the head is rebooting
+ * are swallowed and retried).
+ */
+export const OTA_POLL = {
+  attempts: 30,
+  interval: 2000
+};
+
+/** MCUBoot swap type "Revert" (index into SWAP_TYPE_NAMES) — POST failed, rolled back. */
+const MCUBOOT_SWAP_REVERT = 3;
+
 export class OTAManager extends EventEmitter {
   /**
    * @param {import('../uds/UDSClient.js').UDSClient} uds
@@ -156,6 +171,85 @@ export class OTAManager extends EventEmitter {
     const staged = await this.stageImage(imageBytes, opts);
     const activated = await this.activate();
     return { ...staged, ...activated };
+  }
+
+  /**
+   * Run the whole OTA pipeline back-to-back with no gaps in which the head's
+   * session or confirmation window could lapse: enter programming session ->
+   * stage -> activate -> poll MCUBoot status until the new image confirms,
+   * reverts, or the poll window elapses.
+   *
+   * Emits a `'phase'` event ({phase, ...}) and calls `opts.onPhase(phase, detail)`
+   * as each step begins/ends, so a UI can narrate progress from one call:
+   *   'session' -> 'staging' -> 'activating' -> 'polling' ->
+   *   ('confirmed' | 'reverted' | 'timeout')
+   * Staging progress still flows through the `'progress'` event / `opts.onProgress`.
+   *
+   * A genuine NRC from any phase (e.g. 0x22 while diving, or SHA mismatch on
+   * activate) propagates as a thrown UDSError. `opts.signal` aborts the staging
+   * phase and is re-checked before the irreversible activate.
+   *
+   * @param {Uint8Array|ArrayBuffer|Array} imageBytes
+   * @param {Object} [opts]
+   * @param {number} [opts.blockSize]
+   * @param {(done:number,total:number)=>void} [opts.onProgress]
+   * @param {(phase:string,detail:Object)=>void} [opts.onPhase]
+   * @param {AbortSignal} [opts.signal]
+   * @param {number} [opts.pollAttempts]
+   * @param {number} [opts.pollInterval]
+   * @returns {Promise<Object>} staged/activated fields plus
+   *   {confirmed, reverted, timedOut, status}
+   */
+  async updateFirmware(imageBytes, opts = {}) {
+    const emitPhase = (phase, detail = {}) => {
+      this.emit('phase', { phase, ...detail });
+      if (opts.onPhase) opts.onPhase(phase, detail);
+    };
+
+    emitPhase('session');
+    await this.enterProgrammingSession();
+
+    emitPhase('staging');
+    const staged = await this.stageImage(imageBytes, {
+      blockSize: opts.blockSize,
+      onProgress: opts.onProgress,
+      signal: opts.signal
+    });
+
+    if (opts.signal?.aborted) {
+      throw new ValidationError('OTA update aborted before activation', 'OTA', { aborted: true });
+    }
+
+    emitPhase('activating');
+    const activated = await this.activate();
+
+    emitPhase('polling');
+    const attempts = opts.pollAttempts ?? OTA_POLL.attempts;
+    const interval = opts.pollInterval ?? OTA_POLL.interval;
+    let status = null;
+    let outcome = 'timeout';
+    for (let i = 0; i < attempts; i++) {
+      try {
+        status = await this.readMcubootStatus();
+        if (status && status.confirmed) { outcome = 'confirmed'; break; }
+        if (status && status.swapType === MCUBOOT_SWAP_REVERT) { outcome = 'reverted'; break; }
+      } catch {
+        // Head may be mid-reboot — tolerate transient read failures and retry.
+      }
+      if (i < attempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, interval));
+      }
+    }
+
+    emitPhase(outcome, { status });
+    return {
+      ...staged,
+      ...activated,
+      confirmed: outcome === 'confirmed',
+      reverted: outcome === 'reverted',
+      timedOut: outcome === 'timeout',
+      status
+    };
   }
 
   // -------- MCUBoot / OTA introspection --------

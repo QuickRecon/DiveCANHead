@@ -171,28 +171,37 @@ await client.requestTransferExit();                          // 0x37
 
 ### OTA firmware update
 
-The high-level flow, mirroring `Test Rig/tests/test_dut_ota.py`:
+Prefer the one-call orchestrator, which runs the whole pipeline back-to-back with no
+gap in which the head's session or confirmation window could lapse (mirrors
+`Test Rig/tests/test_dut_ota.py`):
 
 ```javascript
 const ota = stack.ota; // OTAManager
 
-// 1. Validate the image before touching the head
+// Validate the image before touching the head
 import { parseMcubootImage, formatVersion } from '@divecan/protocol';
 const img = parseMcubootImage(fileBytes);
 if (!img.valid) throw new Error(img.reason);
 
-// 2. Programming session (surface only — NRC 0x22 while diving)
-await ota.enterProgrammingSession();
+// enterProgrammingSession -> stageImage -> activate -> poll-until-confirmed, in one call.
+const result = await ota.updateFirmware(fileBytes, {
+  onProgress: (done, total) => {},              // staging progress
+  onPhase: (phase) => {},                        // 'session'|'staging'|'activating'|
+                                                 // 'polling'|'confirmed'|'reverted'|'timeout'
+  signal: abortController.signal                 // aborts up to (not through) activation
+});
+// result: { ...staged, ...activated, confirmed, reverted, timedOut, status }
+```
 
-// 3. Stage into slot1 (0x34 -> 0x36xN -> 0x37)
-await ota.stageImage(fileBytes, { onProgress: (done, total) => {} });
+The individual steps remain available for manual/step-through use (the diagnostics UI
+exposes them under a **Stages** expander behind the single **Update OTA** button):
 
-// 4. Activate (0x31 0xF001): full SHA-256 check, TEST swap, reboot.
-//    A lost 0x71 reply after the reboot is reported inconclusive, not failed.
-const res = await ota.activate();
-
-// 5. After the head reboots, poll status until confirmed (else it auto-reverts)
-const status = await ota.readMcubootStatus();
+```javascript
+await ota.enterProgrammingSession();             // 0x10 0x02 (surface only; NRC 0x22 while diving)
+await ota.stageImage(fileBytes, { onProgress }); // 0x34 -> 0x36xN -> 0x37 into slot1
+const res = await ota.activate();                // 0x31 0xF001; a lost 0x71 after reboot is
+                                                 //   reported inconclusive, not failed
+const status = await ota.readMcubootStatus();    // poll until confirmed, else it auto-reverts
 // { swapTypeName, confirmed, runningSlot, slot0Version, slot1Version, factoryVersion }
 
 // Management writes (programming session, surface only):
@@ -349,7 +358,10 @@ Manages time-series plotting for diagnostics.
 
 The `examples/diagnostics.html` app also has **Settings**, **Firmware Update**, and
 **Logs** tabs wired to `stack.uds` (settings), `stack.ota` (OTAManager), and
-`stack.logs` (LogDownloader).
+`stack.logs` (LogDownloader). The Firmware Update tab drives OTA through a single
+**Update OTA** button (`ota.updateFirmware`) with a **Cancel** for the staging phase;
+the per-phase buttons (Enter Session, Stage, Activate, Poll Until Confirmed, Force
+Revert) live under a **Stages** expander for manual step-through.
 
 ## Error Handling
 
