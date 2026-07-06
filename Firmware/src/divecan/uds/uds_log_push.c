@@ -48,6 +48,7 @@ typedef struct {
     ISOTPContext_t *isotpContext;
     bool txPending;
     bool inSendLogMessage;  /* Reentrancy guard */
+    bool suspended;         /* Set while a large UDS transfer owns the bridge */
     uint8_t txBuffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE];
 } LogPushState_t;
 
@@ -261,12 +262,20 @@ static void trySendNextItem(LogPushState_t *state)
  * Checks for TX completion, then attempts to dequeue and transmit the next
  * log message. No-ops if Init has not yet been called.
  */
+void UDS_LogPush_SetSuspended(bool suspended)
+{
+    getLogPushState()->suspended = suspended;
+}
+
 void UDS_LogPush_Poll(void)
 {
     LogPushState_t *state = getLogPushState();
 
-    if (NULL == state->isotpContext) {
-        /* Expected: Init not yet called */
+    if ((NULL == state->isotpContext) || state->suspended) {
+        /* Not initialised, or suspended while a large UDS transfer (OTA download
+         * or log-download stream) owns the bridge — sending a multi-frame push
+         * mid-transfer trips the handset's ISO-TP RX. Items stay queued and flush
+         * once the transfer resumes. */
     } else {
         bool canTransmit = checkTxPending(state);
 

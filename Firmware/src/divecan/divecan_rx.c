@@ -761,7 +761,9 @@ static void ProcessISOTPCompletion(uint32_t now)
      * stream is broadcast (target 0xFF) so the queue sends it fire-and-forget
      * and it never parks in WAIT_FC — it cannot stall a dialog even if it does
      * get queued. Dropping logs under heavy dialog load (log_push_msgq
-     * overwrites oldest) is the accepted trade. */
+     * overwrites oldest) is the accepted trade. Poll() self-suppresses while a
+     * large UDS transfer (OTA / log download) owns the bridge — see
+     * UDS_LogPush_SetSuspended(). */
     if (udsState->logPushInitialized) {
         UDS_LogPush_Poll();
     }

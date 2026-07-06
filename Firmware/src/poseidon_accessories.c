@@ -18,7 +18,17 @@ LOG_MODULE_REGISTER(poseidon_accessories, LOG_LEVEL_INF);
 #define DISPLAY_ADDR 0x41U
 #define BATTERY_ADDR 0x43U
 #define GAUGE_STALE_MS 12000
+/* Periodic re-send interval: how often refresh_outputs() re-asserts peer state
+ * (and thereby feeds the peers' own watchdogs) in the absence of alarm events. */
 #define PERIOD_MS 2000
+/* Wake/heartbeat-kick cadence. Deliberately a sub-multiple of PERIOD_MS so the
+ * heartbeat slot advances several times per feeder window (WDT_FEED_INTERVAL_MS
+ * = 2000 ms). Kicking only once per PERIOD_MS aliased 1:1 against the feeder's
+ * sample rate and produced spurious "slot stalled" warnings whenever an I2C
+ * retry stretched a loop iteration past 2000 ms. */
+#define TICK_MS 500
+/* Wakes between periodic refreshes (4). */
+#define REFRESH_TICKS (PERIOD_MS / TICK_MS)
 
 /* Battery speaker (CMD 0x0E) takes a beeper *pattern index* (0x00..0x03), not
  * the active-low ON/OFF byte the LEDs/vibrator use. Per battery.bin control
@@ -82,6 +92,10 @@ static int target_write_received(struct i2c_target_config *cfg, uint8_t val)
 static int target_stop(struct i2c_target_config *cfg)
 {
     ARG_UNUSED(cfg);
+    /* Timestamp the external STOP before doing any frame parsing. The pressure
+     * sampler will not start an ADS transaction until the bus has remained
+     * quiet beyond the Poseidon inter-frame gap. */
+    i2c1_bus_note_activity();
     size_t payload = 0U;
     /* STM32 target mode normally strips SLA+W. Some multi-controller bus
      * presentations echo it as the first received byte; accept that exact
@@ -114,18 +128,19 @@ static struct i2c_target_config target_cfg = {
     .callbacks = &target_cb,
 };
 
-static int send_frame(uint8_t addr, uint8_t cmd, uint8_t data)
+/**
+ * Send one Poseidon frame while the caller owns i2c1_bus_lock().
+ *
+ * Keeping locking at the group level prevents the ADS sampler from inserting a
+ * 60+ ms synchronous conversion between two frames in a heartbeat/output group.
+ */
+static int send_frame_locked(uint8_t addr, uint8_t cmd, uint8_t data)
 {
     uint8_t frame[4] = {cmd, 0x02U, data, 0};
     uint8_t wire[4] = {(uint8_t)(addr << 1), cmd, 0x02U, data};
     frame[3] = poseidon_crc8(wire, sizeof(wire));
-    /* Serialise against the tank-pressure ADS1115 reads that share i2c1 so the
-     * two STM32 masters never collide (the residual external-master contention
-     * is absorbed by send_retry() and the ADS-side retry). */
-    i2c1_bus_lock();
-    int rc = i2c_write(bus, frame, sizeof(frame), addr);
-    i2c1_bus_unlock();
-    return rc;
+
+    return i2c_write(bus, frame, sizeof(frame), addr);
 }
 
 bool poseidon_gauge_voltage_byte(uint8_t *value)
@@ -159,11 +174,11 @@ void poseidon_gauge_status(PoseidonGaugeStatus_t *s)
         ? (uint16_t)MIN(age / 1000, UINT16_MAX) : UINT16_MAX;
 }
 
-static int send_retry(uint8_t addr, uint8_t cmd, uint8_t data)
+static int send_retry_locked(uint8_t addr, uint8_t cmd, uint8_t data)
 {
     int rc = -EIO;
     for (uint8_t attempt = 0; attempt < 3U; ++attempt) {
-        rc = send_frame(addr, cmd, data);
+        rc = send_frame_locked(addr, cmd, data);
         if (rc == 0) {
             return 0;
         }
@@ -191,23 +206,32 @@ static void refresh_outputs(AlarmMask_t alarms)
      * The speaker (0x0E) is a pattern index, not on/off — keep it separate. */
     uint8_t state = alarms ? 0x00U : 0x01U;
     uint8_t beep = alarms ? BEEP_PATTERN_ALARM : BEEP_PATTERN_STOP;
-    int hud_rc = send_retry(HUD_ADDR, 0x00U, 0x00U);
-    hud_rc |= send_retry(HUD_ADDR, 0x0BU, state);
-    hud_rc |= send_retry(HUD_ADDR, 0x0CU, state);
+    /* Reserve the controller for the complete Poseidon group. This only blocks
+     * our ADS thread; external masters still arbitrate normally in hardware. */
+    i2c1_bus_lock();
+    int hud_rc = send_retry_locked(HUD_ADDR, 0x00U, 0x00U);
+    hud_rc |= send_retry_locked(HUD_ADDR, 0x0BU, state);
+    hud_rc |= send_retry_locked(HUD_ADDR, 0x0CU, state);
     /* Order per §6.2.2: heartbeat, then the one-shot init, then LED/speaker.
      * Only latch the init once the 0x2D write actually lands, and defer the
      * speaker (0x0E) until the following cycle so the battery has a ~2 s window
      * to complete its DS2782/EEPROM init and master-mode replies first. */
     bool speaker_armed = battery_inited;
-    int battery_rc = send_retry(BATTERY_ADDR, 0x00U, 0x00U);
+    int battery_rc = send_retry_locked(BATTERY_ADDR, 0x00U, 0x00U);
     if (!battery_inited && (battery_rc == 0)) {
-        battery_rc |= send_retry(BATTERY_ADDR, 0x2DU, 0x00U);
+        battery_rc |= send_retry_locked(BATTERY_ADDR, 0x2DU, 0x00U);
         battery_inited = (battery_rc == 0);
     }
-    battery_rc |= send_retry(BATTERY_ADDR, 0x0DU, state);
+    battery_rc |= send_retry_locked(BATTERY_ADDR, 0x0DU, state);
     if (speaker_armed) {
-        battery_rc |= send_retry(BATTERY_ADDR, 0x0EU, beep);
+        battery_rc |= send_retry_locked(BATTERY_ADDR, 0x0EU, beep);
     }
+    /* Battery writes can enqueue immediate Battery->Display replies. Start the
+     * ADC quiet-window guard at the end of this group. A later target STOP
+     * refreshes the timestamp again if such a reply arrives. */
+    i2c1_bus_note_activity();
+    i2c1_bus_unlock();
+
     if ((hud_rc != 0) && !hud_failed) {
         OP_ERROR_DETAIL(OP_ERR_I2C_BUS, ((uint32_t)HUD_ADDR << 24) |
                         (uint32_t)(-hud_rc & 0xFFFF));
@@ -240,17 +264,22 @@ void poseidon_accessories_shutdown(void)
      * turn the controllable loads off first so the peers' final state doesn't
      * depend on the current alarm/actuator state, then send the deliberate
      * shutdown heartbeat (CMD 0x00 data=0x01) to each peer, Battery last. Each
-     * send_retry() blocks until its write completes, satisfying "wait for ACK
-     * before the next frame". We drive only the HUD and Battery here — this head
-     * IS the system Head, so it does not address 0x42 (itself). Merely stopping
-     * heartbeats is NOT enough: without the explicit shutdown frame the HUD's
-     * 120 s watchdog would later fire its LED/vibrator alarm and raise current. */
-    (void)send_retry(HUD_ADDR, 0x0BU, 0x01U);                 /* vibrator off */
-    (void)send_retry(HUD_ADDR, 0x0CU, 0x01U);                 /* red LED off */
-    (void)send_retry(BATTERY_ADDR, 0x0DU, 0x01U);             /* buddy LED off */
-    (void)send_retry(BATTERY_ADDR, 0x0EU, BEEP_PATTERN_STOP); /* speaker stop */
-    (void)send_retry(HUD_ADDR, 0x00U, 0x01U);                 /* HUD shutdown */
-    (void)send_retry(BATTERY_ADDR, 0x00U, 0x01U);             /* Battery shutdown (last) */
+     * send_retry_locked() blocks until its write completes, satisfying "wait
+     * for ACK before the next frame". We drive only the HUD and Battery here —
+     * this head IS the system Head, so it does not address 0x42 (itself).
+     * Merely stopping heartbeats is NOT enough: without the explicit shutdown
+     * frame the HUD's 120 s watchdog would later fire its LED/vibrator alarm
+     * and raise current. */
+    i2c1_bus_lock();
+    (void)send_retry_locked(HUD_ADDR, 0x0BU, 0x01U);       /* vibrator off */
+    (void)send_retry_locked(HUD_ADDR, 0x0CU, 0x01U);       /* red LED off */
+    (void)send_retry_locked(BATTERY_ADDR, 0x0DU, 0x01U);   /* buddy LED off */
+    (void)send_retry_locked(BATTERY_ADDR, 0x0EU,
+                            BEEP_PATTERN_STOP);             /* speaker stop */
+    (void)send_retry_locked(HUD_ADDR, 0x00U, 0x01U);       /* HUD shutdown */
+    (void)send_retry_locked(BATTERY_ADDR, 0x00U, 0x01U);   /* Battery last */
+    i2c1_bus_note_activity();
+    i2c1_bus_unlock();
 }
 
 static void accessories_thread(void *a, void *b, void *c)
@@ -266,6 +295,8 @@ static void accessories_thread(void *a, void *b, void *c)
     }
     AlarmMask_t alarms = ALARM_PPO2_INVALID;
     heartbeat_register(HEARTBEAT_ACCESSORIES);
+    /* Force a refresh on the first wake. */
+    uint32_t ticks_since_refresh = REFRESH_TICKS;
     while (true) {
         if (atomic_get(&shutdown_active)) {
             /* Clean shutdown committed: hand the bus to
@@ -278,16 +309,27 @@ static void accessories_thread(void *a, void *b, void *c)
                 k_msleep(100);
             }
         }
-        /* Bounded (this is a plain thread, not a zbus listener): a mutex-race
-         * miss would otherwise drive the accessory outputs from the previous
-         * alarm mask as if current — stale alarm state read as valid. */
-        (void)zbus_chan_read(&chan_alarm_state, &alarms, K_MSEC(10));
-        refresh_outputs(alarms);
-        heartbeat_kick(HEARTBEAT_ACCESSORIES);
-        const struct zbus_channel *chan;
+        /* Wake at TICK_MS so the heartbeat slot advances several times per
+         * feeder window; an alarm notification wakes us early. */
+        const struct zbus_channel *chan = NULL;
         AlarmMask_t notified;
-        (void)zbus_sub_wait_msg(&poseidon_alarm_sub, &chan, &notified,
-                                K_MSEC(PERIOD_MS));
+        int wait_rc = zbus_sub_wait_msg(&poseidon_alarm_sub, &chan, &notified,
+                                        K_MSEC(TICK_MS));
+        heartbeat_kick(HEARTBEAT_ACCESSORIES);
+
+        /* Refresh on an alarm event, or every REFRESH_TICKS wakes to re-assert
+         * peer state and feed the peers' watchdogs. */
+        bool alarm_event = (0 == wait_rc) && (NULL != chan);
+        ++ticks_since_refresh;
+        if (alarm_event || (ticks_since_refresh >= REFRESH_TICKS)) {
+            /* Bounded (this is a plain thread, not a zbus listener): a
+             * mutex-race miss would otherwise drive the accessory outputs from
+             * the previous alarm mask as if current — stale alarm state read as
+             * valid. */
+            (void)zbus_chan_read(&chan_alarm_state, &alarms, K_MSEC(10));
+            refresh_outputs(alarms);
+            ticks_since_refresh = 0;
+        }
     }
 }
 

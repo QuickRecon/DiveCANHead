@@ -28,6 +28,7 @@
 
 #include "uds.h"
 #include "uds_log_download.h"
+#include "uds_log_push.h"
 #include "flash_log.h"
 #include "flash_log_reader.h"
 #include "errors.h"
@@ -51,6 +52,9 @@ static const uint8_t  LOG_DOWNLOAD_ADDR_LEN_FMT = 0x44U;
 
 /* 0x36 request: [pad][SID][seq][data optional]. Min 3 bytes. */
 static const uint16_t LOG_TRANSFER_MIN_REQ_LEN = 3U;
+/* 0x36 response header in responseBuffer: [SID][seq] before the chunk body.
+ * The ISO-TP TX layer prepends the DiveCAN pad byte; it is NOT stored here. */
+static const size_t   LOG_TRANSFER_RESP_HDR_LEN = 2U;
 
 /* 0x37 request: [pad][SID]. Min 2 bytes. */
 static const uint16_t LOG_EXIT_MIN_REQ_LEN = 2U;
@@ -119,6 +123,9 @@ static void fl_start_streaming(void)
 {
     LogDownloadSM_t *sm = fl_sm();
     flash_log_pause();
+    /* Silence the broadcast log-push while the download stream owns the bridge
+     * so it doesn't collide with the transfer on the handset's ISO-TP RX. */
+    UDS_LogPush_SetSuspended(true);
     sm->state = LD_STREAMING;
     fl_stream_last_activity_ms = k_uptime_get_32();
 }
@@ -131,6 +138,7 @@ static void fl_stop_streaming(LogDownloadState_t next_state)
     LogDownloadSM_t *sm = fl_sm();
     if (sm->state == LD_STREAMING) {
         flash_log_resume();
+        UDS_LogPush_SetSuspended(false);
     }
     sm->state = next_state;
 }
@@ -462,8 +470,12 @@ static void fl_handle_transfer_data(UDSContext_t *ctx,
     }
     fl_stream_last_activity_ms = k_uptime_get_32();   /* stall-abort watchdog */
 
-    /* Build chunk into responseBuffer starting at offset 3 (pad+SID+seq). */
-    uint8_t *out = &ctx->responseBuffer[3];
+    /* Build the chunk body immediately after the [SID][seq] response header.
+     * The DiveCAN pad byte is prepended by the ISO-TP TX layer, not stored in
+     * responseBuffer, so the body starts at index 2 — writing it at index 3
+     * would leave a stale byte at index 2 and truncate the final body byte
+     * (responseLength counts from index 0), corrupting one byte per chunk. */
+    uint8_t *out = &ctx->responseBuffer[LOG_TRANSFER_RESP_HDR_LEN];
     size_t cap = (size_t)sm->max_block_length;
     size_t used = 0U;
 
@@ -501,7 +513,7 @@ static void fl_handle_transfer_data(UDSContext_t *ctx,
     ctx->responseBuffer[UDS_PAD_IDX] =
         UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET;
     ctx->responseBuffer[UDS_SID_IDX] = seq;
-    ctx->responseLength = (uint16_t)(2U + used);
+    ctx->responseLength = (uint16_t)(LOG_TRANSFER_RESP_HDR_LEN + used);
     UDS_SendResponse(ctx);
 
     sm->next_seq += 1U;

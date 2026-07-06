@@ -558,8 +558,11 @@ capacity sizing.
 **What changed**: `src/i2c_bus_lock.c` (`i2c1_reset_peripheral()`) writes the
 STM32 I2C1 `CR1.PE` bit directly via `LL_I2C_Disable/Enable` on the peripheral
 base from `DT_REG_ADDR`, behind the back of the Zephyr `i2c_stm32` driver. It
-is called from `i2c1_bus_recover()` on the Poseidon variant after bit-bang bus
-recovery, guarded by `CONFIG_SOC_FAMILY_STM32` (compiled out on native_sim).
+is called from `i2c1_bus_recover()` on the Poseidon variant after physical-line
+classification, guarded by `CONFIG_SOC_FAMILY_STM32` (compiled out on
+native_sim). The vendored STM32 driver also carries a narrow return-code fix:
+controller arbitration loss (ARLO) returns `-EAGAIN`; NACK and timeout remain
+`-EIO`.
 
 **Why**: On `Poseidon_Aren`, i2c1 is a shared multi-master bus with a
 registered i2c target. While a target is attached, `i2c_stm32_v2.c` deliberately
@@ -571,8 +574,8 @@ as `ADS1X1X: error writing register 0x1 (-16)` latching). Bit-bang recovery
 (`i2c_recover_bus`) muxes the pins to GPIO and generates a STOP the peripheral
 cannot see — confirmed insufficient on the bench (recovery logged, reads still
 failed). The Zephyr I2C API exposes no peripheral-reset entry point, and the
-vendored zephyr is a west clone (`revision: main`) we do not patch, so the pulse
-is done from app code.
+vendored zephyr is a west clone (`revision: main`), so the pulse remains in app
+code rather than maintaining a larger out-of-tree driver recovery API.
 
 **What still provides coverage**: The pulse holds `PE` low for
 `I2C1_PE_RESET_HOLD_US` (2 µs, ≫ the RM-required 3 APB cycles) under `irq_lock`
@@ -580,7 +583,18 @@ so disable→enable is atomic and the target is never deaf for a scheduling
 quantum. `PE=0` resets the I2C state machine but retains `OAR1`/`CR1`
 configuration, so the Poseidon target stays armed without re-registration. The
 caller holds `i2c1_bus_lock()`, and while `PE=0` the peripheral raises no
-interrupt, so there is no race with the target ISR.
+interrupt, so there is no race with the target ISR. Recovery first requires one
+of these physical states:
+
+- SCL/SDA stable high for 3 ms: pulse PE only; do not alter the wire.
+- SCL high and SDA low continuously for 25 ms: run the standard nine-clock bus
+  clear, then pulse PE.
+- SCL low continuously for 25 ms: pulse PE to release a possible local clock
+  stretch, but do not drive recovery clocks.
+- Lines still toggling: defer recovery because the bus is active.
+
+This distinction prevents a transient `BUSY` during legitimate external traffic
+from turning into a destructive bit-bang recovery burst.
 
 **Possible alternatives to investigate**:
 - `i2c_target_unregister()` + `i2c_target_register()` toggles `PE` through the

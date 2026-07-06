@@ -32,22 +32,44 @@
 void i2c1_bus_lock(void);
 
 /**
+ * @brief Acquire i2c1 only after the physical bus has been quiet.
+ *
+ * This is the entry point for low-priority ADS1115 sampling. It acquires the
+ * application mutex, then requires SCL/SDA to remain high and no recently
+ * completed Poseidon frame to have been observed for a short guard interval.
+ * On success the caller owns the mutex and must call i2c1_bus_unlock().
+ *
+ * @return 0 on success, or -EBUSY if no quiet window appeared before the
+ *         bounded timeout. On error the mutex is not held.
+ */
+int i2c1_bus_lock_quiet(void);
+
+/**
  * @brief Release the i2c1 controller acquired via i2c1_bus_lock().
  */
 void i2c1_bus_unlock(void);
 
 /**
- * @brief Recover a wedged i2c1 bus (bit-banged 9 SCL pulses + STOP).
+ * @brief Record completion of a Poseidon frame.
+ *
+ * Safe from an I2C target callback. ADS1115 sampling uses this timestamp to
+ * avoid starting immediately after an external frame or a local output group.
+ */
+void i2c1_bus_note_activity(void);
+
+/**
+ * @brief Recover a wedged i2c1 bus without disturbing live bus traffic.
  *
  * With a Poseidon i2c target registered the STM32 keeps the I2C peripheral
  * enabled between transfers, so a BUSY flag latched by a multimaster collision
- * never self-clears and every subsequent controller transfer returns -EBUSY.
- * This drives a STOP on the wire (via the board's scl/sda-gpios) to clear it.
- * Takes i2c1_bus_lock() internally so it cannot race a concurrent transfer.
+ * can survive after the physical lines return idle. If both lines are stably
+ * high, recovery only pulses the STM32 PE bit. Nine-clock physical bus clear is
+ * reserved for a confirmed SCL-high/SDA-low stuck condition; active/toggling
+ * traffic is never bit-banged. Takes i2c1_bus_lock() internally.
  *
  * @return 0 on success; -ENODEV if i2c1 is absent from the devicetree (e.g.
- *         native_sim); -ENOSYS if CONFIG_I2C_STM32_BUS_RECOVERY is not enabled
- *         for this build; or a driver error code.
+ *         native_sim); -EBUSY if the bus remains active or SCL is stuck low;
+ *         -ENOSYS if bus recovery is unavailable; or a driver error code.
  */
 int i2c1_bus_recover(void);
 

@@ -46,4 +46,16 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length);
  */
 void UDS_LogPush_Poll(void);
 
+/**
+ * @brief Suspend/resume the log push while a large UDS transfer owns the bridge.
+ *
+ * Bracketed around an OTA download or a log-download stream: a multi-frame
+ * broadcast push interleaved with the transfer's frames trips the handset's
+ * ISO-TP RX ("unexpected FF"). While suspended, Poll() is a no-op; queued
+ * messages flush once resumed.
+ *
+ * @param suspended true to suspend pushes, false to resume.
+ */
+void UDS_LogPush_SetSuspended(bool suspended);
+
 #endif /* UDS_LOG_PUSH_H */

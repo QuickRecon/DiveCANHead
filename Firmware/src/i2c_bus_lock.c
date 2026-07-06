@@ -9,20 +9,35 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/irq.h>
+#include <zephyr/logging/log.h>
 
 #include <errno.h>
+
+LOG_MODULE_REGISTER(i2c_bus_lock, LOG_LEVEL_INF);
 
 /* PE must stay low this long for the I2Cv2 state-machine reset to take; the
  * reference manual requires >= 3 APB cycles, 2 us is comfortably above that at
  * any supported PCLK1. */
 #define I2C1_PE_RESET_HOLD_US 2
+/* Poseidon devices emit short frame groups. Requiring a stable idle interval
+ * longer than the observed ~1.6 ms inter-frame spacing avoids inserting an ADS
+ * transaction into the middle of a group. */
+#define I2C1_QUIET_GUARD_MS 3U
+#define I2C1_QUIET_TIMEOUT_MS 25U
+/* A physical line must remain in the same non-idle state for this long before
+ * it is declared stuck. A valid 100 kHz Poseidon frame is below 1 ms. */
+#define I2C1_STUCK_CONFIRM_MS 25U
+#define I2C1_CLASSIFY_TIMEOUT_MS 30U
+#define I2C1_LINE_POLL_US 100
 
 /* Framework-mandated file-scope object: K_MUTEX_DEFINE places the control
  * block in an iterable section for compile-time static initialisation, the
  * same pattern SonarQube M23_388 accepts for K_THREAD_DEFINE. */
 K_MUTEX_DEFINE(i2c1_bus_mutex);
+static atomic_t last_bus_activity_ms;
 
 /* Resolve the i2c1 controller at build time where it exists (all real
  * hardware variants); NULL on topologies without the node (native_sim uses
@@ -32,6 +47,138 @@ static const struct device *const i2c1_dev = DEVICE_DT_GET(DT_NODELABEL(i2c1));
 #else
 static const struct device *const i2c1_dev;
 #endif
+
+#if DT_NODE_EXISTS(DT_NODELABEL(i2c1)) && \
+    DT_NODE_HAS_PROP(DT_NODELABEL(i2c1), scl_gpios) && \
+    DT_NODE_HAS_PROP(DT_NODELABEL(i2c1), sda_gpios)
+#define I2C1_HAS_LINE_GPIOS 1
+static const struct gpio_dt_spec i2c1_scl =
+    GPIO_DT_SPEC_GET(DT_NODELABEL(i2c1), scl_gpios);
+static const struct gpio_dt_spec i2c1_sda =
+    GPIO_DT_SPEC_GET(DT_NODELABEL(i2c1), sda_gpios);
+#else
+#define I2C1_HAS_LINE_GPIOS 0
+#endif
+
+enum i2c1_line_state {
+    I2C1_LINES_IDLE,
+    I2C1_LINES_SDA_STUCK,
+    I2C1_LINES_SCL_STUCK,
+    I2C1_LINES_ACTIVE,
+};
+
+static bool i2c1_get_lines(bool *scl_high, bool *sda_high)
+{
+#if I2C1_HAS_LINE_GPIOS
+    int scl = gpio_pin_get_dt(&i2c1_scl);
+    int sda = gpio_pin_get_dt(&i2c1_sda);
+
+    if ((scl < 0) || (sda < 0)) {
+        return false;
+    }
+    *scl_high = scl != 0;
+    *sda_high = sda != 0;
+#else
+    *scl_high = true;
+    *sda_high = true;
+#endif
+    return true;
+}
+
+static bool i2c1_activity_guard_elapsed(void)
+{
+    uint32_t now = k_uptime_get_32();
+    uint32_t last = (uint32_t)atomic_get(&last_bus_activity_ms);
+
+    return (uint32_t)(now - last) >= I2C1_QUIET_GUARD_MS;
+}
+
+/**
+ * Require both physical lines to remain high for the quiet guard interval.
+ * Caller holds i2c1_bus_mutex, preventing another local controller transfer
+ * from occupying the gap while it is being measured.
+ */
+static int i2c1_wait_quiet(void)
+{
+    uint32_t started = k_uptime_get_32();
+    uint32_t idle_since = started;
+    bool measuring_idle = false;
+
+    while ((uint32_t)(k_uptime_get_32() - started) <
+           I2C1_QUIET_TIMEOUT_MS) {
+        bool scl_high;
+        bool sda_high;
+        uint32_t now = k_uptime_get_32();
+
+        if (!i2c1_get_lines(&scl_high, &sda_high)) {
+            return -EIO;
+        }
+
+        if (scl_high && sda_high && i2c1_activity_guard_elapsed()) {
+            if (!measuring_idle) {
+                idle_since = now;
+                measuring_idle = true;
+            } else if ((uint32_t)(now - idle_since) >=
+                       I2C1_QUIET_GUARD_MS) {
+                return 0;
+            }
+        } else {
+            measuring_idle = false;
+        }
+
+        k_usleep(I2C1_LINE_POLL_US);
+    }
+
+    return -EBUSY;
+}
+
+/**
+ * Classify a persistent physical-line fault. Transitions reset the confirmation
+ * timer, so active bus traffic can time out as ACTIVE but can never be mistaken
+ * for an SDA-stuck condition and overwritten by bit-bang recovery.
+ */
+static enum i2c1_line_state i2c1_classify_lines(void)
+{
+    uint32_t started = k_uptime_get_32();
+    uint32_t state_since = started;
+    bool previous_scl = false;
+    bool previous_sda = false;
+    bool have_previous = false;
+
+    while ((uint32_t)(k_uptime_get_32() - started) <
+           I2C1_CLASSIFY_TIMEOUT_MS) {
+        bool scl_high;
+        bool sda_high;
+        uint32_t now = k_uptime_get_32();
+        uint32_t stable_ms;
+
+        if (!i2c1_get_lines(&scl_high, &sda_high)) {
+            return I2C1_LINES_ACTIVE;
+        }
+
+        if (!have_previous || (scl_high != previous_scl) ||
+            (sda_high != previous_sda)) {
+            previous_scl = scl_high;
+            previous_sda = sda_high;
+            state_since = now;
+            have_previous = true;
+        }
+
+        stable_ms = (uint32_t)(now - state_since);
+        if (scl_high && sda_high &&
+            (stable_ms >= I2C1_QUIET_GUARD_MS)) {
+            return I2C1_LINES_IDLE;
+        }
+        if (stable_ms >= I2C1_STUCK_CONFIRM_MS) {
+            return scl_high ? I2C1_LINES_SDA_STUCK
+                            : I2C1_LINES_SCL_STUCK;
+        }
+
+        k_usleep(I2C1_LINE_POLL_US);
+    }
+
+    return I2C1_LINES_ACTIVE;
+}
 
 #if defined(CONFIG_SOC_FAMILY_STM32) && DT_NODE_EXISTS(DT_NODELABEL(i2c1))
 #include <stm32_ll_i2c.h>
@@ -75,22 +222,63 @@ void i2c1_bus_lock(void)
     (void)k_mutex_lock(&i2c1_bus_mutex, K_FOREVER);
 }
 
+int i2c1_bus_lock_quiet(void)
+{
+    int ret;
+
+    i2c1_bus_lock();
+    ret = i2c1_wait_quiet();
+
+    if (ret != 0) {
+        i2c1_bus_unlock();
+    }
+    return ret;
+}
+
 void i2c1_bus_unlock(void)
 {
     (void)k_mutex_unlock(&i2c1_bus_mutex);
 }
 
+void i2c1_bus_note_activity(void)
+{
+    atomic_set(&last_bus_activity_ms, (atomic_val_t)k_uptime_get_32());
+}
+
 int i2c1_bus_recover(void)
 {
     int ret = -ENODEV;
+    enum i2c1_line_state state;
 
     if (i2c1_dev != NULL) {
         i2c1_bus_lock();
-        /* Two failure modes, two remedies: bit-bang a STOP to release a slave
-         * physically holding SDA, then pulse PE to clear a peripheral BUSY
-         * latch that the bit-bang can't reach. */
-        ret = i2c_recover_bus(i2c1_dev);
-        i2c1_reset_peripheral();
+        state = i2c1_classify_lines();
+
+        if (state == I2C1_LINES_IDLE) {
+            /* The wire is idle, so BUSY exists only in the STM32 state machine.
+             * Do not disturb external devices with unnecessary clock pulses. */
+            LOG_WRN("clearing peripheral BUSY on idle bus");
+            i2c1_reset_peripheral();
+            ret = 0;
+        } else if (state == I2C1_LINES_SDA_STUCK) {
+            /* NXP UM10204 bus-clear procedure: only clock a bus whose SCL has
+             * remained high while SDA has remained low. */
+            LOG_ERR("SDA stuck low; attempting physical bus clear");
+            ret = i2c_recover_bus(i2c1_dev);
+            i2c1_reset_peripheral();
+        } else if (state == I2C1_LINES_SCL_STUCK) {
+            /* The STM32 may itself be stretching SCL after a target/controller
+             * race. Release its state machine, but never drive clocks into a
+             * line another device is holding low. */
+            LOG_ERR("SCL stuck low; resetting peripheral without bus clear");
+            i2c1_reset_peripheral();
+            ret = -EBUSY;
+        } else {
+            /* Line transitions were still occurring: this is live traffic,
+             * not a wedged target. Defer rather than corrupting the frame. */
+            LOG_WRN("recovery deferred while bus remains active");
+            ret = -EBUSY;
+        }
         i2c1_bus_unlock();
     }
 

@@ -39,6 +39,7 @@
 #include "flash_log.h"
 #endif
 #include "isotp.h"
+#include "uds_log_push.h"
 #include "errors.h"
 #include "common.h"
 #include "heartbeat.h"
@@ -507,6 +508,9 @@ static void ota_downloading_entry(void *obj)
 #ifdef CONFIG_FLASH_LOG
     flash_log_pause();
 #endif
+    /* Silence the broadcast log-push for the duration of the transfer so it
+     * doesn't collide with the OTA frames on the handset's ISO-TP RX. */
+    UDS_LogPush_SetSuspended(true);
 }
 
 static void ota_downloading_exit(void *obj)
@@ -515,6 +519,7 @@ static void ota_downloading_exit(void *obj)
 #ifdef CONFIG_FLASH_LOG
     flash_log_resume();
 #endif
+    UDS_LogPush_SetSuspended(false);
 }
 
 static enum smf_state_result ota_downloading_run(void *obj)

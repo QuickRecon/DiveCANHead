@@ -38,6 +38,10 @@ LOG_MODULE_REGISTER(tank_pressure, LOG_LEVEL_INF);
 /* HP cylinder pressure moves slowly; 500 ms matches the DiveCAN broadcast
  * cadence in divecan_ppo2_tx.c so every TX cycle sees a fresh sample. */
 #define TANK_SAMPLE_INTERVAL_MS 500
+/* Keep the sampler from phase-locking to the 2 s Poseidon heartbeat and 4 s
+ * Battery percentage broadcast. This changes only the low-priority pressure
+ * cadence; the published staleness contract remains far looser. */
+#define TANK_SAMPLE_JITTER_MS 10U
 
 /* Same publish timeout the cell drivers use for their zbus channels. */
 #define TANK_PUBLISH_TIMEOUT_MS 100
@@ -162,18 +166,27 @@ static Status_t transducer_read_retry(struct transducer_state *t)
             tank_adc_backoff(attempt - 1U);
         }
 
-        i2c1_bus_lock();
-        ret = adc_read_dt(t->adc, &t->adc_seq);
-        i2c1_bus_unlock();
+        ret = i2c1_bus_lock_quiet();
+        if (ret == 0) {
+            ret = adc_read_dt(t->adc, &t->adc_seq);
+            i2c1_bus_unlock();
+        }
     }
 
     if (adc_error_is_transient(ret)) {
-        /* BUSY never cleared across every attempt. With the Poseidon i2c
-         * target attached the STM32 keeps the peripheral enabled, so a latched
-         * BUSY flag will not self-clear by waiting — it wedges every future
-         * read. Bit-bang a STOP to unwedge the bus; this cycle still reports
-         * FAIL, but the next one proceeds instead of latching off. */
-        (void)i2c1_bus_recover();
+        /* BUSY never cleared across every attempt. Recovery first classifies
+         * the physical lines: an idle wire gets only a peripheral PE reset,
+         * while nine-clock bus clear is reserved for confirmed SDA-low/SCL-high.
+         * Live external traffic is left untouched. */
+        if (i2c1_bus_recover() == 0) {
+            /* Recovery released the bus. Make one bounded attempt now instead
+             * of publishing FAIL and waiting another 500 ms sampling cycle. */
+            ret = i2c1_bus_lock_quiet();
+            if (ret == 0) {
+                ret = adc_read_dt(t->adc, &t->adc_seq);
+                i2c1_bus_unlock();
+            }
+        }
     }
 
     return ret;
@@ -286,7 +299,10 @@ static void tank_pressure_thread(void *p1, void *p2, void *p3)
         zbus_pub_checked(&chan_tank_pressure, &msg,
                          K_MSEC(TANK_PUBLISH_TIMEOUT_MS));
 
-        k_msleep(TANK_SAMPLE_INTERVAL_MS);
+        int32_t jitter = (int32_t)(k_cycle_get_32() %
+                         (2U * TANK_SAMPLE_JITTER_MS + 1U)) -
+                         (int32_t)TANK_SAMPLE_JITTER_MS;
+        k_msleep(TANK_SAMPLE_INTERVAL_MS + jitter);
     }
 }
 
