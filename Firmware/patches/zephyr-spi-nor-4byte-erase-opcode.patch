@@ -1,0 +1,55 @@
+Subject: drivers: flash: spi_nor: use 4-byte erase opcodes with 4-byte addresses
+
+The erase path always emits a 4-byte address when use-4b-addr-opcodes is set,
+but the erase-type table may still hold 3-byte opcodes: the SFDP 4-Byte Address
+Instruction Table is only parsed when it falls within the first two SFDP
+parameter headers, which is not the case for the W25Q512JV (64 MB NOR on
+divecan_jr). Sending a 3-byte erase opcode with a 4-byte address ERASES THE
+WRONG LOCATION - this silently corrupts OTA staging, factory capture, and the
+flash log. Applied automatically at configure time by Firmware/CMakeLists.txt;
+git apply tolerates this preamble.
+
+diff --git a/drivers/flash/spi_nor.c b/drivers/flash/spi_nor.c
+index 9bffb93dcdd..e9d4390c03b 100644
+--- a/drivers/flash/spi_nor.c
++++ b/drivers/flash/spi_nor.c
+@@ -1036,6 +1036,27 @@ static int spi_nor_write(const struct device *dev, off_t addr,
+ 	return ret;
+ }
+ 
++/* Map a 3-byte erase opcode to its 4-byte-address variant. Needed because the
++ * erase path below always emits a 4-byte address when use-4b-addr-opcodes is set,
++ * but the erase-type table may still hold the 3-byte opcodes (the SFDP 4-Byte
++ * Address Instruction Table is only parsed if it falls within the first two SFDP
++ * parameter headers, which is not the case for all parts e.g. Winbond W25Q512JV).
++ * Sending a 3-byte erase opcode with a 4-byte address erases the wrong location.
++ * Idempotent: if the table already supplied a 4-byte opcode it is returned as-is. */
++static inline uint8_t spi_nor_erase_opcode_4b(uint8_t cmd)
++{
++	switch (cmd) {
++	case SPI_NOR_CMD_SE:
++		return SPI_NOR_CMD_SE_4B;
++	case SPI_NOR_CMD_BE_32K:
++		return SPI_NOR_CMD_BE_32K_4B;
++	case SPI_NOR_CMD_BE:
++		return SPI_NOR_CMD_BE_4B;
++	default:
++		return cmd;
++	}
++}
++
+ static int spi_nor_erase(const struct device *dev, off_t addr, size_t size)
+ {
+ 	const size_t flash_size = dev_flash_size(dev);
+@@ -1094,8 +1115,9 @@ static int spi_nor_erase(const struct device *dev, off_t addr, size_t size)
+ 			if (bet != NULL) {
+ 				if (IS_ENABLED(ANY_INST_USE_4B_ADDR_OPCODES) &&
+ 				    DEV_CFG(dev)->use_4b_addr_opcodes) {
+-					ret = spi_nor_cmd_addr_write_4b(dev, bet->cmd, addr, NULL,
+-									0);
++					ret = spi_nor_cmd_addr_write_4b(
++						dev, spi_nor_erase_opcode_4b(bet->cmd),
++						addr, NULL, 0);
+ 				} else {
+ 					ret = spi_nor_cmd_addr_write(dev, bet->cmd, addr, NULL, 0);
+ 				}
