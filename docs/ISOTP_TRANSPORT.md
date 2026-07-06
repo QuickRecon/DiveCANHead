@@ -139,14 +139,42 @@ The Shearwater dive computer has some non-standard behavior:
 bool isShearwaterFC = (pci == ISOTP_PCI_FC) && (msgSource == 0xFF);
 ```
 
+## Dynamic Retargeting
+
+A dialog context (e.g. the shared `MENU_ID` UDS context, source `DIVECAN_SOLO`)
+rewrites its `target` to the source of each inbound frame, so replies always go
+back to whoever just asked. Both the handset (Bus Devices menu) and the
+Bluetooth bridge client talk to the head on `MENU_ID` through this one context;
+retargeting is what lets a single context serve both.
+
+The BT bridge sources **every** frame from `0xFF` (`BT_CLIENT_ADDRESS`), so a BT
+request legitimately drives `target` to `0xFF`. The retarget lock that keeps the
+permanent broadcast sender (log-push) from being pulled onto a unicast peer is
+therefore keyed on an **immutable role flag** (`broadcastTx`, fixed at
+`ISOTP_Init` from the initial target), **not** on the live `target` value. If it
+were keyed on `target == 0xFF`, a dialog context that transiently picked up
+`0xFF` from the BT bridge could never retarget back to the handset — stranding
+menu replies on `0xFF` and killing the handset's Bus Devices menu until the head
+rebooted. `ProcessMenuMessage` also refuses to *initialise* the dialog context
+with a `0xFF` target for the same reason (it substitutes a unicast placeholder,
+which the first RX frame then corrects).
+
+```c
+// isotp.c ISOTP_ProcessRxFrame — retarget unless this is a broadcast-role context
+if ((msgSource != ctx->target) && (!isShearwaterFC) && (!ctx->broadcastTx)) {
+    ctx->target = msgSource;   // follow the sender
+}
+```
+
 ## ISOTPContext_t Structure
 
 ```c
 typedef struct {
     // Addressing
     DiveCANType_t source;
-    DiveCANType_t target;
+    DiveCANType_t target;      // follows the sender (see Dynamic Retargeting)
     uint32_t messageId;
+    bool broadcastTx;          // role fixed at init; true = never retarget
 
     // State machine
     ISOTPState_t state;

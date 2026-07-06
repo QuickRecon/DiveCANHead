@@ -144,6 +144,18 @@ typedef struct {
     DiveCANType_t target; /**< Remote device type */
     uint32_t messageId;   /**< Base CAN ID (e.g., MENU_ID = 0xD0A0000) */
 
+    /* Role flag, fixed at ISOTP_Init from the initial target. A context
+     * created with the broadcast target (ISOTP_BROADCAST_ADDR) is a
+     * permanent broadcast sender (e.g. the log-push stream): it must never
+     * be retargeted to a unicast peer. A dialog context (real initial
+     * target) always retargets to the current sender so replies follow the
+     * requester — even when that sender is the BT bridge at 0xFF and then
+     * later the handset again. Keying the retarget lock on this immutable
+     * role, not on the live target value, is what stops an incidental 0xFF
+     * (BT bridge source) from wedging the dialog target on broadcast and
+     * killing the handset's Bus Devices menu until reboot. */
+    bool broadcastTx; /**< true = permanent broadcast sender; never retarget */
+
     /* TX traffic class is derived from the target address: a broadcast target
      * (ISOTP_BROADCAST_ADDR, e.g. the log-push stream) is sent fire-and-forget
      * by the centralized TX queue and never waits for Flow Control, so it

@@ -788,6 +788,15 @@ static bool ProcessMenuMessage(const DiveCANMessage_t *message)
      * (needs target address from the incoming message) */
     if (!udsState->isotpInitialized) {
         uint8_t targetType = (uint8_t)(message->id & 0xFFU);
+        /* Never seed the dialog context with the broadcast address: the BT
+         * bridge sources its frames from 0xFF, and a context created with a
+         * 0xFF target latches broadcastTx and would refuse to retarget back
+         * to the handset (Bus Devices menu goes dead until reboot). Seed a
+         * unicast placeholder; ISOTP_ProcessRxFrame below immediately
+         * retargets it to the true sender of this same frame. */
+        if (ISOTP_BROADCAST_ADDR == targetType) {
+            targetType = (uint8_t)DIVECAN_CONTROLLER;
+        }
         ISOTP_Init(&udsState->isotpContext, device_spec.type,
                (DiveCANType_t)targetType, MENU_ID);
         UDS_Init(&udsState->udsContext, &udsState->isotpContext);

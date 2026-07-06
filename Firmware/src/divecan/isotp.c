@@ -158,6 +158,11 @@ void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source,
         ctx->target = target;
         ctx->messageId = messageId;
 
+        /* Capture the broadcast role once, from the initial target. A
+         * context created for the broadcast address is a permanent
+         * broadcast sender and must never retarget (see struct doc). */
+        ctx->broadcastTx = (ISOTP_BROADCAST_ADDR == ((uint32_t)target & DIVECAN_BYTE_MASK));
+
         /* Initialise the RX SM. The IDLE entry stamps ctx->state and
          * clears any RX progress. Completion flags remain false. */
         smf_set_initial(SMF_CTX(ctx), &isotp_states[ISOTP_IDLE]);
@@ -229,15 +234,22 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
             bool isShearwaterFC = (ISOTP_PCI_FC == pci) && (ISOTP_BROADCAST_ADDR == msgSource);
 
             /* Check if message is from expected peer (or Shearwater FC broadcast).
-             * A context configured for BROADCAST TX (target 0xFF, e.g. the
+             * A context whose ROLE is BROADCAST TX (ctx->broadcastTx, e.g. the
              * fire-and-forget log-push stream) must NOT be retargeted to a
              * unicast sender: doing so moves its multi-frame traffic onto the
              * addressed UDS dialog channel, where a log push stalled across a
              * blocking op (e.g. the OTA 0x34 slot1 erase) leaves the host ISO-TP
              * mid-reassembly and swallows the subsequent UDS reply. Broadcast
-             * stays broadcast so logs never collide with addressed replies. */
+             * stays broadcast so logs never collide with addressed replies.
+             *
+             * The lock is keyed on the immutable role flag, NOT on the live
+             * target value. A dialog context whose target transiently becomes
+             * 0xFF (the BT bridge sources every frame from 0xFF) must still be
+             * able to retarget back to the handset — otherwise its menu replies
+             * are stranded on 0xFF and the handset's Bus Devices menu stays dead
+             * until the head reboots. */
             if ((msgSource != ctx->target) && (!isShearwaterFC) &&
-                (ISOTP_BROADCAST_ADDR != ctx->target)) {
+                (!ctx->broadcastTx)) {
                 ctx->target = msgSource; /* Update target to sender */
             }
 

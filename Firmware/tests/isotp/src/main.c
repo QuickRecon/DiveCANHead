@@ -230,6 +230,52 @@ ZTEST(isotp_rx, test_shearwater_fc_quirk)
     zassert_false(consumed);
 }
 
+/**
+ * @brief A dialog context must retarget back to the handset after the BT bridge (0xFF) talks.
+ *
+ * Regression for the "Bus Devices menu dies after a BT ISO-TP interaction" bug:
+ * the BT bridge sources every frame from 0xFF, so a dialog request from it
+ * retargets the shared context to 0xFF. The context must still retarget back to
+ * the handset on its next frame — otherwise menu replies are stranded on 0xFF
+ * and the handset's Bus Devices menu stays dead until the head reboots.
+ */
+ZTEST(isotp_rx, test_dialog_retargets_off_broadcast)
+{
+    /* ctx is a dialog context (target TGT, broadcastTx == false). */
+    zassert_false(ctx.broadcastTx, "default dialog context must not be broadcast");
+
+    /* BT bridge (source 0xFF) sends an SF addressed to us -> retarget to 0xFF. */
+    uint8_t data[] = {0x03, 0xAA, 0xBB, 0xCC};
+    DiveCANMessage_t bt = make_msg(0xFF, SRC, data, 4);
+    zassert_true(ISOTP_ProcessRxFrame(&ctx, &bt));
+    zassert_equal((uint8_t)ctx.target, 0xFF, "must retarget to the BT bridge source");
+
+    /* Handset (source TGT) sends its next frame -> must retarget back to TGT. */
+    DiveCANMessage_t hs = make_msg(TGT, SRC, data, 4);
+    zassert_true(ISOTP_ProcessRxFrame(&ctx, &hs));
+    zassert_equal((uint8_t)ctx.target, (uint8_t)TGT,
+              "dialog context must retarget off 0xFF back to the handset");
+}
+
+/**
+ * @brief A broadcast-role context (log-push) must NEVER retarget to a unicast sender.
+ *
+ * Complements test_dialog_retargets_off_broadcast: the role flag, not the live
+ * target, is what locks retargeting. A context created with the broadcast target
+ * keeps target == 0xFF even when a unicast peer sends it a frame.
+ */
+ZTEST(isotp_rx, test_broadcast_context_never_retargets)
+{
+    ISOTP_Init(&ctx, SRC, (DiveCANType_t)0xFF, MSG_ID);
+    zassert_true(ctx.broadcastTx, "context created with 0xFF target is broadcast");
+
+    uint8_t data[] = {0x03, 0xAA, 0xBB, 0xCC};
+    DiveCANMessage_t hs = make_msg(TGT, SRC, data, 4);
+    (void)ISOTP_ProcessRxFrame(&ctx, &hs);
+    zassert_equal((uint8_t)ctx.target, 0xFF,
+              "broadcast context must not retarget to a unicast sender");
+}
+
 /** @brief N_Cr timeout: context resets to ISOTP_IDLE when no CF arrives within 1000 ms. */
 ZTEST(isotp_rx, test_ncr_timeout)
 {
