@@ -856,6 +856,7 @@
   <div class="tab-bar">
     <button class="tab-button active" data-tab="main">Main</button>
     <button class="tab-button" data-tab="control">Control</button>
+    <button class="tab-button" data-tab="autotune">Autotune</button>
     <button class="tab-button" data-tab="settings">Settings</button>
     <button class="tab-button" data-tab="firmware">Firmware Update</button>
     <button class="tab-button" data-tab="logs">Logs</button>
@@ -1074,6 +1075,88 @@
     <!-- End Control Tab -->
     </div>
 
+    <!-- Autotune Tab (on-device PID autotune via DID 0xF243 / 0xF213) -->
+    <div class="tab-content" id="tab-autotune">
+      <h2>PID Autotune</h2>
+
+      <!-- Preconditions / session -->
+      <div class="tab-section">
+        <h2>Preconditions</h2>
+        <p style="color: #888; font-size: 13px; margin: 4px 0 10px;">
+          The autotune routine steps the setpoint and observes the loop response, so it
+          demands a controlled environment:
+        </p>
+        <ul style="color: #888; font-size: 13px; margin: 0 0 10px 18px;">
+          <li><strong>Surface only</strong> — the run auto-aborts if a dive is detected.</li>
+          <li><strong>PPO2 mode must be PID</strong> — otherwise START is refused (NRC 0x22).</li>
+          <li><strong>Cells calibrated &amp; healthy</strong> — a cell failure aborts the run.</li>
+        </ul>
+        <p style="color: #888; font-size: 12px; margin: 4px 0 10px;">
+          START requires a <strong>programming session</strong>; enter it here before starting.
+        </p>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button id="atEnterSessionButton" disabled>Enter Programming Session</button>
+        </div>
+        <div id="at-session-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+
+      <!-- Parameters + Start/Abort -->
+      <div class="tab-section">
+        <h2>Run</h2>
+        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label for="at-base-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Base setpoint (bar)</label>
+            <input type="number" id="at-base-input" min="0.40" max="1.60" step="0.05" value="0.70"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 110px; font-size: 14px;">
+          </div>
+          <div>
+            <label for="at-step-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Step size (bar)</label>
+            <input type="number" id="at-step-input" min="0.05" max="1.00" step="0.05" value="0.30"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 110px; font-size: 14px;">
+          </div>
+          <div>
+            <label for="at-budget-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Iteration budget</label>
+            <input type="number" id="at-budget-input" min="1" max="65535" step="1" value="24"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 110px; font-size: 14px;">
+          </div>
+          <button id="atStartButton" disabled class="danger">Start Autotune</button>
+          <button id="atAbortButton" disabled>Abort</button>
+        </div>
+        <div id="at-run-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+
+      <!-- Live status -->
+      <div class="tab-section">
+        <h2>Status</h2>
+        <div id="atStatusGrid" class="config-grid">
+          <div class="field-inactive">(Start a run to see live status)</div>
+        </div>
+      </div>
+
+      <!-- Live loop response (0xF200 / 0xF202 / 0xF210) -->
+      <div class="tab-section">
+        <h2>Live Loop Response</h2>
+        <div id="atLiveGrid" class="config-grid">
+          <div class="field-inactive">(Live PPO2 / setpoint / duty appears during a run)</div>
+        </div>
+      </div>
+
+      <!-- Recommended gains + commit -->
+      <div class="tab-section" id="atResultSection" style="display: none;">
+        <h2>Recommended Gains</h2>
+        <p style="color: #888; font-size: 13px; margin: 4px 0 10px;">
+          The run completed. The tuned gains are staged in the volatile settings cache;
+          persist them below to write to NVS.
+        </p>
+        <div id="atResultGrid" class="config-grid"></div>
+        <div style="margin-top: 12px;">
+          <button id="atCommitButton" class="danger">Commit to device (persist)</button>
+        </div>
+        <div id="at-commit-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+    <!-- End Autotune Tab -->
+    </div>
+
     <!-- Settings Tab (device settings menu via UDS 0x9xxx) -->
     <div class="tab-content" id="tab-settings">
       <h2>Device Settings</h2>
@@ -1275,7 +1358,7 @@
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
-    import { STATE_DIDS, ALL_READ_DIDS, EXTRA_READ_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT, UDS_SESSION_PROGRAMMING } from '../src/uds/constants.js';
+    import { STATE_DIDS, ALL_READ_DIDS, EXTRA_READ_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT, UDS_SESSION_PROGRAMMING, AUTOTUNE_STATE_DONE, AUTOTUNE_STATE_ABORTED } from '../src/uds/constants.js';
     import { parseMcubootImage, formatVersion } from '../src/firmware/McubootImage.js';
     import { parseLogStream, decodeRecord } from '../src/logs/LogParser.js';
     import { toJSON as logToJSON, toCSV as logToCSV, toRawBin as logToRawBin, triggerDownload } from '../src/logs/LogExport.js';
@@ -2439,6 +2522,213 @@
       elements.fireSolenoidButton.disabled = false;
     };
 
+    // ============================================================
+    // Autotune tab logic (DID 0xF243 control, 0xF213 status)
+    // ============================================================
+    let autotunePollTimer = null;   // status/live poll interval handle
+    let autotuneLastStatus = null;  // last parsed status (used at commit time)
+
+    const fmtGain = (v) => (v === undefined || v === null || Number.isNaN(v)) ? '--' : v.toFixed(5);
+
+    // Enter a programming session for the autotune tab.
+    const atEnterSession = async () => {
+      if (!stack) { $('at-session-message').textContent = 'Not connected'; return; }
+      try {
+        $('at-session-message').textContent = 'Entering programming session...';
+        await stack.ota.enterProgrammingSession();
+        $('at-session-message').textContent = 'Programming session active (surface only). Ready to start.';
+      } catch (e) {
+        const nrc = e.nrc === 0x22 ? ' (refused — is the head in a dive?)' : '';
+        $('at-session-message').textContent = `Enter session failed: ${e.message}${nrc}`;
+      }
+    };
+
+    // Render the live status grid from a parsed status object.
+    const renderAutotuneStatus = (s) => {
+      const pairs = [
+        ['Phase', s.stateName],
+        ['Iteration', `${s.iteration} / ${s.budget}`],
+        ['Elapsed', `${s.elapsedS} s`],
+        ['Candidate Kp', fmtGain(s.cand.kp)],
+        ['Candidate Ki', fmtGain(s.cand.ki)],
+        ['Candidate Kd', fmtGain(s.cand.kd)],
+        ['Best Kp', fmtGain(s.best.kp)],
+        ['Best Ki', fmtGain(s.best.ki)],
+        ['Best Kd', fmtGain(s.best.kd)],
+        ['Best cost', fmtGain(s.bestCost)]
+      ];
+      if (s.state === AUTOTUNE_STATE_ABORTED) {
+        pairs.push(['Abort reason', s.abortReasonName]);
+      }
+      renderKV($('atStatusGrid'), pairs);
+    };
+
+    // Render the live loop-response grid (PPO2 / setpoint / duty).
+    const renderAutotuneLive = (live) => {
+      const ppo2 = live.CONSENSUS_PPO2;
+      const setpoint = live.SETPOINT;
+      const duty = live.DUTY_CYCLE;
+      renderKV($('atLiveGrid'), [
+        ['Consensus PPO2', ppo2 === undefined ? '--' : `${ppo2.toFixed(3)} bar`],
+        ['Setpoint', setpoint === undefined ? '--' : `${setpoint.toFixed(2)} bar`],
+        ['Duty cycle', duty === undefined ? '--' : `${(duty * 100).toFixed(1)} %`]
+      ]);
+    };
+
+    // Show the recommended-gains section when a run completes.
+    const showAutotuneResult = (s) => {
+      renderKV($('atResultGrid'), [
+        ['Kp', fmtGain(s.best.kp)],
+        ['Ki', fmtGain(s.best.ki)],
+        ['Kd', fmtGain(s.best.kd)],
+        ['Cost', fmtGain(s.bestCost)]
+      ]);
+      $('atResultSection').style.display = '';
+      $('at-commit-message').textContent = '';
+    };
+
+    const stopAutotunePoll = () => {
+      if (autotunePollTimer) {
+        clearInterval(autotunePollTimer);
+        autotunePollTimer = null;
+      }
+    };
+
+    // Poll status + live loop response once (skips ticks that clash with other
+    // in-flight UDS traffic — those throw a transient "already pending" error).
+    const autotunePollTick = async () => {
+      if (!stack) return;
+      try {
+        const status = await stack.uds.readAutotuneStatus();
+        autotuneLastStatus = status;
+        renderAutotuneStatus(status);
+
+        try {
+          const live = await stack.uds.readDIDsParsed([0xF200, 0xF202, 0xF210]);
+          renderAutotuneLive(live);
+        } catch (liveErr) {
+          // Live readout is best-effort; ignore a single failed tick.
+        }
+
+        if (status.state === AUTOTUNE_STATE_DONE || status.state === AUTOTUNE_STATE_ABORTED) {
+          stopAutotunePoll();
+          $('atAbortButton').disabled = true;
+          $('atStartButton').disabled = false;
+          if (status.state === AUTOTUNE_STATE_DONE) {
+            $('at-run-message').textContent = 'Autotune complete. Review the recommended gains below.';
+            showAutotuneResult(status);
+          } else {
+            $('at-run-message').textContent = `Autotune aborted: ${status.abortReasonName}.`;
+          }
+        }
+      } catch (e) {
+        // Transient (e.g. request already pending during a poll clash) — retry next tick.
+      }
+    };
+
+    // Start an autotune run.
+    const autotuneStart = async () => {
+      if (!stack) { $('at-run-message').textContent = 'Not connected'; return; }
+      const baseBar = Number.parseFloat($('at-base-input').value);
+      const stepBar = Number.parseFloat($('at-step-input').value);
+      const budget = Number.parseInt($('at-budget-input').value, 10);
+      if (Number.isNaN(baseBar) || Number.isNaN(stepBar) || Number.isNaN(budget) || budget < 1 || budget > 65535) {
+        $('at-run-message').textContent = 'Invalid parameters';
+        return;
+      }
+      const baseCb = Math.round(baseBar * 100);
+      const stepCb = Math.round(stepBar * 100);
+      if (!confirm(`Start PID autotune?\n\nBase ${baseBar.toFixed(2)} bar, step +${stepBar.toFixed(2)} bar, budget ${budget}.\n\nRequires surface + PID mode + a programming session. The setpoint will be driven during the run.`)) {
+        return;
+      }
+      $('atStartButton').disabled = true;
+      $('atResultSection').style.display = 'none';
+      try {
+        $('at-run-message').textContent = 'Starting autotune...';
+        await stack.uds.autotuneStart({ baseCb, stepCb, budget });
+        $('at-run-message').textContent = 'Autotune running...';
+        $('atAbortButton').disabled = false;
+        stopAutotunePoll();
+        autotunePollTimer = setInterval(autotunePollTick, 1000);
+        autotunePollTick();
+      } catch (error) {
+        let hint = '';
+        if (error.nrc === 0x22) hint = ' (refused — in a dive, or PPO2 mode not PID)';
+        else if (error.nrc === 0x7F) hint = ' (needs programming session)';
+        else if (error.nrc === 0x31) hint = ' (bad parameters / magic)';
+        const desc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        $('at-run-message').textContent = 'Start failed: ' + desc + hint;
+        $('atStartButton').disabled = false;
+      }
+    };
+
+    // Abort an in-progress run.
+    const autotuneAbort = async () => {
+      if (!stack) return;
+      $('atAbortButton').disabled = true;
+      try {
+        await stack.uds.autotuneAbort();
+        $('at-run-message').textContent = 'Abort requested...';
+      } catch (error) {
+        const desc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        $('at-run-message').textContent = 'Abort failed: ' + desc;
+        $('atAbortButton').disabled = false;
+      }
+    };
+
+    // Persist the recommended gains to NVS by resolving the PID gain setting
+    // indices by label (never hardcode — menu order can be permuted per-variant).
+    const autotuneCommit = async () => {
+      if (!stack || !autotuneLastStatus) { $('at-commit-message').textContent = 'No completed run to commit'; return; }
+      const s = autotuneLastStatus;
+      const targets = [
+        { label: 'Kp x1k', gain: s.best.kp },
+        { label: 'Ki x1k', gain: s.best.ki },
+        { label: 'Kd x1k', gain: s.best.kd }
+      ];
+      $('atCommitButton').disabled = true;
+      try {
+        $('at-commit-message').textContent = 'Resolving setting indices...';
+        const settings = await stack.uds.enumerateSettings();
+        for (const t of targets) {
+          const match = settings.find(x => x.label === t.label);
+          if (!match) {
+            throw new Error(`Setting "${t.label}" not found on device`);
+          }
+          const milliunits = BigInt(Math.round(t.gain * 1000));
+          await stack.uds.writeSettingValue(match.index, milliunits);
+          await stack.uds.saveSetting(match.index, milliunits);
+        }
+        $('at-commit-message').textContent = 'Committed Kp/Ki/Kd to NVS.';
+      } catch (error) {
+        $('at-commit-message').textContent = 'Commit failed: ' + (error.message || error);
+      } finally {
+        $('atCommitButton').disabled = false;
+      }
+    };
+
+    // Reset autotune tab UI on disconnect.
+    const resetAutotuneUI = () => {
+      stopAutotunePoll();
+      autotuneLastStatus = null;
+      $('atEnterSessionButton').disabled = true;
+      $('atStartButton').disabled = true;
+      $('atAbortButton').disabled = true;
+      $('at-session-message').textContent = '';
+      $('at-run-message').textContent = '';
+      $('at-commit-message').textContent = '';
+      $('atResultSection').style.display = 'none';
+      $('atStatusGrid').innerHTML = '<div class="field-inactive">(Start a run to see live status)</div>';
+      $('atLiveGrid').innerHTML = '<div class="field-inactive">(Live PPO2 / setpoint / duty appears during a run)</div>';
+    };
+
+    // Enable autotune tab UI on connect.
+    const enableAutotuneUI = () => {
+      $('atEnterSessionButton').disabled = false;
+      $('atStartButton').disabled = false;
+      $('atAbortButton').disabled = true;
+    };
+
     // Current axis selection mode: 'left' or 'right'
     let currentAxisTarget = 'left';
 
@@ -2539,6 +2829,9 @@
           // Enable control tab
           enableControlUI();
 
+          // Enable autotune tab
+          enableAutotuneUI();
+
           // Set target to SOLO (0x04)
           stack.setTargetAddress(0x04);
 
@@ -2565,6 +2858,9 @@
 
           // Reset control tab UI
           resetControlUI();
+
+          // Reset autotune tab UI
+          resetAutotuneUI();
         });
 
         stack.on('error', (error) => {
@@ -2673,6 +2969,12 @@
     elements.triggerCalButton.addEventListener('click', triggerCalibration);
     elements.setSetpointButton.addEventListener('click', setSetpoint);
     elements.fireSolenoidButton.addEventListener('click', fireSolenoid);
+
+    // Autotune tab
+    $('atEnterSessionButton').addEventListener('click', atEnterSession);
+    $('atStartButton').addEventListener('click', autotuneStart);
+    $('atAbortButton').addEventListener('click', autotuneAbort);
+    $('atCommitButton').addEventListener('click', autotuneCommit);
 
     // Periodic UI update for cell values
     setInterval(() => {

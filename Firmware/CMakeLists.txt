@@ -140,6 +140,10 @@ target_sources_ifdef(CONFIG_HAS_O2S_CELL app PRIVATE src/oxygen_cell_o2s.c)
 # but the threaded controller is only compiled in when a physical O2
 # injection solenoid is present on the variant.
 target_sources(app PRIVATE src/ppo2_control_math.c src/ppo2_control.c)
+# PID autotune — always built (pure math + stubs); the threaded routine and its
+# thread are gated on CONFIG_HAS_O2_SOLENOID inside the TU. Autotune ships with
+# PID (no separate Kconfig): wherever PID control exists, autotune exists.
+target_sources(app PRIVATE src/ppo2_autotune_math.c src/ppo2_autotune.c)
 target_include_directories(app PRIVATE include)
 
 # DiveCAN protocol + UDS/ISO-TP

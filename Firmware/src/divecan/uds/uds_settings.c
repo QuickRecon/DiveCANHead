@@ -149,7 +149,7 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
     },
     /* Index 4: PID Kp (milliunits, 0..100000 ⇔ 0.0..100.0) */
     {
-        .label = "PID Kp x1k",
+        .label = "Kp x1k",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .maxValue = PID_GAIN_MAX_WIRE,
@@ -158,7 +158,7 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
     },
     /* Index 5: PID Ki (milliunits, 0..100000 ⇔ 0.0..100.0) */
     {
-        .label = "PID Ki x1k",
+        .label = "Ki x1k",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .maxValue = PID_GAIN_MAX_WIRE,
@@ -167,7 +167,7 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
     },
     /* Index 6: PID Kd (milliunits, 0..100000 ⇔ 0.0..100.0) */
     {
-        .label = "PID Kd x1k",
+        .label = "Kd x1k",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .maxValue = PID_GAIN_MAX_WIRE,

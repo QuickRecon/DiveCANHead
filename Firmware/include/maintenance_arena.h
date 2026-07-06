@@ -41,8 +41,21 @@
 
 /** Arena byte size. Current tenants: flash_img_context ≈ 1080 B
  *  (CONFIG_IMG_BLOCK_BUF_SIZE=1024 + stream-flash bookkeeping), factory
- *  chunk 1024 B, log index (192+32)×8 = 1792 B. */
+ *  chunk 1024 B, log index (192+32)×8 = 1792 B.
+ *
+ *  The 1792 B figure is tuned for the 32-bit STM32L431 target (which uses
+ *  CONFIG_IMG_BLOCK_BUF_SIZE=1024 → flash_img_context ≈ 1080). The native
+ *  integration build (tests/integration/integration.conf) sets
+ *  CONFIG_IMG_BLOCK_BUF_SIZE=4096 AND is 64-bit, so flash_img_context is
+ *  ≈ 4.2 KB there and the per-tenant BUILD_ASSERTs below would trip. Native
+ *  RAM is unconstrained, so give POSIX a generous ceiling; the ARM target
+ *  size — the one that matters for the ~100%-full Poseidon build — is
+ *  unchanged. */
+#ifdef CONFIG_ARCH_POSIX
+#define MAINT_ARENA_SIZE 8192U
+#else
 #define MAINT_ARENA_SIZE 1792U
+#endif
 
 typedef enum {
     MAINT_ARENA_FREE = 0,

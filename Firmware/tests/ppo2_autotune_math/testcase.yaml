@@ -1,0 +1,4 @@
+tests:
+  ppo2_autotune.math:
+    platform_allow: native_sim
+    tags: ppo2_control pid autotune

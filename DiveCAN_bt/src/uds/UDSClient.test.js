@@ -437,6 +437,59 @@ describe('UDSClient', () => {
     });
   });
 
+  describe('autotune', () => {
+    it('autotuneStart sends [cmd, magic, base, step, budget_hi, budget_lo] to 0xF243', async () => {
+      transport.queueResponse(buildWDBIResponse(0xF243));
+      await client.autotuneStart({ baseCb: 70, stepCb: 30, budget: 300 });
+      // budget 300 = 0x012C
+      expect(Array.from(transport.getLastSent())).toEqual([
+        0x2E, 0xF2, 0x43, 0x01, 0xA7, 70, 30, 0x01, 0x2C
+      ]);
+    });
+
+    it('autotuneAbort sends [0x02, 0xA7] to 0xF243', async () => {
+      transport.queueResponse(buildWDBIResponse(0xF243));
+      await client.autotuneAbort();
+      expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x43, 0x02, 0xA7]);
+    });
+
+    it('readAutotuneStatus parses the 38-byte little-endian status struct', async () => {
+      const buf = new ArrayBuffer(38);
+      const dv = new DataView(buf);
+      dv.setUint8(0, 2);              // state = STEPPING
+      dv.setUint8(1, 4);              // abort_reason = TIMEOUT
+      dv.setUint16(2, 5, true);       // iteration
+      dv.setUint16(4, 24, true);      // budget
+      dv.setFloat32(6, 1.5, true);    // cand kp
+      dv.setFloat32(10, 0.25, true);  // cand ki
+      dv.setFloat32(14, 0.1, true);   // cand kd
+      dv.setFloat32(18, 1.75, true);  // best kp
+      dv.setFloat32(22, 0.3, true);   // best ki
+      dv.setFloat32(26, 0.05, true);  // best kd
+      dv.setFloat32(30, 0.0123, true);// best cost
+      dv.setUint32(34, 42, true);     // elapsed_s
+      transport.queueResponse(buildRDBIResponse(0xF213, Array.from(new Uint8Array(buf))));
+
+      const st = await client.readAutotuneStatus();
+
+      expect(Array.from(transport.getLastSent())).toEqual([0x22, 0xF2, 0x13]);
+      expect(st.state).toBe(2);
+      expect(st.stateName).toBe('Stepping');
+      expect(st.abortReason).toBe(4);
+      expect(st.abortReasonName).toBe('Timeout');
+      expect(st.iteration).toBe(5);
+      expect(st.budget).toBe(24);
+      expect(st.cand.kp).toBeCloseTo(1.5, 5);
+      expect(st.cand.ki).toBeCloseTo(0.25, 5);
+      expect(st.cand.kd).toBeCloseTo(0.1, 5);
+      expect(st.best.kp).toBeCloseTo(1.75, 5);
+      expect(st.best.ki).toBeCloseTo(0.3, 5);
+      expect(st.best.kd).toBeCloseTo(0.05, 5);
+      expect(st.bestCost).toBeCloseTo(0.0123, 5);
+      expect(st.elapsedS).toBe(42);
+    });
+  });
+
   describe('event emitter', () => {
     it('emits response event on positive response', async () => {
       const handler = vi.fn();

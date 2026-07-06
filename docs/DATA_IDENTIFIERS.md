@@ -23,7 +23,7 @@ model (sessions, NRCs, transfer/routine control) see
 | 0xF1xx | 0x31 | **RoutineControl** RIDs for flash-log download (not DIDs) |
 | 0xF20x–0xF22x | 0x22 | PPO2 control state (consensus, setpoint, PID, uptime) |
 | 0xF23x | 0x22 | Power monitoring (rail voltages, sources) |
-| 0xF24x | 0x2E | Control writes (setpoint, calibration trigger) |
+| 0xF24x | 0x2E | Control writes (setpoint, calibration trigger, autotune control) |
 | 0xF25x | 0x22 | Crash-info (from `errors_get_last_crash()`) |
 | 0xF26x | 0x22 / 0x2E | Error histogram (read + clear) |
 | 0xF27x | 0x22 / 0x2E | OTA / MCUboot status + action DIDs |
@@ -59,7 +59,30 @@ model (sessions, NRCs, transfer/routine control) see
 | 0xF210 | 4 | float32 | Solenoid duty cycle (0.0–1.0) | R |
 | 0xF211 | 4 | float32 | PID integral accumulator | R |
 | 0xF212 | 2 | uint16 | PID saturation event counter | R |
+| 0xF213 | 38 | struct | PID autotune status (see below) | R |
 | 0xF220 | 4 | uint32 | Uptime in seconds | R |
+
+### PID Autotune Status (0xF213)
+
+Live snapshot of the on-device PID autotune routine (see
+[UDS_PROTOCOL.md](UDS_PROTOCOL.md) → *PID Autotune* and
+`Firmware/src/ppo2_autotune.c`). Readable on **all variants** — where there is
+no O2 solenoid it always reports `IDLE`. 38 bytes, **little-endian**:
+
+| Offset | Size | Type | Field | Notes |
+|--------|------|------|-------|-------|
+| 0 | 1 | uint8 | state | 0=IDLE, 1=SETTLING, 2=STEPPING, 3=DONE, 4=ABORTED |
+| 1 | 1 | uint8 | abort_reason | 0=NONE, 1=OPERATOR, 2=DIVE, 3=CELL_FAIL, 4=TIMEOUT, 5=CONDITIONS |
+| 2 | 2 | uint16 | iteration | Candidate gain sets evaluated so far |
+| 4 | 2 | uint16 | iteration_budget | Configured evaluation budget |
+| 6 | 4 | float32 | cand_kp | Candidate Kp under evaluation |
+| 10 | 4 | float32 | cand_ki | Candidate Ki under evaluation |
+| 14 | 4 | float32 | cand_kd | Candidate Kd under evaluation |
+| 18 | 4 | float32 | best_kp | Best Kp found so far |
+| 22 | 4 | float32 | best_ki | Best Ki found so far |
+| 26 | 4 | float32 | best_kd | Best Kd found so far |
+| 30 | 4 | float32 | best_cost | Cost at the best gain set |
+| 34 | 4 | uint32 | elapsed_s | Seconds since the run started |
 
 ## Power Monitoring DIDs (0xF23x)
 
@@ -80,6 +103,7 @@ Write-only via Service 0x2E (WriteDataByIdentifier).
 |-----|------|------|-------------|-----|
 | 0xF240 | 1 | uint8 | Setpoint (0–255 = 0.00–2.55 bar, centibar) | W |
 | 0xF241 | 1 | uint8 | Calibration trigger (fO2 0–100 %) | W |
+| 0xF243 | 2 or 6 | command | PID autotune control (START/ABORT — see below) | W |
 
 ### Setpoint Write (0xF240)
 
@@ -113,6 +137,58 @@ NRCs:     0x13 (incorrect length)
 ```
 
 Common fO2 values: 21 = Air, 100 = Pure O2.
+
+### PID Autotune Control (0xF243)
+
+Starts or aborts the on-device PID autotune routine
+(`Firmware/src/ppo2_autotune.c`). The routine perturbs the control loop with
+setpoint steps, scores the closed-loop response, and searches for the best
+Kp/Ki/Kd by bounded coordinate descent. It runs **autonomously on-device** in
+its own thread, so the supervising client does not need to stay connected. The
+supervised status is readable at `0xF213`. All data bytes are the payload
+**after** the DID (`0x2E F2 43 …`); the first data byte is the command and the
+second is a fixed magic `0xA7` guard.
+
+**START** — command `0x01`, 6 data bytes:
+
+```
+Request:  [0x2E] [0xF2] [0x43] [0x01] [0xA7] [base_cb] [step_cb] [budget_hi] [budget_lo]
+Response: [0x6E] [0xF2] [0x43]
+```
+
+- `base_cb` — base setpoint to step from, centibar (uint8)
+- `step_cb` — step magnitude above base, centibar (uint8)
+- `budget` — iteration budget, **uint16 big-endian** (`budget_hi`, `budget_lo`)
+
+Parameters are sanitised in firmware: `base` is clamped to a normal operating
+point (0.40–1.60 bar; the 0.19 bar hypoxic special-case is rejected → default
+70 cb), `step` defaults to 30 cb when 0 and is reduced so that `base + step ≤
+160 cb`, and `budget` defaults to 24 and is capped at 200. The setpoint is
+perturbed via `chan_setpoint` **only** (never `chan_setpoint_cmd`), so the
+setpoint-change flush solenoid is not triggered.
+
+**ABORT** — command `0x02`, 2 data bytes:
+
+```
+Request:  [0x2E] [0xF2] [0x43] [0x02] [0xA7]
+Response: [0x6E] [0xF2] [0x43]
+```
+
+Any abort restores the pre-tune gains. On success (`state = DONE`) the winning
+gains are applied live and **staged into the volatile settings cache** (indices
+4/5/6, "PID Kp/Ki/Kd x1k") — **not** auto-persisted; the operator reviews them
+and persists via the settings-save DID (`0x9350 + N`).
+
+**Gating / NRCs:**
+
+| Condition | NRC |
+|-----------|-----|
+| Not in a programming session | 0x7F (serviceNotInSession) |
+| Wrong magic (≠ 0xA7) | 0x31 (requestOutOfRange) |
+| START while diving, or `ppo2_autotune_start()` rejects (mode not PID / already running / no solenoid) | 0x22 (conditionsNotCorrect) |
+| Wrong request length | 0x13 (incorrectMessageLength) |
+
+Positive response echoes the DID (`0x6E F2 43`).
 
 ## Crash-Info DIDs (0xF25x)
 

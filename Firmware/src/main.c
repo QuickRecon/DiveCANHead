@@ -80,7 +80,7 @@ static void boot_indicator(void)
 #define PREAMBLE_LINE_BUF_SZ 128U
 
 /* PID-gain x1000 scale matches the UDS settings wire format
- * (`PID Kp x1k`). Avoids depending on cbprintf float support and
+ * (`Kp x1k`). Avoids depending on cbprintf float support and
  * still resolves Kp=0.001 vs Kp=1.0 unambiguously. */
 #define PID_GAIN_DISPLAY_SCALE 1000
 

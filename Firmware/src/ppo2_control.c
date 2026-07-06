@@ -183,6 +183,50 @@ void ppo2_control_get_snapshot(PPO2ControlSnapshot_t *out)
     }
 }
 
+/* ---- Live gain application (autotune) ---- */
+
+/** Clamp a candidate gain to the accepted [PID_GAIN_MIN, PID_GAIN_MAX] range,
+ *  mirroring the bounds the UDS settings write path enforces. */
+static Numeric_t clamp_pid_gain(Numeric_t gain)
+{
+    Numeric_t result = gain;
+    if (result < PID_GAIN_MIN) {
+        result = PID_GAIN_MIN;
+    }
+    else if (result > PID_GAIN_MAX) {
+        result = PID_GAIN_MAX;
+    }
+    else {
+        /* Within range — no clamp required. */
+    }
+    return result;
+}
+
+void ppo2_control_set_gains_live(Numeric_t kp, Numeric_t ki, Numeric_t kd)
+{
+    PIDState_t *state = getPidState();
+    state->proportionalGain = (PIDNumeric_t)clamp_pid_gain(kp);
+    state->integralGain = (PIDNumeric_t)clamp_pid_gain(ki);
+    state->derivativeGain = (PIDNumeric_t)clamp_pid_gain(kd);
+    /* Start the candidate from a clean slate so wind-up from the previous
+     * gain set can't bias its step response. */
+    pid_state_reset_dynamic(state);
+}
+
+void ppo2_control_get_gains_live(Numeric_t *kp, Numeric_t *ki, Numeric_t *kd)
+{
+    const PIDState_t *state = getPidState();
+    if (kp != NULL) {
+        *kp = (Numeric_t)state->proportionalGain;
+    }
+    if (ki != NULL) {
+        *ki = (Numeric_t)state->integralGain;
+    }
+    if (kd != NULL) {
+        *kd = (Numeric_t)state->derivativeGain;
+    }
+}
+
 /* ---- Helpers ---- */
 
 /**
@@ -764,6 +808,25 @@ void ppo2_control_get_snapshot(PPO2ControlSnapshot_t *out)
         out->duty_cycle = 0.0f;
         out->integral_state = 0.0f;
         out->saturation_count = 0U;
+    }
+}
+void ppo2_control_set_gains_live(Numeric_t kp, Numeric_t ki, Numeric_t kd)
+{
+    ARG_UNUSED(kp);
+    ARG_UNUSED(ki);
+    ARG_UNUSED(kd);
+    /* No solenoid on this variant — no live PID state to update. */
+}
+void ppo2_control_get_gains_live(Numeric_t *kp, Numeric_t *ki, Numeric_t *kd)
+{
+    if (kp != NULL) {
+        *kp = 0.0f;
+    }
+    if (ki != NULL) {
+        *ki = 0.0f;
+    }
+    if (kd != NULL) {
+        *kd = 0.0f;
     }
 }
 

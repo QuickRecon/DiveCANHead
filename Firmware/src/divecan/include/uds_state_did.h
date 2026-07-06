@@ -29,6 +29,7 @@
 #define UDS_DID_DUTY_CYCLE          0xF210U  /**< float32: Solenoid duty (0.0-1.0) */
 #define UDS_DID_INTEGRAL_STATE      0xF211U  /**< float32: PID integral accumulator */
 #define UDS_DID_SATURATION_COUNT    0xF212U  /**< uint16: PID saturation events */
+#define UDS_DID_AUTOTUNE_STATUS     0xF213U  /**< 38 B: PID autotune status (see uds_state_did.c) */
 #define UDS_DID_UPTIME_SEC          0xF220U  /**< uint32: Seconds since boot */
 
 /* Power Monitoring DIDs (0xF23x) */
@@ -44,6 +45,7 @@
 #define UDS_DID_SETPOINT_WRITE      0xF240U
 #define UDS_DID_CALIBRATION_TRIGGER 0xF241U
 #define UDS_DID_SOLENOID_OVERRIDE   0xF242U  /**< write-only [channel,magic 0x5A]: HIL — fire one raw solenoid channel for a fixed ~1.5 s (can't lock on); refused unless PPO2 mode is OFF + programming session + !in_dive */
+#define UDS_DID_AUTOTUNE_CONTROL    0xF243U  /**< write-only: PID autotune control. START [0x01,magic 0xA7,base_cb,step_cb,budget_hi,budget_lo], ABORT [0x02,magic 0xA7]; requires programming session + PPO2 mode PID + !in_dive */
 
 /* Crash-info DIDs (0xF25x) — populated from errors_get_last_crash() */
 #define UDS_DID_CRASH_VALID         0xF250U  /**< uint8: 1 if last boot was a crash, else 0 */

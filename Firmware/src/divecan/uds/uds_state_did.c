@@ -20,6 +20,7 @@
 #include "oxygen_cell_types.h"
 #include "power_management.h"
 #include "ppo2_control.h"
+#include "ppo2_autotune.h"
 #include "error_histogram.h"
 #include "factory_image.h"
 #include "firmware_confirm.h"
@@ -396,6 +397,56 @@ static bool handleOtaStatusDID(uint16_t did, uint8_t *buf,
 }
 
 /* ============================================================================
+ * PID Autotune status DID helper (0xF213)
+ * ============================================================================ */
+
+/* Wire layout (little-endian), 38 bytes:
+ *   [0]  state u8          [1]  abort_reason u8
+ *   [2]  iteration u16     [4]  iteration_budget u16
+ *   [6]  cand_kp f32       [10] cand_ki f32       [14] cand_kd f32
+ *   [18] best_kp f32       [22] best_ki f32       [26] best_kd f32
+ *   [30] best_cost f32     [34] elapsed_s u32                        */
+static const size_t AUTOTUNE_STATUS_LEN = 38U;
+
+/* Byte offsets within the AUTOTUNE_STATUS payload. */
+static const size_t AT_OFF_STATE        = 0U;
+static const size_t AT_OFF_ABORT_REASON = 1U;
+static const size_t AT_OFF_ITERATION    = 2U;
+static const size_t AT_OFF_BUDGET       = 4U;
+static const size_t AT_OFF_CAND_KP      = 6U;
+static const size_t AT_OFF_CAND_KI      = 10U;
+static const size_t AT_OFF_CAND_KD      = 14U;
+static const size_t AT_OFF_BEST_KP      = 18U;
+static const size_t AT_OFF_BEST_KI      = 22U;
+static const size_t AT_OFF_BEST_KD      = 26U;
+static const size_t AT_OFF_BEST_COST    = 30U;
+static const size_t AT_OFF_ELAPSED      = 34U;
+
+/**
+ * @brief Serialise the current PID autotune status into @p buf.
+ *
+ * @param buf Destination (must have at least AUTOTUNE_STATUS_LEN bytes).
+ */
+static void buildAutotuneStatus(uint8_t *buf)
+{
+    AutotuneStatus_t st = {0};
+    ppo2_autotune_get_status(&st);
+
+    buf[AT_OFF_STATE] = (uint8_t)st.state;
+    buf[AT_OFF_ABORT_REASON] = (uint8_t)st.abort_reason;
+    writeUint16(&buf[AT_OFF_ITERATION], st.iteration);
+    writeUint16(&buf[AT_OFF_BUDGET], st.iteration_budget);
+    writeFloat32(&buf[AT_OFF_CAND_KP], st.cand_kp);
+    writeFloat32(&buf[AT_OFF_CAND_KI], st.cand_ki);
+    writeFloat32(&buf[AT_OFF_CAND_KD], st.cand_kd);
+    writeFloat32(&buf[AT_OFF_BEST_KP], st.best_kp);
+    writeFloat32(&buf[AT_OFF_BEST_KI], st.best_ki);
+    writeFloat32(&buf[AT_OFF_BEST_KD], st.best_kd);
+    writeFloat32(&buf[AT_OFF_BEST_COST], st.best_cost);
+    writeUint32(&buf[AT_OFF_ELAPSED], st.elapsed_s);
+}
+
+/* ============================================================================
  * PPO2 Control State DID Handlers (0xF2xx)
  * ============================================================================ */
 
@@ -484,6 +535,16 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         *len = sizeof(uint16_t);
         break;
     }
+
+    case UDS_DID_AUTOTUNE_STATUS:
+        if (maxLen < AUTOTUNE_STATUS_LEN) {
+            OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+            result = false;
+        } else {
+            buildAutotuneStatus(buf);
+            *len = (uint16_t)AUTOTUNE_STATUS_LEN;
+        }
+        break;
 
     case UDS_DID_UPTIME_SEC:
         writeUint32(buf, k_uptime_get_32() / MS_PER_SECOND);

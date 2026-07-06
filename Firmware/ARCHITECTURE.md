@@ -171,11 +171,11 @@ Defined channels:
 | `chan_cell_1` | `OxygenCellMsg_t` | Cell 1 thread | Consensus subscriber, UDS state DID |
 | `chan_cell_2` | `OxygenCellMsg_t` | Cell 2 thread | Consensus subscriber, UDS state DID |
 | `chan_cell_3` | `OxygenCellMsg_t` | Cell 3 thread | Consensus subscriber, UDS state DID |
-| `chan_consensus` | `ConsensusMsg_t` | Consensus subscriber | PPO2 TX, PPO2 PID controller, UDS state DID |
+| `chan_consensus` | `ConsensusMsg_t` | Consensus subscriber | PPO2 TX, PPO2 PID controller, PID autotune, UDS state DID |
 | `chan_cal_request` | `CalRequest_t` | DiveCAN RX, UDS write | Calibration listener |
 | `chan_cal_response` | `CalResponse_t` | Calibration thread | DiveCAN cal response listener |
 | `chan_battery_status` | `BatteryStatus_t` | Battery monitor thread | DiveCAN ping response |
-| `chan_setpoint` | `PPO2_t` | DiveCAN RX, UDS write, handset-loss failsafe | PPO2 PID controller, DiveCAN ping |
+| `chan_setpoint` | `PPO2_t` | DiveCAN RX, UDS write, handset-loss failsafe, PID autotune | PPO2 PID controller, DiveCAN ping |
 | `chan_setpoint_cmd` | `PPO2_t` | DiveCAN RX, UDS write (diver-commanded only — the failsafe does NOT publish here) | Solenoid fire thread (setpoint-change flush trigger) |
 | `chan_atmos_pressure` | `uint16_t` | DiveCAN RX | UDS cal trigger, PPO2 PID controller (depth comp) |
 | `chan_shutdown_request` | `bool` | DiveCAN RX (BUS_OFF) | Future power management |
@@ -328,6 +328,59 @@ DiveCAN uses a non-standard padding byte in Single Frame and First Frame message
 - **TX/composer split** — `divecan_send.c` (CAN driver glue) separated from `divecan_tx.c` (protocol byte layout) for testability
 - **Pure math extraction** — `divecan_ppo2_math.c` extracted from PPO2 TX thread for testability
 
+## PID Autotune
+
+An on-device setup routine (`src/ppo2_autotune.c`, gated on the same
+`CONFIG_HAS_O2_SOLENOID` as the PID controller — no separate Kconfig) that
+dials in the solenoid PID gains (Kp/Ki/Kd). For each candidate gain set it
+commands the base setpoint, lets the loop settle (~20 s), steps the setpoint up
+(base→base+step), observes the consensus PPO2 for ~40 s at 2 Hz, and scores the
+step response as `w1·IAE + w2·overshoot + w3·settling_time + w4·steady_ripple`.
+A bounded coordinate-descent search over (Kp, Ki, Kd) — with step-halving on
+stalls and an iteration budget — walks toward the lowest cost.
+
+**Thread.** One `K_THREAD_DEFINE` (`autotune_thread`) at **priority 7 — one
+below the control threads (6)** so it never preempts the PID or fire loop. It
+sleeps until a run is requested and is otherwise inert (on a no-solenoid variant
+`ppo2_autotune_start()` returns `-ENOTSUP` and the status reports `IDLE`).
+
+**Interaction with the PID controller (no reboot).** Candidates are applied via
+`ppo2_control_set_gains_live()` / `_get_gains_live()`, which write straight into
+the live `PIDState_t`. This is the key enabler: the normal NVS-settings path
+only latches gains at boot in `ppo2_control_init()`, so without the live API each
+candidate would need a reboot. The routine snapshots the pre-tune gains up front
+and restores them on any abort.
+
+**zbus.** Reads `chan_consensus` (the scored signal) and publishes `chan_setpoint`
+**only** — never `chan_setpoint_cmd`, so the setpoint-change flush solenoid is
+not triggered by the perturbation. Dive detection for the safety abort comes
+through the UDS dive signal (`UDS_IsInDive`).
+
+**Safety model.** Bench/surface-only. A run only starts when **not diving** and
+**PPO2 mode is PID** (`ppo2_autotune_start()` enforces this; the `0xF243` DID
+handler additionally requires a *programming session* — an arming guard, not a
+run-long requirement, since the routine runs autonomously once started). It
+self-aborts on: operator request, dive start, cell failure (consensus
+`PPO2_FAIL`), or a 2-hour timeout. Dive-start abort is wired **twice** — the
+routine's own per-tick check and `UDS_MaintainSession()`, where the same dive
+signal that force-downgrades the programming session also calls
+`ppo2_autotune_request_abort(AUTOTUNE_ABORT_DIVE)`. Any abort restores the
+pre-tune gains. On success the winning gains are applied live and **staged into
+the volatile settings cache** (indices 4/5/6) — *not* auto-persisted; the
+operator reviews and persists them via the settings-save DID (`0x9350 + N`).
+
+**DID supervision surface.** Control write DID `0xF243`
+(`ppo2_autotune_start()` / `_request_abort()`, START/ABORT + magic `0xA7`) and
+status read DID `0xF213` (`ppo2_autotune_get_status()`, 38-byte snapshot: state,
+abort reason, iteration/budget, candidate + best gains, best cost, elapsed). See
+`docs/DATA_IDENTIFIERS.md` and `docs/UDS_PROTOCOL.md`.
+
+**Pure-math split.** As with `ppo2_control_math.c`, the cost function and
+optimizer live in a separate OS-free `src/ppo2_autotune_math.c` (header
+`include/ppo2_autotune_math.h`) so the scoring and coordinate-descent search are
+host-tested under `tests/ppo2_autotune_math/`; the thread/state-machine glue in
+`ppo2_autotune.c` stays thin.
+
 ## Hardening
 
 | Mechanism | Config | Layer |
@@ -392,6 +445,8 @@ Firmware/
 │   ├── oxygen_cell_o2s.c           O2S cell: UART async half-duplex, parse, zbus publish
 │   ├── power_management.c          Power driver: regulator, ADC voltage, shutdown
 │   ├── power_math.c                Pure power math (voltage conversion, thresholds)
+│   ├── ppo2_autotune.c             On-device PID autotune thread (CONFIG_HAS_O2_SOLENOID)
+│   ├── ppo2_autotune_math.c        Pure cost function + coordinate-descent optimizer
 │   ├── runtime_settings.c          NVS load/save/validate, topology BUILD_ASSERTs
 │   ├── tank_pressure.c             HP transducer sampler thread, zbus publish
 │   ├── tank_pressure_math.c        Pure mV → decibar mapping (no OS deps)
@@ -419,7 +474,8 @@ Firmware/
 │   ├── power/                      Voltage math, GPIO mux, regulator, CAN detect (19 tests)
 │   ├── isotp/                      ISO-TP RX/TX protocol (19 tests)
 │   ├── divecan_tx/                 Message composition byte layout (15 tests)
-│   └── ppo2_broadcast/             PPO2 broadcast filtering logic (8 tests)
+│   ├── ppo2_broadcast/             PPO2 broadcast filtering logic (8 tests)
+│   └── ppo2_autotune_math/         Cost function + coordinate-descent optimizer (6 tests)
 ├── variants/
 │   └── <variant>.conf/.overlay     Hardware variants (AP_Aren, eCCR_classic,
 │                                   Poseidon_Aren, Sidewinder_Gabriel)

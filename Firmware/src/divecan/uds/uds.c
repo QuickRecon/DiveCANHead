@@ -24,6 +24,7 @@
 #include "calibration.h"
 #include "runtime_settings.h"
 #include "ppo2_control.h"
+#include "ppo2_autotune.h"
 #include "solenoid_roles.h"
 #include "errors.h"
 #include "error_histogram.h"
@@ -65,6 +66,14 @@ static const uint8_t OTA_WRITE_MAGIC = 0x01U;
 static const uint8_t  SOLENOID_OVERRIDE_MAGIC = 0x5AU;
 static const uint32_t SOLENOID_OVERRIDE_ON_US = 1500000U; /* 1.5 s; capped by DT max-on-time-us */
 static const uint16_t SOLENOID_OVERRIDE_LEN   = 6U;       /* pad+SID+DID_HI+DID_LO+channel+magic */
+
+/* Autotune control (0xF243): START/ABORT a PID autotune run. A deliberate
+ * non-zero magic byte keeps a zero-fill write from arming the routine. */
+static const uint8_t  AUTOTUNE_CTRL_MAGIC = 0xA7U;
+#define AUTOTUNE_CMD_START 0x01U
+#define AUTOTUNE_CMD_ABORT 0x02U
+static const uint16_t AUTOTUNE_START_LEN = 10U; /* pad+SID+DID_HI+DID_LO+cmd+magic+base+step+budget_hi+budget_lo */
+static const uint16_t AUTOTUNE_ABORT_LEN = 6U;  /* pad+SID+DID_HI+DID_LO+cmd+magic */
 #endif
 
 /* Pause between the positive UDS response and sys_reboot — gives ISO-TP
@@ -94,6 +103,7 @@ static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData, uint
 static bool writeCalibrationTriggerDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 #ifdef CONFIG_HAS_O2_SOLENOID
 static bool writeSolenoidOverrideDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
+static bool writeAutotuneControlDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static void buildWriteDidPositiveResponse(UDSContext_t *ctx, const uint8_t *requestData);
 #endif
 static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
@@ -160,6 +170,11 @@ void UDS_MaintainSession(UDSContext_t *ctx)
             LOG_WRN("Dive detected: programming session forced -> default");
             ctx->session = UDS_SESSION_DEFAULT;
             downgraded = true;
+            /* Same dive signal that tears down the session also aborts an
+             * in-flight PID autotune run — the routine additionally self-aborts
+             * on its own dive check, so the two can never disagree. No-op if no
+             * run is active (and on no-solenoid variants). */
+            ppo2_autotune_request_abort(AUTOTUNE_ABORT_DIVE);
         }
 
         /* Abort any in-flight OTA when the programming session lapses, so a
@@ -901,6 +916,71 @@ static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
 
     return true;
 }
+
+/**
+ * @brief Handle a WDBI write to the autotune-control DID (0xF243).
+ *
+ * START [0x01, magic, base_cb, step_cb, budget_hi, budget_lo] arms an on-device
+ * PID autotune run; ABORT [0x02, magic] requests it stop.  Both require a
+ * programming session; START additionally requires not-in-dive (PPO2-mode-PID
+ * is enforced inside ppo2_autotune_start()).  The routine runs autonomously and
+ * self-aborts on dive start regardless of the supervising session, so the
+ * session gate is an arming guard, not a run-long requirement.
+ *
+ * @return true (always; error paths send NRC and still return true)
+ */
+static bool writeAutotuneControlDID(UDSContext_t *ctx,
+                    const uint8_t *requestData,
+                    uint16_t requestLength)
+{
+    if (requestLength < AUTOTUNE_ABORT_LEN) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
+    } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_SERVICE_NOT_IN_SESSION);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_SERVICE_NOT_IN_SESSION);
+    } else if (AUTOTUNE_CTRL_MAGIC != requestData[UDS_DATA_IDX + 1U]) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+    } else {
+        uint8_t cmd = requestData[UDS_DATA_IDX];
+        if (AUTOTUNE_CMD_ABORT == cmd) {
+            ppo2_autotune_request_abort(AUTOTUNE_ABORT_OPERATOR);
+            buildWriteDidPositiveResponse(ctx, requestData);
+            UDS_SendResponse(ctx);
+        } else if (AUTOTUNE_CMD_START == cmd) {
+            if (requestLength != AUTOTUNE_START_LEN) {
+                OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
+            } else if (UDS_IsInDive()) {
+                OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+            } else {
+                AutotuneParams_t params = {
+                    .base_setpoint_cb = requestData[UDS_DATA_IDX + 2U],
+                    .step_cb = requestData[UDS_DATA_IDX + 3U],
+                    .iteration_budget = (uint16_t)(
+                        ((uint16_t)requestData[UDS_DATA_IDX + 4U] << DIVECAN_BYTE_WIDTH) |
+                        (uint16_t)requestData[UDS_DATA_IDX + 5U]),
+                };
+                Status_t rc = ppo2_autotune_start(&params);
+                if (0 == rc) {
+                    buildWriteDidPositiveResponse(ctx, requestData);
+                    UDS_SendResponse(ctx);
+                } else {
+                    /* -EBUSY / -ENODEV (mode not PID) / -EACCES (dive) / -ENOTSUP */
+                    OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+                    UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+                }
+            }
+        } else {
+            OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+        }
+    }
+
+    return true;
+}
 #endif /* CONFIG_HAS_O2_SOLENOID */
 
 /**
@@ -1472,6 +1552,7 @@ static const struct {
     { UDS_DID_CALIBRATION_TRIGGER,   writeCalibrationTriggerDID },
 #ifdef CONFIG_HAS_O2_SOLENOID
     { UDS_DID_SOLENOID_OVERRIDE,     writeSolenoidOverrideDID },
+    { UDS_DID_AUTOTUNE_CONTROL,      writeAutotuneControlDID },
 #endif
     { UDS_DID_ERROR_HISTOGRAM_CLEAR, writeHistogramClearDID },
     { UDS_DID_OTA_FORCE_REVERT,      writeForceRevertDID },

@@ -291,6 +291,43 @@ const allState = await client.fetchAllState((current, total) => {
 });
 ```
 
+### PID Autotune
+
+Supervises the on-device PID autotune routine over DIDs `0xF243` (control,
+0x2E) and `0xF213` (status, 0x22). The routine runs autonomously on the head;
+these methods start/abort it and poll its progress. START requires a
+programming session (enter it first, surface only — NRC 0x22 while diving).
+
+```javascript
+// Enter programming session first (autotune START is gated on it)
+await client.enterSession(UDS_SESSION_PROGRAMMING);        // 0x10 0x02
+
+// Start a run: step from base up by step, evaluating up to `budget` gain sets.
+// Values are centibar; budget is encoded uint16 big-endian on the wire.
+await client.autotuneStart({ baseCb: 70, stepCb: 30, budget: 24 }); // 0x2E 0xF243
+
+// Poll status (parsed, little-endian 38-byte payload)
+const st = await client.readAutotuneStatus();               // 0x22 0xF213
+// {
+//   state,        // 'IDLE'|'SETTLING'|'STEPPING'|'DONE'|'ABORTED'
+//   abortReason,  // 'NONE'|'OPERATOR'|'DIVE'|'CELL_FAIL'|'TIMEOUT'|'CONDITIONS'
+//   iteration, budget,
+//   cand: { kp, ki, kd },
+//   best: { kp, ki, kd },
+//   bestCost,
+//   elapsedS
+// }
+
+// Abort at any time (restores the pre-tune gains on the head)
+await client.autotuneAbort();                               // 0x2E 0xF243
+```
+
+On `state === 'DONE'` the head has applied the winning gains live and staged
+them into the volatile settings cache, but has **not** persisted them. Commit
+them with the existing settings-save path — resolve the indices by label
+(`"Kp x1k"` / `"Ki x1k"` / `"Kd x1k"`) from `enumerateSettings()`,
+then `saveSetting(index, value)` (`0x9350 + index`).
+
 ## DID Constants
 
 From `src/uds/constants.js`:
@@ -309,8 +346,12 @@ export const STATE_DIDS = {
     CELLS_VALID:    { did: 0xF203, size: 1, type: 'uint8' },
     ALARM_STATE:    { did: 0xF204, size: 4, type: 'uint32' },
     DUTY_CYCLE:     { did: 0xF210, size: 4, type: 'float32' },
+    AUTOTUNE_STATUS:{ did: 0xF213, size: 38, type: 'struct' }, // PID autotune snapshot
     // ... power 0xF23x, cells 0xF4Nx (stride 0x10)
 };
+
+// Autotune control (write, 0x2E)
+export const DID_AUTOTUNE_CONTROL = 0xF243;
 
 // MCUBoot / OTA (0xF27x), flash-log management (0xF28x), settings (0x9xxx)
 
@@ -356,12 +397,33 @@ Adapts cell data for UI display with type-specific formatting.
 
 Manages time-series plotting for diagnostics.
 
-The `examples/diagnostics.html` app also has **Settings**, **Firmware Update**, and
-**Logs** tabs wired to `stack.uds` (settings), `stack.ota` (OTAManager), and
-`stack.logs` (LogDownloader). The Firmware Update tab drives OTA through a single
-**Update OTA** button (`ota.updateFirmware`) with a **Cancel** for the staging phase;
-the per-phase buttons (Enter Session, Stage, Activate, Poll Until Confirmed, Force
-Revert) live under a **Stages** expander for manual step-through.
+The `examples/diagnostics.html` app also has **Settings**, **Firmware Update**,
+**Logs**, and **Autotune** tabs wired to `stack.uds` (settings + autotune),
+`stack.ota` (OTAManager), and `stack.logs` (LogDownloader). The Firmware Update
+tab drives OTA through a single **Update OTA** button (`ota.updateFirmware`) with
+a **Cancel** for the staging phase; the per-phase buttons (Enter Session, Stage,
+Activate, Poll Until Confirmed, Force Revert) live under a **Stages** expander for
+manual step-through.
+
+### Autotune Tab
+
+Supervises the on-device PID autotune routine (`client.autotuneStart` /
+`autotuneAbort` / `readAutotuneStatus`). Flow:
+
+1. **Enter programming session** — START is gated on it (surface only; NRC 0x22
+   while diving).
+2. **Set base / step / budget** — base setpoint and step magnitude (centibar)
+   and the iteration budget; firmware sanitises out-of-range values.
+3. **Start** — kicks off the run. The tab then **polls `readAutotuneStatus()`**,
+   showing the live phase (SETTLING/STEPPING), candidate vs best gains, best
+   cost, iteration/budget, and elapsed time, alongside a plot of the consensus
+   PPO2 step response. An **Abort** button calls `autotuneAbort()`.
+4. **On DONE** — the head has applied the tuned gains live and staged them
+   (volatile). A **Commit to device** button persists the winning Kp/Ki/Kd via
+   the existing settings-save path: the indices are resolved by label
+   (`"Kp x1k"` / `"Ki x1k"` / `"Kd x1k"`) and saved with
+   `saveSetting()` (`0x9350 + index`). Any abort (including dive-start) restores
+   the pre-tune gains on the head automatically.
 
 ## Error Handling
 

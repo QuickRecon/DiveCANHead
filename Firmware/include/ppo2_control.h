@@ -72,4 +72,48 @@ void ppo2_control_get_snapshot(PPO2ControlSnapshot_t *out);
  */
 PPO2ControlMode_t ppo2_control_get_active_mode(void);
 
+/**
+ * @brief Apply PID gains directly to the live controller state — no reboot.
+ *
+ * The boot path latches Kp/Ki/Kd once in `ppo2_control_init()` and the PID
+ * loop never re-reads them, so the normal NVS-settings write path only takes
+ * effect after a power cycle.  This accessor writes the gains straight into
+ * the file-static `PIDState_t` that the PID thread reads every 100 ms cycle,
+ * so a new set takes effect on the next tick.  It exists for the on-device
+ * PID autotune routine (`ppo2_autotune.c`), which must evaluate many candidate
+ * gain sets in one session without rebooting.
+ *
+ * Each gain is clamped to `[PID_GAIN_MIN, PID_GAIN_MAX]`.  The dynamic state
+ * (integrator, derivative memory, saturation count) is reset via
+ * `pid_state_reset_dynamic()` so a candidate is not biased by wind-up carried
+ * from the previous candidate.
+ *
+ * Concurrency: the PID thread is the normal single writer of `PIDState_t`.
+ * Writing gains + resetting the integrator from another thread races that
+ * writer, but each float store is word-atomic on Cortex-M and the worst case
+ * is a single perturbed PID cycle — matching the racy snapshot semantics
+ * documented on `ppo2_control_get_snapshot()`.  Intended for the bench-only
+ * autotune procedure, not for use while diving.  No-op on no-solenoid variants.
+ *
+ * @param kp Proportional gain (clamped)
+ * @param ki Integral gain (clamped)
+ * @param kd Derivative gain (clamped)
+ */
+void ppo2_control_set_gains_live(Numeric_t kp, Numeric_t ki, Numeric_t kd);
+
+/**
+ * @brief Read the PID gains currently in effect in the live controller state.
+ *
+ * Returns the gains the PID loop is actually using right now — the boot-latched
+ * values plus any override applied by `ppo2_control_set_gains_live()`.  Used by
+ * the autotune routine to snapshot the pre-tune gains so they can be restored
+ * on abort.  Any out pointer may be NULL to skip that field.  On a no-solenoid
+ * variant all outputs are set to 0.
+ *
+ * @param kp Out: proportional gain (may be NULL)
+ * @param ki Out: integral gain (may be NULL)
+ * @param kd Out: derivative gain (may be NULL)
+ */
+void ppo2_control_get_gains_live(Numeric_t *kp, Numeric_t *ki, Numeric_t *kd);
+
 #endif /* PPO2_CONTROL_H */

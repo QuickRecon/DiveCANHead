@@ -581,6 +581,88 @@ export class UDSClient extends EventEmitter {
   }
 
   // ============================================================
+  // PID Autotune Methods (DID 0xF243 control, 0xF213 status)
+  // ============================================================
+
+  /**
+   * Start an on-device PID autotune run (DID 0xF243, write-only).
+   * Requires a programming session; the firmware also refuses (NRC 0x22) while
+   * diving or when the PPO2 control mode is not PID.
+   * @param {Object} params
+   * @param {number} params.baseCb - Base setpoint in centibar (e.g. 70 = 0.70 bar)
+   * @param {number} params.stepCb - Step magnitude in centibar (e.g. 30 = +0.30 bar)
+   * @param {number} params.budget - Iteration budget (uint16, sent big-endian)
+   * @returns {Promise<void>}
+   */
+  async autotuneStart({ baseCb, stepCb, budget }) {
+    const data = [
+      constants.AUTOTUNE_CMD_START,
+      constants.AUTOTUNE_MAGIC,
+      baseCb & 0xFF,
+      stepCb & 0xFF,
+      (budget >> 8) & 0xFF,
+      budget & 0xFF
+    ];
+    await this.writeDataByIdentifier(constants.DID_AUTOTUNE_CONTROL, data);
+    this.logger.info(`Autotune START base=${baseCb}cb step=${stepCb}cb budget=${budget}`);
+  }
+
+  /**
+   * Abort an in-progress autotune run (DID 0xF243, write-only).
+   * @returns {Promise<void>}
+   */
+  async autotuneAbort() {
+    await this.writeDataByIdentifier(
+      constants.DID_AUTOTUNE_CONTROL,
+      [constants.AUTOTUNE_CMD_ABORT, constants.AUTOTUNE_MAGIC]
+    );
+    this.logger.info('Autotune ABORT');
+  }
+
+  /**
+   * Read autotune status (DID 0xF213). Parses the 38-byte little-endian struct.
+   *
+   * Wire layout (offsets into the returned data bytes):
+   *   [0]  state (u8) [1] abort_reason (u8) [2] iteration (u16) [4] budget (u16)
+   *   [6] cand_kp (f32) [10] cand_ki (f32) [14] cand_kd (f32)
+   *   [18] best_kp (f32) [22] best_ki (f32) [26] best_kd (f32)
+   *   [30] best_cost (f32) [34] elapsed_s (u32)
+   *
+   * @returns {Promise<{state:number, stateName:string, abortReason:number,
+   *   abortReasonName:string, iteration:number, budget:number,
+   *   cand:{kp:number, ki:number, kd:number}, best:{kp:number, ki:number, kd:number},
+   *   bestCost:number, elapsedS:number}>}
+   */
+  async readAutotuneStatus() {
+    const data = await this.readDataByIdentifier(constants.DID_AUTOTUNE_STATUS);
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+    const state = data[0];
+    const abortReason = data[1];
+
+    return {
+      state,
+      stateName: constants.AUTOTUNE_STATE_NAMES[state] ?? `Unknown(${state})`,
+      abortReason,
+      abortReasonName: constants.AUTOTUNE_ABORT_NAMES[abortReason] ?? `Unknown(${abortReason})`,
+      iteration: view.getUint16(2, true),
+      budget: view.getUint16(4, true),
+      cand: {
+        kp: view.getFloat32(6, true),
+        ki: view.getFloat32(10, true),
+        kd: view.getFloat32(14, true)
+      },
+      best: {
+        kp: view.getFloat32(18, true),
+        ki: view.getFloat32(22, true),
+        kd: view.getFloat32(26, true)
+      },
+      bestCost: view.getFloat32(30, true),
+      elapsedS: view.getUint32(34, true)
+    };
+  }
+
+  // ============================================================
   // Multi-DID Read Methods (State DID Support)
   // ============================================================
 
