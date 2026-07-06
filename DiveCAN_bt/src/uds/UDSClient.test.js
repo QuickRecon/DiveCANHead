@@ -9,6 +9,11 @@ import {
   buildRDBIResponse,
   buildNegativeResponse,
   buildWDBIResponse,
+  buildSessionResponse,
+  buildRoutineResponse,
+  buildRequestDownloadResponse,
+  buildTransferResponse,
+  buildTransferExitResponse,
   NRC
 } from '../../tests/fixtures/uds-responses.js';
 import {
@@ -270,23 +275,37 @@ describe('UDSClient', () => {
   });
 
   describe('high-level methods', () => {
-    describe('readSerialNumber', () => {
-      it('returns decoded string', async () => {
-        transport.queueResponse(RESPONSES.RDBI.SERIAL_NUMBER);
+    describe('readFirmwareVersion', () => {
+      it('returns decoded git-describe string', async () => {
+        transport.queueResponse(
+          buildRDBIResponse(0xF000, new TextEncoder().encode('v1.2.3-4'))
+        );
 
-        const serial = await client.readSerialNumber();
+        const version = await client.readFirmwareVersion();
 
-        expect(serial).toBe('SN12345678');
+        expect(version).toBe('v1.2.3-4');
       });
     });
 
-    describe('readModel', () => {
-      it('returns decoded string', async () => {
-        transport.queueResponse(RESPONSES.RDBI.MODEL);
+    describe('readVariantName', () => {
+      it('returns decoded variant string', async () => {
+        transport.queueResponse(
+          buildRDBIResponse(0xF002, new TextEncoder().encode('Poseidon_Aren'))
+        );
 
-        const model = await client.readModel();
+        const variant = await client.readVariantName();
 
-        expect(model).toBe('DiveCANHead');
+        expect(variant).toBe('Poseidon_Aren');
+      });
+    });
+
+    describe('readSerialNumber', () => {
+      it('returns hex string of the raw UID', async () => {
+        transport.queueResponse(buildRDBIResponse(0xF003, [0xDE, 0xAD, 0xBE, 0xEF]));
+
+        const serial = await client.readSerialNumber();
+
+        expect(serial).toBe('deadbeef');
       });
     });
 
@@ -330,6 +349,76 @@ describe('UDSClient', () => {
         await expect(client.triggerCalibration(-1)).rejects.toThrow();
         await expect(client.triggerCalibration(101)).rejects.toThrow();
       });
+    });
+  });
+
+  describe('generic services', () => {
+    it('enterSession sends session control and resolves on 0x50', async () => {
+      transport.queueResponse(buildSessionResponse(0x02));
+      const resp = await client.enterSession(0x02);
+      expect(Array.from(transport.getLastSent())).toEqual([0x10, 0x02]);
+      expect(resp[0]).toBe(0x50);
+    });
+
+    it('routineControl sends 0x31 0x01 with big-endian RID + params', async () => {
+      transport.queueResponse(buildRoutineResponse(0xF105));
+      await client.routineControl(0xF105, [0x00]);
+      expect(Array.from(transport.getLastSent())).toEqual([0x31, 0x01, 0xF1, 0x05, 0x00]);
+    });
+
+    it('requestDownload sends OTA size big-endian and returns max block', async () => {
+      transport.queueResponse(buildRequestDownloadResponse(256));
+      const maxBlock = await client.requestDownload(0, 0x1234, { sizeEndian: 'BE' });
+      expect(Array.from(transport.getLastSent())).toEqual([
+        0x34, 0x00, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x34
+      ]);
+      expect(maxBlock).toBe(256);
+    });
+
+    it('requestDownload sends log size little-endian with sentinel addr', async () => {
+      transport.queueResponse(buildRequestDownloadResponse(253));
+      await client.requestDownload(0xFFFFFFFE, 61, { sizeEndian: 'LE' });
+      expect(Array.from(transport.getLastSent())).toEqual([
+        0x34, 0x00, 0x44, 0xFE, 0xFF, 0xFF, 0xFF, 0x3D, 0x00, 0x00, 0x00
+      ]);
+    });
+
+    it('transferData sends seq + data and returns full response body', async () => {
+      transport.queueResponse(buildTransferResponse(5, [0xAA, 0xBB]));
+      const resp = await client.transferData(5, [0x01, 0x02]);
+      expect(Array.from(transport.getLastSent())).toEqual([0x36, 5, 0x01, 0x02]);
+      expect(Array.from(resp)).toEqual([0x76, 5, 0xAA, 0xBB]);
+    });
+
+    it('requestTransferExit sends 0x37', async () => {
+      transport.queueResponse(buildTransferExitResponse());
+      const resp = await client.requestTransferExit();
+      expect(Array.from(transport.getLastSent())).toEqual([0x37]);
+      expect(resp[0]).toBe(0x77);
+    });
+  });
+
+  describe('settings wire format', () => {
+    it('getSettingOptionLabel uses (settingIndex<<4)+optionIndex', async () => {
+      // setting 2, option 3 -> 0x9150 + (2<<4) + 3 = 0x9173
+      transport.queueResponse(buildRDBIResponse(0x9173, new TextEncoder().encode('Absolute ')));
+      const label = await client.getSettingOptionLabel(2, 3);
+      const sent = transport.getLastSent();
+      expect(Array.from(sent.slice(1, 3))).toEqual([0x91, 0x73]);
+      expect(label).toBe('Absolute');
+    });
+
+    it('getSettingInfo parses fixed-width label + kind + editable + optionCount', async () => {
+      // label(9) + sep + kind(TEXT=1) + editable(1) + maxValue + optionCount(3)
+      const payload = [
+        ...new TextEncoder().encode('PPO2 Mode'), 0x00, 0x01, 0x01, 0x02, 0x03
+      ];
+      transport.queueResponse(buildRDBIResponse(0x9111, payload));
+      const info = await client.getSettingInfo(1);
+      expect(info.label).toBe('PPO2 Mode');
+      expect(info.kind).toBe(1);
+      expect(info.editable).toBe(true);
+      expect(info.optionCount).toBe(3);
     });
   });
 

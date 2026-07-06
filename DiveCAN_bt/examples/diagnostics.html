@@ -669,6 +669,38 @@
       margin-top: 0;
     }
 
+    .progress-bar {
+      width: 100%;
+      height: 18px;
+      background: #1a1a1a;
+      border: 1px solid #555;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: #2ecc71;
+      transition: width 0.15s ease;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    .setting-row.dirty { background: #2a2416; }
+    .setting-row label { color: #ccc; font-size: 13px; }
+    .setting-row select, .setting-row input {
+      background: #1a1a1a; border: 1px solid #555; color: #e0e0e0;
+      padding: 6px 10px; border-radius: 4px;
+    }
+
     /* Mobile responsive styles */
     @media (max-width: 600px) {
       body {
@@ -808,7 +840,9 @@
   <div class="tab-bar">
     <button class="tab-button active" data-tab="main">Main</button>
     <button class="tab-button" data-tab="control">Control</button>
-    <button class="tab-button" data-tab="config">Configuration</button>
+    <button class="tab-button" data-tab="settings">Settings</button>
+    <button class="tab-button" data-tab="firmware">Firmware Update</button>
+    <button class="tab-button" data-tab="logs">Logs</button>
     <button class="tab-button" data-tab="dids">DID Subscriptions</button>
   </div>
 
@@ -990,22 +1024,162 @@
     <!-- End Control Tab -->
     </div>
 
-    <!-- Configuration Tab -->
-    <div class="tab-content" id="tab-config">
-      <h2>Configuration Settings</h2>
-    <div class="config-buttons">
-      <button id="readConfigButton" disabled>Read from Device</button>
-      <button id="writeConfigButton" disabled class="danger">Write to Device</button>
-      <span id="configStatus" class="config-status">(Connect to device to read configuration)</span>
-    </div>
-    <div id="configFieldsContainer" class="config-grid">
-      <!-- Dynamically populated -->
-    </div>
-      <div class="config-raw">
-        <span class="label">Raw Config Bytes:</span>
-        <span class="value" id="configRawHex">--</span>
+    <!-- Settings Tab (device settings menu via UDS 0x9xxx) -->
+    <div class="tab-content" id="tab-settings">
+      <h2>Device Settings</h2>
+      <div class="config-buttons">
+        <button id="readSettingsButton" disabled>Read from Device</button>
+        <span id="settingsStatus" class="config-status">(Connect to device to read settings)</span>
       </div>
-    <!-- End Configuration Tab -->
+      <div id="settingsContainer" class="config-grid">
+        <div class="field-inactive">(Connect to device to see settings)</div>
+      </div>
+    <!-- End Settings Tab -->
+    </div>
+
+    <!-- Firmware Update Tab -->
+    <div class="tab-content" id="tab-firmware">
+      <h2>Firmware Update (OTA)</h2>
+
+      <div class="tab-section">
+        <h2>Device / MCUBoot Status</h2>
+        <div class="config-buttons">
+          <button id="fwRefreshButton" disabled>Refresh Status</button>
+        </div>
+        <div id="fwStatusGrid" class="config-grid">
+          <div class="field-inactive">(Connect to read firmware status)</div>
+        </div>
+      </div>
+
+      <div class="tab-section">
+        <h2>Upload Image</h2>
+        <input type="file" id="fwFileInput" accept=".bin,.hex,.img" disabled>
+        <div id="fwFileInfo" style="margin-top: 10px; color: #888; font-size: 13px;">No file selected</div>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
+          <button id="fwEnterSessionButton" disabled>Enter Programming Session</button>
+          <button id="fwStageButton" disabled>Stage Image</button>
+          <button id="fwActivateButton" disabled class="danger">Activate &amp; Reboot</button>
+          <button id="fwCancelButton" disabled>Cancel</button>
+        </div>
+        <div class="progress-bar" style="margin-top: 12px;">
+          <div class="progress-fill" id="fwProgressFill"></div>
+        </div>
+        <div id="fwMessage" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+
+      <div class="tab-section">
+        <h2>Post-Update</h2>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button id="fwConfirmPollButton" disabled>Poll Until Confirmed</button>
+          <button id="fwRevertButton" disabled class="danger">Force Revert</button>
+        </div>
+      </div>
+
+      <details class="tab-section" id="fwDestructive">
+        <summary style="cursor: pointer; color: #e74c3c; font-weight: bold;">Advanced / Destructive</summary>
+        <p style="color: #888; font-size: 12px; margin: 8px 0;">
+          Each action requires a programming session at the surface and is irreversible.
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 8px; max-width: 480px;">
+          <label><input type="checkbox" id="fwRestoreFactoryChk"> Restore factory image (0xF276)
+            <button id="fwRestoreFactoryButton" class="small danger" disabled>Run</button></label>
+          <label><input type="checkbox" id="fwCaptureChk"> Capture running image as factory (0xF277)
+            <button id="fwCaptureButton" class="small danger" disabled>Run</button></label>
+          <label><input type="checkbox" id="fwChipEraseChk"> Chip-erase external NOR (0xF278)
+            <button id="fwChipEraseButton" class="small danger" disabled>Run</button></label>
+          <label><input type="checkbox" id="fwNvsEraseChk"> Erase settings/cal NVS (0xF279)
+            <button id="fwNvsEraseButton" class="small danger" disabled>Run</button></label>
+        </div>
+      </details>
+    <!-- End Firmware Update Tab -->
+    </div>
+
+    <!-- Logs Tab (flash-log download) -->
+    <div class="tab-content" id="tab-logs">
+      <h2>Flash Logs</h2>
+
+      <div class="tab-section">
+        <h2>Stats</h2>
+        <div class="config-buttons">
+          <button id="logStatsButton" disabled>Refresh Stats</button>
+        </div>
+        <div id="logStatsGrid" class="config-grid">
+          <div class="field-inactive">(Connect to read log stats)</div>
+        </div>
+      </div>
+
+      <div class="tab-section">
+        <h2>Download</h2>
+        <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Stream</label>
+            <select id="logStreamSelect" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+              <option value="0">Telemetry</option>
+              <option value="1">Text</option>
+            </select>
+          </div>
+          <div>
+            <label style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Selector</label>
+            <select id="logSelectorSelect" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+              <option value="latestBoot">Latest boot</option>
+              <option value="latestDive">Latest dive</option>
+              <option value="byBoot">By boot id</option>
+              <option value="byDive">By dive number</option>
+            </select>
+          </div>
+          <div>
+            <label style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Id</label>
+            <input type="number" id="logSelectorId" min="0" value="0" disabled
+              style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;width:110px;">
+          </div>
+          <button id="logResolveButton" disabled>Resolve</button>
+          <button id="logDownloadButton" disabled>Download</button>
+          <button id="logCancelButton" disabled>Cancel</button>
+        </div>
+        <div id="logSelectorInfo" style="margin-top:10px;color:#888;font-size:13px;"></div>
+        <div class="progress-bar" style="margin-top: 12px;">
+          <div class="progress-fill" id="logProgressFill"></div>
+        </div>
+        <div id="logMessage" style="margin-top:10px;color:#888;font-size:13px;"></div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+          <button id="logExportJson" class="small" disabled>Export JSON</button>
+          <button id="logExportCsv" class="small" disabled>Export CSV</button>
+          <button id="logExportBin" class="small" disabled>Export .bin</button>
+        </div>
+      </div>
+
+      <div class="tab-section">
+        <h2>Runtime Capture</h2>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div>
+            <label style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Text verbosity</label>
+            <select id="logVerbositySelect" disabled style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+              <option value="1">ERROR</option>
+              <option value="2">WARN</option>
+              <option value="3">INFO</option>
+              <option value="4">DEBUG</option>
+            </select>
+          </div>
+          <label style="color:#ccc;font-size:13px;"><input type="checkbox" id="logCanRx" disabled> Capture CAN RX</label>
+          <label style="color:#ccc;font-size:13px;"><input type="checkbox" id="logCanTx" disabled> Capture CAN TX</label>
+          <button id="logApplyCaptureButton" class="small" disabled>Apply</button>
+          <button id="logEraseButton" class="small danger" disabled>Erase Log&hellip;</button>
+        </div>
+      </div>
+
+      <div class="tab-section">
+        <h2>Records (<span id="logRecordCount">0</span>)</h2>
+        <div style="max-height: 340px; overflow: auto;">
+          <table id="logRecordTable" style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="text-align:left;color:#888;">
+              <th style="padding:4px;">#</th><th style="padding:4px;">Type</th>
+              <th style="padding:4px;">ts (us)</th><th style="padding:4px;">Details</th>
+            </tr></thead>
+            <tbody id="logRecordBody"></tbody>
+          </table>
+        </div>
+      </div>
+    <!-- End Logs Tab -->
     </div>
 
     <!-- DID Subscriptions Tab -->
@@ -1040,8 +1214,10 @@
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
-    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES } from '../src/uds/constants.js';
-    import { ConfigurationDecoder, CONFIG_FIELDS } from '../src/config/ConfigurationDecoder.js';
+    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT } from '../src/uds/constants.js';
+    import { parseMcubootImage, formatVersion } from '../src/firmware/McubootImage.js';
+    import { parseLogStream, decodeRecord } from '../src/logs/LogParser.js';
+    import { toJSON as logToJSON, toCSV as logToCSV, toRawBin as logToRawBin, triggerDownload } from '../src/logs/LogExport.js';
 
     // Reduce logging to improve performance - only show warnings and errors
     Logger.setGlobalLevel('debug');
@@ -1109,12 +1285,10 @@
       subscriptionCount: document.getElementById('subscriptionCount'),
       pollRate: document.getElementById('pollRate'),
       didSubscriptionList: document.getElementById('didSubscriptionList'),
-      // Configuration elements
-      readConfigButton: document.getElementById('readConfigButton'),
-      writeConfigButton: document.getElementById('writeConfigButton'),
-      configStatus: document.getElementById('configStatus'),
-      configFieldsContainer: document.getElementById('configFieldsContainer'),
-      configRawHex: document.getElementById('configRawHex'),
+      // Settings tab elements
+      readSettingsButton: document.getElementById('readSettingsButton'),
+      settingsStatus: document.getElementById('settingsStatus'),
+      settingsContainer: document.getElementById('settingsContainer'),
       // Control tab elements
       calFo2Input: document.getElementById('cal-fo2-input'),
       triggerCalButton: document.getElementById('triggerCalButton'),
@@ -1123,11 +1297,6 @@
 
     // Subscription state
     let activeSubscriptions = new Map();  // didKey -> unsubscribe function
-
-    // Configuration state
-    let configDecoder = new ConfigurationDecoder();
-    let originalConfigBytes = [0, 0, 0, 0];
-    let configLoaded = false;
 
     // Initialize plot manager
     plotManager = new PlotManager('realtimeChart', {
@@ -1643,204 +1812,375 @@
     };
 
     // ============================================================
-    // Configuration Settings Functions
+    // Settings / Firmware / Logs tab logic
     // ============================================================
+    const $ = (id) => document.getElementById(id);
 
-    // Build configuration UI from CONFIG_FIELDS
-    const buildConfigUI = () => {
-      const container = elements.configFieldsContainer;
+    const renderKV = (container, pairs) => {
       container.innerHTML = '';
-
-      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
-        const fieldEl = document.createElement('div');
-        fieldEl.className = `config-field${field.editable ? '' : ' readonly'}`;
-        fieldEl.dataset.field = fieldName;
-
-        const label = document.createElement('label');
-        label.textContent = field.label;
-        fieldEl.appendChild(label);
-
-        if (!field.editable) {
-          // Read-only display
-          const display = document.createElement('span');
-          display.className = 'value-display';
-          display.id = `config-${fieldName}`;
-          display.textContent = '--';
-          fieldEl.appendChild(display);
-        } else if (field.type === 'bool') {
-          // Checkbox
-          const input = document.createElement('input');
-          input.type = 'checkbox';
-          input.id = `config-${fieldName}`;
-          input.addEventListener('change', () => onConfigFieldChange(fieldName));
-          fieldEl.appendChild(input);
-        } else if (field.type === 'enum') {
-          // Dropdown
-          const select = document.createElement('select');
-          select.id = `config-${fieldName}`;
-          for (const opt of field.options) {
-            const option = document.createElement('option');
-            option.value = opt.value;
-            option.textContent = opt.label;
-            select.appendChild(option);
-          }
-          select.addEventListener('change', () => onConfigFieldChange(fieldName));
-          fieldEl.appendChild(select);
-        }
-
-        container.appendChild(fieldEl);
+      for (const [label, value] of pairs) {
+        const row = document.createElement('div');
+        row.className = 'config-field readonly';
+        const l = document.createElement('label');
+        l.textContent = label;
+        const v = document.createElement('span');
+        v.className = 'value-display';
+        v.textContent = value;
+        row.appendChild(l);
+        row.appendChild(v);
+        container.appendChild(row);
       }
     };
 
-    // Load configuration from device
-    const loadConfigFromDevice = async () => {
-      if (!stack || !stack._uds) {
-        elements.configStatus.textContent = 'Not connected';
-        return;
-      }
-
-      elements.configStatus.textContent = 'Reading configuration...';
-      elements.readConfigButton.disabled = true;
-
+    // ---------- Settings editor (UDS 0x9xxx menu) ----------
+    const loadSettings = async () => {
+      if (!stack) return;
+      elements.settingsStatus.textContent = 'Reading settings...';
+      elements.readSettingsButton.disabled = true;
       try {
-        // Read 4 config bytes (settings indices 1-4)
-        const bytes = [];
-        for (let i = 1; i <= 4; i++) {
-          const result = await stack._uds.getSettingValue(i);
-          bytes.push(Number(result.currentValue) & 0xFF);
-        }
+        const settings = await stack.uds.enumerateSettings();
+        const container = elements.settingsContainer;
+        container.innerHTML = '';
 
-        configDecoder.fromBytes(bytes);
-        originalConfigBytes = [...bytes];
-        configLoaded = true;
+        for (const s of settings) {
+          const row = document.createElement('div');
+          row.className = 'setting-row';
+          const label = document.createElement('label');
+          label.textContent = s.label;
+          row.appendChild(label);
 
-        updateConfigUI();
-        elements.configStatus.textContent = 'Configuration loaded';
-        elements.writeConfigButton.disabled = false;
+          const controls = document.createElement('div');
+          controls.style.display = 'flex';
+          controls.style.gap = '8px';
+          controls.style.alignItems = 'center';
 
-      } catch (error) {
-        console.error('Failed to read config:', error);
-        elements.configStatus.textContent = 'Failed to read: ' + error.message;
-      } finally {
-        elements.readConfigButton.disabled = false;
-      }
-    };
-
-    // Update UI from decoder state
-    const updateConfigUI = () => {
-      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
-        const value = configDecoder.getField(fieldName);
-        const el = document.getElementById(`config-${fieldName}`);
-        if (!el) continue;
-
-        if (!field.editable) {
-          el.textContent = value;
-        } else if (field.type === 'bool') {
-          el.checked = !!value;
-        } else {
-          el.value = value;
-        }
-
-        // Clear dirty indicator
-        const fieldEl = el.closest('.config-field');
-        if (fieldEl) {
-          fieldEl.classList.remove('config-dirty');
-        }
-      }
-
-      elements.configRawHex.textContent = configDecoder.toHexString();
-    };
-
-    // Handle config field change
-    const onConfigFieldChange = (fieldName) => {
-      const field = CONFIG_FIELDS[fieldName];
-      const el = document.getElementById(`config-${fieldName}`);
-      if (!field || !el) return;
-
-      let newValue;
-      if (field.type === 'bool') {
-        newValue = el.checked ? 1 : 0;
-      } else {
-        newValue = Number.parseInt(el.value, 10);
-      }
-
-      configDecoder.setField(fieldName, newValue);
-
-      // Check if byte changed from original
-      const currentBytes = configDecoder.toBytes();
-      const byteIndex = field.byte;
-      const fieldEl = el.closest('.config-field');
-
-      if (currentBytes[byteIndex] === originalConfigBytes[byteIndex]) {
-        fieldEl.classList.remove('config-dirty');
-      } else {
-        fieldEl.classList.add('config-dirty');
-      }
-
-      elements.configRawHex.textContent = configDecoder.toHexString();
-    };
-
-    // Save configuration to device
-    const saveConfigToDevice = async () => {
-      if (!stack || !stack._uds || !configLoaded) {
-        elements.configStatus.textContent = 'Cannot save: not connected or config not loaded';
-        return;
-      }
-
-      elements.configStatus.textContent = 'Writing configuration...';
-      elements.writeConfigButton.disabled = true;
-
-      try {
-        const currentBytes = configDecoder.toBytes();
-
-        // Save only changed bytes
-        for (let i = 0; i < 4; i++) {
-          if (currentBytes[i] !== originalConfigBytes[i]) {
-            await stack._uds.saveSetting(i + 1, BigInt(currentBytes[i]));
+          let getValue;
+          if (s.kind === SETTING_KIND_TEXT && s.optionCount > 0) {
+            const select = document.createElement('select');
+            for (let i = 0; i < s.optionCount; i++) {
+              const opt = document.createElement('option');
+              opt.value = String(i);
+              opt.textContent = await stack.uds.getSettingOptionLabel(s.index, i);
+              select.appendChild(opt);
+            }
+            select.value = String(Number(s.currentValue));
+            select.disabled = !s.editable;
+            controls.appendChild(select);
+            getValue = () => BigInt(select.value);
+          } else {
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.max = String(s.maxValue);
+            input.value = String(s.currentValue);
+            input.disabled = !s.editable;
+            input.style.width = '120px';
+            controls.appendChild(input);
+            getValue = () => BigInt(Math.round(Number(input.value)));
           }
+
+          if (s.editable) {
+            const setBtn = document.createElement('button');
+            setBtn.className = 'small';
+            setBtn.textContent = 'Set';
+            setBtn.title = 'Apply now (volatile)';
+            setBtn.addEventListener('click', async () => {
+              try { await stack.uds.writeSettingValue(s.index, getValue()); elements.settingsStatus.textContent = `Set "${s.label}"`; }
+              catch (e) { elements.settingsStatus.textContent = `Set failed: ${e.message}`; }
+            });
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'small';
+            saveBtn.textContent = 'Save';
+            saveBtn.title = 'Persist to NVS (may need power-cycle)';
+            saveBtn.addEventListener('click', async () => {
+              try { await stack.uds.saveSetting(s.index, getValue()); elements.settingsStatus.textContent = `Saved "${s.label}"`; }
+              catch (e) { elements.settingsStatus.textContent = `Save failed: ${e.message}`; }
+            });
+            controls.appendChild(setBtn);
+            controls.appendChild(saveBtn);
+          }
+
+          row.appendChild(controls);
+          container.appendChild(row);
         }
-
-        originalConfigBytes = [...currentBytes];
-        updateConfigUI();  // Clear dirty indicators
-        elements.configStatus.textContent = 'Configuration saved successfully';
-
+        elements.settingsStatus.textContent = `${settings.length} settings loaded`;
       } catch (error) {
-        console.error('Failed to save config:', error);
-        elements.configStatus.textContent = 'Failed to save: ' + error.message;
+        elements.settingsStatus.textContent = 'Failed to read: ' + error.message;
       } finally {
-        elements.writeConfigButton.disabled = false;
+        elements.readSettingsButton.disabled = false;
       }
     };
 
-    // Reset config UI state on disconnect
-    const resetConfigUI = () => {
-      configLoaded = false;
-      originalConfigBytes = [0, 0, 0, 0];
-      configDecoder = new ConfigurationDecoder();
-      elements.readConfigButton.disabled = true;
-      elements.writeConfigButton.disabled = true;
-      elements.configStatus.textContent = '(Connect to device to read configuration)';
-      elements.configRawHex.textContent = '--';
+    const resetSettingsUI = () => {
+      elements.readSettingsButton.disabled = true;
+      elements.settingsStatus.textContent = '(Connect to device to read settings)';
+      elements.settingsContainer.innerHTML = '<div class="field-inactive">(Connect to device to see settings)</div>';
+    };
 
-      // Clear all field values
-      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
-        const el = document.getElementById(`config-${fieldName}`);
-        if (!el) continue;
+    // ---------- Firmware Update (OTA) ----------
+    let fwImageBytes = null;
+    let fwParsedImage = null;
+    let fwAbort = null;
 
-        if (!field.editable) {
-          el.textContent = '--';
-        } else if (field.type === 'bool') {
-          el.checked = false;
+    const setFwProgress = (pct) => { $('fwProgressFill').style.width = `${pct}%`; };
+
+    const fwRefreshStatus = async () => {
+      if (!stack) return;
+      $('fwMessage').textContent = 'Reading status...';
+      try {
+        const [fw, variant, hw, serial, status, post] = await Promise.all([
+          stack.uds.readFirmwareVersion().catch(() => '?'),
+          stack.uds.readVariantName().catch(() => '?'),
+          stack.uds.readHardwareVersion().catch(() => '?'),
+          stack.uds.readSerialNumber().catch(() => '?'),
+          stack.ota.readMcubootStatus().catch(() => null),
+          stack.ota.readPostStatus().catch(() => null)
+        ]);
+        const pairs = [
+          ['Firmware', fw], ['Variant', variant], ['Hardware', String(hw)], ['Serial', serial]
+        ];
+        if (status) {
+          pairs.push(['Swap type', status.swapTypeName]);
+          pairs.push(['Confirmed', status.confirmed ? 'yes' : 'NO (unconfirmed)']);
+          pairs.push(['Running slot', String(status.runningSlot)]);
+          pairs.push(['Slot0 version', formatVersion(status.slot0Version)]);
+          pairs.push(['Slot1 (pending)', formatVersion(status.slot1Version)]);
+          pairs.push(['Factory', formatVersion(status.factoryVersion)]);
+        }
+        if (post) pairs.push(['POST passed', post.passed.join(', ') || '(none)']);
+        renderKV($('fwStatusGrid'), pairs);
+        $('fwMessage').textContent = '';
+      } catch (error) {
+        $('fwMessage').textContent = 'Status read failed: ' + error.message;
+      }
+    };
+
+    const onFwFileSelected = async (file) => {
+      if (!file) return;
+      fwImageBytes = new Uint8Array(await file.arrayBuffer());
+      fwParsedImage = parseMcubootImage(fwImageBytes);
+      if (fwParsedImage.valid) {
+        $('fwFileInfo').textContent =
+          `${file.name} — ${fwImageBytes.length} bytes, version ${formatVersion(fwParsedImage.version)} (valid MCUBoot image)`;
+        $('fwStageButton').disabled = !stack;
+      } else {
+        $('fwFileInfo').textContent = `${file.name} — INVALID: ${fwParsedImage.reason}`;
+        $('fwStageButton').disabled = true;
+      }
+    };
+
+    const fwEnterSession = async () => {
+      try {
+        $('fwMessage').textContent = 'Entering programming session...';
+        await stack.ota.enterProgrammingSession();
+        $('fwMessage').textContent = 'Programming session active (surface only).';
+      } catch (e) {
+        const nrc = e.nrc === 0x22 ? ' (refused — is the head in a dive?)' : '';
+        $('fwMessage').textContent = `Enter session failed: ${e.message}${nrc}`;
+      }
+    };
+
+    const fwStage = async () => {
+      if (!fwImageBytes || !fwParsedImage?.valid) return;
+      fwAbort = new AbortController();
+      $('fwStageButton').disabled = true;
+      $('fwCancelButton').disabled = false;
+      $('fwActivateButton').disabled = true;
+      setFwProgress(0);
+      try {
+        await stack.ota.stageImage(fwImageBytes, {
+          signal: fwAbort.signal,
+          onProgress: (done, total) => {
+            setFwProgress((done / total) * 100);
+            $('fwMessage').textContent = `Staging block ${done}/${total}...`;
+          }
+        });
+        $('fwMessage').textContent = 'Image staged to slot1. Ready to activate.';
+        $('fwActivateButton').disabled = false;
+      } catch (e) {
+        $('fwMessage').textContent = `Staging failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+      } finally {
+        $('fwStageButton').disabled = false;
+        $('fwCancelButton').disabled = true;
+        fwAbort = null;
+      }
+    };
+
+    const fwActivate = async () => {
+      if (!confirm('Activate the staged image? The head will validate it and REBOOT.')) return;
+      try {
+        $('fwMessage').textContent = 'Activating...';
+        const res = await stack.ota.activate();
+        $('fwMessage').textContent = res.inconclusive
+          ? 'Activate sent; no reply (head likely rebooting). Reconnect and verify version.'
+          : 'Activate accepted; head is rebooting into the new image (unconfirmed).';
+      } catch (e) {
+        const why = e.nrc === 0x22 ? ' — image failed SHA-256 verification' : '';
+        $('fwMessage').textContent = `Activate refused: ${e.message}${why}`;
+      }
+    };
+
+    const fwConfirmPoll = async () => {
+      $('fwMessage').textContent = 'Polling MCUBoot status until confirmed...';
+      for (let i = 0; i < 30; i++) {
+        try {
+          const s = await stack.ota.readMcubootStatus();
+          if (s && s.confirmed) { $('fwMessage').textContent = 'Image CONFIRMED.'; await fwRefreshStatus(); return; }
+          if (s && s.swapType === 3) { $('fwMessage').textContent = 'Image REVERTED (POST failed).'; await fwRefreshStatus(); return; }
+        } catch { /* head may be mid-reboot */ }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      $('fwMessage').textContent = 'Timed out waiting for confirmation.';
+    };
+
+    const fwGuardedAction = async (checkboxId, action, label) => {
+      if (!$(checkboxId).checked) { $('fwMessage').textContent = `Tick the box to confirm: ${label}`; return; }
+      if (!confirm(`${label}? This is irreversible.`)) return;
+      try {
+        $('fwMessage').textContent = `${label}...`;
+        const res = await action();
+        $('fwMessage').textContent = res.inconclusive
+          ? `${label}: sent; head likely rebooting.` : `${label}: acknowledged.`;
+        $(checkboxId).checked = false;
+      } catch (e) {
+        $('fwMessage').textContent = `${label} failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+      }
+    };
+
+    const enableFirmwareUI = (on) => {
+      for (const id of ['fwRefreshButton', 'fwFileInput', 'fwEnterSessionButton', 'fwConfirmPollButton',
+        'fwRevertButton', 'fwRestoreFactoryButton', 'fwCaptureButton', 'fwChipEraseButton', 'fwNvsEraseButton']) {
+        $(id).disabled = !on;
+      }
+      if (!on) {
+        $('fwStageButton').disabled = true;
+        $('fwActivateButton').disabled = true;
+        $('fwCancelButton').disabled = true;
+        $('fwFileInfo').textContent = 'No file selected';
+        $('fwMessage').textContent = '';
+        setFwProgress(0);
+        $('fwStatusGrid').innerHTML = '<div class="field-inactive">(Connect to read firmware status)</div>';
+      }
+    };
+
+    // ---------- Logs ----------
+    let logRaw = null;
+    let logRecords = [];
+    let logAbort = null;
+
+    const setLogProgress = (pct) => { $('logProgressFill').style.width = `${pct}%`; };
+
+    const logRefreshStats = async () => {
+      try {
+        $('logMessage').textContent = 'Reading stats...';
+        const stats = await stack.logs.readStats();
+        if (!stats) { $('logStatsGrid').innerHTML = '<div class="field-inactive">(no stats)</div>'; return; }
+        renderKV($('logStatsGrid'), [
+          ['Telemetry boot id', String(stats.telemetry.bootIdCurrent)],
+          ['Telemetry dive', String(stats.telemetry.diveIdLatest)],
+          ['Telemetry sectors', `${stats.telemetry.sectorsFree}/${stats.telemetry.sectorsTotal} free`],
+          ['Telemetry drops', String(stats.telemetry.dropsSinceBoot)],
+          ['Text boot id', String(stats.text.bootIdCurrent)],
+          ['Text sectors', `${stats.text.sectorsFree}/${stats.text.sectorsTotal} free`]
+        ]);
+        $('logMessage').textContent = '';
+      } catch (e) { $('logMessage').textContent = 'Stats failed: ' + e.message; }
+    };
+
+    const currentSelector = () => {
+      const stream = Number($('logStreamSelect').value);
+      const mode = $('logSelectorSelect').value;
+      const id = Number($('logSelectorId').value);
+      if (mode === 'latestBoot') return (d) => d.selectLatestBoot(stream);
+      if (mode === 'latestDive') return (d) => d.selectLatestDive(stream);
+      if (mode === 'byBoot') return (d) => d.selectByBoot(id, stream);
+      return (d) => d.selectByDive(id, stream);
+    };
+
+    const logResolve = async () => {
+      try {
+        $('logMessage').textContent = 'Resolving (first selector builds the index, up to ~40s)...';
+        await currentSelector()(stack.logs);
+        const sel = await stack.logs.readSelectorResult();
+        if (!sel || sel.status < 0) {
+          $('logSelectorInfo').textContent = `No match (status ${sel ? sel.status : '?'})`;
         } else {
-          el.value = field.options ? field.options[0].value : 0;
+          $('logSelectorInfo').textContent =
+            `stream ${sel.stream}: ids ${sel.startId}-${sel.endId}, ${sel.entryCount} entries, ${sel.totalBytes} bytes`;
         }
-
-        const fieldEl = el.closest('.config-field');
-        if (fieldEl) {
-          fieldEl.classList.remove('config-dirty');
-        }
+        $('logMessage').textContent = '';
+      } catch (e) {
+        $('logSelectorInfo').textContent = `Resolve failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+        $('logMessage').textContent = '';
       }
     };
+
+    const logDownload = async () => {
+      logAbort = new AbortController();
+      $('logDownloadButton').disabled = true;
+      $('logCancelButton').disabled = false;
+      setLogProgress(0);
+      try {
+        $('logMessage').textContent = 'Downloading...';
+        const result = await stack.logs.downloadLog({
+          stream: Number($('logStreamSelect').value),
+          selector: currentSelector(),
+          signal: logAbort.signal,
+          onProgress: (received, total) => {
+            if (total > 0) setLogProgress(Math.min(100, (received / total) * 100));
+            $('logMessage').textContent = `Received ${received} bytes${total ? ` / ~${total}` : ''}...`;
+          }
+        });
+        logRaw = result.raw;
+        logRecords = parseLogStream(logRaw);
+        renderLogRecords();
+        setLogProgress(100);
+        $('logMessage').textContent = `Done: ${logRaw.length} bytes, ${logRecords.length} records.`;
+        for (const id of ['logExportJson', 'logExportCsv', 'logExportBin']) $(id).disabled = false;
+      } catch (e) {
+        $('logMessage').textContent = `Download failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+      } finally {
+        $('logDownloadButton').disabled = false;
+        $('logCancelButton').disabled = true;
+        logAbort = null;
+      }
+    };
+
+    const renderLogRecords = () => {
+      $('logRecordCount').textContent = String(logRecords.length);
+      const body = $('logRecordBody');
+      body.innerHTML = '';
+      logRecords.slice(0, 1000).forEach((rec, i) => {
+        const decoded = decodeRecord(rec);
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #222';
+        const details = decoded
+          ? Object.entries(decoded).map(([k, v]) => `${k}=${Array.isArray(v) ? `[${v}]` : v}`).join(' ')
+          : `${rec.payload.length} bytes`;
+        tr.innerHTML = `<td style="padding:4px;">${i}</td><td style="padding:4px;">${rec.typeName}</td>` +
+          `<td style="padding:4px;">${rec.tsUs}</td><td style="padding:4px;color:#aaa;">${details}</td>`;
+        body.appendChild(tr);
+      });
+    };
+
+    const enableLogsUI = (on) => {
+      for (const id of ['logStatsButton', 'logResolveButton', 'logDownloadButton', 'logVerbositySelect',
+        'logCanRx', 'logCanTx', 'logApplyCaptureButton', 'logEraseButton']) {
+        $(id).disabled = !on;
+      }
+      $('logSelectorId').disabled = !on || !['byBoot', 'byDive'].includes($('logSelectorSelect').value);
+      if (!on) {
+        for (const id of ['logExportJson', 'logExportCsv', 'logExportBin', 'logCancelButton']) $(id).disabled = true;
+        $('logStatsGrid').innerHTML = '<div class="field-inactive">(Connect to read log stats)</div>';
+        $('logSelectorInfo').textContent = '';
+        $('logMessage').textContent = '';
+        $('logRecordBody').innerHTML = '';
+        $('logRecordCount').textContent = '0';
+        setLogProgress(0);
+        logRaw = null; logRecords = [];
+      }
+    };
+
 
     // ============================================================
     // Control Tab Functions (Calibration)
@@ -1993,9 +2333,11 @@
         stack.on('connected', async () => {
           updateUIState(true);
 
-          // Enable config read button
-          elements.readConfigButton.disabled = false;
-          elements.configStatus.textContent = 'Ready to read configuration';
+          // Enable feature tabs
+          elements.readSettingsButton.disabled = false;
+          elements.settingsStatus.textContent = 'Ready to read settings';
+          enableFirmwareUI(true);
+          enableLogsUI(true);
 
           // Enable control tab
           enableControlUI();
@@ -2004,15 +2346,7 @@
           stack.setTargetAddress(0x04);
 
           // Initialize DID-based polling
-          const success = await initDIDPolling();
-          if (success) {
-            // Auto-load configuration after DID polling is ready
-            try {
-              await loadConfigFromDevice();
-            } catch (error) {
-              console.error('Failed to auto-load config:', error);
-            }
-          }
+          await initDIDPolling();
         });
 
         stack.on('disconnected', () => {
@@ -2027,8 +2361,10 @@
           elements.refreshDIDs.disabled = true;
           elements.pollRate.textContent = '--';
 
-          // Reset configuration UI
-          resetConfigUI();
+          // Reset feature-tab UI
+          resetSettingsUI();
+          enableFirmwareUI(false);
+          enableLogsUI(false);
 
           // Reset control tab UI
           resetControlUI();
@@ -2083,9 +2419,56 @@
       }
     });
 
-    // Configuration buttons
-    elements.readConfigButton.addEventListener('click', loadConfigFromDevice);
-    elements.writeConfigButton.addEventListener('click', saveConfigToDevice);
+    // Settings tab
+    elements.readSettingsButton.addEventListener('click', loadSettings);
+
+    // Firmware Update tab
+    $('fwRefreshButton').addEventListener('click', fwRefreshStatus);
+    $('fwFileInput').addEventListener('change', (e) => onFwFileSelected(e.target.files[0]));
+    $('fwEnterSessionButton').addEventListener('click', fwEnterSession);
+    $('fwStageButton').addEventListener('click', fwStage);
+    $('fwActivateButton').addEventListener('click', fwActivate);
+    $('fwCancelButton').addEventListener('click', () => fwAbort?.abort());
+    $('fwConfirmPollButton').addEventListener('click', fwConfirmPoll);
+    $('fwRevertButton').addEventListener('click', async () => {
+      if (!confirm('Force revert to the previous image? The head will reboot.')) return;
+      try { await stack.ota.forceRevert(); $('fwMessage').textContent = 'Revert requested; head rebooting.'; }
+      catch (e) { $('fwMessage').textContent = `Revert failed: ${e.message}`; }
+    });
+    $('fwRestoreFactoryButton').addEventListener('click', () =>
+      fwGuardedAction('fwRestoreFactoryChk', () => stack.ota.restoreFactory(), 'Restore factory image'));
+    $('fwCaptureButton').addEventListener('click', () =>
+      fwGuardedAction('fwCaptureChk', () => stack.ota.factoryCapture(), 'Capture running image as factory'));
+    $('fwChipEraseButton').addEventListener('click', () =>
+      fwGuardedAction('fwChipEraseChk', () => stack.ota.chipEraseNor(), 'Chip-erase external NOR'));
+    $('fwNvsEraseButton').addEventListener('click', () =>
+      fwGuardedAction('fwNvsEraseChk', () => stack.ota.nvsErase(), 'Erase settings/cal NVS'));
+
+    // Logs tab
+    $('logStatsButton').addEventListener('click', logRefreshStats);
+    $('logResolveButton').addEventListener('click', logResolve);
+    $('logDownloadButton').addEventListener('click', logDownload);
+    $('logCancelButton').addEventListener('click', () => logAbort?.abort());
+    $('logSelectorSelect').addEventListener('change', () => {
+      $('logSelectorId').disabled = !['byBoot', 'byDive'].includes($('logSelectorSelect').value) || !stack;
+    });
+    $('logApplyCaptureButton').addEventListener('click', async () => {
+      try {
+        await stack.logs.setVerbosity(Number($('logVerbositySelect').value));
+        await stack.logs.setCanCapture(($('logCanRx').checked ? 1 : 0) | ($('logCanTx').checked ? 2 : 0));
+        $('logMessage').textContent = 'Capture settings applied.';
+      } catch (e) { $('logMessage').textContent = `Apply failed: ${e.message}`; }
+    });
+    $('logEraseButton').addEventListener('click', async () => {
+      const stream = Number($('logStreamSelect').value);
+      const mask = stream === 1 ? 0x02 : 0x01;
+      if (!confirm(`Erase the ${stream === 1 ? 'text' : 'telemetry'} log? (programming session, surface only)`)) return;
+      try { await stack.logs.eraseLog(mask); $('logMessage').textContent = 'Log erased.'; await logRefreshStats(); }
+      catch (e) { $('logMessage').textContent = `Erase failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : ''); }
+    });
+    $('logExportJson').addEventListener('click', () => triggerDownload('divecan-log.json', logToJSON(logRecords), 'application/json'));
+    $('logExportCsv').addEventListener('click', () => triggerDownload('divecan-log.csv', logToCSV(logRecords), 'text/csv'));
+    $('logExportBin').addEventListener('click', () => logRaw && triggerDownload('divecan-log.bin', logToRawBin(logRaw)));
 
     // Control tab buttons
     elements.triggerCalButton.addEventListener('click', triggerCalibration);
@@ -2104,9 +2487,6 @@
 
     // Build DID subscription UI on load
     buildDIDSubscriptionUI();
-
-    // Build configuration UI on load
-    buildConfigUI();
 
     // Initialize tabs
     initTabs();

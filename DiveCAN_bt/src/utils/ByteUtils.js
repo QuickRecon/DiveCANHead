@@ -125,12 +125,56 @@ export class ByteUtils {
   }
 
   /**
+   * Convert 16-bit value to little-endian bytes
+   * @param {number} value - 16-bit value
+   * @returns {Uint8Array} 2 bytes in little-endian
+   */
+  static uint16ToLE(value) {
+    return new Uint8Array([
+      value & 0xFF,
+      (value >> 8) & 0xFF
+    ]);
+  }
+
+  /**
+   * Convert 32-bit value to little-endian bytes
+   * @param {number} value - 32-bit value
+   * @returns {Uint8Array} 4 bytes in little-endian
+   */
+  static uint32ToLE(value) {
+    return new Uint8Array([
+      value & 0xFF,
+      (value >> 8) & 0xFF,
+      (value >> 16) & 0xFF,
+      (value >> 24) & 0xFF
+    ]);
+  }
+
+  /**
    * Convert big-endian bytes to 16-bit value
    * @param {Uint8Array|Array} bytes - 2 bytes
    * @returns {number} 16-bit value
    */
   static beToUint16(bytes) {
     return (bytes[0] << 8) | bytes[1];
+  }
+
+  /**
+   * Convert little-endian bytes to 16-bit value
+   * @param {Uint8Array|Array} bytes - 2 bytes
+   * @returns {number} 16-bit value
+   */
+  static leToUint16(bytes) {
+    return (bytes[0] | (bytes[1] << 8)) >>> 0;
+  }
+
+  /**
+   * Convert little-endian bytes to unsigned 32-bit value
+   * @param {Uint8Array|Array} bytes - 4 bytes
+   * @returns {number} 32-bit value
+   */
+  static leToUint32(bytes) {
+    return (bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)) >>> 0;
   }
 
   /**

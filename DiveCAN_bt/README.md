@@ -103,24 +103,17 @@ stack.on('error', (error) => console.error('Error:', error));
 // Connect to device
 await stack.connect(device);
 
-// Start extended diagnostic session
-await stack.uds.startSession(UDSConstants.SESSION_EXTENDED_DIAGNOSTIC);
+// Read device settings (individual settings under 0x9xxx)
+const settings = await stack.uds.enumerateSettings();
+console.log('Settings:', settings);
 
-// Read configuration
-const config = await stack.uds.readDataByIdentifier(UDSConstants.DID_CONFIGURATION_BLOCK);
-console.log('Config:', config);
+// Stage + activate a firmware image (see docs/DIVECAN_BT.md)
+await stack.ota.enterProgrammingSession();
+await stack.ota.stageImage(imageBytes, { onProgress: (d, t) => {} });
+await stack.ota.activate();
 
-// Write configuration
-await stack.uds.writeDataByIdentifier(UDSConstants.DID_CONFIGURATION_BLOCK, newConfig);
-
-// Upload memory with progress tracking
-const memory = await stack.uploadMemory(
-  UDSConstants.MEMORY_CONFIG,
-  128,
-  (current, total) => {
-    console.log(`Progress: ${current}/${total} bytes`);
-  }
-);
+// Download a flash log
+const { raw } = await stack.logs.downloadLog({ selector: (d) => d.selectLatestBoot(0) });
 ```
 
 ### Direct Layer Access
@@ -130,13 +123,15 @@ const memory = await stack.uploadMemory(
 const ble = stack.ble;           // BLEConnection
 const slip = stack.slip;         // SLIPCodec
 const divecan = stack.divecan;   // DiveCANFramer
-const isotp = stack.isotp;       // ISOTPTransport
+const transport = stack.transport; // DirectTransport (Petrel handles ISO-TP)
 const uds = stack.uds;           // UDSClient
+const ota = stack.ota;           // OTAManager
+const logs = stack.logs;         // LogDownloader
 
 // Direct UDS operations
-await uds.startSession(0x03);
+await uds.enterSession(UDSConstants.UDS_SESSION_PROGRAMMING); // 0x10 0x02
 const data = await uds.readDataByIdentifier(0xF000);
-await uds.writeDataByIdentifier(0xF100, [0x01, 0x02, 0x03, 0x04]);
+await uds.writeDataByIdentifier(0xF240, [130]); // setpoint 1.30 bar
 ```
 
 ## Architecture
@@ -239,20 +234,25 @@ DiveCAN_bt/
 ### UDS Layer
 - **ISO 14229-1** diagnostic services
 - **Service 0x10**: DiagnosticSessionControl
+- **Service 0x10**: DiagnosticSessionControl (default / programming)
 - **Service 0x22**: ReadDataByIdentifier
 - **Service 0x2E**: WriteDataByIdentifier
-- **Service 0x34/0x35**: RequestDownload/Upload
+- **Service 0x31**: RoutineControl (OTA activate, log selectors)
+- **Service 0x34**: RequestDownload (OTA + log download)
 - **Service 0x36**: TransferData
 - **Service 0x37**: RequestTransferExit
 
 ### Data Identifiers (DIDs)
 - **0xF000**: Firmware version (string)
 - **0xF001**: Hardware version (byte)
-- **0xF100**: Configuration block (4 bytes)
+- **0xF002**: Variant name (string)
+- **0xF003**: Serial number (raw MCU UID)
+- **0xF270–0xF279**: MCUBoot status / OTA management
+- **0xF280–0xF284**: Flash-log stats / selector / management
 - **0x9100**: Setting count
 - **0x9110+i**: Setting info for setting i
 - **0x9130+i**: Setting value for setting i
-- **0x9350**: Save settings to flash
+- **0x9350+i**: Save setting i to flash
 
 ## Events
 

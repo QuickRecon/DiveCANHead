@@ -1,80 +1,234 @@
 /**
  * UDS (Unified Diagnostic Services - ISO 14229) constants
+ *
+ * Reconciled against the Zephyr DiveCAN firmware (Firmware/src/divecan/uds/*).
+ * The canonical wire reference is the Python client Test Rig/divecan_rig/dut.py.
+ *
+ * NOTE ON PAYLOADS: the client sends bare UDS payloads (no ISO-TP pad byte); the
+ * Petrel BLE bridge adds the pad and does ISO-TP segmentation. dut.py prepends a
+ * 0x00 pad because it drives raw CAN; the JS client must NOT include it.
+ *
+ * ENDIANNESS: DID payloads and log/mcuboot fields are little-endian. The DID
+ * header on the wire is big-endian. The one exception is the OTA RequestDownload
+ * (0x34) SIZE field, which is BIG-endian; the log-download 0x34 SIZE is LITTLE-endian.
  */
 
+// ============================================================================
 // Service IDs (SID)
+// ============================================================================
+export const SID_SESSION_CONTROL = 0x10;
 export const SID_READ_DATA_BY_ID = 0x22;
 export const SID_WRITE_DATA_BY_ID = 0x2E;
+export const SID_ROUTINE_CONTROL = 0x31;
+export const SID_REQUEST_DOWNLOAD = 0x34;
+export const SID_TRANSFER_DATA = 0x36;
+export const SID_REQUEST_TRANSFER_EXIT = 0x37;
 
-// Response SID offset
+// Response SID offset (positive reply = request SID + 0x40)
 export const RESPONSE_SID_OFFSET = 0x40;
 
 // Negative response SID
 export const SID_NEGATIVE_RESPONSE = 0x7F;
 
+// ============================================================================
+// Diagnostic sessions (SID 0x10 sub-function)
+// ============================================================================
+export const UDS_SESSION_DEFAULT = 0x01;
+export const UDS_SESSION_PROGRAMMING = 0x02;
+
+// ============================================================================
 // Negative Response Codes (NRC)
+// ============================================================================
 export const NRC_SERVICE_NOT_SUPPORTED = 0x11;
+export const NRC_SUBFUNCTION_NOT_SUPPORTED = 0x12;
 export const NRC_INCORRECT_MESSAGE_LENGTH = 0x13;
+export const NRC_RESPONSE_TOO_LONG = 0x14;
 export const NRC_CONDITIONS_NOT_CORRECT = 0x22;
+export const NRC_REQUEST_SEQUENCE_ERROR = 0x24;
 export const NRC_REQUEST_OUT_OF_RANGE = 0x31;
+export const NRC_SECURITY_ACCESS_DENIED = 0x33;
 export const NRC_GENERAL_PROGRAMMING_FAILURE = 0x72;
+export const NRC_WRONG_BLOCK_SEQUENCE = 0x73;
+export const NRC_SERVICE_NOT_IN_SESSION = 0x7F;
 
-// Common DIDs (available on all DiveCAN devices)
-export const DID_BUS_DEVICES = 0x8000;      // Returns list of device IDs on bus
-export const DID_SERIAL_NUMBER = 0x8010;    // Device serial number
-export const DID_MODEL = 0x8011;            // Device model name
-export const DID_DEVICE_NAME_BASE = 0x8100; // 0x81XX where XX = device ID
+/** Human-readable NRC names, keyed by code. */
+export const NRC_NAMES = {
+  0x11: 'Service Not Supported',
+  0x12: 'Sub-function Not Supported',
+  0x13: 'Incorrect Message Length',
+  0x14: 'Response Too Long',
+  0x22: 'Conditions Not Correct (dive gate / preconditions)',
+  0x24: 'Request Sequence Error (out of state)',
+  0x31: 'Request Out Of Range (unknown DID / bad value)',
+  0x33: 'Security Access Denied',
+  0x72: 'General Programming Failure',
+  0x73: 'Wrong Block Sequence Counter',
+  0x7F: 'Service Not Available In Active Session (needs programming session)'
+};
 
-// Device-specific DIDs
-export const DID_HARDWARE_VERSION = 0xF001;
+// ============================================================================
+// Identification DIDs (Zephyr firmware)
+// ============================================================================
+export const DID_FIRMWARE_VERSION = 0xF000; // ASCII git-describe (<=10 bytes)
+export const DID_HARDWARE_VERSION = 0xF001; // uint8 (firmware currently reports 0)
+export const DID_VARIANT_NAME = 0xF002;     // ASCII build variant (<=31 bytes)
+export const DID_SERIAL_NUMBER = 0xF003;    // raw STM32 96-bit UID (<=16 bytes)
 
-// Control DIDs (writable)
-export const DID_SETPOINT_WRITE = 0xF240;      // Write setpoint (0-255 = 0.00-2.55 bar)
-export const DID_CALIBRATION_TRIGGER = 0xF241; // Trigger calibration with fO2 (0-100%)
+// ============================================================================
+// Control write DIDs
+// ============================================================================
+export const DID_SETPOINT_WRITE = 0xF240;      // u8 centibar (0.40-1.60 bar clamp)
+export const DID_CALIBRATION_TRIGGER = 0xF241; // u8 fO2 percentage (0-100)
+export const DID_SOLENOID_OVERRIDE = 0xF242;   // [channel, magic 0x5A] (HIL raw-fire)
+export const SOLENOID_OVERRIDE_MAGIC = 0x5A;
+export const DID_ERROR_HISTOGRAM_CLEAR = 0xF261; // write any byte -> clear + persist
 
-// Log streaming DIDs (0xAxxx range)
-// Note: Log streaming is always enabled, no enable/disable DID needed
-export const DID_LOG_MESSAGE = 0xA100;         // Push: log message (Head -> bluetooth client)
+// Unsolicited log-message push (Head -> client), sent as a WriteDataByIdentifier.
+export const DID_LOG_MESSAGE = 0xA100;
 
-// Cell type constants (from Configuration_t bits 8-13)
-export const CELL_TYPE_NONE = 0;
-export const CELL_TYPE_DIVEO2 = 0;  // Note: firmware uses 0 for DiveO2
-export const CELL_TYPE_ANALOG = 1;
-export const CELL_TYPE_O2S = 2;
+// ============================================================================
+// MCUBoot / OTA management DIDs (0xF27x)
+// ============================================================================
+export const DID_MCUBOOT_STATUS = 0xF270;   // 16 bytes (see McubootStatus.js)
+export const DID_POST_STATUS = 0xF271;      // 4 bytes: state, pass_mask, reserved
+export const DID_SLOT0_VERSION = 0xF272;    // 8-byte sem_ver (running image)
+export const DID_SLOT1_VERSION = 0xF273;    // 8-byte sem_ver (pending image / 0xFF)
+export const DID_FACTORY_VERSION = 0xF274;  // 8-byte sem_ver (factory backup / 0xFF)
+export const DID_FORCE_REVERT = 0xF275;     // write [0x01]: re-stage slot1 + reboot
+export const DID_RESTORE_FACTORY = 0xF276;  // write [0x01]: factory -> slot1 + reboot
+export const DID_FACTORY_CAPTURE = 0xF277;  // write [0x01]: bless slot0 as factory
+export const DID_FACTORY_FLASH_ERASE = 0xF278; // write [0x01]: chip-erase whole NOR
+export const DID_NVS_ERASE = 0xF279;        // write [0x01]: erase settings/cal partition
 
-// Cell status constants (CellStatus_t enum)
-export const CELL_STATUS_OK = 0;
-export const CELL_STATUS_DEGRADED = 1;
-export const CELL_STATUS_FAIL = 2;
-export const CELL_STATUS_NEED_CAL = 3;
+export const OTA_MANAGEMENT_MAGIC = 0x01;
 
-// Cell status names for display
-export const CELL_STATUS_NAMES = ['OK', 'Degraded', 'Fail', 'Need Cal'];
+// ============================================================================
+// Flash-log management DIDs (0xF28x)
+// ============================================================================
+export const DID_LOG_STATS = 0xF280;           // two 28-byte FlashLogFcbStats (>=56 B)
+export const DID_LOG_SELECTOR_RESULT = 0xF281; // 20 bytes: last selector resolution
+export const DID_LOG_ERASE = 0xF282;           // write [stream_mask, magic 0xA5]
+export const DID_LOG_VERBOSITY = 0xF283;       // R/W u8 (1=ERR..4=DBG)
+export const DID_LOG_CAN_VERBOSE = 0xF284;     // R/W u8 bitmask bit0=RX bit1=TX
+export const LOG_ERASE_MAGIC = 0xA5;
 
+// ============================================================================
+// OTA pipeline constants (SID 0x34/0x36/0x37 + 0x31)
+// ============================================================================
+export const OTA_DATA_FMT = 0x00;      // no compression
+export const OTA_ADDR_LEN_FMT = 0x44;  // 4-byte addr + 4-byte size
+export const OTA_LENGTH_FMT = 0x20;    // 2-byte max-block in the 0x74 response
+export const OTA_REQ_OVERHEAD = 3;     // 0x36 request: pad + SID + seq before data
+export const OTA_RID_ACTIVATE = 0xF001; // RoutineControl id: validate slot1 + swap
+
+// MCUBoot image (imgtool) constants
+export const MCUBOOT_IMAGE_MAGIC = 0x96F3B83D; // little-endian magic at bytes[0:4]
+
+// ============================================================================
+// Flash-log download constants
+// ============================================================================
+export const LOG_DOWNLOAD_SENTINEL_ADDR = 0xFFFFFFFE; // 0x34 addr routes to log reader
+export const LOG_DOWNLOAD_MAGIC = 0x47434C44;         // "DCLG" little-endian
+export const LOG_DOWNLOAD_MIN_BLOCK = 32;
+export const LOG_DOWNLOAD_DEFAULT_BLOCK = 253;
+export const LOG_DOWNLOAD_BLE_CHUNK = 61; // handset FC-overflows a 253-byte chunk
+
+// RoutineControl selector RIDs (0x31 0x01)
+export const LOG_RID_SELECT_BY_RANGE = 0xF100;    // UNIMPLEMENTED -> NRC 0x31
+export const LOG_RID_SELECT_BY_BOOT = 0xF101;     // params: stream(u8) + boot_id(u32 LE)
+export const LOG_RID_SELECT_BY_DIVE = 0xF102;     // params: stream(u8) + dive_id(u16 LE)
+export const LOG_RID_SELECT_LATEST_BOOT = 0xF103; // params: stream(u8)
+export const LOG_RID_SELECT_LATEST_DIVE = 0xF104; // params: stream(u8)
+export const LOG_RID_BEGIN_STREAM = 0xF105;       // no params (needs prior selection)
+
+export const LOG_STREAM_TELEMETRY = 0;
+export const LOG_STREAM_TEXT = 1;
+
+// Flash-log TLV record types (FlashLogType_t)
+export const FL_TYPE_BOOT_MARKER = 0x01;
+export const FL_TYPE_DIVE_START = 0x02;
+export const FL_TYPE_DIVE_END = 0x03;
+export const FL_TYPE_CAN_RX = 0x04;
+export const FL_TYPE_CAN_TX = 0x05;
+export const FL_TYPE_CONSENSUS = 0x10;
+export const FL_TYPE_PID_SNAPSHOT = 0x11;
+export const FL_TYPE_SOLENOID_FIRE = 0x12;
+export const FL_TYPE_CELL_RAW_DIVEO2 = 0x20;
+export const FL_TYPE_CELL_RAW_O2S = 0x21;
+export const FL_TYPE_CELL_RAW_ANALOG = 0x22;
+export const FL_TYPE_ERROR_EVENT = 0x30;
+export const FL_TYPE_LOG_TEXT = 0x40;
+export const FL_TYPE_BATCH = 0xFD;
+export const FL_TYPE_DROP_MARKER = 0xFE;
+export const FL_TYPE_END_OF_STREAM = 0xFF;
+
+export const FL_ENTRY_HDR_LEN = 12; // type u8, flags u8, length u16 LE, ts u64 LE
+export const FL_FCB_STATS_LEN = 28; // natural-alignment C struct (not packed)
+export const LOG_DCLG_HEADER_LEN = 16;
+
+/** Record type names for the log viewer. */
+export const FL_TYPE_NAMES = {
+  0x01: 'Boot Marker',
+  0x02: 'Dive Start',
+  0x03: 'Dive End',
+  0x04: 'CAN RX',
+  0x05: 'CAN TX',
+  0x10: 'Consensus',
+  0x11: 'PID Snapshot',
+  0x12: 'Solenoid Fire',
+  0x20: 'Cell Raw (DiveO2)',
+  0x21: 'Cell Raw (O2S)',
+  0x22: 'Cell Raw (Analog)',
+  0x30: 'Error Event',
+  0x40: 'Log Text',
+  0xFD: 'Batch',
+  0xFE: 'Drop Marker',
+  0xFF: 'End Of Stream'
+};
+
+/** Text-log verbosity levels (DID 0xF283). */
+export const LOG_LEVEL_NAMES = { 1: 'ERROR', 2: 'WARN', 3: 'INFO', 4: 'DEBUG' };
+
+// ============================================================================
 // Settings DIDs
+// ============================================================================
 export const DID_SETTING_COUNT = 0x9100;
 export const DID_SETTING_INFO_BASE = 0x9110;
 export const DID_SETTING_VALUE_BASE = 0x9130;
-export const DID_SETTING_LABEL_BASE = 0x9150;
+export const DID_SETTING_LABEL_BASE = 0x9150; // + (settingIndex<<4) + optionIndex
 export const DID_SETTING_SAVE_BASE = 0x9350;
+
+export const SETTING_LABEL_LEN = 9; // fixed-width fields (space/zero padded)
 
 // Setting kinds
 export const SETTING_KIND_NUMBER = 0;
 export const SETTING_KIND_TEXT = 1;
 
 // ============================================================================
-// State DIDs Registry (DID-based data access)
+// Cell type / status enums
 // ============================================================================
-// Each entry contains: { did, size, type, label, cellType? }
-// - did: DID address
-// - size: data size in bytes
-// - type: 'float32' | 'int32' | 'uint32' | 'int16' | 'uint16' | 'uint8' | 'bool'
-// - label: human-readable name
-// - cellType: (optional) restricts DID to specific cell type
+export const CELL_TYPE_DIVEO2 = 0;
+export const CELL_TYPE_ANALOG = 1;
+export const CELL_TYPE_O2S = 2;
+export const CELL_TYPE_NONE = 0; // legacy alias (firmware uses 0 for DiveO2)
 
+export const CELL_STATUS_OK = 0;
+export const CELL_STATUS_DEGRADED = 1;
+export const CELL_STATUS_FAIL = 2;
+export const CELL_STATUS_NEED_CAL = 3;
+export const CELL_STATUS_NAMES = ['OK', 'Degraded', 'Fail', 'Need Cal'];
+
+// Power source constants
+export const POWER_SOURCE_DEFAULT = 0;
+export const POWER_SOURCE_BATTERY = 1;
+export const POWER_SOURCE_CAN = 2;
+
+// ============================================================================
+// State DIDs registry (live-pollable, read-only)
+// ============================================================================
 // Cell DID base and range
 export const DID_CELL_BASE = 0xF400;
-export const DID_CELL_RANGE = 0x0010;  // 16 DIDs per cell
+export const DID_CELL_RANGE = 0x0010; // 16 DIDs per cell
 
 // Cell DID offsets
 export const CELL_DID_PPO2 = 0x00;
@@ -90,26 +244,20 @@ export const CELL_DID_INTENSITY = 0x09;
 export const CELL_DID_AMBIENT_LIGHT = 0x0A;
 export const CELL_DID_PRESSURE = 0x0B;
 export const CELL_DID_HUMIDITY = 0x0C;
-
-/**
- * State DID registry with metadata for automatic parsing
- */
-// Power source constants
-export const POWER_SOURCE_DEFAULT = 0;
-export const POWER_SOURCE_BATTERY = 1;
-export const POWER_SOURCE_CAN = 2;
+export const CELL_DID_BROADCAST = 0x0D; // write-only: 0=stop, !=0=start cell #BCST
 
 export const STATE_DIDS = {
-  // PPO2 Control State DIDs (0xF2xx)
+  // PPO2 control state (0xF2xx)
   CONSENSUS_PPO2:    { did: 0xF200, size: 4, type: 'float32', label: 'Consensus PPO2' },
   SETPOINT:          { did: 0xF202, size: 4, type: 'float32', label: 'Setpoint' },
   CELLS_VALID:       { did: 0xF203, size: 1, type: 'uint8',   label: 'Cells Valid' },
+  ALARM_STATE:       { did: 0xF204, size: 4, type: 'uint32',  label: 'Alarm State' },
   DUTY_CYCLE:        { did: 0xF210, size: 4, type: 'float32', label: 'Duty Cycle' },
   INTEGRAL_STATE:    { did: 0xF211, size: 4, type: 'float32', label: 'Integral State' },
   SATURATION_COUNT:  { did: 0xF212, size: 2, type: 'uint16',  label: 'Saturation Count' },
   UPTIME_SEC:        { did: 0xF220, size: 4, type: 'uint32',  label: 'Uptime (sec)' },
 
-  // Power Monitoring DIDs (0xF23x)
+  // Power monitoring (0xF23x)
   VBUS_VOLTAGE:      { did: 0xF230, size: 4, type: 'float32', label: 'VBus Voltage', unit: 'V' },
   VCC_VOLTAGE:       { did: 0xF231, size: 4, type: 'float32', label: 'VCC Voltage', unit: 'V' },
   BATTERY_VOLTAGE:   { did: 0xF232, size: 4, type: 'float32', label: 'Battery Voltage', unit: 'V' },
@@ -117,7 +265,7 @@ export const STATE_DIDS = {
   THRESHOLD_VOLTAGE: { did: 0xF234, size: 4, type: 'float32', label: 'Threshold Voltage', unit: 'V' },
   POWER_SOURCES:     { did: 0xF235, size: 1, type: 'uint8',   label: 'Power Sources' },
 
-  // Cell 0 DIDs (0xF400-0xF40F)
+  // Cell 0 DIDs (0xF400-0xF40C)
   CELL0_PPO2:          { did: 0xF400, size: 4, type: 'float32', label: 'Cell 0 PPO2' },
   CELL0_TYPE:          { did: 0xF401, size: 1, type: 'uint8',   label: 'Cell 0 Type' },
   CELL0_INCLUDED:      { did: 0xF402, size: 1, type: 'bool',    label: 'Cell 0 Included' },
@@ -125,14 +273,14 @@ export const STATE_DIDS = {
   CELL0_RAW_ADC:       { did: 0xF404, size: 2, type: 'int16',   label: 'Cell 0 Raw ADC', cellType: CELL_TYPE_ANALOG },
   CELL0_MILLIVOLTS:    { did: 0xF405, size: 2, type: 'uint16',  label: 'Cell 0 mV', cellType: CELL_TYPE_ANALOG },
   CELL0_TEMPERATURE:   { did: 0xF406, size: 4, type: 'int32',   label: 'Cell 0 Temp', cellType: CELL_TYPE_DIVEO2 },
-  CELL0_ERROR:         { did: 0xF407, size: 4, type: 'int32',   label: 'Cell 0 Error', cellType: CELL_TYPE_DIVEO2 },
+  CELL0_ERROR:         { did: 0xF407, size: 4, type: 'uint32',  label: 'Cell 0 Error', cellType: CELL_TYPE_DIVEO2 },
   CELL0_PHASE:         { did: 0xF408, size: 4, type: 'int32',   label: 'Cell 0 Phase', cellType: CELL_TYPE_DIVEO2 },
   CELL0_INTENSITY:     { did: 0xF409, size: 4, type: 'int32',   label: 'Cell 0 Intensity', cellType: CELL_TYPE_DIVEO2 },
   CELL0_AMBIENT_LIGHT: { did: 0xF40A, size: 4, type: 'int32',   label: 'Cell 0 Ambient', cellType: CELL_TYPE_DIVEO2 },
-  CELL0_PRESSURE:      { did: 0xF40B, size: 4, type: 'int32',   label: 'Cell 0 Pressure', cellType: CELL_TYPE_DIVEO2 },
+  CELL0_PRESSURE:      { did: 0xF40B, size: 4, type: 'uint32',  label: 'Cell 0 Pressure', cellType: CELL_TYPE_DIVEO2 },
   CELL0_HUMIDITY:      { did: 0xF40C, size: 4, type: 'int32',   label: 'Cell 0 Humidity', cellType: CELL_TYPE_DIVEO2 },
 
-  // Cell 1 DIDs (0xF410-0xF41F)
+  // Cell 1 DIDs (0xF410-0xF41C)
   CELL1_PPO2:          { did: 0xF410, size: 4, type: 'float32', label: 'Cell 1 PPO2' },
   CELL1_TYPE:          { did: 0xF411, size: 1, type: 'uint8',   label: 'Cell 1 Type' },
   CELL1_INCLUDED:      { did: 0xF412, size: 1, type: 'bool',    label: 'Cell 1 Included' },
@@ -140,14 +288,14 @@ export const STATE_DIDS = {
   CELL1_RAW_ADC:       { did: 0xF414, size: 2, type: 'int16',   label: 'Cell 1 Raw ADC', cellType: CELL_TYPE_ANALOG },
   CELL1_MILLIVOLTS:    { did: 0xF415, size: 2, type: 'uint16',  label: 'Cell 1 mV', cellType: CELL_TYPE_ANALOG },
   CELL1_TEMPERATURE:   { did: 0xF416, size: 4, type: 'int32',   label: 'Cell 1 Temp', cellType: CELL_TYPE_DIVEO2 },
-  CELL1_ERROR:         { did: 0xF417, size: 4, type: 'int32',   label: 'Cell 1 Error', cellType: CELL_TYPE_DIVEO2 },
+  CELL1_ERROR:         { did: 0xF417, size: 4, type: 'uint32',  label: 'Cell 1 Error', cellType: CELL_TYPE_DIVEO2 },
   CELL1_PHASE:         { did: 0xF418, size: 4, type: 'int32',   label: 'Cell 1 Phase', cellType: CELL_TYPE_DIVEO2 },
   CELL1_INTENSITY:     { did: 0xF419, size: 4, type: 'int32',   label: 'Cell 1 Intensity', cellType: CELL_TYPE_DIVEO2 },
   CELL1_AMBIENT_LIGHT: { did: 0xF41A, size: 4, type: 'int32',   label: 'Cell 1 Ambient', cellType: CELL_TYPE_DIVEO2 },
-  CELL1_PRESSURE:      { did: 0xF41B, size: 4, type: 'int32',   label: 'Cell 1 Pressure', cellType: CELL_TYPE_DIVEO2 },
+  CELL1_PRESSURE:      { did: 0xF41B, size: 4, type: 'uint32',  label: 'Cell 1 Pressure', cellType: CELL_TYPE_DIVEO2 },
   CELL1_HUMIDITY:      { did: 0xF41C, size: 4, type: 'int32',   label: 'Cell 1 Humidity', cellType: CELL_TYPE_DIVEO2 },
 
-  // Cell 2 DIDs (0xF420-0xF42F)
+  // Cell 2 DIDs (0xF420-0xF42C)
   CELL2_PPO2:          { did: 0xF420, size: 4, type: 'float32', label: 'Cell 2 PPO2' },
   CELL2_TYPE:          { did: 0xF421, size: 1, type: 'uint8',   label: 'Cell 2 Type' },
   CELL2_INCLUDED:      { did: 0xF422, size: 1, type: 'bool',    label: 'Cell 2 Included' },
@@ -155,13 +303,18 @@ export const STATE_DIDS = {
   CELL2_RAW_ADC:       { did: 0xF424, size: 2, type: 'int16',   label: 'Cell 2 Raw ADC', cellType: CELL_TYPE_ANALOG },
   CELL2_MILLIVOLTS:    { did: 0xF425, size: 2, type: 'uint16',  label: 'Cell 2 mV', cellType: CELL_TYPE_ANALOG },
   CELL2_TEMPERATURE:   { did: 0xF426, size: 4, type: 'int32',   label: 'Cell 2 Temp', cellType: CELL_TYPE_DIVEO2 },
-  CELL2_ERROR:         { did: 0xF427, size: 4, type: 'int32',   label: 'Cell 2 Error', cellType: CELL_TYPE_DIVEO2 },
+  CELL2_ERROR:         { did: 0xF427, size: 4, type: 'uint32',  label: 'Cell 2 Error', cellType: CELL_TYPE_DIVEO2 },
   CELL2_PHASE:         { did: 0xF428, size: 4, type: 'int32',   label: 'Cell 2 Phase', cellType: CELL_TYPE_DIVEO2 },
   CELL2_INTENSITY:     { did: 0xF429, size: 4, type: 'int32',   label: 'Cell 2 Intensity', cellType: CELL_TYPE_DIVEO2 },
   CELL2_AMBIENT_LIGHT: { did: 0xF42A, size: 4, type: 'int32',   label: 'Cell 2 Ambient', cellType: CELL_TYPE_DIVEO2 },
-  CELL2_PRESSURE:      { did: 0xF42B, size: 4, type: 'int32',   label: 'Cell 2 Pressure', cellType: CELL_TYPE_DIVEO2 },
+  CELL2_PRESSURE:      { did: 0xF42B, size: 4, type: 'uint32',  label: 'Cell 2 Pressure', cellType: CELL_TYPE_DIVEO2 },
   CELL2_HUMIDITY:      { did: 0xF42C, size: 4, type: 'int32',   label: 'Cell 2 Humidity', cellType: CELL_TYPE_DIVEO2 },
 };
+
+// DiveO2 fixed-point scale factors (raw integer -> engineering units)
+export const DIVEO2_TEMP_SCALE = 0.001;      // milli-degC -> degC
+export const DIVEO2_PRESSURE_SCALE = 0.000001; // uhPa -> hPa
+export const DIVEO2_HUMIDITY_SCALE = 0.001;  // milli-RH -> %RH
 
 /**
  * Get DID info by DID address
@@ -203,7 +356,6 @@ export function getValidCellDIDs(cellNum, cellType) {
   const cellDIDs = getCellDIDs(cellNum);
   const result = {};
   for (const [key, info] of Object.entries(cellDIDs)) {
-    // Include if no cellType restriction OR cellType matches
     if (info.cellType === undefined || info.cellType === cellType) {
       result[key] = info;
     }

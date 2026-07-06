@@ -286,42 +286,119 @@ export class UDSClient extends EventEmitter {
     this.logger.info(`Wrote ${dataArray.length} bytes to DID 0x${did.toString(16).padStart(4, '0')}`);
   }
 
+  // ============================================================
+  // Generic UDS services (session / routine / transfer)
+  // ============================================================
+
   /**
-   * High-level: Read serial number
-   * @returns {Promise<string>} Serial number string
+   * Diagnostic Session Control (Service 0x10).
+   * @param {number} session - UDS_SESSION_DEFAULT | UDS_SESSION_PROGRAMMING
+   * @param {number} timeout - Timeout in ms (programming entry can be slow)
+   * @returns {Promise<Uint8Array>} Positive response [0x50, session, ...]
+   */
+  async enterSession(session, timeout = 8000) {
+    const request = [constants.SID_SESSION_CONTROL, session];
+    return await this._sendRequest(request, timeout);
+  }
+
+  /**
+   * RoutineControl - Start Routine (Service 0x31 0x01).
+   * @param {number} routineId - 16-bit routine identifier
+   * @param {Array|Uint8Array} params - Routine parameters
+   * @param {number} timeout - Timeout in ms
+   * @returns {Promise<Uint8Array>} Positive response [0x71, 0x01, rid_hi, rid_lo, ...]
+   */
+  async routineControl(routineId, params = [], timeout = 10000) {
+    const ridBytes = ByteUtils.uint16ToBE(routineId);
+    const request = ByteUtils.concat(
+      [constants.SID_ROUTINE_CONTROL, 0x01, ridBytes[0], ridBytes[1]],
+      ByteUtils.toUint8Array(params.length ? params : [])
+    );
+    return await this._sendRequest(request, timeout);
+  }
+
+  /**
+   * RequestDownload (Service 0x34).
+   * @param {number} address - Memory address (LE in the addr field)
+   * @param {number} size - Transfer size / negotiated block hint
+   * @param {Object} [options]
+   * @param {'BE'|'LE'} [options.sizeEndian='BE'] - Endianness of the SIZE field.
+   *   OTA uses big-endian; log download uses little-endian.
+   * @param {number} [timeout=30000] - Timeout in ms (slot1 erase is slow)
+   * @returns {Promise<number>} Negotiated max block from the 0x74 response
+   */
+  async requestDownload(address, size, options = {}, timeout = 30000) {
+    const sizeEndian = options.sizeEndian || 'BE';
+    const addrBytes = ByteUtils.uint32ToLE(address);
+    const sizeBytes = sizeEndian === 'LE'
+      ? ByteUtils.uint32ToLE(size)
+      : ByteUtils.uint32ToBE(size);
+    const request = ByteUtils.concat(
+      [constants.SID_REQUEST_DOWNLOAD, constants.OTA_DATA_FMT, constants.OTA_ADDR_LEN_FMT],
+      addrBytes,
+      sizeBytes
+    );
+    const response = await this._sendRequest(request, timeout);
+    // Response: [0x74, lengthFormat, maxBlock_hi, maxBlock_lo]
+    if (response.length < 4) {
+      throw new UDSError('Malformed RequestDownload response', constants.SID_REQUEST_DOWNLOAD);
+    }
+    return (response[2] << 8) | response[3];
+  }
+
+  /**
+   * TransferData (Service 0x36).
+   * @param {number} seq - Block sequence counter
+   * @param {Array|Uint8Array} data - Block payload (empty for log pull)
+   * @param {number} timeout - Timeout in ms
+   * @returns {Promise<Uint8Array>} Positive response [0x76, seq, ...body]
+   */
+  async transferData(seq, data = [], timeout = 15000) {
+    const request = ByteUtils.concat(
+      [constants.SID_TRANSFER_DATA, seq & 0xFF],
+      ByteUtils.toUint8Array(data.length ? data : [])
+    );
+    return await this._sendRequest(request, timeout);
+  }
+
+  /**
+   * RequestTransferExit (Service 0x37).
+   * @param {number} timeout - Timeout in ms
+   * @returns {Promise<Uint8Array>} Positive response [0x77]
+   */
+  async requestTransferExit(timeout = 10000) {
+    return await this._sendRequest([constants.SID_REQUEST_TRANSFER_EXIT], timeout);
+  }
+
+  // ============================================================
+  // High-level device identification
+  // ============================================================
+
+  /**
+   * High-level: Read firmware version (git-describe ASCII)
+   * @returns {Promise<string>}
+   */
+  async readFirmwareVersion() {
+    const data = await this.readDataByIdentifier(constants.DID_FIRMWARE_VERSION);
+    return new TextDecoder().decode(data).replace(/\0+$/, '');
+  }
+
+  /**
+   * High-level: Read build variant name (ASCII)
+   * @returns {Promise<string>}
+   */
+  async readVariantName() {
+    const data = await this.readDataByIdentifier(constants.DID_VARIANT_NAME);
+    return new TextDecoder().decode(data).replace(/\0+$/, '');
+  }
+
+  /**
+   * High-level: Read serial number (raw MCU UID, returned as hex string)
+   * @returns {Promise<string>}
    */
   async readSerialNumber() {
     const data = await this.readDataByIdentifier(constants.DID_SERIAL_NUMBER);
-    return new TextDecoder().decode(data);
-  }
-
-  /**
-   * High-level: Read model name
-   * @returns {Promise<string>} Model name string
-   */
-  async readModel() {
-    const data = await this.readDataByIdentifier(constants.DID_MODEL);
-    return new TextDecoder().decode(data);
-  }
-
-  /**
-   * High-level: Enumerate devices on the DiveCAN bus
-   * @returns {Promise<Array<number>>} Array of device IDs on the bus
-   */
-  async enumerateBusDevices() {
-    const data = await this.readDataByIdentifier(constants.DID_BUS_DEVICES);
-    return Array.from(data);
-  }
-
-  /**
-   * High-level: Get device name by ID
-   * @param {number} deviceId - Device ID (e.g., 0x01 for NERD, 0x04 for SOLO)
-   * @returns {Promise<string>} Device name
-   */
-  async getDeviceName(deviceId) {
-    const did = constants.DID_DEVICE_NAME_BASE + deviceId;
-    const data = await this.readDataByIdentifier(did);
-    return new TextDecoder().decode(data);
+    return ByteUtils.toHexString(data, '');
   }
 
   /**
@@ -347,21 +424,32 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
-   * Get setting metadata
+   * Get setting metadata.
+   *
+   * Firmware wire layout (fixed offsets, uds_settings.c readSettingInfoDID):
+   *   label[9 padded] + separator(1) + kind(1) + editable(1)
+   *   for TEXT settings only: + maxValue(1) + optionCount(1)
+   *
    * @param {number} index - Setting index (0-based)
-   * @returns {Promise<{label: string, kind: number, editable: boolean}>}
+   * @returns {Promise<{label: string, kind: number, editable: boolean, optionCount: number}>}
    */
   async getSettingInfo(index) {
     const did = constants.DID_SETTING_INFO_BASE + index;
     const data = await this.readDataByIdentifier(did);
 
-    // Parse response: [label(N), 0x00, kind(1), editable(1)]
-    const nullIndex = data.indexOf(0);
-    const label = new TextDecoder().decode(data.slice(0, nullIndex));
-    const kind = data[nullIndex + 1];
-    const editable = data[nullIndex + 2] === 1;
+    const L = constants.SETTING_LABEL_LEN;
+    // Label is a fixed-width padded field (trim trailing NUL/space padding).
+    const label = new TextDecoder().decode(data.slice(0, L)).replace(/[\0 ]+$/, '');
+    const kind = data[L + 1];
+    const editable = data[L + 2] === 1;
 
-    return { label, kind, editable };
+    let optionCount = 0;
+    if (kind === constants.SETTING_KIND_TEXT && data.length >= L + 5) {
+      // data[L+3] = maxValue, data[L+4] = optionCount
+      optionCount = data[L + 4];
+    }
+
+    return { label, kind, editable, optionCount };
   }
 
   /**
@@ -387,9 +475,11 @@ export class UDSClient extends EventEmitter {
    * @returns {Promise<string>} Option label
    */
   async getSettingOptionLabel(settingIndex, optionIndex) {
-    const did = constants.DID_SETTING_LABEL_BASE + settingIndex + (optionIndex << 4);
+    // Firmware DID decode: HIGH nibble = setting index, LOW nibble = option index.
+    const did = constants.DID_SETTING_LABEL_BASE + (settingIndex << 4) + optionIndex;
     const data = await this.readDataByIdentifier(did);
-    return new TextDecoder().decode(data);
+    // 9-byte space-padded, no NUL terminator.
+    return new TextDecoder().decode(data).replace(/[\0 ]+$/, '');
   }
 
   /**
@@ -435,6 +525,7 @@ export class UDSClient extends EventEmitter {
         label: info.label,
         kind: info.kind,
         editable: info.editable,
+        optionCount: info.optionCount,
         maxValue: value.maxValue,
         currentValue: value.currentValue
       });
