@@ -28,3 +28,6 @@ STM32.bin
 /tools/edtt/
 /tools/net-tools/
 /zephyr/
+
+# VSCode Local History extension (accidentally embedded git repos)
+.history/
