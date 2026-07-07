@@ -23,6 +23,7 @@
 #include "solenoid_roles.h"
 #endif
 #include "oxygen_cell_channels.h"
+#include "divecan_channels.h"
 #include "oxygen_cell_math.h"
 #include "errors.h"
 #include "common.h"
@@ -57,6 +58,7 @@ LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
 
 #define CAL_FO2_MAX         100U
 #define CAL_FLUSH_SECONDS   25U
+#define CHECK_FLUSH_SECONDS 10U         /* CHECK: seconds per O2 / diluent flush leg */
 #define CAL_FLUSH_US        1000000U    /* 1 second in microseconds */
 #define CAL_FLUSH_MS        1000U       /* 1 second in milliseconds */
 #define CAL_SETTLE_MS       4000U       /* settle time before reading cells */
@@ -70,6 +72,21 @@ LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
  * CalSmCtx_t local. 2048 clears the real depth. */
 #define CAL_THREAD_STACK    2048U       /* calibration thread stack size (bytes) */
 #define CAL_FO2_TO_PPO2_SCALE 1000.0f  /* scale factor: mbar -> centibar * fO2 */
+
+/* ---- Control-loop suppression during calibration ----
+ * A calibration is driven onto the GLOBAL setpoint (chan_setpoint) so every
+ * control algorithm quiesces — this is deliberately NOT a PID-specific
+ * carve-out, so future control loops inherit it for free. The flush-based
+ * modes (CHECK, solenoid-flush) swing PPO2 with O2/diluent flushes; without
+ * this the controller would inject O2 chasing the real setpoint, fighting the
+ * flush and wasting gas. 0.19 bar is a hypoxia floor: the loop stays off while
+ * PPO2 is above it (the normal case at the surface or during an O2 flush) yet
+ * the diver is still protected if PPO2 genuinely falls. On restore, if the
+ * pre-cal setpoint can't be read back, fall back to 0.70 bar (matching the
+ * handset-loss failsafe) rather than pinning the diver at the hypoxic floor. */
+static const PPO2_t CAL_SUPPRESS_SETPOINT_CB = 19U;
+static const PPO2_t CAL_RESTORE_FALLBACK_CB = 70U;
+static const uint32_t CAL_SETPOINT_TIMEOUT_MS = 100U;
 
 /* ---- Atomic calibration guard (bug #7 fix) ---- */
 
@@ -92,6 +109,38 @@ static atomic_t *getCalRunning(void)
 bool calibration_is_running(void)
 {
     return atomic_get(getCalRunning()) != 0;
+}
+
+/**
+ * @brief Atomically claim the calibration-in-progress slot.
+ *
+ * Called from the DiveCAN RX thread's cal-request handler BEFORE the request
+ * is queued to the cal thread. This is the single choke point that suppresses
+ * the Shearwater's occasional duplicate CAL_REQ: the guard is claimed
+ * synchronously at receive time, so a second frame arriving while a
+ * calibration is still in flight fails the compare-and-swap and is dropped
+ * before it can be buffered in the cal_sub queue. The consumer thread must
+ * call calibration_release() when the run finishes; the RX handler must call
+ * it too if it fails to enqueue the request after a successful acquire.
+ *
+ * @return true if the slot was free and is now claimed, false if a
+ *         calibration is already in progress.
+ */
+bool calibration_try_acquire(void)
+{
+    return atomic_cas(getCalRunning(), 0, 1);
+}
+
+/**
+ * @brief Release the calibration-in-progress slot claimed by
+ *        calibration_try_acquire().
+ *
+ * Safe to call when the slot is already clear (idempotent). Called by the cal
+ * thread after a run completes, and by the RX handler on an enqueue failure.
+ */
+void calibration_release(void)
+{
+    atomic_clear(getCalRunning());
 }
 
 /* ---- Settings persistence for calibration coefficients ---- */
@@ -894,6 +943,46 @@ static CalResult_t cal_solenoid_flush(const CalRequest_t *req,
     return cal_total_absolute(req, resp);
 }
 
+/**
+ * @brief Surface sensor check: flush the loop with O2 then diluent, no cal.
+ *
+ * A pre-dive diagnostic that lets the diver watch the cells swing high (during
+ * the O2 flush) then low (during the diluent flush) to confirm they respond.
+ * It fires the dedicated O2 flush solenoid in 1-second bursts for
+ * CHECK_FLUSH_SECONDS, then the dedicated diluent flush solenoid the same way.
+ * It never reads cells, computes coefficients, or writes flash, and ALWAYS
+ * reports success — solenoid firing errors are intentionally ignored. Only
+ * selectable on variants that have both flush solenoids (see valid_cal_modes[]).
+ *
+ * @param req  Calibration request (unused; CHECK has no reference gas).
+ * @param resp Calibration response (unused; CHECK reports no cell coefficients).
+ * @return CAL_RESULT_OK unconditionally.
+ */
+#if defined(CONFIG_HAS_FLUSH_SOLENOID) && defined(CONFIG_HAS_DIL_FLUSH_SOLENOID)
+static CalResult_t cal_check(const CalRequest_t *req, CalResponse_t *resp)
+{
+    (void)req;
+    (void)resp;
+
+    LOG_INF("Sensor CHECK: O2 flush %us then diluent flush %us",
+            CHECK_FLUSH_SECONDS, CHECK_FLUSH_SECONDS);
+
+    /* O2 flush leg: drive the cells toward high PPO2. */
+    for (uint8_t i = 0; i < CHECK_FLUSH_SECONDS; ++i) {
+        (void)sol_o2_flush_fire(CAL_FLUSH_US);
+        k_msleep(CAL_FLUSH_MS);
+    }
+
+    /* Diluent flush leg: drive the cells toward low PPO2. */
+    for (uint8_t i = 0; i < CHECK_FLUSH_SECONDS; ++i) {
+        (void)sol_dil_flush_fire(CAL_FLUSH_US);
+        k_msleep(CAL_FLUSH_MS);
+    }
+
+    return CAL_RESULT_OK;   /* CHECK is a diagnostic; it never fails. */
+}
+#endif /* CONFIG_HAS_FLUSH_SOLENOID && CONFIG_HAS_DIL_FLUSH_SOLENOID */
+
 /* ---- Calibration execution: SMF state machine ----
  *
  * The lifecycle of a single calibration request is modelled as a flat
@@ -1009,6 +1098,11 @@ static void cal_executing_entry(void *obj)
         sm->response.result = cal_solenoid_flush(&sm->request,
                                                  &sm->response);
         break;
+#if defined(CONFIG_HAS_FLUSH_SOLENOID) && defined(CONFIG_HAS_DIL_FLUSH_SOLENOID)
+    case CAL_CHECK:
+        sm->response.result = cal_check(&sm->request, &sm->response);
+        break;
+#endif
     default:
         OP_ERROR(OP_ERR_CAL_METHOD);
         sm->response.result = CAL_RESULT_REJECTED;
@@ -1132,14 +1226,52 @@ ZBUS_CHAN_ADD_OBS(chan_cal_request, cal_sub, 0);
 /**
  * @brief Calibration listener thread entry: wait for CalRequest_t messages and run calibration.
  *
- * Subscribes to chan_cal_request via cal_sub. Uses an atomic compare-and-swap to
- * ensure only one calibration runs at a time; duplicate requests while a cal is
- * active receive a CAL_RESULT_BUSY response.
+ * Subscribes to chan_cal_request via cal_sub. The in-progress guard is claimed
+ * upstream in RespCal() (calibration_try_acquire()) before a request is ever
+ * queued, so duplicate CAL_REQ frames from the handset are dropped at receive
+ * time and never reach this thread. Each request pulled from the queue already
+ * owns the guard; this thread runs it and calls calibration_release().
  *
  * @param p1 Unused thread argument.
  * @param p2 Unused thread argument.
  * @param p3 Unused thread argument.
  */
+/**
+ * @brief Force the global setpoint to the hypoxia floor for a calibration.
+ *
+ * Reads and returns the current control setpoint (so it can be restored after
+ * the cal), then publishes CAL_SUPPRESS_SETPOINT_CB to chan_setpoint. Every
+ * control algorithm reads chan_setpoint, so this quiesces them all without a
+ * per-algorithm carve-out. On a read failure the returned baseline defaults to
+ * CAL_RESTORE_FALLBACK_CB rather than the hypoxic floor.
+ *
+ * @return The pre-calibration setpoint (centibar) to hand back to
+ *         cal_restore_setpoint() when the calibration completes.
+ */
+static PPO2_t cal_suppress_setpoint(void)
+{
+    PPO2_t saved_setpoint = CAL_RESTORE_FALLBACK_CB;
+    (void)zbus_chan_read(&chan_setpoint, &saved_setpoint,
+                         K_MSEC(CAL_SETPOINT_TIMEOUT_MS));
+
+    PPO2_t cal_setpoint = CAL_SUPPRESS_SETPOINT_CB;
+    zbus_pub_checked(&chan_setpoint, &cal_setpoint,
+                     K_MSEC(CAL_SETPOINT_TIMEOUT_MS));
+
+    return saved_setpoint;
+}
+
+/**
+ * @brief Restore the pre-calibration setpoint after a calibration finishes.
+ *
+ * @param saved_setpoint The value returned by cal_suppress_setpoint().
+ */
+static void cal_restore_setpoint(PPO2_t saved_setpoint)
+{
+    zbus_pub_checked(&chan_setpoint, &saved_setpoint,
+                     K_MSEC(CAL_SETPOINT_TIMEOUT_MS));
+}
+
 static void cal_thread_fn(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1);
@@ -1154,24 +1286,27 @@ static void cal_thread_fn(void *p1, void *p2, void *p3)
             /* Wait failed — skip this iteration and wait again */
         }
         else {
-            /* Bug #7 fix: atomic check-and-set prevents TOCTOU race.
-             * Don't start calibrating if we're already mid-cal,
-             * shearwater double shots us sometimes */
-            if (!atomic_cas(getCalRunning(), 0, 1)) {
-                LOG_WRN("Cal already running, ignoring request");
+            /* Bug #7 fix: the in-progress guard is claimed synchronously at
+             * the publish site (RespCal, in the RX thread) via
+             * calibration_try_acquire(), so the Shearwater's occasional
+             * duplicate CAL_REQ is dropped BEFORE it can be buffered in this
+             * subscriber's queue. A consumer-side CAS could not catch that
+             * duplicate: this thread serializes the queue, so the two runs
+             * never overlap and the second always saw a cleared guard,
+             * running the whole calibration a second time. Every request that
+             * reaches here therefore already owns the guard; run it and
+             * release. */
 
-                CalResponse_t busy_resp = {
-                    .result = CAL_RESULT_BUSY,
-                };
+            /* Quiesce the control loop for the duration of the calibration by
+             * forcing the global setpoint to the hypoxia floor, then restore
+             * the pre-cal setpoint once the run completes. */
+            PPO2_t saved_setpoint = cal_suppress_setpoint();
 
-                zbus_pub_checked(&chan_cal_response, &busy_resp,
-                                K_MSEC(100));
-            }
-            else {
-                run_calibration_sm(&req);
+            run_calibration_sm(&req);
 
-                atomic_clear(getCalRunning());
-            }
+            cal_restore_setpoint(saved_setpoint);
+
+            calibration_release();
         }
     }
 }

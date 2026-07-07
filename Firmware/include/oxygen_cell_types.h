@@ -140,6 +140,8 @@ typedef enum {
     CAL_ANALOG_ABSOLUTE = 1,   /**< Absolute analog calibration against known gas */
     CAL_TOTAL_ABSOLUTE = 2,    /**< Absolute calibration of all cells */
     CAL_SOLENOID_FLUSH = 3,    /**< Flush then calibrate */
+    CAL_CHECK = 4,             /**< Surface sensor check: O2 then diluent flush,
+                                    no recalibration, always reports success. */
 } CalMethod_t;
 
 /** @brief Result of a completed calibration sequence.

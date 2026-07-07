@@ -70,7 +70,7 @@ static bool setting_is_cell_bcst(uint8_t idx, uint8_t *cell)
 
 #define FW_COMMIT_OPTION_COUNT   2U
 #define PPO2_MODE_OPTION_COUNT   4U
-#define CAL_MODE_OPTION_COUNT    5U
+#define CAL_MODE_OPTION_COUNT    6U
 #define BOOL_OPTION_COUNT        3U
 #define BATTERY_TYPE_OPTION_COUNT 5U
 
@@ -91,6 +91,7 @@ static const char * const calModeOptions[CAL_MODE_OPTION_COUNT] = {
     "Absolute",
     "TotalAbs",
     "Sol Flsh",
+    "Check",
     NULL
 };
 
@@ -134,9 +135,9 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .label = "Cal Mode",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = 3,
+        .maxValue = 4,
         .options = calModeOptions,
-        .optionCount = 4
+        .optionCount = 5
     },
     /* Index 3: Depth Compensation */
     {

@@ -100,6 +100,13 @@ static const CalibrationMode_t valid_cal_modes[] = {
      * FLUSH is valid whenever the unit can dose O2. */
     CAL_SOLENOID_FLUSH,
 #endif
+#if defined(CONFIG_HAS_FLUSH_SOLENOID) && defined(CONFIG_HAS_DIL_FLUSH_SOLENOID)
+    /* CHECK needs BOTH an O2 flush and a diluent flush solenoid so it can
+     * drive the cells high (O2) then low (diluent). Currently Poseidon_Aren
+     * only. It never recalibrates; it is the default on all-digital heads
+     * (Poseidon) where there is no analog coefficient to compute. */
+    CAL_CHECK,
+#endif
 };
 
 #ifdef CONFIG_CAL_MODE_DEFAULT_DIGITAL_REF
@@ -108,6 +115,8 @@ static const CalibrationMode_t valid_cal_modes[] = {
 #define CAL_MODE_DEFAULT CAL_ANALOG_ABSOLUTE
 #elif defined(CONFIG_CAL_MODE_DEFAULT_TOTAL_ABSOLUTE)
 #define CAL_MODE_DEFAULT CAL_TOTAL_ABSOLUTE
+#elif defined(CONFIG_CAL_MODE_DEFAULT_CHECK)
+#define CAL_MODE_DEFAULT CAL_CHECK
 #else
 #define CAL_MODE_DEFAULT CAL_SOLENOID_FLUSH
 #endif
@@ -124,6 +133,10 @@ static_assert(!IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_FLUSH) ||
           IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID) ||
           IS_ENABLED(CONFIG_HAS_O2_SOLENOID),
           "Default cal mode Flush requires an O2 or flush solenoid");
+static_assert(!IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_CHECK) ||
+          (IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID) &&
+           IS_ENABLED(CONFIG_HAS_DIL_FLUSH_SOLENOID)),
+          "Default cal mode Check requires O2 flush + diluent flush solenoids");
 
 /* ---- Battery Chemistry ----
  * Selects the low-battery cutoff voltage. Defaults from CONFIG_BATTERY_CHEMISTRY_*

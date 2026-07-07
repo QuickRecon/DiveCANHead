@@ -182,6 +182,74 @@ def test_setpoint_change_changes_firing(calibrated_dut) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Control-loop suppression during calibration
+# ---------------------------------------------------------------------------
+
+
+def _drain_cal_response(can_bus, timeout: float = 12.0) -> None:
+    """Consume the cal ACK + final result frames so they don't linger on the bus."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        try:
+            frame = can_bus.wait_for(divecan.CAL_RESP_ID,
+                                     timeout=end - time.monotonic())
+        except divecan.DiveCANTimeout:
+            return
+        if frame.data[0] != 0x05:   # non-ACK == final result
+            return
+
+
+@pytest.mark.rt_ratio(10)
+def test_cal_suppresses_inject_solenoid(calibrated_dut) -> None:
+    """While a calibration runs the head forces the GLOBAL setpoint to a 0.19 bar
+    hypoxia floor (calibration.c cal_suppress_setpoint), so no control algorithm
+    fights the cal gas flush. With PPO2 held between the floor and the setpoint, the
+    inject solenoid fires normally — but must go quiet for the whole calibration,
+    then resume once the setpoint is restored.
+
+    Holds PPO2 at 0.50 bar against the DEFAULT 0.70 bar setpoint: no custom setpoint
+    is commanded, so the 10 s handset-loss failsafe (which also lands on 0.70) can't
+    perturb the baseline, and no keepalive pings are needed. 0.50 bar is below 0.70
+    (loop fires) but above the 0.19 floor (loop quiet once the cal forces it).
+
+    Runs at rt_ratio(10) (overriding the module's 100×): the ~4 s cal window is only
+    ~40 ms at 100×, too short to sample reliably; 10× widens it to ~0.4 s.
+    """
+    can_bus, shim = calibrated_dut
+
+    # PPO2 0.50 bar vs the default 0.70 bar setpoint → below setpoint → loop injects.
+    helpers.configure_all_cells(shim, [50, 50, 50])
+    helpers.sim_sleep(shim, 1.0)
+
+    baseline = _sample_solenoid_window(shim, OBSERVATION_WINDOW_S)
+    assert baseline >= 4, (
+        f"precondition: loop should fire at default setpoint 0.70 / PPO2 0.50, "
+        f"saw only {baseline} ON samples"
+    )
+
+    # Trigger a calibration. 0.50 bar PPO2 is ABOVE the 0.19 floor, so the loop must
+    # stay quiet for the duration of the cal.
+    can_bus.send(divecan.build_cal_request())
+    helpers.sim_sleep(shim, 0.5)   # let the cal thread claim the guard + drop setpoint
+    during = _sample_solenoid_window(shim, 2.5)   # inside the 4 s cal settle window
+    assert during == 0, (
+        f"inject solenoid fired {during} times during calibration; the loop should "
+        f"be suppressed by the 0.19 bar setpoint floor"
+    )
+
+    # Once the cal finishes the pre-cal (0.70) setpoint is restored → loop fires.
+    # (digital-reference cal recalibrates the analog cell to the DiveO2 ref, which
+    # is still at 0.50 bar, so consensus stays below the 0.70 setpoint.)
+    _drain_cal_response(can_bus)
+    helpers.sim_sleep(shim, OBSERVATION_WINDOW_S)
+    after = _sample_solenoid_window(shim, OBSERVATION_WINDOW_S)
+    assert after >= 4, (
+        f"inject solenoid did not resume firing after cal (saw {after}); the "
+        f"setpoint restore may not have happened"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dual-inject alternation
 # ---------------------------------------------------------------------------
 

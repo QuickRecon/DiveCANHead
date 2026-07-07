@@ -138,6 +138,12 @@ NRCs:     0x13 (incorrect length)
 
 Common fO2 values: 21 = Air, 100 = Pure O2.
 
+When "Cal Mode" is set to **Check** (value 4), this trigger performs a pre-dive
+sensor check instead of a calibration: a 10 s O2 flush followed by a 10 s
+diluent flush (no coefficients are written), and it always reports success. The
+supplied fO2 is ignored. Check mode is only selectable on variants with both an
+O2 flush and a diluent flush solenoid (currently `Poseidon_Aren`).
+
 ### PID Autotune Control (0xF243)
 
 Starts or aborts the on-device PID autotune routine

@@ -188,6 +188,10 @@ config HAS_FLUSH_SOLENOID
 	bool
 	default y if SOL_O2_FLUSH_CHANNEL >= 0
 
+config HAS_DIL_FLUSH_SOLENOID
+	bool
+	default y if SOL_DIL_FLUSH_CHANNEL >= 0
+
 endmenu # Solenoid Role Mapping
 
 # ---- Tank Pressure Transducers ----
@@ -327,6 +331,20 @@ config CAL_MODE_DEFAULT_FLUSH
 	  the O2 inject solenoid (see cal_solenoid_flush() in calibration.c).
 	  Single-solenoid heads (e.g. AP-style) therefore support flush cal
 	  via the inject solenoid alone — hence HAS_O2_SOLENOID is sufficient.
+
+config CAL_MODE_DEFAULT_CHECK
+	bool "Sensor check (O2 + diluent flush, no recalibration)"
+	depends on HAS_FLUSH_SOLENOID && HAS_DIL_FLUSH_SOLENOID
+	help
+	  Makes the diver-triggered calibration a pre-dive SENSOR CHECK instead
+	  of a recalibration: fires the O2 flush then the diluent flush (~10 s
+	  each) so the cells swing high then low, and always reports success
+	  without altering any cell coefficients (see cal_check() in
+	  calibration.c). Intended for all-digital heads (e.g. Poseidon: 2x
+	  DiveO2) where the cells self-report PPO2 and there is no analog
+	  coefficient to compute, so a "calibration" is best spent verifying
+	  the cells respond. Requires both an O2 flush and a diluent flush
+	  solenoid.
 
 endchoice
 

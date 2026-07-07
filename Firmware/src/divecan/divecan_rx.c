@@ -577,18 +577,42 @@ static void RespCal(const DiveCANMessage_t *message)
     } else {
         LOG_INF("RX cal request; FO2: %u, Pressure: %u", fo2, pressure);
 
-        /* Acknowledge the calibration request to the handset immediately */
+        /* Acknowledge the calibration request to the handset immediately.
+         * The ACK is unconditional (mirrors the STM32 firmware) — the handset
+         * expects it even when we drop a duplicate below. */
         txCalAck(device_spec.type);
 
-        /* Publish to cal_request channel — calibration thread subscribes.
-         * Honor the Cal Mode setting rather than hardcoding the method, so
-         * Total-Absolute (digital-cell) cal etc. can be selected. */
-        CalRequest_t req = {
-            .method = runtime_settings_get_calibration_mode(),
-            .fo2 = fo2,
-            .pressure_mbar = pressure,
-        };
-        zbus_pub_checked(&chan_cal_request, &req, K_MSEC(100));
+        /* Claim the calibration slot synchronously, here in the RX thread,
+         * BEFORE queueing the request. The Shearwater double-shots CAL_REQ
+         * occasionally; because this handler serializes on the guard, the
+         * second frame fails the acquire and is dropped before it can be
+         * buffered in the cal thread's subscriber queue. A consumer-side
+         * guard cannot catch that duplicate (the single cal thread never runs
+         * two requests concurrently, so the queued dup always saw a cleared
+         * guard and re-ran the whole calibration). */
+        if (!calibration_try_acquire()) {
+            LOG_WRN("Duplicate CAL_REQ dropped; calibration already running");
+        } else {
+            /* Publish to cal_request channel — calibration thread subscribes.
+             * Honor the Cal Mode setting rather than hardcoding the method, so
+             * Total-Absolute (digital-cell) cal etc. can be selected. */
+            CalRequest_t req = {
+                .method = runtime_settings_get_calibration_mode(),
+                .fo2 = fo2,
+                .pressure_mbar = pressure,
+            };
+            /* Publish directly (not via the void zbus_pub_checked wrapper) so
+             * we can observe an enqueue failure: if the request never made it
+             * onto the queue after we claimed the slot, the cal thread will
+             * never dequeue it and thus never release the guard, so we must
+             * release it here or calibration is locked out forever. */
+            Status_t pub_ret = zbus_chan_pub(&chan_cal_request, &req,
+                                             K_MSEC(100));
+            if (0 != pub_ret) {
+                calibration_release();
+                OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-pub_ret));
+            }
+        }
     }
 }
 

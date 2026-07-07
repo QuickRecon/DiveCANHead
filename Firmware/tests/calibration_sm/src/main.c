@@ -23,6 +23,14 @@
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
 
+/* chan_setpoint lives in divecan_channels.c, which this unit test does not
+ * compile. calibration.c references it (control-loop suppression during a cal),
+ * so provide a standalone definition to satisfy the link. These tests drive the
+ * SM directly via calibration_run_for_test() and never publish a cal request,
+ * so the cal thread blocks on zbus_sub_wait_msg and never touches this channel;
+ * it exists purely for linkage. */
+ZBUS_CHAN_DEFINE(chan_setpoint, PPO2_t, NULL, NULL, ZBUS_OBSERVERS_EMPTY, 70);
+
 /* ---- In-memory settings backend + zbus capture ---- */
 
 #define MAX_SAVE_LOG  16
@@ -251,6 +259,41 @@ ZTEST(calibration_sm, test_analog_absolute_happy_path)
                      (g.store[i] <= ANALOG_CAL_UPPER),
                      "cell %d coeff out of range: %.6f", i,
                      (double)g.store[i]);
+    }
+}
+
+ZTEST(calibration_sm, test_check_mode_flushes_without_calibrating)
+{
+    /* CHECK is a pre-dive sensor diagnostic: it flushes O2 then diluent and
+     * ALWAYS reports success without reading cells or writing coefficients.
+     * Seed a baseline so we can prove the store is left untouched. The 20 s of
+     * flush k_msleep()s are wrapped to no-ops; the solenoid role helpers are
+     * -ENODEV stubs (CONFIG_SOLENOID off in this test). */
+    seed_previous_coefficients(0.019f);
+
+    CalRequest_t req = {
+        .method = CAL_CHECK,
+        .fo2 = 21U,            /* ignored by CHECK */
+        .pressure_mbar = 1000U,
+    };
+    calibration_run_for_test(&req);
+
+    zassert_true(g.response_seen, "must publish a response");
+    zassert_equal(g.response_count, 1, "exactly one response per request");
+    zassert_equal(g.last_response.result, CAL_RESULT_OK,
+                  "CHECK must always report success");
+
+    /* No coefficient writes at all: CHECK never calibrates, and because it
+     * succeeds the SMF never enters RESTORING_ON_FAIL either. */
+    zassert_equal(g.save_count, 0,
+                  "CHECK must not write any coefficients (got %d)",
+                  g.save_count);
+
+    /* Baseline coefficients are untouched. */
+    for (int i = 0; i < (int)CELL_MAX_COUNT; ++i) {
+        zassert_within(g.store[i], 0.019f, 1e-5f,
+                       "cell %d: CHECK must leave the coefficient unchanged "
+                       "(got %.6f)", i, (double)g.store[i]);
     }
 }
 

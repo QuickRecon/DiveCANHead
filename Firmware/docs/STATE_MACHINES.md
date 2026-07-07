@@ -32,10 +32,11 @@ plan); this doc is the up-to-date reference for what's already landed.
 calibration handler or UDS settings handler.
 
 **Style**: event-driven, single-shot per request. The listener thread
-(`cal_thread_fn`) accepts a `CalRequest_t`, takes the
-`getCalRunning()` atomic CAS guard, then invokes
-`run_calibration_sm(&req)`. Entries cascade synchronously via
-`smf_set_state`; DONE/FAILED entries call `smf_set_terminate`.
+(`cal_thread_fn`) accepts a `CalRequest_t`, forces the global control
+setpoint to the hypoxia floor (see **Setpoint suppression** below),
+invokes `run_calibration_sm(&req)`, restores the setpoint, and releases
+the dedup guard. Entries cascade synchronously via `smf_set_state`;
+DONE/FAILED entries call `smf_set_terminate`.
 
 **States** (`CalState_e`):
 
@@ -70,16 +71,52 @@ buffered response, and the previous cell coefficients for rollback.
 Stack-local inside `run_calibration_sm` — no persistent state between
 requests.
 
-**Key non-state state**: the `getCalRunning()` atomic stays as a
-dedup guard ahead of SM init (Shearwater double-fires sometimes); this
-is **not** a state machine concern — duplicate requests get a
-`CAL_RESULT_BUSY` response without entering the SM at all.
+**Dedup guard** (`getCalRunning()` atomic): the Shearwater double-shots
+the cal command sometimes. The guard is claimed **at the publish site**
+— `RespCal()` in `divecan_rx.c` calls `calibration_try_acquire()` before
+publishing to `chan_cal_request`, and the cal thread calls
+`calibration_release()` when the run finishes. This is deliberate: the
+`cal_sub` message subscriber is a **buffering queue**, so a consumer-side
+CAS (the previous design) could not catch the duplicate — the single cal
+thread serialised the queue, so the buffered duplicate always saw a
+cleared guard once the first run finished and re-ran the whole
+calibration (observed on hardware as the flush/cal firing twice). Claiming
+the guard synchronously in the RX thread drops the duplicate before it is
+ever queued. The ACK (`txCalAck`) is still sent for *every* command; only
+the second *run* is suppressed. This is **not** a state-machine concern —
+a dropped duplicate never enters the SM. (The old `CAL_RESULT_BUSY`
+response is gone: with the guard upstream of the queue, the thread only
+ever dequeues requests it already owns.)
+
+**Setpoint suppression**: for the duration of a calibration the cal
+thread drives the **global** `chan_setpoint` down to a 0.19 bar hypoxia
+floor (`cal_suppress_setpoint()`) and restores the pre-cal value
+afterward (`cal_restore_setpoint()`). Because every control algorithm
+reads `chan_setpoint`, this quiesces them all without a PID-specific
+carve-out — the CHECK / solenoid-flush diluent flush drops PPO2 and would
+otherwise make the control loop inject O2 chasing the real setpoint,
+fighting the flush and wasting gas. 0.19 bar keeps a hypoxia floor so the
+diver is still protected if PPO2 genuinely falls; on restore, a failed
+read-back of the pre-cal setpoint falls back to 0.70 bar rather than
+pinning the diver at the floor.
 
 **Settle delays**: `k_msleep(CAL_SETTLE_MS)` inside
 `CAL_EXECUTING.entry` for digital-reference / analog-absolute /
 total-absolute methods. Preserved as-is from the legacy implementation —
 these give the Shearwater time to publish a fresh cell reading before
 we sample.
+
+**CHECK method** (`CAL_CHECK`): `CAL_EXECUTING.entry` also dispatches
+`cal_check()` — a pre-dive sensor diagnostic, not a calibration. It fires
+the O2 flush solenoid for 10 s then the diluent flush solenoid for 10 s
+(driving the cells high then low so the diver can watch them respond),
+reads no cells, writes no coefficients, and **always returns
+`CAL_RESULT_OK`**. The SMF still runs `CAL_BACKING_UP`, but since CHECK
+never fails, `CAL_RESTORING_ON_FAIL` is never entered and coefficients are
+provably untouched. `cal_check()` and its dispatch case are compiled only
+when `CONFIG_HAS_FLUSH_SOLENOID && CONFIG_HAS_DIL_FLUSH_SOLENOID`
+(currently `Poseidon_Aren`); the mode is also gated out of
+`valid_cal_modes[]` on other variants.
 
 **Test**: `tests/calibration_sm/` drives `calibration_run_for_test()`
 with synthetic cell publishes and a wrapped settings backend.

@@ -26,14 +26,24 @@ target_sources(app PRIVATE
 target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src
+    # calibration.c includes divecan_channels.h for chan_setpoint (control-loop
+    # suppression during a cal). The channel itself is stubbed in main.c.
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/divecan/include
 )
 
 # Product-topology Kconfig isn't sourced into this test. Pass the
 # preprocessor symbols that calibration.c reads via #if CONFIG_*, so it
 # compiles in the three-analog-cell configuration the tests assume.
+#
+# CONFIG_HAS_FLUSH_SOLENOID + CONFIG_HAS_DIL_FLUSH_SOLENOID compile in the
+# CAL_CHECK dispatch case (and cal_check()). CONFIG_SOLENOID is deliberately
+# left undefined so solenoid_roles.h resolves to its -ENODEV stubs — the check
+# test asserts behaviour (OK, no coefficient writes), not real GPIO firing.
 target_compile_definitions(app PRIVATE
     CONFIG_CELL_COUNT=3
     CONFIG_CELL_1_TYPE_ANALOG=1
     CONFIG_CELL_2_TYPE_ANALOG=1
     CONFIG_CELL_3_TYPE_ANALOG=1
+    CONFIG_HAS_FLUSH_SOLENOID=1
+    CONFIG_HAS_DIL_FLUSH_SOLENOID=1
 )

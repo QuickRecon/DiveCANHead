@@ -45,13 +45,15 @@ extern bool UDS_IsInDive(void);
  * Bench procedure timings. Not Kconfig — autotune ships with PID, and these
  * are procedure constants, not per-variant hardware facts. */
 
-/** Autotune thread stack (bytes). The solenoid-fire thread needed 1024 B for
- *  the picolibc float-formatting path in its logging; this thread deliberately
- *  logs integer milliunits (no %f), so its deepest path is zbus/settings + the
- *  float cost math (no libc float formatting) and 768 B is sufficient. RAM is
- *  tight on the most-featured variant — verify the runtime high-water mark via
- *  CONFIG_THREAD_ANALYZER before trimming further. */
-#define AUTOTUNE_STACK_SIZE 768
+/** Autotune thread stack (bytes). Sized from the measured runtime high-water:
+ *  a full run to DONE (settle -> observe -> score -> stage) high-watered at
+ *  720 B on real HW (RTT thread_analyzer, Poseidon_Aren, 2026-07-06) — the
+ *  deepest path is run_autotune -> evaluate_candidate -> autotune_observe with
+ *  the optimizer + cost-accumulator + ConsensusMsg_t frames nested, plus the
+ *  settings-stage path. 768 B (93 % used) was too tight; 1024 B gives ~70 %
+ *  headroom, matching the other control threads. Logging is integer milliunits
+ *  (no %f) so the picolibc float-format path is already off this stack. */
+#define AUTOTUNE_STACK_SIZE 1024
 /** One priority below the control threads (6) so autotune never preempts the
  *  PID / fire loop it is supervising. */
 #define AUTOTUNE_THREAD_PRIORITY 7
