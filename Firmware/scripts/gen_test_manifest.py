@@ -178,6 +178,24 @@ def build_manifest(cfg: dict, dt_header: str | None, variant: str = "unknown") -
             # True when a secondary O2 inject solenoid is wired: the fire thread
             # alternates inject fires between the primary and secondary valves.
             "dual_o2_inject": int_cfg(cfg, "CONFIG_SOL_O2_INJECT_2_CHANNEL") >= 0,
+            # Closed-loop current check: the driver samples the generic
+            # device-current API around each fire and classifies the draw against
+            # this delta window (microamps). Thresholds are variant-configurable
+            # (drivers/solenoid/Kconfig); the HIL test reads them from here so it
+            # asserts against the exact bounds the flashed binary uses.
+            "current_check": {
+                "enabled": is_set(cfg, "CONFIG_SOLENOID_CURRENT_CHECK"),
+                "delta_min_ua": int_cfg(cfg,
+                                        "CONFIG_SOLENOID_CURRENT_DELTA_MIN_UA", 0),
+                "delta_max_ua": int_cfg(cfg,
+                                        "CONFIG_SOLENOID_CURRENT_DELTA_MAX_UA", 0),
+                "fault_streak": int_cfg(cfg,
+                                        "CONFIG_SOLENOID_CURRENT_FAULT_STREAK", 0),
+                # DS2782 sense resistor (micro-ohms) the provider uses for
+                # counts->uA. The HIL feedback needs it to invert uA->counts so
+                # the value round-trips to the same uA the firmware compares.
+                "shunt_uohm": int_cfg(cfg, "CONFIG_POSEIDON_DS2782_SHUNT_UOHM", 0),
+            },
         },
         "control": {
             "ppo2_default": ppo2_default,

@@ -66,6 +66,7 @@ ZTEST(flash_log_types, test_telemetry_type_codes)
     zassert_equal(FL_TYPE_CONSENSUS,       0x10);
     zassert_equal(FL_TYPE_PID_SNAPSHOT,    0x11);
     zassert_equal(FL_TYPE_SOLENOID_FIRE,   0x12);
+    zassert_equal(FL_TYPE_SOLENOID_CURRENT, 0x13);
     zassert_equal(FL_TYPE_CELL_RAW_DIVEO2, 0x20);
     zassert_equal(FL_TYPE_CELL_RAW_O2S,    0x21);
     zassert_equal(FL_TYPE_CELL_RAW_ANALOG, 0x22);

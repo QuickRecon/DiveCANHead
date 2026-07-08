@@ -3,6 +3,8 @@
 #include "heartbeat.h"
 #include "errors.h"
 #include "i2c_bus_lock.h"
+#include "common.h"
+#include "device_current.h"
 
 #include <errno.h>
 #include <string.h>
@@ -45,12 +47,36 @@ LOG_MODULE_REGISTER(poseidon_accessories, LOG_LEVEL_INF);
 #define POSEIDON_RETRY_BASE_MS 2U
 #define POSEIDON_RETRY_JITTER_MS 3U
 
+/* Poseidon broadcast-frame fields (on the wire: [SLA+W] CMD LEN DATA.. CRC).
+ * CMD codes are #define so they stay usable in constant expressions; the rest
+ * are static const per the project style guide. Offsets are relative to the
+ * payload start (0 = CMD), which is 1 when an SLA+W prefix is echoed. */
+#define POSEIDON_CMD_PERCENT 0x26U
+#define POSEIDON_CMD_CURRENT 0x06U
+static const uint8_t POSEIDON_SUBCMD_PERCENT = 0x02U;
+static const uint8_t POSEIDON_LEN_CURRENT = 0x03U;
+static const uint8_t POSEIDON_PERCENT_MAX = 100U;
+static const size_t POSEIDON_ECHO_MIN_LEN = 5U;
+static const size_t POSEIDON_PERCENT_FRAME_LEN = 4U;  /* CMD,SUB,pct,CRC */
+static const size_t POSEIDON_CURRENT_FRAME_LEN = 5U;  /* CMD,LEN,lo,hi,CRC */
+static const size_t POSEIDON_OFF_LEN = 1U;            /* LEN byte */
+static const size_t POSEIDON_OFF_DATA0 = 2U;          /* first data byte */
+static const size_t POSEIDON_OFF_DATA1 = 3U;          /* second data byte */
+static const size_t POSEIDON_OFF_PERCENT_CRC = 3U;    /* CRC after 1 data byte */
+static const size_t POSEIDON_OFF_CURRENT_CRC = 4U;    /* CRC after 2 data bytes */
+
 static const struct device *const bus = DEVICE_DT_GET(DT_NODELABEL(i2c1));
 static uint8_t rx[9];
 static uint8_t rx_len;
 static uint8_t percent;
 static int64_t percent_at;
 static bool percent_seen;
+/* DS2782 instantaneous pack current (CMD 0x06), used by the closed-loop
+ * solenoid current check in ppo2_control.c. Signed DS2782 counts, negative =
+ * discharge. Same spinlock and staleness discipline as the percent gauge. */
+static int16_t current_counts;
+static int64_t current_at;
+static bool current_seen;
 static struct k_spinlock gauge_lock;
 
 /* Clean-shutdown handoff. poseidon_accessories_shutdown() (called from the power
@@ -99,19 +125,47 @@ static int target_stop(struct i2c_target_config *cfg)
     size_t payload = 0U;
     /* STM32 target mode normally strips SLA+W. Some multi-controller bus
      * presentations echo it as the first received byte; accept that exact
-     * address prefix without weakening the frame checks below. */
-    if ((rx_len == 5U) && (rx[0] == (uint8_t)(DISPLAY_ADDR << 1))) {
+     * address prefix without weakening the frame checks below. The battery's
+     * broadcast CMDs (0x26 percent, 0x06 current) are never 0x82 themselves,
+     * so a leading DISPLAY SLA+W unambiguously marks an echoed prefix. */
+    if ((rx_len >= POSEIDON_ECHO_MIN_LEN) &&
+        ((uint8_t)(DISPLAY_ADDR << 1) == rx[0])) {
         payload = 1U;
     }
-    if ((rx_len == (4U + payload)) && (rx[payload] == 0x26U) &&
-        (rx[payload + 1U] == 0x02U) && (rx[payload + 2U] <= 100U)) {
+    if ((rx_len == (POSEIDON_PERCENT_FRAME_LEN + payload)) &&
+        (POSEIDON_CMD_PERCENT == rx[payload]) &&
+        (POSEIDON_SUBCMD_PERCENT == rx[payload + POSEIDON_OFF_LEN]) &&
+        (rx[payload + POSEIDON_OFF_DATA0] <= POSEIDON_PERCENT_MAX)) {
         uint8_t wire[4] = {(uint8_t)(DISPLAY_ADDR << 1), rx[payload],
-                           rx[payload + 1U], rx[payload + 2U]};
-        if (poseidon_crc8(wire, sizeof(wire)) == rx[payload + 3U]) {
+                           rx[payload + POSEIDON_OFF_LEN],
+                           rx[payload + POSEIDON_OFF_DATA0]};
+        if (poseidon_crc8(wire, sizeof(wire)) ==
+            rx[payload + POSEIDON_OFF_PERCENT_CRC]) {
             k_spinlock_key_t key = k_spin_lock(&gauge_lock);
-            percent = rx[payload + 2U];
+            percent = rx[payload + POSEIDON_OFF_DATA0];
             percent_at = k_uptime_get();
             percent_seen = true;
+            k_spin_unlock(&gauge_lock, key);
+        }
+    }
+    /* CMD 0x06 = DS2782 instantaneous current, LEN 0x03, payload [lo, hi]
+     * LSB-first (byte-order trap: 0x06 is little-endian while 0x26/0x57 are
+     * big-endian). 16-bit signed, negative = discharge. */
+    if ((rx_len == (POSEIDON_CURRENT_FRAME_LEN + payload)) &&
+        (POSEIDON_CMD_CURRENT == rx[payload]) &&
+        (POSEIDON_LEN_CURRENT == rx[payload + POSEIDON_OFF_LEN])) {
+        uint8_t wire[5] = {(uint8_t)(DISPLAY_ADDR << 1), rx[payload],
+                           rx[payload + POSEIDON_OFF_LEN],
+                           rx[payload + POSEIDON_OFF_DATA0],
+                           rx[payload + POSEIDON_OFF_DATA1]};
+        if (poseidon_crc8(wire, sizeof(wire)) ==
+            rx[payload + POSEIDON_OFF_CURRENT_CRC]) {
+            int16_t counts = (int16_t)((uint16_t)rx[payload + POSEIDON_OFF_DATA0] |
+                ((uint16_t)rx[payload + POSEIDON_OFF_DATA1] << BYTE_WIDTH));
+            k_spinlock_key_t key = k_spin_lock(&gauge_lock);
+            current_counts = counts;
+            current_at = k_uptime_get();
+            current_seen = true;
             k_spin_unlock(&gauge_lock, key);
         }
     }
@@ -172,6 +226,44 @@ void poseidon_gauge_status(PoseidonGaugeStatus_t *s)
     s->fresh = seen && (age <= GAUGE_STALE_MS);
     s->age_seconds = seen
         ? (uint16_t)MIN(age / 1000, UINT16_MAX) : UINT16_MAX;
+}
+
+/* DS2782 CURRENT register LSB = 1.5625 µV across the sense resistor. With the
+ * shunt in µΩ this gives I(µA) = counts × 1.5625e6 / shunt_µΩ, i.e. the
+ * numerator constant below. See device_current.h for the unit/sign convention. */
+static const int64_t DS2782_UA_NUMERATOR = 1562500;
+
+/**
+ * @brief device_current provider — whole-pack current from the DS2782 gauge.
+ *
+ * Converts the latest CMD 0x06 count to µA and negates it so that "current the
+ * device is drawing" is positive (the DS2782 reports discharge as negative).
+ * Declines until a sample has been received.
+ *
+ * @param[out] out_ua Latest pack draw in µA (positive = draw).
+ * @param[out] age_ms Milliseconds since the sample was received.
+ * @return true if a sample exists, false otherwise.
+ */
+static bool poseidon_current_provider(int32_t *out_ua, uint32_t *age_ms)
+{
+    int16_t counts = 0;
+    int64_t at = 0;
+    k_spinlock_key_t key = k_spin_lock(&gauge_lock);
+    bool seen = current_seen;
+    if (seen) {
+        counts = current_counts;
+        at = current_at;
+    }
+    k_spin_unlock(&gauge_lock, key);
+
+    if (seen) {
+        int64_t ua = (-(int64_t)counts * DS2782_UA_NUMERATOR) /
+                 CONFIG_POSEIDON_DS2782_SHUNT_UOHM;
+        *out_ua = (int32_t)ua;
+        int64_t age = k_uptime_get() - at;
+        *age_ms = (uint32_t)MIN(age, (int64_t)UINT32_MAX);
+    }
+    return seen;
 }
 
 static int send_retry_locked(uint8_t addr, uint8_t cmd, uint8_t data)
@@ -293,6 +385,9 @@ static void accessories_thread(void *a, void *b, void *c)
             OP_ERROR_DETAIL(OP_ERR_I2C_BUS, (uint32_t)(-rc));
         }
     }
+    /* Expose the DS2782 pack current to the generic device-current API so the
+     * solenoid driver's closed-loop check can consume it. */
+    device_current_register(poseidon_current_provider);
     AlarmMask_t alarms = ALARM_PPO2_INVALID;
     heartbeat_register(HEARTBEAT_ACCESSORIES);
     /* Force a refresh on the first wake. */

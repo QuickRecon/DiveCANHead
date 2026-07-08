@@ -51,6 +51,7 @@ typedef enum {
     FL_TYPE_CONSENSUS           = 0x10, /* T */
     FL_TYPE_PID_SNAPSHOT        = 0x11, /* T */
     FL_TYPE_SOLENOID_FIRE       = 0x12, /* T */
+    FL_TYPE_SOLENOID_CURRENT    = 0x13, /* T */
     FL_TYPE_CELL_RAW_DIVEO2     = 0x20, /* T */
     FL_TYPE_CELL_RAW_O2S        = 0x21, /* T */
     FL_TYPE_CELL_RAW_ANALOG     = 0x22, /* T */
@@ -134,6 +135,20 @@ typedef struct {
     uint8_t  setpoint;
 } FlashLogPidSnapshot_t;
 
+/* ---- Solenoid closed-loop current check payload ----
+ *
+ * One record per judged fire (Poseidon variant): which solenoid role fired,
+ * the verdict, and the raw DS2782 counts behind it, so faults are attributable
+ * and the delta thresholds are tunable from real bench data.
+ */
+typedef struct {
+    uint8_t  role;              /* Solenoid channel that fired */
+    uint8_t  classification;    /* SolCurrentClass_t verdict */
+    int32_t  baseline_ua;       /* Pre-fire idle current (µA, +ve = draw) */
+    int32_t  fire_ua;           /* During-fire current (µA, +ve = draw) */
+    int32_t  delta_ua;          /* fire_ua - baseline_ua (µA) */
+} FlashLogSolenoidCurrent_t;
+
 /* ---- Lifecycle ---- */
 
 /**
@@ -203,6 +218,9 @@ void flash_log_enqueue_pid_snapshot(const FlashLogPidSnapshot_t *snap);
 
 /** @brief Enqueue a solenoid fire start/end event. */
 void flash_log_enqueue_solenoid_fire(const SolenoidFireEvent_t *evt);
+
+/** @brief Enqueue a closed-loop solenoid current-check result. */
+void flash_log_enqueue_solenoid_current(const FlashLogSolenoidCurrent_t *rec);
 
 /** @brief Enqueue a per-cell raw sample. */
 void flash_log_enqueue_cell_raw(const OxygenCellMsg_t *cell);

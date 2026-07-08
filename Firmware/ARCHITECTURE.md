@@ -110,6 +110,34 @@ Runtime settings are validated against compile-time tables — e.g., PID mode is
 
 3. **Role mapping** (`solenoid_roles.h`): `static inline` wrappers that map Kconfig role names (e.g., `sol_o2_inject_fire` / `sol_o2_inject_off`, plus `_2`, `o2_flush`, and `dil_flush` variants) to physical driver channels. Roles not present on a variant (`channel = -1`) compile to `-ENODEV` returns (fire) or no-ops (off).
 
+### Closed-loop solenoid current check
+
+Gated by `CONFIG_SOLENOID_CURRENT_CHECK` (default y). The driver snapshots the
+whole-device current just before energising a channel and again at the end of
+its on-window, classifies the delta against `CONFIG_SOLENOID_CURRENT_DELTA_{MIN,MAX}_UA`
+(`solenoid_current_classify()`, a pure host-testable function in
+`drivers/solenoid/solenoid_current.c`), debounces over
+`CONFIG_SOLENOID_CURRENT_FAULT_STREAK` consecutive fires, and raises
+`OP_ERR_SOLENOID_{OVER,UNDER}CURRENT`. The verdict is **not** pushed anywhere by
+the driver — it is exposed through a pollable API (`solenoid_current_poll()` for
+the latest per-channel reading, `solenoid_current_aggregate()` for the
+worst-case verdict). The PPO2 control fire thread polls it once per cycle,
+flash-logs fresh readings (`FL_TYPE_SOLENOID_CURRENT`), and republishes the
+aggregate onto `chan_solenoid_status` (forwarded to the handset by `RespPing`).
+This keeps the DT driver free of DiveCAN/zbus/flash-log dependencies.
+
+Current comes from the **generic device-current API** (`device_current.h`,
+`src/device_current.c`): a single registered provider reports whole-device
+current in **microamps, positive = draw**. The Poseidon variant registers a
+provider backed by the battery's DS2782 gauge (CMD 0x06 over I2C), converting
+counts to µA via `CONFIG_POSEIDON_DS2782_SHUNT_UOHM` (bench-calibrated) and
+negating the discharge-negative reading. Boards with an on-board solenoid/rail
+shunt register an ADC-backed provider instead; with no provider registered the
+driver sees no sample and every channel reports `SOL_CURRENT_NORM`. Confounding
+of the whole-device gauge by other loads the head drives (e.g. the Poseidon
+beeper) is deferred to bench characterisation — the working assumption is that
+CMD 0x06 updates frequently enough to distinguish a fire from other transients.
+
 ## Error Handling (Four Tiers)
 
 ### Tier 0: BUILD_ASSERT — Compile-time invariants

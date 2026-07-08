@@ -1,0 +1,4 @@
+tests:
+  solenoid.current:
+    platform_allow: native_sim
+    tags: solenoid current

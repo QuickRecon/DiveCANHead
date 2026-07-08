@@ -83,6 +83,15 @@ typedef struct {
     uint32_t off_us;
 } __packed fl_payload_solenoid_fire_t;
 
+/** @brief Payload for FL_TYPE_SOLENOID_CURRENT. */
+typedef struct {
+    uint8_t  role;              /* solenoid channel that fired */
+    uint8_t  classification;    /* SolCurrentClass_t verdict */
+    int32_t  baseline_ua;       /* pre-fire idle current (µA, +ve = draw) */
+    int32_t  fire_ua;           /* during-fire current (µA, +ve = draw) */
+    int32_t  delta_ua;          /* fire_ua - baseline_ua (µA) */
+} __packed fl_payload_solenoid_current_t;
+
 /** @brief Payload for FL_TYPE_CELL_RAW_DIVEO2. */
 typedef struct {
     uint8_t  cell_index;

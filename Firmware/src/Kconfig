@@ -130,6 +130,18 @@ config POSEIDON_ACCESSORIES
 	  Enable the Poseidon HUD/Battery protocol and receive fuel percentage
 	  broadcasts at the Display address.
 
+config POSEIDON_DS2782_SHUNT_UOHM
+	int "Poseidon battery DS2782 sense-resistor value (micro-ohms)"
+	depends on POSEIDON_ACCESSORIES
+	default 40000
+	range 1 100000000
+	help
+	  Sense resistor across which the battery's DS2782 measures current, used
+	  to convert the CMD 0x06 current counts (1.5625 uV/LSB across the shunt)
+	  into microamps for the generic device-current API.
+	  40 mOhm gives the Poseidon battery's measured 39.0625 uA/count
+	  (1.5625 uV / 0.040 Ohm).
+
 # ---- Solenoid Role Mapping ----
 
 menu "Solenoid Role Mapping"

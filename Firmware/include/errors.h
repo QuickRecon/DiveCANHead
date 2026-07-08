@@ -209,7 +209,18 @@ typedef enum {
     /** A required device was not ready when accessed at runtime. */
     OP_ERR_DEVICE_NOT_READY  = 35,
 
-    OP_ERR_MAX               = 36
+    /* ---- Solenoid closed-loop current check (Poseidon) ---- */
+
+    /** Measured solenoid fire-current exceeded the expected window
+     *  (possible short). Detail carries the measured delta in DS2782 counts. */
+    OP_ERR_SOLENOID_OVERCURRENT  = 36,
+
+    /** Measured solenoid fire-current fell below the expected window
+     *  (open coil / boost fault / stuck valve). Detail carries the measured
+     *  delta in DS2782 counts. */
+    OP_ERR_SOLENOID_UNDERCURRENT = 37,
+
+    OP_ERR_MAX               = 38
 } OpError_t;
 
 /** @brief Error event published on chan_error. */

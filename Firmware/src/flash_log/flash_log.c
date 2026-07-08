@@ -349,6 +349,22 @@ void flash_log_enqueue_solenoid_fire(const SolenoidFireEvent_t *evt)
     fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_SOLENOID_FIRE, &p, sizeof(p));
 }
 
+void flash_log_enqueue_solenoid_current(const FlashLogSolenoidCurrent_t *rec)
+{
+    if (rec == NULL) {
+        return;
+    }
+
+    fl_payload_solenoid_current_t p = {
+        .role = rec->role,
+        .classification = rec->classification,
+        .baseline_ua = rec->baseline_ua,
+        .fire_ua = rec->fire_ua,
+        .delta_ua = rec->delta_ua,
+    };
+    fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_SOLENOID_CURRENT, &p, sizeof(p));
+}
+
 void flash_log_enqueue_cell_raw(const OxygenCellMsg_t *cell)
 {
     if (cell == NULL) {

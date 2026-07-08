@@ -40,6 +40,7 @@
 #include "flash_log.h"
 #endif
 #include "divecan_types.h"
+#include "solenoid_current.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
@@ -333,6 +334,61 @@ static void publish_solenoid_status(DiveCANError_t status)
      * SOL_NORM after the controller has actually suppressed the solenoid — i.e.
      * stale state read as current. Fail loud, not stale. */
     zbus_pub_checked(&chan_solenoid_status, &status, K_MSEC(CHAN_OP_TIMEOUT_MS));
+}
+
+/* ---- Closed-loop solenoid current status (poll + report) ----
+ *
+ * The solenoid driver samples the generic device-current API around each fire
+ * and classifies the draw (see drivers/solenoid/solenoid_current.*). This shim
+ * polls the driver once per fire cycle, forwards a fresh per-channel reading to
+ * the flash log, and republishes the aggregate over/under-current verdict onto
+ * chan_solenoid_status (which RespPing forwards to the handset). On variants
+ * with no current provider the driver always reports NORM, so this is a no-op.
+ */
+
+#ifdef CONFIG_SOLENOID
+/** Map a solenoid current verdict to its DiveCAN solenoid-status code. */
+static DiveCANError_t sol_current_to_divecan(SolCurrentClass_t verdict)
+{
+    DiveCANError_t status = DIVECAN_ERR_SOL_NORM;
+    if (SOL_CURRENT_OVER == verdict) {
+        status = DIVECAN_ERR_SOL_OVERCURRENT;
+    } else if (SOL_CURRENT_UNDER == verdict) {
+        status = DIVECAN_ERR_SOL_UNDERCURRENT;
+    } else {
+        /* NORM — nominal draw (or no current provider on this variant). */
+    }
+    return status;
+}
+#endif /* CONFIG_SOLENOID */
+
+/** Poll the driver's current-check result after a fire cycle: log any fresh
+ *  per-channel reading and publish the aggregate status on change. */
+static void poll_solenoid_current(void)
+{
+#ifdef CONFIG_SOLENOID
+    SolenoidCurrentReading_t reading = {0};
+    if (solenoid_current_poll(SOL_DEVICE, &reading)) {
+#ifdef CONFIG_FLASH_LOG
+        const FlashLogSolenoidCurrent_t rec = {
+            .role = reading.channel,
+            .classification = (uint8_t)reading.status,
+            .baseline_ua = reading.baseline_ua,
+            .fire_ua = reading.fire_ua,
+            .delta_ua = reading.delta_ua,
+        };
+        flash_log_enqueue_solenoid_current(&rec);
+#endif
+    }
+
+    static DiveCANError_t last_published = DIVECAN_ERR_SOL_NORM;
+    DiveCANError_t status =
+        sol_current_to_divecan(solenoid_current_aggregate(SOL_DEVICE));
+    if (status != last_published) {
+        publish_solenoid_status(status);
+        last_published = status;
+    }
+#endif /* CONFIG_SOLENOID */
 }
 
 /* ---- PID thread ---- */
@@ -755,6 +811,10 @@ static void solenoid_fire_thread_fn(void *p1, void *p2, void *p3)
             /* Defensive — should be suspended above. */
             k_msleep((int32_t)SOLENOID_CYCLE_MS);
         }
+
+        /* Report the driver's closed-loop current verdict for the fire(s) this
+         * cycle: flash-log fresh readings and republish the aggregate status. */
+        poll_solenoid_current();
     }
 }
 
