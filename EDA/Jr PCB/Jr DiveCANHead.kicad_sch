@@ -9583,7 +9583,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C382300.pdf"
+		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C181087.pdf"
 			(at 215.9 21.59 0)
 			(hide yes)
 			(show_name no)
@@ -9605,7 +9605,7 @@
 				)
 			)
 		)
-		(property "MPN" "C382300"
+		(property "MPN" "C181087"
 			(at 215.9 21.59 90)
 			(hide yes)
 			(show_name no)
@@ -12579,7 +12579,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C382300.pdf"
+		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C181087.pdf"
 			(at 110.49 34.29 0)
 			(hide yes)
 			(show_name no)
@@ -12601,7 +12601,7 @@
 				)
 			)
 		)
-		(property "MPN" "C382300"
+		(property "MPN" "C181087"
 			(at 110.49 34.29 90)
 			(hide yes)
 			(show_name no)
@@ -13115,7 +13115,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C382300.pdf"
+		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C181087.pdf"
 			(at 157.48 27.94 0)
 			(hide yes)
 			(show_name no)
@@ -13137,7 +13137,7 @@
 				)
 			)
 		)
-		(property "MPN" "C382300"
+		(property "MPN" "C181087"
 			(at 157.48 27.94 90)
 			(hide yes)
 			(show_name no)
@@ -17088,7 +17088,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C382300.pdf"
+		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C181087.pdf"
 			(at 269.24 19.05 0)
 			(hide yes)
 			(show_name no)
@@ -17110,7 +17110,7 @@
 				)
 			)
 		)
-		(property "MPN" "C382300"
+		(property "MPN" "C181087"
 			(at 269.24 19.05 90)
 			(hide yes)
 			(show_name no)
@@ -17330,7 +17330,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "GD25Q128"
+		(property "Value" "W25Q512JVEIQ"
 			(at 163.83 142.2399 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17352,7 +17352,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2201241400_GigaDevice-Semicon-Beijing-GD25Q256EYIGR_C2927043.pdf"
+		(property "Datasheet" ""
 			(at 152.4 168.148 0)
 			(hide yes)
 			(show_name no)
@@ -17363,7 +17363,7 @@
 				)
 			)
 		)
-		(property "Description" "GD25Q128 128Mbit 3.0V Quad SPI Flash, WSON-8"
+		(property "Description" "W25Q512JVEIQ TR"
 			(at 152.4 170.18 0)
 			(hide yes)
 			(show_name no)
@@ -17374,7 +17374,7 @@
 				)
 			)
 		)
-		(property "MPN" "C2982923"
+		(property "MPN" " C7389628 "
 			(at 152.4 140.97 0)
 			(hide yes)
 			(show_name no)

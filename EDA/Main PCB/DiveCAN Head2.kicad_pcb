@@ -24475,7 +24475,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C382300.pdf"
+		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C181087.pdf"
 			(at 0 0 180)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -24514,7 +24514,7 @@
 				(justify mirror)
 			)
 		)
-		(property "MPN" "C382300"
+		(property "MPN" "C181087"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
@@ -34566,7 +34566,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C382300.pdf"
+		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C181087.pdf"
 			(at 0 0 180)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -34605,7 +34605,7 @@
 				(justify mirror)
 			)
 		)
-		(property "MPN" "C382300"
+		(property "MPN" "C181087"
 			(at 0 0 0)
 			(layer "B.Fab")
 			(hide yes)
