@@ -19,7 +19,7 @@ export { OTAManager, OTA_TIMEOUTS } from './firmware/OTAManager.js';
 export { parseMcubootImage, formatVersion } from './firmware/McubootImage.js';
 export {
   decodeMcubootStatus, decodePostStatus, decodeSemVer8, decodeVer4,
-  SWAP_TYPE_NAMES, POST_PASS_BITS
+  SWAP_TYPE_NAMES, POST_PASS_BITS, POST_STATE_NAMES
 } from './firmware/McubootStatus.js';
 export { LogDownloader, LOG_TIMEOUTS } from './logs/LogDownloader.js';
 export {

@@ -11,6 +11,7 @@ import {
   EXTRA_READ_DIDS,
   ALL_READ_DIDS,
   parseExtraDIDValue,
+  decodeDeviceCurrent,
   CELL_TYPE_ANALOG,
   CELL_TYPE_DIVEO2,
   CELL_TYPE_O2S,
@@ -237,6 +238,61 @@ describe('UDS constants', () => {
       expect(parseExtraDIDValue({ type: 'semver' }, new Uint8Array([1, 2, 3, 0, 5, 0, 0, 0])))
         .toBe('1.2.3+5');
       expect(parseExtraDIDValue({ type: 'semver' }, new Uint8Array(8).fill(0xFF))).toBe('n/a');
+    });
+
+    it('parseExtraDIDValue decodes POST status (0xF271) state + pass mask', () => {
+      // state 5 = CONFIRMED, mask 0x1F = all five checks passed
+      expect(parseExtraDIDValue({ type: 'post_status' }, new Uint8Array([5, 0x1F, 0, 0])))
+        .toBe('CONFIRMED · passed: cells, consensus, ppo2_tx, handset, solenoid');
+      // state 3 = WAITING_HANDSET, mask 0x07 = cells|consensus|ppo2_tx
+      expect(parseExtraDIDValue({ type: 'post_status' }, new Uint8Array([3, 0x07, 0, 0])))
+        .toBe('WAITING_HANDSET · passed: cells, consensus, ppo2_tx');
+      // no bits set
+      expect(parseExtraDIDValue({ type: 'post_status' }, new Uint8Array([0, 0x00, 0, 0])))
+        .toBe('WAITING_CELLS · passed: none');
+    });
+
+    it('parseExtraDIDValue decodes Poseidon gauge (0xF236) percent/flags/age', () => {
+      // percent 72, flags b0|b1 (ever_received + fresh), age 15s
+      expect(parseExtraDIDValue({ type: 'poseidon_gauge' }, new Uint8Array([72, 0x03, 15, 0])))
+        .toBe('72% · fresh · age 15s');
+      // ever_received but stale (b0|b2), age 300s
+      expect(parseExtraDIDValue({ type: 'poseidon_gauge' }, new Uint8Array([50, 0x05, 0x2C, 0x01])))
+        .toBe('50% · stale · age 300s');
+      // never received -> "no data"
+      expect(parseExtraDIDValue({ type: 'poseidon_gauge' }, new Uint8Array([0, 0x00, 0, 0])))
+        .toBe('no data');
+    });
+
+    it('decodeDeviceCurrent decodes device current (0xF237) uA/age/valid', () => {
+      // 125000 uA = 125 mA, age 3s, valid
+      const draw = new Uint8Array([0x48, 0xE8, 0x01, 0x00, 0x03, 0x00, 0x01, 0x00]);
+      expect(decodeDeviceCurrent(draw)).toEqual({
+        valid: true, currentUa: 125000, currentMa: 125, ageS: 3
+      });
+      // negative draw (e.g. charging) -50000 uA = -50 mA, age 300s, valid
+      const charge = new Uint8Array([0xB0, 0x3C, 0xFF, 0xFF, 0x2C, 0x01, 0x01, 0x00]);
+      expect(decodeDeviceCurrent(charge)).toEqual({
+        valid: true, currentUa: -50000, currentMa: -50, ageS: 300
+      });
+      // no provider / no sample -> valid=0
+      const invalid = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]);
+      expect(decodeDeviceCurrent(invalid).valid).toBe(false);
+      // short payload -> null
+      expect(decodeDeviceCurrent(new Uint8Array([0, 0, 0, 0]))).toBeNull();
+    });
+
+    it('parseExtraDIDValue decodes MCUBoot status (0xF270)', () => {
+      // swap=None(0), confirmed=1, runningSlot=0, factory flag=0,
+      // slot0 v1.2.3, slot1 absent(0xFF), factory absent(0xFF)
+      const d = new Uint8Array([
+        0, 1, 0, 0,
+        1, 2, 3, 0,
+        0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF
+      ]);
+      expect(parseExtraDIDValue({ type: 'mcuboot' }, d))
+        .toBe('None · confirmed · run slot0 · s0 1.2.3 · s1 none');
     });
   });
 

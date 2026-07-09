@@ -812,6 +812,14 @@ export class UDSClient extends EventEmitter {
         return data[0];
       case 'bool':
         return data[0] !== 0;
+      case 'device_current': {
+        // 0xF237 packed struct: decode with the shared helper, then surface the
+        // numeric draw in mA so it flows through the plot/time-series path. An
+        // unavailable reading (no provider / no sample yet) becomes NaN, which
+        // the store skips for plotting and the power page renders as "--".
+        const decoded = constants.decodeDeviceCurrent(data);
+        return decoded && decoded.valid ? decoded.currentMa : NaN;
+      }
       default:
         return data;
     }

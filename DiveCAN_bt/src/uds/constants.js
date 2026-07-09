@@ -13,6 +13,8 @@
  * (0x34) SIZE field, which is BIG-endian; the log-download 0x34 SIZE is LITTLE-endian.
  */
 
+import { decodePostStatus, decodeMcubootStatus } from '../firmware/McubootStatus.js';
+
 // ============================================================================
 // Service IDs (SID)
 // ============================================================================
@@ -290,6 +292,7 @@ export const STATE_DIDS = {
   CAN_VOLTAGE:       { did: 0xF233, size: 4, type: 'float32', label: 'CAN Voltage', unit: 'V' },
   THRESHOLD_VOLTAGE: { did: 0xF234, size: 4, type: 'float32', label: 'Threshold Voltage', unit: 'V' },
   POWER_SOURCES:     { did: 0xF235, size: 1, type: 'uint8',   label: 'Power Sources' },
+  DEVICE_CURRENT:    { did: 0xF237, size: 8, type: 'device_current', label: 'Device Current', unit: 'mA' },
 
   // Cell 0 DIDs (0xF400-0xF40C)
   CELL0_PPO2:          { did: 0xF400, size: 4, type: 'float32', label: 'Cell 0 PPO2' },
@@ -409,7 +412,8 @@ export function getControlStateDIDs() {
 // These are readable but not part of the live-polled STATE_DIDS set — many are
 // variable-length or struct payloads that can't be bundled into a multi-DID
 // read, so they are read one at a time and formatted by `parseExtraDIDValue`.
-// `type`: 'string' | 'uint8' | 'uint32' | 'hex32' | 'semver' | 'hex'.
+// `type`: 'string' | 'uint8' | 'uint32' | 'hex32' | 'semver' | 'hex'
+//         | 'post_status' | 'poseidon_gauge' | 'mcuboot' (decoded struct types).
 
 export const EXTRA_READ_DIDS = {
   FW_COMMIT:       { did: 0xF000, type: 'string', label: 'Firmware Commit',   category: 'Identity' },
@@ -418,7 +422,7 @@ export const EXTRA_READ_DIDS = {
   SERIAL_UID:      { did: 0xF003, type: 'hex',    label: 'Serial (MCU UID)',  category: 'Identity' },
 
   ALARM_STATE:     { did: 0xF204, type: 'hex32',  label: 'Alarm State',       category: 'Diagnostics' },
-  POSEIDON_GAUGE:  { did: 0xF236, type: 'hex',    label: 'Poseidon Gauge',    category: 'Diagnostics' },
+  POSEIDON_GAUGE:  { did: 0xF236, type: 'poseidon_gauge', label: 'Poseidon Gauge', category: 'Diagnostics' },
   CRASH_VALID:     { did: 0xF250, type: 'uint8',  label: 'Crash Valid',       category: 'Diagnostics' },
   CRASH_REASON:    { did: 0xF251, type: 'uint32', label: 'Crash Reason',      category: 'Diagnostics' },
   CRASH_PC:        { did: 0xF252, type: 'hex32',  label: 'Crash PC',          category: 'Diagnostics' },
@@ -426,8 +430,8 @@ export const EXTRA_READ_DIDS = {
   CRASH_CFSR:      { did: 0xF254, type: 'hex32',  label: 'Crash CFSR',        category: 'Diagnostics' },
   ERROR_HISTOGRAM: { did: 0xF260, type: 'hex',    label: 'Error Histogram',   category: 'Diagnostics' },
 
-  MCUBOOT_STATUS:  { did: 0xF270, type: 'hex',    label: 'MCUBoot Status',    category: 'Firmware' },
-  POST_STATUS:     { did: 0xF271, type: 'hex',    label: 'POST Status',       category: 'Firmware' },
+  MCUBOOT_STATUS:  { did: 0xF270, type: 'mcuboot', label: 'MCUBoot Status',   category: 'Firmware' },
+  POST_STATUS:     { did: 0xF271, type: 'post_status', label: 'POST Status',  category: 'Firmware' },
   SLOT0_VERSION:   { did: 0xF272, type: 'semver', label: 'Slot0 Version',     category: 'Firmware' },
   SLOT1_VERSION:   { did: 0xF273, type: 'semver', label: 'Slot1 Version',     category: 'Firmware' },
   FACTORY_VERSION: { did: 0xF274, type: 'semver', label: 'Factory Version',   category: 'Firmware' },
@@ -448,6 +452,28 @@ export const ALL_READ_DIDS = { ...STATE_DIDS, ...EXTRA_READ_DIDS };
  */
 export function getReadableDIDInfo(key) {
   return ALL_READ_DIDS[key];
+}
+
+/**
+ * Decode the whole-device current DID (0xF237) packed struct.
+ *
+ * Layout (little-endian, mirrors the Poseidon gauge 0xF236 style):
+ *   [0..3] int32  current in µA (+ve = draw)
+ *   [4..5] uint16 sample age in seconds
+ *   [6]    uint8  valid (1 = provider returned a sample)
+ *   [7]    uint8  reserved
+ *
+ * @param {Uint8Array} data - Raw 8-byte payload.
+ * @returns {{valid: boolean, currentUa: number, currentMa: number, ageS: number}|null}
+ *          Decoded struct, or null if the payload is too short.
+ */
+export function decodeDeviceCurrent(data) {
+  if (!data || data.length < 8) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const currentUa = view.getInt32(0, true);
+  const ageS = view.getUint16(4, true);
+  const valid = data[6] !== 0;
+  return { valid, currentUa, currentMa: currentUa / 1000, ageS };
 }
 
 /**
@@ -478,6 +504,33 @@ export function parseExtraDIDValue(info, data) {
       const rev = view.getUint16(2, true);
       const build = view.getUint32(4, true);
       return `${data[0]}.${data[1]}.${rev}` + (build ? `+${build}` : '');
+    }
+    case 'post_status': {
+      // 0xF271: [0] PostState_t, [1] pass mask, [2..3] reserved.
+      const post = decodePostStatus(data);
+      if (!post) return 'n/a';
+      const passed = post.passed.length ? post.passed.join(', ') : 'none';
+      return `${post.stateName} · passed: ${passed}`;
+    }
+    case 'poseidon_gauge': {
+      // 0xF236: [0] percent, [1] flags (b0 ever_received, b1 fresh, b2 stale),
+      // [2..3] age_seconds (LE). Poseidon builds only.
+      if (data.length < 4) return 'n/a';
+      const flags = data[1];
+      const everReceived = (flags & 0x01) !== 0;
+      if (!everReceived) return 'no data';
+      const fresh = (flags & 0x02) !== 0;
+      const age = view.getUint16(2, true);
+      return `${data[0]}% · ${fresh ? 'fresh' : 'stale'} · age ${age}s`;
+    }
+    case 'mcuboot': {
+      // 0xF270: 16-byte MCUBoot/OTA status struct.
+      const m = decodeMcubootStatus(data);
+      if (!m) return 'n/a';
+      const fmtVer = (v) => (v ? `${v.major}.${v.minor}.${v.revision}` : 'none');
+      const confirmed = m.confirmed ? 'confirmed' : 'UNCONFIRMED';
+      return `${m.swapTypeName} · ${confirmed} · run slot${m.runningSlot}` +
+        ` · s0 ${fmtVer(m.slot0Version)} · s1 ${fmtVer(m.slot1Version)}`;
     }
     case 'hex':
     default:

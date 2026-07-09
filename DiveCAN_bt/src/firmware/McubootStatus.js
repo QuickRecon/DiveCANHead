@@ -14,6 +14,25 @@ export const SWAP_TYPE_NAMES = ['None', 'Test', 'Permanent', 'Revert', 'Fail'];
 export const POST_PASS_BITS = ['cells', 'consensus', 'ppo2_tx', 'handset', 'solenoid'];
 
 /**
+ * POST state enum names (0xF271 byte 0), in PostState_t order
+ * (firmware `src/firmware_confirm.h`). Index == raw enum value.
+ */
+export const POST_STATE_NAMES = [
+  'WAITING_CELLS',
+  'WAITING_CONSENSUS',
+  'WAITING_PPO2_TX',
+  'WAITING_HANDSET',
+  'WAITING_SOLENOID',
+  'CONFIRMED',
+  'FAILED_TIMEOUT',
+  'FAILED_CELL',
+  'FAILED_CONSENSUS',
+  'FAILED_NO_PPO2_TX',
+  'FAILED_NO_HANDSET',
+  'FAILED_SOLENOID'
+];
+
+/**
  * Decode a 4-byte packed version (major, minor, revision u16 LE) as embedded in
  * the MCUBoot status DID. All-0xFF means "no valid image in this bank".
  * @param {Uint8Array|Array} d - 4 bytes
@@ -68,11 +87,16 @@ export function decodeMcubootStatus(d) {
 /**
  * Decode the 4-byte POST status DID (0xF271).
  * @param {Uint8Array|Array} d - 4 bytes
- * @returns {{state:number, passMask:number, passed:string[]}|null}
+ * @returns {{state:number, stateName:string, passMask:number, passed:string[]}|null}
  */
 export function decodePostStatus(d) {
   if (!d || d.length < 2) return null;
   const passMask = d[1];
   const passed = POST_PASS_BITS.filter((_, i) => (passMask & (1 << i)) !== 0);
-  return { state: d[0], passMask, passed };
+  return {
+    state: d[0],
+    stateName: POST_STATE_NAMES[d[0]] || `Unknown(${d[0]})`,
+    passMask,
+    passed
+  };
 }

@@ -1006,6 +1006,15 @@
         </div>
       </div>
       <div class="summary-item">
+        <div class="summary-label">Current</div>
+        <div class="summary-value" id="device-current">--</div>
+        <div class="summary-unit">mA</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('device_current', 'Current')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('device_current', 'Current')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
         <div class="summary-label">Threshold</div>
         <div class="summary-value" id="threshold-voltage">--</div>
         <div class="summary-unit">V</div>
@@ -1619,6 +1628,17 @@
         }
       });
 
+      // Whole-device current: DID is decoded to mA (see UDSClient.parseDIDValue);
+      // an unavailable/no-provider reading arrives as NaN. Display in mA for
+      // bench-testing legibility.
+      const currentEl = document.getElementById('device-current');
+      if (currentEl) {
+        const mA = dataStore.getDIDValue('DEVICE_CURRENT');
+        const haveCurrent = mA !== undefined && mA !== null && !Number.isNaN(mA);
+        currentEl.textContent = haveCurrent ? mA.toFixed(0) : '--';
+        updateStaleClass(currentEl, 'DEVICE_CURRENT');
+      }
+
       const sources = dataStore.getDIDValue('POWER_SOURCES');
       const vccEl = document.getElementById('vcc-source');
       const vbusEl = document.getElementById('vbus-source');
@@ -1927,6 +1947,10 @@
           break;
         case 'bool':
           valueEl.textContent = value ? 'Yes' : 'No';
+          break;
+        case 'device_current':
+          // Decoded to mA; NaN = no provider / no sample yet.
+          valueEl.textContent = Number.isNaN(value) ? '--' : `${value.toFixed(0)} mA`;
           break;
         default:
           valueEl.textContent = value.toString();
