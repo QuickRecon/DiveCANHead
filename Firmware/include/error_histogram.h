@@ -60,4 +60,29 @@ size_t error_histogram_snapshot(uint16_t *out, size_t out_count);
  */
 int error_histogram_clear(void);
 
+/**
+ * @brief Suspend the periodic NVS save.
+ *
+ * While paused, the 5-minute save-work handler no-ops instead of writing
+ * the histogram to NVS; the dirty flag is preserved so a pending save is
+ * flushed on the next tick after resume. Used to keep the deep
+ * settings/NVS/spi_nor write chain (which runs on the system workqueue)
+ * off the shared SPI-NOR while an OTA firmware update streams to it —
+ * that contention otherwise overflows the 1024 B system-workqueue stack.
+ * Idempotent and safe to call before error_histogram_init().
+ *
+ * @return None.
+ */
+void error_histogram_pause(void);
+
+/**
+ * @brief Resume the periodic NVS save after error_histogram_pause().
+ *
+ * If the histogram was dirtied while paused, the next periodic tick flushes
+ * it. Idempotent.
+ *
+ * @return None.
+ */
+void error_histogram_resume(void);
+
 #endif /* ERROR_HISTOGRAM_H */

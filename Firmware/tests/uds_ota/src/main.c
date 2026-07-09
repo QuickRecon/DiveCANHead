@@ -114,6 +114,14 @@ ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
 }
 
 int error_histogram_clear(void) { return 0; }
+void error_histogram_pause(void) { }
+void error_histogram_resume(void) { }
+
+/* uds_ota.c / uds.c reference these but the test doesn't exercise the log-push
+ * or autotune subsystems; empty stubs keep the linker happy (int used for the
+ * autotune reason enum — no prototype is visible in this TU). */
+void UDS_LogPush_SetSuspended(bool suspended) { (void)suspended; }
+void ppo2_autotune_request_abort(int reason) { (void)reason; }
 
 bool calibration_is_running(void) { return false; }
 

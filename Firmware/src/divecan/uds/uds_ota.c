@@ -41,6 +41,7 @@
 #include "isotp.h"
 #include "uds_log_push.h"
 #include "errors.h"
+#include "error_histogram.h"
 #include "common.h"
 #include "heartbeat.h"
 #include "maintenance_arena.h"
@@ -317,6 +318,11 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
                  * the streamed writes land on un-erased NOR and the upload
                  * stalls/corrupts (the first such write stalled >30 s on HW). */
                 heartbeat_set_long_op(true);
+                /* Also hold off the periodic error-histogram NVS save — its
+                 * settings/NVS/spi_nor write chain runs on the system
+                 * workqueue and would both contend on the SPI-NOR and
+                 * overflow the 1024 B workqueue stack. */
+                error_histogram_pause();
 #ifdef CONFIG_FLASH_LOG
                 /* Hold the flash-log writer off the shared SPI NOR for the
                  * erase (it would otherwise block behind it / contend). */
@@ -326,6 +332,7 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
 #ifdef CONFIG_FLASH_LOG
                 flash_log_resume();
 #endif
+                error_histogram_resume();
                 heartbeat_set_long_op(false);
                 flash_area_close(fa);
 
@@ -505,6 +512,11 @@ static void ota_handle_transfer_exit(OtaSmCtx_t *sm)
 static void ota_downloading_entry(void *obj)
 {
     ARG_UNUSED(obj);
+    /* Suspend the periodic error-histogram NVS save for the whole block
+     * transfer: its settings/NVS/spi_nor chain runs on the system
+     * workqueue and, landing mid-upload, overflows the 1024 B workqueue
+     * stack while contending with the OTA writes on the same SPI-NOR. */
+    error_histogram_pause();
 #ifdef CONFIG_FLASH_LOG
     flash_log_pause();
 #endif
@@ -519,6 +531,7 @@ static void ota_downloading_exit(void *obj)
 #ifdef CONFIG_FLASH_LOG
     flash_log_resume();
 #endif
+    error_histogram_resume();
     UDS_LogPush_SetSuspended(false);
 }
 
@@ -595,6 +608,7 @@ static void ota_handle_routine_control(OtaSmCtx_t *sm)
                 UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
                              UDS_NRC_CONDITIONS_NOT_CORRECT);
             } else {
+                error_histogram_pause();
 #ifdef CONFIG_FLASH_LOG
                 /* boot_request_upgrade writes MCUBoot trailer sectors;
                  * holding the log writer off prevents SPI contention
@@ -607,6 +621,7 @@ static void ota_handle_routine_control(OtaSmCtx_t *sm)
 #ifdef CONFIG_FLASH_LOG
                 flash_log_resume();
 #endif
+                error_histogram_resume();
                 if (0 != rc) {
                     OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
                     UDS_SendNegativeResponse(

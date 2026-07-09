@@ -49,6 +49,10 @@ static const atomic_val_t HIST_MAX_COUNT = (atomic_val_t)UINT16_MAX;
 
 static atomic_t histogram[ERROR_HISTOGRAM_COUNT];
 static atomic_t dirty;
+/* When non-zero the periodic save is suspended (set during an OTA update
+ * so the deep NVS/spi_nor write chain stays off the system workqueue while
+ * the OTA streams to the shared SPI-NOR). See error_histogram_pause(). */
+static atomic_t save_paused;
 
 /**
  * @brief Copy the live atomic counters into a saturated uint16 buffer.
@@ -157,9 +161,25 @@ static void save_to_nvs(void)
 static void save_work_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
-    if (0 != atomic_get(&dirty)) {
+    /* Skip the NVS write while paused (during an OTA): the settings ->
+     * NVS -> flash_area_write -> spi_nor chain runs here on the system
+     * workqueue and, contending with the OTA stream on the same SPI-NOR,
+     * overflows the 1024 B workqueue stack (K_ERR_STACK_CHK_FAIL). The
+     * dirty flag is left set so the flush happens on the next tick after
+     * error_histogram_resume(). */
+    if ((0 == atomic_get(&save_paused)) && (0 != atomic_get(&dirty))) {
         save_to_nvs();
     }
+}
+
+void error_histogram_pause(void)
+{
+    atomic_set(&save_paused, 1);
+}
+
+void error_histogram_resume(void)
+{
+    atomic_set(&save_paused, 0);
 }
 
 static K_WORK_DELAYABLE_DEFINE(save_work, save_work_handler);
