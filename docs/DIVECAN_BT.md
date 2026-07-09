@@ -154,6 +154,15 @@ const state = await client.readDIDsParsed([0xF200, 0xF202]);
 // Returns: { consensusPPO2: 0.95, setpoint: 1.0 }
 ```
 
+**Request serialization.** The client owns a single ISO-TP context, so every
+request is serialized through an internal FIFO queue. Concurrent callers — e.g.
+the background DID poll (`DataStore`) and a user action (settings read, manual
+solenoid fire) — do **not** collide or throw `Request already pending`; they take
+turns. When the client is idle a request is dispatched synchronously (timeout
+timer armed in the same tick); only when one is already in flight does the next
+wait. This prevents overlapping sends from clobbering each other's frames on the
+wire, which previously manifested as intermittent bus errors.
+
 ### Generic transfer services
 
 The UDS client implements the services needed for OTA and log download. Prefer the
@@ -387,7 +396,11 @@ const DIDS_PER_REQUEST = 4;
 
 ### DataStore
 
-Manages real-time state data with change detection.
+Manages real-time state data with change detection. Polling is driven by a
+`setInterval`, but each cycle issues several sequential ISO-TP round-trips and
+can outrun the interval, so an in-flight guard (`_pollInFlight`) skips a tick
+while the previous cycle is still running — cycles never stack up and flood the
+serialized request queue.
 
 ### CellUIAdapter
 
@@ -395,7 +408,12 @@ Adapts cell data for UI display with type-specific formatting.
 
 ### PlotManager
 
-Manages time-series plotting for diagnostics.
+Manages time-series plotting for diagnostics. In `examples/diagnostics.html` the
+real-time chart lives in a **persistent dock** (`#plotDock`) rendered *outside*
+the tab container, so it stays visible on every tab (e.g. while manipulating
+controls on the Control tab). It is a single `Chart` instance fed by one
+`DataStore` subscription; the dock header's Collapse/Expand toggle hides only the
+body (Chart.js v4 re-fits via its ResizeObserver when shown again).
 
 The `examples/diagnostics.html` app also has **Settings**, **Firmware Update**,
 **Logs**, and **Autotune** tabs wired to `stack.uds` (settings + autotune),

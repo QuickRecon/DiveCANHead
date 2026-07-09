@@ -257,21 +257,56 @@ describe('UDSClient', () => {
   });
 
   describe('concurrent request handling', () => {
-    it('rejects second request when one is pending', async () => {
-      vi.useFakeTimers();
+    it('serializes overlapping requests instead of rejecting', async () => {
+      // Two callers issue requests at the same time (e.g. background DID poll
+      // and a user-driven read). Both must succeed, in order, rather than the
+      // second throwing "Request already pending".
+      transport.queueResponse(buildRDBIResponse(0xF200, [0x11]));
+      transport.queueResponse(buildRDBIResponse(0xF201, [0x22]));
 
-      // Start first request (no response queued, will timeout)
+      const [first, second] = await Promise.all([
+        client.readDataByIdentifier(0xF200),
+        client.readDataByIdentifier(0xF201)
+      ]);
+
+      expect(Array.from(first)).toEqual([0x11]);
+      expect(Array.from(second)).toEqual([0x22]);
+
+      // Requests must have gone out in submission order, one at a time.
+      const sent = transport.getAllSent();
+      expect(sent.length).toBe(2);
+      expect(Array.from(sent[0])).toEqual([0x22, 0xF2, 0x00]);
+      expect(Array.from(sent[1])).toEqual([0x22, 0xF2, 0x01]);
+    });
+
+    it('does not send a queued request until the prior one resolves', async () => {
+      transport.queueResponse(buildRDBIResponse(0xF200, [0x11]));
+      transport.queueResponse(buildRDBIResponse(0xF201, [0x22]));
+
       const first = client.readDataByIdentifier(0xF200);
+      const second = client.readDataByIdentifier(0xF201);
 
-      // Try second request immediately
-      await expect(client.readDataByIdentifier(0xF201))
-        .rejects.toThrow('pending');
+      // Let the first request's send + response microtasks settle.
+      await first;
 
-      // Cleanup
-      vi.advanceTimersByTime(10000);
-      await first.catch(() => {});
+      // The second request must not have been transmitted concurrently with
+      // the first — serialization holds it back until the first completes.
+      const sentAfterFirst = transport.getAllSent().map(b => Array.from(b));
+      expect(sentAfterFirst[0]).toEqual([0x22, 0xF2, 0x00]);
 
-      vi.useRealTimers();
+      await second;
+    });
+
+    it('advances the queue even when a request rejects', async () => {
+      // A negative response on the first request must not wedge the queue.
+      transport.queueResponse(buildNegativeResponse(0x22, NRC.REQUEST_OUT_OF_RANGE));
+      transport.queueResponse(buildRDBIResponse(0xF201, [0x22]));
+
+      const firstResult = await client.readDataByIdentifier(0xF200).catch(e => e);
+      expect(firstResult).toBeInstanceOf(Error);
+
+      const second = await client.readDataByIdentifier(0xF201);
+      expect(Array.from(second)).toEqual([0x22]);
     });
   });
 

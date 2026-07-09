@@ -37,6 +37,7 @@ export class DataStore {
     this.pollTimer = null;
     this.cellTypes = [0, 0, 0];          // Cached cell types
     this.isPolling = false;
+    this._pollInFlight = false;          // Guard against overlapping poll cycles
   }
 
   /**
@@ -277,10 +278,19 @@ export class DataStore {
     this.pollTimer = setInterval(async () => {
       if (!this.isPolling) return;
 
+      // A poll cycle issues several sequential ISO-TP round-trips and can take
+      // longer than the interval. Skip this tick if the previous cycle is still
+      // running so cycles don't stack up and flood the (now serialized) request
+      // queue — that starves user-driven reads/writes and drifts timestamps.
+      if (this._pollInFlight) return;
+      this._pollInFlight = true;
+
       try {
         await this._pollSubscribedDIDs();
       } catch (error) {
         console.error('Poll error:', error);
+      } finally {
+        this._pollInFlight = false;
       }
     }, interval);
   }

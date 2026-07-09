@@ -636,6 +636,36 @@
       display: block;
     }
 
+    /* Persistent real-time plot dock - stays visible across all tabs so the
+       chart can be watched while manipulating controls on other tabs. */
+    .plot-dock {
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
+      margin-top: 15px;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 15px 20px 20px;
+      box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45);
+    }
+
+    .plot-dock-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .plot-dock-header h2 {
+      margin: 0;
+    }
+
+    /* Collapsed state hides only the body; the sticky header stays reachable. */
+    .plot-dock.collapsed .plot-dock-body {
+      display: none;
+    }
+
     .tab-container {
       background: #2a2a2a;
       border-radius: 0 8px 8px 8px;
@@ -990,36 +1020,6 @@
         </div>
         </div>
       </div>
-
-      <!-- Real-Time Plot -->
-      <div class="tab-section">
-        <h2>Real-Time Plot</h2>
-    <div class="chart-controls axis-controls">
-      <div class="axis-group axis-left">
-        <span class="axis-label">Left:</span>
-        <span id="leftAxisLabel">--</span>
-        <button class="small" onclick="clearLeftAxis()">Clear</button>
-      </div>
-      <div class="axis-group axis-right">
-        <span class="axis-label">Right:</span>
-        <span id="rightAxisLabel">--</span>
-        <button class="small" onclick="clearRightAxis()">Clear</button>
-      </div>
-    </div>
-    <div class="chart-controls">
-      <label for="windowSelect">Window:</label>
-      <select id="windowSelect" onchange="setPlotWindow(this.value)">
-        <option value="30">30 seconds</option>
-        <option value="60" selected>60 seconds</option>
-        <option value="120">2 minutes</option>
-        <option value="300">5 minutes</option>
-      </select>
-        <button class="small" onclick="clearPlot()">Clear All</button>
-        </div>
-        <div class="chart-container">
-          <canvas id="realtimeChart"></canvas>
-        </div>
-      </div>
     <!-- End Main Tab -->
     </div>
 
@@ -1344,6 +1344,41 @@
     <!-- End DID Subscriptions Tab -->
     </div>
   <!-- End Tab Container -->
+  </div>
+
+  <!-- Real-Time Plot (persistent dock - visible on every tab) -->
+  <div class="plot-dock" id="plotDock">
+    <div class="plot-dock-header">
+      <h2>Real-Time Plot</h2>
+      <button class="small" id="plotDockToggle" onclick="togglePlotDock()">Collapse</button>
+    </div>
+    <div class="plot-dock-body" id="plotDockBody">
+      <div class="chart-controls axis-controls">
+        <div class="axis-group axis-left">
+          <span class="axis-label">Left:</span>
+          <span id="leftAxisLabel">--</span>
+          <button class="small" onclick="clearLeftAxis()">Clear</button>
+        </div>
+        <div class="axis-group axis-right">
+          <span class="axis-label">Right:</span>
+          <span id="rightAxisLabel">--</span>
+          <button class="small" onclick="clearRightAxis()">Clear</button>
+        </div>
+      </div>
+      <div class="chart-controls">
+        <label for="windowSelect">Window:</label>
+        <select id="windowSelect" onchange="setPlotWindow(this.value)">
+          <option value="30">30 seconds</option>
+          <option value="60" selected>60 seconds</option>
+          <option value="120">2 minutes</option>
+          <option value="300">5 minutes</option>
+        </select>
+        <button class="small" onclick="clearPlot()">Clear All</button>
+      </div>
+      <div class="chart-container">
+        <canvas id="realtimeChart"></canvas>
+      </div>
+    </div>
   </div>
 
   <!-- Log Messages -->
@@ -2798,6 +2833,15 @@
       plotManager.clearSeries();
       elements.leftAxisLabel.textContent = '--';
       elements.rightAxisLabel.textContent = '--';
+    };
+
+    // Collapse/expand the persistent plot dock. Chart.js v4 uses a
+    // ResizeObserver, so it re-fits automatically when the body is shown again.
+    globalThis.togglePlotDock = () => {
+      const dock = document.getElementById('plotDock');
+      const collapsed = dock.classList.toggle('collapsed');
+      document.getElementById('plotDockToggle').textContent =
+        collapsed ? 'Expand' : 'Collapse';
     };
 
     // Scan and connect

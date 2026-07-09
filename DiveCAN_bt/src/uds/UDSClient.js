@@ -62,6 +62,18 @@ export class UDSClient extends EventEmitter {
     this.pendingReject = null;
     this.pendingTimer = null;
 
+    // Serialization queue. Concurrent callers (background DID polling +
+    // user-driven settings reads / manual solenoid fire) take turns on the
+    // single ISO-TP context instead of colliding. Overlapping sends clobber
+    // each other's frames on the wire and corrupt the pending-request slot,
+    // which surfaced as spurious "Request already pending" throws and
+    // intermittent bus errors. When idle, a request is dispatched synchronously
+    // (the timeout timer is armed in the same tick) so timing semantics match a
+    // direct send; only when a request is already in flight does the next one
+    // wait its turn.
+    this._requestQueue = [];
+    this._requestBusy = false;
+
     // Inter-request delay (ms) - allows Petrel ISO-TP layer to settle
     this.requestDelay = options.requestDelay ?? 0;
     this.lastRequestTime = 0;
@@ -86,8 +98,54 @@ export class UDSClient extends EventEmitter {
    * @returns {Promise<Uint8Array>} Response data
    * @private
    */
-  async _sendRequest(request, timeout = 5000) {
+  _sendRequest(request, timeout = 5000) {
+    // Enqueue and pump. Callers are serialized rather than rejected: a
+    // background poll and a user action can be issued at the same time and
+    // simply take turns on the single ISO-TP context.
+    return new Promise((resolve, reject) => {
+      this._requestQueue.push({ request, timeout, resolve, reject });
+      this._pumpRequestQueue();
+    });
+  }
+
+  /**
+   * Dispatch the next queued request if none is in flight. Runs the dispatch
+   * synchronously when idle so the timeout timer is armed in the same tick as
+   * the caller; the queue is advanced (regardless of resolve/reject) once the
+   * in-flight exchange settles, so one failed request never wedges the queue.
+   * @private
+   */
+  _pumpRequestQueue() {
+    if (this._requestBusy) {
+      return;
+    }
+    const job = this._requestQueue.shift();
+    if (!job) {
+      return;
+    }
+    this._requestBusy = true;
+    this._dispatchRequest(job.request, job.timeout).then(job.resolve, job.reject).then(
+      () => {
+        this._requestBusy = false;
+        this._pumpRequestQueue();
+      },
+      () => {
+        this._requestBusy = false;
+        this._pumpRequestQueue();
+      }
+    );
+  }
+
+  /**
+   * Perform a single UDS request/response exchange. Assumes the caller has
+   * serialized access via the request queue so only one exchange is ever in
+   * flight.
+   * @private
+   */
+  async _dispatchRequest(request, timeout) {
     if (this.pendingRequest) {
+      // Should be unreachable now that _sendRequest serializes access; treated
+      // as an assertion against a future serialization regression.
       throw new UDSError('Request already pending', 0);
     }
 
