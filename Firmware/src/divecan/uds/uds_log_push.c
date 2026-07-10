@@ -22,6 +22,15 @@ LOG_MODULE_REGISTER(uds_log_push, LOG_LEVEL_INF);
 /* Queue configuration */
 #define UDS_LOG_QUEUE_LENGTH 10U
 
+/* Minimum idle time (ms) after the last addressed UDS-dialog activity before a
+ * broadcast log push may be sent. A push that lands while the handset is still
+ * closing an addressed reassembly context merges into it — the bridge reports
+ * "RX Wrong Seq in CF" and then backs up with "TO SLIP TX". This generalises
+ * SetSuspended (which only brackets OTA / log-download) to the ordinary
+ * DID-dialog burst (connect-time init / fetch). Stamped by
+ * UDS_LogPush_NoteDialogActivity() from the RX thread. */
+#define LOG_PUSH_QUIESCENT_MS 75U
+
 /* WDBI header size (SID + DID high + DID low) */
 #define WDBI_HEADER_SIZE 3U
 
@@ -49,6 +58,7 @@ typedef struct {
     bool txPending;
     bool inSendLogMessage;  /* Reentrancy guard */
     bool suspended;         /* Set while a large UDS transfer owns the bridge */
+    uint32_t lastDialogActivityMs; /* k_uptime of last addressed-dialog activity */
     uint8_t txBuffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE];
 } LogPushState_t;
 
@@ -267,15 +277,26 @@ void UDS_LogPush_SetSuspended(bool suspended)
     getLogPushState()->suspended = suspended;
 }
 
+void UDS_LogPush_NoteDialogActivity(uint32_t now)
+{
+    getLogPushState()->lastDialogActivityMs = now;
+}
+
 void UDS_LogPush_Poll(void)
 {
     LogPushState_t *state = getLogPushState();
+    uint32_t now = k_uptime_get_32();
 
     if ((NULL == state->isotpContext) || state->suspended) {
         /* Not initialised, or suspended while a large UDS transfer (OTA download
          * or log-download stream) owns the bridge — sending a multi-frame push
          * mid-transfer trips the handset's ISO-TP RX. Items stay queued and flush
          * once the transfer resumes. */
+    } else if ((now - state->lastDialogActivityMs) < LOG_PUSH_QUIESCENT_MS) {
+        /* An addressed UDS dialog is active or has only just drained. Hold the
+         * push off until the handset has closed the addressed reassembly
+         * context; a broadcast landing too soon merges into it. Items stay
+         * queued and flush on a later poll once the bridge is quiet. */
     } else {
         bool canTransmit = checkTxPending(state);
 

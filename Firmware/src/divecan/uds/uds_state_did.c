@@ -19,6 +19,7 @@
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_types.h"
 #include "power_management.h"
+#include "device_current.h"
 #include "ppo2_control.h"
 #include "ppo2_autotune.h"
 #include "error_histogram.h"
@@ -422,6 +423,20 @@ static const size_t AT_OFF_BEST_KD      = 26U;
 static const size_t AT_OFF_BEST_COST    = 30U;
 static const size_t AT_OFF_ELAPSED      = 34U;
 
+/* Whole-device current DID (0xF237) payload, little-endian:
+ *   [0..3] int32  current in µA (+ve = draw)
+ *   [4..5] uint16 sample age in seconds (clamped)
+ *   [6]    uint8  valid (1 = provider returned a sample, 0 = unavailable)
+ *   [7]    uint8  reserved (0)
+ * Mirrors the Poseidon gauge DID (0xF236) style: always returns a fixed-size
+ * payload with an explicit validity flag, so a batched read never fails. */
+static const size_t DEV_CURRENT_LEN       = 8U;
+static const size_t DEV_CURRENT_OFF_UA    = 0U;
+static const size_t DEV_CURRENT_OFF_AGE   = 4U;
+static const size_t DEV_CURRENT_OFF_VALID = 6U;
+static const size_t DEV_CURRENT_OFF_RSVD  = 7U;
+static const uint32_t DEV_CURRENT_MS_PER_S = 1000U;
+
 /**
  * @brief Serialise the current PID autotune status into @p buf.
  *
@@ -600,6 +615,25 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         result = false;
         break;
 #endif
+
+    case UDS_DID_DEVICE_CURRENT:
+    {
+        /* Whole-device instantaneous current draw via the generic provider API
+         * (device_current.h). Packed struct (see DEV_CURRENT_OFF_* above); the
+         * validity flag lets a batched read succeed on variants with no current
+         * provider (or before the first sample), where it reports valid=0. */
+        int32_t current_ua = 0;
+        uint32_t age_ms = 0U;
+        bool valid = device_current_read(&current_ua, &age_ms);
+        uint32_t age_s = age_ms / DEV_CURRENT_MS_PER_S;
+        writeUint32(&buf[DEV_CURRENT_OFF_UA], (uint32_t)current_ua);
+        writeUint16(&buf[DEV_CURRENT_OFF_AGE],
+                    (uint16_t)MIN(age_s, (uint32_t)UINT16_MAX));
+        buf[DEV_CURRENT_OFF_VALID] = valid ? 1U : 0U;
+        buf[DEV_CURRENT_OFF_RSVD] = 0U;
+        *len = (uint16_t)DEV_CURRENT_LEN;
+        break;
+    }
 
     case UDS_DID_CRASH_VALID:
     {

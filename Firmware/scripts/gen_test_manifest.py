@@ -58,6 +58,12 @@ def int_cfg(cfg, key, default=-1) -> int:
         return default
 
 
+def str_list_cfg(cfg, key):
+    """A string Kconfig holding a space/comma-separated name list -> list."""
+    raw = cfg.get(key, "") or ""
+    return [t for t in raw.replace(",", " ").split() if t]
+
+
 def first_set(cfg, options, default="unknown"):
     for name, key in options:
         if is_set(cfg, key):
@@ -224,6 +230,15 @@ def build_manifest(cfg: dict, dt_header: str | None, variant: str = "unknown") -
             "ota": True,
             "menu": True,
             "poseidon_accessories": is_set(cfg, "CONFIG_POSEIDON_ACCESSORIES"),
+        },
+        # CAN log-push backend tuning. force_inf_modules mirrors
+        # CONFIG_LOG_PUSH_FORCE_INF_MODULES (space/comma-separated module names
+        # forwarded up to INF regardless of the runtime verbosity) so the HIL
+        # can gate its force-INF stream assertion on builds that elevate the
+        # module it stimulates.
+        "log_push": {
+            "force_inf_modules": str_list_cfg(
+                cfg, "CONFIG_LOG_PUSH_FORCE_INF_MODULES"),
         },
         "poseidon": {
             "enabled": is_set(cfg, "CONFIG_POSEIDON_ACCESSORIES"),

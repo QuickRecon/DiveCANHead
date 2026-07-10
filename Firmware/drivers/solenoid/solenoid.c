@@ -39,14 +39,16 @@ struct solenoid_config {
 /* Closed-loop current-check state, one entry per channel. The baseline is
  * captured on fire and the draw evaluated on off; see sol_current_begin/end. */
 struct solenoid_current_state {
-    int64_t fire_start_ms[MAX_CHANNELS];  /* uptime at energise; 0 = idle */
+    int64_t fire_start_ms[MAX_CHANNELS];  /* uptime at energise */
+    int64_t judge_deadline_ms[MAX_CHANNELS]; /* judge until this uptime; 0 = idle */
     int32_t baseline_ua[MAX_CHANNELS];    /* pre-fire idle current (µA) */
-    bool baseline_valid[MAX_CHANNELS];    /* a usable baseline was captured */
-    SolCurrentClass_t status[MAX_CHANNELS]; /* debounced (latched) per-channel verdict */
-    SolCurrentClass_t pending[MAX_CHANNELS]; /* verdict currently being debounced */
-    uint8_t fault_streak[MAX_CHANNELS];   /* consecutive fires at the pending verdict */
+    int32_t peak_ua[MAX_CHANNELS];        /* max draw seen during the judge window */
+    SolCurrentClass_t status[MAX_CHANNELS]; /* latched per-channel verdict */
     SolenoidCurrentReading_t last;        /* most recent judged measurement */
     bool last_fresh;                      /* last not yet polled */
+    /* Guards the window fields (deadline/fire_start/baseline/peak): a manual
+     * override arms from the CANTask while the fire thread services them. */
+    struct k_spinlock lock;
 };
 #endif
 
@@ -127,102 +129,148 @@ static int arm_timer(const struct device *dev, uint32_t duration_us)
 
 #ifdef CONFIG_SOLENOID_CURRENT_CHECK
 
+/* Extra time past the on-window to keep judging a fire, absorbing the whole-pack
+ * gauge's phase delay: the DS2782 reports a fire's current a second or two after
+ * the fact and holds it briefly, so the judge window runs on_time + this margin
+ * and the peak draw seen anywhere in it is what gets classified. */
+static const int64_t SOL_JUDGE_MARGIN_MS = 3000;
+static const uint32_t SOL_US_PER_MS = 1000U;
+
 /**
- * @brief Capture the pre-fire baseline current for a channel about to energise.
+ * @brief Arm the closed-loop current judge window for a channel about to energise.
  *
- * @param dev     Solenoid device
- * @param channel Channel index (already range-checked by the caller)
+ * Captures the pre-fire idle baseline, kicks the provider for a fresh sample, and
+ * opens a judge window that outlives the on-window by SOL_JUDGE_MARGIN_MS.
+ * solenoid_current_service() polls the gauge across the window, tracks the peak
+ * draw, and classifies at the deadline — so the reading is not tied to the fire's
+ * close instant (the gauge is far too slow for that).
+ *
+ * @param dev         Solenoid device
+ * @param channel     Channel index (already range-checked by the caller)
+ * @param duration_us Requested on-time; sets how long the window stays open
  */
-static void sol_current_begin(const struct device *dev, uint8_t channel)
+static void sol_current_begin(const struct device *dev, uint8_t channel,
+                  uint32_t duration_us)
 {
     struct solenoid_current_state *cs = &((struct solenoid_data *)dev->data)->current;
     int32_t ua = 0;
 
-    cs->baseline_valid[channel] = device_current_read(&ua, NULL);
-    cs->baseline_ua[channel] = ua;
-    cs->fire_start_ms[channel] = k_uptime_get();
+    /* Baseline is the pre-fire idle draw — the current cached value is correct.
+     * Only arm the window when we actually have a baseline to subtract. */
+    if (device_current_read(&ua, NULL)) {
+        int64_t now = k_uptime_get();
+        k_spinlock_key_t key = k_spin_lock(&cs->lock);
+        cs->baseline_ua[channel] = ua;
+        cs->peak_ua[channel] = ua;
+        cs->fire_start_ms[channel] = now;
+        cs->judge_deadline_ms[channel] =
+            now + (int64_t)(duration_us / SOL_US_PER_MS) + SOL_JUDGE_MARGIN_MS;
+        k_spin_unlock(&cs->lock, key);
+    }
+
+    /* Kick the provider for a fresh sample now so a during-fire reading lands
+     * inside the window sooner. Best-effort; the window tolerates the delay. */
+    device_current_trigger();
+}
+
+/* Raise the fault, latching on the edge into a new verdict. Called from the
+ * service thread only, on snapshot values taken under cs->lock; the currents are
+ * µA. status is an aligned enum (atomic for the cross-thread aggregate readers)
+ * and cs->last is service-thread-owned, so no lock is held here. */
+static void sol_current_fault(struct solenoid_current_state *cs, uint8_t channel,
+                  SolCurrentClass_t verdict, int32_t baseline_ua,
+                  int32_t fire_ua, int32_t delta)
+{
+    if (cs->status[channel] != verdict) {
+        cs->status[channel] = verdict;
+        if (SOL_CURRENT_OVER == verdict) {
+            OP_ERROR_DETAIL(OP_ERR_SOLENOID_OVERCURRENT, (uint32_t)delta);
+        } else if (SOL_CURRENT_UNDER == verdict) {
+            OP_ERROR_DETAIL(OP_ERR_SOLENOID_UNDERCURRENT, (uint32_t)delta);
+        } else {
+            /* Recovered to nominal — no error, just clears the latch. */
+        }
+        if (SOL_CURRENT_NORM != verdict) {
+            /* Expected-vs-actual diagnostic: on a real rebreather this surfaces
+             * the true measured draw so the window can be bench-tuned. */
+            LOG_WRN("ch%u %s: measured delta %d uA (baseline %d, fire %d) "
+                "outside expected [%d, %d] uA", channel,
+                (SOL_CURRENT_OVER == verdict) ? "OVERcurrent" : "UNDERcurrent",
+                delta, baseline_ua, fire_ua,
+                (int)CONFIG_SOLENOID_CURRENT_DELTA_MIN_UA,
+                (int)CONFIG_SOLENOID_CURRENT_DELTA_MAX_UA);
+        }
+    }
+    cs->last.channel = channel;
+    cs->last.status = cs->status[channel];
+    cs->last.baseline_ua = baseline_ua;
+    cs->last.fire_ua = fire_ua;
+    cs->last.delta_ua = delta;
+    cs->last_fresh = true;
 }
 
 /**
- * @brief Evaluate a channel's draw at the end of its on-window and update the
- *        debounced per-channel verdict.
+ * @brief Drive the windowed current judgment. Call periodically (thread context).
  *
- * Skips silently unless a fresh baseline exists AND the provider returns a
- * sample that was taken during the pulse. Faults are debounced over
- * CONFIG_SOLENOID_CURRENT_FAULT_STREAK consecutive fires; a nominal reading
- * clears the fault immediately. Raises OP_ERROR on the fault-confirmation edge.
- *
- * @param dev     Solenoid device
- * @param channel Channel index (already range-checked by the caller)
+ * For each channel with an open judge window: sample the gauge, track the peak
+ * draw seen since the fire, and trip OVER as soon as a sample exceeds the window.
+ * At the deadline, classify the peak-minus-baseline delta (below min → UNDER,
+ * else NORM) and close the window. Missing the plateau entirely just leaves the
+ * peak at baseline; a genuinely failing solenoid fires longer/again and is caught.
  */
-static void sol_current_end(const struct device *dev, uint8_t channel)
+void solenoid_current_service(const struct device *dev)
 {
     struct solenoid_current_state *cs = &((struct solenoid_data *)dev->data)->current;
+    int64_t now = k_uptime_get();
 
-    if (cs->baseline_valid[channel]) {
-        cs->baseline_valid[channel] = false;   /* consume the baseline */
+    for (uint8_t ch = 0U; ch < MAX_CHANNELS; ++ch) {
+        int32_t baseline = 0;
+        int32_t peak = 0;
+        int32_t peak_delta = 0;
+        bool over_now = false;
+        bool expired = false;
 
-        int32_t fire_ua = 0;
-        uint32_t age_ms = 0U;
-        bool have = device_current_read(&fire_ua, &age_ms);
-        int64_t sample_ms = k_uptime_get() - (int64_t)age_ms;
-
-        /* Only judge on a sample taken during this pulse; otherwise skip. */
-        if (have && (sample_ms >= cs->fire_start_ms[channel])) {
-            int32_t baseline_ua = cs->baseline_ua[channel];
-            int32_t delta = fire_ua - baseline_ua;
-            SolCurrentClass_t verdict = solenoid_current_classify(
-                baseline_ua, fire_ua,
-                CONFIG_SOLENOID_CURRENT_DELTA_MIN_UA,
-                CONFIG_SOLENOID_CURRENT_DELTA_MAX_UA);
-
-            if (SOL_CURRENT_NORM == verdict) {
-                /* Nominal draw clears the debounce and recovers immediately. */
-                cs->fault_streak[channel] = 0U;
-                cs->pending[channel] = SOL_CURRENT_NORM;
-                cs->status[channel] = SOL_CURRENT_NORM;
-            } else {
-                /* A different (non-nominal) verdict than we were counting
-                 * restarts the debounce — a channel can move UNDER<->OVER, not
-                 * just fault->recover->fault. */
-                if (verdict != cs->pending[channel]) {
-                    cs->pending[channel] = verdict;
-                    cs->fault_streak[channel] = 1U;
-                } else if (cs->fault_streak[channel] <
-                       CONFIG_SOLENOID_CURRENT_FAULT_STREAK) {
-                    ++cs->fault_streak[channel];
-                }
-                if ((cs->fault_streak[channel] >=
-                     CONFIG_SOLENOID_CURRENT_FAULT_STREAK) &&
-                    (cs->status[channel] != verdict)) {
-                    cs->status[channel] = verdict;
-                    if (SOL_CURRENT_OVER == verdict) {
-                        OP_ERROR_DETAIL(OP_ERR_SOLENOID_OVERCURRENT,
-                                (uint32_t)delta);
-                    } else {
-                        OP_ERROR_DETAIL(OP_ERR_SOLENOID_UNDERCURRENT,
-                                (uint32_t)delta);
-                    }
-                    /* Expected-vs-actual diagnostic: on a real rebreather this
-                     * surfaces the true measured draw so the window can be
-                     * bench-tuned. baseline/fire/delta are µA (positive = draw). */
-                    LOG_WRN("ch%u %s: measured delta %d uA (baseline %d, fire "
-                        "%d) outside expected [%d, %d] uA",
-                        channel,
-                        (SOL_CURRENT_OVER == verdict) ? "OVERcurrent"
-                                         : "UNDERcurrent",
-                        delta, baseline_ua, fire_ua,
-                        (int)CONFIG_SOLENOID_CURRENT_DELTA_MIN_UA,
-                        (int)CONFIG_SOLENOID_CURRENT_DELTA_MAX_UA);
+        /* Snapshot + update the window fields under the lock (a manual override
+         * may be arming concurrently). The gauge read nests cs->lock → gauge
+         * lock; the arm never holds both, so the order can't invert. */
+        k_spinlock_key_t key = k_spin_lock(&cs->lock);
+        if (0 != cs->judge_deadline_ms[ch]) {
+            int32_t ua = 0;
+            uint32_t age_ms = 0U;
+            if (device_current_read(&ua, &age_ms)) {
+                int64_t sample_ms = now - (int64_t)age_ms;
+                if ((sample_ms >= cs->fire_start_ms[ch]) &&
+                    (ua > cs->peak_ua[ch])) {
+                    cs->peak_ua[ch] = ua;
                 }
             }
+            baseline = cs->baseline_ua[ch];
+            peak = cs->peak_ua[ch];
+            peak_delta = peak - baseline;
+            over_now =
+                peak_delta > (int32_t)CONFIG_SOLENOID_CURRENT_DELTA_MAX_UA;
+            expired = now >= cs->judge_deadline_ms[ch];
+            if (over_now || expired) {
+                cs->judge_deadline_ms[ch] = 0;   /* close the window */
+            }
+        }
+        k_spin_unlock(&cs->lock, key);
 
-            cs->last.channel = channel;
-            cs->last.status = cs->status[channel];
-            cs->last.baseline_ua = baseline_ua;
-            cs->last.fire_ua = fire_ua;
-            cs->last.delta_ua = delta;
-            cs->last_fresh = true;
+        /* Report outside the lock (OP_ERROR/LOG must not run under a spinlock). */
+        if (over_now) {
+            /* OVER is unambiguous the moment the peak clears the window. */
+            sol_current_fault(cs, ch, SOL_CURRENT_OVER, baseline, peak,
+                      peak_delta);
+        } else if (expired) {
+            /* Window closed with the peak inside/below the range — a low peak
+             * means UNDER, otherwise nominal. */
+            SolCurrentClass_t verdict = solenoid_current_classify(
+                baseline, peak,
+                CONFIG_SOLENOID_CURRENT_DELTA_MIN_UA,
+                CONFIG_SOLENOID_CURRENT_DELTA_MAX_UA);
+            sol_current_fault(cs, ch, verdict, baseline, peak, peak_delta);
+        } else {
+            /* Window still open — keep tracking the peak. */
         }
     }
 }
@@ -258,8 +306,8 @@ int solenoid_fire(const struct device *dev, uint8_t channel,
 
     if (ret == 0) {
 #ifdef CONFIG_SOLENOID_CURRENT_CHECK
-        /* Snapshot the idle current immediately before energising. */
-        sol_current_begin(dev, channel);
+        /* Snapshot the idle baseline and open the judge window for this fire. */
+        sol_current_begin(dev, channel, duration_us);
 #endif
         int set_ret = gpio_pin_set_dt(&cfg->gpios[channel], 1);
 
@@ -282,10 +330,8 @@ void solenoid_off(const struct device *dev, uint8_t channel)
     const struct solenoid_config *cfg = dev->config;
 
     if (channel < cfg->num_channels) {
-#ifdef CONFIG_SOLENOID_CURRENT_CHECK
-        /* Sample the draw at the end of the on-window before de-energising. */
-        sol_current_end(dev, channel);
-#endif
+        /* The current judge window intentionally outlives the on-window (the
+         * gauge reports the fire late); solenoid_current_service() closes it. */
         int ret = gpio_pin_set_dt(&cfg->gpios[channel], 0);
 
         if (0 != ret) {
@@ -414,6 +460,11 @@ SolCurrentClass_t solenoid_current_aggregate(const struct device *dev)
 {
     ARG_UNUSED(dev);
     return SOL_CURRENT_NORM;
+}
+
+void solenoid_current_service(const struct device *dev)
+{
+    ARG_UNUSED(dev);
 }
 
 #endif /* CONFIG_SOLENOID_CURRENT_CHECK */

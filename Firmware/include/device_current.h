@@ -34,11 +34,41 @@
 typedef bool (*device_current_provider_fn)(int32_t *out_ua, uint32_t *age_ms);
 
 /**
+ * @brief Provider callback: acquire a fresh sample as soon as possible.
+ *
+ * Best-effort and quick: a consumer that needs a reading synchronised to an
+ * event (e.g. the solenoid check, just before energising) calls
+ * device_current_trigger() to kick the provider, then reads the fresher value
+ * back through device_current_read() shortly after. The provider decides how
+ * (the Poseidon provider solicits a DS2782 register read over I2C); it may
+ * block briefly on its own bus but must not stall the caller for long, and may
+ * do nothing if the acquisition is already in flight or the source is
+ * self-refreshing (e.g. a free-running ADC).
+ */
+typedef void (*device_current_trigger_fn)(void);
+
+/**
  * @brief Register the board's current provider (last registration wins).
  *
  * @param fn Provider callback, or NULL to unregister.
  */
 void device_current_register(device_current_provider_fn fn);
+
+/**
+ * @brief Register the board's optional fresh-sample trigger (last wins).
+ *
+ * @param fn Trigger callback, or NULL if the source can't be nudged.
+ */
+void device_current_register_trigger(device_current_trigger_fn fn);
+
+/**
+ * @brief Ask the active provider to acquire a fresh sample now (best-effort).
+ *
+ * No-op if no trigger is registered. The fresher value becomes visible through
+ * device_current_read() once the provider's acquisition completes (which may be
+ * asynchronous — e.g. an I2C round-trip), so this does not itself return a value.
+ */
+void device_current_trigger(void);
 
 /**
  * @brief Read the whole-device instantaneous current from the active provider.

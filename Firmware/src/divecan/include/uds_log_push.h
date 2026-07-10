@@ -58,4 +58,18 @@ void UDS_LogPush_Poll(void);
  */
 void UDS_LogPush_SetSuspended(bool suspended);
 
+/**
+ * @brief Record that an addressed UDS dialog was just active.
+ *
+ * Re-arms a short quiescent window (LOG_PUSH_QUIESCENT_MS): Poll() will not emit
+ * a broadcast log push until that window elapses with no further activity. This
+ * stops a push from interleaving with an addressed reply's frames on the
+ * handset's single per-source ISO-TP reassembly context during a DID-fetch
+ * burst. Call from the RX thread whenever a request completes or an addressed
+ * reply is in flight.
+ *
+ * @param now Current uptime in ms (from k_uptime_get_32()).
+ */
+void UDS_LogPush_NoteDialogActivity(uint32_t now);
+
 #endif /* UDS_LOG_PUSH_H */

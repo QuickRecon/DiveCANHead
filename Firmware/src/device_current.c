@@ -20,9 +20,28 @@ static device_current_provider_fn *get_provider(void)
     return &provider;
 }
 
+static device_current_trigger_fn *get_trigger(void)
+{
+    static device_current_trigger_fn trigger;
+    return &trigger;
+}
+
 void device_current_register(device_current_provider_fn fn)
 {
     *get_provider() = fn;
+}
+
+void device_current_register_trigger(device_current_trigger_fn fn)
+{
+    *get_trigger() = fn;
+}
+
+void device_current_trigger(void)
+{
+    device_current_trigger_fn trigger = *get_trigger();
+    if (trigger != NULL) {
+        trigger();
+    }
 }
 
 bool device_current_read(int32_t *out_ua, uint32_t *age_ms)

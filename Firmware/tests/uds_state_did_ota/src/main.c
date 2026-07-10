@@ -38,6 +38,8 @@
 #include "factory_image.h"
 #include "firmware_confirm.h"
 #include "ppo2_control.h"
+#include "ppo2_autotune.h"
+#include "device_current.h"
 #include "power_management.h"
 #include "error_histogram.h"
 #include "errors.h"
@@ -127,6 +129,26 @@ void ISOTP_TxQueue_Poll(uint32_t currentTime)
 }
 
 bool ISOTP_TxQueue_IsBusy(void) { return false; }
+
+/* Autotune (0xF213) and whole-device current (0xF237) DIDs are read by
+ * uds_state_did.c but their producers aren't linked here. Stub the status as
+ * idle/zeroed and the current provider as "no sample" (device_current_read
+ * false → 0xF237 reports valid=0), which is enough to exercise the DID plumbing. */
+void ppo2_autotune_get_status(AutotuneStatus_t *out)
+{
+    if (NULL != out) {
+        (void)memset(out, 0, sizeof(*out));
+    }
+}
+
+void ppo2_autotune_request_abort(AutotuneAbortReason_t reason) { ARG_UNUSED(reason); }
+
+bool device_current_read(int32_t *out_ua, uint32_t *age_ms)
+{
+    ARG_UNUSED(out_ua);
+    ARG_UNUSED(age_ms);
+    return false;
+}
 
 uint8_t ISOTP_TxQueue_GetPendingCount(void) { return 0U; }
 

@@ -112,13 +112,37 @@ Runtime settings are validated against compile-time tables — e.g., PID mode is
 
 ### Closed-loop solenoid current check
 
-Gated by `CONFIG_SOLENOID_CURRENT_CHECK` (default y). The driver snapshots the
+Gated by `CONFIG_SOLENOID_CURRENT_CHECK` (**default n — opt-in**). Enable it only
+on a variant that registers a current provider and set the measured window in
+that variant's conf (`Poseidon_Aren.conf` enables the check with a 150–250 mA
+window; the Kconfig defaults are a wide-open placeholder that never faults). A
+board with no provider gains nothing from the check, so the global default is
+off. The driver snapshots the
 whole-device current just before energising a channel and again at the end of
 its on-window, classifies the delta against `CONFIG_SOLENOID_CURRENT_DELTA_{MIN,MAX}_UA`
 (`solenoid_current_classify()`, a pure host-testable function in
-`drivers/solenoid/solenoid_current.c`), debounces over
-`CONFIG_SOLENOID_CURRENT_FAULT_STREAK` consecutive fires, and raises
-`OP_ERR_SOLENOID_{OVER,UNDER}CURRENT`. The verdict is **not** pushed anywhere by
+`drivers/solenoid/solenoid_current.c`), and raises
+`OP_ERR_SOLENOID_{OVER,UNDER}CURRENT` on the **first** out-of-window fire (no
+debounce — the verdict latches on the edge into a fault and clears on the next
+nominal reading).
+
+Because a whole-pack gauge's current reading lags the fire by seconds (DS2782
+conversion + solicited I2C round-trip) — far longer than an on-window — judgment
+is **not** tied to the fire's close instant. Instead `sol_current_begin` opens a
+per-channel **judge window** (`on_time + SOL_JUDGE_MARGIN_MS`) and kicks
+`device_current_trigger()`; `solenoid_current_service()`, called periodically
+from thread context, samples the gauge across the window and tracks the **peak**
+draw. It trips OVER as soon as the peak clears the range, and at the deadline
+classifies the peak−baseline delta (below min → UNDER, else NORM). This absorbs
+the phase delay; a fully-missed short plateau just reads inconclusive (a genuinely
+failing solenoid fires longer/again and is caught). Window state is spinlock-
+guarded — a manual override (0xF242) arms from the CANTask while the fire thread
+services.
+
+The service is driven from the solenoid fire thread: mid-phase in the PID/MK15
+sleep loops (~1.5–2 s), and — crucially for HIL — in **OFF mode the fire thread
+no longer suspends** but runs a ~250 ms service loop, so manual override fires
+(which require OFF mode) are still judged. The verdict is **not** pushed anywhere by
 the driver — it is exposed through a pollable API (`solenoid_current_poll()` for
 the latest per-channel reading, `solenoid_current_aggregate()` for the
 worst-case verdict). The PPO2 control fire thread polls it once per cycle,
@@ -129,14 +153,22 @@ This keeps the DT driver free of DiveCAN/zbus/flash-log dependencies.
 Current comes from the **generic device-current API** (`device_current.h`,
 `src/device_current.c`): a single registered provider reports whole-device
 current in **microamps, positive = draw**. The Poseidon variant registers a
-provider backed by the battery's DS2782 gauge (CMD 0x06 over I2C), converting
-counts to µA via `CONFIG_POSEIDON_DS2782_SHUNT_UOHM` (bench-calibrated) and
-negating the discharge-negative reading. Boards with an on-board solenoid/rail
-shunt register an ADC-backed provider instead; with no provider registered the
-driver sees no sample and every channel reports `SOL_CURRENT_NORM`. Confounding
-of the whole-device gauge by other loads the head drives (e.g. the Poseidon
-beeper) is deferred to bench characterisation — the working assumption is that
-CMD 0x06 updates frequently enough to distinguish a fire from other transients.
+provider backed by the battery's DS2782 gauge, converting counts to µA via
+`CONFIG_POSEIDON_DS2782_SHUNT_UOHM` (bench-calibrated) and negating the
+discharge-negative reading. Boards with an on-board solenoid/rail shunt register
+an ADC-backed provider instead; with no provider registered the driver sees no
+sample and every channel reports `SOL_CURRENT_NORM`. Confounding of the
+whole-device gauge by other loads the head drives (e.g. the Poseidon beeper) is
+deferred to bench characterisation.
+
+The battery only *broadcasts* current (CMD 0x06) **on-change**, so a steady load
+produces no traffic and the reading would go stale. The accessories thread
+therefore **actively solicits** it: when no fresh current sample has landed
+within `CURRENT_SOLICIT_STALE_MS` (500 ms), it issues a generic DS2782 register
+read (CMD 0x5A, register 0x0E) to the battery once per window; `target_stop`
+ingests the reply (`record_current_counts()`). The live value is also exposed to
+the BT diagnostics client as read-only DID `0xF237` (see
+`docs/DATA_IDENTIFIERS.md`), independent of the solenoid check.
 
 ## Error Handling (Four Tiers)
 

@@ -81,6 +81,33 @@ config FLASH_LOG_CAN_VERBOSE_DEFAULT
 	  structured telemetry entries already, and anything genuinely
 	  unhandled produces a LOG_WRN that lands in the text FCB.
 
+config LOG_PUSH_FORCE_INF_MODULES
+	string "Log modules force-pushed at INF over CAN"
+	default ""
+	help
+	  Space-separated list of LOG_MODULE_REGISTER names whose messages the
+	  CAN log-push backend forwards up to LOG_LEVEL_INF regardless of the
+	  global runtime verbosity (FLASH_LOG_DEFAULT_RTT_LEVEL / DID 0xF283).
+
+	  Compile-time per-module elevation so a single noisy subsystem's INF
+	  telemetry (e.g. "poseidon_accessories" current readings) reaches the BT
+	  diagnostics without globally raising verbosity — which would flood the
+	  CAN stream with every module's INF output. Resolved to source IDs once
+	  at first use; the only runtime state is a small fixed ID array (see
+	  LOG_PUSH_FORCE_INF_MAX), so there is no NVS/DID configuration surface.
+
+	  Only affects the CAN push backend, not the flash-log text FCB.
+
+config LOG_PUSH_FORCE_INF_MAX
+	int "Max modules in LOG_PUSH_FORCE_INF_MODULES"
+	default 4
+	range 1 16
+	help
+	  Fixed capacity of the resolved force-list. Names beyond this count in
+	  LOG_PUSH_FORCE_INF_MODULES are ignored. Sized for the handful of
+	  subsystems a bench build elevates at once; keep small to bound the
+	  static ID array.
+
 endif # FLASH_LOG
 
 endmenu

@@ -4,8 +4,8 @@
  *
  * Host build — exercises solenoid_current_classify() from
  * drivers/solenoid/solenoid_current.c. The stateful driver side (baseline
- * capture, debounce, OP_ERROR, pollable status) is hardware-bound and covered
- * by the HIL suite, not here.
+ * capture, fire-triggered sampling, OP_ERROR, pollable status) is hardware-bound
+ * and covered by the HIL suite, not here.
  */
 
 #include <zephyr/ztest.h>

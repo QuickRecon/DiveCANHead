@@ -40,6 +40,7 @@
 #define UDS_DID_THRESHOLD_VOLTAGE   0xF234U
 #define UDS_DID_POWER_SOURCES       0xF235U
 #define UDS_DID_POSEIDON_GAUGE      0xF236U  /**< 4 B: percent, flags, age_s LE */
+#define UDS_DID_DEVICE_CURRENT      0xF237U  /**< 8 B: int32 uA(+ve=draw), u16 age_s, u8 valid, u8 rsvd — all LE */
 
 /* Control DIDs (writable) - 0xF24x */
 #define UDS_DID_SETPOINT_WRITE      0xF240U

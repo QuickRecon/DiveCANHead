@@ -52,6 +52,10 @@ LOG_MODULE_REGISTER(uds_log_push_backend, LOG_LEVEL_NONE);
  * wire. */
 #define UPB_LINE_MAX UDS_LOG_MAX_PAYLOAD
 
+/* Scratch buffer for one force-list module name; sized for the 31-char S799
+ * identifier limit plus NUL. */
+#define UPB_NAME_BUF 32U
+
 static uint8_t  upb_line[UPB_LINE_MAX];
 static size_t   upb_line_len;
 static uint8_t  upb_charbuf[16];
@@ -62,6 +66,15 @@ static uint8_t  upb_charbuf[16];
  * logging is initialised. */
 static int16_t upb_self_ids[2] = { -1, -1 };
 static bool    upb_self_ids_resolved;
+
+/* Compile-time per-module CAN-push elevation (CONFIG_LOG_PUSH_FORCE_INF_MODULES):
+ * source IDs whose messages are forwarded up to INF regardless of the global
+ * runtime verbosity, so one noisy subsystem's INF telemetry reaches the BT
+ * diagnostics without globally raising verbosity. Resolved once from the
+ * config string; the only runtime state is this fixed-size array. */
+static int16_t upb_force_ids[CONFIG_LOG_PUSH_FORCE_INF_MAX];
+static uint8_t upb_force_count;
+static bool    upb_force_resolved;
 
 static atomic_t upb_in_backend;
 
@@ -113,6 +126,57 @@ static bool upb_should_drop(int16_t src_id)
     return drop;
 }
 
+/* Resolve CONFIG_LOG_PUSH_FORCE_INF_MODULES (a space/comma-separated module-name
+ * list) to source IDs once. Non-destructive tokeniser — the config string is in
+ * rodata — capped at CONFIG_LOG_PUSH_FORCE_INF_MAX names; unknown names resolve
+ * to -1 and are skipped. Runs lazily since source IDs aren't stable until
+ * logging is initialised. */
+static void upb_resolve_force(void)
+{
+    if (upb_force_resolved) {
+        return;
+    }
+    upb_force_resolved = true;
+
+    const char *p = CONFIG_LOG_PUSH_FORCE_INF_MODULES;
+    char name[UPB_NAME_BUF];
+    while ((*p != '\0') && (upb_force_count < CONFIG_LOG_PUSH_FORCE_INF_MAX)) {
+        while ((' ' == *p) || (',' == *p)) {
+            ++p;
+        }
+        size_t n = 0U;
+        while ((*p != '\0') && (*p != ' ') && (*p != ',') &&
+               (n < (sizeof(name) - 1U))) {
+            name[n] = *p;
+            ++n;
+            ++p;
+        }
+        name[n] = '\0';
+        while ((*p != '\0') && (*p != ' ') && (*p != ',')) {
+            ++p; /* discard any tail of an over-long name */
+        }
+        if (n > 0U) {
+            int16_t id = (int16_t)log_source_id_get(name);
+            if (id >= 0) {
+                upb_force_ids[upb_force_count] = id;
+                ++upb_force_count;
+            }
+        }
+    }
+}
+
+static bool upb_is_forced(int16_t src_id)
+{
+    bool forced = false;
+
+    for (uint8_t i = 0U; i < upb_force_count; ++i) {
+        if (src_id == upb_force_ids[i]) {
+            forced = true;
+        }
+    }
+    return forced;
+}
+
 static void upb_process(const struct log_backend *const backend,
                         union log_msg_generic *msg)
 {
@@ -123,11 +187,19 @@ static void upb_process(const struct log_backend *const backend,
     }
 
     upb_resolve_self_ids();
+    upb_resolve_force();
 
     uint8_t level = log_msg_get_level(&msg->log);
     int16_t src_id = log_msg_get_source_id(&msg->log);
 
-    if (level > flash_log_get_rtt_level()) {
+    /* Global runtime verbosity, elevated to INF for compile-time force-listed
+     * modules (CONFIG_LOG_PUSH_FORCE_INF_MODULES) so they stream to the BT
+     * client without raising verbosity for everything else. */
+    uint8_t threshold = flash_log_get_rtt_level();
+    if ((threshold < LOG_LEVEL_INF) && upb_is_forced(src_id)) {
+        threshold = LOG_LEVEL_INF;
+    }
+    if (level > threshold) {
         atomic_set(&upb_in_backend, 0);
         return;
     }

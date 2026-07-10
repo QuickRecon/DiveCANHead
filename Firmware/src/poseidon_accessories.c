@@ -53,9 +53,22 @@ LOG_MODULE_REGISTER(poseidon_accessories, LOG_LEVEL_INF);
  * payload start (0 = CMD), which is 1 when an SLA+W prefix is echoed. */
 #define POSEIDON_CMD_PERCENT 0x26U
 #define POSEIDON_CMD_CURRENT 0x06U
+/* Generic DS2782 register read (EMULATOR_SPEC_BATTERY_HUD.md §6.2, CMD 0x5A):
+ * request [0x5A, LEN 0x02, reg, CRC]; the battery answers as master by writing a
+ * reply back to the display. Confirmed on hardware (bus capture): the reply is
+ * [0x5B, LEN 0x03, <register value>, <register-addr echo>, CRC] — a single
+ * register byte plus the echoed address, NOT a 16-bit value. We solicit the
+ * CURRENT register bytes when the battery's on-change 0x06 broadcast is quiet. */
+#define POSEIDON_CMD_DS2782_READ 0x5AU
+#define POSEIDON_CMD_DS2782_REPLY 0x5BU
 static const uint8_t POSEIDON_SUBCMD_PERCENT = 0x02U;
 static const uint8_t POSEIDON_LEN_CURRENT = 0x03U;
 static const uint8_t POSEIDON_PERCENT_MAX = 100U;
+/* DS2782 CURRENT is 16-bit signed at register 0x0E (MSB) / 0x0F (LSB), 1.5625 uV
+ * per LSB across the sense resistor. Each 0x5A read returns one register byte, so
+ * both are solicited (alternating) and reassembled into the full value. */
+static const uint8_t DS2782_REG_CURRENT = 0x0EU;      /* CURRENT high byte */
+static const uint8_t DS2782_REG_CURRENT_LSB = 0x0FU;  /* CURRENT low byte */
 static const size_t POSEIDON_ECHO_MIN_LEN = 5U;
 static const size_t POSEIDON_PERCENT_FRAME_LEN = 4U;  /* CMD,SUB,pct,CRC */
 static const size_t POSEIDON_CURRENT_FRAME_LEN = 5U;  /* CMD,LEN,lo,hi,CRC */
@@ -64,6 +77,19 @@ static const size_t POSEIDON_OFF_DATA0 = 2U;          /* first data byte */
 static const size_t POSEIDON_OFF_DATA1 = 3U;          /* second data byte */
 static const size_t POSEIDON_OFF_PERCENT_CRC = 3U;    /* CRC after 1 data byte */
 static const size_t POSEIDON_OFF_CURRENT_CRC = 4U;    /* CRC after 2 data bytes */
+/* Solicit the DS2782 current register if no fresh reading (0x06 broadcast or
+ * 0x5B read reply) has landed within this window; also rate-limits the poll. */
+static const int64_t CURRENT_SOLICIT_STALE_MS = 500;
+/* After a solicit WRITE fails (battery absent / bus fault) back the poll off to
+ * this interval so a dead peer isn't hammered at 2 Hz forever, and rate-limit
+ * the failure log (WRN — with the force-INF CAN push a per-attempt INF line
+ * would stream a broadcast push every poll for as long as the fault lasts). */
+static const int64_t CURRENT_SOLICIT_BACKOFF_MS = 5000;
+static const int64_t CURRENT_SOLICIT_FAIL_LOG_MS = 30000;
+/* DS2782 CURRENT register LSB = 1.5625 µV across the sense resistor. With the
+ * shunt in µΩ this gives I(µA) = counts × 1.5625e6 / shunt_µΩ, i.e. the
+ * numerator below. See device_current.h for the unit/sign convention. */
+static const int64_t DS2782_UA_NUMERATOR = 1562500;
 
 static const struct device *const bus = DEVICE_DT_GET(DT_NODELABEL(i2c1));
 static uint8_t rx[9];
@@ -75,8 +101,15 @@ static bool percent_seen;
  * solenoid current check in ppo2_control.c. Signed DS2782 counts, negative =
  * discharge. Same spinlock and staleness discipline as the percent gauge. */
 static int16_t current_counts;
+/* Latest DS2782 CURRENT register halves, reassembled into current_counts as the
+ * alternating 0x5A reads land (register 0x0E = MSB, 0x0F = LSB). */
+static uint8_t current_msb;
+static uint8_t current_lsb;
 static int64_t current_at;
 static bool current_seen;
+/* Frame that delivered the latest sample ("0x06 broadcast" / "0x5B reply"),
+ * logged from thread context (never from the ISR-context parser). */
+static const char *current_source;
 static struct k_spinlock gauge_lock;
 
 /* Clean-shutdown handoff. poseidon_accessories_shutdown() (called from the power
@@ -103,6 +136,52 @@ static int target_write_requested(struct i2c_target_config *cfg)
     ARG_UNUSED(cfg);
     rx_len = 0;
     return 0;
+}
+
+/* Convert a signed DS2782 CURRENT count to µA, positive = draw (the gauge
+ * reports discharge as negative). Shared by the provider and the debug log. */
+static int32_t ds2782_counts_to_ua(int16_t counts)
+{
+    int64_t ua = (-(int64_t)counts * DS2782_UA_NUMERATOR) /
+                 CONFIG_POSEIDON_DS2782_SHUNT_UOHM;
+    return (int32_t)ua;
+}
+
+/* Latch a fresh DS2782 current sample under the gauge lock. Shared by the 0x06
+ * on-change broadcast parser and the 0x5B read-reply parser in target_stop.
+ * Runs in ISR context (I2C target callback), so it only stores — the reading is
+ * logged later from the accessories thread by log_current_if_new(). @p source
+ * is a static string literal (safe to stash as a pointer). */
+static void record_current_counts(int16_t counts, const char *source)
+{
+    k_spinlock_key_t key = k_spin_lock(&gauge_lock);
+    current_counts = counts;
+    current_msb = (uint8_t)((uint16_t)counts >> BYTE_WIDTH);
+    current_lsb = (uint8_t)((uint16_t)counts & BYTE_MASK);
+    current_at = k_uptime_get();
+    current_seen = true;
+    current_source = source;
+    k_spin_unlock(&gauge_lock, key);
+}
+
+/* Fold one DS2782 CURRENT register byte from a 0x5A read reply into its half
+ * (reg 0x0E = MSB, 0x0F = LSB) and recombine into the full 16-bit value. Full
+ * resolution once both halves have arrived from the alternating solicits; until
+ * then the not-yet-read half is 0. ISR context (I2C target callback) — store
+ * only; the reading is logged later from the accessories thread. */
+static void record_current_byte(uint8_t reg, uint8_t value, const char *source)
+{
+    k_spinlock_key_t key = k_spin_lock(&gauge_lock);
+    if (DS2782_REG_CURRENT == reg) {
+        current_msb = value;
+    } else {
+        current_lsb = value;
+    }
+    current_counts = (int16_t)(((uint16_t)current_msb << BYTE_WIDTH) | current_lsb);
+    current_at = k_uptime_get();
+    current_seen = true;
+    current_source = source;
+    k_spin_unlock(&gauge_lock, key);
 }
 
 static int target_write_received(struct i2c_target_config *cfg, uint8_t val)
@@ -162,11 +241,28 @@ static int target_stop(struct i2c_target_config *cfg)
             rx[payload + POSEIDON_OFF_CURRENT_CRC]) {
             int16_t counts = (int16_t)((uint16_t)rx[payload + POSEIDON_OFF_DATA0] |
                 ((uint16_t)rx[payload + POSEIDON_OFF_DATA1] << BYTE_WIDTH));
-            k_spinlock_key_t key = k_spin_lock(&gauge_lock);
-            current_counts = counts;
-            current_at = k_uptime_get();
-            current_seen = true;
-            k_spin_unlock(&gauge_lock, key);
+            record_current_counts(counts, "0x06 broadcast");
+        }
+    }
+    /* Reply to our solicited CMD 0x5A read of a DS2782 CURRENT register byte.
+     * CONFIRMED on hardware: the reply is [CMD 0x5B, LEN 0x03, <register value>,
+     * <register-addr echo>, CRC] — one register byte (DATA0) plus the echoed
+     * address (DATA1), NOT a 16-bit value. The echo identifies which CURRENT half
+     * this is (0x0E = MSB, 0x0F = LSB); record_current_byte reassembles the two
+     * into the full signed value. Reject any other echoed register. */
+    uint8_t reg_echo = rx[payload + POSEIDON_OFF_DATA1];
+    if ((rx_len == (POSEIDON_CURRENT_FRAME_LEN + payload)) &&
+        (POSEIDON_CMD_DS2782_REPLY == rx[payload]) &&
+        (POSEIDON_LEN_CURRENT == rx[payload + POSEIDON_OFF_LEN]) &&
+        ((DS2782_REG_CURRENT == reg_echo) || (DS2782_REG_CURRENT_LSB == reg_echo))) {
+        uint8_t wire[5] = {(uint8_t)(DISPLAY_ADDR << 1), rx[payload],
+                           rx[payload + POSEIDON_OFF_LEN],
+                           rx[payload + POSEIDON_OFF_DATA0],
+                           rx[payload + POSEIDON_OFF_DATA1]};
+        if (poseidon_crc8(wire, sizeof(wire)) ==
+            rx[payload + POSEIDON_OFF_CURRENT_CRC]) {
+            record_current_byte(reg_echo, rx[payload + POSEIDON_OFF_DATA0],
+                                "0x5B reply");
         }
     }
     return 0;
@@ -228,11 +324,6 @@ void poseidon_gauge_status(PoseidonGaugeStatus_t *s)
         ? (uint16_t)MIN(age / 1000, UINT16_MAX) : UINT16_MAX;
 }
 
-/* DS2782 CURRENT register LSB = 1.5625 µV across the sense resistor. With the
- * shunt in µΩ this gives I(µA) = counts × 1.5625e6 / shunt_µΩ, i.e. the
- * numerator constant below. See device_current.h for the unit/sign convention. */
-static const int64_t DS2782_UA_NUMERATOR = 1562500;
-
 /**
  * @brief device_current provider — whole-pack current from the DS2782 gauge.
  *
@@ -257,9 +348,7 @@ static bool poseidon_current_provider(int32_t *out_ua, uint32_t *age_ms)
     k_spin_unlock(&gauge_lock, key);
 
     if (seen) {
-        int64_t ua = (-(int64_t)counts * DS2782_UA_NUMERATOR) /
-                 CONFIG_POSEIDON_DS2782_SHUNT_UOHM;
-        *out_ua = (int32_t)ua;
+        *out_ua = ds2782_counts_to_ua(counts);
         int64_t age = k_uptime_get() - at;
         *age_ms = (uint32_t)MIN(age, (int64_t)UINT32_MAX);
     }
@@ -336,6 +425,99 @@ static void refresh_outputs(AlarmMask_t alarms)
     battery_failed = battery_rc != 0;
 }
 
+/* device_current trigger callback — best-effort immediate DS2782 CURRENT read,
+ * called from the solenoid fire path (device_current_trigger) just before a
+ * channel energises so a during-fire sample lands before the on-window ends.
+ * Solicits only the MSB (reg 0x0E): the LSB is essentially unchanged between
+ * baseline and fire so it cancels in the current check's fire-baseline delta,
+ * and a single write keeps the fire-start bus time minimal. Runs in the caller's
+ * (fire-task) context; briefly holds i2c1, bounded by the accessory thread's own
+ * sends through the shared mutex. */
+static void poseidon_current_trigger(void)
+{
+    i2c1_bus_lock();
+    (void)send_frame_locked(BATTERY_ADDR, POSEIDON_CMD_DS2782_READ,
+                            DS2782_REG_CURRENT);
+    i2c1_bus_note_activity();
+    i2c1_bus_unlock();
+}
+
+/* Actively read the DS2782 CURRENT register when the battery's on-change 0x06
+ * current broadcast has gone quiet (the battery only broadcasts current on
+ * change, so a steady load produces no traffic and device_current_read() would
+ * otherwise go stale). Bounded to one poll per CURRENT_SOLICIT_STALE_MS; the
+ * reply is ingested by target_stop (0x5B, or a 0x06 re-emit). */
+static void solicit_current(void)
+{
+    static int64_t last_solicit;
+    static bool last_solicit_failed;
+    static int64_t last_fail_log;
+    /* Alternate the two CURRENT halves so both refresh; the reply's register echo
+     * tells the parser which half it is. Toggled only on a successful send, so a
+     * failed read is retried on the same register rather than skipped. */
+    static uint8_t solicit_reg = DS2782_REG_CURRENT;
+    int64_t now = k_uptime_get();
+
+    k_spinlock_key_t key = k_spin_lock(&gauge_lock);
+    bool seen = current_seen;
+    int64_t at = current_at;
+    k_spin_unlock(&gauge_lock, key);
+
+    bool stale = !seen || ((now - at) > CURRENT_SOLICIT_STALE_MS);
+    int64_t interval = last_solicit_failed ? CURRENT_SOLICIT_BACKOFF_MS
+                                           : CURRENT_SOLICIT_STALE_MS;
+    bool due = (now - last_solicit) >= interval;
+    if (stale && due) {
+        last_solicit = now;
+        i2c1_bus_lock();
+        int rc = send_retry_locked(BATTERY_ADDR, POSEIDON_CMD_DS2782_READ,
+                                   solicit_reg);
+        i2c1_bus_note_activity();
+        i2c1_bus_unlock();
+        last_solicit_failed = (rc != 0);
+        if (rc == 0) {
+            if (DS2782_REG_CURRENT == solicit_reg) {
+                solicit_reg = DS2782_REG_CURRENT_LSB;
+            } else {
+                solicit_reg = DS2782_REG_CURRENT;
+            }
+            LOG_INF("DS2782 current stale — solicited read; awaiting reply");
+        } else if ((now - last_fail_log) >= CURRENT_SOLICIT_FAIL_LOG_MS) {
+            /* Rate-limited: one WRN per fault window, not one line per poll
+             * (with the force-INF CAN push this would otherwise broadcast a
+             * multi-frame push every attempt for as long as the fault lasts). */
+            last_fail_log = now;
+            LOG_WRN("DS2782 current solicit failing (rc=%d); backing off", rc);
+        }
+    }
+}
+
+/* Log each freshly-recorded current sample once, from thread context. The parser
+ * (target_stop) runs in ISR context and only stores, so the log-package build
+ * stays off the shared ISR stack. */
+static void log_current_if_new(void)
+{
+    static int64_t last_logged_at;
+    int16_t counts = 0;
+    int64_t at = 0;
+    const char *source = NULL;
+
+    k_spinlock_key_t key = k_spin_lock(&gauge_lock);
+    bool seen = current_seen;
+    if (seen) {
+        counts = current_counts;
+        at = current_at;
+        source = current_source;
+    }
+    k_spin_unlock(&gauge_lock, key);
+
+    if (seen && (source != NULL) && (at != last_logged_at)) {
+        last_logged_at = at;
+        LOG_INF("DS2782 current: %d uA (%d counts) via %s",
+                ds2782_counts_to_ua(counts), counts, source);
+    }
+}
+
 void poseidon_accessories_shutdown(void)
 {
     /* Runs in the power shutdown thread's context at the commit point, before
@@ -386,8 +568,10 @@ static void accessories_thread(void *a, void *b, void *c)
         }
     }
     /* Expose the DS2782 pack current to the generic device-current API so the
-     * solenoid driver's closed-loop check can consume it. */
+     * solenoid driver's closed-loop check can consume it, and a trigger so the
+     * check can force a fresh read synchronised to a solenoid fire. */
     device_current_register(poseidon_current_provider);
+    device_current_register_trigger(poseidon_current_trigger);
     AlarmMask_t alarms = ALARM_PPO2_INVALID;
     heartbeat_register(HEARTBEAT_ACCESSORIES);
     /* Force a refresh on the first wake. */
@@ -411,6 +595,12 @@ static void accessories_thread(void *a, void *b, void *c)
         int wait_rc = zbus_sub_wait_msg(&poseidon_alarm_sub, &chan, &notified,
                                         K_MSEC(TICK_MS));
         heartbeat_kick(HEARTBEAT_ACCESSORIES);
+
+        /* Keep the whole-device current fresh: poll the DS2782 when the
+         * battery's on-change 0x06 broadcast has been quiet past the window,
+         * then log any freshly-arrived sample from here (not the ISR parser). */
+        solicit_current();
+        log_current_if_new();
 
         /* Refresh on an alarm event, or every REFRESH_TICKS wakes to re-assert
          * peer state and feed the peers' watchdogs. */

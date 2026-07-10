@@ -79,6 +79,12 @@ static const uint32_t PID_PERIOD_MS = 100U;
 static const uint32_t CHAN_OP_TIMEOUT_MS = 10U;
 /** Solenoid PWM cycle length in milliseconds. */
 static const uint32_t SOLENOID_CYCLE_MS = 5000U;
+
+/* Service cadence for the windowed solenoid current check while the controller
+ * is OFF — the fire thread stays alive judging manual override (0xF242) fires
+ * instead of suspending. Fast relative to the judge window so a fire's delayed
+ * plateau is sampled several times. */
+static const uint32_t SOL_OFF_SERVICE_MS = 250U;
 /** Hardware-minimum solenoid on-time (ms). Below this, the solenoid is not fired. */
 static const uint32_t SOLENOID_MIN_FIRE_MS = 200U;
 /** Hardware-maximum solenoid on-time per cycle (ms). Caps duty at 0.98. */
@@ -367,6 +373,10 @@ static DiveCANError_t sol_current_to_divecan(SolCurrentClass_t verdict)
 static void poll_solenoid_current(void)
 {
 #ifdef CONFIG_SOLENOID
+    /* Advance the windowed current judgment (peak-tracking across each fire's
+     * judge window); it may classify + latch a verdict this call. */
+    solenoid_current_service(SOL_DEVICE);
+
     SolenoidCurrentReading_t reading = {0};
     if (solenoid_current_poll(SOL_DEVICE, &reading)) {
 #ifdef CONFIG_FLASH_LOG
@@ -518,6 +528,9 @@ static void pid_sleep_kicking_us(uint32_t total_us)
     const uint32_t step_us = 1500000U;
     while (total_us > 0U) {
         heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
+        /* Service the current judge window mid-phase so a fire's delayed draw is
+         * caught within its window rather than only at the once-per-cycle poll. */
+        poll_solenoid_current();
         uint32_t chunk = (total_us < step_us) ? total_us : step_us;
         k_usleep((int32_t)chunk);
         total_us -= chunk;
@@ -599,6 +612,7 @@ static void mk15_sleep_kicking(uint32_t total_ms)
     uint32_t remaining = total_ms;
     while (remaining > 0U) {
         heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
+        poll_solenoid_current();  /* service the current judge window mid-phase */
         uint32_t chunk = (remaining < MK15_HEARTBEAT_STEP_MS) ?
                          remaining : MK15_HEARTBEAT_STEP_MS;
         k_msleep((int32_t)chunk);
@@ -783,8 +797,17 @@ static void solenoid_fire_thread_fn(void *p1, void *p2, void *p3)
     wait_for_ppo2_init();  /* don't read the mode until init has loaded it from NVS */
     PPO2ControlMode_t mode = *getActiveMode();
     if (PPO2CONTROL_OFF == mode) {
-        LOG_INF("Solenoid fire thread suspended (mode OFF)");
-        k_thread_suspend(k_current_get());
+        /* No control loop in OFF mode, but manual solenoid overrides (0xF242,
+         * HIL testing) still fire and must be judged. Stay alive servicing only
+         * the windowed current check instead of suspending — this never drives
+         * the solenoid, so it doesn't violate the override's exclusive access. */
+        LOG_INF("Solenoid fire thread: OFF mode — current-check service only");
+        heartbeat_register(HEARTBEAT_SOLENOID_FIRE);
+        while (true) {
+            heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
+            poll_solenoid_current();
+            k_msleep((int32_t)SOL_OFF_SERVICE_MS);
+        }
     }
 
     LOG_INF("Solenoid fire thread started (mode %d)", (int)mode);

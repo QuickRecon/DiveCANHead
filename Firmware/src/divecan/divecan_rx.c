@@ -764,6 +764,10 @@ static void ProcessISOTPCompletion(uint32_t now)
     /* Check for completed ISO-TP RX transfers BEFORE polling TX queue
      * so that responses are enqueued before we try to send them */
     if (udsState->isotpInitialized && udsState->isotpContext.rxComplete) {
+        /* A request arrived: an addressed reply is imminent. Re-arm the log-push
+         * quiescent window so broadcasts don't interleave with the reply on the
+         * handset's ISO-TP reassembly context. */
+        UDS_LogPush_NoteDialogActivity(now);
         UDS_ProcessRequest(&udsState->udsContext,
                    udsState->isotpContext.rxBuffer,
                    udsState->isotpContext.rxDataLength);
@@ -779,6 +783,14 @@ static void ProcessISOTPCompletion(uint32_t now)
     /* Poll TX queue AFTER processing RX - ensures responses enqueued
      * by UDS handler are sent immediately in the same iteration */
     ISOTP_TxQueue_Poll(now);
+
+    /* Keep the log-push window re-armed while an addressed reply is mid-flight
+     * (multi-frame TX parked in WAIT_FC or streaming CFs). Broadcasts never set
+     * IsBusy, so this only tracks addressed dialogs; the quiescent countdown
+     * therefore starts when the reply fully completes and the queue goes idle. */
+    if (ISOTP_TxQueue_IsBusy()) {
+        UDS_LogPush_NoteDialogActivity(now);
+    }
 
     /* Drive log push LAST: any UDS dialog reply for this iteration is already
      * enqueued/sent first, giving dialogs priority on the TX queue. The log

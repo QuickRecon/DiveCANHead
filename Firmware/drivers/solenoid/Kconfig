@@ -10,43 +10,44 @@ config SOLENOID
 config SOLENOID_CURRENT_CHECK
 	bool "Closed-loop solenoid current check"
 	depends on SOLENOID
-	default y
+	default n
 	help
 	  Sample the generic whole-device current API (device_current.h) just
 	  before energising a solenoid channel and again at the end of its
 	  on-window, then classify the draw as normal / under / over current and
 	  raise OP_ERROR on a debounced fault. The verdict is exposed via the
-	  pollable status API for a higher layer to broadcast/log. Requires a
-	  registered current provider (e.g. the Poseidon DS2782 fuel gauge, or a
-	  board with an on-board solenoid/rail shunt); without one every channel
-	  simply reports normal.
+	  pollable status API for a higher layer to broadcast/log.
+
+	  Opt-in: enable this only on a variant that registers a current provider
+	  (e.g. the Poseidon DS2782 fuel gauge, or a board with an on-board
+	  solenoid/rail shunt) AND sets the measured fire-current window below in
+	  its variant conf. The default-off state is the globally-applicable one:
+	  a board with no provider would only ever read "normal", so there is
+	  nothing to gain from compiling the check in.
 
 config SOLENOID_CURRENT_DELTA_MIN_UA
 	int "Minimum expected solenoid fire-current delta (uA)"
 	depends on SOLENOID_CURRENT_CHECK
-	default 150000
+	default 0
 	help
 	  A fire whose (fire - idle) current delta falls below this reads as
 	  UNDER-current (open coil / boost fault / stuck valve).
-	  Default 150 mA is the measured lower bound of the Poseidon solenoid draw.
+
+	  The default is a wide-open placeholder that never raises a fault; each
+	  variant that enables the check sets its own measured lower bound in its
+	  conf (e.g. Poseidon_Aren.conf sets 150 mA).
 
 config SOLENOID_CURRENT_DELTA_MAX_UA
 	int "Maximum expected solenoid fire-current delta (uA)"
 	depends on SOLENOID_CURRENT_CHECK
-	default 250000
+	default 1000000000
 	help
 	  A fire whose (fire - idle) current delta rises above this reads as
 	  OVER-current (possible short).
-	  Default 250 mA is the measured upper bound of the Poseidon solenoid draw.
 
-config SOLENOID_CURRENT_FAULT_STREAK
-	int "Consecutive out-of-window fires before flagging a fault"
-	depends on SOLENOID_CURRENT_CHECK
-	default 3
-	range 1 255
-	help
-	  Debounce: number of consecutive out-of-window fires on a channel
-	  before its status latches to a fault. A nominal fire clears it.
+	  The default is a wide-open placeholder (~1 kA) that never raises a
+	  fault; each variant that enables the check sets its own measured upper
+	  bound in its conf (e.g. Poseidon_Aren.conf sets 250 mA).
 
 config SOLENOID_INIT_PRIORITY
 	int "Solenoid driver init priority"

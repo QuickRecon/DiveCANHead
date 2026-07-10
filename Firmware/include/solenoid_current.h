@@ -81,4 +81,18 @@ bool solenoid_current_poll(const struct device *dev,
  */
 SolCurrentClass_t solenoid_current_aggregate(const struct device *dev);
 
+/**
+ * @brief Drive the windowed current judgment for any in-flight fires.
+ *
+ * The whole-pack gauge reports a fire's current with a phase delay that outlasts
+ * the on-window, so judgment is not done at the fire's close instant. Instead a
+ * per-channel window is opened on fire and this function — called periodically
+ * from thread context — samples the gauge across it, tracks the peak draw, trips
+ * OVER as soon as it clears the range, and classifies the peak delta at the
+ * deadline. No-op when the check is disabled or no window is open.
+ *
+ * @param dev Solenoid device.
+ */
+void solenoid_current_service(const struct device *dev);
+
 #endif /* SOLENOID_CURRENT_H */
