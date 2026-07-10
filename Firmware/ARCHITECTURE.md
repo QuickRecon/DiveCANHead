@@ -323,6 +323,11 @@ A reset caused by missed feeds surfaces on the next boot through the existing cr
 
 Analog HP tank pressure senders (O2 and/or diluent) ride on spare entries of the same `zephyr,user` io-channels list the analog oxygen cells use. `CONFIG_O2_TRANSDUCER_CHANNEL` / `CONFIG_DIL_TRANSDUCER_CHANNEL` pick the channel index per variant (-1 = absent, and the whole subsystem compiles out via the derived `CONFIG_HAS_PRESSURE_TRANSDUCER`); `CONFIG_*_TRANSDUCER_MIN` / `_MAX` give the output voltage (mV) at 0 bar and at full scale, and `CONFIG_*_TRANSDUCER_LIMIT` the full-scale pressure (bar).
 
+Configured senders are also exposed through UDS as `0xF238` (O2) and
+`0xF239` (diluent). Their little-endian `uint16` values use the native
+decibar resolution (`1234` = 123.4 bar); `0xFFFF` is the sensor-failure
+sentinel. A DID is unsupported when its corresponding sender is not fitted.
+
 Design points:
 
 - **Gain comes from DT, not code.** Conversion uses `adc_raw_to_millivolts_dt()` so the variant overlay chooses the ADS1115 PGA range (`ADC_GAIN_1` = ±2.048 V for 0.3–1.8 V senders); the analog cells' hardcoded ±0.256 V constant never applies. The variant overlay must re-enable the owning ADS1115 node and override the channel gain.

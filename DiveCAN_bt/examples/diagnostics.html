@@ -971,6 +971,33 @@
         </div>
       </div>
 
+      <!-- Optional HP cylinder-pressure transducers. The section and each
+           cylinder stay hidden unless that DID was accepted by the connected
+           firmware variant during the initial state fetch. -->
+      <div class="tab-section" id="cylinder-pressure-section" hidden>
+        <h2>Cylinder Pressure</h2>
+        <div class="summary-grid">
+          <div class="summary-item" id="o2-cylinder-pressure-item" hidden>
+            <div class="summary-label">O2 Cylinder</div>
+            <div class="summary-value" id="o2-cylinder-pressure">--</div>
+            <div class="summary-unit">bar</div>
+            <div class="plot-buttons">
+              <button class="plot-btn plot-left" onclick="plotToLeftAxis('o2_cyl_pressure', 'O2 Cylinder')">L</button>
+              <button class="plot-btn plot-right" onclick="plotToRightAxis('o2_cyl_pressure', 'O2 Cylinder')">R</button>
+            </div>
+          </div>
+          <div class="summary-item" id="dil-cylinder-pressure-item" hidden>
+            <div class="summary-label">Diluent Cylinder</div>
+            <div class="summary-value" id="dil-cylinder-pressure">--</div>
+            <div class="summary-unit">bar</div>
+            <div class="plot-buttons">
+              <button class="plot-btn plot-left" onclick="plotToLeftAxis('dil_cyl_pressure', 'Diluent Cylinder')">L</button>
+              <button class="plot-btn plot-right" onclick="plotToRightAxis('dil_cyl_pressure', 'Diluent Cylinder')">R</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Power Status -->
       <div class="tab-section">
         <h2>Power Status</h2>
@@ -1702,6 +1729,42 @@
       // Both source fields depend on POWER_SOURCES DID
       updateStaleClass(vccEl, 'POWER_SOURCES');
       updateStaleClass(vbusEl, 'POWER_SOURCES');
+    };
+
+    // Show the optional cylinder-pressure banner only for DIDs the connected
+    // firmware actually implements. A NaN value means the transducer exists
+    // but currently reports its 0xFFFF failure sentinel, so it remains visible
+    // as "--" rather than making the capability disappear.
+    const updateCylinderPressure = () => {
+      const section = document.getElementById('cylinder-pressure-section');
+      const cylinders = [
+        {
+          key: 'O2_CYL_PRESSURE',
+          item: document.getElementById('o2-cylinder-pressure-item'),
+          value: document.getElementById('o2-cylinder-pressure')
+        },
+        {
+          key: 'DIL_CYL_PRESSURE',
+          item: document.getElementById('dil-cylinder-pressure-item'),
+          value: document.getElementById('dil-cylinder-pressure')
+        }
+      ];
+      let available = false;
+
+      for (const cylinder of cylinders) {
+        const pressure = dataStore.getDIDValue(cylinder.key);
+        const supported = pressure !== undefined;
+        cylinder.item.hidden = !supported;
+        if (supported) {
+          available = true;
+          cylinder.value.textContent = Number.isFinite(pressure)
+            ? pressure.toFixed(1)
+            : '--';
+          updateStaleClass(cylinder.value, cylinder.key);
+        }
+      }
+
+      section.hidden = !available;
     };
 
     // Track cell types for rebuilding panels
@@ -3236,6 +3299,7 @@
       updateCellPanelsFromDIDs();
       updateSummary();
       updatePowerStatus();
+      updateCylinderPressure();
 
       // Update poll rate display
       if (dataStore.isPolling) {

@@ -33,6 +33,9 @@
 #ifdef CONFIG_POSEIDON_ACCESSORIES
 #include "poseidon_accessories.h"
 #endif
+#ifdef CONFIG_HAS_PRESSURE_TRANSDUCER
+#include "tank_pressure.h"
+#endif
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
 #include "uds_log_download.h"
@@ -634,6 +637,42 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         *len = (uint16_t)DEV_CURRENT_LEN;
         break;
     }
+
+    case UDS_DID_O2_CYL_PRESSURE:
+#if defined(CONFIG_HAS_PRESSURE_TRANSDUCER) && (CONFIG_O2_TRANSDUCER_CHANNEL >= 0)
+    {
+        TankPressureMsg_t tank = {0};
+        if (0 == zbus_chan_read(&chan_tank_pressure, &tank,
+                                K_MSEC(STATE_DID_READ_TIMEOUT_MS))) {
+            writeUint16(buf, tank.o2_decibar);
+            *len = sizeof(tank.o2_decibar);
+        } else {
+            result = false;
+        }
+        break;
+    }
+#else
+        result = false;
+        break;
+#endif
+
+    case UDS_DID_DIL_CYL_PRESSURE:
+#if defined(CONFIG_HAS_PRESSURE_TRANSDUCER) && (CONFIG_DIL_TRANSDUCER_CHANNEL >= 0)
+    {
+        TankPressureMsg_t tank = {0};
+        if (0 == zbus_chan_read(&chan_tank_pressure, &tank,
+                                K_MSEC(STATE_DID_READ_TIMEOUT_MS))) {
+            writeUint16(buf, tank.dil_decibar);
+            *len = sizeof(tank.dil_decibar);
+        } else {
+            result = false;
+        }
+        break;
+    }
+#else
+        result = false;
+        break;
+#endif
 
     case UDS_DID_CRASH_VALID:
     {

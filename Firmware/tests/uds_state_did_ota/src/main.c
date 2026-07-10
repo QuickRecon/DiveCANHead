@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief Unit tests for the OTA / MCUBoot UDS DID handlers (0xF270-0xF277).
+ * @brief Native tests for UDS state DIDs and OTA / MCUBoot handlers.
  *
  * Read DIDs (0xF270 MCUBOOT_STATUS, 0xF271 POST_STATUS, 0xF272 OTA_VERSION,
  * 0xF273 OTA_PENDING_VERSION, 0xF274 OTA_FACTORY_VERSION) are dispatched
@@ -44,6 +44,19 @@
 #include "error_histogram.h"
 #include "errors.h"
 #include "calibration.h"
+#include "tank_pressure.h"
+
+/* The production channel normally lives in tank_pressure.c, which is omitted
+ * from this native test because it requires real ADC devicetree nodes. Define
+ * the same channel here so the UDS handler can be tested with published fixture
+ * values and no hardware-facing sampler thread. */
+ZBUS_CHAN_DEFINE(chan_tank_pressure,
+    TankPressureMsg_t,
+    NULL, NULL,
+    ZBUS_OBSERVERS_EMPTY,
+    ZBUS_MSG_INIT(.o2_decibar = TANK_PRESSURE_FAIL,
+                  .dil_decibar = TANK_PRESSURE_FAIL,
+                  .timestamp_ticks = 0));
 
 /* ---- Stubs for symbols uds_state_did.c references but we don't exercise.
  *
@@ -471,6 +484,66 @@ static void test_setup(void *fixture)
 }
 
 ZTEST_SUITE(uds_state_did_ota, NULL, NULL, test_setup, NULL, NULL);
+
+/* ===================================================================== */
+/* Read DID tests — high-precision cylinder pressure (0xF238 / 0xF239)    */
+/* ===================================================================== */
+
+ZTEST(uds_state_did_ota, test_F238_o2_pressure_is_little_endian_decibar)
+{
+    TankPressureMsg_t tank = {
+        .o2_decibar = 1234U,
+        .dil_decibar = 2345U,
+        .timestamp_ticks = k_uptime_ticks(),
+    };
+    zassert_ok(zbus_chan_pub(&chan_tank_pressure, &tank, K_MSEC(100)));
+
+    read_did(UDS_DID_O2_CYL_PRESSURE);
+
+    zassert_equal(fx.captured_response_len, 5U,
+                  "0x62 + 2 DID + 2 payload = 5");
+    zassert_equal(fx.captured_response[0], UDS_SID_READ_DATA_BY_ID + 0x40U);
+    zassert_equal(fx.captured_response[1], 0xF2U, "DID hi");
+    zassert_equal(fx.captured_response[2], 0x38U, "DID lo");
+    zassert_equal(fx.captured_response[3], 0xD2U, "1234 decibar low byte");
+    zassert_equal(fx.captured_response[4], 0x04U, "1234 decibar high byte");
+}
+
+ZTEST(uds_state_did_ota, test_F239_dil_pressure_is_little_endian_decibar)
+{
+    TankPressureMsg_t tank = {
+        .o2_decibar = 1234U,
+        .dil_decibar = 2345U,
+        .timestamp_ticks = k_uptime_ticks(),
+    };
+    zassert_ok(zbus_chan_pub(&chan_tank_pressure, &tank, K_MSEC(100)));
+
+    read_did(UDS_DID_DIL_CYL_PRESSURE);
+
+    zassert_equal(fx.captured_response_len, 5U);
+    zassert_equal(fx.captured_response[1], 0xF2U, "DID hi");
+    zassert_equal(fx.captured_response[2], 0x39U, "DID lo");
+    zassert_equal(fx.captured_response[3], 0x29U, "2345 decibar low byte");
+    zassert_equal(fx.captured_response[4], 0x09U, "2345 decibar high byte");
+}
+
+ZTEST(uds_state_did_ota, test_F238_F239_preserve_sensor_failure_sentinel)
+{
+    TankPressureMsg_t tank = {
+        .o2_decibar = TANK_PRESSURE_FAIL,
+        .dil_decibar = TANK_PRESSURE_FAIL,
+        .timestamp_ticks = k_uptime_ticks(),
+    };
+    zassert_ok(zbus_chan_pub(&chan_tank_pressure, &tank, K_MSEC(100)));
+
+    read_did(UDS_DID_O2_CYL_PRESSURE);
+    zassert_equal(fx.captured_response[3], 0xFFU);
+    zassert_equal(fx.captured_response[4], 0xFFU);
+
+    read_did(UDS_DID_DIL_CYL_PRESSURE);
+    zassert_equal(fx.captured_response[3], 0xFFU);
+    zassert_equal(fx.captured_response[4], 0xFFU);
+}
 
 /* ===================================================================== */
 /* Read DID tests — 0xF270 MCUBOOT_STATUS                                */

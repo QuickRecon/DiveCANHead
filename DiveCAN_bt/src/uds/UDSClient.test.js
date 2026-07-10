@@ -194,6 +194,22 @@ describe('UDSClient', () => {
       }
     });
 
+    describe('tank pressure', () => {
+      it('converts little-endian decibar to bar without losing tenths', () => {
+        expect(client.parseDIDValue(
+          STATE_DIDS.O2_CYL_PRESSURE.did,
+          new Uint8Array([0xD2, 0x04])
+        )).toBe(123.4);
+      });
+
+      it('maps the firmware failure sentinel to NaN', () => {
+        expect(client.parseDIDValue(
+          STATE_DIDS.DIL_CYL_PRESSURE.did,
+          new Uint8Array([0xFF, 0xFF])
+        )).toBeNaN();
+      });
+    });
+
     it('returns raw data for unknown DID', () => {
       const data = new Uint8Array([0x01, 0x02, 0x03]);
       const result = client.parseDIDValue(0xFFFF, data);

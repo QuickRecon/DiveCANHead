@@ -41,6 +41,8 @@
 #define UDS_DID_POWER_SOURCES       0xF235U
 #define UDS_DID_POSEIDON_GAUGE      0xF236U  /**< 4 B: percent, flags, age_s LE */
 #define UDS_DID_DEVICE_CURRENT      0xF237U  /**< 8 B: int32 uA(+ve=draw), u16 age_s, u8 valid, u8 rsvd — all LE */
+#define UDS_DID_O2_CYL_PRESSURE     0xF238U  /**< uint16 LE: O2 cylinder pressure in decibar */
+#define UDS_DID_DIL_CYL_PRESSURE    0xF239U  /**< uint16 LE: diluent cylinder pressure in decibar */
 
 /* Control DIDs (writable) - 0xF24x */
 #define UDS_DID_SETPOINT_WRITE      0xF240U

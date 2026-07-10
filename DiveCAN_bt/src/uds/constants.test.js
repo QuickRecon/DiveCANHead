@@ -44,6 +44,15 @@ describe('UDS constants', () => {
       const info = getDIDInfo(0xF202);
       expect(info.label).toBe('Setpoint');
     });
+
+    it('defines native-resolution cylinder pressure DIDs', () => {
+      expect(STATE_DIDS.O2_CYL_PRESSURE).toMatchObject({
+        did: 0xF238, size: 2, type: 'tank_pressure', unit: 'bar'
+      });
+      expect(STATE_DIDS.DIL_CYL_PRESSURE).toMatchObject({
+        did: 0xF239, size: 2, type: 'tank_pressure', unit: 'bar'
+      });
+    });
   });
 
   describe('getCellDIDs', () => {

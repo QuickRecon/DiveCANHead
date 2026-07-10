@@ -295,6 +295,8 @@ export const STATE_DIDS = {
   THRESHOLD_VOLTAGE: { did: 0xF234, size: 4, type: 'float32', label: 'Threshold Voltage', unit: 'V' },
   POWER_SOURCES:     { did: 0xF235, size: 1, type: 'uint8',   label: 'Power Sources' },
   DEVICE_CURRENT:    { did: 0xF237, size: 8, type: 'device_current', label: 'Device Current', unit: 'mA' },
+  O2_CYL_PRESSURE:   { did: 0xF238, size: 2, type: 'tank_pressure', label: 'O2 Cylinder Pressure', unit: 'bar' },
+  DIL_CYL_PRESSURE:  { did: 0xF239, size: 2, type: 'tank_pressure', label: 'Diluent Cylinder Pressure', unit: 'bar' },
 
   // Cell 0 DIDs (0xF400-0xF40C)
   CELL0_PPO2:          { did: 0xF400, size: 4, type: 'float32', label: 'Cell 0 PPO2' },

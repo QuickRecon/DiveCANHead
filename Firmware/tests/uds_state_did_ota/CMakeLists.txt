@@ -53,7 +53,12 @@ target_include_directories(app PRIVATE
 # uds_state_did.c uses CONFIG_CELL_COUNT to size the per-cell channel
 # pointer table. oxygen_cell_channels.c uses the same Kconfig to gate
 # chan_cell_2/3 definitions. Force the production value here.
-target_compile_definitions(app PRIVATE CONFIG_CELL_COUNT=3)
+target_compile_definitions(app PRIVATE
+    CONFIG_CELL_COUNT=3
+    CONFIG_HAS_PRESSURE_TRANSDUCER=1
+    CONFIG_O2_TRANSDUCER_CHANNEL=1
+    CONFIG_DIL_TRANSDUCER_CHANNEL=0
+)
 
 # glibc gates strnlen() etc. behind _POSIX_C_SOURCE on the native_sim host
 # build — the production STM32 picolibc exposes them unconditionally.

@@ -848,6 +848,13 @@ export class UDSClient extends EventEmitter {
         return view.getInt16(0, true);
       case 'uint16':
         return view.getUint16(0, true);
+      case 'tank_pressure': {
+        // Firmware publishes the transducer's native decibar value. Preserve
+        // the 0.1 bar precision while mapping its wire failure sentinel to NaN
+        // so unavailable/bad readings are not plotted as 6553.5 bar.
+        const decibar = view.getUint16(0, true);
+        return decibar === 0xFFFF ? NaN : decibar / 10;
+      }
       case 'uint8':
         return data[0];
       case 'bool':
