@@ -21,6 +21,7 @@ The DiveCAN_bt client provides a protocol stack for communicating with the DiveC
 | `src/firmware/OTAManager.js` | OTA firmware update orchestration |
 | `src/firmware/McubootImage.js` | MCUBoot image parse/validate |
 | `src/firmware/McubootStatus.js` | MCUBoot/OTA status DID decoders |
+| `src/errors/ErrorHistogram.js` | `OP_ERR_*` table + error-histogram (0xF260) decode |
 | `src/logs/LogDownloader.js` | Flash-log selector + chunked download |
 | `src/logs/LogParser.js` | DCLG/TLV stream parser + record decoders |
 | `src/logs/LogExport.js` | JSON/CSV/raw-bin export |
@@ -374,6 +375,29 @@ export const CELL_TYPE_O2S = 2;
 > configuration block from the STM32 firmware **no longer exist**. Device config
 > is now individual settings under `0x9xxx`.
 
+### Extra read-only DIDs and struct decoding
+
+`EXTRA_READ_DIDS` (in `constants.js`) lists readable DIDs that aren't part of the
+live-polled scalar set — identity strings, crash forensics, firmware/OTA state,
+flash-log knobs. They're read one at a time by `DataStore` and formatted for the
+**DID Subscriptions** page by `parseExtraDIDValue(info, data)`, keyed off
+`info.type`. Scalar types (`string`, `uint8`, `uint32`, `hex32`, `semver`,
+`hex`) render directly; three struct DIDs decode to human-readable summaries
+instead of a raw byte dump:
+
+| DID    | Key              | `type`           | Example rendered value                                   |
+|--------|------------------|------------------|----------------------------------------------------------|
+| 0xF271 | `POST_STATUS`    | `post_status`    | `CONFIRMED · passed: cells, consensus, ppo2_tx, handset, solenoid` |
+| 0xF236 | `POSEIDON_GAUGE` | `poseidon_gauge` | `72% · fresh · age 15s` (or `no data` before first frame) |
+| 0xF270 | `MCUBOOT_STATUS` | `mcuboot`        | `None · confirmed · run slot0 · s0 1.2.3 · s1 none`      |
+
+The struct decoders live in `src/firmware/McubootStatus.js`
+(`decodePostStatus` + `POST_STATE_NAMES` for the `PostState_t` enum,
+`decodeMcubootStatus`); `parseExtraDIDValue` imports them and inlines the
+Poseidon-gauge byte layout (`[0]` percent, `[1]` flags b0=ever_received /
+b1=fresh / b2=stale, `[2:4]` age seconds LE). To decode another struct DID, add a
+`type` and a matching `case` in `parseExtraDIDValue`.
+
 ## BLE Connection (Petrel 3 Bridge)
 
 ### Quirks
@@ -402,6 +426,18 @@ can outrun the interval, so an in-flight guard (`_pollInFlight`) skips a tick
 while the previous cycle is still running — cycles never stack up and flood the
 serialized request queue.
 
+**Log-drain before initial fetch.** `initialize()` first calls
+`waitForLogQuiescence()` before the DID-fetch burst. The head streams buffered
+log lines as *broadcast* ISO-TP pushes; starting the fetch while that backlog is
+still draining interleaves two Consecutive-Frame streams into the Petrel
+handset's single per-source reassembly context — the bridge reports
+**"RX Wrong Seq in CF"** then **"TO SLIP TX"** and crashes. The DataStore stamps
+`_lastLogActivityMs` on every `logMessage` / `unsolicitedMessage` from the UDS
+client and holds the fetch until no push has arrived for `logDrainQuietMs`
+(default 300 ms), capped at `logDrainMaxMs` (default 4 s). This is the
+client-side half of the fix; the head-side half is a matching quiescent gate on
+log-push TX (see the firmware ISO-TP transport docs).
+
 ### CellUIAdapter
 
 Adapts cell data for UI display with type-specific formatting.
@@ -416,12 +452,29 @@ controls on the Control tab). It is a single `Chart` instance fed by one
 body (Chart.js v4 re-fits via its ResizeObserver when shown again).
 
 The `examples/diagnostics.html` app also has **Settings**, **Firmware Update**,
-**Logs**, and **Autotune** tabs wired to `stack.uds` (settings + autotune),
-`stack.ota` (OTAManager), and `stack.logs` (LogDownloader). The Firmware Update
-tab drives OTA through a single **Update OTA** button (`ota.updateFirmware`) with
-a **Cancel** for the staging phase; the per-phase buttons (Enter Session, Stage,
-Activate, Poll Until Confirmed, Force Revert) live under a **Stages** expander for
-manual step-through.
+**Logs**, **Errors**, and **Autotune** tabs wired to `stack.uds` (settings +
+autotune + error histogram), `stack.ota` (OTAManager), and `stack.logs`
+(LogDownloader). The Firmware Update tab drives OTA through a single **Update
+OTA** button (`ota.updateFirmware`) with a **Cancel** for the staging phase; the
+per-phase buttons (Enter Session, Stage, Activate, Poll Until Confirmed, Force
+Revert) live under a **Stages** expander for manual step-through.
+
+### Errors Tab
+
+Breaks down the persistent error histogram (DID `0xF260`) into a per-code table
+— code index, `OP_ERR_*` name, category, description, and saturating count —
+using `client.readErrorHistogram()`. Non-zero rows are highlighted; zero-count
+codes are hidden unless **Show zero-count codes** is ticked, and the `NONE`
+sentinel (index 0) is never shown. A summary line reports distinct tripped codes
+and total events. **Clear Histogram** calls `client.clearErrorHistogram()` (DID
+`0xF261`, confirmation-gated — it persists the reset to NVS). The table
+auto-loads the first time the tab is opened while connected; **Refresh** re-reads
+on demand. The counter labels come from `src/errors/ErrorHistogram.js`
+(`OP_ERRORS`, kept in exact `OpError_t` enum order from firmware
+`include/errors.h` — index == error code), with `decodeErrorHistogram()` parsing
+the `uint16[OP_ERR_MAX]` little-endian payload and `summarizeErrorHistogram()`
+producing the counts (also used for the one-line summary shown for
+`ERROR_HISTOGRAM` on the DID Subscriptions page).
 
 ### Autotune Tab
 

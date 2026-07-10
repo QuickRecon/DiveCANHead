@@ -116,6 +116,52 @@ await stack.ota.activate();
 const { raw } = await stack.logs.downloadLog({ selector: (d) => d.selectLatestBoot(0) });
 ```
 
+### CANable over Web Serial
+
+Chromium can talk directly to a CANable when it is running `slcan`/Lawicel
+serial firmware (the candleLight/gs_usb firmware is not a serial protocol and
+cannot be used through Web Serial). The adapter is configured for DiveCAN's
+125 kbit/s bus by default (`S4`). This direct path performs DiveCAN's padded
+ISO-TP variant in the browser; it does not use SLIP or the Petrel bridge.
+
+```javascript
+import { CanableProtocolStack } from './src/index.js';
+
+// Defaults: serial 115200 baud, CAN 125 kbit/s, dialog client 0xFE,
+// broadcast-log client 0xFF, head 0x04.
+const stack = new CanableProtocolStack();
+
+stack.on('logMessage', message => console.log('HEAD:', message));
+stack.on('error', error => console.error(error));
+
+// Must be called from a user gesture (for example, a button click).
+await stack.connect(); // opens Chromium's serial-port chooser
+
+const imageBytes = new Uint8Array(await (await fetch('./firmware.bin')).arrayBuffer());
+const result = await stack.ota.updateFirmware(imageBytes, {
+  onPhase: phase => console.log('OTA phase:', phase),
+  onProgress: (done, total) => console.log(`${done}/${total}`)
+});
+console.log(result);
+```
+
+Web Serial requires a secure context; `http://localhost` is accepted for local
+development. Disconnect any other active CAN controller/diagnostic client
+during OTA so only one ISO-TP dialog owns the head.
+
+Direct USB-CAN deliberately uses two independent ISO-TP receive contexts:
+addressed OTA/DID replies target client `0xFE`, while pushed logs remain on
+`0xFF`. Interleaved log frames therefore cannot alter the dialog reassembly
+sequence or complete a pending UDS request. BLE continues to use `0xFF` for
+both because the Bluetooth bridge exposes only that single client address.
+
+The CANable stack also watches for the handset's controller `BUS_ID` ping
+(`0x0D000001`). If none is observed for 2.5 seconds it supplies the same ping
+once per second, allowing a freshly swapped image to pass its handset-liveness
+POST when the USB adapter is the only bus peer. Emulation stops immediately
+when a real handset ping appears. Set `handsetEmulation: false` to disable it,
+or override `handsetMissingAfterMs` / `handsetPingIntervalMs` if required.
+
 ### Direct Layer Access
 
 ```javascript

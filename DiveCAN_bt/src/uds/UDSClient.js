@@ -6,6 +6,7 @@
 import { ByteUtils } from '../utils/ByteUtils.js';
 import { UDSError } from '../errors/ProtocolErrors.js';
 import { Logger } from '../utils/Logger.js';
+import { decodeErrorHistogram } from '../errors/ErrorHistogram.js';
 import * as constants from './constants.js';
 
 /**
@@ -222,6 +223,21 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
+   * Process a message from a receive-only side channel such as the CANable
+   * 0xFF log context. Only unsolicited WDBI pushes are accepted here, so a
+   * broadcast can never satisfy or reject an addressed dialog request.
+   */
+  processUnsolicited(data) {
+    const bytes = ByteUtils.toUint8Array(data);
+    if (bytes[0] !== constants.SID_WRITE_DATA_BY_ID) {
+      this.logger.warn('Ignoring non-WDBI message on unsolicited channel');
+      return false;
+    }
+    this._handleUnsolicitedWDBI(bytes);
+    return true;
+  }
+
+  /**
    * Handle negative response
    * @private
    */
@@ -342,6 +358,30 @@ export class UDSClient extends EventEmitter {
 
     await this._sendRequest(request);
     this.logger.info(`Wrote ${dataArray.length} bytes to DID 0x${did.toString(16).padStart(4, '0')}`);
+  }
+
+  // ============================================================
+  // Error histogram (DID 0xF260 read, 0xF261 clear)
+  // ============================================================
+
+  /**
+   * Read and decode the per-code error histogram (DID 0xF260).
+   * @returns {Promise<Array<{index:number, name:string, category:string,
+   *   description:string, count:number}>>} One entry per error code, enum order.
+   */
+  async readErrorHistogram() {
+    const data = await this.readDataByIdentifier(constants.DID_ERROR_HISTOGRAM);
+    return decodeErrorHistogram(data);
+  }
+
+  /**
+   * Clear all error-histogram counters and persist the reset to NVS
+   * (DID 0xF261 accepts any byte payload).
+   * @returns {Promise<void>}
+   */
+  async clearErrorHistogram() {
+    await this.writeDataByIdentifier(constants.DID_ERROR_HISTOGRAM_CLEAR, [0x01]);
+    this.logger.info('Cleared error histogram');
   }
 
   // ============================================================

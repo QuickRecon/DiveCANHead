@@ -227,6 +227,20 @@ describe('UDSClient', () => {
       expect(handler).toHaveBeenCalledWith(message);
     });
 
+    it('accepts log pushes from a separate unsolicited channel', () => {
+      const handler = vi.fn();
+      client.on('logMessage', handler);
+      expect(client.processUnsolicited([0x2E, 0xA1, 0x00, 0x55, 0x53, 0x42])).toBe(true);
+      expect(handler).toHaveBeenCalledWith('USB');
+    });
+
+    it('does not feed non-WDBI side-channel traffic into a pending dialog', () => {
+      const handler = vi.fn();
+      client.on('response', handler);
+      expect(client.processUnsolicited([0x62, 0xF2, 0x00, 1])).toBe(false);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
     it('emits unsolicitedMessage for other DIDs', () => {
       const handler = vi.fn();
       client.on('unsolicitedMessage', handler);
@@ -320,6 +334,32 @@ describe('UDSClient', () => {
         const version = await client.readFirmwareVersion();
 
         expect(version).toBe('v1.2.3-4');
+      });
+    });
+
+    describe('error histogram', () => {
+      it('readErrorHistogram decodes the 0xF260 uint16[] payload', async () => {
+        // 38 slots; slot 9 (CELL_FAILURE) = 3, slot 17 (ISOTP_TIMEOUT) = 0x0102
+        const payload = new Uint8Array(38 * 2);
+        const view = new DataView(payload.buffer);
+        view.setUint16(9 * 2, 3, true);
+        view.setUint16(17 * 2, 0x0102, true);
+        transport.queueResponse(buildRDBIResponse(0xF260, payload));
+
+        const entries = await client.readErrorHistogram();
+
+        expect(entries.length).toBe(38);
+        expect(entries[9]).toMatchObject({ name: 'CELL_FAILURE', count: 3 });
+        expect(entries[17]).toMatchObject({ name: 'ISOTP_TIMEOUT', count: 258 });
+      });
+
+      it('clearErrorHistogram writes a byte to 0xF261', async () => {
+        transport.queueResponse(buildWDBIResponse(0xF261));
+
+        await client.clearErrorHistogram();
+
+        const sent = transport.getLastSent();
+        expect(Array.from(sent)).toEqual([0x2E, 0xF2, 0x61, 0x01]);
       });
     });
 

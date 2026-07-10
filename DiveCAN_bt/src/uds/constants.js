@@ -14,6 +14,7 @@
  */
 
 import { decodePostStatus, decodeMcubootStatus } from '../firmware/McubootStatus.js';
+import { decodeErrorHistogram, summarizeErrorHistogram } from '../errors/ErrorHistogram.js';
 
 // ============================================================================
 // Service IDs (SID)
@@ -83,6 +84,7 @@ export const DID_SETPOINT_WRITE = 0xF240;      // u8 centibar (0.40-1.60 bar cla
 export const DID_CALIBRATION_TRIGGER = 0xF241; // u8 fO2 percentage (0-100)
 export const DID_SOLENOID_OVERRIDE = 0xF242;   // [channel, magic 0x5A] (HIL raw-fire)
 export const SOLENOID_OVERRIDE_MAGIC = 0x5A;
+export const DID_ERROR_HISTOGRAM = 0xF260;       // uint16[OP_ERR_MAX] LE (per-code counts)
 export const DID_ERROR_HISTOGRAM_CLEAR = 0xF261; // write any byte -> clear + persist
 
 // ============================================================================
@@ -428,7 +430,7 @@ export const EXTRA_READ_DIDS = {
   CRASH_PC:        { did: 0xF252, type: 'hex32',  label: 'Crash PC',          category: 'Diagnostics' },
   CRASH_LR:        { did: 0xF253, type: 'hex32',  label: 'Crash LR',          category: 'Diagnostics' },
   CRASH_CFSR:      { did: 0xF254, type: 'hex32',  label: 'Crash CFSR',        category: 'Diagnostics' },
-  ERROR_HISTOGRAM: { did: 0xF260, type: 'hex',    label: 'Error Histogram',   category: 'Diagnostics' },
+  ERROR_HISTOGRAM: { did: 0xF260, type: 'error_histogram', label: 'Error Histogram', category: 'Diagnostics' },
 
   MCUBOOT_STATUS:  { did: 0xF270, type: 'mcuboot', label: 'MCUBoot Status',   category: 'Firmware' },
   POST_STATUS:     { did: 0xF271, type: 'post_status', label: 'POST Status',  category: 'Firmware' },
@@ -531,6 +533,13 @@ export function parseExtraDIDValue(info, data) {
       const confirmed = m.confirmed ? 'confirmed' : 'UNCONFIRMED';
       return `${m.swapTypeName} · ${confirmed} · run slot${m.runningSlot}` +
         ` · s0 ${fmtVer(m.slot0Version)} · s1 ${fmtVer(m.slot1Version)}`;
+    }
+    case 'error_histogram': {
+      // 0xF260: uint16[OP_ERR_MAX] LE. Full per-code breakdown lives on the
+      // Errors tab; here we show a one-line summary.
+      const { trippedCodes, totalEvents } = summarizeErrorHistogram(decodeErrorHistogram(data));
+      if (trippedCodes === 0) return 'no errors logged';
+      return `${trippedCodes} code${trippedCodes === 1 ? '' : 's'}, ${totalEvents} events`;
     }
     case 'hex':
     default:

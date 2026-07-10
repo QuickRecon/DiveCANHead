@@ -867,7 +867,7 @@
   <h1>DiveCANHead Diagnostics</h1>
 
   <div class="warning" id="browserWarning" style="display: none;">
-    Web Bluetooth not available. Please use Chrome, Edge, or Opera browser.
+    Neither Web Bluetooth nor Web Serial is available. Please use a Chromium-based browser.
   </div>
 
   <!-- Connection Section -->
@@ -875,10 +875,15 @@
     <h2>Connection</h2>
     <div class="button-group">
       <button id="scanButton">Scan & Connect</button>
+      <button id="usbConnectButton">Connect USB-CAN</button>
       <button id="disconnectButton" disabled>Disconnect</button>
       <span class="status disconnected" id="connectionStatus">Disconnected</span>
       <span id="streamStatusDetail" style="color: #888; font-size: 13px;"></span>
     </div>
+    <label style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:#ccc;font-size:13px;">
+      <input type="checkbox" id="fetchDidsOnConnect" checked>
+      Fetch DIDs on connect (uncheck if the handset crashes on connect)
+    </label>
     <div id="deviceInfo" style="margin-top: 10px; font-size: 14px; color: #888;"></div>
   </div>
 
@@ -890,6 +895,7 @@
     <button class="tab-button" data-tab="settings">Settings</button>
     <button class="tab-button" data-tab="firmware">Firmware Update</button>
     <button class="tab-button" data-tab="logs">Logs</button>
+    <button class="tab-button" data-tab="errors">Errors</button>
     <button class="tab-button" data-tab="dids">DID Subscriptions</button>
   </div>
 
@@ -1335,6 +1341,42 @@
     <!-- End Logs Tab -->
     </div>
 
+    <!-- Errors Tab -->
+    <div class="tab-content" id="tab-errors">
+      <div class="tab-section">
+        <h2>Error Histogram</h2>
+        <p style="color:#888;font-size:12px;margin:4px 0 12px;">
+          Per-code occurrence counters (DID <code>0xF260</code>), saturating and
+          persisted in NVS across reboots. Counts survive power cycles until
+          cleared.
+        </p>
+        <div class="chart-controls">
+          <button class="small" id="errorRefreshButton" disabled>Refresh</button>
+          <button class="small danger" id="errorClearButton" disabled>Clear Histogram&hellip;</button>
+          <label style="color:#ccc;font-size:13px;">
+            <input type="checkbox" id="errorShowAll"> Show zero-count codes
+          </label>
+          <span id="errorSummary" style="color:#888;font-size:13px;margin-left:auto;">--</span>
+        </div>
+        <div style="max-height: 460px; overflow: auto;">
+          <table id="errorTable" style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="text-align:left;color:#888;border-bottom:1px solid #3a3a3a;">
+              <th style="padding:6px 8px;">Code</th>
+              <th style="padding:6px 8px;">Error</th>
+              <th style="padding:6px 8px;">Category</th>
+              <th style="padding:6px 8px;">Description</th>
+              <th style="padding:6px 8px;text-align:right;">Count</th>
+            </tr></thead>
+            <tbody id="errorTableBody">
+              <tr><td colspan="5" style="padding:10px;color:#666;">(Connect and press Refresh)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="errorStatus" style="margin-top:10px;color:#888;font-size:13px;"></div>
+      </div>
+    <!-- End Errors Tab -->
+    </div>
+
     <!-- DID Subscriptions Tab -->
     <div class="tab-content" id="tab-dids">
       <h2>DID Subscriptions</h2>
@@ -1398,7 +1440,7 @@
   </div>
 
   <script type="module">
-    import { DeviceManager, Logger } from '../src/index.js';
+    import { DeviceManager, CanableProtocolStack, Logger } from '../src/index.js';
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
@@ -1412,7 +1454,7 @@
 
     // Check browser support
     const checkBrowserSupport = () => {
-      if (!navigator.bluetooth) {
+      if (!navigator.bluetooth && !navigator.serial) {
         document.getElementById('browserWarning').style.display = 'block';
         return false;
       }
@@ -1446,6 +1488,12 @@
               content.classList.add('active');
             }
           });
+
+          // Auto-load the error histogram the first time the Errors tab is
+          // opened while connected (cheap single read; manual Refresh re-reads).
+          if (targetTab === 'errors' && stack && !errorHistogramLoaded) {
+            refreshErrorHistogram();
+          }
         });
       });
     };
@@ -1453,6 +1501,7 @@
     // UI Elements
     const elements = {
       scanButton: document.getElementById('scanButton'),
+      usbConnectButton: document.getElementById('usbConnectButton'),
       disconnectButton: document.getElementById('disconnectButton'),
       connectionStatus: document.getElementById('connectionStatus'),
       deviceInfo: document.getElementById('deviceInfo'),
@@ -1515,6 +1564,7 @@
     // Update UI state
     const updateUIState = (connected) => {
       elements.scanButton.disabled = connected;
+      elements.usbConnectButton.disabled = connected;
       elements.disconnectButton.disabled = !connected;
 
       if (connected) {
@@ -1565,9 +1615,9 @@
     };
 
     // Add to log messages (text logs only)
-    const addToLogMessages = (message) => {
+    const addToLogMessages = (message, isError = false) => {
       const entry = document.createElement('div');
-      entry.className = 'log-entry';
+      entry.className = `log-entry${isError ? ' error' : ''}`;
       entry.textContent = message;
       elements.logMessages.appendChild(entry);
 
@@ -2014,8 +2064,10 @@
           pollInterval: 200
         });
 
-        // Show initializing status
-        updateStreamStatus('initializing', 'Fetching DIDs...');
+        // Show initializing status. initialize() first drains the head's log
+        // backlog (waitForLogQuiescence) before the DID-fetch burst so log
+        // pushes don't interleave with our responses on the handset.
+        updateStreamStatus('initializing', 'Draining log backlog...');
 
         // Fetch all DIDs initially with progress callback
         await newDataStore.initialize((current, total) => {
@@ -2582,6 +2634,111 @@
     };
 
     // ============================================================
+    // Errors tab logic (DID 0xF260 read, 0xF261 clear)
+    // ============================================================
+    let errorHistogramLoaded = false;  // avoid re-reading every tab open
+    let lastErrorEntries = [];         // cache so the filter toggle re-renders locally
+
+    // Render a decoded histogram into the table. Non-zero rows are highlighted;
+    // zero-count rows are hidden unless "Show zero-count codes" is checked. The
+    // NONE sentinel (index 0) is never shown.
+    const renderErrorHistogram = (entries) => {
+      lastErrorEntries = entries;
+      const body = $('errorTableBody');
+      const showAll = $('errorShowAll').checked;
+      body.innerHTML = '';
+
+      let trippedCodes = 0;
+      let totalEvents = 0;
+      let rows = 0;
+      for (const e of entries) {
+        if (e.index === 0) continue;  // NONE sentinel
+        if (e.count > 0) { trippedCodes += 1; totalEvents += e.count; }
+        if (e.count === 0 && !showAll) continue;
+
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #2a2a2a';
+        if (e.count > 0) { tr.style.background = 'rgba(255, 90, 90, 0.12)'; }
+        const countColor = e.count > 0 ? '#ff8a8a' : '#666';
+        const nameColor = e.count > 0 ? '#e0e0e0' : '#999';
+        tr.innerHTML =
+          `<td style="padding:6px 8px;color:#777;font-family:monospace;">${e.index}</td>` +
+          `<td style="padding:6px 8px;color:${nameColor};font-family:monospace;">${e.name}</td>` +
+          `<td style="padding:6px 8px;color:#888;">${e.category}</td>` +
+          `<td style="padding:6px 8px;color:#aaa;">${e.description}</td>` +
+          `<td style="padding:6px 8px;text-align:right;color:${countColor};font-weight:bold;">${e.count}</td>`;
+        body.appendChild(tr);
+        rows += 1;
+      }
+
+      if (rows === 0) {
+        body.innerHTML =
+          '<tr><td colspan="5" style="padding:10px;color:#4caf50;">No errors logged — all counters zero.</td></tr>';
+      }
+
+      $('errorSummary').textContent = trippedCodes === 0
+        ? 'No errors logged'
+        : `${trippedCodes} code${trippedCodes === 1 ? '' : 's'} tripped · ${totalEvents} total events`;
+    };
+
+    const refreshErrorHistogram = async () => {
+      if (!stack) { $('errorStatus').textContent = 'Not connected'; return; }
+      $('errorRefreshButton').disabled = true;
+      $('errorStatus').textContent = 'Reading histogram…';
+      try {
+        const entries = await stack.uds.readErrorHistogram();
+        renderErrorHistogram(entries);
+        errorHistogramLoaded = true;
+        $('errorStatus').textContent = '';
+      } catch (error) {
+        $('errorStatus').textContent = `Read failed: ${error.message}`;
+      } finally {
+        $('errorRefreshButton').disabled = false;
+      }
+    };
+
+    const clearErrorHistogramUI = async () => {
+      if (!stack) return;
+      if (!confirm('Clear all error-histogram counters? This persists to NVS and cannot be undone.')) {
+        return;
+      }
+      $('errorClearButton').disabled = true;
+      $('errorStatus').textContent = 'Clearing…';
+      try {
+        await stack.uds.clearErrorHistogram();
+        $('errorStatus').textContent = 'Cleared.';
+        await refreshErrorHistogram();
+      } catch (error) {
+        $('errorStatus').textContent = `Clear failed: ${error.message}`;
+      } finally {
+        $('errorClearButton').disabled = false;
+      }
+    };
+
+    const enableErrorsUI = () => {
+      $('errorRefreshButton').disabled = false;
+      $('errorClearButton').disabled = false;
+    };
+
+    const resetErrorsUI = () => {
+      $('errorRefreshButton').disabled = true;
+      $('errorClearButton').disabled = true;
+      $('errorStatus').textContent = '';
+      $('errorSummary').textContent = '--';
+      errorHistogramLoaded = false;
+      lastErrorEntries = [];
+      $('errorTableBody').innerHTML =
+        '<tr><td colspan="5" style="padding:10px;color:#666;">(Connect and press Refresh)</td></tr>';
+    };
+
+    $('errorRefreshButton').addEventListener('click', refreshErrorHistogram);
+    $('errorClearButton').addEventListener('click', clearErrorHistogramUI);
+    $('errorShowAll').addEventListener('change', () => {
+      // Filter toggle re-renders the cached read locally — no device round-trip.
+      if (errorHistogramLoaded) renderErrorHistogram(lastErrorEntries);
+    });
+
+    // ============================================================
     // Autotune tab logic (DID 0xF243 control, 0xF213 status)
     // ============================================================
     let autotunePollTimer = null;   // status/live poll interval handle
@@ -2868,24 +3025,13 @@
         collapsed ? 'Expand' : 'Collapse';
     };
 
-    // Scan and connect
-    elements.scanButton.addEventListener('click', async () => {
-      try {
-        deviceManager = new DeviceManager();
-        const devices = await deviceManager.scan();
+    // Both physical links share the same diagnostics/OTA setup. USB-CAN uses
+    // separate 0xFE dialog and 0xFF log ISO-TP contexts inside its stack.
+    const connectStack = async (newStack, label, connectArgument = undefined) => {
+      stack = newStack;
+      elements.deviceInfo.textContent = `Device: ${label}`;
 
-        if (devices.length === 0) {
-          return;
-        }
-
-        const currentDevice = devices[0].device;
-        elements.deviceInfo.textContent = `Device: ${devices[0].name}`;
-
-        // Create stack and connect
-        stack = deviceManager.createStack(currentDevice);
-
-        // Set up event handlers
-        stack.on('connected', async () => {
+      stack.on('connected', async () => {
           updateUIState(true);
 
           // Enable feature tabs
@@ -2900,14 +3046,23 @@
           // Enable autotune tab
           enableAutotuneUI();
 
+          // Enable errors tab
+          enableErrorsUI();
+
           // Set target to SOLO (0x04)
           stack.setTargetAddress(0x04);
 
-          // Initialize DID-based polling
-          await initDIDPolling();
-        });
+          // Initialize DID-based polling — the fetch burst can crash a handset
+          // running firmware without the log-push quiescent gate, so it's
+          // gated behind an opt-out checkbox (default on).
+          if (document.getElementById('fetchDidsOnConnect').checked) {
+            await initDIDPolling();
+          } else {
+            updateStreamStatus('inactive', 'DID fetch skipped');
+          }
+      });
 
-        stack.on('disconnected', () => {
+      stack.on('disconnected', () => {
           updateUIState(false);
           updateStreamStatus('inactive');
 
@@ -2929,22 +3084,54 @@
 
           // Reset autotune tab UI
           resetAutotuneUI();
-        });
 
-        stack.on('error', (error) => {
-          console.error('Stack error:', error);
-        });
+          // Reset errors tab UI
+          resetErrorsUI();
+      });
 
-        // Handle log messages (text logs - displayed in log box)
-        stack.on('logMessage', (message) => {
-          addToLogMessages(message);
-        });
+      stack.on('error', (error) => {
+        console.error('Stack error:', error);
+        addToLogMessages(`Transport error: ${error.message || error}`, true);
+      });
 
-        // Connect
-        await stack.connect(currentDevice);
+      stack.on('logMessage', (message) => addToLogMessages(message));
+      stack.on('handsetEmulation', ({ active }) => {
+        const mode = active ? 'supplying missing handset pings' : 'real handset detected';
+        elements.deviceInfo.textContent = `Device: ${label} · ${mode}`;
+        addToLogMessages(`USB-CAN handset heartbeat: ${mode}`);
+      });
+      await stack.connect(connectArgument);
+    };
 
+    // Scan and connect over the existing Bluetooth bridge.
+    elements.scanButton.addEventListener('click', async () => {
+      try {
+        deviceManager = new DeviceManager();
+        const devices = await deviceManager.scan();
+        if (devices.length === 0) return;
+        const currentDevice = devices[0].device;
+        await connectStack(deviceManager.createStack(currentDevice), devices[0].name, currentDevice);
       } catch (error) {
-        console.error('Connection failed:', error);
+        stack = null;
+        updateUIState(false);
+        console.error('Bluetooth connection failed:', error);
+      }
+    });
+
+    // Connect directly to an slcan/Lawicel CANable via Chromium Web Serial.
+    elements.usbConnectButton.addEventListener('click', async () => {
+      try {
+        if (!navigator.serial) throw new Error('Web Serial is not available in this browser');
+        const usbStack = new CanableProtocolStack({
+          sourceAddress: 0xFE,
+          logAddress: 0xFF,
+          targetAddress: 0x04
+        });
+        await connectStack(usbStack, 'CANable USB (dialog 0xFE, logs 0xFF)');
+      } catch (error) {
+        stack = null;
+        updateUIState(false);
+        console.error('USB-CAN connection failed:', error);
       }
     });
 

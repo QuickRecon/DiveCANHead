@@ -5,6 +5,9 @@
 
 // Main classes
 export { DiveCANProtocolStack } from './DiveCANProtocolStack.js';
+export { CanableProtocolStack } from './CanableProtocolStack.js';
+export { CanableConnection } from './can/CanableConnection.js';
+export { IsoTpCanTransport } from './transport/IsoTpCanTransport.js';
 export { DeviceManager } from './DeviceManager.js';
 
 // Individual layers (for advanced usage)
@@ -21,6 +24,9 @@ export {
   decodeMcubootStatus, decodePostStatus, decodeSemVer8, decodeVer4,
   SWAP_TYPE_NAMES, POST_PASS_BITS, POST_STATE_NAMES
 } from './firmware/McubootStatus.js';
+export {
+  OP_ERRORS, OP_ERROR_COUNT, decodeErrorHistogram, summarizeErrorHistogram
+} from './errors/ErrorHistogram.js';
 export { LogDownloader, LOG_TIMEOUTS } from './logs/LogDownloader.js';
 export {
   parseLogStream, parseDclgHeader, decodeRecord, makeRecordCounter,

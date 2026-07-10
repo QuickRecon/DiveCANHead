@@ -29,6 +29,16 @@ export class DataStore {
     this.udsClient = options.udsClient ?? null;
     this.pollInterval = options.pollInterval ?? 200;
 
+    // Log-drain gating (see waitForLogQuiescence). The head streams buffered
+    // log lines as broadcast ISO-TP pushes; kicking off the DID-fetch burst
+    // while that backlog is still draining interleaves two CF streams into the
+    // Petrel handset's single per-source reassembly context ("RX Wrong Seq in
+    // CF" → "TO SLIP TX" crash). We hold the initial fetch until the push
+    // stream goes quiet.
+    this.logDrainQuietMs = options.logDrainQuietMs ?? 300;
+    this.logDrainMaxMs = options.logDrainMaxMs ?? 4000;
+    this._lastLogActivityMs = 0;
+
     this.series = new Map();
 
     // DID-based state
@@ -38,6 +48,14 @@ export class DataStore {
     this.cellTypes = [0, 0, 0];          // Cached cell types
     this.isPolling = false;
     this._pollInFlight = false;          // Guard against overlapping poll cycles
+
+    // Stamp the arrival of any head-initiated push so waitForLogQuiescence can
+    // tell when the backlog has drained. Both event names carry pushed traffic.
+    if (this.udsClient && typeof this.udsClient.on === 'function') {
+      const stamp = () => { this._lastLogActivityMs = Date.now(); };
+      this.udsClient.on('logMessage', stamp);
+      this.udsClient.on('unsolicitedMessage', stamp);
+    }
   }
 
   /**
@@ -145,6 +163,11 @@ export class DataStore {
       throw new Error('UDSClient required for pull mode');
     }
 
+    // Let the head flush any buffered log backlog before we start the fetch
+    // burst, so broadcast log pushes don't interleave with our multi-frame
+    // responses and clobber the handset's ISO-TP reassembly.
+    await this.waitForLogQuiescence();
+
     // Fetch all DIDs once
     const state = await this.fetchAllDIDs(progressCallback);
 
@@ -152,6 +175,35 @@ export class DataStore {
     this.startPolling();
 
     return state;
+  }
+
+  /**
+   * Resolve once no head-initiated push (log message / unsolicited DID) has
+   * been seen for `quietMs`, or after `maxMs` as a hard cap. Used to drain the
+   * connect-time log backlog before the initial DID fetch.
+   *
+   * @param {number} [quietMs] - Required idle gap; defaults to logDrainQuietMs.
+   * @param {number} [maxMs] - Absolute cap on how long to wait; defaults to logDrainMaxMs.
+   * @returns {Promise<void>}
+   */
+  async waitForLogQuiescence(quietMs = this.logDrainQuietMs, maxMs = this.logDrainMaxMs) {
+    const start = Date.now();
+    // No push seen yet: still grant a brief grace window, because a backlog may
+    // be in flight but not yet delivered. Seed the clock so the first idle
+    // check measures from now rather than returning instantly.
+    if (this._lastLogActivityMs === 0) {
+      this._lastLogActivityMs = start;
+    }
+    let elapsed = 0;
+    while (elapsed < maxMs) {
+      const sinceLast = Date.now() - this._lastLogActivityMs;
+      if (sinceLast >= quietMs) {
+        return;
+      }
+      const wait = Math.min(quietMs - sinceLast, 100);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      elapsed = Date.now() - start;
+    }
   }
 
   /**

@@ -102,6 +102,25 @@ void ISOTP_TxQueue_Poll(uint32_t currentTime);
 bool ISOTP_TxQueue_IsBusy(void);
 ```
 
+### Log-push quiescent gate
+
+The queue serializes frames *in time*, but broadcast log pushes (target `0xFF`)
+are sent fire-and-forget and share the handset's single **per-source** ISO-TP
+reassembly context with addressed UDS replies. If a broadcast push starts before
+the handset has closed the just-completed addressed reply, the two Consecutive-
+Frame streams merge into one context — the bridge reports **"RX Wrong Seq in
+CF"** and then **"TO SLIP TX"** and crashes. This bites during the connect-time
+DID-fetch burst, where addressed multi-frame replies stream back-to-back.
+
+`UDS_LogPush_Poll()` therefore holds pushes off until an addressed dialog has
+been quiet for `LOG_PUSH_QUIESCENT_MS` (75 ms). `divecan_rx.c` re-arms the window
+via `UDS_LogPush_NoteDialogActivity(now)` whenever a request completes (RX) or an
+addressed reply is mid-flight (`ISOTP_TxQueue_IsBusy()`), so the countdown starts
+only when the reply fully drains. This generalises `UDS_LogPush_SetSuspended()`
+(which brackets only the large OTA / log-download transfers) to ordinary UDS
+dialog. The client mirrors this with `DataStore.waitForLogQuiescence()`, which
+drains the backlog *before* the fetch burst — see `docs/DIVECAN_BT.md`.
+
 ## Addressing
 
 CAN ID format for ISO-TP frames:

@@ -94,6 +94,27 @@ no O2 solenoid it always reports `IDLE`. 38 bytes, **little-endian**:
 | 0xF233 | 4 | float32 | CAN bus voltage | V | R |
 | 0xF234 | 4 | float32 | Low-voltage threshold | V | R |
 | 0xF235 | 1 | uint8 | Power sources bitfield (Jr reports 0 — single battery source, no mux) | - | R |
+| 0xF236 | 4 | struct | Poseidon battery fuel gauge (percent, flags, age_s LE); Poseidon builds only | - | R |
+| 0xF237 | 8 | struct | Whole-device instantaneous current draw (see below) | - | R |
+
+### Device Current (0xF237)
+
+Whole-device instantaneous current draw from the generic current-provider API
+(`Firmware/include/device_current.h`). On the Poseidon variant the provider is
+the battery's DS2782 fuel gauge; other variants may register an ADC-backed shunt
+provider. Always returns a fixed 8-byte payload with an explicit validity flag
+(mirroring the gauge at 0xF236), so a batched read never fails on a variant with
+no provider. 8 bytes, **little-endian**:
+
+| Offset | Size | Type | Field | Notes |
+|--------|------|------|-------|-------|
+| 0 | 4 | int32 | current_ua | Instantaneous draw in µA (positive = draw) |
+| 4 | 2 | uint16 | age_s | Seconds since the sample was taken (clamped) |
+| 6 | 1 | uint8 | valid | 1 = provider returned a sample; 0 = no provider / no sample yet |
+| 7 | 1 | uint8 | reserved | 0 |
+
+The BT client decodes this via `decodeDeviceCurrent()` and surfaces the draw in
+mA on the Power Status page (rendered `--` when `valid` is 0).
 
 ## Control DIDs (0xF24x)
 
