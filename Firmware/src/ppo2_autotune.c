@@ -2,11 +2,10 @@
  * @file ppo2_autotune.c
  * @brief On-device PID autotune routine — threaded state machine.
  *
- * Drives the live PID controller through a bounded coordinate-descent search
- * over (Kp, Ki, Kd), scoring each candidate on its setpoint-step response
- * (see ppo2_autotune_math.c).  Candidate gains are applied to the live PID
- * state (no reboot); the setpoint is perturbed via chan_setpoint only (never
- * chan_setpoint_cmd, so the setpoint-change flush solenoid is not triggered).
+ * Measures equilibrium effective duty, applies one bounded incremental duty
+ * pulse, returns to equilibrium duty, and identifies an integrating delayed
+ * plant from the observed PPO2 response. Gains are synthesized from that model
+ * without repeatedly experimenting on the physical breathing loop.
  *
  * Supervised over UDS DIDs and abortable at any time — from the operator
  * (control DID), on dive detection (the same signal that force-downgrades the
@@ -24,11 +23,13 @@
 #include "oxygen_cell_types.h"
 #include "errors.h"
 #include "common.h"
+#include "maintenance_arena.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/logging/log.h>
 #include <errno.h>
+#include <math.h>
 #include <string.h>
 
 #ifdef CONFIG_HAS_O2_SOLENOID
@@ -45,27 +46,25 @@ extern bool UDS_IsInDive(void);
  * Bench procedure timings. Not Kconfig — autotune ships with PID, and these
  * are procedure constants, not per-variant hardware facts. */
 
-/** Autotune thread stack (bytes). Sized from the measured runtime high-water:
- *  a full run to DONE (settle -> observe -> score -> stage) high-watered at
- *  720 B on real HW (RTT thread_analyzer, Poseidon_Aren, 2026-07-06) — the
- *  deepest path is run_autotune -> evaluate_candidate -> autotune_observe with
- *  the optimizer + cost-accumulator + ConsensusMsg_t frames nested, plus the
- *  settings-stage path. 768 B (93 % used) was too tight; 1024 B gives ~70 %
- *  headroom, matching the other control threads. Logging is integer milliunits
- *  (no %f) so the picolibc float-format path is already off this stack. */
+/** Trace arrays are stack-local so a run cannot race stale shared samples.
+ * Response traces live in the maintenance arena, not here. 1024 B restores
+ * the pre-identification allocation; hardware watermarking remains required
+ * because compiler WCS does not cover kernel/logging/interrupt paths. */
 #define AUTOTUNE_STACK_SIZE 1024
 /** One priority below the control threads (6) so autotune never preempts the
  *  PID / fire loop it is supervising. */
 #define AUTOTUNE_THREAD_PRIORITY 7
 
 /** Response-sampling period (ms). Matches the 2 Hz consensus telemetry rate;
- *  finer resolution buys nothing for the cost metrics and bloats the buffer. */
+ *  finer resolution buys little delay accuracy and bloats the buffer. */
 static const uint32_t AUTOTUNE_SAMPLE_PERIOD_MS = 500U;
-/** Sample period as seconds, for the cost integral. */
+/** Sample period as seconds. */
 static const PIDNumeric_t AUTOTUNE_DT_S = 0.5f;
-/** Samples captured per step response (80 x 0.5 s = 40 s observation window).
- *  Samples are scored online (streaming cost accumulator) — no trace buffer. */
-static const uint16_t AUTOTUNE_OBSERVE_SAMPLES = 80U;
+/** Pulse plus recovery response (80 x 0.5 s = 40 s). */
+#define AUTOTUNE_OBSERVE_SAMPLES 80U
+static const uint16_t AUTOTUNE_BASELINE_SAMPLES = 20U;
+static const uint8_t AUTOTUNE_BASELINE_MAX_WINDOWS = 6U;
+static const uint16_t AUTOTUNE_PULSE_SAMPLES = 20U;
 /** Settling time at the base setpoint before each step (ms). */
 static const uint32_t AUTOTUNE_SETTLE_MS = 20000U;
 /** Overall wall-clock guard: abort if a run runs longer than this (ms). */
@@ -73,7 +72,6 @@ static const uint32_t AUTOTUNE_MAX_TOTAL_MS = 7200000U; /* 2 hours */
 /** Bounded wait for a zbus channel op. */
 static const uint32_t CHAN_TIMEOUT_MS = 10U;
 /** Centibar -> bar. */
-static const PIDNumeric_t CENTIBAR_TO_BAR = 100.0f;
 /** Milliseconds per second, for elapsed-time reporting. */
 static const uint32_t MS_PER_SEC = 1000U;
 /** Gain -> milliunits scale for integer logging (avoids the %f stack path). */
@@ -81,21 +79,21 @@ static const Numeric_t MILLIUNITS = 1000.0f;
 
 /** Default operating point to step from if the request leaves it unusable (cb). */
 static const PPO2_t AUTOTUNE_DEFAULT_BASE_CB = 70U;
-/** Default step magnitude above base (cb). */
-static const uint16_t AUTOTUNE_DEFAULT_STEP_CB = 30U;
-/** Default number of candidate gain sets to evaluate. */
-static const uint16_t AUTOTUNE_DEFAULT_BUDGET = 24U;
-/** Upper guard on the requested iteration budget. */
-static const uint16_t AUTOTUNE_MAX_BUDGET = 200U;
+/** Default incremental excitation duty (%). */
+static const uint8_t AUTOTUNE_DEFAULT_DUTY_STEP_PCT = 20U;
 
-/** Initial coordinate-descent probe steps per axis (Kp, Ki, Kd). */
-static const PIDNumeric_t AUTOTUNE_STEP0_KP = 0.5f;
-static const PIDNumeric_t AUTOTUNE_STEP0_KI = 0.02f;
-static const PIDNumeric_t AUTOTUNE_STEP0_KD = 0.02f;
-/** Convergence floors: stop refining an axis once its step drops below this. */
-static const PIDNumeric_t AUTOTUNE_STEPMIN_KP = 0.05f;
-static const PIDNumeric_t AUTOTUNE_STEPMIN_KI = 0.002f;
-static const PIDNumeric_t AUTOTUNE_STEPMIN_KD = 0.002f;
+/** Model synthesis uses the real controller's 100 ms update interval. */
+static const PIDNumeric_t PID_CONTROLLER_DT_S = 0.1f;
+static const PIDNumeric_t AUTOTUNE_MIN_DUTY_STEP = 0.05f;
+static const PIDNumeric_t AUTOTUNE_MAX_DUTY_STEP = 0.30f;
+
+typedef struct {
+    PIDNumeric_t duty[AUTOTUNE_OBSERVE_SAMPLES];
+    PIDNumeric_t ppo2[AUTOTUNE_OBSERVE_SAMPLES];
+} AutotuneTrace_t;
+
+BUILD_ASSERT(sizeof(AutotuneTrace_t) <= MAINT_ARENA_SIZE,
+         "autotune traces exceed maintenance arena");
 
 /* ---- Shared state (accessor-wrapped, mutex-protected) ---- */
 
@@ -133,16 +131,6 @@ static void status_set_iteration(uint16_t iteration)
     (void)k_mutex_unlock(&autotune_mutex);
 }
 
-static void status_set_candidate(Numeric_t kp, Numeric_t ki, Numeric_t kd)
-{
-    (void)k_mutex_lock(&autotune_mutex, K_FOREVER);
-    AutotuneStatus_t *st = &getShared()->status;
-    st->cand_kp = kp;
-    st->cand_ki = ki;
-    st->cand_kd = kd;
-    (void)k_mutex_unlock(&autotune_mutex);
-}
-
 static void status_set_best(Numeric_t kp, Numeric_t ki, Numeric_t kd,
                 Numeric_t cost)
 {
@@ -152,6 +140,36 @@ static void status_set_best(Numeric_t kp, Numeric_t ki, Numeric_t kd,
     st->best_ki = ki;
     st->best_kd = kd;
     st->best_cost = cost;
+    (void)k_mutex_unlock(&autotune_mutex);
+}
+
+static void status_set_model(const AutotunePlantModel_t *model,
+                 PIDNumeric_t baseline_slope,
+                 uint16_t pressure_mbar,
+                 PIDNumeric_t dose)
+{
+    (void)k_mutex_lock(&autotune_mutex, K_FOREVER);
+    AutotuneStatus_t *st = &getShared()->status;
+    st->plant_gain = model->process_gain;
+    st->dead_time_s = model->dead_time_s;
+    st->time_constant_s = model->time_constant_s;
+    st->fit_rmse_bar = model->fit_rmse_bar;
+    st->mixing_excursion_bar = model->mixing_excursion_bar;
+    st->baseline_duty = model->baseline_duty;
+    st->baseline_slope_bar_s = baseline_slope;
+    st->ambient_pressure_bar = (Numeric_t)pressure_mbar / 1000.0f;
+    st->delivered_dose_duty_s = dose;
+    (void)k_mutex_unlock(&autotune_mutex);
+}
+
+static void status_set_baseline(PIDNumeric_t duty, PIDNumeric_t slope,
+                uint16_t pressure_mbar)
+{
+    (void)k_mutex_lock(&autotune_mutex, K_FOREVER);
+    AutotuneStatus_t *st = &getShared()->status;
+    st->baseline_duty = duty;
+    st->baseline_slope_bar_s = slope;
+    st->ambient_pressure_bar = (Numeric_t)pressure_mbar / 1000.0f;
     (void)k_mutex_unlock(&autotune_mutex);
 }
 
@@ -200,11 +218,17 @@ static AutotuneAbortReason_t check_safety(void)
     else if (PPO2CONTROL_PID != ppo2_control_get_active_mode()) {
         reason = AUTOTUNE_ABORT_CONDITIONS;
     }
-    else if (elapsed_ms > AUTOTUNE_MAX_TOTAL_MS) {
-        reason = AUTOTUNE_ABORT_TIMEOUT;
-    }
     else {
-        /* All clear. */
+        DiveCANError_t solenoid_status = DIVECAN_ERR_SOL_NORM;
+        if ((0 == zbus_chan_read(&chan_solenoid_status, &solenoid_status,
+                     K_MSEC(CHAN_TIMEOUT_MS))) &&
+            (DIVECAN_ERR_SOL_NORM != solenoid_status)) {
+            reason = AUTOTUNE_ABORT_SOLENOID;
+        }
+    }
+    if ((AUTOTUNE_ABORT_NONE == reason) &&
+        (elapsed_ms > AUTOTUNE_MAX_TOTAL_MS)) {
+        reason = AUTOTUNE_ABORT_TIMEOUT;
     }
 
     return reason;
@@ -260,13 +284,21 @@ static AutotuneAbortReason_t autotune_wait(uint32_t duration_ms)
  *
  * @return the abort reason if the run must stop, else AUTOTUNE_ABORT_NONE.
  */
-static AutotuneAbortReason_t autotune_observe(AutotuneCostAccum_t *accum,
-                          uint16_t max_samples)
+static AutotuneAbortReason_t autotune_observe(PIDNumeric_t *duty_trace,
+                          PIDNumeric_t *ppo2_trace,
+                          uint16_t max_samples,
+                          uint16_t pulse_samples,
+                          PIDNumeric_t baseline_duty)
 {
     AutotuneAbortReason_t reason = AUTOTUNE_ABORT_NONE;
     uint16_t n = 0U;
 
     while ((n < max_samples) && (AUTOTUNE_ABORT_NONE == reason)) {
+        if (n == pulse_samples) {
+            /* Return exactly to the learned equilibrium input; the remainder
+             * of the trace identifies redistribution/recovery, not metabolism. */
+            ppo2_control_set_autotune_duty(true, (Numeric_t)baseline_duty);
+        }
         reason = check_safety();
         if (AUTOTUNE_ABORT_NONE == reason) {
             ConsensusMsg_t consensus = {0};
@@ -277,8 +309,18 @@ static AutotuneAbortReason_t autotune_observe(AutotuneCostAccum_t *accum,
                     reason = AUTOTUNE_ABORT_CELL_FAIL;
                 }
                 else {
-                    autotune_cost_sample(accum,
-                        (PIDNumeric_t)consensus.precision_consensus);
+                    Numeric_t duty = 0.0f;
+                    (void)zbus_chan_read(&chan_duty_cycle, &duty,
+                                K_MSEC(CHAN_TIMEOUT_MS));
+                    uint16_t pressure_mbar = 0U;
+                    (void)zbus_chan_read(&chan_atmos_pressure,
+                                &pressure_mbar,
+                                K_MSEC(CHAN_TIMEOUT_MS));
+                    duty_trace[n] = (PIDNumeric_t)
+                        ppo2_control_effective_duty(duty,
+                                       pressure_mbar);
+                    ppo2_trace[n] =
+                        (PIDNumeric_t)consensus.precision_consensus;
                     ++n;
                 }
             }
@@ -311,9 +353,9 @@ static void stage_gains_volatile(Numeric_t kp, Numeric_t ki, Numeric_t kd)
 /**
  * @brief Clamp/repair the run parameters into a safe, usable range.
  *
- * Guarantees a normal operating base setpoint, a positive step that keeps
- * base+step within the DiveCAN setpoint ceiling, and a bounded iteration
- * budget.
+ * Guarantees a normal operating base setpoint and a bounded incremental duty
+ * pulse. The legacy budget field is retained on the wire but fixed to one
+ * physical identification experiment.
  */
 static void sanitize_params(AutotuneParams_t *p)
 {
@@ -325,68 +367,139 @@ static void sanitize_params(AutotuneParams_t *p)
         base = AUTOTUNE_DEFAULT_BASE_CB;
     }
 
-    uint16_t step = p->step_cb;
+    uint8_t step = p->excitation_duty_pct;
     if (0U == step) {
-        step = AUTOTUNE_DEFAULT_STEP_CB;
+        step = AUTOTUNE_DEFAULT_DUTY_STEP_PCT;
     }
-    /* Keep base + step within the setpoint ceiling. */
-    if (((uint16_t)base + step) > PPO2_SETPOINT_MAX_CB) {
-        step = (uint16_t)(PPO2_SETPOINT_MAX_CB - base);
-    }
-    /* If base sat at the ceiling there is no headroom to step up — drop the
-     * base so a default step still fits. */
-    if (0U == step) {
-        base = (PPO2_t)(PPO2_SETPOINT_MAX_CB - AUTOTUNE_DEFAULT_STEP_CB);
-        step = AUTOTUNE_DEFAULT_STEP_CB;
-    }
-
-    uint16_t budget = p->iteration_budget;
-    if (0U == budget) {
-        budget = AUTOTUNE_DEFAULT_BUDGET;
-    }
-    if (budget > AUTOTUNE_MAX_BUDGET) {
-        budget = AUTOTUNE_MAX_BUDGET;
+    if (step < 5U) {
+        step = 5U;
+    } else if (step > 30U) {
+        step = 30U;
     }
 
     p->base_setpoint_cb = base;
-    p->step_cb = (PPO2_t)step;
-    p->iteration_budget = budget;
+    p->excitation_duty_pct = step;
+    p->iteration_budget = 1U;
 }
 
-/* ---- Candidate evaluation ---- */
+/* ---- Plant experiment ---- */
 
 /**
- * @brief Evaluate one candidate gain set end to end.
+ * @brief Measure one incremental-duty pulse and recovery.
  *
  * Applies the gains live, settles at the base setpoint, steps to @p after_cb,
  * observes the response, and scores it. On success @p cost_out holds the cost.
  *
  * @return the abort reason if the run must stop, else AUTOTUNE_ABORT_NONE.
  */
-static AutotuneAbortReason_t evaluate_candidate(Numeric_t kp, Numeric_t ki,
-                        Numeric_t kd,
-                        PPO2_t base_cb, PPO2_t after_cb,
-                        const AutotuneCostWeights_t *w,
-                        PIDNumeric_t *cost_out)
+static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct,
+                       PIDNumeric_t *duty_trace,
+                       PIDNumeric_t *ppo2_trace,
+                       PIDNumeric_t *baseline_duty,
+                       PIDNumeric_t *baseline_ppo2,
+                       PIDNumeric_t *baseline_slope,
+                       uint16_t *pressure_mbar_out)
 {
-    ppo2_control_set_gains_live(kp, ki, kd);
-    status_set_candidate(kp, ki, kd);
-
     status_set_phase(AUTOTUNE_SETTLING);
     publish_setpoint(base_cb);
     AutotuneAbortReason_t reason = autotune_wait(AUTOTUNE_SETTLE_MS);
 
     if (AUTOTUNE_ABORT_NONE == reason) {
-        status_set_phase(AUTOTUNE_STEPPING);
-        publish_setpoint(after_cb);
-        PIDNumeric_t before_bar = (PIDNumeric_t)base_cb / CENTIBAR_TO_BAR;
-        PIDNumeric_t after_bar = (PIDNumeric_t)after_cb / CENTIBAR_TO_BAR;
-        AutotuneCostAccum_t accum;
-        autotune_cost_begin(&accum, AUTOTUNE_OBSERVE_SAMPLES, AUTOTUNE_DT_S,
-                    before_bar, after_bar, w);
-        reason = autotune_observe(&accum, AUTOTUNE_OBSERVE_SAMPLES);
+        bool baseline_stable = false;
+        PIDNumeric_t aggregate_y = 0.0f;
+        PIDNumeric_t aggregate_u = 0.0f;
+        PIDNumeric_t first_window_mean = 0.0f;
+        for (uint8_t window = 0U;
+             (window < AUTOTUNE_BASELINE_MAX_WINDOWS) &&
+             (AUTOTUNE_ABORT_NONE == reason); ++window) {
+            PIDNumeric_t sum_y = 0.0f;
+            PIDNumeric_t sum_u = 0.0f;
+            PIDNumeric_t first_half_y = 0.0f;
+            PIDNumeric_t second_half_y = 0.0f;
+            for (uint16_t i = 0U; (i < AUTOTUNE_BASELINE_SAMPLES) &&
+                 (AUTOTUNE_ABORT_NONE == reason); ++i) {
+                reason = check_safety();
+                ConsensusMsg_t consensus = {0};
+                Numeric_t duty = 0.0f;
+                if ((AUTOTUNE_ABORT_NONE == reason) &&
+                    ((0 != zbus_chan_read(&chan_consensus, &consensus,
+                              K_MSEC(CHAN_TIMEOUT_MS))) ||
+                     (PPO2_FAIL == consensus.consensus_ppo2))) {
+                    reason = AUTOTUNE_ABORT_CELL_FAIL;
+                }
+                if (AUTOTUNE_ABORT_NONE == reason) {
+                    (void)zbus_chan_read(&chan_duty_cycle, &duty,
+                                K_MSEC(CHAN_TIMEOUT_MS));
+                    uint16_t pressure_mbar = 0U;
+                    (void)zbus_chan_read(&chan_atmos_pressure, &pressure_mbar,
+                                K_MSEC(CHAN_TIMEOUT_MS));
+                    *pressure_mbar_out = pressure_mbar;
+                    duty = ppo2_control_effective_duty(duty, pressure_mbar);
+                    if (i < (AUTOTUNE_BASELINE_SAMPLES / 2U)) {
+                        first_half_y +=
+                            (PIDNumeric_t)consensus.precision_consensus;
+                    } else {
+                        second_half_y +=
+                            (PIDNumeric_t)consensus.precision_consensus;
+                    }
+                    sum_y += (PIDNumeric_t)consensus.precision_consensus;
+                    sum_u += (PIDNumeric_t)duty;
+                    k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
+                    status_update_elapsed();
+                }
+            }
+            if (AUTOTUNE_ABORT_NONE == reason) {
+                aggregate_y += sum_y;
+                aggregate_u += sum_u;
+                PIDNumeric_t samples_seen = (PIDNumeric_t)(window + 1U) *
+                    (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES;
+                *baseline_duty = aggregate_u / samples_seen;
+                *baseline_ppo2 = aggregate_y / samples_seen;
+                PIDNumeric_t window_mean = sum_y /
+                    (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES;
+                if (0U == window) {
+                    first_window_mean = window_mean;
+                    /* Retain a within-window estimate until a longer baseline
+                     * exists; it is diagnostic only at this point. */
+                    PIDNumeric_t half_n =
+                        (PIDNumeric_t)(AUTOTUNE_BASELINE_SAMPLES / 2U);
+                    *baseline_slope =
+                        ((second_half_y / half_n) -
+                         (first_half_y / half_n)) /
+                        (half_n * AUTOTUNE_DT_S);
+                } else {
+                    PIDNumeric_t separation_s = (PIDNumeric_t)window *
+                        (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES * AUTOTUNE_DT_S;
+                    *baseline_slope =
+                        (window_mean - first_window_mean) / separation_s;
+                }
+                status_set_baseline(*baseline_duty, *baseline_slope,
+                            *pressure_mbar_out);
+                baseline_stable = (window + 1U == AUTOTUNE_BASELINE_MAX_WINDOWS) &&
+                    (fabsf(*baseline_slope) <= 0.002f);
+            }
+        }
+        if ((AUTOTUNE_ABORT_NONE == reason) && (!baseline_stable)) {
+            reason = AUTOTUNE_ABORT_BASELINE;
+        }
         if (AUTOTUNE_ABORT_NONE == reason) {
-            *cost_out = autotune_cost_finish(&accum);
+            PIDNumeric_t duty_step = (PIDNumeric_t)duty_step_pct / 100.0f;
+            if (duty_step < AUTOTUNE_MIN_DUTY_STEP) {
+                duty_step = AUTOTUNE_MIN_DUTY_STEP;
+            } else if (duty_step > AUTOTUNE_MAX_DUTY_STEP) {
+                duty_step = AUTOTUNE_MAX_DUTY_STEP;
+            }
+            PIDNumeric_t excited_duty = *baseline_duty + duty_step;
+            if (excited_duty > 0.95f) {
+                excited_duty = 0.95f;
+            }
+            status_set_phase(AUTOTUNE_STEPPING);
+            ppo2_control_set_autotune_duty(true, (Numeric_t)excited_duty);
+            reason = autotune_observe(duty_trace, ppo2_trace,
+                          AUTOTUNE_OBSERVE_SAMPLES,
+                          AUTOTUNE_PULSE_SAMPLES,
+                          *baseline_duty);
+            ppo2_control_set_autotune_duty(false, 0.0f);
         }
     }
 
@@ -410,58 +523,78 @@ static void run_autotune(void)
     PPO2_t restore_sp = read_current_setpoint(params.base_setpoint_cb);
 
     PPO2_t base_cb = params.base_setpoint_cb;
-    PPO2_t after_cb = (PPO2_t)(base_cb + params.step_cb);
-
-    AutotuneCostWeights_t weights;
-    autotune_default_weights(&weights);
-
-    AutotuneOptimizer_t opt;
-    const PIDNumeric_t init_point[AUTOTUNE_AXES] = {
-        (PIDNumeric_t)fb_kp, (PIDNumeric_t)fb_ki, (PIDNumeric_t)fb_kd
-    };
-    const PIDNumeric_t init_step[AUTOTUNE_AXES] = {
-        AUTOTUNE_STEP0_KP, AUTOTUNE_STEP0_KI, AUTOTUNE_STEP0_KD
-    };
-    const PIDNumeric_t step_min[AUTOTUNE_AXES] = {
-        AUTOTUNE_STEPMIN_KP, AUTOTUNE_STEPMIN_KI, AUTOTUNE_STEPMIN_KD
-    };
-    autotune_opt_init(&opt, init_point, init_step, step_min,
-              PID_GAIN_MIN, PID_GAIN_MAX);
 
     AutotuneAbortReason_t reason = AUTOTUNE_ABORT_NONE;
-    bool keep_going = true;
-    uint16_t iteration = 0U;
+    AutotuneTrace_t *trace = (AutotuneTrace_t *)
+        maint_arena_claim(MAINT_ARENA_OWNER_AUTOTUNE);
+    PIDNumeric_t baseline_duty = 0.0f;
+    PIDNumeric_t baseline_ppo2 = 0.0f;
+    PIDNumeric_t baseline_slope = 0.0f;
+    uint16_t pressure_mbar = 0U;
+    status_set_iteration(0U);
+    if (trace == NULL) {
+        reason = AUTOTUNE_ABORT_CONDITIONS;
+    } else {
+        reason = measure_plant(base_cb, params.excitation_duty_pct,
+                       trace->duty, trace->ppo2,
+                       &baseline_duty, &baseline_ppo2,
+                       &baseline_slope, &pressure_mbar);
+    }
 
-    while (keep_going && (iteration < params.iteration_budget) &&
-           (AUTOTUNE_ABORT_NONE == reason)) {
-        status_set_iteration(iteration);
-        PIDNumeric_t cost = 0.0f;
-        reason = evaluate_candidate((Numeric_t)opt.cand[AUTOTUNE_AXIS_KP],
-                        (Numeric_t)opt.cand[AUTOTUNE_AXIS_KI],
-                        (Numeric_t)opt.cand[AUTOTUNE_AXIS_KD],
-                        base_cb, after_cb, &weights, &cost);
-        if (AUTOTUNE_ABORT_NONE == reason) {
-            keep_going = autotune_opt_report(&opt, cost);
-            status_set_best((Numeric_t)opt.point[AUTOTUNE_AXIS_KP],
-                    (Numeric_t)opt.point[AUTOTUNE_AXIS_KI],
-                    (Numeric_t)opt.point[AUTOTUNE_AXIS_KD],
-                    (Numeric_t)opt.best_cost);
-            ++iteration;
+    AutotunePlantModel_t model = {0};
+    PIDNumeric_t tuned_kp = 0.0f;
+    PIDNumeric_t tuned_ki = 0.0f;
+    PIDNumeric_t tuned_kd = 0.0f;
+    if (AUTOTUNE_ABORT_NONE == reason) {
+        /* Remove the measured pre-test drift before extracting incremental
+         * plant response. Metabolic demand itself remains in baseline duty. */
+        for (uint16_t i = 0U; i < AUTOTUNE_OBSERVE_SAMPLES; ++i) {
+            trace->ppo2[i] -= baseline_slope * (PIDNumeric_t)i * AUTOTUNE_DT_S;
         }
+    }
+    if ((AUTOTUNE_ABORT_NONE == reason) &&
+        !autotune_identify_plant(trace->duty, trace->ppo2,
+                     AUTOTUNE_OBSERVE_SAMPLES, AUTOTUNE_DT_S,
+                     baseline_duty, baseline_ppo2, &model)) {
+        reason = AUTOTUNE_ABORT_IDENTIFY;
+    }
+    if ((AUTOTUNE_ABORT_NONE == reason) &&
+        !autotune_model_pid(&model, PID_CONTROLLER_DT_S,
+                    PID_GAIN_MIN, PID_GAIN_MAX,
+                    &tuned_kp, &tuned_ki, &tuned_kd)) {
+        reason = AUTOTUNE_ABORT_TUNING;
+    }
+    if (AUTOTUNE_ABORT_NONE == reason) {
+        PIDNumeric_t dose = 0.0f;
+        for (uint16_t i = 0U; i < AUTOTUNE_OBSERVE_SAMPLES; ++i) {
+            PIDNumeric_t du = trace->duty[i] - baseline_duty;
+            if (du > 0.0f) {
+                dose += du * AUTOTUNE_DT_S;
+            }
+        }
+        status_set_iteration(1U);
+        status_set_model(&model, baseline_slope, pressure_mbar, dose);
+        status_set_best((Numeric_t)tuned_kp, (Numeric_t)tuned_ki,
+                (Numeric_t)tuned_kd, (Numeric_t)model.fit_rmse_bar);
+    }
+
+    if (trace != NULL) {
+        maint_arena_release(MAINT_ARENA_OWNER_AUTOTUNE);
     }
 
     if (AUTOTUNE_ABORT_NONE != reason) {
+        ppo2_control_set_autotune_duty(false, 0.0f);
         /* Fail safe: put back exactly the gains + setpoint we started with. */
         ppo2_control_set_gains_live(fb_kp, fb_ki, fb_kd);
         publish_setpoint(restore_sp);
         LOG_WRN("autotune aborted (reason %d) after %u iters",
-            (int)reason, (unsigned int)iteration);
+            (int)reason, 1U);
         status_finish(AUTOTUNE_ABORTED, reason);
     }
     else {
-        Numeric_t best_kp = (Numeric_t)opt.point[AUTOTUNE_AXIS_KP];
-        Numeric_t best_ki = (Numeric_t)opt.point[AUTOTUNE_AXIS_KI];
-        Numeric_t best_kd = (Numeric_t)opt.point[AUTOTUNE_AXIS_KD];
+        Numeric_t best_kp = (Numeric_t)tuned_kp;
+        Numeric_t best_ki = (Numeric_t)tuned_ki;
+        Numeric_t best_kd = (Numeric_t)tuned_kd;
         ppo2_control_set_gains_live(best_kp, best_ki, best_kd);
         stage_gains_volatile(best_kp, best_ki, best_kd);
         publish_setpoint(restore_sp);
@@ -470,8 +603,8 @@ static void run_autotune(void)
          * avoiding it lets the thread run on a smaller stack (see stack note). */
         LOG_INF("autotune done: kp=%d ki=%d kd=%d cost=%d (milliunits, %u iters)",
             (int)(best_kp * MILLIUNITS), (int)(best_ki * MILLIUNITS),
-            (int)(best_kd * MILLIUNITS), (int)((Numeric_t)opt.best_cost * MILLIUNITS),
-            (unsigned int)iteration);
+            (int)(best_kd * MILLIUNITS),
+            (int)((Numeric_t)model.fit_rmse_bar * MILLIUNITS), 1U);
         status_finish(AUTOTUNE_DONE, AUTOTUNE_ABORT_NONE);
     }
 }
@@ -526,10 +659,9 @@ Status_t ppo2_autotune_start(const AutotuneParams_t *params)
             s->status.state = AUTOTUNE_SETTLING;
             s->status.iteration_budget = s->params.iteration_budget;
             k_sem_give(&autotune_start_sem);
-            LOG_INF("autotune start: base=%u cb step=%u cb budget=%u",
+            LOG_INF("autotune start: base=%u cb duty_step=%u pct",
                 (unsigned int)s->params.base_setpoint_cb,
-                (unsigned int)s->params.step_cb,
-                (unsigned int)s->params.iteration_budget);
+                (unsigned int)s->params.excitation_duty_pct);
         }
         (void)k_mutex_unlock(&autotune_mutex);
     }

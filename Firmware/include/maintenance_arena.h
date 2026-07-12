@@ -3,7 +3,7 @@
  * @brief One shared scratch region for mutually-exclusive maintenance jobs.
  *
  * The STM32L431 has 64 KB of SRAM and the Poseidon build runs it ~100%
- * allocated. Three subsystems used to hold private KB-scale buffers that are
+ * allocated. Several subsystems use KB-scale buffers that are
  * never live at the same time:
  *
  *   - UDS OTA:   `struct flash_img_context` (write-coalescing buffer for the
@@ -14,10 +14,12 @@
  *   - Log read:  the per-sector dive/boot index the UDS log-download
  *                selectors use — rebuilt lazily; contents are a pure cache
  *                of what is on flash.
+ *   - Autotune:  paired 80-sample effective-duty/PPO2 response traces, held
+ *                only for one surface identification run.
  *
  * They now share this single arena. Exclusion is by explicit claim/release
- * with a fail-fast -EBUSY contract (never blocking): OTA and FACTORY are
- * exclusive owners; LOG_INDEX is an evictable cache tenant that claims
+ * with a fail-fast -EBUSY contract (never blocking): OTA, FACTORY and AUTOTUNE
+ * are exclusive owners; LOG_INDEX is an evictable cache tenant that claims
  * around each resolver call. Cache invalidation is generation-based — every
  * successful claim by a different owner than the previous one bumps a
  * generation counter, and the log reader treats a generation change as
@@ -41,7 +43,7 @@
 
 /** Arena byte size. Current tenants: flash_img_context ≈ 1080 B
  *  (CONFIG_IMG_BLOCK_BUF_SIZE=1024 + stream-flash bookkeeping), factory
- *  chunk 1024 B, log index (192+32)×8 = 1792 B.
+ *  chunk 1024 B, autotune trace 640 B, log index (192+32)×8 = 1792 B.
  *
  *  The 1792 B figure is tuned for the 32-bit STM32L431 target (which uses
  *  CONFIG_IMG_BLOCK_BUF_SIZE=1024 → flash_img_context ≈ 1080). The native
@@ -62,6 +64,7 @@ typedef enum {
     MAINT_ARENA_OWNER_OTA,       /**< Exclusive; held across UDS requests */
     MAINT_ARENA_OWNER_FACTORY,   /**< Exclusive; held for capture/restore */
     MAINT_ARENA_OWNER_LOG_INDEX, /**< Evictable cache; claimed per call */
+    MAINT_ARENA_OWNER_AUTOTUNE,  /**< Exclusive; held across identification */
 } MaintArenaOwner_t;
 
 /**
@@ -70,10 +73,10 @@ typedef enum {
  * Fail-fast, never blocks. Rules:
  *  - FREE           → granted.
  *  - same owner     → granted (idempotent re-claim, e.g. OTA retry paths).
- *  - held LOG_INDEX → granted to OTA/FACTORY (the cache is evicted);
+ *  - held LOG_INDEX → granted to an exclusive owner (the cache is evicted);
  *                     denied to nothing else (LOG_INDEX re-claim is the
  *                     same-owner case above).
- *  - held OTA/FACTORY → denied to everyone else.
+ *  - held by an exclusive owner → denied to everyone else.
  *
  * Every grant that changes the owner bumps the generation counter.
  *

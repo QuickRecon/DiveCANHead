@@ -92,9 +92,9 @@ export const DID_ERROR_HISTOGRAM_CLEAR = 0xF261; // write any byte -> clear + pe
 // ============================================================================
 // Control DID 0xF243 is write-only (WriteDataByIdentifier). Needs a programming
 // session; START also refused while diving or when PPO2 mode != PID.
-//   START: [cmd 0x01, magic 0xA7, base_cb, step_cb, budget_hi, budget_lo]
+//   START: [cmd 0x01, magic 0xA7, base_cb, duty_step_pct, reserved_hi, reserved_lo]
 //   ABORT: [cmd 0x02, magic 0xA7]
-// Status DID 0xF213 is a read-only 38-byte little-endian struct (see
+// Status DID 0xF213 is a read-only 74-byte little-endian struct (see
 // UDSClient.readAutotuneStatus for the field layout).
 export const DID_AUTOTUNE_CONTROL = 0xF243;
 export const DID_AUTOTUNE_STATUS = 0xF213;
@@ -104,7 +104,7 @@ export const AUTOTUNE_CMD_START = 0x01;
 export const AUTOTUNE_CMD_ABORT = 0x02;
 
 /** Autotune run states (status byte [0]). */
-export const AUTOTUNE_STATE_NAMES = ['Idle', 'Settling', 'Stepping', 'Done', 'Aborted'];
+export const AUTOTUNE_STATE_NAMES = ['Idle', 'Stabilising', 'Identifying plant', 'Done', 'Aborted'];
 export const AUTOTUNE_STATE_IDLE = 0;
 export const AUTOTUNE_STATE_SETTLING = 1;
 export const AUTOTUNE_STATE_STEPPING = 2;
@@ -112,7 +112,7 @@ export const AUTOTUNE_STATE_DONE = 3;
 export const AUTOTUNE_STATE_ABORTED = 4;
 
 /** Autotune abort reasons (status byte [1]). */
-export const AUTOTUNE_ABORT_NAMES = ['None', 'Operator', 'Dive', 'Cell Fail', 'Timeout', 'Conditions'];
+export const AUTOTUNE_ABORT_NAMES = ['None', 'Operator', 'Dive', 'Cell Fail', 'Timeout', 'Conditions', 'Solenoid Fault', 'Baseline Unstable', 'No Plant Response', 'Tuning Failed'];
 
 // Unsolicited log-message push (Head -> client), sent as a WriteDataByIdentifier.
 export const DID_LOG_MESSAGE = 0xA100;

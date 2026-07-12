@@ -3,11 +3,9 @@
  * @brief On-device PID autotune routine — DID-supervised, abortable.
  *
  * A bench/surface-only setup procedure that dials in the PID gains (Kp/Ki/Kd)
- * by perturbing the control loop with setpoint steps and scoring the closed-
- * loop response.  It runs entirely on-device in its own thread so it does not
- * depend on the supervising client staying connected, and applies each
- * candidate gain set to the *live* PID state via `ppo2_control_set_gains_live()`
- * — no reboot between candidates.
+ * from one incremental duty-pulse/recovery experiment. It identifies an
+ * integrating delayed plant, including the loop's mixing reversal, then
+ * derives conservative PI gains without repeated live gain trials.
  *
  * The routine is supervised over UDS DIDs (see `uds_state_did.h`):
  *  - control write DID `0xF243` → `ppo2_autotune_start()` / `_request_abort()`
@@ -48,13 +46,17 @@ typedef enum {
     AUTOTUNE_ABORT_CELL_FAIL  = 3, /**< Consensus PPO2 failed during the run */
     AUTOTUNE_ABORT_TIMEOUT    = 4, /**< Exceeded the overall time budget */
     AUTOTUNE_ABORT_CONDITIONS = 5, /**< Preconditions lost (mode left PID, etc.) */
+    AUTOTUNE_ABORT_SOLENOID   = 6, /**< Solenoid current/status fault */
+    AUTOTUNE_ABORT_BASELINE   = 7, /**< PPO2 did not reach a stable baseline */
+    AUTOTUNE_ABORT_IDENTIFY   = 8, /**< response could not identify a plant */
+    AUTOTUNE_ABORT_TUNING     = 9, /**< identified model could not yield gains */
 } AutotuneAbortReason_t;
 
 /** @brief Parameters for a tuning run (from the control DID). */
 typedef struct {
     PPO2_t base_setpoint_cb;  /**< Operating point to step from (centibar) */
-    PPO2_t step_cb;           /**< Step magnitude above base (centibar) */
-    uint16_t iteration_budget; /**< Max candidate gain sets to evaluate */
+    uint8_t excitation_duty_pct; /**< incremental duty pulse, 5..30 percent */
+    uint16_t iteration_budget; /**< reserved for wire compatibility */
 } AutotuneParams_t;
 
 /** @brief Live status snapshot (serialised by the status DID). */
@@ -71,6 +73,15 @@ typedef struct {
     Numeric_t best_kd;               /**< Best Kd found so far */
     Numeric_t best_cost;             /**< Cost at the best gain set */
     uint32_t elapsed_s;              /**< Seconds since the run started */
+    Numeric_t plant_gain;            /**< Identified bar PPO2 / unit duty */
+    Numeric_t dead_time_s;           /**< Injector-to-sensor phase delay */
+    Numeric_t time_constant_s;       /**< Dominant final mixing time */
+    Numeric_t fit_rmse_bar;          /**< Model residual RMS error */
+    Numeric_t mixing_excursion_bar;  /**< rise/fall reversal magnitude */
+    Numeric_t baseline_duty;         /**< equilibrium effective duty */
+    Numeric_t baseline_slope_bar_s;  /**< pre-test PPO2 drift */
+    Numeric_t ambient_pressure_bar;  /**< pressure during identification */
+    Numeric_t delivered_dose_duty_s; /**< integral of incremental effective duty */
 } AutotuneStatus_t;
 
 /**

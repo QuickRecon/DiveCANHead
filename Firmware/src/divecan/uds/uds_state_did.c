@@ -410,7 +410,7 @@ static bool handleOtaStatusDID(uint16_t did, uint8_t *buf,
  *   [6]  cand_kp f32       [10] cand_ki f32       [14] cand_kd f32
  *   [18] best_kp f32       [22] best_ki f32       [26] best_kd f32
  *   [30] best_cost f32     [34] elapsed_s u32                        */
-static const size_t AUTOTUNE_STATUS_LEN = 38U;
+static const size_t AUTOTUNE_STATUS_LEN = 74U;
 
 /* Byte offsets within the AUTOTUNE_STATUS payload. */
 static const size_t AT_OFF_STATE        = 0U;
@@ -425,6 +425,15 @@ static const size_t AT_OFF_BEST_KI      = 22U;
 static const size_t AT_OFF_BEST_KD      = 26U;
 static const size_t AT_OFF_BEST_COST    = 30U;
 static const size_t AT_OFF_ELAPSED      = 34U;
+static const size_t AT_OFF_PLANT_GAIN   = 38U;
+static const size_t AT_OFF_DEAD_TIME    = 42U;
+static const size_t AT_OFF_TIME_CONST   = 46U;
+static const size_t AT_OFF_FIT_RMSE     = 50U;
+static const size_t AT_OFF_MIX_EXCURSION = 54U;
+static const size_t AT_OFF_BASE_DUTY     = 58U;
+static const size_t AT_OFF_BASE_SLOPE    = 62U;
+static const size_t AT_OFF_PRESSURE      = 66U;
+static const size_t AT_OFF_DOSE          = 70U;
 
 /* Whole-device current DID (0xF237) payload, little-endian:
  *   [0..3] int32  current in µA (+ve = draw)
@@ -462,6 +471,15 @@ static void buildAutotuneStatus(uint8_t *buf)
     writeFloat32(&buf[AT_OFF_BEST_KD], st.best_kd);
     writeFloat32(&buf[AT_OFF_BEST_COST], st.best_cost);
     writeUint32(&buf[AT_OFF_ELAPSED], st.elapsed_s);
+    writeFloat32(&buf[AT_OFF_PLANT_GAIN], st.plant_gain);
+    writeFloat32(&buf[AT_OFF_DEAD_TIME], st.dead_time_s);
+    writeFloat32(&buf[AT_OFF_TIME_CONST], st.time_constant_s);
+    writeFloat32(&buf[AT_OFF_FIT_RMSE], st.fit_rmse_bar);
+    writeFloat32(&buf[AT_OFF_MIX_EXCURSION], st.mixing_excursion_bar);
+    writeFloat32(&buf[AT_OFF_BASE_DUTY], st.baseline_duty);
+    writeFloat32(&buf[AT_OFF_BASE_SLOPE], st.baseline_slope_bar_s);
+    writeFloat32(&buf[AT_OFF_PRESSURE], st.ambient_pressure_bar);
+    writeFloat32(&buf[AT_OFF_DOSE], st.delivered_dose_duty_s);
 }
 
 /* ============================================================================

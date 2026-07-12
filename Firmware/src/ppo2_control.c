@@ -20,10 +20,10 @@
  *    `solenoid_roles.h`, backed by a hardware deadman ISR.
  *  - The cell-failure stale-duty defect from the legacy firmware
  *    (PPO2Control.c:350-353) is fixed: `consensus == PPO2_FAIL` now
- *    zeros the duty, resets the integrator, forces the solenoid off,
- *    and publishes `DIVECAN_ERR_SOL_UNDERCURRENT` to
- *    `chan_solenoid_status` so the dive computer is informed.  See
- *    COMPROMISE.md.
+ *    zeros the duty, resets the integrator, and forces the solenoid off.
+ *    It intentionally raises no solenoid error/status — the handset
+ *    already surfaces a voting failure from the cell data, so a solenoid
+ *    warning here would be redundant noise.  See COMPROMISE.md.
  */
 
 #include "ppo2_control.h"
@@ -86,7 +86,7 @@ static const uint32_t SOLENOID_CYCLE_MS = 5000U;
  * plateau is sampled several times. */
 static const uint32_t SOL_OFF_SERVICE_MS = 250U;
 /** Hardware-minimum solenoid on-time (ms). Below this, the solenoid is not fired. */
-static const uint32_t SOLENOID_MIN_FIRE_MS = 200U;
+static const uint32_t SOLENOID_MIN_FIRE_MS = 100U;
 /** Hardware-maximum solenoid on-time per cycle (ms). Caps duty at 0.98. */
 static const uint32_t SOLENOID_MAX_FIRE_MS = 4900U;
 /** MK15 accumulator-purge on-time (ms). Empirically tuned. */
@@ -232,6 +232,47 @@ void ppo2_control_get_gains_live(Numeric_t *kp, Numeric_t *ki, Numeric_t *kd)
     if (kd != NULL) {
         *kd = (Numeric_t)state->derivativeGain;
     }
+}
+
+static bool *getAutotuneDutyEnabled(void)
+{
+    static bool enabled;
+    return &enabled;
+}
+
+static Numeric_t *getAutotuneDuty(void)
+{
+    static Numeric_t duty;
+    return &duty;
+}
+
+void ppo2_control_set_autotune_duty(bool enabled, Numeric_t duty)
+{
+    if (duty < 0.0f) {
+        duty = 0.0f;
+    } else if (duty > 1.0f) {
+        duty = 1.0f;
+    }
+    *getAutotuneDuty() = duty;
+    *getAutotuneDutyEnabled() = enabled;
+    if (!enabled) {
+        pid_state_reset_dynamic(getPidState());
+    }
+}
+
+Numeric_t ppo2_control_effective_duty(Numeric_t commanded_duty,
+                     uint16_t pressure_mbar)
+{
+    FireTiming_t timing = pid_compute_fire_timing(
+        (PIDNumeric_t)commanded_duty, pressure_mbar,
+        *getDepthCompEnabled(), SOLENOID_CYCLE_MS,
+        SOLENOID_MIN_FIRE_MS, SOLENOID_MAX_FIRE_MS);
+    Numeric_t effective = 0.0f;
+    if (timing.should_fire) {
+        effective = (Numeric_t)timing.on_duration_us /
+            (Numeric_t)(SOLENOID_CYCLE_MS * US_PER_MS);
+    }
+    return effective;
 }
 
 /* ---- Helpers ---- */
@@ -457,10 +498,13 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
 
         if (PPO2_FAIL == consensus.consensus_ppo2) {
             /* Cell-failure safety transition (deviation from legacy —
-             * see COMPROMISE.md). Zero the duty, reset the integrator,
-             * force the solenoid off, and tell the dive computer the
-             * solenoid is being suppressed. Edge-triggered on the
-             * latch so we don't spam zbus. */
+             * see COMPROMISE.md). Zero the duty, reset the integrator, and
+             * force the solenoid off. Edge-triggered on the latch so we don't
+             * spam zbus. Deliberately NO solenoid error/status here: a voting
+             * failure is not a solenoid fault, and the handset already flags it
+             * via the cell data — raising OP_ERR_SOLENOID_DISABLED or publishing
+             * a suppressed status would be redundant noise (mis-attributing a
+             * cell problem to the solenoid). */
             if (!(*failed_latch)) {
                 *failed_latch = true;
                 *latest_duty = 0.0f;
@@ -468,19 +512,20 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
                 Numeric_t duty = 0.0f;
                 zbus_pub_checked(&chan_duty_cycle, &duty, K_MSEC(CHAN_OP_TIMEOUT_MS));
                 inject_solenoid_off();
-                publish_solenoid_status(DIVECAN_ERR_SOL_UNDERCURRENT);
-                OP_ERROR(OP_ERR_SOLENOID_DISABLED);
             }
         }
         else {
             if (*failed_latch) {
                 *failed_latch = false;
-                publish_solenoid_status(DIVECAN_ERR_SOL_NORM);
                 LOG_INF("consensus recovered, controller resumed");
             }
 
-            PIDNumeric_t duty = pid_update(d_setpoint, measurement,
-                               state);
+            PIDNumeric_t duty;
+            if (*getAutotuneDutyEnabled()) {
+                duty = (PIDNumeric_t)*getAutotuneDuty();
+            } else {
+                duty = pid_update(d_setpoint, measurement, state);
+            }
             *latest_duty = (Numeric_t)duty;
             Numeric_t pub = (Numeric_t)duty;
             zbus_pub_checked(&chan_duty_cycle, &pub, K_MSEC(CHAN_OP_TIMEOUT_MS));
@@ -912,5 +957,20 @@ void ppo2_control_get_gains_live(Numeric_t *kp, Numeric_t *ki, Numeric_t *kd)
         *kd = 0.0f;
     }
 }
+
+void ppo2_control_set_autotune_duty(bool enabled, Numeric_t duty)
+{
+    ARG_UNUSED(enabled);
+    ARG_UNUSED(duty);
+}
+
+Numeric_t ppo2_control_effective_duty(Numeric_t commanded_duty,
+                     uint16_t pressure_mbar)
+{
+    ARG_UNUSED(commanded_duty);
+    ARG_UNUSED(pressure_mbar);
+    return 0.0f;
+}
+
 
 #endif /* CONFIG_HAS_O2_SOLENOID */

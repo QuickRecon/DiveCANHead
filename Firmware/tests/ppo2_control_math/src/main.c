@@ -75,11 +75,69 @@ ZTEST(pid_update_suite, test_integral_windup_clamp)
     zassert_within(state.integralState, 0.5, EPS, "windup clamps at max");
     zassert_true(state.saturationCount > 0, "satCount incremented");
 
-    /* When error goes negative, integrator resets immediately AND
-     * saturationCount resets (because integralState is no longer at limit) */
+    /* A large (+1 bar) overshoot crosses the +0.20 bar hard-reset threshold. */
     (void)pid_update(0.0, 1.0, &state);
     zassert_within(state.integralState, 0.0, EPS, "neg error resets integ");
     zassert_equal(state.saturationCount, 0, "satCount resets when unsat");
+}
+
+
+/** @brief Ordinary overshoot unwinds rather than deleting learned duty. */
+ZTEST(pid_update_suite, test_small_overshoot_unwinds_integral)
+{
+    PIDState_t state = {0};
+    state.integralGain = 0.1f;
+    state.integralMax = 1.0f;
+    state.integralMin = 0.0f;
+    state.integralState = 0.30f;
+
+    (void)pid_update(0.70f, 0.80f, &state);
+    zassert_within(state.integralState, 0.29f, EPS,
+               "+0.10 bar overshoot should unwind, not reset");
+}
+
+/** @brief Exactly +0.20 bar overshoot triggers the safety reset. */
+ZTEST(pid_update_suite, test_large_overshoot_resets_integral)
+{
+    PIDState_t state = {0};
+    state.integralGain = 0.1f;
+    state.integralMax = 1.0f;
+    state.integralMin = 0.0f;
+    state.integralState = 0.30f;
+
+    (void)pid_update(0.70f, 0.90f, &state);
+    zassert_within(state.integralState, 0.0f, EPS,
+               "+0.20 bar overshoot should hard-reset integral");
+}
+
+/** @brief Positive error cannot wind integral up behind saturated P output. */
+ZTEST(pid_update_suite, test_conditional_integration_blocks_saturated_direction)
+{
+    PIDState_t state = {0};
+    state.proportionalGain = 2.0f;
+    state.integralGain = 0.1f;
+    state.integralMax = 1.0f;
+    state.integralMin = 0.0f;
+
+    (void)pid_update(1.0f, 0.0f, &state);
+    zassert_within(state.integralState, 0.0f, EPS,
+               "saturated P output must not accumulate hidden integral");
+    zassert_true(state.saturationCount > 0U);
+}
+
+/** @brief Integral remains active when its update helps leave saturation. */
+ZTEST(pid_update_suite, test_conditional_integration_allows_recovery)
+{
+    PIDState_t state = {0};
+    state.proportionalGain = 2.0f;
+    state.integralGain = 0.1f;
+    state.integralMax = 1.0f;
+    state.integralMin = 0.0f;
+    state.integralState = 0.5f;
+
+    (void)pid_update(0.70f, 0.80f, &state);
+    zassert_within(state.integralState, 0.49f, EPS,
+               "negative error should unwind a positive integral");
 }
 
 /** @brief Derivative-on-measurement: dTerm = Kd * (prev_meas - new_meas). */
@@ -141,11 +199,10 @@ ZTEST(pid_update_suite, test_saturation_count_resets)
     }
     zassert_true(state.saturationCount > 0, "windup increments satCount");
 
-    /* Drive measurement past setpoint — integrator resets, satCount resets. */
+    /* Small overshoot unwinds one step and leaves the clamp. */
     (void)pid_update(1.0, 1.1, &state);
     zassert_equal(state.saturationCount, 0, "satCount resets on un-sat");
-    zassert_true(fabs(state.integralState) < state.integralMax * 0.5,
-             "integ significantly reduced");
+    zassert_within(state.integralState, 0.4f, EPS, "integral unwinds by Ki*error");
 }
 
 /** @brief Step response visible as combined P + small I + nonzero D. */

@@ -88,8 +88,9 @@ void pid_state_reset_dynamic(PIDState_t *state);
  *        STM32/Core/Src/PPO2Control/PPO2Control.c:273-318.
  *
  * Computes pTerm + iTerm + dTerm (term order preserved for bit-equality).
- * Aggressive integrator reset on negative error (overshoot) — see source
- * for the original rationale.  Derivative is taken on the measurement, not
+ * The integrator unwinds through ordinary overshoot, hard-resets only at
+ * +0.20 bar above setpoint, and conditionally rejects updates that would drive
+ * saturated output farther out of range. Derivative is taken on measurement, not
  * on the error, to suppress kicks on setpoint step changes.  Saturation
  * count tracks consecutive cycles spent at integralMax/integralMin and
  * resets when the integrator leaves the limit.

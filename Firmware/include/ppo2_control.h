@@ -116,4 +116,15 @@ void ppo2_control_set_gains_live(Numeric_t kp, Numeric_t ki, Numeric_t kd);
  */
 void ppo2_control_get_gains_live(Numeric_t *kp, Numeric_t *ki, Numeric_t *kd);
 
+/** Bench-only autotune ownership of the duty command.  While enabled the PID
+ * thread continues its heartbeat and cell-failure checks but publishes this
+ * fixed duty instead of updating PID state. */
+void ppo2_control_set_autotune_duty(bool enabled, Numeric_t duty);
+
+/** Convert a commanded duty to the quantised/depth-compensated duty that the
+ * fire thread will physically request. Used by plant identification so its
+ * input history matches actuation rather than the pre-clamp command. */
+Numeric_t ppo2_control_effective_duty(Numeric_t commanded_duty,
+                     uint16_t pressure_mbar);
+
 #endif /* PPO2_CONTROL_H */

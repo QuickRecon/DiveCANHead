@@ -1125,8 +1125,9 @@
       <div class="tab-section">
         <h2>Preconditions</h2>
         <p style="color: #888; font-size: 13px; margin: 4px 0 10px;">
-          The autotune routine steps the setpoint and observes the loop response, so it
-          demands a controlled environment:
+          The autotune routine applies one bounded, known duty excitation, records
+          commanded solenoid duty against PPO2, identifies the delayed mixing plant,
+          then derives gains from that model. It demands a controlled environment:
         </p>
         <ul style="color: #888; font-size: 13px; margin: 0 0 10px 18px;">
           <li><strong>Surface only</strong> — the run auto-aborts if a dive is detected.</li>
@@ -1152,13 +1153,8 @@
               style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 110px; font-size: 14px;">
           </div>
           <div>
-            <label for="at-step-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Step size (bar)</label>
-            <input type="number" id="at-step-input" min="0.05" max="1.00" step="0.05" value="0.30"
-              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 110px; font-size: 14px;">
-          </div>
-          <div>
-            <label for="at-budget-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Iteration budget</label>
-            <input type="number" id="at-budget-input" min="1" max="65535" step="1" value="24"
+            <label for="at-step-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Incremental duty (%)</label>
+            <input type="number" id="at-step-input" min="5" max="30" step="1" value="20"
               style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 110px; font-size: 14px;">
           </div>
           <button id="atStartButton" disabled class="danger">Start Autotune</button>
@@ -1195,6 +1191,21 @@
           <button id="atCommitButton" class="danger">Commit to device (persist)</button>
         </div>
         <div id="at-commit-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+
+      <div class="tab-section" id="atReportSection" style="display: none;">
+        <h2>Tune Report</h2>
+        <p style="color: #888; font-size: 13px; margin: 4px 0 10px;">
+          Versioned JSON containing the request, sampled response, identified plant,
+          and recommended gains. Copy it into a tuning review for model refinement.
+        </p>
+        <textarea id="atReportText" readonly spellcheck="false"
+          style="width: 100%; min-height: 260px; box-sizing: border-box; background: #111; border: 1px solid #555; color: #d7e6d7; padding: 10px; border-radius: 4px; font: 12px monospace;"></textarea>
+        <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+          <button id="atCopyReportButton">Copy report</button>
+          <button id="atExportReportButton">Export JSON</button>
+        </div>
+        <div id="at-report-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
       </div>
     <!-- End Autotune Tab -->
     </div>
@@ -2806,6 +2817,8 @@
     // ============================================================
     let autotunePollTimer = null;   // status/live poll interval handle
     let autotuneLastStatus = null;  // last parsed status (used at commit time)
+    let autotuneRequest = null;
+    let autotuneSamples = [];
 
     const fmtGain = (v) => (v === undefined || v === null || Number.isNaN(v)) ? '--' : v.toFixed(5);
 
@@ -2826,7 +2839,7 @@
     const renderAutotuneStatus = (s) => {
       const pairs = [
         ['Phase', s.stateName],
-        ['Iteration', `${s.iteration} / ${s.budget}`],
+        ['Experiment', s.iteration ? 'Plant identified' : 'Collecting response'],
         ['Elapsed', `${s.elapsedS} s`],
         ['Candidate Kp', fmtGain(s.cand.kp)],
         ['Candidate Ki', fmtGain(s.cand.ki)],
@@ -2834,7 +2847,15 @@
         ['Best Kp', fmtGain(s.best.kp)],
         ['Best Ki', fmtGain(s.best.ki)],
         ['Best Kd', fmtGain(s.best.kd)],
-        ['Best cost', fmtGain(s.bestCost)]
+        ['Fit RMSE', `${s.model.fitRmseBar.toFixed(4)} bar`],
+        ['Plant gain', `${s.model.gain.toFixed(3)} bar / duty`],
+        ['Transport delay', `${s.model.deadTimeS.toFixed(1)} s`],
+        ['Mixing time constant', `${s.model.timeConstantS.toFixed(1)} s`],
+        ['Mixing reversal', `${s.model.mixingExcursionBar.toFixed(3)} bar`],
+        ['Baseline duty', `${(s.model.baselineDuty * 100).toFixed(1)} %`],
+        ['Baseline PPO2 slope', `${s.model.baselineSlopeBarS.toFixed(5)} bar/s`],
+        ['Ambient pressure', `${s.model.ambientPressureBar.toFixed(2)} bar`],
+        ['Incremental dose', `${s.model.deliveredDoseDutyS.toFixed(2)} duty·s`]
       ];
       if (s.state === AUTOTUNE_STATE_ABORTED) {
         pairs.push(['Abort reason', s.abortReasonName]);
@@ -2854,13 +2875,62 @@
       ]);
     };
 
+    const recordAutotuneSample = (status, live) => {
+      const ppo2 = live.CONSENSUS_PPO2;
+      const setpoint = live.SETPOINT;
+      const duty = live.DUTY_CYCLE;
+      if (ppo2 === undefined && setpoint === undefined && duty === undefined) return;
+      autotuneSamples.push({
+        elapsed_s: status.elapsedS,
+        ppo2_bar: ppo2 ?? null,
+        setpoint_bar: setpoint ?? null,
+        commanded_duty: duty ?? null,
+        phase: status.stateName
+      });
+    };
+
+    const buildAutotuneReport = (status) => ({
+      schema: 'divecan.pid_tune_report.v1',
+      generated_at: new Date().toISOString(),
+      request: autotuneRequest,
+      result: {
+        state: status.stateName,
+        abort_reason: status.abortReasonName,
+        elapsed_s: status.elapsedS,
+        experiment_complete: status.iteration > 0
+      },
+      recommended_gains: status.best,
+      model_fit_rmse_bar: status.bestCost,
+      plant: {
+        incremental_rate_gain_bar_per_s_per_duty: status.model.gain,
+        transport_delay_s: status.model.deadTimeS,
+        mixing_recovery_s: status.model.timeConstantS,
+        fit_rmse_bar: status.model.fitRmseBar,
+        mixing_reversal_bar: status.model.mixingExcursionBar,
+        baseline_effective_duty: status.model.baselineDuty,
+        baseline_ppo2_slope_bar_per_s: status.model.baselineSlopeBarS,
+        ambient_pressure_bar: status.model.ambientPressureBar,
+        delivered_incremental_dose_duty_s: status.model.deliveredDoseDutyS
+      },
+      samples: autotuneSamples
+    });
+
+    const showAutotuneReport = (status) => {
+      $('atReportText').value = JSON.stringify(buildAutotuneReport(status), null, 2);
+      $('atReportSection').style.display = '';
+      $('at-report-message').textContent = `${autotuneSamples.length} live samples captured.`;
+    };
+
     // Show the recommended-gains section when a run completes.
     const showAutotuneResult = (s) => {
       renderKV($('atResultGrid'), [
         ['Kp', fmtGain(s.best.kp)],
         ['Ki', fmtGain(s.best.ki)],
         ['Kd', fmtGain(s.best.kd)],
-        ['Cost', fmtGain(s.bestCost)]
+        ['Model fit RMSE', `${s.model.fitRmseBar.toFixed(4)} bar`],
+        ['Transport delay', `${s.model.deadTimeS.toFixed(1)} s`],
+        ['Dominant mixing time', `${s.model.timeConstantS.toFixed(1)} s`],
+        ['Rise/fall excursion', `${s.model.mixingExcursionBar.toFixed(3)} bar`]
       ]);
       $('atResultSection').style.display = '';
       $('at-commit-message').textContent = '';
@@ -2885,11 +2955,13 @@
         try {
           const live = await stack.uds.readDIDsParsed([0xF200, 0xF202, 0xF210]);
           renderAutotuneLive(live);
+          recordAutotuneSample(status, live);
         } catch (liveErr) {
           // Live readout is best-effort; ignore a single failed tick.
         }
 
         if (status.state === AUTOTUNE_STATE_DONE || status.state === AUTOTUNE_STATE_ABORTED) {
+          showAutotuneReport(status);
           stopAutotunePoll();
           $('atAbortButton').disabled = true;
           $('atStartButton').disabled = false;
@@ -2909,22 +2981,24 @@
     const autotuneStart = async () => {
       if (!stack) { $('at-run-message').textContent = 'Not connected'; return; }
       const baseBar = Number.parseFloat($('at-base-input').value);
-      const stepBar = Number.parseFloat($('at-step-input').value);
-      const budget = Number.parseInt($('at-budget-input').value, 10);
-      if (Number.isNaN(baseBar) || Number.isNaN(stepBar) || Number.isNaN(budget) || budget < 1 || budget > 65535) {
+      const excitationDutyPct = Number.parseInt($('at-step-input').value, 10);
+      if (Number.isNaN(baseBar) || Number.isNaN(excitationDutyPct) ||
+          excitationDutyPct < 5 || excitationDutyPct > 30) {
         $('at-run-message').textContent = 'Invalid parameters';
         return;
       }
       const baseCb = Math.round(baseBar * 100);
-      const stepCb = Math.round(stepBar * 100);
-      if (!confirm(`Start PID autotune?\n\nBase ${baseBar.toFixed(2)} bar, step +${stepBar.toFixed(2)} bar, budget ${budget}.\n\nRequires surface + PID mode + a programming session. The setpoint will be driven during the run.`)) {
+      if (!confirm(`Start plant-identification PID tune?\n\nBase ${baseBar.toFixed(2)} bar, duty pulse +${excitationDutyPct}%.\n\nThe firmware will measure equilibrium duty, apply a bounded incremental actuation, return to equilibrium duty, and observe the delayed mixing response. Requires surface + PID mode + a programming session.`)) {
         return;
       }
       $('atStartButton').disabled = true;
       $('atResultSection').style.display = 'none';
+      $('atReportSection').style.display = 'none';
+      autotuneRequest = { base_setpoint_bar: baseBar, excitation_duty_pct: excitationDutyPct };
+      autotuneSamples = [];
       try {
         $('at-run-message').textContent = 'Starting autotune...';
-        await stack.uds.autotuneStart({ baseCb, stepCb, budget });
+        await stack.uds.autotuneStart({ baseCb, excitationDutyPct });
         $('at-run-message').textContent = 'Autotune running...';
         $('atAbortButton').disabled = false;
         stopAutotunePoll();
@@ -2990,6 +3064,8 @@
     const resetAutotuneUI = () => {
       stopAutotunePoll();
       autotuneLastStatus = null;
+      autotuneRequest = null;
+      autotuneSamples = [];
       $('atEnterSessionButton').disabled = true;
       $('atStartButton').disabled = true;
       $('atAbortButton').disabled = true;
@@ -2997,6 +3073,8 @@
       $('at-run-message').textContent = '';
       $('at-commit-message').textContent = '';
       $('atResultSection').style.display = 'none';
+      $('atReportSection').style.display = 'none';
+      $('atReportText').value = '';
       $('atStatusGrid').innerHTML = '<div class="field-inactive">(Start a run to see live status)</div>';
       $('atLiveGrid').innerHTML = '<div class="field-inactive">(Live PPO2 / setpoint / duty appears during a run)</div>';
     };
@@ -3293,6 +3371,18 @@
     $('atStartButton').addEventListener('click', autotuneStart);
     $('atAbortButton').addEventListener('click', autotuneAbort);
     $('atCommitButton').addEventListener('click', autotuneCommit);
+    $('atCopyReportButton').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText($('atReportText').value);
+        $('at-report-message').textContent = 'Tune report copied.';
+      } catch (error) {
+        $('atReportText').select();
+        $('at-report-message').textContent = 'Clipboard unavailable; report selected for manual copy.';
+      }
+    });
+    $('atExportReportButton').addEventListener('click', () => {
+      triggerDownload('divecan-pid-tune-report.json', $('atReportText').value, 'application/json');
+    });
 
     // Periodic UI update for cell values
     setInterval(() => {

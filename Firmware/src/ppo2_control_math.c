@@ -19,6 +19,10 @@ static const uint32_t US_PER_MS = 1000U;
 static const PIDNumeric_t MBAR_PER_BAR = 1000.0f;
 /* Duty-cycle of 1.0 for use in the "off time = total - on time" calc. */
 static const PIDNumeric_t FULL_DUTY = 1.0f;
+/** Preserve the learned equilibrium duty through normal mixing ripple, but
+ * discard it after a materially unsafe PPO2 overshoot. */
+static const PIDNumeric_t INTEGRAL_RESET_OVERSHOOT_BAR = 0.20f;
+static const PIDNumeric_t PPO2_COMPARE_EPSILON_BAR = 0.00001f;
 
 void pid_state_init(PIDState_t *state, PIDNumeric_t kp,
             PIDNumeric_t ki, PIDNumeric_t kd)
@@ -55,6 +59,8 @@ PIDNumeric_t pid_update(PIDNumeric_t d_setpoint, PIDNumeric_t measurement,
         PIDNumeric_t iTerm = 0;
         PIDNumeric_t dTerm = 0;
         PIDNumeric_t error = d_setpoint - measurement;
+        PIDNumeric_t previousIntegral = state->integralState;
+        bool hardReset = false;
 
         /* proportional term*/
         pTerm = state->proportionalGain * error;
@@ -62,10 +68,12 @@ PIDNumeric_t pid_update(PIDNumeric_t d_setpoint, PIDNumeric_t measurement,
         /* integral term*/
         state->integralState += state->integralGain * error;
 
-        /* As soon as we are above the setpoint reset the integral so we don't have to wind down*/
-        if (error < 0)
+        /* Let ordinary overshoot unwind the accumulated equilibrium duty.
+         * A hard reset is retained only for a +0.20 bar PPO2 overshoot. */
+        if (error <= -(INTEGRAL_RESET_OVERSHOOT_BAR - PPO2_COMPARE_EPSILON_BAR))
         {
             state->integralState = 0;
+            hardReset = true;
         }
 
         if (state->integralState > state->integralMax)
@@ -90,6 +98,19 @@ PIDNumeric_t pid_update(PIDNumeric_t d_setpoint, PIDNumeric_t measurement,
         state->derivativeState = measurement;
 
         result = pTerm + dTerm + iTerm;
+
+        /* Conditional integration: if the tentative integral update pushes
+         * an already saturated logical duty farther out of [0,1], discard
+         * only that update. It remains free to integrate in the recovery
+         * direction. A deliberate +0.20 bar hard reset is never undone. */
+        bool drivesHighSaturation = (result > FULL_DUTY) && (error > 0.0f);
+        bool drivesLowSaturation = (result < 0.0f) && (error < 0.0f);
+        if ((!hardReset) && (drivesHighSaturation || drivesLowSaturation)) {
+            state->integralState = previousIntegral;
+            iTerm = state->integralState;
+            result = pTerm + dTerm + iTerm;
+            ++state->saturationCount;
+        }
     }
 
     return result;

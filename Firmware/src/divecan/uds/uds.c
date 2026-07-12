@@ -920,7 +920,7 @@ static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
 /**
  * @brief Handle a WDBI write to the autotune-control DID (0xF243).
  *
- * START [0x01, magic, base_cb, step_cb, budget_hi, budget_lo] arms an on-device
+ * START [0x01, magic, base_cb, duty_step_pct, reserved_hi, reserved_lo] arms
  * PID autotune run; ABORT [0x02, magic] requests it stop.  Both require a
  * programming session; START additionally requires not-in-dive (PPO2-mode-PID
  * is enforced inside ppo2_autotune_start()).  The routine runs autonomously and
@@ -958,7 +958,7 @@ static bool writeAutotuneControlDID(UDSContext_t *ctx,
             } else {
                 AutotuneParams_t params = {
                     .base_setpoint_cb = requestData[UDS_DATA_IDX + 2U],
-                    .step_cb = requestData[UDS_DATA_IDX + 3U],
+                    .excitation_duty_pct = requestData[UDS_DATA_IDX + 3U],
                     .iteration_budget = (uint16_t)(
                         ((uint16_t)requestData[UDS_DATA_IDX + 4U] << DIVECAN_BYTE_WIDTH) |
                         (uint16_t)requestData[UDS_DATA_IDX + 5U]),

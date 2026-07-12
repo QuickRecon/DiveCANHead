@@ -43,7 +43,7 @@ DID_AUTOTUNE_STATUS: int = 0xF213
 AUTOTUNE_MAGIC: int = 0xA7
 AUTOTUNE_CMD_START: int = 0x01
 AUTOTUNE_CMD_ABORT: int = 0x02
-STATUS_LEN: int = 38
+STATUS_LEN: int = 74
 
 # state enum
 AT_IDLE, AT_SETTLING, AT_STEPPING, AT_DONE, AT_ABORTED = range(5)
@@ -85,26 +85,36 @@ def _read_did(can_bus, did: int) -> bytes:
 
 
 def _read_status(can_bus) -> dict:
-    """Read + parse the 38-byte autotune status DID (little-endian)."""
+    """Read + parse the 74-byte plant-identification status DID."""
     data = _read_did(can_bus, DID_AUTOTUNE_STATUS)
     assert len(data) >= STATUS_LEN, f"status len {len(data)} < {STATUS_LEN}"
     (state, abort_reason, iteration, budget,
      cand_kp, cand_ki, cand_kd,
      best_kp, best_ki, best_kd, best_cost,
-     elapsed_s) = struct.unpack("<BBHHfffffffI", data[:STATUS_LEN])
+     elapsed_s, plant_gain, dead_time_s, mixing_time_s, fit_rmse,
+     mixing_excursion, baseline_duty, baseline_slope, pressure_bar,
+     delivered_dose) = struct.unpack("<BBHHfffffffIfffffffff", data[:STATUS_LEN])
     return {
         "state": state, "abort_reason": abort_reason,
         "iteration": iteration, "budget": budget,
         "cand": (cand_kp, cand_ki, cand_kd),
         "best": (best_kp, best_ki, best_kd),
         "best_cost": best_cost, "elapsed_s": elapsed_s,
+        "model": {
+            "gain": plant_gain, "dead_time_s": dead_time_s,
+            "mixing_time_s": mixing_time_s, "fit_rmse": fit_rmse,
+            "mixing_excursion": mixing_excursion,
+            "baseline_duty": baseline_duty,
+            "baseline_slope": baseline_slope, "pressure_bar": pressure_bar,
+            "delivered_dose": delivered_dose,
+        },
     }
 
 
-def _start(can_bus, base_cb: int, step_cb: int, budget: int) -> bytes:
+def _start(can_bus, base_cb: int, duty_step_pct: int) -> bytes:
     """Send an autotune START; return the raw reassembled response."""
     data = bytes([AUTOTUNE_CMD_START, AUTOTUNE_MAGIC, base_cb & 0xFF,
-                  step_cb & 0xFF, (budget >> 8) & 0xFF, budget & 0xFF])
+                  duty_step_pct & 0xFF, 0x00, 0x01])
     uds_helpers.send_wdbi(can_bus, DID_AUTOTUNE_CONTROL, data)
     return uds_helpers.reassemble_isotp(can_bus)
 
@@ -183,7 +193,7 @@ def test_autotune_start_requires_session(dut, firmware) -> None:
     proc, shim = _set_mode_pid_and_reboot(can_bus, shim, proc)
     try:
         can_bus.flush_rx()
-        resp = _start(can_bus, DEFAULT_SETPOINT_CB, 30, 4)
+        resp = _start(can_bus, DEFAULT_SETPOINT_CB, 20)
         assert resp[1] == UDS_NEGATIVE_RESPONSE_SID, (
             f"expected NRC, got {resp.hex()}")
         assert resp[2] == 0x2E, f"NRC should reference SID 0x2E: {resp.hex()}"
@@ -212,7 +222,7 @@ def test_autotune_abort(dut, firmware) -> None:
         helpers.sim_sleep(shim, 0.5)
 
         _enter_programming_session(can_bus)
-        resp = _start(can_bus, DEFAULT_SETPOINT_CB, 30, 8)
+        resp = _start(can_bus, DEFAULT_SETPOINT_CB, 20)
         assert resp[1] == 0x6E, f"START not positive: {resp.hex()}"
 
         # Drive until the routine is demonstrably running (SETTLING/STEPPING).
@@ -237,8 +247,7 @@ def test_autotune_abort(dut, firmware) -> None:
 @pytest.mark.slow
 @pytest.mark.rt_ratio(RT_RATIO)
 def test_autotune_converges(dut, firmware) -> None:
-    """A short-budget run against the plant model reaches DONE with a finite
-    best cost. Slow: each candidate is ~60 s of simulated settle+observe."""
+    """One incremental-duty experiment identifies the plant and reaches DONE."""
     can_bus, shim = dut
     proc = firmware
     proc, shim = _set_mode_pid_and_reboot(can_bus, shim, proc)
@@ -253,8 +262,7 @@ def test_autotune_converges(dut, firmware) -> None:
         helpers.sim_sleep(shim, 0.5)
 
         _enter_programming_session(can_bus)
-        # Budget 2 → ~2 x (20 s settle + 40 s observe) = ~120 s sim time.
-        resp = _start(can_bus, DEFAULT_SETPOINT_CB, 30, 2)
+        resp = _start(can_bus, DEFAULT_SETPOINT_CB, 20)
         assert resp[1] == 0x6E, f"START not positive: {resp.hex()}"
 
         status = _drive_until(can_bus, shim, model,
@@ -263,12 +271,17 @@ def test_autotune_converges(dut, firmware) -> None:
               f"reason={status['abort_reason']} iter={status['iteration']} "
               f"elapsed_s={status['elapsed_s']} "
               f"best_kp={status['best'][0]:.4f} best_ki={status['best'][1]:.4f} "
-              f"best_kd={status['best'][2]:.4f} best_cost={status['best_cost']:.4f}")
+              f"best_kd={status['best'][2]:.4f} best_cost={status['best_cost']:.4f} "
+              f"baseline_duty={status['model']['baseline_duty']:.4f} "
+              f"baseline_slope={status['model']['baseline_slope']:.5f}")
         assert status["state"] == AT_DONE, (
             f"expected DONE, got state {status['state']} "
             f"reason {status['abort_reason']}")
         assert status["best_cost"] < 1.0e8, (
             f"best cost should be finite, got {status['best_cost']}")
+        assert status["model"]["gain"] > 0.0
+        assert status["model"]["dead_time_s"] >= 0.0
+        assert status["model"]["delivered_dose"] > 0.0
         # Gains stay within the accepted PID bounds.
         for g in status["best"]:
             assert 0.0 <= g <= 100.0, f"best gain {g} out of range"

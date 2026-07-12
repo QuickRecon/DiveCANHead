@@ -125,10 +125,12 @@ user explicitly authorised the fix during planning.
 **What still provides coverage**: The fix is layered:
 - Application: zero duty + integrator reset + `sol_o2_inject_off()` on
   the transition into `consensus == PPO2_FAIL`. Edge-triggered via a
-  `consensus_failed_latch` so we publish status updates only on
-  transitions.
-- Wire-format: `chan_solenoid_status` flips to `DIVECAN_ERR_SOL_UNDERCURRENT`
-  (see compromise #7) so the dive computer reflects the suppressed state.
+  `consensus_failed_latch` so the transition work runs once.
+- Wire-format: none. The suppression raises no solenoid error/status
+  (`OP_ERR_SOLENOID_DISABLED` and the `DIVECAN_ERR_SOL_UNDERCURRENT` publish
+  were removed 2026-07 — see compromise #7). The handset already surfaces
+  the voting failure from the cell data, so flagging the solenoid too was
+  redundant noise mis-attributing a cell problem to the solenoid.
 - Hardware: the solenoid driver's deadman timer still bounds the worst-case
   on-time if the kernel stalls (see compromise #8).
 - Test: `tests/ppo2_control_math/` covers the duty-clamp/depth-comp
@@ -143,11 +145,18 @@ when consensus reports values.
 
 ---
 
-## 7. `DIVECAN_ERR_SOL_UNDERCURRENT` is reused as the wire-side "controller-suppressed" indicator
+## 7. `DIVECAN_ERR_SOL_UNDERCURRENT` reused as the wire-side "controller-suppressed" indicator — **RESOLVED / REVERTED (2026-07)**
 
-**What changed**: When the PPO2 controller suppresses the solenoid (currently
-only on cell-failure — see compromise #6), `chan_solenoid_status` is set to
-`DIVECAN_ERR_SOL_UNDERCURRENT` (0x04) so `RespPing` OR-combines it into
+**Resolution**: The cell-failure path no longer publishes a solenoid status at
+all (`ppo2_control.c`). The handset already flags a voting failure from the cell
+data, so the extra solenoid warning was redundant noise (and semantically wrong —
+a cell problem, not a solenoid fault). The reuse below is retained only as
+history; `DIVECAN_ERR_SOL_UNDERCURRENT` is now produced solely by the (opt-in,
+per-variant) closed-loop current check when it is enabled.
+
+**What changed** *(original, now reverted)*: When the PPO2 controller suppressed
+the solenoid (only on cell-failure — see compromise #6), `chan_solenoid_status`
+was set to `DIVECAN_ERR_SOL_UNDERCURRENT` (0x04) so `RespPing` OR-combined it into
 the DiveCAN status byte sent to the handset. There is no dedicated
 "suppressed" / "inhibited" enumerant in the upstream DiveCAN protocol enum
 (see `src/divecan/include/divecan_types.h`).

@@ -688,21 +688,20 @@ export class UDSClient extends EventEmitter {
    * diving or when the PPO2 control mode is not PID.
    * @param {Object} params
    * @param {number} params.baseCb - Base setpoint in centibar (e.g. 70 = 0.70 bar)
-   * @param {number} params.stepCb - Step magnitude in centibar (e.g. 30 = +0.30 bar)
-   * @param {number} params.budget - Iteration budget (uint16, sent big-endian)
+   * @param {number} params.excitationDutyPct - Incremental duty pulse (5..30 percent)
    * @returns {Promise<void>}
    */
-  async autotuneStart({ baseCb, stepCb, budget }) {
+  async autotuneStart({ baseCb, excitationDutyPct }) {
     const data = [
       constants.AUTOTUNE_CMD_START,
       constants.AUTOTUNE_MAGIC,
       baseCb & 0xFF,
-      stepCb & 0xFF,
-      (budget >> 8) & 0xFF,
-      budget & 0xFF
+      excitationDutyPct & 0xFF,
+      0x00,
+      0x01
     ];
     await this.writeDataByIdentifier(constants.DID_AUTOTUNE_CONTROL, data);
-    this.logger.info(`Autotune START base=${baseCb}cb step=${stepCb}cb budget=${budget}`);
+    this.logger.info(`Autotune START base=${baseCb}cb dutyStep=${excitationDutyPct}%`);
   }
 
   /**
@@ -718,13 +717,18 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
-   * Read autotune status (DID 0xF213). Parses the 38-byte little-endian struct.
+   * Read autotune status (DID 0xF213). Parses the 74-byte little-endian struct.
    *
    * Wire layout (offsets into the returned data bytes):
    *   [0]  state (u8) [1] abort_reason (u8) [2] iteration (u16) [4] budget (u16)
    *   [6] cand_kp (f32) [10] cand_ki (f32) [14] cand_kd (f32)
    *   [18] best_kp (f32) [22] best_ki (f32) [26] best_kd (f32)
-   *   [30] best_cost (f32) [34] elapsed_s (u32)
+   *   [30] model fit RMSE (f32) [34] elapsed_s (u32)
+   *   [38] plant_gain (f32) [42] dead_time_s (f32)
+   *   [46] time_constant_s (f32) [50] fit_rmse_bar (f32)
+   *   [54] mixing_excursion_bar (f32)
+   *   [58] baseline_duty (f32) [62] baseline_slope_bar_s (f32)
+   *   [66] ambient_pressure_bar (f32) [70] delivered_dose_duty_s (f32)
    *
    * @returns {Promise<{state:number, stateName:string, abortReason:number,
    *   abortReasonName:string, iteration:number, budget:number,
@@ -756,7 +760,18 @@ export class UDSClient extends EventEmitter {
         kd: view.getFloat32(26, true)
       },
       bestCost: view.getFloat32(30, true),
-      elapsedS: view.getUint32(34, true)
+      elapsedS: view.getUint32(34, true),
+      model: {
+        gain: view.getFloat32(38, true),
+        deadTimeS: view.getFloat32(42, true),
+        timeConstantS: view.getFloat32(46, true),
+        fitRmseBar: view.getFloat32(50, true),
+        mixingExcursionBar: view.getFloat32(54, true),
+        baselineDuty: view.getFloat32(58, true),
+        baselineSlopeBarS: view.getFloat32(62, true),
+        ambientPressureBar: view.getFloat32(66, true),
+        deliveredDoseDutyS: view.getFloat32(70, true)
+      }
     };
   }
 

@@ -397,24 +397,32 @@ DiveCAN uses a non-standard padding byte in Single Frame and First Frame message
 
 An on-device setup routine (`src/ppo2_autotune.c`, gated on the same
 `CONFIG_HAS_O2_SOLENOID` as the PID controller — no separate Kconfig) that
-dials in the solenoid PID gains (Kp/Ki/Kd). For each candidate gain set it
-commands the base setpoint, lets the loop settle (~20 s), steps the setpoint up
-(base→base+step), observes the consensus PPO2 for ~40 s at 2 Hz, and scores the
-step response as `w1·IAE + w2·overshoot + w3·settling_time + w4·steady_ripple`.
-A bounded coordinate-descent search over (Kp, Ki, Kd) — with step-halving on
-stalls and an iteration budget — walks toward the lowest cost.
+dials in the solenoid PID gains (Kp/Ki/Kd) from one physical experiment. It
+settles at a fixed setpoint, measures mean PPO2, long-term PPO2 slope, pressure
+and mean effective duty across a 60 s aggregate baseline, applies a bounded
+5–30% incremental duty pulse for 10 s, then
+returns to the measured equilibrium duty and records 30 s of redistribution.
+Identification uses `Δu = u-u_b` and drift-corrected `Δy = y-y_0`; process gain
+is incremental PPO2 shift divided by delivered effective duty-seconds. The
+model retains transport delay, recovery duration and the largest rise/fall
+mixing reversal. Conservative IMC rules for an integrating delayed plant derive
+PI gains once; Kd remains zero. Metabolic demand is reported as baseline duty
+and is not folded into plant gain or persisted as a controller bias.
+The paired response traces occupy 640 B in the shared maintenance arena during
+the run, keeping them off the autotune thread stack and preventing concurrent
+OTA/factory scratch use.
 
 **Thread.** One `K_THREAD_DEFINE` (`autotune_thread`) at **priority 7 — one
 below the control threads (6)** so it never preempts the PID or fire loop. It
 sleeps until a run is requested and is otherwise inert (on a no-solenoid variant
 `ppo2_autotune_start()` returns `-ENOTSUP` and the status reports `IDLE`).
 
-**Interaction with the PID controller (no reboot).** Candidates are applied via
-`ppo2_control_set_gains_live()` / `_get_gains_live()`, which write straight into
-the live `PIDState_t`. This is the key enabler: the normal NVS-settings path
-only latches gains at boot in `ppo2_control_init()`, so without the live API each
-candidate would need a reboot. The routine snapshots the pre-tune gains up front
-and restores them on any abort.
+**Interaction with the PID controller (no reboot).** During the experiment the
+PID thread retains health checks and heartbeat ownership but publishes a fixed
+autotune duty. The fire thread still performs its normal quantisation, depth
+compensation, deadman and current monitoring. The identifier records effective
+post-quantisation duty. Original gains are restored on abort; synthesized gains
+are applied live only after successful identification.
 
 **zbus.** Reads `chan_consensus` (the scored signal) and publishes `chan_setpoint`
 **only** — never `chan_setpoint_cmd`, so the setpoint-change flush solenoid is
@@ -436,15 +444,13 @@ operator reviews and persists them via the settings-save DID (`0x9350 + N`).
 
 **DID supervision surface.** Control write DID `0xF243`
 (`ppo2_autotune_start()` / `_request_abort()`, START/ABORT + magic `0xA7`) and
-status read DID `0xF213` (`ppo2_autotune_get_status()`, 38-byte snapshot: state,
-abort reason, iteration/budget, candidate + best gains, best cost, elapsed). See
+status read DID `0xF213` (`ppo2_autotune_get_status()`, 74-byte snapshot: state,
+derived gains, elapsed, plant model, equilibrium duty/slope, pressure and dose). See
 `docs/DATA_IDENTIFIERS.md` and `docs/UDS_PROTOCOL.md`.
 
-**Pure-math split.** As with `ppo2_control_math.c`, the cost function and
-optimizer live in a separate OS-free `src/ppo2_autotune_math.c` (header
-`include/ppo2_autotune_math.h`) so the scoring and coordinate-descent search are
-host-tested under `tests/ppo2_autotune_math/`; the thread/state-machine glue in
-`ppo2_autotune.c` stays thin.
+**Pure-math split.** Identification and integrating-process gain synthesis live
+in OS-free `src/ppo2_autotune_math.c` and are host-tested under
+`tests/ppo2_autotune_math/`; the thread/state-machine glue stays thin.
 
 ## Hardening
 
@@ -511,7 +517,7 @@ Firmware/
 │   ├── power_management.c          Power driver: regulator, ADC voltage, shutdown
 │   ├── power_math.c                Pure power math (voltage conversion, thresholds)
 │   ├── ppo2_autotune.c             On-device PID autotune thread (CONFIG_HAS_O2_SOLENOID)
-│   ├── ppo2_autotune_math.c        Pure cost function + coordinate-descent optimizer
+│   ├── ppo2_autotune_math.c        Incremental plant identification + PI synthesis
 │   ├── runtime_settings.c          NVS load/save/validate, topology BUILD_ASSERTs
 │   ├── tank_pressure.c             HP transducer sampler thread, zbus publish
 │   ├── tank_pressure_math.c        Pure mV → decibar mapping (no OS deps)
@@ -540,7 +546,7 @@ Firmware/
 │   ├── isotp/                      ISO-TP RX/TX protocol (19 tests)
 │   ├── divecan_tx/                 Message composition byte layout (15 tests)
 │   ├── ppo2_broadcast/             PPO2 broadcast filtering logic (8 tests)
-│   └── ppo2_autotune_math/         Cost function + coordinate-descent optimizer (6 tests)
+│   └── ppo2_autotune_math/         Plant identification + model tuning tests
 ├── variants/
 │   └── <variant>.conf/.overlay     Hardware variants (AP_Aren, eCCR_classic,
 │                                   Poseidon_Aren, Sidewinder_Gabriel)

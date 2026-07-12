@@ -529,12 +529,11 @@ describe('UDSClient', () => {
   });
 
   describe('autotune', () => {
-    it('autotuneStart sends [cmd, magic, base, step, budget_hi, budget_lo] to 0xF243', async () => {
+    it('autotuneStart sends a bounded-duty identification request to 0xF243', async () => {
       transport.queueResponse(buildWDBIResponse(0xF243));
-      await client.autotuneStart({ baseCb: 70, stepCb: 30, budget: 300 });
-      // budget 300 = 0x012C
+      await client.autotuneStart({ baseCb: 70, excitationDutyPct: 20 });
       expect(Array.from(transport.getLastSent())).toEqual([
-        0x2E, 0xF2, 0x43, 0x01, 0xA7, 70, 30, 0x01, 0x2C
+        0x2E, 0xF2, 0x43, 0x01, 0xA7, 70, 20, 0x00, 0x01
       ]);
     });
 
@@ -544,8 +543,8 @@ describe('UDSClient', () => {
       expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x43, 0x02, 0xA7]);
     });
 
-    it('readAutotuneStatus parses the 38-byte little-endian status struct', async () => {
-      const buf = new ArrayBuffer(38);
+    it('readAutotuneStatus parses the 74-byte model-identification status struct', async () => {
+      const buf = new ArrayBuffer(74);
       const dv = new DataView(buf);
       dv.setUint8(0, 2);              // state = STEPPING
       dv.setUint8(1, 4);              // abort_reason = TIMEOUT
@@ -559,13 +558,22 @@ describe('UDSClient', () => {
       dv.setFloat32(26, 0.05, true);  // best kd
       dv.setFloat32(30, 0.0123, true);// best cost
       dv.setUint32(34, 42, true);     // elapsed_s
+      dv.setFloat32(38, 1.4, true);   // plant gain
+      dv.setFloat32(42, 3.5, true);   // dead time
+      dv.setFloat32(46, 8.0, true);   // time constant
+      dv.setFloat32(50, 0.0123, true);// fit RMSE
+      dv.setFloat32(54, 0.07, true);  // mixing excursion
+      dv.setFloat32(58, 0.12, true);  // baseline duty
+      dv.setFloat32(62, 0.0004, true);// baseline slope
+      dv.setFloat32(66, 1.01, true);  // ambient pressure
+      dv.setFloat32(70, 1.8, true);   // delivered incremental dose
       transport.queueResponse(buildRDBIResponse(0xF213, Array.from(new Uint8Array(buf))));
 
       const st = await client.readAutotuneStatus();
 
       expect(Array.from(transport.getLastSent())).toEqual([0x22, 0xF2, 0x13]);
       expect(st.state).toBe(2);
-      expect(st.stateName).toBe('Stepping');
+      expect(st.stateName).toBe('Identifying plant');
       expect(st.abortReason).toBe(4);
       expect(st.abortReasonName).toBe('Timeout');
       expect(st.iteration).toBe(5);
@@ -578,6 +586,15 @@ describe('UDSClient', () => {
       expect(st.best.kd).toBeCloseTo(0.05, 5);
       expect(st.bestCost).toBeCloseTo(0.0123, 5);
       expect(st.elapsedS).toBe(42);
+      expect(st.model.gain).toBeCloseTo(1.4, 5);
+      expect(st.model.deadTimeS).toBeCloseTo(3.5, 5);
+      expect(st.model.timeConstantS).toBeCloseTo(8.0, 5);
+      expect(st.model.fitRmseBar).toBeCloseTo(0.0123, 5);
+      expect(st.model.mixingExcursionBar).toBeCloseTo(0.07, 5);
+      expect(st.model.baselineDuty).toBeCloseTo(0.12, 5);
+      expect(st.model.baselineSlopeBarS).toBeCloseTo(0.0004, 6);
+      expect(st.model.ambientPressureBar).toBeCloseTo(1.01, 5);
+      expect(st.model.deliveredDoseDutyS).toBeCloseTo(1.8, 5);
     });
   });
 
