@@ -24,6 +24,9 @@
 #ifndef I2C_BUS_LOCK_H
 #define I2C_BUS_LOCK_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 /**
  * @brief Acquire exclusive use of the i2c1 controller for a master transfer.
  *
@@ -72,5 +75,33 @@ void i2c1_bus_note_activity(void);
  *         -ENOSYS if bus recovery is unavailable; or a driver error code.
  */
 int i2c1_bus_recover(void);
+
+/**
+ * @brief True if @p rc is a transient i2c1 error worth retrying (arbitration
+ * loss / BUSY / bus glitch on the multimaster bus) rather than a hard fault.
+ */
+bool i2c1_error_is_transient(int rc);
+
+/**
+ * @brief Unified multimaster-safe i2c1 transfer: avoid + retry + recover.
+ *
+ * One place for the whole defense so every i2c1 caller (accessory writes, ADS
+ * reads, …) handles collisions the same way instead of each re-implementing a
+ * subset: up to @p attempts tries of (wait for a quiet bus → run @p xfer),
+ * exponential backoff + jitter between tries, and — if the bus is still wedged
+ * after them — one classify+recover (PE reset / bus clear) followed by a final
+ * try. Serialises against the other STM32 i2c1 masters via the bus mutex and
+ * timestamps bus activity on each attempt.
+ *
+ * @param xfer  Performs the actual transfer; returns 0 or a negative errno.
+ *              Only transient errors (see i2c1_error_is_transient) are retried.
+ * @param ctx   Opaque pointer passed through to @p xfer.
+ * @param attempts          Max quiet-wait+xfer tries before recovery (>= 1).
+ * @param backoff_base_ms   Backoff = base << (attempt-1) + jitter.
+ * @param backoff_jitter_ms Upper bound of the random jitter added each backoff.
+ * @return 0 on success, or the last @p xfer / lock error.
+ */
+int i2c1_transact(int (*xfer)(void *ctx), void *ctx, uint8_t attempts,
+          uint32_t backoff_base_ms, uint32_t backoff_jitter_ms);
 
 #endif /* I2C_BUS_LOCK_H */

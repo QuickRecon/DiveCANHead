@@ -1,0 +1,47 @@
+Subject: drivers: flash: spi_nor: bound the WIP status poll with a timeout
+
+spi_nor_wait_until_ready() polls the status register in a while(true) loop that
+exits only on a SPI read error or when WIP clears. On a transient SPI glitch that
+leaves the status read stuck at WIP=1, it busy-spins forever, blocking the caller
+until the IWDG resets the MCU mid erase/program. Observed on divecan_jr's
+W25Q512JV: the 0xF278 whole-chip mass erase and the factory-restore copy hang at
+random deep offsets, so the erase never reaches the NVS partition and the restore
+leaves slot1 incomplete. Add a 10 s deadline so a stuck-busy becomes a
+recoverable -ETIMEDOUT the caller can retry/skip. A worst-case single block erase
+is ~2 s and the app never issues a full-chip CE (it erases in 256 KiB chunks), so
+no legitimate operation approaches the bound. Applied automatically at configure
+time by Firmware/CMakeLists.txt; git apply tolerates this preamble.
+
+diff --git a/drivers/flash/spi_nor.c b/drivers/flash/spi_nor.c
+--- a/drivers/flash/spi_nor.c
++++ b/drivers/flash/spi_nor.c
+@@ -525,6 +525,17 @@ static int spi_nor_wait_until_ready(const struct device *dev, k_timeout_t poll_d
+
+ 	ARG_UNUSED(poll_delay);
+
++	/* Bound the WIP poll. This loop otherwise has NO timeout: on a transient
++	 * SPI glitch that leaves the status read stuck at WIP=1, it busy-spins
++	 * forever, blocking the caller until the IWDG resets the MCU mid
++	 * erase/program (HW-observed on divecan_jr's W25Q512JV: the 0xF278 mass
++	 * erase and factory-restore copy hang at random deep offsets). A worst-case
++	 * single block erase is ~2 s, so a 10 s cap catches a true hang with wide
++	 * margin and returns a recoverable -ETIMEDOUT instead. The app erases in
++	 * 256 KiB chunks (never a full-chip CE), so no legitimate operation here
++	 * approaches this bound. */
++	int64_t wip_deadline = k_uptime_get() + 10000;
++
+ 	while (true) {
+ 		/* If flag status register is present, check it rather than the standard
+ 		 * status register since it allows better error detection. Also, some devices
+@@ -567,6 +578,11 @@ static int spi_nor_wait_until_ready(const struct device *dev, k_timeout_t poll_d
+ 				break;
+ 			}
+ 		}
++		if (k_uptime_get() >= wip_deadline) {
++			LOG_ERR("spi_nor: WIP poll timed out (stuck busy)");
++			ret = -ETIMEDOUT;
++			break;
++		}
+ #ifdef CONFIG_SPI_NOR_SLEEP_WHILE_WAITING_UNTIL_READY
+ 		/* Don't monopolise the CPU while waiting for ready */
+ 		k_sleep(poll_delay);

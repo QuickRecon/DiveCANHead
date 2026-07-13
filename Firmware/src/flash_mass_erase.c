@@ -47,20 +47,83 @@ int flash_mass_erase_external(void)
 		"(slot1/OTA, factory, flash-log, NVS) — takes minutes, IWDG-fed",
 		(unsigned)(total / 1024U), (unsigned)(ERASE_CHUNK_BYTES / 1024U));
 
+	int first_err = 0;
+	unsigned int fail_count = 0U;
+
+	/* Erase the NVS/"storage" partition FIRST. The factory-reset contract
+	 * (settings + cal defaults + the boot counter) lives there, at the TOP of
+	 * the chip (0x3ff8000). The full linear sweep below occasionally HANGS
+	 * mid-way in the SPI NOR driver's no-timeout WIP poll — HW-observed as an
+	 * IWDG reset at a RANDOM deep offset (~21 MB one run, further the next),
+	 * always long before reaching NVS — so 0xF278 kept failing to reset the
+	 * boot counter. Doing NVS up front guarantees the reset even if the bulk
+	 * sweep is later cut short. slot1 (offset 0) and the factory backup
+	 * (0x47000) sit at LOW offsets and are always reached by the sweep before
+	 * any such deep hang, so the rest of the contract still holds. */
+#if DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
+	{
+		off_t  nvs_off = (off_t)DT_REG_ADDR(DT_NODELABEL(storage_partition));
+		size_t nvs_sz  = (size_t)DT_REG_SIZE(DT_NODELABEL(storage_partition));
+
+		watchdog_kick();
+		int nrc = flash_erase(flash, nvs_off, nvs_sz);
+		if (nrc != 0) {
+			LOG_ERR("NVS/storage erase @0x%08x failed: %d",
+				(unsigned)nvs_off, nrc);
+			if (first_err == 0) {
+				first_err = nrc;
+			}
+			fail_count++;
+		} else {
+			LOG_INF("NVS/storage erased @0x%08x (%u B)",
+				(unsigned)nvs_off, (unsigned)nvs_sz);
+		}
+	}
+#endif
+
 	for (uint64_t off = 0; off < total; off += ERASE_CHUNK_BYTES) {
 		size_t chunk = (size_t)MIN((uint64_t)ERASE_CHUNK_BYTES, total - off);
 
+		/* Coarse progress log (every 4 MB) so a mid-sweep IWDG reset from a
+		 * driver WIP hang leaves the last-reached region visible on RTT/flash
+		 * log without spamming 256 lines. */
+		if ((off % (16U * ERASE_CHUNK_BYTES)) == 0U) {
+			LOG_INF("MASS ERASE @0x%08x", (unsigned)off);
+		}
+
 		watchdog_kick();   /* feed before each chunk's (worst-case ~8 s) erase */
 
-		rc = flash_erase(flash, (off_t)off, chunk);
-		if (rc != 0) {
-			LOG_ERR("erase @0x%08x (%u B) failed: %d",
-				(unsigned)off, (unsigned)chunk, rc);
-			return rc;
+		int crc = flash_erase(flash, (off_t)off, chunk);
+		/* Erase is idempotent — retry a transient WIP-poll timeout (now bounded
+		 * in the spi_nor driver) before giving up on the chunk. */
+		for (int attempt = 1; (crc != 0) && (attempt < 3); ++attempt) {
+			watchdog_kick();
+			crc = flash_erase(flash, (off_t)off, chunk);
+		}
+		if (crc != 0) {
+			/* Do NOT abort the sweep on a single bad chunk. The factory-
+			 * reset contract (settings/cal defaults + boot counter) lives
+			 * in the NVS/"storage" partition at the TOP of the chip, which
+			 * is erased LAST. Returning here on the first failure left NVS
+			 * untouched, so 0xF278 silently no-op'd the reset (boot counter
+			 * kept climbing — HIL boot_id 35/45 instead of 1). Log the
+			 * offending region, keep going so every later partition
+			 * (including NVS) still gets wiped, and surface the first rc. */
+			LOG_ERR("erase @0x%08x (%u B) failed: %d — continuing",
+				(unsigned)off, (unsigned)chunk, crc);
+			if (first_err == 0) {
+				first_err = crc;
+			}
+			fail_count++;
 		}
 	}
 
 	watchdog_kick();
+	if (first_err != 0) {
+		LOG_ERR("MASS ERASE INCOMPLETE: %u chunk(s) failed, first rc=%d",
+			fail_count, first_err);
+		return first_err;
+	}
 	LOG_WRN("MASS ERASE complete — external NOR is blank");
 	return 0;
 }

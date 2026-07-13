@@ -1273,7 +1273,22 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
 #ifdef CONFIG_FLASH_LOG
         flash_log_pause();
 #endif
-        (void)flash_mass_erase_external();   /* watchdog-fed via watchdog_kick() */
+        int erc = flash_mass_erase_external();   /* watchdog-fed via watchdog_kick() */
+        if (0 != erc) {
+            /* The external-NOR wipe did not fully complete. Record it and still
+             * reboot to a defined state, but do NOT let the reboot MASK the
+             * failure: previously the rc was discarded and the unit rebooted
+             * looking "factory reset" while NVS/settings/boot-counter survived
+             * (0xF278 silently no-op'd — HIL boot_id kept climbing). */
+            OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-erc));
+            LOG_ERR("Factory flash erase INCOMPLETE (rc=%d) — rebooting anyway", erc);
+        } else {
+            LOG_WRN("Factory flash erase complete — rebooting");
+        }
+        /* Give the deferred logging thread a slice to drain the result to
+         * RTT/console before the cold reboot preempts it (otherwise a failed
+         * erase leaves no trace). */
+        k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
         sys_reboot(SYS_REBOOT_COLD);
     }
     return true;

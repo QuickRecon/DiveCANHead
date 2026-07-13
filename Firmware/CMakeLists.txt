@@ -87,9 +87,32 @@ if(_zephyr_tree AND EXISTS "${_zephyr_tree}/drivers/flash/spi_nor.c")
         endif()
         message(STATUS "Applied zephyr spi_nor 4-byte erase-opcode patch to ${_zephyr_tree}")
     endif()
+    # Second patch: bound the WIP status poll with a timeout. Without it a
+    # transient SPI glitch that leaves the status stuck WIP=1 busy-spins forever
+    # and the IWDG resets the MCU mid erase/program (0xF278 mass erase never
+    # reaches NVS; factory restore leaves slot1 incomplete). Re-read the source —
+    # the 4-byte patch above may have just modified it.
+    file(READ "${_zephyr_tree}/drivers/flash/spi_nor.c" _spi_nor_src2)
+    string(FIND "${_spi_nor_src2}" "wip_deadline" _wip_marker)
+    if(_wip_marker EQUAL -1)
+        set(_wip_patch
+            ${CMAKE_CURRENT_SOURCE_DIR}/patches/zephyr-spi-nor-wip-timeout.patch)
+        execute_process(COMMAND git -C "${_zephyr_tree}" apply "${_wip_patch}"
+                        RESULT_VARIABLE _wip_rc ERROR_VARIABLE _wip_err)
+        if(NOT _wip_rc EQUAL 0)
+            message(FATAL_ERROR
+                "zephyr spi_nor WIP-poll timeout patch is NOT applied and "
+                "auto-apply failed (${_wip_err}). Without it a stuck SPI-NOR "
+                "status poll hangs until the IWDG resets the MCU mid "
+                "erase/program. Apply ${_wip_patch} to ${_zephyr_tree} (rebase "
+                "it if the zephyr revision changed).")
+        endif()
+        message(STATUS "Applied zephyr spi_nor WIP-poll timeout patch to ${_zephyr_tree}")
+    endif()
 elseif(NOT BOARD MATCHES "native_sim")
     message(WARNING "Could not locate the zephyr tree to verify the spi_nor "
-                    "4-byte erase-opcode patch — do not ship this build unverified.")
+                    "4-byte erase-opcode + WIP-timeout patches — do not ship "
+                    "this build unverified.")
 endif()
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})

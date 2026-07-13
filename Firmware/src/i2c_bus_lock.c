@@ -284,3 +284,52 @@ int i2c1_bus_recover(void)
 
     return ret;
 }
+
+bool i2c1_error_is_transient(int rc)
+{
+    /* Arbitration loss / BUSY / a glitched transfer on the multimaster bus are
+     * all retryable; a hard error code (e.g. -EINVAL, -ENODEV) is not. */
+    return (rc == -EBUSY) || (rc == -EAGAIN) ||
+           (rc == -ETIMEDOUT) || (rc == -EIO);
+}
+
+static int i2c1_try_once(int (*xfer)(void *ctx), void *ctx)
+{
+    int ret = i2c1_bus_lock_quiet();
+
+    if (ret == 0) {
+        ret = xfer(ctx);
+        i2c1_bus_note_activity();
+        i2c1_bus_unlock();
+    }
+    return ret;
+}
+
+int i2c1_transact(int (*xfer)(void *ctx), void *ctx, uint8_t attempts,
+          uint32_t backoff_base_ms, uint32_t backoff_jitter_ms)
+{
+    int ret = -EBUSY;
+
+    if ((xfer == NULL) || (attempts == 0U)) {
+        return -EINVAL;
+    }
+
+    for (uint8_t a = 0U; (a < attempts) && i2c1_error_is_transient(ret); ++a) {
+        if (a > 0U) {
+            uint32_t delay = backoff_base_ms << (a - 1U);
+            uint32_t jitter = (backoff_jitter_ms != 0U)
+                    ? (k_cycle_get_32() % backoff_jitter_ms) : 0U;
+            k_msleep((int32_t)(delay + jitter));
+        }
+        ret = i2c1_try_once(xfer, ctx);
+    }
+
+    /* Still wedged after every avoid+retry: classify the lines and recover
+     * (idle -> PE reset; SDA-stuck -> nine-clock bus clear; live traffic left
+     * alone), then make one final attempt rather than surfacing the failure. */
+    if (i2c1_error_is_transient(ret) && (i2c1_bus_recover() == 0)) {
+        ret = i2c1_try_once(xfer, ctx);
+    }
+
+    return ret;
+}

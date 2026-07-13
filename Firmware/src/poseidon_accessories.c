@@ -268,10 +268,46 @@ static int target_stop(struct i2c_target_config *cfg)
     return 0;
 }
 
+/* The head is a WRITE-ONLY I2C target: it only receives the battery/HUD's
+ * master-writes and is never legitimately read. But the STM32 target driver
+ * (i2c_stm32_v2.c) calls read_requested / read_processed WITHOUT a NULL check, so
+ * leaving them unset branched through a null pointer -> fault -> reset when a
+ * multi-master collision corrupted the transfer direction and made the hardware
+ * assert TXIS / a read-address (HW 2026-07-13, the Poseidon I2C "flake" — see
+ * [[pico-i2c-emulator]]). Provide benign stubs that hand back the idle-bus value
+ * so a spurious read completes cleanly instead of crashing. */
+static int target_read_requested(struct i2c_target_config *cfg, uint8_t *val)
+{
+    ARG_UNUSED(cfg);
+    *val = 0xFFU;   /* idle-bus value */
+    return 0;
+}
+
+static int target_read_processed(struct i2c_target_config *cfg, uint8_t *val)
+{
+    ARG_UNUSED(cfg);
+    *val = 0xFFU;
+    return 0;
+}
+
+/* Surface I2C target errors — arbitration loss on a multi-master collision
+ * (I2C_ERROR_ARBITRATION) or a generic bus error — through the tiered error
+ * system instead of swallowing them. Tier-3 / recoverable: logged, published on
+ * chan_error, and counted in the error histogram (UDS 0xF260) WITHOUT a reset.
+ * The multi-master bus is expected to collide; the head must ride it out. */
+static void target_error(struct i2c_target_config *cfg, enum i2c_error_reason reason)
+{
+    ARG_UNUSED(cfg);
+    OP_ERROR_DETAIL(OP_ERR_I2C_BUS, (uint32_t)reason);
+}
+
 static const struct i2c_target_callbacks target_cb = {
     .write_requested = target_write_requested,
+    .read_requested = target_read_requested,
     .write_received = target_write_received,
+    .read_processed = target_read_processed,
     .stop = target_stop,
+    .error = target_error,
 };
 static struct i2c_target_config target_cfg = {
     .address = DISPLAY_ADDR,
@@ -291,6 +327,28 @@ static int send_frame_locked(uint8_t addr, uint8_t cmd, uint8_t data)
     frame[3] = poseidon_crc8(wire, sizeof(wire));
 
     return i2c_write(bus, frame, sizeof(frame), addr);
+}
+
+/* i2c1_transact adapter — send one Poseidon frame; the bus lock is held by
+ * i2c1_transact, which also does the quiet-wait / retry / recover. */
+struct pos_frame { uint8_t addr; uint8_t cmd; uint8_t data; };
+static int send_frame_xfer(void *ctx)
+{
+    const struct pos_frame *f = (const struct pos_frame *)ctx;
+
+    return send_frame_locked(f->addr, f->cmd, f->data);
+}
+
+/* Multimaster-safe single Poseidon frame via the shared avoid+retry+recover
+ * path. The grouped command sequences (heartbeat/refresh, shutdown) instead hold
+ * i2c1_bus_lock() across several send_retry_locked() frames for ordering, and
+ * recover through the same i2c1_bus_recover() on failure. */
+static int send_frame(uint8_t addr, uint8_t cmd, uint8_t data)
+{
+    struct pos_frame f = { addr, cmd, data };
+
+    return i2c1_transact(send_frame_xfer, &f, 3U,
+                 POSEIDON_RETRY_BASE_MS, POSEIDON_RETRY_JITTER_MS);
 }
 
 bool poseidon_gauge_voltage_byte(uint8_t *value)
@@ -366,6 +424,13 @@ static int send_retry_locked(uint8_t addr, uint8_t cmd, uint8_t data)
         uint32_t delay_ms = (uint32_t)POSEIDON_RETRY_BASE_MS << attempt;
         uint32_t jitter_ms = k_cycle_get_32() % POSEIDON_RETRY_JITTER_MS;
         k_msleep((int32_t)(delay_ms + jitter_ms));
+    }
+    /* Retries exhausted inside a group lock: a multimaster wedge that won't
+     * self-clear. Recover (recursive lock — same thread) and try once more so a
+     * grouped command sequence isn't dropped by a transient collision. Shares
+     * i2c1_bus_recover() with the single-frame i2c1_transact() path. */
+    if (i2c1_error_is_transient(rc) && (i2c1_bus_recover() == 0)) {
+        rc = send_frame_locked(addr, cmd, data);
     }
     return rc;
 }
@@ -469,11 +534,10 @@ static void solicit_current(void)
     bool due = (now - last_solicit) >= interval;
     if (stale && due) {
         last_solicit = now;
-        i2c1_bus_lock();
-        int rc = send_retry_locked(BATTERY_ADDR, POSEIDON_CMD_DS2782_READ,
-                                   solicit_reg);
-        i2c1_bus_note_activity();
-        i2c1_bus_unlock();
+        /* Single solicit — go through the unified avoid+retry+recover helper
+         * (locks, quiet-waits, notes activity, recovers) rather than the group
+         * lock path. This is the hot, collision-prone periodic read. */
+        int rc = send_frame(BATTERY_ADDR, POSEIDON_CMD_DS2782_READ, solicit_reg);
         last_solicit_failed = (rc != 0);
         if (rc == 0) {
             if (DS2782_REG_CURRENT == solicit_reg) {

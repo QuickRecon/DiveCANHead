@@ -117,39 +117,32 @@ static void transducer_init(struct transducer_state *t)
 }
 
 /**
- * @brief Whether an ADC read error is a transient i2c1 bus-arbitration failure.
+ * @brief i2c1_transact adapter: perform one ADS1115 conversion read.
  *
- * -EBUSY is the STM32 controller reporting the bus was busy at transfer start
- * (a Poseidon master mid-frame); -EAGAIN is an arbitration loss. Both clear on
- * their own and warrant a retry; anything else is a hard error.
+ * Called with the bus mutex already held (i2c1_transact locks around it), so it
+ * does only the transfer. The transducer state carries the channel spec and the
+ * sequence buffer set up in transducer_init().
  *
- * @param ret Return code from adc_read_dt().
- * @return true if the read should be retried.
+ * @param ctx struct transducer_state pointer.
+ * @return 0 on success (t->adc_sample_buf holds the raw count), else the
+ *         adc_read_dt() errno.
  */
-static bool adc_error_is_transient(Status_t ret)
+static int transducer_read_xfer(void *ctx)
 {
-    return (-EBUSY == ret) || (-EAGAIN == ret);
+    struct transducer_state *t = (struct transducer_state *)ctx;
+
+    return (int)adc_read_dt(t->adc, &t->adc_seq);
 }
 
 /**
- * @brief Sleep an exponentially-growing, jittered backoff before a read retry.
+ * @brief Read the ADS1115 channel, riding out transient i2c1 contention.
  *
- * @param prev_attempts Number of attempts already made (0 for the first retry).
- */
-static void tank_adc_backoff(uint8_t prev_attempts)
-{
-    uint32_t delay_ms = (uint32_t)TANK_ADC_RETRY_BASE_MS << prev_attempts;
-    uint32_t jitter_ms = k_cycle_get_32() % TANK_ADC_RETRY_JITTER_MS;
-
-    k_msleep((int32_t)(delay_ms + jitter_ms));
-}
-
-/**
- * @brief Read the ADS1115 channel, retrying on transient i2c1 contention.
- *
- * The transfer is serialised against the other STM32 i2c1 masters via
- * i2c1_bus_lock(); external Poseidon masters can still collide, so a bounded
- * retry with a short backoff absorbs the residual multimaster -EBUSY/-EAGAIN.
+ * Delegates the whole avoid+retry+recover dance to the shared i2c1_transact
+ * helper so the tank sampler collides with the Poseidon accessory masters the
+ * same way every other i2c1 caller does. External Poseidon masters can still
+ * win the bus, so the helper's bounded quiet-wait + exponential-backoff retries
+ * absorb the residual multimaster -EBUSY/-EAGAIN, and its classify+recover step
+ * clears a wedged peripheral before a final attempt.
  *
  * @param t Transducer state (must have been through transducer_init()).
  * @return 0 on success (t->adc_sample_buf holds the raw count), else the last
@@ -157,39 +150,10 @@ static void tank_adc_backoff(uint8_t prev_attempts)
  */
 static Status_t transducer_read_retry(struct transducer_state *t)
 {
-    Status_t ret = (Status_t)(-EBUSY);
-
-    for (uint8_t attempt = 0U;
-         (attempt < TANK_ADC_MAX_ATTEMPTS) && adc_error_is_transient(ret);
-         ++attempt) {
-        if (attempt > 0U) {
-            tank_adc_backoff(attempt - 1U);
-        }
-
-        ret = i2c1_bus_lock_quiet();
-        if (ret == 0) {
-            ret = adc_read_dt(t->adc, &t->adc_seq);
-            i2c1_bus_unlock();
-        }
-    }
-
-    if (adc_error_is_transient(ret)) {
-        /* BUSY never cleared across every attempt. Recovery first classifies
-         * the physical lines: an idle wire gets only a peripheral PE reset,
-         * while nine-clock bus clear is reserved for confirmed SDA-low/SCL-high.
-         * Live external traffic is left untouched. */
-        if (i2c1_bus_recover() == 0) {
-            /* Recovery released the bus. Make one bounded attempt now instead
-             * of publishing FAIL and waiting another 500 ms sampling cycle. */
-            ret = i2c1_bus_lock_quiet();
-            if (ret == 0) {
-                ret = adc_read_dt(t->adc, &t->adc_seq);
-                i2c1_bus_unlock();
-            }
-        }
-    }
-
-    return ret;
+    return (Status_t)i2c1_transact(transducer_read_xfer, t,
+                                   TANK_ADC_MAX_ATTEMPTS,
+                                   TANK_ADC_RETRY_BASE_MS,
+                                   TANK_ADC_RETRY_JITTER_MS);
 }
 
 /**

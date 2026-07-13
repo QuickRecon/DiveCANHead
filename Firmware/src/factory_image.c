@@ -13,6 +13,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/storage/flash_map.h>
+#include <zephyr/drivers/flash.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/dfu/mcuboot.h>
@@ -391,15 +392,25 @@ static int copy_backend_to_slot1(void)
                                         ? (copy_size - off)
                                         : (uint32_t)CHUNK_SIZE;
 
-                    rc = get_state()->backend->read(off, chunk, this_chunk);
+                    /* Retry read+write per chunk. The shared SPI NOR can throw a
+                     * transient WIP-poll timeout (-ETIMEDOUT) under bus
+                     * contention; an immediate retry of the idempotent
+                     * read/re-write clears it and keeps the 220 KB restore from
+                     * failing a whole swap over one glitched transfer (HW: the
+                     * restore intermittently left slot1 incomplete → mcuboot
+                     * declined the swap → unit stayed on the pre-restore image). */
+                    int attempt = 0;
+                    do {
+                        rc = get_state()->backend->read(off, chunk, this_chunk);
+                        if (0 == rc) {
+                            rc = flash_area_write(slot1_fa, off, chunk, this_chunk);
+                        }
+                        attempt++;
+                    } while ((0 != rc) && (attempt < 3));
+
                     if (0 != rc) {
-                        LOG_ERR("backend read @0x%x failed: %d", (unsigned)off, rc);
-                        result = rc;
-                        break;
-                    }
-                    rc = flash_area_write(slot1_fa, off, chunk, this_chunk);
-                    if (0 != rc) {
-                        LOG_ERR("slot1 write @0x%x failed: %d", (unsigned)off, rc);
+                        LOG_ERR("slot1 copy @0x%x failed after %d tries: %d",
+                                (unsigned)off, attempt, rc);
                         result = rc;
                         break;
                     }
@@ -412,6 +423,40 @@ static int copy_backend_to_slot1(void)
         flash_area_close(slot1_fa);
     }
     return result;
+}
+
+/* Clear slot1's MCUBoot trailer after a factory restore.
+ *
+ * The factory backup is a full-slot copy of the (confirmed) slot0 image, so it
+ * carries slot0's trailer with copy_done/image_ok SET. Copied verbatim into
+ * slot1, mcuboot reads it as an already-finished slot rather than a fresh
+ * upgrade candidate and DECLINES the swap — the unit reboots but keeps running
+ * the pre-restore image (HIL 2026-07-12: restore-factory left running (1,2,3),
+ * slot1 (0,0,0), swap_type stuck at TEST). The OTA stream path never hits this
+ * because an imgtool image is shorter than the slot and leaves the trailer
+ * erased. Erase slot1's final flash page so boot_request_upgrade() writes a
+ * clean TEST trailer. The image (~203 KB) sits far below the trailer in the
+ * 220 KB slot — only padding/trailer bytes live in the last page, so no image
+ * or TLV data is touched. NEEDS HIL VERIFICATION (mcuboot swap decision). */
+static int clear_slot1_trailer(void)
+{
+    const struct flash_area *fa = NULL;
+    int rc = flash_area_open(PARTITION_ID(slot1_partition), &fa);
+
+    if (0 == rc) {
+        struct flash_pages_info pinfo;
+        off_t last = fa->fa_off + (off_t)fa->fa_size - 1;
+
+        rc = flash_get_page_info_by_offs(fa->fa_dev, last, &pinfo);
+        if (0 == rc) {
+            /* flash_area_erase offsets are partition-relative. */
+            off_t page_off = (off_t)pinfo.start_offset - fa->fa_off;
+
+            rc = flash_area_erase(fa, page_off, pinfo.size);
+        }
+        flash_area_close(fa);
+    }
+    return rc;
 }
 
 int factory_image_restore_to_slot1(void)
@@ -454,13 +499,21 @@ int factory_image_restore_to_slot1(void)
                     LOG_ERR("Restored slot1 has wrong MCUBoot magic 0x%08x", (unsigned)magic);
                     result = -EBADF;
                 } else {
-                    rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+                    /* Strip slot0's stale trailer so mcuboot sees a fresh
+                     * upgrade candidate (else the swap is silently declined). */
+                    rc = clear_slot1_trailer();
                     if (0 != rc) {
-                        LOG_ERR("boot_request_upgrade failed: %d", rc);
+                        LOG_ERR("slot1 trailer clear failed: %d", rc);
                         result = rc;
                     } else {
-                        LOG_INF("Factory image staged for swap — rebooting");
-                        result = 0;
+                        rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+                        if (0 != rc) {
+                            LOG_ERR("boot_request_upgrade failed: %d", rc);
+                            result = rc;
+                        } else {
+                            LOG_INF("Factory image staged for swap — rebooting");
+                            result = 0;
+                        }
                     }
                 }
             }
