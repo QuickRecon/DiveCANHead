@@ -28,6 +28,7 @@ bool autotune_identify_plant(const PIDNumeric_t *duty,
                  const PIDNumeric_t *ppo2_bar, uint16_t n,
                  PIDNumeric_t dt_s, PIDNumeric_t baseline_duty,
                  PIDNumeric_t baseline_ppo2_bar,
+                 PIDNumeric_t baseline_noise_bar,
                  AutotunePlantModel_t *model);
 
 /** Derive conservative PI gains for the identified integrating delayed plant. */

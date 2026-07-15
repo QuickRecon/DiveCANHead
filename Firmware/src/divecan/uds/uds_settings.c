@@ -50,16 +50,17 @@ static bool setting_is_cell_bcst(uint8_t idx, uint8_t *cell)
     return match;
 }
 
-/* PID gains are stored as floats in NVS but exposed as uint64 milliunits
- * over the wire (handset and SettingValue u64 BE format). The factor 1000
- * gives 0.001 resolution — plenty for empirically-tuned PID gains.
+/* PID gains are stored as floats in NVS but exposed as uint64 micro-units
+ * over the wire (handset and SettingValue u64 BE format).  The 1e6 scale
+ * preserves model-derived integral gains that are much smaller than 0.001.
  *
- * Range: PID_GAIN_MIN..PID_GAIN_MAX from runtime_settings.h, ×1000:
+ * Range: PID_GAIN_MIN..PID_GAIN_MAX from runtime_settings.h, ×1e6:
  *   0.0  → 0
- *   0.01 (default Ki) → 10
- *   1.0  (default Kp) → 1000
- *   100.0 (max bound) → 100000 */
-#define PID_GAIN_SCALE_TO_WIRE 1000U
+ *   0.000029 (typical tuned Ki) → 29
+ *   0.01 (default Ki) → 10000
+ *   1.0  (default Kp) → 1000000
+ *   100.0 (max bound) → 100000000 */
+#define PID_GAIN_SCALE_TO_WIRE 1000000U
 #define PID_GAIN_MAX_WIRE      ((uint64_t)(PID_GAIN_MAX * PID_GAIN_SCALE_TO_WIRE))
 
 /* APP_BUILD_VERSION_STR is injected as a quoted string literal by CMake;
@@ -148,27 +149,27 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .options = boolOptions,
         .optionCount = 2
     },
-    /* Index 4: PID Kp (milliunits, 0..100000 ⇔ 0.0..100.0) */
+    /* Index 4: PID Kp (micro-units, 0..100000000 ⇔ 0.0..100.0) */
     {
-        .label = "Kp x1k",
+        .label = "Kp x1M",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .maxValue = PID_GAIN_MAX_WIRE,
         .options = NULL,
         .optionCount = 0
     },
-    /* Index 5: PID Ki (milliunits, 0..100000 ⇔ 0.0..100.0) */
+    /* Index 5: PID Ki (micro-units, 0..100000000 ⇔ 0.0..100.0) */
     {
-        .label = "Ki x1k",
+        .label = "Ki x1M",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .maxValue = PID_GAIN_MAX_WIRE,
         .options = NULL,
         .optionCount = 0
     },
-    /* Index 6: PID Kd (milliunits, 0..100000 ⇔ 0.0..100.0) */
+    /* Index 6: PID Kd (micro-units, 0..100000000 ⇔ 0.0..100.0) */
     {
-        .label = "Kd x1k",
+        .label = "Kd x1M",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
         .maxValue = PID_GAIN_MAX_WIRE,
@@ -416,7 +417,7 @@ uint64_t UDS_GetSettingValue(uint8_t index)
             result = 1U;
         }
         break;
-    /* PID gains are stored as float but exposed as integer milliunits. ROUND
+    /* PID gains are stored as float but exposed as integer micro-units. ROUND
      * (not truncate) on the way out: a wire value W set as W/1000 lands at the
      * nearest float, and W/1000*1000 can fall just under W (e.g. 9 -> 0.009f ->
      * 8.999...). lroundf recovers W exactly for the whole 0..100000 range:

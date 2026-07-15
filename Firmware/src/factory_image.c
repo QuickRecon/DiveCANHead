@@ -39,11 +39,32 @@ const struct factory_image_backend *factory_image_get_flash_backend(void);
 
 #define CHUNK_SIZE  CONFIG_FACTORY_IMAGE_CHUNK_SIZE
 
+/* Retry budget for a per-chunk copy+read-back verify (capture and restore).
+ * The destination is the shared SPI NOR, whose fast back-to-back programming
+ * path can silently corrupt a chunk (bus contention / a prematurely cleared WIP
+ * poll) with the write still returning 0 — a bare retry-on-error never catches
+ * that. mcuboot hashes the WHOLE slot1 image, so one unverified wrong byte fails
+ * the swap; the old first/last-page-only verify covered ~0.2% of a 220 KB copy.
+ * Reading each chunk back and comparing catches the silent case; ~1%/chunk was
+ * observed on HW, so 5 retries drives the residual well below one-per-swap. */
+#define COPY_MAX_ATTEMPTS 5
+
 /** @brief MCUBoot image header magic (little-endian on the wire). */
 #define IMAGE_HEADER_MAGIC  0x96f3b83dU
 
 /** @brief Offset of the version field within the MCUBoot image header. */
 #define IMAGE_HEADER_VERSION_OFFSET  20U
+
+/* MCUBoot image_header field offsets used to compute the exact image length so
+ * the restore copies ONLY the image (like an imgtool/OTA image) and leaves the
+ * slot1 trailer region erased — a full-slot copy carries slot0's confirmed
+ * trailer and intermittently makes mcuboot read no valid pending upgrade
+ * (HW/RTT 2026-07-15: "Swap type: none" on a byte-verified slot1). */
+#define IMAGE_HEADER_HDR_SIZE_OFFSET   8U    /* ih_hdr_size        u16 */
+#define IMAGE_HEADER_PROT_TLV_OFFSET   10U   /* ih_protect_tlv_size u16 */
+#define IMAGE_HEADER_IMG_SIZE_OFFSET   12U   /* ih_img_size        u32 */
+#define IMAGE_TLV_INFO_MAGIC           0x6907U /* unprotected TLV info magic */
+#define IMAGE_TLV_INFO_TOT_OFFSET      2U    /* it_tlv_tot within image_tlv_info */
 
 /** @brief Delay before sys_reboot() so a UDS positive response can drain. */
 #define RESTORE_REBOOT_DELAY_MS  200
@@ -78,6 +99,49 @@ static uint8_t *get_chunk_buffer(void)
     __ASSERT(NULL != get_state()->chunk,
              "factory chunk used outside an arena claim");
     return get_state()->chunk;
+}
+
+/* Read-back verify scratch. Shared + static (not on-stack) because restore runs
+ * on the stack-tight UDS handler thread; capture and restore are mutually
+ * exclusive under the FACTORY arena claim, so a single buffer is safe. */
+static uint8_t g_verify_buf[256];
+
+/* Re-read `len` bytes at `off` from the just-written backend and compare against
+ * the source data still held in `expected`. Returns 0 on match, the read rc on a
+ * read error, or -EIO on a data mismatch, so the caller's retry loop re-does the
+ * whole chunk. A write returning 0 is NOT proof the bytes landed on this NOR. */
+static int verify_backend_readback(uint32_t off, const uint8_t *expected, uint32_t len)
+{
+    for (uint32_t v = 0U; v < len; v += (uint32_t)sizeof(g_verify_buf)) {
+        uint32_t step = ((len - v) < (uint32_t)sizeof(g_verify_buf))
+                      ? (len - v) : (uint32_t)sizeof(g_verify_buf);
+        int rc = get_state()->backend->read(off + v, g_verify_buf, step);
+        if (0 != rc) {
+            return rc;
+        }
+        if (0 != memcmp(expected + v, g_verify_buf, step)) {
+            return -EIO;
+        }
+    }
+    return 0;
+}
+
+/* As verify_backend_readback, but the destination is a flash_area (slot1). */
+static int verify_slot1_readback(const struct flash_area *fa, uint32_t off,
+                                 const uint8_t *expected, uint32_t len)
+{
+    for (uint32_t v = 0U; v < len; v += (uint32_t)sizeof(g_verify_buf)) {
+        uint32_t step = ((len - v) < (uint32_t)sizeof(g_verify_buf))
+                      ? (len - v) : (uint32_t)sizeof(g_verify_buf);
+        int rc = flash_area_read(fa, off + v, g_verify_buf, step);
+        if (0 != rc) {
+            return rc;
+        }
+        if (0 != memcmp(expected + v, g_verify_buf, step)) {
+            return -EIO;
+        }
+    }
+    return 0;
 }
 
 /* ---- Backend resolution ---- */
@@ -139,15 +203,26 @@ static int copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
                             ? (copy_size - off)
                             : (uint32_t)CHUNK_SIZE;
 
-        int rc = flash_area_read(slot0_fa, off, chunk, this_chunk);
+        /* Read slot0, write the backend, then READ THE BACKEND BACK and compare
+         * against what we just wrote. Retry the whole read/write/verify on any
+         * error OR silent data mismatch — the shared SPI NOR's fast programming
+         * path can corrupt a chunk with the write still returning 0. */
+        int attempt = 0;
+        int rc;
+        do {
+            rc = flash_area_read(slot0_fa, off, chunk, this_chunk);
+            if (0 == rc) {
+                rc = get_state()->backend->write(off, chunk, this_chunk);
+            }
+            if (0 == rc) {
+                rc = verify_backend_readback(off, chunk, this_chunk);
+            }
+            attempt++;
+        } while ((0 != rc) && (attempt < COPY_MAX_ATTEMPTS));
+
         if (0 != rc) {
-            LOG_ERR("slot0 read @0x%x failed: %d", (unsigned)off, rc);
-            result = rc;
-            break;
-        }
-        rc = get_state()->backend->write(off, chunk, this_chunk);
-        if (0 != rc) {
-            LOG_ERR("backend write @0x%x failed: %d", (unsigned)off, rc);
+            LOG_ERR("backend copy @0x%x failed after %d tries: %d",
+                    (unsigned)off, attempt, rc);
             result = rc;
             break;
         }
@@ -157,50 +232,6 @@ static int copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
          * belt-and-braces escape hatch on top of this. */
         for (uint32_t slot = 0U; slot < (uint32_t)HEARTBEAT_COUNT; ++slot) {
             heartbeat_kick((HeartbeatId_t)slot);
-        }
-    }
-    return result;
-}
-
-static int verify_first_and_last_page(uint32_t slot0_size, uint32_t backend_size,
-                                      const struct flash_area *slot0_fa)
-{
-    int result = 0;
-    uint32_t copy_size = (slot0_size < backend_size) ? slot0_size : backend_size;
-    uint8_t *chunk = get_chunk_buffer();
-    uint8_t verify_buf[256];     /* Page-sized sample; flash_area_read is fine with any size */
-
-    /* First page */
-    int rc = flash_area_read(slot0_fa, 0U, chunk, sizeof(verify_buf));
-    if (0 != rc) {
-        LOG_ERR("verify slot0 read (first) failed: %d", rc);
-        result = rc;
-    } else {
-        rc = get_state()->backend->read(0U, verify_buf, sizeof(verify_buf));
-        if (0 != rc) {
-            LOG_ERR("verify backend read (first) failed: %d", rc);
-            result = rc;
-        } else if (0 != memcmp(chunk, verify_buf, sizeof(verify_buf))) {
-            LOG_ERR("first-page verify mismatch");
-            result = -EIO;
-        }
-        else {
-            /* Last full page */
-            uint32_t last_off = copy_size - sizeof(verify_buf);
-            rc = flash_area_read(slot0_fa, last_off, chunk, sizeof(verify_buf));
-            if (0 != rc) {
-                LOG_ERR("verify slot0 read (last) failed: %d", rc);
-                result = rc;
-            } else {
-                rc = get_state()->backend->read(last_off, verify_buf, sizeof(verify_buf));
-                if (0 != rc) {
-                    LOG_ERR("verify backend read (last) failed: %d", rc);
-                    result = rc;
-                } else if (0 != memcmp(chunk, verify_buf, sizeof(verify_buf))) {
-                    LOG_ERR("last-page verify mismatch");
-                    result = -EIO;
-                }
-            }
         }
     }
     return result;
@@ -250,15 +281,14 @@ static int do_capture(void)
                         if (0 != rc) {
                             result = rc;
                         } else {
+                            /* copy_slot0_to_backend read-back-verifies every
+                             * chunk, so the backend is already proven byte-exact
+                             * before we flush + bless it (no separate
+                             * first/last-page spot-check needed). */
                             rc = copy_slot0_to_backend(slot0_size, backend_size,
                                                        slot0_fa);
                             if (0 == rc) {
                                 rc = get_state()->backend->flush();
-                            }
-                            if (0 == rc) {
-                                rc = verify_first_and_last_page(slot0_size,
-                                                                backend_size,
-                                                                slot0_fa);
                             }
                             if (0 == rc) {
                                 rc = get_state()->backend->mark_captured(true);
@@ -363,6 +393,63 @@ static void ensure_work_q_started(void)
 
 /* ---- Restore ---- */
 
+static uint16_t rd_le16(const uint8_t *p)
+{
+    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8U));
+}
+
+static uint32_t rd_le32(const uint8_t *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8U)
+         | ((uint32_t)p[2] << 16U) | ((uint32_t)p[3] << 24U);
+}
+
+/* Compute the exact byte length of the captured factory image (header + payload
+ * + protected TLVs + unprotected TLVs) from its MCUBoot header, so the restore
+ * copies ONLY the image and leaves the slot1 trailer region erased — exactly how
+ * an OTA/imgtool image is laid down. A full-slot copy instead carries slot0's
+ * confirmed trailer into slot1 and intermittently makes mcuboot decline the swap
+ * (RTT: "Swap type: none"). Returns 0 + *out_size on success, or a negative rc /
+ * -EBADF if the header or TLV info is not well-formed. */
+static int factory_backup_image_size(uint32_t backend_size, uint32_t *out_size)
+{
+    uint8_t hdr[32];
+    int rc = get_state()->backend->read(0U, hdr, sizeof(hdr));
+
+    if (0 != rc) {
+        return rc;
+    }
+    if (IMAGE_HEADER_MAGIC != rd_le32(&hdr[0])) {
+        return -EBADF;
+    }
+
+    uint32_t hdr_size = rd_le16(&hdr[IMAGE_HEADER_HDR_SIZE_OFFSET]);
+    uint32_t prot_tlv = rd_le16(&hdr[IMAGE_HEADER_PROT_TLV_OFFSET]);
+    uint32_t img_size = rd_le32(&hdr[IMAGE_HEADER_IMG_SIZE_OFFSET]);
+    uint32_t tlv_off = hdr_size + img_size + prot_tlv;
+
+    /* The unprotected TLV area starts with an image_tlv_info {magic, tot}. */
+    if ((tlv_off + 4U) > backend_size) {
+        return -EBADF;
+    }
+    uint8_t tlvinfo[4];
+    rc = get_state()->backend->read(tlv_off, tlvinfo, sizeof(tlvinfo));
+    if (0 != rc) {
+        return rc;
+    }
+    if (IMAGE_TLV_INFO_MAGIC != rd_le16(&tlvinfo[0])) {
+        return -EBADF;
+    }
+    uint32_t tlv_tot = rd_le16(&tlvinfo[IMAGE_TLV_INFO_TOT_OFFSET]);
+    uint32_t total = tlv_off + tlv_tot;
+
+    if ((total == 0U) || (total > backend_size)) {
+        return -EBADF;
+    }
+    *out_size = total;
+    return 0;
+}
+
 static int copy_backend_to_slot1(void)
 {
     int result = 0;
@@ -379,11 +466,25 @@ static int copy_backend_to_slot1(void)
             result = rc;
         } else {
             uint32_t slot1_size = (uint32_t)slot1_fa->fa_size;
-            uint32_t copy_size = (backend_size < slot1_size) ? backend_size : slot1_size;
             uint8_t *chunk = get_chunk_buffer();
 
-            rc = flash_area_erase(slot1_fa, 0U, slot1_size);
+            /* Copy ONLY the image, not the whole slot: a full-slot copy carries
+             * slot0's confirmed MCUBoot trailer into slot1, which intermittently
+             * makes mcuboot read no valid pending upgrade and decline the swap
+             * (RTT 2026-07-15: "Swap type: none" on a byte-verified slot1). By
+             * erasing the whole slot and writing only the image we leave the
+             * trailer region erased — identical to how an OTA/imgtool image lands,
+             * which is why the OTA swap path is reliable. */
+            uint32_t copy_size = 0U;
+            rc = factory_backup_image_size(backend_size, &copy_size);
             if (0 != rc) {
+                LOG_ERR("factory image size parse failed: %d", rc);
+                result = rc;
+            } else if (copy_size > slot1_size) {
+                LOG_ERR("factory image (%u B) > slot1 (%u B)",
+                        (unsigned)copy_size, (unsigned)slot1_size);
+                result = -ENOSPC;
+            } else if (0 != (rc = flash_area_erase(slot1_fa, 0U, slot1_size))) {
                 LOG_ERR("slot1 erase failed: %d", rc);
                 result = rc;
             } else {
@@ -392,21 +493,28 @@ static int copy_backend_to_slot1(void)
                                         ? (copy_size - off)
                                         : (uint32_t)CHUNK_SIZE;
 
-                    /* Retry read+write per chunk. The shared SPI NOR can throw a
-                     * transient WIP-poll timeout (-ETIMEDOUT) under bus
-                     * contention; an immediate retry of the idempotent
-                     * read/re-write clears it and keeps the 220 KB restore from
-                     * failing a whole swap over one glitched transfer (HW: the
-                     * restore intermittently left slot1 incomplete → mcuboot
-                     * declined the swap → unit stayed on the pre-restore image). */
+                    /* Read the backend, write slot1, then READ SLOT1 BACK and
+                     * compare. Retry the whole read/write/verify per chunk on any
+                     * error OR silent data mismatch. The shared SPI NOR's fast
+                     * back-to-back programming can leave a chunk wrong with the
+                     * write still returning 0 (or throw a transient -ETIMEDOUT
+                     * WIP-poll under bus contention); mcuboot hashes the WHOLE
+                     * slot1 image, so one unverified byte silently declines the
+                     * swap (HW 2026-07: restore ~50% left slot1 corrupt → unit
+                     * stayed on the pre-restore image). The read-back is a real
+                     * re-read of the NOR (no driver read cache), so it is proof
+                     * the bytes landed. */
                     int attempt = 0;
                     do {
                         rc = get_state()->backend->read(off, chunk, this_chunk);
                         if (0 == rc) {
                             rc = flash_area_write(slot1_fa, off, chunk, this_chunk);
                         }
+                        if (0 == rc) {
+                            rc = verify_slot1_readback(slot1_fa, off, chunk, this_chunk);
+                        }
                         attempt++;
-                    } while ((0 != rc) && (attempt < 3));
+                    } while ((0 != rc) && (attempt < COPY_MAX_ATTEMPTS));
 
                     if (0 != rc) {
                         LOG_ERR("slot1 copy @0x%x failed after %d tries: %d",
@@ -425,38 +533,52 @@ static int copy_backend_to_slot1(void)
     return result;
 }
 
-/* Clear slot1's MCUBoot trailer after a factory restore.
- *
- * The factory backup is a full-slot copy of the (confirmed) slot0 image, so it
- * carries slot0's trailer with copy_done/image_ok SET. Copied verbatim into
- * slot1, mcuboot reads it as an already-finished slot rather than a fresh
- * upgrade candidate and DECLINES the swap — the unit reboots but keeps running
- * the pre-restore image (HIL 2026-07-12: restore-factory left running (1,2,3),
- * slot1 (0,0,0), swap_type stuck at TEST). The OTA stream path never hits this
- * because an imgtool image is shorter than the slot and leaves the trailer
- * erased. Erase slot1's final flash page so boot_request_upgrade() writes a
- * clean TEST trailer. The image (~203 KB) sits far below the trailer in the
- * 220 KB slot — only padding/trailer bytes live in the last page, so no image
- * or TLV data is touched. NEEDS HIL VERIFICATION (mcuboot swap decision). */
-static int clear_slot1_trailer(void)
+/* Erase slot1's final flash page (where the MCUBoot trailer/boot-magic live) so
+ * a following boot_request_upgrade writes to clean flash. The image occupies the
+ * low part of the slot; the last page is padding/trailer only. */
+static int erase_slot1_trailer_page(const struct flash_area *slot1_fa)
 {
-    const struct flash_area *fa = NULL;
-    int rc = flash_area_open(PARTITION_ID(slot1_partition), &fa);
+    struct flash_pages_info pinfo;
+    off_t last = slot1_fa->fa_off + (off_t)slot1_fa->fa_size - 1;
+    int rc = flash_get_page_info_by_offs(slot1_fa->fa_dev, last, &pinfo);
 
     if (0 == rc) {
-        struct flash_pages_info pinfo;
-        off_t last = fa->fa_off + (off_t)fa->fa_size - 1;
-
-        rc = flash_get_page_info_by_offs(fa->fa_dev, last, &pinfo);
-        if (0 == rc) {
-            /* flash_area_erase offsets are partition-relative. */
-            off_t page_off = (off_t)pinfo.start_offset - fa->fa_off;
-
-            rc = flash_area_erase(fa, page_off, pinfo.size);
-        }
-        flash_area_close(fa);
+        rc = flash_area_erase(slot1_fa,
+                              (off_t)pinfo.start_offset - slot1_fa->fa_off,
+                              pinfo.size);
     }
     return rc;
+}
+
+/* Stage the pending TEST swap and confirm it registered at the mcuboot level,
+ * retrying (erase + re-request) if it did not. This does NOT fully fix the
+ * residual — the boot-magic intermittently fails to commit to the slot1 trailer
+ * (or mcuboot's boot-time read of it glitches) on this VBUS-rail W25Q, below the
+ * app layer (a direct unconditional boot_write_magic bypass did NOT help, 4/8 on
+ * HW 2026-07-15). It DOES surface the failure cleanly: if staging never verifies
+ * TEST the restore is REFUSED (-EIO) rather than rebooting into a silent no-swap.
+ * Returns 0 once verified, -EIO after exhausting retries. */
+static int stage_pending_swap(const struct flash_area *slot1_fa)
+{
+    int rc = -EIO;
+
+    for (int i = 0; i < 5; ++i) {
+        /* Trailer is already erased on entry (image-only copy); re-erase only
+         * between retries (a partial magic can't be re-written without erasing). */
+        if (i > 0) {
+            (void)erase_slot1_trailer_page(slot1_fa);
+        }
+        rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+        if ((0 == rc) && (BOOT_SWAP_TYPE_TEST == mcuboot_swap_type())
+                      && (BOOT_SWAP_TYPE_TEST == mcuboot_swap_type())) {
+            return 0;
+        }
+        LOG_WRN("pending swap not registered (rc=%d, try %d)", rc, i + 1);
+        for (uint32_t s = 0U; s < (uint32_t)HEARTBEAT_COUNT; ++s) {
+            heartbeat_kick((HeartbeatId_t)s);
+        }
+    }
+    return -EIO;
 }
 
 int factory_image_restore_to_slot1(void)
@@ -480,42 +602,36 @@ int factory_image_restore_to_slot1(void)
         if (0 != rc) {
             result = rc;
         } else {
-            /* Verify slot1 magic before staging */
+            /* Verify slot1's image-header magic, then stage the pending swap and
+             * confirm it registered (slot1 holds ONLY the image with an erased
+             * trailer region, so boot_request_upgrade writes a clean pending-TEST
+             * trailer — no separate trailer-clear needed). */
             uint8_t magic_buf[4] = {0};
             const struct flash_area *slot1_fa = NULL;
             rc = flash_area_open(PARTITION_ID(slot1_partition), &slot1_fa);
-            if (0 == rc) {
-                rc = flash_area_read(slot1_fa, 0U, magic_buf, sizeof(magic_buf));
-                flash_area_close(slot1_fa);
-            }
             if (0 != rc) {
                 result = rc;
             } else {
+                rc = flash_area_read(slot1_fa, 0U, magic_buf, sizeof(magic_buf));
                 uint32_t magic = ((uint32_t)magic_buf[0])
                                | ((uint32_t)magic_buf[1] << 8U)
                                | ((uint32_t)magic_buf[2] << 16U)
                                | ((uint32_t)magic_buf[3] << 24U);
-                if (IMAGE_HEADER_MAGIC != magic) {
-                    LOG_ERR("Restored slot1 has wrong MCUBoot magic 0x%08x", (unsigned)magic);
+                if (0 != rc) {
+                    result = rc;
+                } else if (IMAGE_HEADER_MAGIC != magic) {
+                    LOG_ERR("Restored slot1 has wrong MCUBoot magic 0x%08x",
+                            (unsigned)magic);
                     result = -EBADF;
                 } else {
-                    /* Strip slot0's stale trailer so mcuboot sees a fresh
-                     * upgrade candidate (else the swap is silently declined). */
-                    rc = clear_slot1_trailer();
-                    if (0 != rc) {
-                        LOG_ERR("slot1 trailer clear failed: %d", rc);
-                        result = rc;
+                    result = stage_pending_swap(slot1_fa);
+                    if (0 == result) {
+                        LOG_INF("Factory image staged for swap (verified) — rebooting");
                     } else {
-                        rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
-                        if (0 != rc) {
-                            LOG_ERR("boot_request_upgrade failed: %d", rc);
-                            result = rc;
-                        } else {
-                            LOG_INF("Factory image staged for swap — rebooting");
-                            result = 0;
-                        }
+                        LOG_ERR("Factory restore could not stage a pending swap");
                     }
                 }
+                flash_area_close(slot1_fa);
             }
         }
 

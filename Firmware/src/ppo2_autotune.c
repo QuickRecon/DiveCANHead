@@ -145,6 +145,7 @@ static void status_set_best(Numeric_t kp, Numeric_t ki, Numeric_t kd,
 
 static void status_set_model(const AutotunePlantModel_t *model,
                  PIDNumeric_t baseline_slope,
+                 PIDNumeric_t baseline_noise,
                  uint16_t pressure_mbar,
                  PIDNumeric_t dose)
 {
@@ -157,6 +158,7 @@ static void status_set_model(const AutotunePlantModel_t *model,
     st->mixing_excursion_bar = model->mixing_excursion_bar;
     st->baseline_duty = model->baseline_duty;
     st->baseline_slope_bar_s = baseline_slope;
+    st->baseline_noise_bar = baseline_noise;
     st->ambient_pressure_bar = (Numeric_t)pressure_mbar / 1000.0f;
     st->delivered_dose_duty_s = dose;
     (void)k_mutex_unlock(&autotune_mutex);
@@ -398,6 +400,7 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
                        PIDNumeric_t *baseline_duty,
                        PIDNumeric_t *baseline_ppo2,
                        PIDNumeric_t *baseline_slope,
+                       PIDNumeric_t *baseline_noise,
                        uint16_t *pressure_mbar_out)
 {
     status_set_phase(AUTOTUNE_SETTLING);
@@ -416,6 +419,7 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
             PIDNumeric_t sum_u = 0.0f;
             PIDNumeric_t first_half_y = 0.0f;
             PIDNumeric_t second_half_y = 0.0f;
+            PIDNumeric_t sum_y_sq = 0.0f;
             for (uint16_t i = 0U; (i < AUTOTUNE_BASELINE_SAMPLES) &&
                  (AUTOTUNE_ABORT_NONE == reason); ++i) {
                 reason = check_safety();
@@ -443,6 +447,8 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
                             (PIDNumeric_t)consensus.precision_consensus;
                     }
                     sum_y += (PIDNumeric_t)consensus.precision_consensus;
+                    sum_y_sq += (PIDNumeric_t)consensus.precision_consensus *
+                        (PIDNumeric_t)consensus.precision_consensus;
                     sum_u += (PIDNumeric_t)duty;
                     k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
                     status_update_elapsed();
@@ -457,6 +463,10 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
                 *baseline_ppo2 = aggregate_y / samples_seen;
                 PIDNumeric_t window_mean = sum_y /
                     (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES;
+                PIDNumeric_t window_variance =
+                    (sum_y_sq / (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES) -
+                    (window_mean * window_mean);
+                *baseline_noise = sqrtf(fmaxf(window_variance, 0.0f));
                 if (0U == window) {
                     first_window_mean = window_mean;
                     /* Retain a within-window estimate until a longer baseline
@@ -530,6 +540,7 @@ static void run_autotune(void)
     PIDNumeric_t baseline_duty = 0.0f;
     PIDNumeric_t baseline_ppo2 = 0.0f;
     PIDNumeric_t baseline_slope = 0.0f;
+    PIDNumeric_t baseline_noise = 0.0f;
     uint16_t pressure_mbar = 0U;
     status_set_iteration(0U);
     if (trace == NULL) {
@@ -538,7 +549,7 @@ static void run_autotune(void)
         reason = measure_plant(base_cb, params.excitation_duty_pct,
                        trace->duty, trace->ppo2,
                        &baseline_duty, &baseline_ppo2,
-                       &baseline_slope, &pressure_mbar);
+                       &baseline_slope, &baseline_noise, &pressure_mbar);
     }
 
     AutotunePlantModel_t model = {0};
@@ -555,7 +566,7 @@ static void run_autotune(void)
     if ((AUTOTUNE_ABORT_NONE == reason) &&
         !autotune_identify_plant(trace->duty, trace->ppo2,
                      AUTOTUNE_OBSERVE_SAMPLES, AUTOTUNE_DT_S,
-                     baseline_duty, baseline_ppo2, &model)) {
+                     baseline_duty, baseline_ppo2, baseline_noise, &model)) {
         reason = AUTOTUNE_ABORT_IDENTIFY;
     }
     if ((AUTOTUNE_ABORT_NONE == reason) &&
@@ -573,7 +584,8 @@ static void run_autotune(void)
             }
         }
         status_set_iteration(1U);
-        status_set_model(&model, baseline_slope, pressure_mbar, dose);
+        status_set_model(&model, baseline_slope, baseline_noise,
+                 pressure_mbar, dose);
         status_set_best((Numeric_t)tuned_kp, (Numeric_t)tuned_ki,
                 (Numeric_t)tuned_kd, (Numeric_t)model.fit_rmse_bar);
     }
@@ -595,7 +607,11 @@ static void run_autotune(void)
         Numeric_t best_kp = (Numeric_t)tuned_kp;
         Numeric_t best_ki = (Numeric_t)tuned_ki;
         Numeric_t best_kd = (Numeric_t)tuned_kd;
-        ppo2_control_set_gains_live(best_kp, best_ki, best_kd);
+        /* Keep the controller used to establish the operating point in place.
+         * This makes immediate repeat experiments comparable.  The suggested
+         * gains remain in the volatile settings cache for operator review and
+         * are persisted only by the explicit WebUI commit action. */
+        ppo2_control_set_gains_live(fb_kp, fb_ki, fb_kd);
         stage_gains_volatile(best_kp, best_ki, best_kd);
         publish_setpoint(restore_sp);
         /* Log gains as integer milliunits (gain x1000) rather than %f: the

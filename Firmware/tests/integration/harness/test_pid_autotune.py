@@ -43,7 +43,7 @@ DID_AUTOTUNE_STATUS: int = 0xF213
 AUTOTUNE_MAGIC: int = 0xA7
 AUTOTUNE_CMD_START: int = 0x01
 AUTOTUNE_CMD_ABORT: int = 0x02
-STATUS_LEN: int = 74
+STATUS_LEN: int = 66
 
 # state enum
 AT_IDLE, AT_SETTLING, AT_STEPPING, AT_DONE, AT_ABORTED = range(5)
@@ -85,19 +85,19 @@ def _read_did(can_bus, did: int) -> bytes:
 
 
 def _read_status(can_bus) -> dict:
-    """Read + parse the 74-byte plant-identification status DID."""
+    """Read + parse the compact 66-byte plant-identification status DID."""
     data = _read_did(can_bus, DID_AUTOTUNE_STATUS)
     assert len(data) >= STATUS_LEN, f"status len {len(data)} < {STATUS_LEN}"
     (state, abort_reason, iteration, budget,
-     cand_kp, cand_ki, cand_kd,
      best_kp, best_ki, best_kd, best_cost,
      elapsed_s, plant_gain, dead_time_s, mixing_time_s, fit_rmse,
      mixing_excursion, baseline_duty, baseline_slope, pressure_bar,
-     delivered_dose) = struct.unpack("<BBHHfffffffIfffffffff", data[:STATUS_LEN])
+     delivered_dose, baseline_noise) = struct.unpack(
+         "<BBHHffffIffffffffff", data[:STATUS_LEN])
     return {
         "state": state, "abort_reason": abort_reason,
         "iteration": iteration, "budget": budget,
-        "cand": (cand_kp, cand_ki, cand_kd),
+        "cand": (0.0, 0.0, 0.0),
         "best": (best_kp, best_ki, best_kd),
         "best_cost": best_cost, "elapsed_s": elapsed_s,
         "model": {
@@ -106,7 +106,7 @@ def _read_status(can_bus) -> dict:
             "mixing_excursion": mixing_excursion,
             "baseline_duty": baseline_duty,
             "baseline_slope": baseline_slope, "pressure_bar": pressure_bar,
-            "delivered_dose": delivered_dose,
+            "delivered_dose": delivered_dose, "baseline_noise": baseline_noise,
         },
     }
 

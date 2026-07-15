@@ -10,7 +10,7 @@
  *   #3 back-to-back / coherence : UDS_SaveSettingValue reloads NVS mid-call and
  *      re-derives a single field, silently discarding any volatile change to a
  *      DIFFERENT field that was already applied to the live cache.
- *   #5 PID gain quantization    : gains are stored as float32 milliunits-/1000,
+ *   #5 PID gain quantization    : gains are stored as float32 micro-units-/1e6,
  *      so arbitrary integers do not round-trip (write 9 -> read 8).
  *   #6 Kp == 0 anomaly          : isolates the observed silent-no-response to
  *      the ISO-TP layer by proving the PERSIST path itself accepts/stores 0.
@@ -89,14 +89,14 @@ ZTEST(runtime_settings, test_persist_battery_roundtrip)
 }
 
 /**
- * @brief A PID gain that is float-exact (multiple of 250 milliunits = .25 step)
+ * @brief A PID gain that is float-exact (250000 micro-units = 0.25)
  *        round-trips cleanly through save + reboot.
  */
 ZTEST(runtime_settings, test_persist_pid_gain_clean_multiple)
 {
-    zassert_true(UDS_SaveSettingValue(IDX_KP, 250U)); /* 0.25f, float-exact */
+    zassert_true(UDS_SaveSettingValue(IDX_KP, 250000U)); /* 0.25f */
     reboot_sim();
-    zassert_equal(UDS_GetSettingValue(IDX_KP), 250U);
+    zassert_equal(UDS_GetSettingValue(IDX_KP), 250000U);
 }
 
 /** @brief Saving PID Kp = 0 persists as 0 (proves #6 is NOT a persist-path bug). */
@@ -112,10 +112,9 @@ ZTEST(runtime_settings, test_pid_kp_zero_persists)
 /* ---- Intended-behaviour tests (EXPECTED RED until Phase 2) ---- */
 
 /**
- * @brief #5: an arbitrary integer milliunit gain should round-trip EXACTLY.
+ * @brief #5: an arbitrary integer micro-unit gain should round-trip EXACTLY.
  *
- * RED today: 9 milliunits -> 0.009f -> read back 8 (float32 truncation). Goes
- * green once PID gains are stored as integer milliunits end-to-end.
+ * Nine micro-units represents a small tuned integral gain of 0.000009.
  */
 ZTEST(runtime_settings, test_pid_gain_exact_roundtrip)
 {
@@ -141,7 +140,7 @@ ZTEST(runtime_settings, test_volatile_change_survives_save_of_other_field)
               "volatile edit must take effect immediately");
 
     /* Persist a DIFFERENT field (Kp). The battery edit must not vanish. */
-    zassert_true(UDS_SaveSettingValue(IDX_KP, 250U));
+    zassert_true(UDS_SaveSettingValue(IDX_KP, 250000U));
 
     zassert_equal(UDS_GetSettingValue(IDX_BATTERY), 3U,
               "saving Kp must not revert the volatile battery edit (got %llu)",
@@ -158,11 +157,11 @@ ZTEST(runtime_settings, test_volatile_change_survives_save_of_other_field)
 ZTEST(runtime_settings, test_set_save_agree_clean_baseline)
 {
     /* Battery: all four chemistries valid; Cal: only Absolute(1)/TotalAbs(2)
-     * valid on this no-solenoid, no-digital build; PID: 250 valid. */
+     * valid on this no-solenoid, no-digital build; PID micro-units valid. */
     const struct { uint8_t idx; uint64_t val; } cases[] = {
         {IDX_BATTERY, 0U}, {IDX_BATTERY, 1U}, {IDX_BATTERY, 3U},
         {IDX_CAL, 1U}, {IDX_CAL, 2U},
-        {IDX_KP, 250U}, {IDX_KI, 500U},
+        {IDX_KP, 250000U}, {IDX_KI, 29U},
     };
 
     for (size_t i = 0; i < ARRAY_SIZE(cases); ++i) {

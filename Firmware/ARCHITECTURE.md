@@ -79,6 +79,7 @@ Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_set
 | Variant | Description |
 |---------|-------------|
 | `AP_Aren.conf` | AP-style single-solenoid head — 3× DiveO2, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery-only, 2S Li |
+| `AP_Paul.conf` | Copy of `eCCR_classic` with PID control and 1S Li — 3× analog, O2 inject on ch0 only, flush cal (via inject solenoid), depth comp; battery+CAN |
 | `eCCR_classic.conf` | Classic single-solenoid eCCR — 3× analog, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery+CAN, 9V |
 | `Poseidon_Aren.conf` | 2× DiveO2 head — all 4 solenoid channels (dual O2 inject alternation, O2/dil flush), PID control, flush cal, depth comp, setpoint-change flush (`CONFIG_SOL_FLUSH_TIME=3000`); battery-only, 1S Li; HP O2/dil tank transducers on the spare adc_ext1 channels (0.3–1.8 V ↔ 0–300 bar, `ADC_GAIN_1` set in the overlay) |
 | `Sidewinder_Gabriel.conf` | 3× DiveO2 manual CCR. Intended solenoid and battery topology currently contradict the executable config; resolve before qualification. |

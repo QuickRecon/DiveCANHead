@@ -601,6 +601,8 @@
       gap: 0;
       margin-bottom: 0;
       border-bottom: 2px solid #3a3a3a;
+      overflow-x: auto;
+      scrollbar-width: thin;
     }
 
     .tab-button {
@@ -655,6 +657,8 @@
       align-items: center;
       justify-content: space-between;
       margin-bottom: 10px;
+      cursor: pointer;
+      user-select: none;
     }
 
     .plot-dock-header h2 {
@@ -664,6 +668,14 @@
     /* Collapsed state hides only the body; the sticky header stays reachable. */
     .plot-dock.collapsed .plot-dock-body {
       display: none;
+    }
+
+    .plot-dock.collapsed {
+      padding-bottom: 15px;
+    }
+
+    .plot-dock.collapsed .plot-dock-header {
+      margin-bottom: 0;
     }
 
     .tab-container {
@@ -757,16 +769,18 @@
         font-size: 20px;
       }
 
+      /* Single scrollable row instead of wrapping - keeps the tab bar to one
+         row of vertical space on narrow screens. */
       .tab-bar {
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
       }
 
       .tab-button {
-        flex: 1 1 auto;
+        flex: 0 0 auto;
         padding: 10px 12px;
         font-size: 12px;
         text-align: center;
-        min-width: 80px;
+        white-space: nowrap;
       }
 
       .tab-container {
@@ -831,8 +845,22 @@
         white-space: nowrap;
       }
 
+      /* Cap against viewport height so the expanded sticky dock never
+         swallows the whole screen on a phone. */
       .chart-container {
-        height: 250px;
+        height: min(250px, 35vh);
+      }
+
+      .plot-dock {
+        padding: 10px 12px 12px;
+      }
+
+      .plot-dock.collapsed {
+        padding-bottom: 10px;
+      }
+
+      .plot-dock-header h2 {
+        font-size: 15px;
       }
 
       .subscription-controls {
@@ -1183,8 +1211,9 @@
       <div class="tab-section" id="atResultSection" style="display: none;">
         <h2>Recommended Gains</h2>
         <p style="color: #888; font-size: 13px; margin: 4px 0 10px;">
-          The run completed. The tuned gains are staged in the volatile settings cache;
-          persist them below to write to NVS.
+          The run completed. The controller retained its pre-run gains so repeat tests
+          remain comparable. The recommendation is staged for review; persist it below
+          and reboot to make it the active controller tune.
         </p>
         <div id="atResultGrid" class="config-grid"></div>
         <div style="margin-top: 12px;">
@@ -1437,9 +1466,9 @@
 
   <!-- Real-Time Plot (persistent dock - visible on every tab) -->
   <div class="plot-dock" id="plotDock">
-    <div class="plot-dock-header">
+    <div class="plot-dock-header" onclick="togglePlotDock()">
       <h2>Real-Time Plot</h2>
-      <button class="small" id="plotDockToggle" onclick="togglePlotDock()">Collapse</button>
+      <button class="small" id="plotDockToggle">Collapse</button>
     </div>
     <div class="plot-dock-body" id="plotDockBody">
       <div class="chart-controls axis-controls">
@@ -2202,10 +2231,11 @@
         container.innerHTML = '';
 
         for (const s of settings) {
+          const pidWireSetting = /^(Kp|Ki|Kd) x1M$/.exec(s.label);
           const row = document.createElement('div');
           row.className = 'setting-row';
           const label = document.createElement('label');
-          label.textContent = s.label;
+          label.textContent = pidWireSetting ? `PID ${pidWireSetting[1]}` : s.label;
           row.appendChild(label);
 
           const controls = document.createElement('div');
@@ -2231,12 +2261,20 @@
             const input = document.createElement('input');
             input.type = 'number';
             input.min = '0';
-            input.max = String(s.maxValue);
-            input.value = String(s.currentValue);
+            if (pidWireSetting) {
+              input.max = String(Number(s.maxValue) / 1000000);
+              input.step = '0.000001';
+              input.value = String(Number(s.currentValue) / 1000000);
+              input.title = 'Real PID gain (resolution 0.000001)';
+            } else {
+              input.max = String(s.maxValue);
+              input.value = String(s.currentValue);
+            }
             input.disabled = !s.editable;
             input.style.width = '120px';
             controls.appendChild(input);
-            getValue = () => BigInt(Math.round(Number(input.value)));
+            getValue = () => BigInt(Math.round(Number(input.value) *
+              (pidWireSetting ? 1000000 : 1)));
           }
 
           if (s.editable) {
@@ -2821,6 +2859,30 @@
     let autotuneSamples = [];
 
     const fmtGain = (v) => (v === undefined || v === null || Number.isNaN(v)) ? '--' : v.toFixed(5);
+    const finiteInRange = (v, lo, hi) => Number.isFinite(v) && v >= lo && v <= hi;
+
+    const autotuneTelemetryWarnings = (status) => {
+      const warnings = [];
+      if (!finiteInRange(status.model.ambientPressureBar, 0.5, 20)) {
+        warnings.push('Ambient-pressure telemetry is invalid');
+      }
+      const expectedDose = ((autotuneRequest?.excitation_duty_pct ?? 20) / 100) * 10;
+      if (!finiteInRange(status.model.deliveredDoseDutyS, expectedDose * 0.5, expectedDose * 1.5)) {
+        warnings.push('Delivered-dose telemetry is inconsistent with the requested pulse');
+      }
+      return warnings;
+    };
+
+    const autotuneSampleDiagnostics = () => {
+      const elapsed = autotuneSamples.map(s => s.elapsed_s).filter(Number.isFinite);
+      const unique = new Set(elapsed);
+      return {
+        browser_poll_samples: autotuneSamples.length,
+        unique_elapsed_seconds: unique.size,
+        duplicate_elapsed_timestamps: elapsed.length - unique.size,
+        note: 'Browser-polled samples are diagnostic only; firmware identification uses its internal 2 Hz trace.'
+      };
+    };
 
     // Enter a programming session for the autotune tab.
     const atEnterSession = async () => {
@@ -2841,22 +2903,22 @@
         ['Phase', s.stateName],
         ['Experiment', s.iteration ? 'Plant identified' : 'Collecting response'],
         ['Elapsed', `${s.elapsedS} s`],
-        ['Candidate Kp', fmtGain(s.cand.kp)],
-        ['Candidate Ki', fmtGain(s.cand.ki)],
-        ['Candidate Kd', fmtGain(s.cand.kd)],
         ['Best Kp', fmtGain(s.best.kp)],
         ['Best Ki', fmtGain(s.best.ki)],
         ['Best Kd', fmtGain(s.best.kd)],
-        ['Fit RMSE', `${s.model.fitRmseBar.toFixed(4)} bar`],
+        ['Response-tail RMS noise', `${s.model.fitRmseBar.toFixed(4)} bar`],
         ['Plant gain', `${s.model.gain.toFixed(3)} bar / duty`],
         ['Transport delay', `${s.model.deadTimeS.toFixed(1)} s`],
         ['Mixing time constant', `${s.model.timeConstantS.toFixed(1)} s`],
         ['Mixing reversal', `${s.model.mixingExcursionBar.toFixed(3)} bar`],
         ['Baseline duty', `${(s.model.baselineDuty * 100).toFixed(1)} %`],
         ['Baseline PPO2 slope', `${s.model.baselineSlopeBarS.toFixed(5)} bar/s`],
+        ['Baseline RMS noise', `${s.model.baselineNoiseBar.toFixed(4)} bar`],
         ['Ambient pressure', `${s.model.ambientPressureBar.toFixed(2)} bar`],
         ['Incremental dose', `${s.model.deliveredDoseDutyS.toFixed(2)} duty·s`]
       ];
+      const warnings = autotuneTelemetryWarnings(s);
+      if (warnings.length) pairs.push(['Telemetry warning', warnings.join('; ')]);
       if (s.state === AUTOTUNE_STATE_ABORTED) {
         pairs.push(['Abort reason', s.abortReasonName]);
       }
@@ -2909,8 +2971,16 @@
         mixing_reversal_bar: status.model.mixingExcursionBar,
         baseline_effective_duty: status.model.baselineDuty,
         baseline_ppo2_slope_bar_per_s: status.model.baselineSlopeBarS,
+        baseline_ppo2_noise_rms_bar: status.model.baselineNoiseBar,
         ambient_pressure_bar: status.model.ambientPressureBar,
-        delivered_incremental_dose_duty_s: status.model.deliveredDoseDutyS
+        delivered_incremental_dose_duty_s: status.model.deliveredDoseDutyS,
+        response_tail_noise_rms_bar: status.model.fitRmseBar
+      },
+      quality: {
+        telemetry_warnings: autotuneTelemetryWarnings(status),
+        response_to_baseline_noise_ratio: status.model.mixingExcursionBar /
+          Math.max(status.model.baselineNoiseBar, 0.001),
+        samples: autotuneSampleDiagnostics()
       },
       samples: autotuneSamples
     });
@@ -2927,7 +2997,8 @@
         ['Kp', fmtGain(s.best.kp)],
         ['Ki', fmtGain(s.best.ki)],
         ['Kd', fmtGain(s.best.kd)],
-        ['Model fit RMSE', `${s.model.fitRmseBar.toFixed(4)} bar`],
+        ['Response-tail RMS noise', `${s.model.fitRmseBar.toFixed(4)} bar`],
+        ['Baseline RMS noise', `${s.model.baselineNoiseBar.toFixed(4)} bar`],
         ['Transport delay', `${s.model.deadTimeS.toFixed(1)} s`],
         ['Dominant mixing time', `${s.model.timeConstantS.toFixed(1)} s`],
         ['Rise/fall excursion', `${s.model.mixingExcursionBar.toFixed(3)} bar`]
@@ -2966,7 +3037,7 @@
           $('atAbortButton').disabled = true;
           $('atStartButton').disabled = false;
           if (status.state === AUTOTUNE_STATE_DONE) {
-            $('at-run-message').textContent = 'Autotune complete. Review the recommended gains below.';
+            $('at-run-message').textContent = 'Autotune complete. Pre-run gains remain active; review or persist the recommendation below.';
             showAutotuneResult(status);
           } else {
             $('at-run-message').textContent = `Autotune aborted: ${status.abortReasonName}.`;
@@ -2988,7 +3059,7 @@
         return;
       }
       const baseCb = Math.round(baseBar * 100);
-      if (!confirm(`Start plant-identification PID tune?\n\nBase ${baseBar.toFixed(2)} bar, duty pulse +${excitationDutyPct}%.\n\nThe firmware will measure equilibrium duty, apply a bounded incremental actuation, return to equilibrium duty, and observe the delayed mixing response. Requires surface + PID mode + a programming session.`)) {
+      if (!confirm(`Start plant-identification PID tune?\n\nBase ${baseBar.toFixed(2)} bar, duty pulse +${excitationDutyPct}%.\n\nThe firmware will qualify baseline noise, apply a bounded incremental actuation, return to equilibrium duty, and observe the delayed mixing response. The current PID gains are restored afterward so repeat runs remain comparable. Requires surface + PID mode + a programming session.`)) {
         return;
       }
       $('atStartButton').disabled = true;
@@ -3035,9 +3106,9 @@
       if (!stack || !autotuneLastStatus) { $('at-commit-message').textContent = 'No completed run to commit'; return; }
       const s = autotuneLastStatus;
       const targets = [
-        { label: 'Kp x1k', gain: s.best.kp },
-        { label: 'Ki x1k', gain: s.best.ki },
-        { label: 'Kd x1k', gain: s.best.kd }
+        { label: 'Kp x1M', gain: s.best.kp },
+        { label: 'Ki x1M', gain: s.best.ki },
+        { label: 'Kd x1M', gain: s.best.kd }
       ];
       $('atCommitButton').disabled = true;
       try {
@@ -3048,11 +3119,11 @@
           if (!match) {
             throw new Error(`Setting "${t.label}" not found on device`);
           }
-          const milliunits = BigInt(Math.round(t.gain * 1000));
-          await stack.uds.writeSettingValue(match.index, milliunits);
-          await stack.uds.saveSetting(match.index, milliunits);
+          const microunits = BigInt(Math.round(t.gain * 1000000));
+          await stack.uds.writeSettingValue(match.index, microunits);
+          await stack.uds.saveSetting(match.index, microunits);
         }
-        $('at-commit-message').textContent = 'Committed Kp/Ki/Kd to NVS.';
+        $('at-commit-message').textContent = 'Committed Kp/Ki/Kd to NVS. Reboot the head to activate them.';
       } catch (error) {
         $('at-commit-message').textContent = 'Commit failed: ' + (error.message || error);
       } finally {
@@ -3159,12 +3230,41 @@
 
     // Collapse/expand the persistent plot dock. Chart.js v4 uses a
     // ResizeObserver, so it re-fits automatically when the body is shown again.
-    globalThis.togglePlotDock = () => {
-      const dock = document.getElementById('plotDock');
-      const collapsed = dock.classList.toggle('collapsed');
+    // The whole header is the click target (button included, via bubbling) so
+    // the dock is easy to toggle on a phone.
+    const PLOT_DOCK_COLLAPSED_KEY = 'divecan.plotDockCollapsed';
+
+    const setPlotDockCollapsed = (collapsed) => {
+      document.getElementById('plotDock').classList.toggle('collapsed', collapsed);
       document.getElementById('plotDockToggle').textContent =
         collapsed ? 'Expand' : 'Collapse';
     };
+
+    globalThis.togglePlotDock = () => {
+      const collapsed = !document.getElementById('plotDock').classList.contains('collapsed');
+      setPlotDockCollapsed(collapsed);
+      try {
+        localStorage.setItem(PLOT_DOCK_COLLAPSED_KEY, collapsed ? '1' : '0');
+      } catch {
+        // Storage unavailable (private mode etc.) - state just won't persist
+      }
+    };
+
+    // Restore the saved state; with no saved preference, start collapsed on
+    // small screens so the plot doesn't crowd out the tabbed interface.
+    {
+      let saved = null;
+      try {
+        saved = localStorage.getItem(PLOT_DOCK_COLLAPSED_KEY);
+      } catch {
+        // Storage unavailable - fall through to the screen-size default
+      }
+      if (saved === null) {
+        setPlotDockCollapsed(globalThis.matchMedia('(max-width: 600px)').matches);
+      } else {
+        setPlotDockCollapsed(saved === '1');
+      }
+    }
 
     // Both physical links share the same diagnostics/OTA setup. USB-CAN uses
     // separate 0xFE dialog and 0xFF log ISO-TP contexts inside its stack.

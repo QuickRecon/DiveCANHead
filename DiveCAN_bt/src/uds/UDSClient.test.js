@@ -543,30 +543,28 @@ describe('UDSClient', () => {
       expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x43, 0x02, 0xA7]);
     });
 
-    it('readAutotuneStatus parses the 74-byte model-identification status struct', async () => {
-      const buf = new ArrayBuffer(74);
+    it('readAutotuneStatus parses the compact 66-byte model-identification status struct', async () => {
+      const buf = new ArrayBuffer(66);
       const dv = new DataView(buf);
       dv.setUint8(0, 2);              // state = STEPPING
       dv.setUint8(1, 4);              // abort_reason = TIMEOUT
       dv.setUint16(2, 5, true);       // iteration
       dv.setUint16(4, 24, true);      // budget
-      dv.setFloat32(6, 1.5, true);    // cand kp
-      dv.setFloat32(10, 0.25, true);  // cand ki
-      dv.setFloat32(14, 0.1, true);   // cand kd
-      dv.setFloat32(18, 1.75, true);  // best kp
-      dv.setFloat32(22, 0.3, true);   // best ki
-      dv.setFloat32(26, 0.05, true);  // best kd
-      dv.setFloat32(30, 0.0123, true);// best cost
-      dv.setUint32(34, 42, true);     // elapsed_s
-      dv.setFloat32(38, 1.4, true);   // plant gain
-      dv.setFloat32(42, 3.5, true);   // dead time
-      dv.setFloat32(46, 8.0, true);   // time constant
-      dv.setFloat32(50, 0.0123, true);// fit RMSE
-      dv.setFloat32(54, 0.07, true);  // mixing excursion
-      dv.setFloat32(58, 0.12, true);  // baseline duty
-      dv.setFloat32(62, 0.0004, true);// baseline slope
-      dv.setFloat32(66, 1.01, true);  // ambient pressure
-      dv.setFloat32(70, 1.8, true);   // delivered incremental dose
+      dv.setFloat32(6, 1.75, true);   // best kp
+      dv.setFloat32(10, 0.3, true);   // best ki
+      dv.setFloat32(14, 0.05, true);  // best kd
+      dv.setFloat32(18, 0.0123, true);// response-tail noise
+      dv.setUint32(22, 42, true);     // elapsed_s
+      dv.setFloat32(26, 1.4, true);   // plant gain
+      dv.setFloat32(30, 3.5, true);   // dead time
+      dv.setFloat32(34, 8.0, true);   // recovery time
+      dv.setFloat32(38, 0.0123, true);// response-tail noise
+      dv.setFloat32(42, 0.07, true);  // mixing excursion
+      dv.setFloat32(46, 0.12, true);  // baseline duty
+      dv.setFloat32(50, 0.0004, true);// baseline slope
+      dv.setFloat32(54, 1.01, true);  // ambient pressure
+      dv.setFloat32(58, 1.8, true);   // delivered incremental dose
+      dv.setFloat32(62, 0.006, true); // baseline RMS noise
       transport.queueResponse(buildRDBIResponse(0xF213, Array.from(new Uint8Array(buf))));
 
       const st = await client.readAutotuneStatus();
@@ -578,9 +576,7 @@ describe('UDSClient', () => {
       expect(st.abortReasonName).toBe('Timeout');
       expect(st.iteration).toBe(5);
       expect(st.budget).toBe(24);
-      expect(st.cand.kp).toBeCloseTo(1.5, 5);
-      expect(st.cand.ki).toBeCloseTo(0.25, 5);
-      expect(st.cand.kd).toBeCloseTo(0.1, 5);
+      expect(st.cand).toEqual({ kp: 0, ki: 0, kd: 0 });
       expect(st.best.kp).toBeCloseTo(1.75, 5);
       expect(st.best.ki).toBeCloseTo(0.3, 5);
       expect(st.best.kd).toBeCloseTo(0.05, 5);
@@ -595,6 +591,12 @@ describe('UDSClient', () => {
       expect(st.model.baselineSlopeBarS).toBeCloseTo(0.0004, 6);
       expect(st.model.ambientPressureBar).toBeCloseTo(1.01, 5);
       expect(st.model.deliveredDoseDutyS).toBeCloseTo(1.8, 5);
+      expect(st.model.baselineNoiseBar).toBeCloseTo(0.006, 6);
+    });
+
+    it('readAutotuneStatus rejects a truncated legacy response', async () => {
+      transport.queueResponse(buildRDBIResponse(0xF213, new Array(60).fill(0)));
+      await expect(client.readAutotuneStatus()).rejects.toThrow(/too short/);
     });
   });
 

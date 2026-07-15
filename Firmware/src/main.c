@@ -79,9 +79,9 @@ static void boot_indicator(void)
  * plenty of slack and stays well under MAIN_STACK_SIZE. */
 #define PREAMBLE_LINE_BUF_SZ 128U
 
-/* PID-gain x1000 scale matches the UDS settings wire format
- * (`Kp x1k`). Avoids depending on cbprintf float support and
- * still resolves Kp=0.001 vs Kp=1.0 unambiguously. */
+/* The boot preamble intentionally prints gains in compact x1000 display
+ * units.  The editable UDS settings use x1M micro-units for finer precision.
+ * Integer formatting avoids depending on cbprintf float support. */
 #define PID_GAIN_DISPLAY_SCALE 1000
 
 /* ---- Compile-time string projections ----

@@ -16,10 +16,21 @@ static PIDNumeric_t local_clampf(PIDNumeric_t value, PIDNumeric_t lo,
     return (value < lo) ? lo : ((value > hi) ? hi : value);
 }
 
+static PIDNumeric_t window_mean(const PIDNumeric_t *values, uint16_t start,
+                uint16_t width)
+{
+    PIDNumeric_t sum = 0.0f;
+    for (uint16_t i = start; i < (uint16_t)(start + width); ++i) {
+        sum += values[i];
+    }
+    return sum / (PIDNumeric_t)width;
+}
+
 bool autotune_identify_plant(const PIDNumeric_t *duty,
                  const PIDNumeric_t *ppo2_bar, uint16_t n,
                  PIDNumeric_t dt_s, PIDNumeric_t baseline_duty,
                  PIDNumeric_t baseline_ppo2_bar,
+                 PIDNumeric_t baseline_noise_bar,
                  AutotunePlantModel_t *model)
 {
     if (model != NULL) {
@@ -56,23 +67,24 @@ bool autotune_identify_plant(const PIDNumeric_t *duty,
         return false;
     }
 
-    PIDNumeric_t direction = 1.0f;
-    PIDNumeric_t delay_level = baseline_ppo2_bar + 0.005f;
+    const uint16_t slope_window = 4U;
+    PIDNumeric_t response_threshold = fmaxf(0.005f,
+                            2.0f * baseline_noise_bar);
+    PIDNumeric_t delay_level = baseline_ppo2_bar + response_threshold;
     uint16_t delay_i = n;
-    PIDNumeric_t running_peak = direction * ppo2_bar[0];
-    PIDNumeric_t max_reversal = 0.0f;
 
-    for (uint16_t i = 0U; i < n; ++i) {
-        PIDNumeric_t directed = direction * ppo2_bar[i];
-        if ((delay_i == n) &&
-            ((direction * (ppo2_bar[i] - delay_level)) >= 0.0f)) {
+    /* A single +5 mbar crossing is routinely produced by the normal PPO2
+     * limit cycle.  Accept a response only when two consecutive 2 s means
+     * remain above a threshold derived from the measured baseline noise. */
+    for (uint16_t i = 0U; (i + (2U * slope_window)) <= n; ++i) {
+        PIDNumeric_t first = window_mean(ppo2_bar, i, slope_window);
+        PIDNumeric_t second = window_mean(ppo2_bar,
+                          (uint16_t)(i + slope_window),
+                          slope_window);
+        if ((first >= delay_level) && (second >= delay_level) &&
+            (second >= (first - (0.25f * response_threshold)))) {
             delay_i = i;
-        }
-        if (directed > running_peak) {
-            running_peak = directed;
-        }
-        else if ((running_peak - directed) > max_reversal) {
-            max_reversal = running_peak - directed;
+            break;
         }
     }
     if (delay_i == n) {
@@ -85,14 +97,30 @@ bool autotune_identify_plant(const PIDNumeric_t *duty,
      * when the pulse response later returns to baseline, unlike final/dose,
      * and the mixing-reversal term makes gains conservative when that early
      * rise is an injector-local concentration lobe. */
-    const uint16_t slope_window = 4U;
-    PIDNumeric_t max_rate = 0.0f;
+    PIDNumeric_t top_rates[5] = {0};
     for (uint16_t i = (uint16_t)(delay_i + slope_window); i < n; ++i) {
         PIDNumeric_t rate = (ppo2_bar[i] - ppo2_bar[i - slope_window]) /
             ((PIDNumeric_t)slope_window * dt_s);
-        if (rate > max_rate) {
-            max_rate = rate;
+        for (uint16_t rank = 0U; rank < 5U; ++rank) {
+            if (rate > top_rates[rank]) {
+                for (uint16_t move = 4U; move > rank; --move) {
+                    top_rates[move] = top_rates[move - 1U];
+                }
+                top_rates[rank] = rate;
+                break;
+            }
         }
+    }
+    PIDNumeric_t max_rate = 0.0f;
+    uint16_t rate_count = 0U;
+    for (uint16_t i = 0U; i < 5U; ++i) {
+        if (top_rates[i] > 0.0f) {
+            max_rate += top_rates[i];
+            ++rate_count;
+        }
+    }
+    if (rate_count > 0U) {
+        max_rate /= (PIDNumeric_t)rate_count;
     }
     PIDNumeric_t pulse_time = 0.0f;
     for (uint16_t i = 0U; i <= pulse_end; ++i) {
@@ -122,6 +150,35 @@ bool autotune_identify_plant(const PIDNumeric_t *duty,
     PIDNumeric_t tau = (PIDNumeric_t)(last_outside - pulse_end) * dt_s;
     if (tau < dt_s) {
         tau = dt_s;
+    }
+
+    /* Measure the first significant rise/fall lobe only.  The old global
+     * peak-to-any-later-trough calculation folded ordinary late controller
+     * oscillation into the injector mixing penalty. */
+    PIDNumeric_t reversal_threshold = response_threshold;
+    PIDNumeric_t running_peak = window_mean(ppo2_bar, delay_i, slope_window);
+    PIDNumeric_t trough = running_peak;
+    PIDNumeric_t max_reversal = 0.0f;
+    bool falling = false;
+    for (uint16_t i = (uint16_t)(delay_i + 1U);
+         (i + slope_window) <= n; ++i) {
+        PIDNumeric_t smoothed = window_mean(ppo2_bar, i, slope_window);
+        if (!falling) {
+            if (smoothed > running_peak) {
+                running_peak = smoothed;
+            } else if ((running_peak - smoothed) >= reversal_threshold) {
+                falling = true;
+                trough = smoothed;
+            }
+        } else if (smoothed < trough) {
+            trough = smoothed;
+        } else if ((smoothed - trough) >= reversal_threshold) {
+            max_reversal = running_peak - trough;
+            break;
+        }
+    }
+    if (falling && (max_reversal <= 0.0f)) {
+        max_reversal = running_peak - trough;
     }
 
     model->process_gain = gain;

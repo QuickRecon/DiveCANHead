@@ -76,10 +76,11 @@ typedef struct {
     Numeric_t plant_gain;            /**< Identified bar PPO2 / unit duty */
     Numeric_t dead_time_s;           /**< Injector-to-sensor phase delay */
     Numeric_t time_constant_s;       /**< Dominant final mixing time */
-    Numeric_t fit_rmse_bar;          /**< Model residual RMS error */
+    Numeric_t fit_rmse_bar;          /**< final response-tail RMS noise */
     Numeric_t mixing_excursion_bar;  /**< rise/fall reversal magnitude */
     Numeric_t baseline_duty;         /**< equilibrium effective duty */
     Numeric_t baseline_slope_bar_s;  /**< pre-test PPO2 drift */
+    Numeric_t baseline_noise_bar;    /**< RMS noise in final baseline window */
     Numeric_t ambient_pressure_bar;  /**< pressure during identification */
     Numeric_t delivered_dose_duty_s; /**< integral of incremental effective duty */
 } AutotuneStatus_t;

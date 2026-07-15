@@ -717,18 +717,15 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
-   * Read autotune status (DID 0xF213). Parses the 74-byte little-endian struct.
+   * Read autotune status (DID 0xF213). Parses the compact 66-byte LE struct.
    *
    * Wire layout (offsets into the returned data bytes):
    *   [0]  state (u8) [1] abort_reason (u8) [2] iteration (u16) [4] budget (u16)
-   *   [6] cand_kp (f32) [10] cand_ki (f32) [14] cand_kd (f32)
-   *   [18] best_kp (f32) [22] best_ki (f32) [26] best_kd (f32)
-   *   [30] model fit RMSE (f32) [34] elapsed_s (u32)
-   *   [38] plant_gain (f32) [42] dead_time_s (f32)
-   *   [46] time_constant_s (f32) [50] fit_rmse_bar (f32)
-   *   [54] mixing_excursion_bar (f32)
-   *   [58] baseline_duty (f32) [62] baseline_slope_bar_s (f32)
-   *   [66] ambient_pressure_bar (f32) [70] delivered_dose_duty_s (f32)
+   *   [6] best_kp (f32) [10] best_ki (f32) [14] best_kd (f32)
+   *   [18] response-tail noise (f32) [22] elapsed_s (u32)
+   *   [26] plant_gain [30] dead_time_s [34] recovery_s [38] tail_noise
+   *   [42] mixing_excursion [46] baseline_duty [50] baseline_slope
+   *   [54] ambient_pressure [58] delivered_dose [62] baseline_noise
    *
    * @returns {Promise<{state:number, stateName:string, abortReason:number,
    *   abortReasonName:string, iteration:number, budget:number,
@@ -737,6 +734,10 @@ export class UDSClient extends EventEmitter {
    */
   async readAutotuneStatus() {
     const data = await this.readDataByIdentifier(constants.DID_AUTOTUNE_STATUS);
+    if (data.byteLength < 66) {
+      throw new UDSError(`Autotune status too short (${data.byteLength} bytes)`,
+        constants.SID_READ_DATA_BY_ID);
+    }
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
     const state = data[0];
@@ -750,27 +751,28 @@ export class UDSClient extends EventEmitter {
       iteration: view.getUint16(2, true),
       budget: view.getUint16(4, true),
       cand: {
+        kp: 0,
+        ki: 0,
+        kd: 0
+      },
+      best: {
         kp: view.getFloat32(6, true),
         ki: view.getFloat32(10, true),
         kd: view.getFloat32(14, true)
       },
-      best: {
-        kp: view.getFloat32(18, true),
-        ki: view.getFloat32(22, true),
-        kd: view.getFloat32(26, true)
-      },
-      bestCost: view.getFloat32(30, true),
-      elapsedS: view.getUint32(34, true),
+      bestCost: view.getFloat32(18, true),
+      elapsedS: view.getUint32(22, true),
       model: {
-        gain: view.getFloat32(38, true),
-        deadTimeS: view.getFloat32(42, true),
-        timeConstantS: view.getFloat32(46, true),
-        fitRmseBar: view.getFloat32(50, true),
-        mixingExcursionBar: view.getFloat32(54, true),
-        baselineDuty: view.getFloat32(58, true),
-        baselineSlopeBarS: view.getFloat32(62, true),
-        ambientPressureBar: view.getFloat32(66, true),
-        deliveredDoseDutyS: view.getFloat32(70, true)
+        gain: view.getFloat32(26, true),
+        deadTimeS: view.getFloat32(30, true),
+        timeConstantS: view.getFloat32(34, true),
+        fitRmseBar: view.getFloat32(38, true),
+        mixingExcursionBar: view.getFloat32(42, true),
+        baselineDuty: view.getFloat32(46, true),
+        baselineSlopeBarS: view.getFloat32(50, true),
+        ambientPressureBar: view.getFloat32(54, true),
+        deliveredDoseDutyS: view.getFloat32(58, true),
+        baselineNoiseBar: view.getFloat32(62, true)
       }
     };
   }

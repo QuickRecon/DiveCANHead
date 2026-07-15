@@ -94,7 +94,7 @@ export const DID_ERROR_HISTOGRAM_CLEAR = 0xF261; // write any byte -> clear + pe
 // session; START also refused while diving or when PPO2 mode != PID.
 //   START: [cmd 0x01, magic 0xA7, base_cb, duty_step_pct, reserved_hi, reserved_lo]
 //   ABORT: [cmd 0x02, magic 0xA7]
-// Status DID 0xF213 is a read-only 74-byte little-endian struct (see
+// Status DID 0xF213 is a read-only compact 66-byte little-endian struct (see
 // UDSClient.readAutotuneStatus for the field layout).
 export const DID_AUTOTUNE_CONTROL = 0xF243;
 export const DID_AUTOTUNE_STATUS = 0xF213;

@@ -404,36 +404,41 @@ static bool handleOtaStatusDID(uint16_t did, uint8_t *buf,
  * PID Autotune status DID helper (0xF213)
  * ============================================================================ */
 
-/* Wire layout (little-endian), 38 bytes:
+/* Compact model-identification layout (little-endian), 66 bytes.  Keeping the
+ * response at this boundary avoids the bridge corruption observed after byte
+ * 65 of the old 74-byte payload; obsolete candidate-gain fields were removed.
+ *
  *   [0]  state u8          [1]  abort_reason u8
  *   [2]  iteration u16     [4]  iteration_budget u16
- *   [6]  cand_kp f32       [10] cand_ki f32       [14] cand_kd f32
- *   [18] best_kp f32       [22] best_ki f32       [26] best_kd f32
- *   [30] best_cost f32     [34] elapsed_s u32                        */
-static const size_t AUTOTUNE_STATUS_LEN = 74U;
+ *   [6]  best_kp f32       [10] best_ki f32       [14] best_kd f32
+ *   [18] tail_noise f32    [22] elapsed_s u32
+ *   [26] rate_gain f32     [30] dead_time f32      [34] recovery f32
+ *   [38] tail_noise f32    [42] mixing_excursion f32
+ *   [46] baseline_duty f32 [50] baseline_slope f32
+ *   [54] pressure f32      [58] delivered_dose f32
+ *   [62] baseline_noise f32                                      */
+static const size_t AUTOTUNE_STATUS_LEN = 66U;
 
 /* Byte offsets within the AUTOTUNE_STATUS payload. */
 static const size_t AT_OFF_STATE        = 0U;
 static const size_t AT_OFF_ABORT_REASON = 1U;
 static const size_t AT_OFF_ITERATION    = 2U;
 static const size_t AT_OFF_BUDGET       = 4U;
-static const size_t AT_OFF_CAND_KP      = 6U;
-static const size_t AT_OFF_CAND_KI      = 10U;
-static const size_t AT_OFF_CAND_KD      = 14U;
-static const size_t AT_OFF_BEST_KP      = 18U;
-static const size_t AT_OFF_BEST_KI      = 22U;
-static const size_t AT_OFF_BEST_KD      = 26U;
-static const size_t AT_OFF_BEST_COST    = 30U;
-static const size_t AT_OFF_ELAPSED      = 34U;
-static const size_t AT_OFF_PLANT_GAIN   = 38U;
-static const size_t AT_OFF_DEAD_TIME    = 42U;
-static const size_t AT_OFF_TIME_CONST   = 46U;
-static const size_t AT_OFF_FIT_RMSE     = 50U;
-static const size_t AT_OFF_MIX_EXCURSION = 54U;
-static const size_t AT_OFF_BASE_DUTY     = 58U;
-static const size_t AT_OFF_BASE_SLOPE    = 62U;
-static const size_t AT_OFF_PRESSURE      = 66U;
-static const size_t AT_OFF_DOSE          = 70U;
+static const size_t AT_OFF_BEST_KP      = 6U;
+static const size_t AT_OFF_BEST_KI      = 10U;
+static const size_t AT_OFF_BEST_KD      = 14U;
+static const size_t AT_OFF_BEST_COST    = 18U;
+static const size_t AT_OFF_ELAPSED      = 22U;
+static const size_t AT_OFF_PLANT_GAIN   = 26U;
+static const size_t AT_OFF_DEAD_TIME    = 30U;
+static const size_t AT_OFF_TIME_CONST   = 34U;
+static const size_t AT_OFF_FIT_RMSE     = 38U;
+static const size_t AT_OFF_MIX_EXCURSION = 42U;
+static const size_t AT_OFF_BASE_DUTY     = 46U;
+static const size_t AT_OFF_BASE_SLOPE    = 50U;
+static const size_t AT_OFF_PRESSURE      = 54U;
+static const size_t AT_OFF_DOSE          = 58U;
+static const size_t AT_OFF_BASE_NOISE    = 62U;
 
 /* Whole-device current DID (0xF237) payload, little-endian:
  *   [0..3] int32  current in µA (+ve = draw)
@@ -463,9 +468,6 @@ static void buildAutotuneStatus(uint8_t *buf)
     buf[AT_OFF_ABORT_REASON] = (uint8_t)st.abort_reason;
     writeUint16(&buf[AT_OFF_ITERATION], st.iteration);
     writeUint16(&buf[AT_OFF_BUDGET], st.iteration_budget);
-    writeFloat32(&buf[AT_OFF_CAND_KP], st.cand_kp);
-    writeFloat32(&buf[AT_OFF_CAND_KI], st.cand_ki);
-    writeFloat32(&buf[AT_OFF_CAND_KD], st.cand_kd);
     writeFloat32(&buf[AT_OFF_BEST_KP], st.best_kp);
     writeFloat32(&buf[AT_OFF_BEST_KI], st.best_ki);
     writeFloat32(&buf[AT_OFF_BEST_KD], st.best_kd);
@@ -480,6 +482,7 @@ static void buildAutotuneStatus(uint8_t *buf)
     writeFloat32(&buf[AT_OFF_BASE_SLOPE], st.baseline_slope_bar_s);
     writeFloat32(&buf[AT_OFF_PRESSURE], st.ambient_pressure_bar);
     writeFloat32(&buf[AT_OFF_DOSE], st.delivered_dose_duty_s);
+    writeFloat32(&buf[AT_OFF_BASE_NOISE], st.baseline_noise_bar);
 }
 
 /* ============================================================================

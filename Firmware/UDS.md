@@ -550,9 +550,9 @@ Setting kinds:
 | 1   | PPO2 Mode   | TEXT   | yes      | "Off" / "PID" / "MK15"          |
 | 2   | Cal Mode    | TEXT   | yes      | "Dig Ref" / "Absolute" / "TotalAbs" / "Sol Flsh" |
 | 3   | DepthComp   | TEXT   | yes      | "Off" / "On"                    |
-| 4   | PID Kp x1k  | NUMBER | yes      | 0–`PID_GAIN_MAX_WIRE` (milliunits, ÷1000 = float gain) |
-| 5   | PID Ki x1k  | NUMBER | yes      | 0–`PID_GAIN_MAX_WIRE` (milliunits)                    |
-| 6   | PID Kd x1k  | NUMBER | yes      | 0–`PID_GAIN_MAX_WIRE` (milliunits)                    |
+| 4   | Kp x1M      | NUMBER | yes      | 0–`PID_GAIN_MAX_WIRE` (micro-units, ÷1e6 = float gain) |
+| 5   | Ki x1M      | NUMBER | yes      | 0–`PID_GAIN_MAX_WIRE` (micro-units)                    |
+| 6   | Kd x1M      | NUMBER | yes      | 0–`PID_GAIN_MAX_WIRE` (micro-units)                    |
 | 7   | Battery     | TEXT   | yes      | "9V" / "Li 1S" / "Li 2S" / "Li 3S"|
 | 8   | C1 Bcst     | TEXT   | yes      | "Off" / "On"; enforce UART cell broadcast after protocol detection |
 | 9   | C2 Bcst     | TEXT   | yes      | "Off" / "On"; present when cell 2 is configured |

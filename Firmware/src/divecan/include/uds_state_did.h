@@ -29,7 +29,7 @@
 #define UDS_DID_DUTY_CYCLE          0xF210U  /**< float32: Solenoid duty (0.0-1.0) */
 #define UDS_DID_INTEGRAL_STATE      0xF211U  /**< float32: PID integral accumulator */
 #define UDS_DID_SATURATION_COUNT    0xF212U  /**< uint16: PID saturation events */
-#define UDS_DID_AUTOTUNE_STATUS     0xF213U  /**< 38 B: PID autotune status (see uds_state_did.c) */
+#define UDS_DID_AUTOTUNE_STATUS     0xF213U  /**< 66 B: PID autotune status (see uds_state_did.c) */
 #define UDS_DID_UPTIME_SEC          0xF220U  /**< uint32: Seconds since boot */
 
 /* Power Monitoring DIDs (0xF23x) */
