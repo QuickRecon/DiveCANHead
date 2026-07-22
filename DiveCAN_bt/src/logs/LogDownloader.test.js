@@ -76,6 +76,41 @@ function logResponder(streamBytes, { overrides = {} } = {}) {
   };
 }
 
+/** Serve sector-overlapping streams selected by boot id. */
+function multiBootResponder(streams) {
+  let selectedBoot = null;
+  let chunks = [];
+  let idx = 0;
+  return (req) => {
+    const sid = req[0];
+    if (sid === 0x31) {
+      const rid = (req[2] << 8) | req[3];
+      if (rid === 0xF101) {
+        selectedBoot = req[5] | (req[6] << 8) | (req[7] << 16) | (req[8] << 24);
+        if (!streams[selectedBoot]) return buildNegativeResponse(0x31, 0x22);
+      }
+      return buildRoutineResponse(rid);
+    }
+    if (sid === 0x22) {
+      const bytes = streams[selectedBoot] || new Uint8Array();
+      return buildRDBIResponse(0xF281, [
+        0, 0, 0, 0, 0, 0, 4, 0, 0, 0,
+        bytes.length & 0xFF, (bytes.length >> 8) & 0xFF, 0, 0, 0, 0, 0, 0, 0, 0
+      ]);
+    }
+    if (sid === 0x34) {
+      const requested = req[7] | (req[8] << 8) | (req[9] << 16) | (req[10] << 24);
+      const block = Math.min(Math.max(requested || 253, 32), 253);
+      chunks = chunkify(streams[selectedBoot], block);
+      idx = 0;
+      return buildRequestDownloadResponse(block);
+    }
+    if (sid === 0x36) return buildTransferResponse(req[1], chunks[idx++] || new Uint8Array());
+    if (sid === 0x37) return buildTransferExitResponse();
+    return null;
+  };
+}
+
 describe('LogDownloader', () => {
   let transport;
   let uds;
@@ -136,6 +171,55 @@ describe('LogDownloader', () => {
     expect(Array.from(dl.slice(7, 11))).toEqual([61, 0, 0, 0]);
   });
 
+  it('downloads all retained boots and removes sector overlap locally', async () => {
+    const boot7 = buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(7, 'v2', 1), { tsUs: 10 });
+    const log7 = buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(3, 7, 'boot 7'), { tsUs: 20 });
+    const boot8 = buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(8, 'v2', 1), { tsUs: 10 });
+    const log8 = buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(3, 7, 'boot 8'), { tsUs: 20 });
+    // The firmware's by-boot selector begins at a sector boundary, so adjacent
+    // boot responses may contain the same records.
+    const overlapping = buildStream([boot7, log7, boot8, log8]);
+    transport.setResponder(multiBootResponder({ 7: overlapping, 8: overlapping }));
+
+    const result = await logs.downloadAllBoots({
+      stream: 0,
+      stats: {
+        telemetry: { bootIdOldest: 7, bootIdCurrent: 8 },
+        text: { bootIdOldest: 0, bootIdCurrent: 0 }
+      }
+    });
+
+    expect(result.downloads.map(d => d.bootId)).toEqual([7, 8]);
+    const records = parseLogStream(result.raw);
+    expect(records).toHaveLength(4);
+    expect(records.filter(r => r.type === FL_TYPE_BOOT_MARKER)
+      .map(r => r.payload[0])).toEqual([7, 8]);
+    expect(records.filter(r => r.type === FL_TYPE_LOG_TEXT)
+      .map(r => new TextDecoder().decode(r.payload.slice(3)))).toEqual(['boot 7', 'boot 8']);
+
+    const selects = transport.getAllSent().filter(s => s[0] === 0x31 && s[2] === 0xF1 && s[3] === 0x01);
+    expect(selects.map(s => s[5])).toEqual([7, 8]);
+  });
+
+  it('skips missing boot ids while downloading the retained range', async () => {
+    const boot7 = buildStream([
+      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(7, 'v2', 1), { tsUs: 10 })
+    ]);
+    const boot9 = buildStream([
+      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(9, 'v2', 1), { tsUs: 10 })
+    ]);
+    transport.setResponder(multiBootResponder({ 7: boot7, 9: boot9 }));
+
+    const result = await logs.downloadAllBoots({
+      stats: {
+        telemetry: { bootIdOldest: 7, bootIdCurrent: 9 },
+        text: { bootIdOldest: 0, bootIdCurrent: 0 }
+      }
+    });
+    expect(result.downloads.map(d => d.bootId)).toEqual([7, 9]);
+    expect(result.records).toHaveLength(2);
+  });
+
   it('rejects a selector with no match (NRC 0x22)', async () => {
     transport.setResponder(logResponder(sampleStream(), {
       overrides: { select: (rid) => rid === 0xF103 ? buildNegativeResponse(0x31, 0x22) : undefined }
@@ -148,14 +232,6 @@ describe('LogDownloader', () => {
       overrides: { select: (rid) => rid === 0xF105 ? buildNegativeResponse(0x31, 0x24) : undefined }
     }));
     await expect(logs.beginStream()).rejects.toMatchObject({ nrc: 0x24 });
-  });
-
-  it('surfaces by-range as unimplemented (NRC 0x31)', async () => {
-    transport.setResponder((req) =>
-      req[0] === 0x31 ? buildNegativeResponse(0x31, 0x31) : null);
-    await expect(
-      uds.routineControl(0xF100, [0])
-    ).rejects.toMatchObject({ nrc: 0x31 });
   });
 
   it('decodes log stats (28-byte FCB stride)', async () => {

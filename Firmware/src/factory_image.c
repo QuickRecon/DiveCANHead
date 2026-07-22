@@ -26,6 +26,9 @@
 #include "heartbeat.h"
 #include "errors.h"
 #include "maintenance_arena.h"
+#ifdef CONFIG_FLASH_LOG
+#include "flash_log.h"
+#endif
 
 LOG_MODULE_REGISTER(factory_image, LOG_LEVEL_INF);
 
@@ -101,9 +104,10 @@ static uint8_t *get_chunk_buffer(void)
     return get_state()->chunk;
 }
 
-/* Read-back verify scratch. Shared + static (not on-stack) because restore runs
- * on the stack-tight UDS handler thread; capture and restore are mutually
- * exclusive under the FACTORY arena claim, so a single buffer is safe. */
+/* Read-back verify scratch. Shared + static (not on-stack) to keep it off the
+ * 2 KB factory-workqueue stack that capture/restore run on; capture and restore
+ * are mutually exclusive under the FACTORY arena claim, so a single buffer is
+ * safe. */
 static uint8_t g_verify_buf[256];
 
 /* Re-read `len` bytes at `off` from the just-written backend and compare against
@@ -362,7 +366,19 @@ static K_WORK_DEFINE(force_capture_work, force_capture_work_handler);
  */
 
 #define FACTORY_WORK_STACK_SIZE  2048
-#define FACTORY_WORK_PRIORITY    8     /* preemptible; above watchdog feeder (14) */
+/* Priority 9: a CLEAN, otherwise-empty slot strictly BELOW every zbus
+ * MSG_SUBSCRIBER consumer (cal_thread=6, poseidon_accessories=7,
+ * shutdown_thread=8) and ABOVE the background monitors (battery_monitor=10) and
+ * watchdog feeder (14). This is load-bearing for correctness, not just the WDT:
+ * capture/restore is a multi-second CPU-bound copy. If it runs at/above a
+ * consumer's priority (the old bug: restore ran synchronously on the divecan_rx
+ * UDS thread at prio 5), it STARVES the consumers while the prio-5 consensus
+ * publisher keeps producing, so the 16-entry msg_subscriber net_buf pool fills and
+ * the next publish hits `_ZBUS_ASSERT(buf != NULL)` -> KERNEL_PANIC -> reset,
+ * before the restore ever stages the swap (HW-diagnosed 2026-07-17). Being below
+ * the consumers lets them preempt and drain the pool; 9 (not 10) avoids sharing a
+ * priority with battery_monitor so the copy isn't time-sliced against it. */
+#define FACTORY_WORK_PRIORITY    9
 
 K_THREAD_STACK_DEFINE(factory_work_stack, FACTORY_WORK_STACK_SIZE);
 static struct k_work_q factory_work_q;
@@ -646,6 +662,43 @@ int factory_image_restore_to_slot1(void)
         }
     }
     return result;
+}
+
+/* Restore runs on the factory workqueue (prio 10, below the zbus consumers — see
+ * FACTORY_WORK_PRIORITY) rather than synchronously on the prio-5 UDS handler
+ * thread, so the consensus/PPO2 msg_subscriber consumers can preempt and drain
+ * their net_buf pool during the multi-second copy. Pause the flash-log writer for
+ * the duration (its sector-erases would otherwise contend on the shared SPI NOR);
+ * factory_image_restore_to_slot1() reboots on success, so resume/error only run on
+ * a failed restore. */
+static void restore_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+#ifdef CONFIG_FLASH_LOG
+    flash_log_pause();
+#endif
+    int rc = factory_image_restore_to_slot1();
+#ifdef CONFIG_FLASH_LOG
+    flash_log_resume();
+#endif
+    if (0 != rc) {
+        LOG_ERR("Factory restore failed: %d", rc);
+        OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+    }
+}
+
+static K_WORK_DEFINE(restore_work, restore_work_handler);
+
+void factory_image_restore_async(void)
+{
+    if (NULL != get_state()->backend) {
+        ensure_work_q_started();
+        int rc = k_work_submit_to_queue(&factory_work_q, &restore_work);
+
+        if (rc < 0) {
+            OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
+        }
+    }
 }
 
 /* ---- Version introspection ---- */

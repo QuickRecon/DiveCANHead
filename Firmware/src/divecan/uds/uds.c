@@ -1374,32 +1374,18 @@ static bool writeRestoreFactoryDID(UDSContext_t *ctx,
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                                  UDS_NRC_CONDITIONS_NOT_CORRECT);
     } else {
-        /* Send the positive response *before* the restore call because
-         * the restore is synchronous and ends in sys_reboot — we won't
-         * get another chance to reply. */
-        LOG_INF("Restore-factory: kicking factory_image_restore_to_slot1");
+        /* Send the positive response first, then KICK the restore on the factory
+         * workqueue (async) rather than running it here on the UDS handler thread.
+         * The restore is a multi-second CPU-bound NOR copy; running it on this
+         * prio-5 thread starved the lower-priority zbus msg_subscriber consumers
+         * and panicked on a net_buf pool exhaustion before it could stage the swap
+         * (HW-diagnosed 2026-07-17). The workqueue runs it at prio 10 (below the
+         * consumers) and pauses the flash-log writer itself; it reboots on success. */
+        LOG_INF("Restore-factory: kicking factory_image_restore_async");
         buildWriteDidPositiveResponse(ctx, requestData);
         UDS_SendResponse(ctx);
         k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
-#ifdef CONFIG_FLASH_LOG
-        /* Factory restore reads 220 KB from the factory partition and
-         * writes it to slot1 — both adjacent to the log partitions on
-         * the same SPI NOR. Pause the log writer so its sector-erase
-         * waits don't fight the restore for the bus. */
-        flash_log_pause();
-#endif
-        int rc = factory_image_restore_to_slot1();
-#ifdef CONFIG_FLASH_LOG
-        flash_log_resume();
-#endif
-        if (0 != rc) {
-            /* Only reachable if the restore failed before reboot —
-             * log + record but the caller has already received the
-             * positive response (best we can do without a second NRC
-             * round-trip). */
-            LOG_ERR("Restore-factory failed: %d", rc);
-            OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
-        }
+        factory_image_restore_async();
     }
     return true;
 }

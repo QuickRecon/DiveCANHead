@@ -66,6 +66,18 @@ void factory_image_force_capture_async(void);
 int factory_image_restore_to_slot1(void);
 
 /**
+ * @brief Kick a factory restore on the factory workqueue (async) and return.
+ *
+ * The restore copies the factory backup into slot1, stages the swap, and reboots.
+ * It MUST NOT run on the UDS handler thread (prio 5): that CPU-bound multi-second
+ * copy would starve the lower-priority zbus msg_subscriber consumers and panic on
+ * a net_buf pool exhaustion before staging. The workqueue runs it at prio 10,
+ * below every consumer, so they drain normally. Callers send the UDS positive
+ * response first (the reboot ends the dialog).
+ */
+void factory_image_restore_async(void);
+
+/**
  * @brief Read the MCUBoot version header out of the factory backup.
  *
  * @param out_version 4-byte buffer: major / minor / patch / build_low.

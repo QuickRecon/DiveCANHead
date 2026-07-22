@@ -114,6 +114,10 @@ await stack.ota.activate();
 
 // Download a flash log
 const { raw } = await stack.logs.downloadLog({ selector: (d) => d.selectLatestBoot(0) });
+
+// Download every telemetry boot still retained in the circular flash log and
+// merge the overlapping boot ranges locally. No firmware update is required.
+const { raw: allRaw, records } = await stack.logs.downloadAllBoots({ stream: 0 });
 ```
 
 ### CANable over Web Serial

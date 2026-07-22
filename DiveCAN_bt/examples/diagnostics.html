@@ -1347,6 +1347,7 @@
           <div>
             <label style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Selector</label>
             <select id="logSelectorSelect" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+              <option value="allBoots">All retained records (all boots)</option>
               <option value="latestBoot">Latest boot</option>
               <option value="latestDive">Latest dive</option>
               <option value="byBoot">By boot id</option>
@@ -2548,6 +2549,17 @@
 
     const logResolve = async () => {
       try {
+        if ($('logSelectorSelect').value === 'allBoots') {
+          $('logMessage').textContent = 'Reading retained boot range...';
+          const stats = await stack.logs.readStats();
+          const stream = Number($('logStreamSelect').value);
+          const s = stream === 1 ? stats?.text : stats?.telemetry;
+          $('logSelectorInfo').textContent = s
+            ? `boot ids ${s.bootIdOldest}-${s.bootIdCurrent}; downloads each retained boot and merges locally`
+            : 'Stats unavailable';
+          $('logMessage').textContent = '';
+          return;
+        }
         $('logMessage').textContent = 'Resolving (first selector builds the index, up to ~40s)...';
         await currentSelector()(stack.logs);
         const sel = await stack.logs.readSelectorResult();
@@ -2571,21 +2583,29 @@
       setLogProgress(0);
       try {
         $('logMessage').textContent = 'Downloading...';
-        const result = await stack.logs.downloadLog({
-          stream: Number($('logStreamSelect').value),
-          selector: currentSelector(),
-          signal: logAbort.signal,
-          onProgress: ({ received, records, entryCount }) => {
+        const stream = Number($('logStreamSelect').value);
+        const allBoots = $('logSelectorSelect').value === 'allBoots';
+        const progress = ({ received, records, entryCount, bootId, bootsCompleted, totalBoots }) => {
+          if (totalBoots) {
+            setLogProgress(Math.min(100, (bootsCompleted / totalBoots) * 100));
+            $('logMessage').textContent =
+              `Boot ${bootId} (${bootsCompleted + 1}/${totalBoots}), ${records} records, ${received} bytes...`;
+          } else {
             if (entryCount > 0) setLogProgress(Math.min(100, (records / entryCount) * 100));
             $('logMessage').textContent =
               `${records}${entryCount ? ` / ~${entryCount}` : ''} records, ${received} bytes...`;
           }
-        });
+        };
+        const result = allBoots
+          ? await stack.logs.downloadAllBoots({ stream, signal: logAbort.signal, onProgress: progress })
+          : await stack.logs.downloadLog({ stream, selector: currentSelector(), signal: logAbort.signal, onProgress: progress });
         logRaw = result.raw;
-        logRecords = parseLogStream(logRaw);
+        logRecords = result.records || parseLogStream(logRaw);
         renderLogRecords();
         setLogProgress(100);
-        $('logMessage').textContent = `Done: ${logRaw.length} bytes, ${logRecords.length} records.`;
+        $('logMessage').textContent = allBoots
+          ? `Done: ${result.downloads.length} boots, ${logRaw.length} merged bytes, ${logRecords.length} records.`
+          : `Done: ${logRaw.length} bytes, ${logRecords.length} records.`;
         for (const id of ['logExportJson', 'logExportCsv', 'logExportBin']) $(id).disabled = false;
       } catch (e) {
         $('logMessage').textContent = `Download failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');

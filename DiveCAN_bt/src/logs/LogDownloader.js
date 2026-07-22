@@ -16,7 +16,7 @@
 
 import * as constants from '../uds/constants.js';
 import { ByteUtils } from '../utils/ByteUtils.js';
-import { makeRecordCounter } from './LogParser.js';
+import { decodeBootMarker, makeRecordCounter, parseLogStream } from './LogParser.js';
 
 class EventEmitter {
   constructor() { this.events = {}; }
@@ -50,6 +50,46 @@ function decodeFcbStats(b) {
     sectorsFree: ByteUtils.leToUint16(b.slice(20, 22)),
     sectorsTotal: ByteUtils.leToUint16(b.slice(22, 24))
   };
+}
+
+function writeU32LE(out, offset, value) {
+  const v = value >>> 0;
+  out[offset] = v & 0xFF;
+  out[offset + 1] = (v >>> 8) & 0xFF;
+  out[offset + 2] = (v >>> 16) & 0xFF;
+  out[offset + 3] = (v >>> 24) & 0xFF;
+}
+
+/** Build one parseable DCLG stream from records collected across boot downloads. */
+function encodeRecordStream(records, stream) {
+  const bodyLength = records.reduce((n, rec) => n + constants.FL_ENTRY_HDR_LEN + rec.payload.length, 0);
+  const raw = new Uint8Array(constants.LOG_DCLG_HEADER_LEN + bodyLength);
+  writeU32LE(raw, 0, constants.LOG_DOWNLOAD_MAGIC);
+  raw[4] = 1;
+  raw[6] = stream;
+  writeU32LE(raw, 8, bodyLength);
+  writeU32LE(raw, 12, records.length);
+
+  let offset = constants.LOG_DCLG_HEADER_LEN;
+  for (const rec of records) {
+    raw[offset] = rec.type;
+    raw[offset + 1] = rec.flags;
+    raw[offset + 2] = rec.payload.length & 0xFF;
+    raw[offset + 3] = (rec.payload.length >>> 8) & 0xFF;
+    let timestamp = BigInt(rec.tsUs);
+    for (let i = 0; i < 8; i++) {
+      raw[offset + 4 + i] = Number(timestamp & 0xFFn);
+      timestamp >>= 8n;
+    }
+    raw.set(rec.payload, offset + constants.FL_ENTRY_HDR_LEN);
+    offset += constants.FL_ENTRY_HDR_LEN + rec.payload.length;
+  }
+  return raw;
+}
+
+function bootMarkerId(record) {
+  if (record.type !== constants.FL_TYPE_BOOT_MARKER) return null;
+  return decodeBootMarker(record.payload)?.bootId ?? null;
 }
 
 export class LogDownloader extends EventEmitter {
@@ -143,6 +183,78 @@ export class LogDownloader extends EventEmitter {
 
   beginStream() {
     return this.uds.routineControl(constants.LOG_RID_BEGIN_STREAM, [], this.timeouts.beginStream);
+  }
+
+  /**
+   * Download all records reachable through the frozen firmware's existing
+   * by-boot selector. Boot ranges are sector-granular and can overlap, so each
+   * response is trimmed at its exact boot markers before the records are
+   * merged into one locally-generated DCLG stream.
+   *
+   * @param {Object} [opts] - downloadLog options plus optional pre-read `stats`
+   * @returns {Promise<{raw:Uint8Array, records:Array, downloads:Array, stats:Object}>}
+   */
+  async downloadAllBoots(opts = {}) {
+    const stream = opts.stream ?? constants.LOG_STREAM_TELEMETRY;
+    const stats = opts.stats ?? await this.readStats();
+    const streamStats = stream === constants.LOG_STREAM_TEXT ? stats?.text : stats?.telemetry;
+    if (!streamStats) throw new Error('Flash-log stats are unavailable');
+
+    const oldest = streamStats.bootIdOldest;
+    const current = streamStats.bootIdCurrent;
+    if (current < oldest) throw new Error('Wrapped boot-id ranges are not supported');
+    const totalBoots = current - oldest + 1;
+    const maxBoots = opts.maxBoots ?? 4096;
+    if (totalBoots > maxBoots) {
+      throw new Error(`Refusing to scan ${totalBoots} boot ids (limit ${maxBoots})`);
+    }
+
+    const downloads = [];
+    const records = [];
+    let totalReceived = 0;
+    for (let bootId = oldest; bootId <= current; bootId++) {
+      if (opts.signal?.aborted) throw new DOMException('Log download cancelled', 'AbortError');
+      let result;
+      try {
+        result = await this.downloadLog({
+          ...opts,
+          stream,
+          selector: (downloader) => downloader.selectByBoot(bootId, stream),
+          onProgress: ({ received, records: bootRecords, entryCount }) => {
+            opts.onProgress?.({
+              received: totalReceived + received,
+              records: records.length + bootRecords,
+              entryCount,
+              bootId,
+              bootsCompleted: downloads.length,
+              totalBoots
+            });
+          }
+        });
+      } catch (error) {
+        // Boot IDs are monotonic but gaps are possible. A missing boot is not a
+        // reason to lose every other retained range.
+        if (error?.nrc === constants.NRC_CONDITIONS_NOT_CORRECT) continue;
+        throw error;
+      }
+
+      downloads.push({ bootId, ...result });
+      totalReceived += result.raw.length;
+      const bootRecords = parseLogStream(result.raw);
+      const marker = bootRecords.findIndex(rec => bootMarkerId(rec) === bootId);
+      if (marker < 0) continue;
+      const start = bootId === oldest ? 0 : marker;
+      let end = bootRecords.length;
+      for (let i = marker + 1; i < bootRecords.length; i++) {
+        if (bootMarkerId(bootRecords[i]) !== null) { end = i; break; }
+      }
+      records.push(...bootRecords.slice(start, end));
+    }
+
+    if (downloads.length === 0) throw new Error('No retained boot ranges could be downloaded');
+    const raw = encodeRecordStream(records, stream);
+    this.emit('doneAllBoots', { raw, records, downloads, stats });
+    return { raw, records, downloads, stats };
   }
 
   /**
