@@ -411,7 +411,7 @@ static void ensure_work_q_started(void)
 
 static uint16_t rd_le16(const uint8_t *p)
 {
-    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8U));
+    return (uint16_t)((uint16_t)p[0] | (uint16_t)((uint16_t)p[1] << 8U));
 }
 
 static uint32_t rd_le32(const uint8_t *p)

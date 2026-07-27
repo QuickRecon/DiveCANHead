@@ -229,19 +229,20 @@ static void fl_enqueue(FlashLogDest_t dest, uint8_t type,
         return;
     }
 
-    if (length > sizeof(((LogIngestSlot_t *)0)->payload)) {
+    uint16_t copy_length = length;
+    if (copy_length > sizeof(((LogIngestSlot_t *)0)->payload)) {
         /* Caller bug — truncate to fit. Don't LOG_ERR (recursion). */
-        length = sizeof(((LogIngestSlot_t *)0)->payload);
+        copy_length = sizeof(((LogIngestSlot_t *)0)->payload);
     }
 
     LogIngestSlot_t slot = {
         .dest = (uint8_t)dest,
         .type = type,
-        .length = length,
+        .length = copy_length,
         .ts_us = fl_now_us(),
     };
-    if ((payload != NULL) && (length > 0U)) {
-        (void)memcpy(slot.payload, payload, length);
+    if ((payload != NULL) && (copy_length > 0U)) {
+        (void)memcpy(slot.payload, payload, copy_length);
     }
 
     int rc = k_msgq_put(&fl_ingest_msgq, &slot, K_NO_WAIT);
@@ -302,12 +303,12 @@ void flash_log_enqueue_consensus(const ConsensusMsg_t *c, PPO2_t setpoint)
      *   bit 8: include[2]
      */
     uint16_t packed = 0U;
-    packed |= ((uint16_t)(c->status_array[0]  & 0x03U)) << 0;
-    packed |= ((uint16_t)(c->include_array[0] & 0x01U)) << 2;
-    packed |= ((uint16_t)(c->status_array[1]  & 0x03U)) << 3;
-    packed |= ((uint16_t)(c->include_array[1] & 0x01U)) << 5;
-    packed |= ((uint16_t)(c->status_array[2]  & 0x03U)) << 6;
-    packed |= ((uint16_t)(c->include_array[2] & 0x01U)) << 8;
+    packed |= (uint16_t)((uint16_t)(c->status_array[0]  & 0x03U) << 0U);
+    packed |= (uint16_t)((uint16_t)(c->include_array[0])         << 2U);
+    packed |= (uint16_t)((uint16_t)(c->status_array[1]  & 0x03U) << 3U);
+    packed |= (uint16_t)((uint16_t)(c->include_array[1])         << 5U);
+    packed |= (uint16_t)((uint16_t)(c->status_array[2]  & 0x03U) << 6U);
+    packed |= (uint16_t)((uint16_t)(c->include_array[2])         << 8U);
 
     fl_payload_consensus_t p = {
         .consensus_ppo2 = c->consensus_ppo2,
@@ -627,7 +628,7 @@ static void fl_write_telemetry_batch(void)
         const uint8_t *p = &fl_batch_buf[off];
         FlashLogDest_t dest = (FlashLogDest_t)p[0];
         uint8_t type = p[1];
-        uint16_t length = (uint16_t)p[2] | ((uint16_t)p[3] << 8);
+        uint16_t length = (uint16_t)((uint16_t)p[2] | (uint16_t)((uint16_t)p[3] << 8U));
         size_t rec = FL_BATCH_HDR_BYTES + length;
         if (off + rec > fl_batch_len) {
             break;
@@ -677,7 +678,7 @@ static void fl_write_telemetry_batch(void)
         const uint8_t *p = &fl_batch_buf[off];
         FlashLogDest_t dest = (FlashLogDest_t)p[0];
         uint8_t type = p[1];
-        uint16_t length = (uint16_t)p[2] | ((uint16_t)p[3] << 8);
+        uint16_t length = (uint16_t)((uint16_t)p[2] | (uint16_t)((uint16_t)p[3] << 8U));
         size_t rec = FL_BATCH_HDR_BYTES + length;
         if (off + rec > fl_batch_len) {
             break;
@@ -740,7 +741,7 @@ static void fl_batch_flush(void)
         const uint8_t *p = &fl_batch_buf[off];
         FlashLogDest_t dest = (FlashLogDest_t)p[0];
         uint8_t type = p[1];
-        uint16_t length = (uint16_t)p[2] | ((uint16_t)p[3] << 8);
+        uint16_t length = (uint16_t)((uint16_t)p[2] | (uint16_t)((uint16_t)p[3] << 8U));
         size_t rec = FL_BATCH_HDR_BYTES + length;
         if (off + rec > fl_batch_len) {
             break; /* truncation guard — should never happen */
@@ -959,8 +960,8 @@ int flash_log_init(void)
          * by leaving fl_paused asserted. */
         atomic_set(&fl_paused, 1);
         op_error_publish(OP_ERR_FLASH,
-                 (uint32_t)((rc_telemetry << 16) |
-                        (rc_text & 0xFFFF)));
+                 (((uint32_t)rc_telemetry << 16U) |
+                        ((uint32_t)rc_text & 0xFFFFU)));
         return (0 != rc_telemetry) ? rc_telemetry : rc_text;
     }
 
@@ -1130,7 +1131,7 @@ static int fl_fcb_clear_fed(struct fcb *fcbp)
 {
     int rc = 0;
 
-    while (!fcb_is_empty(fcbp)) {
+    while (0 == fcb_is_empty(fcbp)) {
         watchdog_kick();
         rc = fcb_rotate(fcbp);
         if (0 != rc) {

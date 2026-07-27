@@ -282,13 +282,13 @@ ZTEST(firmware_confirm, test_pass_mask_tracks_completed_checks_partial)
     run_post_with_reboot_catch();
 
     uint32_t mask = firmware_confirm_get_pass_mask();
-    zassert_true((mask & BIT(POST_PASS_BIT_CELLS)) != 0U,
+    zassert_true((mask & (uint32_t)BIT(POST_PASS_BIT_CELLS)) != 0U,
                  "CELLS bit must be set");
-    zassert_true((mask & BIT(POST_PASS_BIT_CONSENSUS)) != 0U,
+    zassert_true((mask & (uint32_t)BIT(POST_PASS_BIT_CONSENSUS)) != 0U,
                  "CONSENSUS bit must be set");
-    zassert_true((mask & BIT(POST_PASS_BIT_PPO2_TX)) == 0U,
+    zassert_true((mask & (uint32_t)BIT(POST_PASS_BIT_PPO2_TX)) == 0U,
                  "PPO2_TX bit must NOT be set");
-    zassert_true((mask & BIT(POST_PASS_BIT_HANDSET)) == 0U,
+    zassert_true((mask & (uint32_t)BIT(POST_PASS_BIT_HANDSET)) == 0U,
                  "HANDSET bit must NOT be set");
 }
 
@@ -301,11 +301,11 @@ ZTEST(firmware_confirm, test_pass_mask_full_on_confirm)
     run_post_with_reboot_catch();
 
     uint32_t mask = firmware_confirm_get_pass_mask();
-    uint32_t expected = BIT(POST_PASS_BIT_CELLS)
-                      | BIT(POST_PASS_BIT_CONSENSUS)
-                      | BIT(POST_PASS_BIT_PPO2_TX)
-                      | BIT(POST_PASS_BIT_HANDSET)
-                      | BIT(POST_PASS_BIT_SOLENOID);
+    uint32_t expected = (uint32_t)BIT(POST_PASS_BIT_CELLS)
+                      | (uint32_t)BIT(POST_PASS_BIT_CONSENSUS)
+                      | (uint32_t)BIT(POST_PASS_BIT_PPO2_TX)
+                      | (uint32_t)BIT(POST_PASS_BIT_HANDSET)
+                      | (uint32_t)BIT(POST_PASS_BIT_SOLENOID);
     zassert_equal(mask, expected,
                   "all five bits must set on happy-path confirm (got 0x%x)", mask);
 }

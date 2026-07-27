@@ -242,8 +242,8 @@ static uint8_t fl_resolve_selector(uint16_t rid, const uint8_t *data,
             return UDS_NRC_INCORRECT_MSG_LEN;
         }
         {
-            uint16_t dive_id = (uint16_t)data[1] |
-                       ((uint16_t)data[2] << BYTE_SHIFT_8);
+            uint16_t dive_id = (uint16_t)((uint16_t)data[1] |
+                       (uint16_t)((uint16_t)data[2] << BYTE_SHIFT_8));
             rc = flash_log_reader_resolve_dive_id(stream, dive_id,
                                   &sm->range);
         }
@@ -291,8 +291,8 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
     }
 
     uint8_t subfunction = requestData[UDS_SID_IDX + 1U];
-    uint16_t rid = ((uint16_t)requestData[UDS_SID_IDX + 2U] << BYTE_SHIFT_8) |
-               (uint16_t)requestData[UDS_SID_IDX + 3U];
+    uint16_t rid = (uint16_t)((uint16_t)((uint16_t)requestData[UDS_SID_IDX + 2U] << BYTE_SHIFT_8) |
+               (uint16_t)requestData[UDS_SID_IDX + 3U]);
 
     if (ROUTINE_SUBFUNC_START != subfunction) {
         UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,

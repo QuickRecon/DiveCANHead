@@ -255,6 +255,7 @@ typedef struct {
     uint8_t factory_sem_ver_bytes[8];
     int  factory_restore_to_slot1_calls;
     int  factory_restore_to_slot1_rc;
+    int  factory_restore_async_calls;
     int  factory_force_capture_async_calls;
 
     /* firmware_confirm */
@@ -373,6 +374,11 @@ int __wrap_factory_image_restore_to_slot1(void)
     return fx.factory_restore_to_slot1_rc;
 }
 
+void __wrap_factory_image_restore_async(void)
+{
+    fx.factory_restore_async_calls++;
+}
+
 void __wrap_factory_image_force_capture_async(void)
 {
     fx.factory_force_capture_async_calls++;
@@ -414,13 +420,17 @@ static void set_ambient_pressure_mbar(uint16_t mbar)
 static void send_uds(uint8_t sid, const uint8_t *body, size_t body_len)
 {
     uint8_t req[UDS_MAX_REQUEST_LENGTH] = {0};
+    size_t copy_len = body_len;
     zassert_true((body_len + 2U) <= sizeof(req), "request too long");
+    if (copy_len > (sizeof(req) - 2U)) {
+        copy_len = sizeof(req) - 2U;
+    }
     req[0] = 0x00U; /* pad */
     req[1] = sid;
-    if ((NULL != body) && (body_len > 0U)) {
-        (void)memcpy(&req[2], body, body_len);
+    if ((NULL != body) && (copy_len > 0U)) {
+        (void)memcpy(&req[2], body, copy_len);
     }
-    UDS_ProcessRequest(&test_ctx, req, (uint16_t)(body_len + 2U));
+    UDS_ProcessRequest(&test_ctx, req, (uint16_t)(copy_len + 2U));
 }
 
 static void enter_programming_session(void)
@@ -899,7 +909,7 @@ ZTEST(uds_state_did_ota, test_F276_refused_in_default_session)
 
     zassert_equal(fx.captured_response[0], UDS_SID_NEGATIVE_RESPONSE);
     zassert_equal(fx.captured_response[2], UDS_NRC_SERVICE_NOT_IN_SESSION);
-    zassert_equal(fx.factory_restore_to_slot1_calls, 0);
+    zassert_equal(fx.factory_restore_async_calls, 0);
 }
 
 ZTEST(uds_state_did_ota, test_F276_refused_when_not_captured)
@@ -911,7 +921,7 @@ ZTEST(uds_state_did_ota, test_F276_refused_when_not_captured)
 
     zassert_equal(fx.captured_response[0], UDS_SID_NEGATIVE_RESPONSE);
     zassert_equal(fx.captured_response[2], UDS_NRC_CONDITIONS_NOT_CORRECT);
-    zassert_equal(fx.factory_restore_to_slot1_calls, 0);
+    zassert_equal(fx.factory_restore_async_calls, 0);
 }
 
 ZTEST(uds_state_did_ota, test_F276_refused_during_dive)
@@ -925,24 +935,26 @@ ZTEST(uds_state_did_ota, test_F276_refused_during_dive)
     /* Same MaintainSession-driven downgrade as test_F275_refused_during_dive. */
     zassert_equal(fx.captured_response[0], UDS_SID_NEGATIVE_RESPONSE);
     zassert_equal(fx.captured_response[2], UDS_NRC_SERVICE_NOT_IN_SESSION);
-    zassert_equal(fx.factory_restore_to_slot1_calls, 0);
+    zassert_equal(fx.factory_restore_async_calls, 0);
     zassert_equal(test_ctx.session, UDS_SESSION_DEFAULT,
                   "session must be force-downgraded on dive");
 }
 
-ZTEST(uds_state_did_ota, test_F276_happy_path_calls_restore_helper)
+ZTEST(uds_state_did_ota, test_F276_happy_path_kicks_async_restore)
 {
     enter_programming_session();
     fx.factory_is_captured_value = true;
-    fx.factory_restore_to_slot1_rc = 0;
 
     write_did(UDS_DID_OTA_RESTORE_FACTORY, 0x01U);
 
-    zassert_equal(fx.factory_restore_to_slot1_calls, 1,
-                  "must call restore helper");
+    /* Since the restore moved to the factory workqueue (async kick), the
+     * handler must fire factory_image_restore_async exactly once; the
+     * synchronous restore_to_slot1 helper is no longer called from uds.c. */
+    zassert_equal(fx.factory_restore_async_calls, 1,
+                  "must kick async restore");
     zassert_equal(fx.captured_response[0],
                   UDS_SID_WRITE_DATA_BY_ID + 0x40U,
-                  "positive response sent before restore");
+                  "positive response sent before restore kick");
 }
 
 /* ===================================================================== */

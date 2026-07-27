@@ -456,7 +456,7 @@ static bool o2s_setup(struct o2s_cell_state *cell)
 
     k_sem_init(&cell->rx_sem, 0, 1);
 
-    if (!device_is_ready(cell->uart_dev)) {
+    if (false == device_is_ready(cell->uart_dev)) {
         LOG_ERR("UART not ready for O2S cell %u", cell->cell_number);
         ok = false;
     } else {

@@ -1228,7 +1228,7 @@
           Versioned JSON containing the request, sampled response, identified plant,
           and recommended gains. Copy it into a tuning review for model refinement.
         </p>
-        <textarea id="atReportText" readonly spellcheck="false"
+        <textarea id="atReportText" readonly spellcheck="false" aria-label="Tune report JSON"
           style="width: 100%; min-height: 260px; box-sizing: border-box; background: #111; border: 1px solid #555; color: #d7e6d7; padding: 10px; border-radius: 4px; font: 12px monospace;"></textarea>
         <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
           <button id="atCopyReportButton">Copy report</button>
@@ -1268,7 +1268,7 @@
 
       <div class="tab-section">
         <h2>Upload Image</h2>
-        <input type="file" id="fwFileInput" accept=".bin,.hex,.img" disabled>
+        <input type="file" id="fwFileInput" accept=".bin,.hex,.img" disabled aria-label="Firmware image file">
         <div id="fwFileInfo" style="margin-top: 10px; color: #888; font-size: 13px;">No file selected</div>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
           <button id="fwUpdateButton" class="danger" disabled>Update OTA</button>
@@ -1338,14 +1338,14 @@
         <h2>Download</h2>
         <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
           <div>
-            <label style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Stream</label>
+            <label for="logStreamSelect" style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Stream</label>
             <select id="logStreamSelect" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
               <option value="0">Telemetry</option>
               <option value="1">Text</option>
             </select>
           </div>
           <div>
-            <label style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Selector</label>
+            <label for="logSelectorSelect" style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Selector</label>
             <select id="logSelectorSelect" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
               <option value="allBoots">All retained records (all boots)</option>
               <option value="latestBoot">Latest boot</option>
@@ -1355,7 +1355,7 @@
             </select>
           </div>
           <div>
-            <label style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Id</label>
+            <label for="logSelectorId" style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Id</label>
             <input type="number" id="logSelectorId" min="0" value="0" disabled
               style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;width:110px;">
           </div>
@@ -1379,7 +1379,7 @@
         <h2>Runtime Capture</h2>
         <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
           <div>
-            <label style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Text verbosity</label>
+            <label for="logVerbositySelect" style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Text verbosity</label>
             <select id="logVerbositySelect" disabled style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
               <option value="1">ERROR</option>
               <option value="2">WARN</option>
@@ -1467,7 +1467,7 @@
 
   <!-- Real-Time Plot (persistent dock - visible on every tab) -->
   <div class="plot-dock" id="plotDock">
-    <div class="plot-dock-header" onclick="togglePlotDock()">
+    <div class="plot-dock-header" onclick="togglePlotDock()" tabindex="0" role="button" aria-label="Toggle real-time plot" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); togglePlotDock(); }">
       <h2>Real-Time Plot</h2>
       <button class="small" id="plotDockToggle">Collapse</button>
     </div>

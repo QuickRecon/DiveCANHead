@@ -22,6 +22,8 @@
 #include "test_shim_adc.h"
 #include "test_shim_gpio.h"
 
+#include <string.h>
+
 LOG_MODULE_REGISTER(test_shim_shared, LOG_LEVEL_INF);
 
 /* Host-side adapter (compiled into native_simulator runner) */
@@ -65,7 +67,7 @@ static void sync_loop(void *p1, void *p2, void *p3)
          * deterministically by the adc_emul value callback registered
          * in test_shim_adc.c — no sync needed for those. */
         float bv = shared->battery_voltage;
-        if (bv != last_battery) {
+        if (0 != memcmp(&bv, &last_battery, sizeof(bv))) {
             last_battery = bv;
             (void)shim_adc_set_battery_voltage(bv);
         }

@@ -105,8 +105,9 @@ static int arm_timer(const struct device *dev, uint32_t duration_us)
     const struct solenoid_config *cfg = dev->config;
     struct solenoid_data *data = dev->data;
 
-    if (duration_us > cfg->max_on_time_us) {
-        duration_us = cfg->max_on_time_us;
+    uint32_t clamped_duration_us = duration_us;
+    if (clamped_duration_us > cfg->max_on_time_us) {
+        clamped_duration_us = cfg->max_on_time_us;
     }
 
     /* Re-arm cleanly: stop, then reprogram the overflow. The deadman uses the
@@ -114,7 +115,7 @@ static int arm_timer(const struct device *dev, uint32_t duration_us)
      * basic timer with 0 CC channels (counter_set_channel_alarm -> -ENOTSUP). */
     (void)counter_stop(cfg->counter);
 
-    data->top.ticks = counter_us_to_ticks(cfg->counter, duration_us);
+    data->top.ticks = counter_us_to_ticks(cfg->counter, clamped_duration_us);
     data->top.callback = deadman_top_cb;
     data->top.user_data = (void *)dev;
     data->top.flags = 0;  /* reset the counter to 0 on (re)arm */

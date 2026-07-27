@@ -142,7 +142,7 @@ static Status_t analog_cell_init_adc(struct analog_cell_state *cell)
 {
     Status_t result = 0;
 
-    if (!adc_is_ready_dt(cell->adc)) {
+    if (false == adc_is_ready_dt(cell->adc)) {
         LOG_ERR("ADC device not ready for cell %u", cell->cell_number);
         result = -ENODEV;
     } else {

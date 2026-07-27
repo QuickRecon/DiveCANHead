@@ -1097,7 +1097,7 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
     cell->rx_active = 0U;
     atomic_set(&cell->broadcast_req, BCST_REQ_NONE);
 
-    if (!device_is_ready(cell->uart_dev)) {
+    if (false == device_is_ready(cell->uart_dev)) {
         LOG_ERR("UART not ready for cell %u", cell->cell_number);
         ok = false;
     } else {

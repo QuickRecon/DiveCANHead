@@ -39,9 +39,9 @@ AlarmMask_t alarm_ppo2_reasons(uint8_t ppo2, uint8_t confidence,
 
 void alarm_update(AlarmMask_t owned_mask, AlarmMask_t active_mask)
 {
-    active_mask &= owned_mask;
+    AlarmMask_t owned_active_mask = active_mask & owned_mask;
     k_mutex_lock(&alarm_lock, K_FOREVER);
-    AlarmMask_t next = (alarm_state & ~owned_mask) | active_mask;
+    AlarmMask_t next = (alarm_state & ~owned_mask) | owned_active_mask;
     if (next != alarm_state) {
         alarm_state = next;
         (void)zbus_chan_pub(&chan_alarm_state, &alarm_state,

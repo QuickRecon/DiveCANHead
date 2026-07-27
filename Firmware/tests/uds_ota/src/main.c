@@ -151,6 +151,7 @@ void heartbeat_set_long_op(bool in_progress)
  * paths — these stubs exist only to satisfy the linker. */
 bool factory_image_is_captured(void) { return false; }
 int  factory_image_restore_to_slot1(void) { return -ENOSYS; }
+void factory_image_restore_async(void) {}
 void factory_image_force_capture_async(void) {}
 
 ZBUS_CHAN_DEFINE(chan_cal_request, CalRequest_t, NULL, NULL,
@@ -367,13 +368,17 @@ static void set_ambient_pressure_mbar(uint16_t mbar)
 static void send_uds(uint8_t sid, const uint8_t *body, size_t body_len)
 {
     uint8_t req[UDS_MAX_REQUEST_LENGTH] = {0};
+    size_t copy_len = body_len;
     zassert_true((body_len + 2U) <= sizeof(req), "request too long");
+    if (copy_len > (sizeof(req) - 2U)) {
+        copy_len = sizeof(req) - 2U;
+    }
     req[0] = 0x00U;   /* pad */
     req[1] = sid;
-    if ((NULL != body) && (body_len > 0U)) {
-        memcpy(&req[2], body, body_len);
+    if ((NULL != body) && (copy_len > 0U)) {
+        (void)memcpy(&req[2], body, copy_len);
     }
-    UDS_ProcessRequest(&test_ctx, req, (uint16_t)(body_len + 2U));
+    UDS_ProcessRequest(&test_ctx, req, (uint16_t)(copy_len + 2U));
 }
 
 /* Populate slot1 buffer with a minimum valid MCUBoot image:

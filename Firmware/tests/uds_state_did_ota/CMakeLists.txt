@@ -16,6 +16,7 @@ add_link_options(
     -Wl,--wrap=factory_image_get_version
     -Wl,--wrap=factory_image_get_sem_ver
     -Wl,--wrap=factory_image_restore_to_slot1
+    -Wl,--wrap=factory_image_restore_async
     -Wl,--wrap=factory_image_force_capture_async
     -Wl,--wrap=firmware_confirm_get_state
     -Wl,--wrap=firmware_confirm_get_pass_mask

@@ -176,12 +176,13 @@ int shim_adc_set_analog_millis(uint8_t cell, float millis)
 
 int shim_adc_set_battery_voltage(float volts)
 {
-    if (volts < 0.0f) {
-        volts = 0.0f;
+    float clamped_volts = volts;
+    if (clamped_volts < 0.0f) {
+        clamped_volts = 0.0f;
     }
 
     /* Battery voltage divided by 7.25x reaches the ADC pin */
-    float pin_mv = volts * 1000.0f * (float)BATT_DIVIDER_NUM /
+    float pin_mv = clamped_volts * 1000.0f * (float)BATT_DIVIDER_NUM /
                    (float)BATT_DIVIDER_DEN;
     if (pin_mv > (float)ADC_INT_REF_MV) {
         pin_mv = (float)ADC_INT_REF_MV;

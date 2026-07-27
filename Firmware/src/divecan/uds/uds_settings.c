@@ -391,18 +391,18 @@ const SettingDefinition_t *UDS_GetSettingInfo(uint8_t index)
 uint64_t UDS_GetSettingValue(uint8_t index)
 {
     uint64_t result = 0U;
-    index = menu_to_storage(index); /* wire (handset) -> storage */
+    uint8_t storageIndex = menu_to_storage(index); /* wire (handset) -> storage */
 
     /* Read the LIVE cache (reflects volatile 0x9130 writes), not an NVS reload. */
     RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
     runtime_settings_get(&rs);
 
     uint8_t bcstCell = 0U;
-    if (setting_is_cell_bcst(index, &bcstCell)) {
+    if (setting_is_cell_bcst(storageIndex, &bcstCell)) {
         return rs.enforceBroadcast[bcstCell] ? 1U : 0U;
     }
 
-    switch (index) {
+    switch (storageIndex) {
     case SETTING_INDEX_FW_COMMIT:
         result = 0U;
         break;
@@ -456,17 +456,17 @@ uint64_t UDS_GetSettingValue(uint8_t index)
 bool UDS_SetSettingValue(uint8_t index, uint64_t value)
 {
     bool result = false;
-    index = menu_to_storage(index); /* wire (handset) -> storage */
+    uint8_t storageIndex = menu_to_storage(index); /* wire (handset) -> storage */
 
-    if (index >= SETTING_COUNT) {
-        OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
+    if (storageIndex >= SETTING_COUNT) {
+        OP_ERROR_DETAIL(OP_ERR_CONFIG, storageIndex);
     } else {
-        const SettingDefinition_t *setting = &settings[index];
+        const SettingDefinition_t *setting = &settings[storageIndex];
 
         if (!setting->editable) {
-            OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, index);
+            OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, storageIndex);
         } else if (value > setting->maxValue) {
-            OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, index);
+            OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, storageIndex);
         } else {
             /* Start from the LIVE cache so volatile overrides stack (each set
              * builds on prior ones) rather than reverting to NVS. */
@@ -474,10 +474,10 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
             runtime_settings_get(&rs);
 
             uint8_t bcstCell = 0U;
-            if (setting_is_cell_bcst(index, &bcstCell)) {
+            if (setting_is_cell_bcst(storageIndex, &bcstCell)) {
                 rs.enforceBroadcast[bcstCell] = (value != 0U);
             } else {
-            switch (index) {
+            switch (storageIndex) {
             case SETTING_INDEX_PPO2_MODE:
                 rs.ppo2ControlMode = (PPO2ControlMode_t)value;
                 break;
@@ -514,7 +514,7 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
                 result = true;
             }
             else {
-                OP_ERROR_DETAIL(OP_ERR_MATH, index);
+                OP_ERROR_DETAIL(OP_ERR_MATH, storageIndex);
             }
         }
     }

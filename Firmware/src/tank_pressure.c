@@ -98,7 +98,7 @@ struct transducer_state {
  */
 static void transducer_init(struct transducer_state *t)
 {
-    if (!adc_is_ready_dt(t->adc)) {
+    if (false == adc_is_ready_dt(t->adc)) {
         LOG_ERR("ADC device not ready for tank pressure transducer");
         OP_ERROR(OP_ERR_DEVICE_NOT_READY);
     } else {
@@ -198,7 +198,7 @@ static TankPressure_t transducer_sample(struct transducer_state *t)
  * which entry. See divecan_jr.dts and the variant overlay for gain setup.
  */
 
-#if CONFIG_O2_TRANSDUCER_CHANNEL >= 0
+#if defined(CONFIG_O2_TRANSDUCER_CHANNEL) && (CONFIG_O2_TRANSDUCER_CHANNEL >= 0)
 static const struct adc_dt_spec o2_transducer_adc =
     ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), CONFIG_O2_TRANSDUCER_CHANNEL);
 static struct transducer_state o2_transducer = {
@@ -210,7 +210,7 @@ static struct transducer_state o2_transducer = {
 };
 #endif
 
-#if CONFIG_DIL_TRANSDUCER_CHANNEL >= 0
+#if defined(CONFIG_DIL_TRANSDUCER_CHANNEL) && (CONFIG_DIL_TRANSDUCER_CHANNEL >= 0)
 static const struct adc_dt_spec dil_transducer_adc =
     ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), CONFIG_DIL_TRANSDUCER_CHANNEL);
 static struct transducer_state dil_transducer = {
@@ -238,10 +238,10 @@ static void tank_pressure_thread(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-#if CONFIG_O2_TRANSDUCER_CHANNEL >= 0
+#if defined(CONFIG_O2_TRANSDUCER_CHANNEL) && (CONFIG_O2_TRANSDUCER_CHANNEL >= 0)
     transducer_init(&o2_transducer);
 #endif
-#if CONFIG_DIL_TRANSDUCER_CHANNEL >= 0
+#if defined(CONFIG_DIL_TRANSDUCER_CHANNEL) && (CONFIG_DIL_TRANSDUCER_CHANNEL >= 0)
     transducer_init(&dil_transducer);
 #endif
 
@@ -252,10 +252,10 @@ static void tank_pressure_thread(void *p1, void *p2, void *p3)
             .timestamp_ticks = 0,
         };
 
-#if CONFIG_O2_TRANSDUCER_CHANNEL >= 0
+#if defined(CONFIG_O2_TRANSDUCER_CHANNEL) && (CONFIG_O2_TRANSDUCER_CHANNEL >= 0)
         msg.o2_decibar = transducer_sample(&o2_transducer);
 #endif
-#if CONFIG_DIL_TRANSDUCER_CHANNEL >= 0
+#if defined(CONFIG_DIL_TRANSDUCER_CHANNEL) && (CONFIG_DIL_TRANSDUCER_CHANNEL >= 0)
         msg.dil_decibar = transducer_sample(&dil_transducer);
 #endif
         msg.timestamp_ticks = k_uptime_ticks();

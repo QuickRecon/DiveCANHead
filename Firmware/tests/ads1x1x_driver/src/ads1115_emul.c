@@ -45,7 +45,7 @@ static int ads1115_emul_transfer(const struct emul *target, struct i2c_msg *msgs
 	struct ads1115_emul_data *data = target->data;
 
 	ARG_UNUSED(addr);
-	__ASSERT_NO_MSG(msgs && num_msgs);
+	__ASSERT_NO_MSG((NULL != msgs) && (0 != num_msgs));
 
 	/* Register write: [reg, hi, lo] (ads1x1x_write_reg). */
 	if (num_msgs == 1 && (msgs[0].flags & I2C_MSG_READ) == 0) {

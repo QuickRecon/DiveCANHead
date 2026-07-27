@@ -120,7 +120,7 @@ void txStatus(DiveCANType_t deviceType, BatteryV_t batteryVoltage,
     uint8_t errByte = (uint8_t)error;
     if (((errByte & DIVECAN_ERR_BAT_MASK) != (uint8_t)DIVECAN_ERR_BAT_LOW)
         && showBattery) {
-        errByte = (uint8_t)((errByte & ~DIVECAN_ERR_BAT_MASK)
+        errByte = (uint8_t)((errByte & (uint8_t)~DIVECAN_ERR_BAT_MASK)
                             | (uint8_t)DIVECAN_ERR_BAT_NORM);
     }
 

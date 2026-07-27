@@ -576,7 +576,7 @@ static void ota_handle_routine_control(OtaSmCtx_t *sm)
     } else {
         uint8_t subfunction = requestData[UDS_SID_IDX + 1U];
         uint16_t rid =
-            ((uint16_t)requestData[UDS_SID_IDX + 2U] << BYTE_SHIFT_8) |
+            (uint16_t)((uint16_t)requestData[UDS_SID_IDX + 2U] << BYTE_SHIFT_8) |
             (uint16_t)requestData[UDS_SID_IDX + 3U];
 
         if (ROUTINE_SUBFUNC_START != subfunction) {
@@ -737,10 +737,10 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
          * directly rather than relying on struct layout. */
         uint16_t hdrSize =
             (uint16_t)hdrRaw[8] |
-            ((uint16_t)hdrRaw[9] << BYTE_SHIFT_8);
+            (uint16_t)((uint16_t)hdrRaw[9] << BYTE_SHIFT_8);
         uint16_t protectTlvSize =
             (uint16_t)hdrRaw[10] |
-            ((uint16_t)hdrRaw[11] << BYTE_SHIFT_8);
+            (uint16_t)((uint16_t)hdrRaw[11] << BYTE_SHIFT_8);
         uint32_t imgSize =
             (uint32_t)hdrRaw[12] |
             ((uint32_t)hdrRaw[13] << BYTE_SHIFT_8) |
@@ -758,10 +758,10 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
         } else {
             uint16_t tlvMagic =
                 (uint16_t)tlvInfo[0] |
-                ((uint16_t)tlvInfo[1] << BYTE_SHIFT_8);
+                (uint16_t)((uint16_t)tlvInfo[1] << BYTE_SHIFT_8);
             uint16_t tlvTot =
                 (uint16_t)tlvInfo[2] |
-                ((uint16_t)tlvInfo[3] << BYTE_SHIFT_8);
+                (uint16_t)((uint16_t)tlvInfo[3] << BYTE_SHIFT_8);
 
             if (TLV_INFO_MAGIC_UNPROT != tlvMagic) {
                 /* No unprotected TLV section -> no SHA-256 */
@@ -781,10 +781,10 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
                     }
                     uint16_t tType =
                         (uint16_t)tlvHdr[0] |
-                        ((uint16_t)tlvHdr[1] << BYTE_SHIFT_8);
+                        (uint16_t)((uint16_t)tlvHdr[1] << BYTE_SHIFT_8);
                     uint16_t tLen =
                         (uint16_t)tlvHdr[2] |
-                        ((uint16_t)tlvHdr[3] << BYTE_SHIFT_8);
+                        (uint16_t)((uint16_t)tlvHdr[3] << BYTE_SHIFT_8);
 
                     if ((TLV_TYPE_SHA256 == tType) &&
                         (IMG_SHA256_LEN == tLen)) {

@@ -177,7 +177,7 @@ static void record_current_byte(uint8_t reg, uint8_t value, const char *source)
     } else {
         current_lsb = value;
     }
-    current_counts = (int16_t)(((uint16_t)current_msb << BYTE_WIDTH) | current_lsb);
+    current_counts = (int16_t)((uint16_t)((uint16_t)current_msb << BYTE_WIDTH) | current_lsb);
     current_at = k_uptime_get();
     current_seen = true;
     current_source = source;
@@ -240,7 +240,7 @@ static int target_stop(struct i2c_target_config *cfg)
         if (poseidon_crc8(wire, sizeof(wire)) ==
             rx[payload + POSEIDON_OFF_CURRENT_CRC]) {
             int16_t counts = (int16_t)((uint16_t)rx[payload + POSEIDON_OFF_DATA0] |
-                ((uint16_t)rx[payload + POSEIDON_OFF_DATA1] << BYTE_WIDTH));
+                (uint16_t)((uint16_t)rx[payload + POSEIDON_OFF_DATA1] << BYTE_WIDTH));
             record_current_counts(counts, "0x06 broadcast");
         }
     }
@@ -456,22 +456,27 @@ static void refresh_outputs(AlarmMask_t alarms)
      * our ADS thread; external masters still arbitrate normally in hardware. */
     i2c1_bus_lock();
     int hud_rc = send_retry_locked(HUD_ADDR, 0x00U, 0x00U);
-    hud_rc |= send_retry_locked(HUD_ADDR, 0x0BU, state);
-    hud_rc |= send_retry_locked(HUD_ADDR, 0x0CU, state);
+    uint32_t hud_rc_bits = (uint32_t)hud_rc;
+    hud_rc_bits |= (uint32_t)send_retry_locked(HUD_ADDR, 0x0BU, state);
+    hud_rc_bits |= (uint32_t)send_retry_locked(HUD_ADDR, 0x0CU, state);
+    hud_rc = (int)hud_rc_bits;
     /* Order per §6.2.2: heartbeat, then the one-shot init, then LED/speaker.
      * Only latch the init once the 0x2D write actually lands, and defer the
      * speaker (0x0E) until the following cycle so the battery has a ~2 s window
      * to complete its DS2782/EEPROM init and master-mode replies first. */
     bool speaker_armed = battery_inited;
     int battery_rc = send_retry_locked(BATTERY_ADDR, 0x00U, 0x00U);
+    uint32_t battery_rc_bits = (uint32_t)battery_rc;
     if (!battery_inited && (battery_rc == 0)) {
-        battery_rc |= send_retry_locked(BATTERY_ADDR, 0x2DU, 0x00U);
+        battery_rc_bits |= (uint32_t)send_retry_locked(BATTERY_ADDR, 0x2DU, 0x00U);
+        battery_rc = (int)battery_rc_bits;
         battery_inited = (battery_rc == 0);
     }
-    battery_rc |= send_retry_locked(BATTERY_ADDR, 0x0DU, state);
+    battery_rc_bits |= (uint32_t)send_retry_locked(BATTERY_ADDR, 0x0DU, state);
     if (speaker_armed) {
-        battery_rc |= send_retry_locked(BATTERY_ADDR, 0x0EU, beep);
+        battery_rc_bits |= (uint32_t)send_retry_locked(BATTERY_ADDR, 0x0EU, beep);
     }
+    battery_rc = (int)battery_rc_bits;
     /* Battery writes can enqueue immediate Battery->Display replies. Start the
      * ADC quiet-window guard at the end of this group. A later target STOP
      * refreshes the timestamp again if such a reply arrives. */

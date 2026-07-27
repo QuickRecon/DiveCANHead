@@ -239,7 +239,7 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
             {
                 /* RoutineControl RIDs 0xF1xx belong to the log
                  * download path; everything else stays with OTA. */
-                uint16_t rid = ((uint16_t)requestData[UDS_SID_IDX + 2U] << 8) |
+                uint16_t rid = (uint16_t)((uint16_t)requestData[UDS_SID_IDX + 2U] << DIVECAN_BYTE_WIDTH) |
                            (uint16_t)requestData[UDS_SID_IDX + 3U];
                 if ((requestLength >= 5U) &&
                     (rid >= 0xF100U) && (rid <= 0xF1FFU)) {
@@ -959,9 +959,9 @@ static bool writeAutotuneControlDID(UDSContext_t *ctx,
                 AutotuneParams_t params = {
                     .base_setpoint_cb = requestData[UDS_DATA_IDX + 2U],
                     .excitation_duty_pct = requestData[UDS_DATA_IDX + 3U],
-                    .iteration_budget = (uint16_t)(
-                        ((uint16_t)requestData[UDS_DATA_IDX + 4U] << DIVECAN_BYTE_WIDTH) |
-                        (uint16_t)requestData[UDS_DATA_IDX + 5U]),
+                    .iteration_budget =
+                        (uint16_t)((uint16_t)requestData[UDS_DATA_IDX + 4U] << DIVECAN_BYTE_WIDTH) |
+                        (uint16_t)requestData[UDS_DATA_IDX + 5U],
                 };
                 Status_t rc = ppo2_autotune_start(&params);
                 if (0 == rc) {
@@ -1409,7 +1409,7 @@ static bool writeFactoryCaptureDID(UDSContext_t *ctx,
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
-    } else if (!boot_is_img_confirmed()) {
+    } else if (false == boot_is_img_confirmed()) {
         LOG_WRN("Force-capture refused: running image is not confirmed");
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,

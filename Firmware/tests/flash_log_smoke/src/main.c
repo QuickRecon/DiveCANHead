@@ -161,12 +161,26 @@ ZTEST_SUITE(flash_log_consensus_pack, NULL, NULL, NULL, NULL, NULL);
 static uint16_t pack_consensus_status(const ConsensusMsg_t *c)
 {
     uint16_t p = 0U;
-    p |= ((uint16_t)(c->status_array[0]  & 0x03U)) << 0;
-    p |= ((uint16_t)(c->include_array[0] & 0x01U)) << 2;
-    p |= ((uint16_t)(c->status_array[1]  & 0x03U)) << 3;
-    p |= ((uint16_t)(c->include_array[1] & 0x01U)) << 5;
-    p |= ((uint16_t)(c->status_array[2]  & 0x03U)) << 6;
-    p |= ((uint16_t)(c->include_array[2] & 0x01U)) << 8;
+    uint16_t include0 = 0U;
+    uint16_t include1 = 0U;
+    uint16_t include2 = 0U;
+
+    if (true == c->include_array[0]) {
+        include0 = 1U;
+    }
+    if (true == c->include_array[1]) {
+        include1 = 1U;
+    }
+    if (true == c->include_array[2]) {
+        include2 = 1U;
+    }
+
+    p |= (uint16_t)(((uint16_t)(c->status_array[0] & 0x03U)) << 0U);
+    p |= (uint16_t)(include0 << 2U);
+    p |= (uint16_t)(((uint16_t)(c->status_array[1] & 0x03U)) << 3U);
+    p |= (uint16_t)(include1 << 5U);
+    p |= (uint16_t)(((uint16_t)(c->status_array[2] & 0x03U)) << 6U);
+    p |= (uint16_t)(include2 << 8U);
     return p;
 }
 

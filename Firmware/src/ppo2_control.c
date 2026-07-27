@@ -53,7 +53,11 @@ LOG_MODULE_REGISTER(ppo2_control, LOG_LEVEL_INF);
 
 /* Dual-inject alternation is compiled in only when the variant wires a
  * secondary O2 inject solenoid (see solenoid_roles.h / src/Kconfig). */
-#define DUAL_O2_INJECT (CONFIG_SOL_O2_INJECT_2_CHANNEL != SOL_ROLE_NOT_PRESENT)
+#if defined(CONFIG_SOL_O2_INJECT_2_CHANNEL) && (CONFIG_SOL_O2_INJECT_2_CHANNEL != SOL_ROLE_NOT_PRESENT)
+#define DUAL_O2_INJECT 1
+#else
+#define DUAL_O2_INJECT 0
+#endif
 
 #if CONFIG_SOL_FLUSH_TIME > 0
 /* The setpoint-change flush is a single solenoid_fire() whose on-time must
@@ -248,12 +252,13 @@ static Numeric_t *getAutotuneDuty(void)
 
 void ppo2_control_set_autotune_duty(bool enabled, Numeric_t duty)
 {
-    if (duty < 0.0f) {
-        duty = 0.0f;
-    } else if (duty > 1.0f) {
-        duty = 1.0f;
+    Numeric_t clamped_duty = duty;
+    if (clamped_duty < 0.0f) {
+        clamped_duty = 0.0f;
+    } else if (clamped_duty > 1.0f) {
+        clamped_duty = 1.0f;
     }
-    *getAutotuneDuty() = duty;
+    *getAutotuneDuty() = clamped_duty;
     *getAutotuneDutyEnabled() = enabled;
     if (!enabled) {
         pid_state_reset_dynamic(getPidState());
@@ -571,14 +576,15 @@ static bool *getDepthSkipLatch(void)
 static void pid_sleep_kicking_us(uint32_t total_us)
 {
     const uint32_t step_us = 1500000U;
-    while (total_us > 0U) {
+    uint32_t remaining_us = total_us;
+    while (remaining_us > 0U) {
         heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
         /* Service the current judge window mid-phase so a fire's delayed draw is
          * caught within its window rather than only at the once-per-cycle poll. */
         poll_solenoid_current();
-        uint32_t chunk = (total_us < step_us) ? total_us : step_us;
+        uint32_t chunk = (remaining_us < step_us) ? remaining_us : step_us;
         k_usleep((int32_t)chunk);
-        total_us -= chunk;
+        remaining_us -= chunk;
     }
 }
 

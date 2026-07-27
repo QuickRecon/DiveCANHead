@@ -229,7 +229,7 @@ static void load_bcst(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
     ssize_t got = cb(arg, vals, sizeof(vals));
     if (sizeof(vals) == (size_t)got) {
         for (size_t i = 0; i < CELL_MAX_COUNT; ++i) {
-            cached->enforceBroadcast[i] = (vals[i] != false);
+            cached->enforceBroadcast[i] = vals[i];
         }
     }
 }
