@@ -53,7 +53,7 @@ LOG_MODULE_REGISTER(flash_log, LOG_LEVEL_NONE);
  * text). Capacity: telemetry 192 × 256 KiB = 48 MiB, text
  * 32 × 256 KiB = 8 MiB — matching the partition sizes in divecan_jr.dts.
  */
-#define FL_SECTOR_SIZE  (256U * 1024U)
+#define FL_SECTOR_SIZE  CONFIG_FLASH_LOG_SECTOR_SIZE
 /* "DCLH" — bumped from "DCLG" (0x44434C47) when the FCB geometry changed from
  * 100 x 64 KiB to 192/32 x 256 KiB. fcb_init() only validates the per-sector
  * magic (NOT the version), so old-geometry data keeps the same magic and is

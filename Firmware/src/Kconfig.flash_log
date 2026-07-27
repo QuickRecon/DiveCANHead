@@ -19,6 +19,35 @@ config FLASH_LOG
 
 if FLASH_LOG
 
+config FLASH_LOG_SECTOR_SIZE
+	int "Logical FCB sector size in bytes"
+	default 262144
+	range 4096 1048576
+	help
+	  Size of each logical FCB sector. Production uses 256 KiB sectors
+	  so the two FCB descriptor arrays can address most of the 64 MiB
+	  external NOR within FCB's 255-sector limit. Native-simulator tests
+	  override this together with the sector counts and matching fixed
+	  partitions.
+
+config FLASH_LOG_TELEMETRY_SECTOR_COUNT
+	int "Telemetry FCB logical sector count"
+	default 192
+	range 2 255
+	help
+	  Number of logical sectors in the telemetry FCB. The corresponding
+	  fixed partition must be at least this value multiplied by
+	  FLASH_LOG_SECTOR_SIZE.
+
+config FLASH_LOG_TEXT_SECTOR_COUNT
+	int "Text FCB logical sector count"
+	default 32
+	range 2 255
+	help
+	  Number of logical sectors in the text FCB. The corresponding fixed
+	  partition must be at least this value multiplied by
+	  FLASH_LOG_SECTOR_SIZE.
+
 config FLASH_LOG_QUEUE_DEPTH
 	int "log_writer ingest queue depth (slots)"
 	default 8

@@ -24,8 +24,8 @@ extern "C" {
  * arrays sized to match). 256 KiB sectors → telemetry 48 MiB, text
  * 8 MiB. Must stay <= 255 (FCB's uint8_t f_sector_cnt) and match the
  * partition sizes in boards/quickrecon/divecan_jr/divecan_jr.dts. */
-#define FL_TELEMETRY_SECTOR_COUNT 192U
-#define FL_TEXT_SECTOR_COUNT      32U
+#define FL_TELEMETRY_SECTOR_COUNT CONFIG_FLASH_LOG_TELEMETRY_SECTOR_COUNT
+#define FL_TEXT_SECTOR_COUNT      CONFIG_FLASH_LOG_TEXT_SECTOR_COUNT
 
 /** @brief Sentinel for "no boot marker recorded for this sector". */
 #define FL_INVALID_BOOT_ID UINT32_MAX

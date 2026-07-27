@@ -15,17 +15,14 @@ What we verify:
     — the self-contained config the integration build pins.
   * The runtime-config section is present and well-formed.
 
-What we *don't* verify here:
-  * Flash-log occupancy / boot id / dive id — ``CONFIG_FLASH_LOG=n``
-    under the integration overlay (no SPI NOR partitions are
-    configured on the ``native_sim`` board), so the flash section
-    is compiled out. The flash-log producer and stats path are
-    covered by ``tests/flash_log_index_summary`` and the regular
-    target build.
+The integration topology enables the flash log with small simulator-only
+partitions, so the preamble also verifies the cheap occupancy/current-boot
+statistics without triggering the deliberately-lazy full-ring reader index.
 """
 
 from __future__ import annotations
 
+import tempfile
 import time
 from pathlib import Path
 from typing import Generator
@@ -50,24 +47,27 @@ def firmware() -> Generator[None, None, None]:
     flushed to the capture file.
     """
     _kill_stale_firmware()
-    proc = launch_native_sim_firmware()
-    try:
-        # emit_startup_preamble() paces ~25 LOG_INF lines with a 50 ms k_msleep
-        # each (main.c preamble_line, to let the priority-3 log thread drain), so
-        # the block takes ~1.5 s of sim/wall time to fully flush — a fixed short
-        # sleep races it and drops the late lines (Solenoids/Has flags/Compile
-        # defaults). Poll the capture until the footer lands (bounded), so the
-        # wait tracks the real emit time instead of guessing.
-        log_path = Path("/tmp/divecan_firmware.log")
-        deadline = time.monotonic() + 8.0
-        while time.monotonic() < deadline:
-            if (log_path.exists() and "===== End preamble ====="
-                    in log_path.read_bytes().decode("utf-8", errors="replace")):
-                break
-            time.sleep(0.1)
-        yield
-    finally:
-        stop_native_sim_firmware(proc)
+    with tempfile.TemporaryDirectory(prefix="divecan-preamble-") as tmpdir:
+        flash_path = str(Path(tmpdir) / "flash.bin")
+        proc = launch_native_sim_firmware(
+            flash_file=flash_path,
+            flash_erase=True,
+        )
+        try:
+            # emit_startup_preamble() paces ~25 LOG_INF lines with a 50 ms
+            # k_msleep each (main.c preamble_line, to let the priority-3 log
+            # thread drain), so the block takes ~1.5 s of sim/wall time to
+            # fully flush. Poll the capture until the footer lands (bounded).
+            log_path = Path("/tmp/divecan_firmware.log")
+            deadline = time.monotonic() + 8.0
+            while time.monotonic() < deadline:
+                if (log_path.exists() and "===== End preamble =====" in
+                        log_path.read_bytes().decode("utf-8", errors="replace")):
+                    break
+                time.sleep(0.1)
+            yield
+        finally:
+            stop_native_sim_firmware(proc)
 
 
 @pytest.fixture(scope="module")
@@ -164,10 +164,10 @@ def test_preamble_runtime_pid_gains_are_integers(boot_log: str) -> None:
     assert "*float*" not in suffix, f"picolibc FP regression: {suffix!r}"
 
 
-def test_preamble_skips_flash_log_block_when_disabled(boot_log: str) -> None:
-    """CONFIG_FLASH_LOG=n in integration → the 'Flash log:' header must not appear."""
-    # This locks the variant-aware compilation in: if someone later
-    # enables CONFIG_FLASH_LOG for integration, this assertion will
-    # fail and the test should be updated to also check the flash
-    # occupancy lines.
-    assert "Flash log:" not in boot_log
+def test_preamble_emits_flash_log_block(boot_log: str) -> None:
+    """The simulator-backed telemetry/text FCB statistics are present."""
+    assert "Flash log:" in boot_log
+    assert "Telemetry:" in boot_log
+    assert "/4 sectors used" in boot_log
+    assert "Text:" in boot_log
+    assert "/2 sectors used" in boot_log

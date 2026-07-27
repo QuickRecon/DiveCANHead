@@ -278,6 +278,9 @@ All Kconfig options live under `src/Kconfig.flash_log`:
 | Kconfig                              | Default | Purpose                                |
 |--------------------------------------|---------|----------------------------------------|
 | `CONFIG_FLASH_LOG`                   | y       | Master enable                          |
+| `CONFIG_FLASH_LOG_SECTOR_SIZE`       | 262144  | Logical FCB sector size                |
+| `CONFIG_FLASH_LOG_TELEMETRY_SECTOR_COUNT` | 192 | Telemetry FCB sector descriptors     |
+| `CONFIG_FLASH_LOG_TEXT_SECTOR_COUNT` | 32      | Text FCB sector descriptors            |
 | `CONFIG_FLASH_LOG_QUEUE_DEPTH`       | 8       | Ingest k_msgq slot count               |
 | `CONFIG_FLASH_LOG_MAX_ENTRY_BYTES`   | 96      | Slot size in RAM (12 B header + payload) |
 | `CONFIG_FLASH_LOG_WRITER_STACK`      | 512     | Writer thread stack                    |

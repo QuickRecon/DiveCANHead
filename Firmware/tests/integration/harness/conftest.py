@@ -217,7 +217,7 @@ def stop_native_sim_firmware(proc: subprocess.Popen[bytes]) -> None:
 
 
 @pytest.fixture()
-def firmware(request) -> Generator[subprocess.Popen[bytes], None, None]:
+def firmware(request, tmp_path) -> Generator[subprocess.Popen[bytes], None, None]:
     """Launch the native_sim binary, yield the ``Popen`` handle.
 
     A test that wants accelerated simulated time can attach an
@@ -232,8 +232,14 @@ def firmware(request) -> Generator[subprocess.Popen[bytes], None, None]:
     rt_ratio = marker.args[0] if marker is not None else None
     rt_ratio = _clamp_rt_ratio(rt_ratio)
 
+    flash_path = str(tmp_path / "flash.bin")
+
     _kill_stale_firmware()
-    proc = launch_native_sim_firmware(rt_ratio=rt_ratio)
+    proc = launch_native_sim_firmware(
+        rt_ratio=rt_ratio,
+        flash_file=flash_path,
+        flash_erase=True,
+    )
 
     try:
         yield proc

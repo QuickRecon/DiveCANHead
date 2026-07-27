@@ -255,5 +255,15 @@
             label = "factory-image";
             reg = <0x00100000 0x00069000>;
         };
+
+        log_telemetry_partition: partition@169000 {
+            label = "log-telemetry";
+            reg = <0x00169000 0x00040000>;
+        };
+
+        log_text_partition: partition@1a9000 {
+            label = "log-text";
+            reg = <0x001a9000 0x00020000>;
+        };
     };
 };
