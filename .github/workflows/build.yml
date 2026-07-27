@@ -65,8 +65,19 @@ jobs:
           . /etc/os-release
           llvm_codename="${VERSION_CODENAME:?missing Ubuntu version codename}"
           sudo install -d -m 0755 /etc/apt/keyrings
-          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key |
-            sudo gpg --dearmor --yes -o /etc/apt/keyrings/apt.llvm.org.gpg
+          llvm_key="$RUNNER_TEMP/apt.llvm.org.asc"
+          curl --fail --show-error --silent --location \
+            --proto '=https' --proto-redir '=https' \
+            --output "$llvm_key" \
+            https://apt.llvm.org/llvm-snapshot.gpg.key
+          llvm_key_fingerprint=$(
+            gpg --show-keys --with-colons "$llvm_key" |
+              awk -F: '$1 == "fpr" { print $10; exit }'
+          )
+          test "$llvm_key_fingerprint" = \
+            6084F3CF814B57C1CF12EFD515CF4D18AF4F7421
+          sudo gpg --dearmor --yes \
+            --output /etc/apt/keyrings/apt.llvm.org.gpg "$llvm_key"
           echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/${llvm_codename}/ llvm-toolchain-${llvm_codename}-22 main" |
             sudo tee /etc/apt/sources.list.d/apt.llvm.org.list >/dev/null
           sudo apt-get update
@@ -79,9 +90,9 @@ jobs:
           echo "GCOV_EXECUTABLE=/usr/lib/llvm-22/bin/llvm-cov gcov" >> "$GITHUB_ENV"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: '3.12'
+          python-version: '3.12.10'
 
       # This runner's tool cache is a persistent host volume. Keep the large
       # west module graph, pip downloads, and SDK there directly instead of
@@ -111,7 +122,11 @@ jobs:
 
       - name: Initialize west workspace
         run: |
-          pip install west gcovr 'cmake>=3.20,<4' \
+          # west -> pykwalify -> docopt, and docopt 0.6.2 has no wheel.
+          # Keep that single, exactly pinned source-package exception while
+          # requiring wheels for the rest of the locked dependency graph.
+          pip install --only-binary :all: --no-binary docopt \
+            west==1.5.0 gcovr==8.6 cmake==3.31.10 \
             -r Firmware/tests/integration/harness/requirements.txt
           west init -l Firmware
           west update --narrow -o=--depth=1
@@ -232,14 +247,14 @@ jobs:
           echo "Merged compilation database: $(jq length compile_commands.json) entries"
 
       - name: Archive coverage report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: firmware-coverage-${{ github.run_id }}
           path: Firmware/coverage-report/
           retention-days: 14
 
       - name: SonarCloud scan
-        uses: SonarSource/sonarqube-scan-action@v6
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
