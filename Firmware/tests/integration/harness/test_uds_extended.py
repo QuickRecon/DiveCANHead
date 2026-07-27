@@ -10,6 +10,12 @@ from __future__ import annotations
 import pytest
 
 import divecan
+import uds as uds_helpers
+from conftest import (
+    relaunch_native_sim_firmware,
+    stop_native_sim_firmware,
+)
+from sim_shim import SharedMemShim
 
 pytestmark = pytest.mark.rt_ratio(100)
 
@@ -174,6 +180,74 @@ def test_solenoid_override_refuses_while_control_loop_owns_output(dut) -> None:
     _send_wdbi(can_bus, DID_SOLENOID_OVERRIDE, b"\x00\x5a")
     _expect_negative(can_bus, UDS_SID_WRITE_DATA_BY_ID,
                      NRC_CONDITIONS_NOT_CORRECT)
+
+
+@pytest.mark.rt_ratio(10)
+@pytest.mark.parametrize("channel", [0, 1, 2, 3])
+def test_calibration_acquire_cancels_every_solenoid_channel(
+    dut, firmware, channel: int
+) -> None:
+    """Calibration acquisition owns and clears the complete solenoid bank.
+
+    Put control in OFF mode so the diagnostic override can energize each raw
+    channel in turn, then issue a normal calibration request. DiveCAN sends
+    its compatibility ACK immediately before claiming the guard, so poll for
+    the ownership transition and require it to clear the bank well before the
+    override's 1.5-second deadman could do so naturally.
+    """
+    can_bus, shim = dut
+    proc = firmware
+    flash_path = getattr(proc, "_divecan_flash_file", None)
+    assert flash_path is not None, "firmware fixture must use isolated flash"
+
+    uds_helpers.save_setting_value(
+        can_bus,
+        uds_helpers.SETTING_INDEX_PPO2_MODE,
+        uds_helpers.PPO2_MODE_OFF,
+    )
+
+    shim.close()
+    stop_native_sim_firmware(proc)
+    proc = relaunch_native_sim_firmware(flash_path, rt_ratio=10)
+    shim = SharedMemShim()
+
+    try:
+        shim.wait_ready()
+        shim.set_bus_on()
+
+        can_bus.flush_rx()
+        _enter_programming_session(can_bus)
+        _send_wdbi(
+            can_bus,
+            DID_SOLENOID_OVERRIDE,
+            bytes([channel, 0x5A]),
+        )
+        _expect_wdbi_positive(can_bus, DID_SOLENOID_OVERRIDE)
+        assert shim.get_solenoid_state()[channel], (
+            f"precondition: override did not energize channel {channel}"
+        )
+
+        start_us = shim.get_uptime_us()
+        can_bus.flush_rx()
+        can_bus.send(divecan.build_cal_request())
+        ack = can_bus.wait_for(divecan.CAL_RESP_ID)
+        assert ack.data[0] == 0x05
+
+        elapsed_us = shim.get_uptime_us() - start_us
+        while any(shim.get_solenoid_state()) and elapsed_us < 1_000_000:
+            elapsed_us = shim.get_uptime_us() - start_us
+
+        assert elapsed_us < 1_000_000, (
+            "calibration acquire did not clear the bank before the "
+            "override deadman could expire"
+        )
+        assert not any(shim.get_solenoid_state()), (
+            f"calibration acquire left a solenoid active after channel "
+            f"{channel} override"
+        )
+    finally:
+        shim.close()
+        stop_native_sim_firmware(proc)
 
 
 def test_error_histogram_read_and_clear(dut) -> None:

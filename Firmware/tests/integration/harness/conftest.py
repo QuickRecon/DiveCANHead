@@ -193,6 +193,7 @@ def launch_native_sim_firmware(append_log: bool = False,
     # Attach the log file to the proc so the caller (or the firmware
     # fixture's teardown) can close it after termination.
     proc._divecan_log_file = log_file  # type: ignore[attr-defined]
+    proc._divecan_flash_file = flash_file  # type: ignore[attr-defined]
     return proc
 
 

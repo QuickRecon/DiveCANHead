@@ -19,9 +19,7 @@
 
 #include "calibration.h"
 #include "oxygen_cell_types.h"
-#if defined(CONFIG_HAS_FLUSH_SOLENOID) || defined(CONFIG_HAS_O2_SOLENOID)
 #include "solenoid_roles.h"
-#endif
 #include "oxygen_cell_channels.h"
 #include "divecan_channels.h"
 #include "oxygen_cell_math.h"
@@ -106,6 +104,23 @@ static atomic_t *getCalRunning(void)
 }
 
 /**
+ * @brief Cancel every active solenoid and the shared hardware deadman.
+ *
+ * Calibration takes ownership of the complete solenoid bank, not just the
+ * valve used by the selected method. Clearing the bank at both ownership
+ * boundaries prevents an in-flight controller injection, setpoint flush, or
+ * previous calibration pulse from crossing into the next owner.
+ */
+static void calibration_stop_all_solenoids(void)
+{
+#ifdef CONFIG_SOLENOID
+    if (device_is_ready(SOL_DEVICE)) {
+        solenoid_all_off(SOL_DEVICE);
+    }
+#endif
+}
+
+/**
  * @brief Query whether a calibration is currently in progress.
  *
  * @return true if a calibration is active, false otherwise.
@@ -132,7 +147,17 @@ bool calibration_is_running(void)
  */
 bool calibration_try_acquire(void)
 {
-    return atomic_cas(getCalRunning(), 0, 1);
+    bool acquired = atomic_cas(getCalRunning(), 0, 1);
+
+    if (acquired) {
+        /* The guard changes ownership before outputs are cancelled, so normal
+         * control paths observe calibration_is_running() and cannot start a
+         * replacement pulse after this boundary. solenoid_all_off() also
+         * cancels the shared deadman timer. */
+        calibration_stop_all_solenoids();
+    }
+
+    return acquired;
 }
 
 /**
@@ -144,7 +169,13 @@ bool calibration_try_acquire(void)
  */
 void calibration_release(void)
 {
-    (void)atomic_clear(getCalRunning());
+    if (0 != atomic_get(getCalRunning())) {
+        /* End every deliberate calibration pulse before restoring normal
+         * ownership. Keep the guard asserted until the outputs and shared
+         * deadman are known to be idle. */
+        calibration_stop_all_solenoids();
+        (void)atomic_clear(getCalRunning());
+    }
 }
 
 /* ---- Settings persistence for calibration coefficients ---- */

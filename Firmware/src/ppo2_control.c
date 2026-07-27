@@ -34,6 +34,7 @@
 #include "heartbeat.h"
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_types.h"
+#include "calibration.h"
 #include "solenoid_roles.h"
 #include "divecan_channels.h"
 #ifdef CONFIG_FLASH_LOG
@@ -630,6 +631,18 @@ static void run_pid_fire_cycle(void)
          * repeat OP_ERROR until pressure recovers. */
     }
 
+    if (calibration_is_running()) {
+        /* Calibration owns the complete solenoid bank. Its acquire boundary
+         * already cancelled any pulse that was active; keep this control
+         * cycle quiet without reporting an intentional inhibit as a hardware
+         * fault. Sleep the normal complete cycle so controller cadence does
+         * not accelerate while calibration is active. */
+        inject_solenoid_off();
+        pid_sleep_kicking_us(timing.on_duration_us +
+                     timing.off_duration_us);
+        return;
+    }
+
     if (timing.should_fire) {
         Status_t rc = inject_solenoid_fire(timing.on_duration_us);
         if (rc < 0) {
@@ -716,6 +729,14 @@ static void run_mk15_fire_cycle(void)
     PIDNumeric_t d_setpoint = (PIDNumeric_t)setpoint / CENTIBAR_TO_BAR;
     PIDNumeric_t measurement = consensus.precision_consensus;
 
+    if (calibration_is_running()) {
+        /* See run_pid_fire_cycle(): this is an ownership inhibit, not a
+         * solenoid fault. Recheck after the ordinary MK15 off interval. */
+        inject_solenoid_off();
+        mk15_sleep_kicking(MK15_OFF_TIME_MS);
+        return;
+    }
+
     /* Check if now is a time when we fire the solenoid */
     if ((d_setpoint > measurement) &&
         (PPO2_FAIL != consensus.consensus_ppo2)) {
@@ -798,6 +819,13 @@ static void run_setpoint_flush_check(void)
     SetpointFlushDirection_t dir = setpoint_flush_direction(previous, current);
 
     *last = current;
+
+    if (calibration_is_running()) {
+        /* Consume the commanded setpoint transition but do not queue a
+         * delayed flush after calibration releases ownership. Calibration
+         * methods may operate the same flush valves deliberately. */
+        return;
+    }
 
     if (SETPOINT_FLUSH_NONE != dir) {
         Status_t rc = 0;

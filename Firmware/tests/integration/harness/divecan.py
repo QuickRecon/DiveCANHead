@@ -94,9 +94,14 @@ def build_cal_request() -> can.Message:
 
 
 def build_shutdown() -> can.Message:
-    """Build a shutdown request directed at the DUT."""
+    """Build a BUS_OFF request originating from handset/controller ID 1.
+
+    DiveCAN's low arbitration-ID byte is the source, not the destination.
+    Using DUT_ID (4) makes the firmware's native-SocketCAN echo filter
+    correctly discard the request as its own transmission.
+    """
     return can.Message(
-        arbitration_id=0xD030004,
+        arbitration_id=0xD030001,
         data=[0x64, 0x03, 0xF6],
         is_extended_id=True,
     )

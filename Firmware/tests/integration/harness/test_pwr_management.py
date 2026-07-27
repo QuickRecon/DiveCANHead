@@ -34,7 +34,7 @@ import time
 import pytest
 
 from conftest import (
-    launch_native_sim_firmware,
+    relaunch_native_sim_firmware,
     stop_native_sim_firmware,
 )
 from sim_shim import SharedMemShim
@@ -230,6 +230,7 @@ def _expect_firmware_exit(proc, deadline_s: float) -> None:
         "shutdown_thread_fn comes from the other tests in this file."
     ),
 )
+@pytest.mark.rt_ratio(10)
 def test_power_cycle_bus_off_then_shutdown(dut, firmware) -> None:
     """``bus_off`` followed by a shutdown request must drive the
     firmware to the dormant state.  On native_sim that means the
@@ -237,6 +238,10 @@ def test_power_cycle_bus_off_then_shutdown(dut, firmware) -> None:
     can_bus, shim = dut
     proc = firmware
 
+    # Synchronize on a completed CAN request/response before sending the
+    # one-way shutdown command. Flash-log startup adds enough work that the
+    # fixed process-launch delay alone is not a reliable CAN-ready barrier.
+    _ping_and_get_status(can_bus)
     shim.set_bus_off()
     can_bus.send(divecan.build_shutdown())
 
@@ -255,14 +260,18 @@ def test_power_cycle_bus_off_then_shutdown(dut, firmware) -> None:
     or os.environ.get("DIVECAN_RT_RATIO_MAX") is not None,
     reason="See test_power_cycle_bus_off_then_shutdown — same root cause.",
 )
+@pytest.mark.rt_ratio(10)
 def test_power_cycle_bus_on_recovery(dut, firmware) -> None:
     """After a shutdown the harness simulates the silicon's
     WKUP-triggered POR by relaunching the firmware.  The fresh boot
     should resume normal operation, in particular PPO2 broadcasts."""
     can_bus, shim = dut
     proc = firmware
+    flash_path = getattr(proc, "_divecan_flash_file", None)
+    assert flash_path is not None, "firmware fixture must use isolated flash"
 
     # First: trigger the dormant state.
+    _ping_and_get_status(can_bus)
     shim.set_bus_off()
     can_bus.send(divecan.build_shutdown())
     _expect_firmware_exit(proc, SHUTDOWN_DEADLINE_S)
@@ -270,7 +279,7 @@ def test_power_cycle_bus_on_recovery(dut, firmware) -> None:
 
     # Now play the role of the silicon's WKUP→POR mechanism: relaunch
     # the firmware as if a fresh power-on reset had occurred.
-    new_proc = launch_native_sim_firmware(append_log=True, rt_ratio=100)
+    new_proc = relaunch_native_sim_firmware(flash_path, rt_ratio=10)
     new_shim = SharedMemShim()
     try:
         new_shim.wait_ready()
@@ -289,6 +298,7 @@ def test_power_cycle_bus_on_recovery(dut, firmware) -> None:
     or os.environ.get("DIVECAN_RT_RATIO_MAX") is not None,
     reason="See test_power_cycle_bus_off_then_shutdown — same root cause.",
 )
+@pytest.mark.rt_ratio(10)
 def test_power_cycle_shutdown_then_bus_off(dut, firmware) -> None:
     """The OTHER ordering: the ``BUS_OFF`` message arrives FIRST (over the
     still-live bus) and the bus goes quiet AFTER.  This is what real hardware
@@ -300,6 +310,7 @@ def test_power_cycle_shutdown_then_bus_off(dut, firmware) -> None:
     can_bus, shim = dut
     proc = firmware
 
+    _ping_and_get_status(can_bus)
     can_bus.send(divecan.build_shutdown())
     shim.set_bus_off()
 

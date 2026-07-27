@@ -30,7 +30,7 @@ import pytest
 import helpers
 import uds as uds_helpers
 from conftest import (
-    launch_native_sim_firmware,
+    relaunch_native_sim_firmware,
     stop_native_sim_firmware,
 )
 from rebreather_model import LOOP_PROFILES, RebreatherModel
@@ -130,9 +130,15 @@ def _set_mode_pid_and_reboot(can_bus, shim, proc):
     """Persist PPO2 mode = PID, reboot so it latches, return (proc, shim)."""
     uds_helpers.save_setting_value(
         can_bus, uds_helpers.SETTING_INDEX_PPO2_MODE, uds_helpers.PPO2_MODE_PID)
+    flash_path = getattr(proc, "_divecan_flash_file", None)
+    assert flash_path is not None, "firmware fixture must use isolated flash"
+
     shim.close()
     stop_native_sim_firmware(proc)
-    new_proc = launch_native_sim_firmware(append_log=True, rt_ratio=RT_RATIO)
+    new_proc = relaunch_native_sim_firmware(
+        flash_path,
+        rt_ratio=RT_RATIO,
+    )
     new_shim = SharedMemShim()
     new_shim.wait_ready()
     new_shim.set_bus_on()

@@ -49,7 +49,7 @@ import divecan
 import helpers
 import uds as uds_helpers
 from conftest import (
-    launch_native_sim_firmware,
+    relaunch_native_sim_firmware,
     stop_native_sim_firmware,
 )
 from rebreather_model import LOOP_PROFILES, RebreatherModel
@@ -153,6 +153,8 @@ def _set_mode_and_reboot(mode_name: str, can_bus, shim, proc):
         can_bus,
         uds_helpers.SETTING_INDEX_PPO2_MODE,
         PPO2_MODE_VALUES[mode_name])
+    flash_path = getattr(proc, "_divecan_flash_file", None)
+    assert flash_path is not None, "firmware fixture must use isolated flash"
 
     # 2. Reap the firmware so NVS is flushed cleanly and a fresh
     # boot picks up the new mode.
@@ -160,10 +162,12 @@ def _set_mode_and_reboot(mode_name: str, can_bus, shim, proc):
     stop_native_sim_firmware(proc)
 
     # 3. Relaunch with the same rt-ratio — fresh process, same
-    # accelerated time pacing.
+    # accelerated time pacing and the same per-test flash image.
     marker_ratio = RT_RATIO
-    new_proc = launch_native_sim_firmware(append_log=True,
-                                          rt_ratio=marker_ratio)
+    new_proc = relaunch_native_sim_firmware(
+        flash_path,
+        rt_ratio=marker_ratio,
+    )
     new_shim = SharedMemShim()
     new_shim.wait_ready()
     new_shim.set_bus_on()
@@ -232,13 +236,27 @@ def _inject_ppo2_to_cells(shared, reported_ppo2_bar):
     )
 
 
-def _count_setpoint_crossings(samples: list[int], setpoint_cb: int) -> int:
-    """Count zero-crossings of (sample − setpoint) over the trace."""
+def _count_setpoint_crossings(
+    samples: list[int],
+    setpoint_cb: int,
+    deadband_cb: int = 1,
+) -> int:
+    """Count crossings outside a quantisation deadband around setpoint.
+
+    CELL_STATE is integer centibar data. Treating 69 → 70 → 71 as a complete
+    zero crossing counts one-bit quantisation and cross-process scheduling
+    jitter as a limit cycle even when the physical peak-to-peak amplitude is
+    only 0.02–0.03 bar. A one-centibar Schmitt deadband counts a crossing only
+    after the trace has reached both sides beyond that noise floor.
+    """
     crossings = 0
     prev_sign = 0
     for v in samples:
         diff = v - setpoint_cb
-        sign = (1 if diff > 0 else (-1 if diff < 0 else 0))
+        sign = (
+            1 if diff > deadband_cb
+            else (-1 if diff < -deadband_cb else 0)
+        )
         if sign != 0 and prev_sign != 0 and sign != prev_sign:
             crossings += 1
         if sign != 0:
