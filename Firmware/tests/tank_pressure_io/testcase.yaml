@@ -1,0 +1,9 @@
+tests:
+  divecan.tank_pressure_io:
+    platform_allow:
+      - native_sim
+      - native_sim/native/64
+    tags:
+      - tank_pressure
+      - adc
+      - unit

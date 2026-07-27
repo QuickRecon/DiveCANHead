@@ -1,0 +1,5 @@
+mainmenu "Flash Log Reader Tests"
+
+rsource "../../src/Kconfig.flash_log"
+
+source "Kconfig.zephyr"
