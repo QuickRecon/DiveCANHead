@@ -25,7 +25,14 @@ static const struct adc_dt_spec ch1 = ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user
 
 static int read_channel(const struct adc_dt_spec *spec, int16_t *out)
 {
-	struct adc_sequence seq;
+	/* Zero-initialise: adc_sequence_init_dt() only fills
+	 * channels/resolution/oversampling, leaving options and calibrate
+	 * untouched. A stack-local left uninitialised gives adc_context a
+	 * garbage options pointer (it derefs sequence->options and later
+	 * invokes options->callback), which segfaults or trips the
+	 * buffer-size check. The real app keeps adc_seq in a zeroed static
+	 * struct, so it never hits this. */
+	struct adc_sequence seq = {0};
 	int rc;
 
 	(void)adc_sequence_init_dt(spec, &seq);

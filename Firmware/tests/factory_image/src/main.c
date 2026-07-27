@@ -14,6 +14,7 @@
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/dfu/mcuboot.h>
 
 #include <setjmp.h>
 #include <string.h>
@@ -27,6 +28,21 @@
 
 /* MCUBoot image header magic, little-endian on the wire. */
 static const uint8_t IMAGE_MAGIC_LE[4] = {0x3DU, 0xB8U, 0xF3U, 0x96U};
+
+/* MCUBoot image_header field offsets (little-endian) used to build a
+ * well-formed backup image the restore path can parse a length from. These
+ * mirror the offsets factory_image.c reads in factory_backup_image_size(). */
+#define IMG_HDR_HDR_SIZE_OFF   8U    /* ih_hdr_size          u16 */
+#define IMG_HDR_PROT_TLV_OFF   10U   /* ih_protect_tlv_size  u16 */
+#define IMG_HDR_IMG_SIZE_OFF   12U   /* ih_img_size          u32 */
+#define TLV_INFO_MAGIC_UNPROT  0x6907U  /* unprotected image_tlv_info magic */
+
+/* A compact but well-formed image that fits inside the mock slot. The restore
+ * copies exactly HDR + IMG + PROT_TLV + TLV_TOT bytes and erases the rest. */
+#define BACKUP_HDR_SIZE   32U
+#define BACKUP_IMG_SIZE   256U
+#define BACKUP_PROT_TLV   0U
+#define BACKUP_TLV_TOT    40U   /* bytes in the unprotected TLV area (incl. info hdr) */
 
 /* ---- Mock flash universe ---- */
 
@@ -180,6 +196,14 @@ int __wrap_boot_request_upgrade(int permanent)
     return 0;
 }
 
+/* stage_pending_swap() confirms the pending swap registered by reading the
+ * swap type back. boot_request_upgrade is stubbed (it never writes a real
+ * trailer to our in-RAM slot1), so report the TEST swap the module expects. */
+int __wrap_mcuboot_swap_type(void)
+{
+    return BOOT_SWAP_TYPE_TEST;
+}
+
 #if defined(__GNUC__)
 __attribute__((noreturn))
 #endif
@@ -305,6 +329,39 @@ static void fill_slot0_with_pattern(void)
     flash_universe.slot0[101] = 0xEFU;
     flash_universe.slot0[SLOT_SIZE - 2] = 0x55U;
     flash_universe.slot0[SLOT_SIZE - 1] = 0xAAU;
+}
+
+/* Fill the mock backend with a compact but well-formed MCUBoot image (valid
+ * magic, parseable header + unprotected TLV info) so factory_backup_image_size()
+ * can compute the exact image length. Body/padding is 0xCC so the copied region
+ * is distinguishable from the erased (0xFF) trailer. Returns the image length. */
+static uint32_t build_valid_backup_image(void)
+{
+    (void)memset(mock.data, 0xCCU, sizeof(mock.data));
+
+    /* image_header magic */
+    (void)memcpy(mock.data, IMAGE_MAGIC_LE, sizeof(IMAGE_MAGIC_LE));
+
+    /* ih_hdr_size */
+    mock.data[IMG_HDR_HDR_SIZE_OFF + 0] = (uint8_t)(BACKUP_HDR_SIZE & 0xFFU);
+    mock.data[IMG_HDR_HDR_SIZE_OFF + 1] = (uint8_t)((BACKUP_HDR_SIZE >> 8) & 0xFFU);
+    /* ih_protect_tlv_size */
+    mock.data[IMG_HDR_PROT_TLV_OFF + 0] = (uint8_t)(BACKUP_PROT_TLV & 0xFFU);
+    mock.data[IMG_HDR_PROT_TLV_OFF + 1] = (uint8_t)((BACKUP_PROT_TLV >> 8) & 0xFFU);
+    /* ih_img_size */
+    mock.data[IMG_HDR_IMG_SIZE_OFF + 0] = (uint8_t)(BACKUP_IMG_SIZE & 0xFFU);
+    mock.data[IMG_HDR_IMG_SIZE_OFF + 1] = (uint8_t)((BACKUP_IMG_SIZE >> 8) & 0xFFU);
+    mock.data[IMG_HDR_IMG_SIZE_OFF + 2] = 0x00U;
+    mock.data[IMG_HDR_IMG_SIZE_OFF + 3] = 0x00U;
+
+    /* Unprotected image_tlv_info {magic, tot} at hdr + img + prot_tlv. */
+    uint32_t tlv_off = BACKUP_HDR_SIZE + BACKUP_IMG_SIZE + BACKUP_PROT_TLV;
+    mock.data[tlv_off + 0] = (uint8_t)(TLV_INFO_MAGIC_UNPROT & 0xFFU);
+    mock.data[tlv_off + 1] = (uint8_t)((TLV_INFO_MAGIC_UNPROT >> 8) & 0xFFU);
+    mock.data[tlv_off + 2] = (uint8_t)(BACKUP_TLV_TOT & 0xFFU);
+    mock.data[tlv_off + 3] = (uint8_t)((BACKUP_TLV_TOT >> 8) & 0xFFU);
+
+    return tlv_off + BACKUP_TLV_TOT;
 }
 
 static void install_slot_fa(struct flash_area *fa, uint8_t id, uint32_t size)
@@ -484,12 +541,16 @@ ZTEST(factory_image, test_restore_refuses_when_not_captured)
 
 ZTEST(factory_image, test_restore_copies_backend_to_slot1_and_reboots)
 {
-    /* Build a known image in the backend with valid MCUBoot magic. */
+    /* Build a well-formed MCUBoot image in the backend so the restore path can
+     * parse its exact length. The restore deliberately copies ONLY the image
+     * and leaves the slot1 trailer region erased (see copy_backend_to_slot1):
+     * a full-slot copy would carry slot0's confirmed trailer and make mcuboot
+     * decline the swap. */
     mock.captured = true;
-    (void)memset(mock.data, 0xCCU, sizeof(mock.data));
-    (void)memcpy(mock.data, IMAGE_MAGIC_LE, sizeof(IMAGE_MAGIC_LE));
+    uint32_t image_size = build_valid_backup_image();
 
-    /* Make slot1 start as 0xFF so we can confirm it gets erased + rewritten. */
+    /* Seed slot1 with 0x00 so the copied image region (backend bytes) is
+     * distinguishable from the erased (0xFF) trailer region afterward. */
     (void)memset(flash_universe.slot1, 0x00U, sizeof(flash_universe.slot1));
 
     hooks.reboot_active = true;
@@ -498,8 +559,15 @@ ZTEST(factory_image, test_restore_copies_backend_to_slot1_and_reboots)
     }
     hooks.reboot_active = false;
 
-    zassert_equal(memcmp(flash_universe.slot1, mock.data, SLOT_SIZE), 0,
-                  "slot1 must mirror the factory backend");
+    /* The image region [0, image_size) must mirror the backend byte-for-byte. */
+    zassert_equal(memcmp(flash_universe.slot1, mock.data, image_size), 0,
+                  "slot1 image region must mirror the factory backend");
+    /* The remainder must be left erased (0xFF), NOT a full-slot backend copy. */
+    for (uint32_t i = image_size; i < SLOT_SIZE; ++i) {
+        zassert_equal(flash_universe.slot1[i], 0xFFU,
+                      "slot1 trailer region must be erased at offset %u",
+                      (unsigned)i);
+    }
     zassert_equal(hooks.boot_upgrade_calls, 1, "boot_request_upgrade called");
     zassert_equal(hooks.reboot_calls, 1, "sys_reboot called once");
 }
