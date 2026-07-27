@@ -155,8 +155,9 @@ jobs:
           ip -details link show vcan0
 
       # Each ztest owns a separate build directory, so the coverage builds and
-      # executions are safe to parallelise. Bound concurrent CMake configure
-      # processes and divide the CPU budget among their nested Ninja builds.
+      # executions are safe to parallelise. Fan independent test projects out
+      # across every host CPU; keep each nested Ninja build serial so the two
+      # levels of parallelism do not multiply beyond the runner CPU budget.
       - name: Build coverage-instrumented native tests
         working-directory: Firmware
         env:
@@ -168,8 +169,8 @@ jobs:
           python3 scripts/coverage.py clean
           mapfile -t native_tests < <(python3 scripts/native_test.py list)
           host_cpus=$(nproc)
-          native_jobs=$(( host_cpus < 4 ? host_cpus : 4 ))
-          export CMAKE_BUILD_PARALLEL_LEVEL=$(( (host_cpus + native_jobs - 1) / native_jobs ))
+          native_jobs=$host_cpus
+          export CMAKE_BUILD_PARALLEL_LEVEL=1
           printf '%s\0' "${native_tests[@]}" |
             xargs -0 -r -n 1 -P "$native_jobs" \
               python3 scripts/native_test.py build --coverage
@@ -183,7 +184,7 @@ jobs:
         run: |
           mapfile -t native_tests < <(python3 scripts/native_test.py list)
           host_cpus=$(nproc)
-          native_jobs=$(( host_cpus < 8 ? host_cpus : 8 ))
+          native_jobs=$host_cpus
           native_status=0
           printf '%s\0' "${native_tests[@]}" |
             xargs -0 -r -n 1 -P "$native_jobs" \
