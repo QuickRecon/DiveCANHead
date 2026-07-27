@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Tools used directly by the GitHub Actions workflow.
+west==1.5.0
+gcovr==8.6
+cmake==3.31.10

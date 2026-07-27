@@ -124,12 +124,11 @@ jobs:
 
       - name: Initialize west workspace
         run: |
-          # west -> pykwalify -> docopt, and docopt 0.6.2 has no wheel.
-          # Keep that single, exactly pinned source-package exception while
-          # requiring wheels for the rest of the locked dependency graph.
-          pip install --only-binary=:all: --no-binary=docopt \
-            west==1.5.0 gcovr==8.6 cmake==3.31.10 \
-            -r Firmware/tests/integration/harness/requirements.txt
+          # The lock pins and hashes the complete transitive graph. docopt
+          # 0.6.2 has no wheel, so it is the sole source-package exception.
+          pip install --require-hashes \
+            --only-binary=:all: --no-binary=docopt \
+            -r Firmware/tests/integration/harness/requirements-ci.lock
           west init -l Firmware
           west update --narrow -o=--depth=1
           west packages pip --install
