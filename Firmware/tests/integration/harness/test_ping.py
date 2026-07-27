@@ -82,6 +82,10 @@ def test_ping_response_id(dut, device_id: int) -> None:
     can_bus.send(divecan.build_ping(device_id))
     msg = can_bus.wait_for(divecan.ID_RESP_ID)
     assert msg.arbitration_id == divecan.ID_RESP_ID
+    # RespPing ends with OBOE status.  Waiting for the transaction tail keeps
+    # its later status/name frames from crossing into the next test when an
+    # instrumented firmware build is slower than the host test process.
+    can_bus.wait_for(divecan.OBOE_STATUS_ID)
 
 
 @pytest.mark.parametrize("device_id", [1, 3])
@@ -92,6 +96,7 @@ def test_ping_response_status(dut, device_id: int) -> None:
     can_bus.send(divecan.build_ping(device_id))
     msg = can_bus.wait_for(divecan.STATUS_RESP_ID)
     assert msg.arbitration_id == divecan.STATUS_RESP_ID
+    can_bus.wait_for(divecan.OBOE_STATUS_ID)
 
 
 @pytest.mark.parametrize("device_id", [1, 3])
@@ -102,6 +107,7 @@ def test_ping_response_name(dut, device_id: int) -> None:
     can_bus.send(divecan.build_ping(device_id))
     msg = can_bus.wait_for(divecan.NAME_RESP_ID)
     assert msg.data.decode("utf-8").rstrip("\x00") == "DIVECAN"
+    can_bus.wait_for(divecan.OBOE_STATUS_ID)
 
 
 @pytest.mark.parametrize("device_id", list(range(4, 16)))
@@ -109,10 +115,8 @@ def test_ping_no_response(dut, device_id: int) -> None:
     """Pings from unsupported device types do not generate a name response.
 
     Use NAME_RESP_ID rather than ID_RESP_ID for the negative assertion:
-    the ping request for device type 4 itself uses arbitration ID 0x0D000004,
-    which is numerically identical to ID_RESP_ID.  SocketCAN loopback or
-    another client on a shared vcan interface could therefore make the
-    request look like a response when filtering by arbitration ID alone.
+    a frame originating from device type 4 itself uses arbitration ID
+    0x0D000004, which is numerically identical to ID_RESP_ID.
     """
     can_bus, _shim = dut
     can_bus.flush_rx()
