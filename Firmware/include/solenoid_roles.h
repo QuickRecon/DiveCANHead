@@ -16,7 +16,7 @@
 
 #include <errno.h>
 #include <zephyr/sys/util.h>
-#include <autoconf.h>
+#include <zephyr/autoconf.h>
 
 #include "common.h"
 

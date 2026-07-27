@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
-#include <autoconf.h>
+#include <zephyr/autoconf.h>
 #include <zephyr/sys/util.h>
 #include "common.h"
 #include "oxygen_cell_types.h"
