@@ -40,6 +40,7 @@ import os
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 # Reuse native_test.py's build_env() and test discovery so we don't drift.
@@ -178,6 +179,19 @@ def cmd_run_pytest(args: argparse.Namespace) -> int:
     return _run(cmd, cwd=HARNESS_DIR, env=env)
 
 
+def prefix_sonar_report_paths(report_path: Path) -> None:
+    """Make generic coverage paths relative to the repository scan root."""
+    tree = ET.parse(report_path)
+    for file_element in tree.getroot().findall("file"):
+        source_path = Path(file_element.attrib["path"])
+        if not source_path.is_absolute():
+            file_element.set(
+                "path",
+                (Path(FIRMWARE_ROOT.name) / source_path).as_posix(),
+            )
+    tree.write(report_path, encoding="utf-8", xml_declaration=True)
+
+
 def cmd_report(_args: argparse.Namespace) -> int:
     """Aggregate every .gcda under build-coverage/ into a single report."""
     if shutil.which("gcovr") is None:
@@ -208,28 +222,36 @@ def cmd_report(_args: argparse.Namespace) -> int:
     # those; 'merge-use-line-min' attributes the function to the
     # earliest definition, which is consistent and good enough for the
     # report.
-    base_cmd = [
-        "gcovr",
-        "--root", str(FIRMWARE_ROOT),
-        "--filter", COVERAGE_FILTER,
-        "--gcov-ignore-parse-errors",
-        "--merge-mode-functions=merge-use-line-min",
-        "--print-summary",
-    ]
-    for ex in COVERAGE_EXCLUDES:
-        base_cmd += ["--exclude", ex]
+    def gcovr_base(root: Path) -> list[str]:
+        cmd = [
+            "gcovr",
+            "--root", str(root),
+            "--filter", COVERAGE_FILTER,
+            "--gcov-ignore-parse-errors",
+            "--merge-mode-functions=merge-use-line-min",
+            "--print-summary",
+        ]
+        for ex in COVERAGE_EXCLUDES:
+            cmd += ["--exclude", ex]
+        return cmd
 
-    html_cmd = base_cmd + [
+    # gcov needs Firmware/ as its root to reconstruct each compiler working
+    # directory correctly. Keep that root for both reports, then prefix the
+    # generic XML paths for the repository-root Sonar scan.
+    html_cmd = gcovr_base(FIRMWARE_ROOT) + [
         "--html-details", str(REPORT_DIR / "index.html"),
         str(COVERAGE_BUILD_ROOT),
     ]
-    xml_cmd = base_cmd + [
+    xml_cmd = gcovr_base(FIRMWARE_ROOT) + [
         "--sonarqube", str(REPORT_DIR / "coverage.xml"),
         str(COVERAGE_BUILD_ROOT),
     ]
 
-    rc = _run(html_cmd, cwd=FIRMWARE_ROOT)
-    rc |= _run(xml_cmd, cwd=FIRMWARE_ROOT)
+    html_rc = _run(html_cmd, cwd=FIRMWARE_ROOT)
+    xml_rc = _run(xml_cmd, cwd=FIRMWARE_ROOT)
+    if xml_rc == 0:
+        prefix_sonar_report_paths(REPORT_DIR / "coverage.xml")
+    rc = html_rc | xml_rc
     if rc == 0:
         print(f"\n== report: {REPORT_DIR / 'index.html'}")
         print(f"== sonar:  {REPORT_DIR / 'coverage.xml'}")

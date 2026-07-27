@@ -11,6 +11,9 @@ on:
     branches: [master, zephyr_rewrite]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: sonar-${{ github.ref }}
   cancel-in-progress: true
@@ -22,35 +25,38 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Checkout (full history for new-code detection and blame)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          # This job never pushes. Avoid persisting credentials and the
+          # recursive submodule cleanup that trips over legacy gitlinks
+          # missing from .gitmodules.
+          persist-credentials: false
 
       - name: Install host packages
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            gcc-multilib g++-multilib ninja-build device-tree-compiler ccache jq
+            gcc-multilib g++-multilib ninja-build device-tree-compiler \
+            ccache jq iproute2 kmod
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
-      # zephyr revision is `main` in west.yml, so the cache key can't pin a
-      # revision — restore the newest cache and let `west update` fast-forward.
+      # west.yml pins Zephyr and therefore fully identifies the module graph.
       - name: Cache west modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             zephyr
             modules
             bootloader
             tools
-          key: west-${{ hashFiles('Firmware/west.yml') }}-${{ github.run_id }}
+          key: west-${{ runner.os }}-${{ hashFiles('Firmware/west.yml') }}
           restore-keys: |
-            west-${{ hashFiles('Firmware/west.yml') }}-
-            west-
+            west-${{ runner.os }}-
 
       # `west packages pip --install` refuses to run outside a virtualenv, so
       # all Python tooling lives in one; putting its bin dir on GITHUB_PATH
@@ -62,13 +68,14 @@ jobs:
 
       - name: Initialize west workspace
         run: |
-          pip install west
+          pip install west gcovr \
+            -r Firmware/tests/integration/harness/requirements.txt
           west init -l Firmware
           west update --narrow -o=--depth=1
           west packages pip --install
 
       - name: Cache Zephyr SDK
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/zephyr-sdk-*
           key: zephyr-sdk-${{ hashFiles('zephyr/SDK_VERSION') }}
@@ -88,10 +95,41 @@ jobs:
             -DEXTRA_CONF_FILE=variants/Poseidon_Aren.conf \
             -DEXTRA_DTC_OVERLAY_FILE=variants/Poseidon_Aren.overlay
 
-      # The native_sim test builds cover tests/** and the host-only shims.
-      - name: Build native test suite
+      - name: Configure virtual CAN for integration tests
+        run: |
+          if ! ip link show vcan0 >/dev/null 2>&1; then
+            sudo modprobe vcan || true
+            sudo ip link add dev vcan0 type vcan
+          fi
+          sudo ip link set dev vcan0 up
+          ip -details link show vcan0
+
+      # Each ztest owns a separate build directory, so the coverage builds and
+      # executions are safe to parallelise. Use half the logical CPUs to avoid
+      # memory pressure from too many simultaneous compiler/linker processes.
+      - name: Build coverage-instrumented native tests
         working-directory: Firmware
-        run: python3 scripts/native_test.py build-all
+        run: |
+          python3 scripts/coverage.py clean
+          mapfile -t native_tests < <(python3 scripts/native_test.py list)
+          native_jobs=$(( ($(nproc) + 1) / 2 ))
+          printf '%s\0' "${native_tests[@]}" |
+            xargs -0 -r -n 1 -P "$native_jobs" \
+              python3 scripts/native_test.py build --coverage
+          python3 scripts/coverage.py build-integration
+
+      - name: Run native tests and collect coverage
+        working-directory: Firmware
+        run: |
+          mapfile -t native_tests < <(python3 scripts/native_test.py list)
+          native_jobs=$(( ($(nproc) + 1) / 2 ))
+          printf '%s\0' "${native_tests[@]}" |
+            xargs -0 -r -n 1 -P "$native_jobs" \
+              python3 scripts/native_test.py run --coverage
+          python3 scripts/coverage.py run-pytest
+          python3 scripts/coverage.py report
+          test -s coverage-report/coverage.xml
+          grep -q '<file path="Firmware/src/' coverage-report/coverage.xml
 
       - name: Merge compilation databases
         run: |
@@ -107,9 +145,16 @@ jobs:
                       out: (.out + [$e])} end)
             | .out
           ' Firmware/build/Firmware/compile_commands.json \
-            Firmware/build-native/*/compile_commands.json \
+            Firmware/build-coverage/*/compile_commands.json \
             > compile_commands.json
           echo "Merged compilation database: $(jq length compile_commands.json) entries"
+
+      - name: Archive coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: firmware-coverage-${{ github.run_id }}
+          path: Firmware/coverage-report/
+          retention-days: 14
 
       - name: SonarCloud scan
         uses: SonarSource/sonarqube-scan-action@v6
