@@ -17,13 +17,23 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <math.h>
 
 #include "runtime_settings.h"
 #include "uds_settings.h"
 #include "errors.h"
 
-#define IDX_KP       4U
-#define IDX_BATTERY  7U
+#define IDX_FW_COMMIT 0U
+#define IDX_PPO2      1U
+#define IDX_CAL       2U
+#define IDX_DEPTH     3U
+#define IDX_KP        4U
+#define IDX_KI        5U
+#define IDX_KD        6U
+#define IDX_BATTERY   7U
+#define IDX_CELL_1    8U
+#define IDX_CELL_2    9U
+#define IDX_CELL_3    10U
 
 #define MAX_CAPTURED_KEYS 16
 
@@ -33,23 +43,29 @@ static struct {
     int     save_calls;
     int     fail_on_call;   /* 1-based call index to fail; 0 = never fail */
     int     fail_rc;        /* rc returned on the failing call */
+    int     init_rc;
+    int     load_rc;
+    int     error_calls;
+    OpError_t last_error;
+    uint32_t last_detail;
 } stub;
 
 void op_error_publish(OpError_t code, uint32_t detail)
 {
-    (void)code;
-    (void)detail;
+    stub.error_calls++;
+    stub.last_error = code;
+    stub.last_detail = detail;
 }
 
 int __wrap_settings_subsys_init(void)
 {
-    return 0;
+    return stub.init_rc;
 }
 
 int __wrap_settings_load_subtree(const char *subtree)
 {
     ARG_UNUSED(subtree);
-    return 0; /* nothing stored -> runtime_settings_load yields defaults */
+    return stub.load_rc; /* nothing stored -> runtime_settings_load yields defaults */
 }
 
 int __wrap_settings_save_one(const char *name, const void *value, size_t val_len)
@@ -89,6 +105,244 @@ static void logic_before(void *fixture)
 }
 
 ZTEST_SUITE(runtime_settings_logic, NULL, NULL, logic_before, NULL, NULL);
+
+ZTEST(runtime_settings_logic, test_validation_rejects_each_corrupt_field)
+{
+    RuntimeSettings_t candidate = RUNTIME_SETTINGS_DEFAULT;
+
+    candidate.ppo2ControlMode = (PPO2ControlMode_t)UINT8_MAX;
+    zassert_false(runtime_settings_validate(&candidate), "invalid PPO2 mode");
+
+    candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+    candidate.calibrationMode = (CalibrationMode_t)UINT8_MAX;
+    zassert_false(runtime_settings_validate(&candidate), "invalid calibration mode");
+
+    candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+    candidate.pidKp = NAN;
+    zassert_false(runtime_settings_validate(&candidate), "NaN Kp");
+
+    candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+    candidate.pidKi = -1.0f;
+    zassert_false(runtime_settings_validate(&candidate), "negative Ki");
+
+    candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+    candidate.pidKd = PID_GAIN_MAX + 1.0f;
+    zassert_false(runtime_settings_validate(&candidate), "oversized Kd");
+
+    candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+    candidate.batteryType = BATTERY_TYPE_COUNT;
+    zassert_false(runtime_settings_validate(&candidate), "invalid battery type");
+
+    candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+    candidate.depthCompensation = true;
+    zassert_false(runtime_settings_validate(&candidate),
+              "depth compensation requires an O2 solenoid");
+}
+
+ZTEST(runtime_settings_logic, test_load_backend_failures_return_safe_defaults)
+{
+    RuntimeSettings_t loaded;
+
+    stub.init_rc = -EIO;
+    zassert_equal(runtime_settings_load(&loaded), -EIO);
+    zassert_equal(loaded.ppo2ControlMode, PPO2CONTROL_OFF);
+    zassert_equal(loaded.calibrationMode, CAL_ANALOG_ABSOLUTE);
+
+    stub.init_rc = 0;
+    stub.load_rc = -EIO;
+    zassert_ok(runtime_settings_load(&loaded),
+           "a storage read failure falls back to safe defaults");
+    zassert_true(runtime_settings_validate(&loaded));
+}
+
+ZTEST(runtime_settings_logic, test_runtime_handlers_load_all_fields)
+{
+    RuntimeSettings_t loaded;
+    uint8_t mode = PPO2CONTROL_OFF;
+    uint8_t cal = CAL_TOTAL_ABSOLUTE;
+    bool depth = false;
+    Numeric_t kp = 0.25f;
+    Numeric_t ki = 0.000029f;
+    Numeric_t kd = 2.0f;
+    uint8_t battery = BATTERY_TYPE_LI3S;
+    bool broadcast[CELL_MAX_COUNT] = { true, false, true };
+
+    zassert_ok(runtime_settings_load(&loaded));
+    zassert_ok(settings_runtime_set("rt/ppo2", &mode, sizeof(mode)));
+    zassert_ok(settings_runtime_set("rt/cal", &cal, sizeof(cal)));
+    zassert_ok(settings_runtime_set("rt/depth", &depth, sizeof(depth)));
+    zassert_ok(settings_runtime_set("rt/kp", &kp, sizeof(kp)));
+    zassert_ok(settings_runtime_set("rt/ki", &ki, sizeof(ki)));
+    zassert_ok(settings_runtime_set("rt/kd", &kd, sizeof(kd)));
+    zassert_ok(settings_runtime_set("rt/bat", &battery, sizeof(battery)));
+    zassert_ok(settings_runtime_set("rt/bcst", broadcast, sizeof(broadcast)));
+
+    runtime_settings_get(&loaded);
+    zassert_equal(loaded.calibrationMode, CAL_TOTAL_ABSOLUTE);
+    zassert_within(loaded.pidKp, kp, 0.000001f);
+    zassert_within(loaded.pidKi, ki, 0.000001f);
+    zassert_within(loaded.pidKd, kd, 0.000001f);
+    zassert_equal(loaded.batteryType, BATTERY_TYPE_LI3S);
+    zassert_true(loaded.enforceBroadcast[0]);
+    zassert_false(loaded.enforceBroadcast[1]);
+    zassert_true(loaded.enforceBroadcast[2]);
+
+    zassert_equal(settings_runtime_set("rt/unknown", &mode, sizeof(mode)),
+              -ENOENT);
+}
+
+ZTEST(runtime_settings_logic, test_runtime_handlers_ignore_bad_data)
+{
+    RuntimeSettings_t before;
+    RuntimeSettings_t after;
+    uint8_t invalid = UINT8_MAX;
+    Numeric_t invalid_gain = INFINITY;
+    bool broadcast[CELL_MAX_COUNT] = { true, true, true };
+
+    zassert_ok(runtime_settings_load(&before));
+    zassert_ok(settings_runtime_set("rt/ppo2", &invalid, sizeof(invalid)));
+    zassert_ok(settings_runtime_set("rt/cal", &invalid, sizeof(invalid)));
+    zassert_ok(settings_runtime_set("rt/kp", &invalid_gain, sizeof(invalid_gain)));
+    zassert_ok(settings_runtime_set("rt/bat", &invalid, sizeof(invalid)));
+    zassert_ok(settings_runtime_set("rt/depth", &invalid, 0U));
+    zassert_ok(settings_runtime_set("rt/bcst", broadcast,
+                    sizeof(broadcast) - 1U));
+
+    runtime_settings_get(&after);
+    zassert_mem_equal(&after, &before, sizeof(after),
+              "invalid persisted values must leave defaults intact");
+}
+
+ZTEST(runtime_settings_logic, test_full_save_success_and_failure_paths)
+{
+    RuntimeSettings_t candidate = RUNTIME_SETTINGS_DEFAULT;
+    candidate.calibrationMode = CAL_TOTAL_ABSOLUTE;
+    candidate.batteryType = BATTERY_TYPE_LI3S;
+
+    zassert_ok(runtime_settings_save(&candidate));
+    zassert_equal(stub.save_calls, 8, "full save writes all eight keys");
+
+    (void)memset(&stub, 0, sizeof(stub));
+    stub.fail_on_call = 3;
+    stub.fail_rc = -ENOSPC;
+    zassert_equal(runtime_settings_save(&candidate), -ENOSPC);
+    zassert_equal(stub.save_calls, 8,
+              "the aggregate save records the first error after all writes");
+
+    candidate.ppo2ControlMode = (PPO2ControlMode_t)UINT8_MAX;
+    zassert_equal(runtime_settings_save(&candidate), -EINVAL);
+}
+
+ZTEST(runtime_settings_logic, test_single_field_save_dispatches_every_key)
+{
+    static const struct {
+        RuntimeSettingField_t field;
+        const char *key;
+    } cases[] = {
+        { RT_FIELD_PPO2, "ppo2" },
+        { RT_FIELD_CAL, "cal" },
+        { RT_FIELD_DEPTH, "depth" },
+        { RT_FIELD_KP, "kp" },
+        { RT_FIELD_KI, "ki" },
+        { RT_FIELD_KD, "kd" },
+        { RT_FIELD_BATTERY, "bat" },
+        { RT_FIELD_BCST, "bcst" },
+    };
+
+    for (size_t i = 0U; i < ARRAY_SIZE(cases); ++i) {
+        (void)memset(&stub, 0, sizeof(stub));
+        zassert_ok(runtime_settings_save_field(cases[i].field),
+               "field %u", cases[i].field);
+        zassert_equal(stub.save_calls, 1);
+        zassert_true(stub_wrote_key(cases[i].key), "missing rt/%s", cases[i].key);
+    }
+
+    zassert_equal(runtime_settings_save_field((RuntimeSettingField_t)UINT8_MAX),
+              -EINVAL);
+}
+
+ZTEST(runtime_settings_logic, test_uds_metadata_and_label_bounds)
+{
+    zassert_equal(UDS_GetSettingCount(), 11U);
+    for (uint8_t i = 0U; i < UDS_GetSettingCount(); ++i) {
+        zassert_not_null(UDS_GetSettingInfo(i), "metadata %u", i);
+    }
+    zassert_is_null(UDS_GetSettingInfo(UINT8_MAX));
+
+    zassert_str_equal(UDS_GetSettingOptionLabel(IDX_BATTERY, 3U), "Li 3S");
+    zassert_is_null(UDS_GetSettingOptionLabel(IDX_KP, 0U),
+            "numeric settings have no option labels");
+    zassert_is_null(UDS_GetSettingOptionLabel(UINT8_MAX, 0U));
+}
+
+ZTEST(runtime_settings_logic, test_uds_get_set_all_supported_fields)
+{
+    const struct {
+        uint8_t index;
+        uint64_t value;
+    } cases[] = {
+        { IDX_PPO2, 0U },
+        { IDX_CAL, CAL_TOTAL_ABSOLUTE },
+        { IDX_DEPTH, 0U },
+        { IDX_KP, 250000U },
+        { IDX_KI, 29U },
+        { IDX_KD, 2000000U },
+        { IDX_BATTERY, BATTERY_TYPE_LI3S },
+        { IDX_CELL_1, 1U },
+        { IDX_CELL_2, 1U },
+        { IDX_CELL_3, 1U },
+    };
+
+    zassert_equal(UDS_GetSettingValue(IDX_FW_COMMIT), 0U);
+    for (size_t i = 0U; i < ARRAY_SIZE(cases); ++i) {
+        zassert_true(UDS_SetSettingValue(cases[i].index, cases[i].value),
+                 "set index %u", cases[i].index);
+        zassert_equal(UDS_GetSettingValue(cases[i].index), cases[i].value,
+                  "get index %u", cases[i].index);
+    }
+}
+
+ZTEST(runtime_settings_logic, test_uds_rejects_invalid_writes)
+{
+    zassert_false(UDS_SetSettingValue(UINT8_MAX, 0U), "out-of-range index");
+    zassert_false(UDS_SetSettingValue(IDX_FW_COMMIT, 0U), "read-only setting");
+    zassert_false(UDS_SetSettingValue(IDX_BATTERY, BATTERY_TYPE_COUNT),
+              "value over advertised maximum");
+    zassert_false(UDS_SetSettingValue(IDX_PPO2, PPO2CONTROL_PID),
+              "mode unsupported by this no-solenoid build");
+    zassert_false(UDS_SetSettingValue(IDX_DEPTH, 1U),
+              "depth compensation unsupported by this build");
+    zassert_equal(UDS_GetSettingValue(UINT8_MAX), 0U);
+    zassert_true(stub.error_calls >= 6);
+}
+
+ZTEST(runtime_settings_logic, test_uds_save_maps_every_persistable_field)
+{
+    const struct {
+        uint8_t index;
+        uint64_t value;
+        const char *key;
+    } cases[] = {
+        { IDX_PPO2, 0U, "ppo2" },
+        { IDX_CAL, CAL_TOTAL_ABSOLUTE, "cal" },
+        { IDX_DEPTH, 0U, "depth" },
+        { IDX_KP, 250000U, "kp" },
+        { IDX_KI, 29U, "ki" },
+        { IDX_KD, 2000000U, "kd" },
+        { IDX_BATTERY, BATTERY_TYPE_LI3S, "bat" },
+        { IDX_CELL_1, 1U, "bcst" },
+    };
+
+    for (size_t i = 0U; i < ARRAY_SIZE(cases); ++i) {
+        (void)memset(&stub, 0, sizeof(stub));
+        zassert_true(UDS_SaveSettingValue(cases[i].index, cases[i].value),
+                 "save index %u", cases[i].index);
+        zassert_equal(stub.save_calls, 1);
+        zassert_true(stub_wrote_key(cases[i].key), "missing rt/%s", cases[i].key);
+    }
+
+    zassert_false(UDS_SaveSettingValue(UINT8_MAX, 0U));
+}
 
 /**
  * @brief Saving one setting writes ONLY that field's NVS key (per-field persist).
