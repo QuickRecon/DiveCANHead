@@ -103,6 +103,10 @@ def build_one(name: str, coverage: bool = False) -> int:
     root = _root_for(coverage)
     out = root / name
     out.parent.mkdir(parents=True, exist_ok=True)
+    user_cache = root / ".zephyr-cache" / name
+    (user_cache / "ToolchainCapabilityDatabase").mkdir(
+        parents=True, exist_ok=True
+    )
 
     label = "coverage" if coverage else "native"
     print(f"== building {name} ({label}) -> {out.relative_to(FIRMWARE_ROOT)}")
@@ -113,16 +117,15 @@ def build_one(name: str, coverage: bool = False) -> int:
         "-d", str(out),
         "-b", NATIVE_BOARD,
         str(src),
+        "--",
+        f"-DUSER_CACHE_DIR={user_cache}",
     ]
     if coverage:
         # Layer the coverage overlay on top of the per-test prj.conf.
         # Zephyr applies prj.conf first, then EXTRA_CONF_FILE entries
         # in order — so this strictly adds CONFIG_COVERAGE=y without
         # disturbing test-specific options.
-        cmd += [
-            "--",
-            f"-DEXTRA_CONF_FILE={COVERAGE_OVERLAY}",
-        ]
+        cmd += [f"-DEXTRA_CONF_FILE={COVERAGE_OVERLAY}"]
 
     proc = subprocess.run(cmd, cwd=FIRMWARE_ROOT, env=build_env())
     return proc.returncode
@@ -150,6 +153,9 @@ def clean_one(name: str, coverage: bool = False) -> None:
     if out.is_dir():
         print(f"== removing {out.relative_to(FIRMWARE_ROOT)}")
         shutil.rmtree(out)
+    user_cache = root / ".zephyr-cache" / name
+    if user_cache.is_dir():
+        shutil.rmtree(user_cache)
 
 
 def cmd_list(_args: argparse.Namespace) -> int:

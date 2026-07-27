@@ -94,6 +94,10 @@ def cmd_build_integration(_args: argparse.Namespace) -> int:
     of the self-contained integration config.
     """
     INTEGRATION_BUILD.parent.mkdir(parents=True, exist_ok=True)
+    user_cache = COVERAGE_BUILD_ROOT / ".zephyr-cache" / "integration"
+    (user_cache / "ToolchainCapabilityDatabase").mkdir(
+        parents=True, exist_ok=True
+    )
 
     extra_conf = ";".join([
         "tests/integration/integration.conf",
@@ -106,6 +110,7 @@ def cmd_build_integration(_args: argparse.Namespace) -> int:
         "-b", native_test.NATIVE_BOARD,
         str(FIRMWARE_ROOT),
         "--",
+        f"-DUSER_CACHE_DIR={user_cache}",
         "-DBOARD_ROOT=.",
         "-DDTC_OVERLAY_FILE=tests/integration/boards/native_sim.overlay",
         f"-DEXTRA_CONF_FILE={extra_conf}",
