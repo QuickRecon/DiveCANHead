@@ -169,6 +169,14 @@ def launch_native_sim_firmware(append_log: bool = False,
     if not NATIVE_SIM_BIN.exists():
         pytest.skip(f"native_sim binary not found at {NATIVE_SIM_BIN}")
 
+    # Apply the coverage-build pacing cap at the common launch seam, not only
+    # in pytest fixtures.  Several tests power-cycle the simulated firmware
+    # and call this helper (via relaunch_native_sim_firmware()) with their
+    # original high-speed ratio; without clamping here, the second process
+    # silently bypasses DIVECAN_RT_RATIO_MAX and can outrun an instrumented
+    # CI runner.
+    rt_ratio = _clamp_rt_ratio(rt_ratio)
+
     log_mode = "ab" if append_log else "wb"
     log_file = open("/tmp/divecan_firmware.log", log_mode)
 
