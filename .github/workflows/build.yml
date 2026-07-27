@@ -176,6 +176,7 @@ jobs:
           python3 scripts/coverage.py build-integration
 
       - name: Run native tests and collect coverage
+        id: test_results
         working-directory: Firmware
         env:
           ZEPHYR_TOOLCHAIN_VARIANT: host/llvm
@@ -183,13 +184,32 @@ jobs:
           mapfile -t native_tests < <(python3 scripts/native_test.py list)
           host_cpus=$(nproc)
           native_jobs=$(( host_cpus < 8 ? host_cpus : 8 ))
+          native_status=0
           printf '%s\0' "${native_tests[@]}" |
             xargs -0 -r -n 1 -P "$native_jobs" \
-              python3 scripts/native_test.py run --coverage
-          python3 scripts/coverage.py run-pytest
+              python3 scripts/native_test.py run --coverage ||
+            native_status=$?
+          pytest_status=0
+          python3 scripts/coverage.py run-pytest || pytest_status=$?
+
+          # Failed test processes still emit coverage. Generate and validate
+          # the report now, then preserve the failures as a final job gate so
+          # artifact upload and SonarCloud are not starved of the report.
           python3 scripts/coverage.py report
           test -s coverage-report/coverage.xml
           grep -q '<file path="Firmware/src/' coverage-report/coverage.xml
+          tests_failed=false
+          if (( native_status != 0 || pytest_status != 0 )); then
+            tests_failed=true
+            echo "::warning title=Test failures::Native status $native_status; integration status $pytest_status. Coverage and analysis will continue before the job fails."
+          fi
+          echo "failed=$tests_failed" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Test execution"
+            echo
+            echo "- Native test status: $native_status"
+            echo "- Integration pytest status: $pytest_status"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Merge compilation databases
         run: |
@@ -221,3 +241,9 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
+
+      - name: Enforce test results
+        if: always() && steps.test_results.outputs.failed == 'true'
+        run: |
+          echo "::error title=Test failures::One or more native or integration tests failed; see the test step for details."
+          exit 1
