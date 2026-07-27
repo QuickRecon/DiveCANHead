@@ -29,6 +29,7 @@
 #include "error_histogram.h"
 #include "calibration.h"
 #include "runtime_settings.h"
+#include "maintenance_arena.h"
 
 /* ---- Stubs for symbols uds.c references but we don't need to exercise ----
  *
@@ -191,6 +192,9 @@ typedef struct {
     uint8_t buffer[SLOT1_FAKE_SIZE];
     struct flash_area area;
     bool open;
+    int  open_rc;
+    int  erase_rc;
+    int  read_fail_on_call;
     int  open_calls;
     int  close_calls;
     int  read_calls;
@@ -203,8 +207,10 @@ static flash_stub_t flash_stub;
 
 typedef struct {
     int  flash_img_init_id_calls;
+    int  flash_img_init_id_rc;
     uint8_t last_init_area_id;
     int  flash_img_buffered_write_calls;
+    int  flash_img_buffered_write_rc;
     bool last_flush_flag;
     size_t bytes_written_total;
     int  flash_img_check_calls;
@@ -214,6 +220,7 @@ typedef struct {
     struct mcuboot_img_header next_bank_header;
     int  boot_request_upgrade_calls;
     int  boot_request_upgrade_arg;
+    int  boot_request_upgrade_rc;
     int  sys_reboot_calls;
     uint8_t captured_response[UDS_MAX_RESPONSE_LENGTH];
     uint16_t captured_response_len;
@@ -227,12 +234,15 @@ static ota_stub_t ota_stub;
 int __wrap_flash_area_open(uint8_t id, const struct flash_area **fa)
 {
     ARG_UNUSED(id);
+    flash_stub.open_calls++;
+    if (0 != flash_stub.open_rc) {
+        return flash_stub.open_rc;
+    }
     flash_stub.area.fa_id = id;
     flash_stub.area.fa_off = 0;
     flash_stub.area.fa_size = SLOT1_FAKE_SIZE;
     flash_stub.area.fa_dev = NULL;
     flash_stub.open = true;
-    flash_stub.open_calls++;
     *fa = &flash_stub.area;
     return 0;
 }
@@ -249,11 +259,13 @@ int __wrap_flash_area_read(const struct flash_area *fa, off_t off, void *dst,
 {
     ARG_UNUSED(fa);
     int rc = 0;
-    if (((size_t)off + len) > SLOT1_FAKE_SIZE) {
+    flash_stub.read_calls++;
+    if (flash_stub.read_calls == flash_stub.read_fail_on_call) {
+        rc = -EIO;
+    } else if (((size_t)off + len) > SLOT1_FAKE_SIZE) {
         rc = -EINVAL;
     } else {
         memcpy(dst, &flash_stub.buffer[off], len);
-        flash_stub.read_calls++;
     }
     return rc;
 }
@@ -262,7 +274,9 @@ int __wrap_flash_area_erase(const struct flash_area *fa, off_t off, size_t size)
 {
     ARG_UNUSED(fa);
     int rc = 0;
-    if (((size_t)off + size) > SLOT1_FAKE_SIZE) {
+    if (0 != flash_stub.erase_rc) {
+        rc = flash_stub.erase_rc;
+    } else if (((size_t)off + size) > SLOT1_FAKE_SIZE) {
         rc = -EINVAL;
     } else {
         memset(&flash_stub.buffer[off], 0xFF, size);
@@ -276,7 +290,7 @@ int __wrap_flash_img_init_id(struct flash_img_context *ctx, uint8_t area_id)
     ARG_UNUSED(ctx);
     ota_stub.last_init_area_id = area_id;
     ota_stub.flash_img_init_id_calls++;
-    return 0;
+    return ota_stub.flash_img_init_id_rc;
 }
 
 int __wrap_flash_img_buffered_write(struct flash_img_context *ctx,
@@ -288,7 +302,7 @@ int __wrap_flash_img_buffered_write(struct flash_img_context *ctx,
     if ((NULL != data) && (len > 0U)) {
         ota_stub.bytes_written_total += len;
     }
-    return 0;
+    return ota_stub.flash_img_buffered_write_rc;
 }
 
 int __wrap_flash_img_check(struct flash_img_context *ctx,
@@ -319,7 +333,7 @@ int __wrap_boot_request_upgrade(int permanent)
 {
     ota_stub.boot_request_upgrade_calls++;
     ota_stub.boot_request_upgrade_arg = permanent;
-    return 0;
+    return ota_stub.boot_request_upgrade_rc;
 }
 
 /* sys_reboot is FUNC_NORETURN in its real prototype, and GCC eliminates any
@@ -381,6 +395,25 @@ static void send_uds(uint8_t sid, const uint8_t *body, size_t body_len)
     UDS_ProcessRequest(&test_ctx, req, (uint16_t)(copy_len + 2U));
 }
 
+/* Dispatch directly to the OTA state machine. This deliberately bypasses the
+ * top-level UDS SID switch so its unknown-SID and short-frame guards can be
+ * exercised independently. */
+static void send_ota(uint8_t sid, const uint8_t *body, size_t body_len)
+{
+    uint8_t req[UDS_MAX_REQUEST_LENGTH] = {0};
+    size_t copy_len = body_len;
+
+    zassert_true((body_len + 2U) <= sizeof(req), "request too long");
+    if (copy_len > (sizeof(req) - 2U)) {
+        copy_len = sizeof(req) - 2U;
+    }
+    req[UDS_SID_IDX] = sid;
+    if ((NULL != body) && (copy_len > 0U)) {
+        (void)memcpy(&req[UDS_SID_IDX + 1U], body, copy_len);
+    }
+    UDS_OTA_Handle(&test_ctx, req, (uint16_t)(copy_len + 2U));
+}
+
 /* Populate slot1 buffer with a minimum valid MCUBoot image:
  *   hdr (32 bytes — real fields filled, rest zero padded to 512)
  *   body (4096 bytes of 0xA5)
@@ -436,6 +469,30 @@ static size_t populate_valid_slot1_image(void)
     return sha_payload_off;
 }
 
+/* Prepend a harmless non-SHA TLV so the validation walker has to advance
+ * before finding the SHA-256 entry. */
+static void populate_slot1_image_with_leading_tlv(void)
+{
+    (void)populate_valid_slot1_image();
+
+    size_t tlv_off = TEST_IMG_HDR_SIZE + TEST_IMG_BODY_SIZE;
+    size_t sha_tlv_off = tlv_off + 4U;
+    size_t sha_tlv_size = 4U + IMG_SHA256_LEN;
+    memmove(&flash_stub.buffer[sha_tlv_off + 8U],
+        &flash_stub.buffer[sha_tlv_off], sha_tlv_size);
+
+    /* image_tlv_info total grows by one 4-byte header + 4-byte payload. */
+    uint16_t tlv_tot = 4U + 8U + sha_tlv_size;
+    flash_stub.buffer[tlv_off + 2U] = (uint8_t)(tlv_tot & 0xFFU);
+    flash_stub.buffer[tlv_off + 3U] = (uint8_t)(tlv_tot >> 8);
+
+    flash_stub.buffer[sha_tlv_off + 0U] = 0x01U;
+    flash_stub.buffer[sha_tlv_off + 1U] = 0x00U;
+    flash_stub.buffer[sha_tlv_off + 2U] = 0x04U;
+    flash_stub.buffer[sha_tlv_off + 3U] = 0x00U;
+    memset(&flash_stub.buffer[sha_tlv_off + 4U], 0x5AU, 4U);
+}
+
 static void test_setup(void *fixture)
 {
     ARG_UNUSED(fixture);
@@ -446,6 +503,7 @@ static void test_setup(void *fixture)
     ota_stub.next_bank_header.mcuboot_version = 1;
     ota_stub.next_bank_header.h.v1.image_size = TEST_IMG_BODY_SIZE;
 
+    maint_arena_reset_for_test();
     UDS_OTA_Reset();
 
     /* Fresh UDS context starts in DEFAULT session at surface ambient. */
@@ -526,6 +584,21 @@ ZTEST(uds_ota_session, test_session_unknown_subfunction_nrc)
               UDS_SID_NEGATIVE_RESPONSE, "expect NRC frame");
     zassert_equal(ota_stub.captured_response[2],
               UDS_NRC_SUBFUNC_NOT_SUPPORTED, "NRC 0x12");
+}
+
+ZTEST(uds_ota_session, test_ota_entry_rejects_null_and_unknown_requests)
+{
+    uint8_t unknown[] = {0x00U, 0x99U};
+
+    UDS_OTA_Handle(NULL, unknown, sizeof(unknown));
+    UDS_OTA_Handle(&test_ctx, NULL, sizeof(unknown));
+    UDS_OTA_Handle(&test_ctx, unknown, 0U);
+
+    UDS_OTA_Handle(&test_ctx, unknown, sizeof(unknown));
+    zassert_equal(ota_stub.captured_response[0], UDS_SID_NEGATIVE_RESPONSE);
+    zassert_equal(ota_stub.captured_response[1], 0x99U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_SERVICE_NOT_SUPPORTED);
 }
 
 /* ---- 0x34 RequestDownload ---- */
@@ -622,6 +695,73 @@ ZTEST(uds_ota_request_download, test_unsupported_data_fmt_refused)
               UDS_SID_NEGATIVE_RESPONSE, "expect NRC");
 }
 
+ZTEST(uds_ota_request_download, test_short_request_refused)
+{
+    send_ota(UDS_SID_REQUEST_DOWNLOAD, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[0], UDS_SID_NEGATIVE_RESPONSE);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_INCORRECT_MSG_LEN);
+}
+
+ZTEST(uds_ota_request_download, test_flash_open_failure_refused)
+{
+    uint8_t body[10];
+
+    enter_programming();
+    flash_stub.open_rc = -EIO;
+    build_download_body(body, 1024U);
+    send_uds(UDS_SID_REQUEST_DOWNLOAD, body, sizeof(body));
+
+    zassert_equal(ota_stub.captured_response[0], UDS_SID_NEGATIVE_RESPONSE);
+    zassert_equal(ota_stub.captured_response[2], UDS_NRC_GENERAL_PROG_FAIL);
+}
+
+ZTEST(uds_ota_request_download, test_busy_maintenance_arena_refused)
+{
+    uint8_t body[10];
+
+    enter_programming();
+    zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY));
+    build_download_body(body, 1024U);
+    send_uds(UDS_SID_REQUEST_DOWNLOAD, body, sizeof(body));
+    maint_arena_release(MAINT_ARENA_OWNER_FACTORY);
+
+    zassert_equal(ota_stub.captured_response[0], UDS_SID_NEGATIVE_RESPONSE);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_CONDITIONS_NOT_CORRECT);
+    zassert_false(flash_stub.open, "failed request must close slot1");
+}
+
+ZTEST(uds_ota_request_download, test_erase_failure_releases_arena)
+{
+    uint8_t body[10];
+
+    enter_programming();
+    flash_stub.erase_rc = -EIO;
+    build_download_body(body, 1024U);
+    send_uds(UDS_SID_REQUEST_DOWNLOAD, body, sizeof(body));
+
+    zassert_equal(ota_stub.captured_response[2], UDS_NRC_GENERAL_PROG_FAIL);
+    zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY),
+             "OTA claim leaked after erase failure");
+    maint_arena_release(MAINT_ARENA_OWNER_FACTORY);
+}
+
+ZTEST(uds_ota_request_download, test_stream_init_failure_releases_arena)
+{
+    uint8_t body[10];
+
+    enter_programming();
+    ota_stub.flash_img_init_id_rc = -EIO;
+    build_download_body(body, 1024U);
+    send_uds(UDS_SID_REQUEST_DOWNLOAD, body, sizeof(body));
+
+    zassert_equal(ota_stub.captured_response[2], UDS_NRC_GENERAL_PROG_FAIL);
+    zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY),
+             "OTA claim leaked after stream-init failure");
+    maint_arena_release(MAINT_ARENA_OWNER_FACTORY);
+}
+
 /* ---- 0x36 TransferData ---- */
 
 ZTEST_SUITE(uds_ota_transfer_data, NULL, NULL, test_setup, NULL, NULL);
@@ -705,6 +845,34 @@ ZTEST(uds_ota_transfer_data, test_data_outside_active_download_refused)
               "NRC 0x24");
 }
 
+ZTEST(uds_ota_transfer_data, test_short_and_write_failure_refused)
+{
+    uint8_t body[2] = {1U, 0x55U};
+
+    start_download(64U);
+    send_ota(UDS_SID_TRANSFER_DATA, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_INCORRECT_MSG_LEN);
+
+    ota_stub.flash_img_buffered_write_rc = -EIO;
+    send_uds(UDS_SID_TRANSFER_DATA, body, sizeof(body));
+    zassert_equal(ota_stub.captured_response[2], UDS_NRC_GENERAL_PROG_FAIL);
+}
+
+ZTEST(uds_ota_transfer_data, test_unexpected_and_unknown_sid_refused)
+{
+    start_download(64U);
+
+    send_ota(UDS_SID_REQUEST_DOWNLOAD, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_SEQUENCE_ERR);
+
+    send_ota(0x99U, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[1], 0x99U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_SERVICE_NOT_SUPPORTED);
+}
+
 /* ---- 0x37 RequestTransferExit ---- */
 
 ZTEST_SUITE(uds_ota_transfer_exit, NULL, NULL, test_setup, NULL, NULL);
@@ -755,6 +923,16 @@ ZTEST(uds_ota_transfer_exit, test_exit_outside_download_refused)
     zassert_equal(ota_stub.captured_response[0],
               UDS_SID_NEGATIVE_RESPONSE,
               "0x37 idle must NRC");
+}
+
+ZTEST(uds_ota_transfer_exit, test_exit_flush_failure_refused)
+{
+    start_download(64U);
+    do_one_transfer(64U, 1U);
+    ota_stub.flash_img_buffered_write_rc = -EIO;
+
+    send_uds(UDS_SID_REQUEST_TRANSFER_EXIT, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2], UDS_NRC_GENERAL_PROG_FAIL);
 }
 
 /* ---- 0x31 RoutineControl Activate ---- */
@@ -859,6 +1037,98 @@ ZTEST(uds_ota_routine_activate, test_refused_during_dive)
               UDS_SID_NEGATIVE_RESPONSE,
               "dive must NRC the activate");
     zassert_equal(ota_stub.boot_request_upgrade_calls, 0, "no upgrade");
+}
+
+ZTEST(uds_ota_routine_activate, test_short_and_bad_subfunction_refused)
+{
+    uint8_t bad_subfunction[3] = {
+        0x02U, ROUTINE_RID_ACTIVATE_HI, ROUTINE_RID_ACTIVATE_LO
+    };
+
+    finish_transfer_phase();
+
+    send_ota(UDS_SID_ROUTINE_CONTROL, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_INCORRECT_MSG_LEN);
+
+    send_uds(UDS_SID_ROUTINE_CONTROL, bad_subfunction,
+         sizeof(bad_subfunction));
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_SUBFUNC_NOT_SUPPORTED);
+}
+
+ZTEST(uds_ota_routine_activate, test_unexpected_and_unknown_sid_refused)
+{
+    finish_transfer_phase();
+
+    send_ota(UDS_SID_TRANSFER_DATA, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_SEQUENCE_ERR);
+
+    send_ota(0x99U, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[1], 0x99U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_SERVICE_NOT_SUPPORTED);
+}
+
+ZTEST(uds_ota_routine_activate, test_validation_flash_read_failures)
+{
+    finish_transfer_phase();
+    (void)populate_valid_slot1_image();
+
+    /* Header, TLV-info, TLV-header and SHA payload are the four reads in a
+     * successful validation walk. Every failure must remain recoverable in
+     * AWAITING_ACTIVATE and answer with ConditionsNotCorrect. */
+    for (int fail_call = 1; fail_call <= 4; fail_call++) {
+        flash_stub.read_calls = 0;
+        flash_stub.read_fail_on_call = fail_call;
+        memset(ota_stub.captured_response, 0,
+               sizeof(ota_stub.captured_response));
+
+        send_activate_request();
+        zassert_equal(ota_stub.captured_response[2],
+                  UDS_NRC_CONDITIONS_NOT_CORRECT,
+                  "read failure %d returned wrong NRC", fail_call);
+        zassert_equal(ota_stub.boot_request_upgrade_calls, 0);
+    }
+}
+
+ZTEST(uds_ota_routine_activate, test_validation_open_failure)
+{
+    finish_transfer_phase();
+    (void)populate_valid_slot1_image();
+    flash_stub.open_rc = -EIO;
+
+    send_activate_request();
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_CONDITIONS_NOT_CORRECT);
+    zassert_equal(ota_stub.boot_request_upgrade_calls, 0);
+}
+
+ZTEST(uds_ota_routine_activate, test_tlv_walker_skips_other_entries)
+{
+    finish_transfer_phase();
+    populate_slot1_image_with_leading_tlv();
+    ota_stub.flash_img_check_rc = -EBADMSG;
+
+    send_activate_request();
+    zassert_equal(ota_stub.flash_img_check_calls, 1,
+              "SHA after non-SHA TLV was not found");
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_CONDITIONS_NOT_CORRECT);
+}
+
+ZTEST(uds_ota_routine_activate, test_upgrade_request_failure_refused)
+{
+    finish_transfer_phase();
+    (void)populate_valid_slot1_image();
+    ota_stub.boot_request_upgrade_rc = -EIO;
+
+    send_activate_request();
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_GENERAL_PROG_FAIL);
+    zassert_equal(ota_stub.boot_request_upgrade_calls, 1);
+    zassert_equal(ota_stub.sys_reboot_calls, 0);
 }
 
 ZTEST(uds_ota_routine_activate, test_happy_path_validates_upgrades_reboots)
