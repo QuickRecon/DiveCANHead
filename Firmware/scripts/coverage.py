@@ -235,6 +235,7 @@ def cmd_report(_args: argparse.Namespace) -> int:
             "--gcov-ignore-parse-errors",
             "--merge-mode-functions=merge-use-line-min",
             "--print-summary",
+            "-j", "0",
         ]
         gcov_executable = os.environ.get("GCOV_EXECUTABLE")
         if gcov_executable:
@@ -244,23 +245,18 @@ def cmd_report(_args: argparse.Namespace) -> int:
         return cmd
 
     # gcov needs Firmware/ as its root to reconstruct each compiler working
-    # directory correctly. Keep that root for both reports, then prefix the
-    # generic XML paths for the repository-root Sonar scan.
-    html_cmd = gcovr_base(FIRMWARE_ROOT) + [
+    # directory correctly. Generate both reports from one parallel coverage
+    # data read, then prefix the generic XML paths for the repository-root
+    # Sonar scan.
+    report_cmd = gcovr_base(FIRMWARE_ROOT) + [
         "--html-details", str(REPORT_DIR / "index.html"),
-        str(COVERAGE_BUILD_ROOT),
-    ]
-    xml_cmd = gcovr_base(FIRMWARE_ROOT) + [
         "--sonarqube", str(REPORT_DIR / "coverage.xml"),
         str(COVERAGE_BUILD_ROOT),
     ]
 
-    html_rc = _run(html_cmd, cwd=FIRMWARE_ROOT)
-    xml_rc = _run(xml_cmd, cwd=FIRMWARE_ROOT)
-    if xml_rc == 0:
-        prefix_sonar_report_paths(REPORT_DIR / "coverage.xml")
-    rc = html_rc | xml_rc
+    rc = _run(report_cmd, cwd=FIRMWARE_ROOT)
     if rc == 0:
+        prefix_sonar_report_paths(REPORT_DIR / "coverage.xml")
         print(f"\n== report: {REPORT_DIR / 'index.html'}")
         print(f"== sonar:  {REPORT_DIR / 'coverage.xml'}")
     return rc

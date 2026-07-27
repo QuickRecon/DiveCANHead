@@ -174,7 +174,8 @@ jobs:
           printf '%s\0' "${native_tests[@]}" |
             xargs -0 -r -n 1 -P "$native_jobs" \
               python3 scripts/native_test.py build --coverage
-          python3 scripts/coverage.py build-integration
+          CMAKE_BUILD_PARALLEL_LEVEL="$host_cpus" \
+            python3 scripts/coverage.py build-integration
 
       - name: Run native tests and collect coverage
         id: test_results
