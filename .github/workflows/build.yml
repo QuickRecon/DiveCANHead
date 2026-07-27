@@ -25,9 +25,7 @@ jobs:
     runs-on: [self-hosted, docker]
     timeout-minutes: 90
     env:
-      PIP_CACHE_DIR: ${{ github.workspace }}/.ci-cache/pip
       ZEPHYR_TOOLCHAIN_VARIANT: zephyr
-      ZEPHYR_SDK_INSTALL_DIR: ${{ github.workspace }}/.ci-cache/zephyr-sdk
     steps:
       # The repository contains two legacy gitlinks without matching
       # .gitmodules entries. actions/checkout traverses submodules while
@@ -69,27 +67,23 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Restore pip downloads
-        id: pip-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: ${{ env.PIP_CACHE_DIR }}
-          key: pip-v2-${{ runner.os }}-py312-${{ hashFiles('Firmware/tests/integration/harness/requirements.txt', 'Firmware/west.yml') }}
-
-      # west.yml pins Zephyr and therefore fully identifies the module graph.
-      - name: Restore west modules
-        id: west-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            .west
-            zephyr
-            modules
-            bootloader
-            tools
-          key: west-${{ runner.os }}-${{ hashFiles('Firmware/west.yml') }}
-          restore-keys: |
-            west-${{ runner.os }}-
+      # This runner's tool cache is a persistent host volume. Keep the large
+      # west module graph, pip downloads, and SDK there directly instead of
+      # compressing and transferring multi-gigabyte GitHub cache archives.
+      - name: Prepare persistent runner storage
+        env:
+          WEST_MANIFEST_HASH: ${{ hashFiles('Firmware/west.yml') }}
+        run: |
+          project_cache="$RUNNER_TOOL_CACHE/DiveCANHead"
+          west_cache="$project_cache/west-$WEST_MANIFEST_HASH"
+          mkdir -p "$project_cache/pip" "$project_cache/sdk" "$west_cache"
+          echo "PIP_CACHE_DIR=$project_cache/pip" >> "$GITHUB_ENV"
+          echo "ZEPHYR_SDK_INSTALL_DIR=$project_cache/sdk" >> "$GITHUB_ENV"
+          for path in zephyr modules bootloader tools; do
+            target="$west_cache/$path"
+            mkdir -p "$target"
+            ln -s "$target" "$path"
+          done
 
       # `west packages pip --install` refuses to run outside a virtualenv, so
       # all Python tooling lives in one; putting its bin dir on GITHUB_PATH
@@ -103,54 +97,25 @@ jobs:
         run: |
           pip install west gcovr 'cmake>=3.20,<4' \
             -r Firmware/tests/integration/harness/requirements.txt
-          if [ ! -d .west ]; then
-            west init -l Firmware
-          fi
+          west init -l Firmware
           west update --narrow -o=--depth=1
           west packages pip --install
 
-      - name: Save west modules
-        if: steps.west-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            .west
-            zephyr
-            modules
-            bootloader
-            tools
-          key: ${{ steps.west-cache.outputs.cache-primary-key }}
-
-      - name: Save pip downloads
-        if: steps.pip-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ env.PIP_CACHE_DIR }}
-          key: ${{ steps.pip-cache.outputs.cache-primary-key }}
-
-      - name: Restore Zephyr SDK
-        id: zephyr-sdk-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: ${{ env.ZEPHYR_SDK_INSTALL_DIR }}
-          key: zephyr-sdk-v2-${{ runner.os }}-${{ hashFiles('zephyr/SDK_VERSION') }}
-
-      - name: Install Zephyr SDK (ARM toolchain + host tools)
-        if: steps.zephyr-sdk-cache.outputs.cache-hit != 'true'
+      - name: Install Zephyr SDK ARM toolchain
         env:
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          west sdk install \
-            --personal-access-token "$GH_API_TOKEN" \
-            --install-dir "$ZEPHYR_SDK_INSTALL_DIR" \
-            -t arm-zephyr-eabi
-
-      - name: Save Zephyr SDK
-        if: steps.zephyr-sdk-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ env.ZEPHYR_SDK_INSTALL_DIR }}
-          key: ${{ steps.zephyr-sdk-cache.outputs.cache-primary-key }}
+          sdk_version=$(tr -d '\r\n' < zephyr/SDK_VERSION)
+          sdk_dir="$ZEPHYR_SDK_INSTALL_DIR/zephyr-sdk-$sdk_version"
+          if [ -x "$sdk_dir/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ]; then
+            echo "Using persistent Zephyr SDK $sdk_version at $sdk_dir"
+          else
+            west sdk install \
+              --personal-access-token "$GH_API_TOKEN" \
+              --install-base "$ZEPHYR_SDK_INSTALL_DIR" \
+              --no-hosttools \
+              -t arm-zephyr-eabi
+          fi
 
       # The ARM variant build covers src/ and drivers/ under the shipped
       # firmware configuration (Poseidon_Aren = most features enabled).
