@@ -101,21 +101,30 @@ jobs:
           west update --narrow -o=--depth=1
           west packages pip --install
 
-      - name: Install Zephyr SDK ARM toolchain
+      - name: Install Zephyr SDK toolchains
         env:
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           sdk_version=$(tr -d '\r\n' < zephyr/SDK_VERSION)
           sdk_dir="$ZEPHYR_SDK_INSTALL_DIR/zephyr-sdk-$sdk_version"
-          if [ -x "$sdk_dir/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ]; then
+          arm_gcc="$sdk_dir/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+          native_clang="$sdk_dir/llvm/bin/clang"
+          native_llvm_cov="$sdk_dir/llvm/bin/llvm-cov"
+          if [ -x "$arm_gcc" ] &&
+             [ -x "$native_clang" ] &&
+             [ -x "$native_llvm_cov" ]; then
             echo "Using persistent Zephyr SDK $sdk_version at $sdk_dir"
           else
             west sdk install \
               --personal-access-token "$GH_API_TOKEN" \
               --install-base "$ZEPHYR_SDK_INSTALL_DIR" \
               --no-hosttools \
+              --llvm \
               -t arm-zephyr-eabi
           fi
+          "$native_clang" --version
+          echo "LLVM_TOOLCHAIN_PATH=$sdk_dir/llvm" >> "$GITHUB_ENV"
+          echo "GCOV_EXECUTABLE=$native_llvm_cov gcov" >> "$GITHUB_ENV"
 
       # The ARM variant build covers src/ and drivers/ under the shipped
       # firmware configuration (Poseidon_Aren = most features enabled).
@@ -141,6 +150,11 @@ jobs:
       # memory pressure from too many simultaneous compiler/linker processes.
       - name: Build coverage-instrumented native tests
         working-directory: Firmware
+        env:
+          # native_sim otherwise silently switches to the image's host GCC.
+          # Use the SDK's LLVM toolchain so runner image upgrades cannot
+          # regress this build to an obsolete compiler.
+          ZEPHYR_TOOLCHAIN_VARIANT: host/llvm
         run: |
           python3 scripts/coverage.py clean
           mapfile -t native_tests < <(python3 scripts/native_test.py list)
@@ -152,6 +166,8 @@ jobs:
 
       - name: Run native tests and collect coverage
         working-directory: Firmware
+        env:
+          ZEPHYR_TOOLCHAIN_VARIANT: host/llvm
         run: |
           mapfile -t native_tests < <(python3 scripts/native_test.py list)
           native_jobs=$(( ($(nproc) + 1) / 2 ))

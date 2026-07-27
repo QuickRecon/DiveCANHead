@@ -21,8 +21,8 @@ Usage:
     scripts/wcs.py [build_dir]
 
 Pre-requisite: build with -fstack-usage and -fdump-rtl-dfinish on the TUs
-of interest. The top-level CMakeLists.txt already wires these for the app
-target.
+of interest. The latter is an opt-in GCC analysis flag and is not part of
+regular firmware or coverage builds.
 """
 
 # pylint: disable = invalid-name, too-few-public-methods

@@ -257,12 +257,13 @@ Two complementary tools keep K_THREAD_DEFINE stack budgets honest. Use
 both — static gives upper bounds at build time, runtime confirms the
 upper bounds are not wasteful.
 
-### Static — `scripts/stack_analysis.sh`
+### Static — `scripts/stack_analysis.sh` (opt-in)
 
 Walks the build directory's `.c.su` (per-function local stack from
 `-fstack-usage`) and `.c.<NNN>r.dfinish` (call-graph RTL dump from
-`-fdump-rtl-dfinish`) artefacts. Both flags are wired into the app's
-`target_compile_options` in `CMakeLists.txt`. The Python core
+`-fdump-rtl-dfinish`) artefacts. The regular build emits `.su` files;
+pass `-fdump-rtl-dfinish` explicitly when producing a static-analysis
+build. The Python core
 (`scripts/wcs.py`) is a Zephyr-adapted port of the old STM32 firmware's
 `WCS.py`.
 

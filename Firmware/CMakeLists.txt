@@ -270,9 +270,6 @@ target_compile_definitions(app PRIVATE
 #                                     scope per platform philosophy
 #   -fharden-conditional-branches     same as above
 #
-# -fdump-rtl-dfinish emits a .<NNN>r.dfinish RTL dump per TU; scripts/wcs.py
-# walks the dumps + .su files to compute worst-case stack per function, used
-# to right-size K_THREAD_DEFINE stacks. See scripts/stack_analysis.sh.
 target_compile_options(app PRIVATE
     -Wall
     -Wextra
@@ -280,12 +277,11 @@ target_compile_options(app PRIVATE
     -Wreturn-type
     -Wno-unused-parameter
     -Wno-vla
-    -Wstack-usage=1305
     -ftrivial-auto-var-init=pattern
     -fstack-usage
-    -fdump-rtl-dfinish
     -std=gnu23
 )
+target_cc_option(app PRIVATE -Wstack-usage=1305)
 
 # Integration test shim (native_sim only)
 target_sources_ifdef(CONFIG_INTEGRATION_TEST_SHIM app PRIVATE

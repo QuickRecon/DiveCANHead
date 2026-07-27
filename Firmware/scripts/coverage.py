@@ -103,7 +103,7 @@ def cmd_build_integration(_args: argparse.Namespace) -> int:
     cmd = [
         "west", "build",
         "-d", str(INTEGRATION_BUILD),
-        "-b", "native_sim",
+        "-b", native_test.NATIVE_BOARD,
         str(FIRMWARE_ROOT),
         "--",
         "-DBOARD_ROOT=.",
@@ -231,6 +231,9 @@ def cmd_report(_args: argparse.Namespace) -> int:
             "--merge-mode-functions=merge-use-line-min",
             "--print-summary",
         ]
+        gcov_executable = os.environ.get("GCOV_EXECUTABLE")
+        if gcov_executable:
+            cmd += ["--gcov-executable", gcov_executable]
         for ex in COVERAGE_EXCLUDES:
             cmd += ["--exclude", ex]
         return cmd

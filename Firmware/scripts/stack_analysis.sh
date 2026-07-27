@@ -8,8 +8,8 @@
 # a copy in stackAnalysis.txt at the repo root for diffing across changes.
 #
 # Pre-requisite: the build must include -fstack-usage and
-# -fdump-rtl-dfinish on the TUs of interest (wired in CMakeLists.txt for
-# the app target).
+# -fdump-rtl-dfinish on the TUs of interest. The latter is an opt-in GCC
+# analysis flag and is not part of regular firmware or coverage builds.
 
 set -euo pipefail
 
