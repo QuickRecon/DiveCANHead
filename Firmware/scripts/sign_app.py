@@ -37,9 +37,26 @@ DEFAULT_IMGTOOL = (
 DEFAULT_NCS_TOOLCHAIN = Path("/home/aren/ncs/toolchains/927563c840")
 
 
+def _validated_path(raw: str, *, must_exist: bool = False) -> Path:
+    """Resolve a CLI-supplied path and reject obviously malformed input.
+
+    This script is invoked with trusted build-tree paths (dev CLI use,
+    tests/integration/harness/uds_ota.py) — absolute paths and arbitrary
+    build dirs are legal, so this is a sanity check ahead of the
+    filesystem access, not a jail.
+    """
+    if not raw or "\0" in raw:
+        raise ValueError(f"invalid path argument: {raw!r}")
+    resolved = Path(raw).resolve(strict=must_exist)
+    if not str(resolved):
+        raise ValueError(f"invalid path argument: {raw!r}")
+    return resolved
+
+
 def read_kconfig_int(config_path: Path, key: str) -> int:
     pattern = re.compile(rf"^{re.escape(key)}=(.+)$")
-    with config_path.open() as f:
+    validated = _validated_path(str(config_path), must_exist=True)
+    with validated.open() as f:
         for line in f:
             m = pattern.match(line)
             if m:

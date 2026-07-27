@@ -51,6 +51,23 @@ READ_ELF = os.getenv("READELF", "readelf")
 STDOUT_ENCODING = "utf-8"
 
 
+def _validated_path(raw: str) -> str:
+    """Resolve a caller-supplied path and reject obviously malformed input.
+
+    This script is invoked with trusted build-directory paths (argv,
+    scripts/stack_analysis.sh) — absolute paths and arbitrary build dirs
+    are legal, so this is a sanity check ahead of the filesystem access,
+    not a jail. "File doesn't exist" stays a normal, separately-handled
+    case; only an empty string / embedded NUL is treated as malformed.
+    """
+    if not raw or "\0" in raw:
+        raise ValueError(f"invalid path argument: {raw!r}")
+    resolved = os.path.realpath(raw)
+    if not resolved:
+        raise ValueError(f"invalid path argument: {raw!r}")
+    return resolved
+
+
 # ---- Data classes ----
 
 
@@ -211,9 +228,10 @@ class CallGraph:
                     node["local_stack"] = int(m.group(5))
 
     def read_manual(self, path: str) -> None:
-        if not os.path.exists(path):
+        resolved = _validated_path(path)
+        if not os.path.exists(resolved):
             return
-        with open(path, "rt", encoding="latin_1") as fh:
+        with open(resolved, "rt", encoding="latin_1") as fh:
             for line in fh:
                 line = line.strip()
                 if not line or line.startswith("#"):
