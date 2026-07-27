@@ -60,10 +60,17 @@ HARNESS_DIR = TESTS_DIR / "integration" / "harness"
 
 # Sources we measure. Everything else (Zephyr kernel, NCS modules,
 # tests/, drivers/gpio_sim/, proprietary/) is excluded from the report.
-# COVERAGE_FILTER already restricts to src/, so the closed-source out-of-tree
-# module under proprietary/ is outside scope; it is listed explicitly too as
+# drivers/ and include/ are in scope so coverage the ztests already
+# generate for the ADS1x1x/solenoid drivers and header inlines is
+# attributed instead of discarded (SonarCloud counts a source file with
+# no coverage record as 0%). The closed-source out-of-tree module under
+# proprietary/ is outside every filter; it is listed explicitly too as
 # belt-and-braces.
-COVERAGE_FILTER = str(FIRMWARE_ROOT / "src")
+COVERAGE_FILTERS = [
+    str(FIRMWARE_ROOT / "src"),
+    str(FIRMWARE_ROOT / "drivers"),
+    str(FIRMWARE_ROOT / "include"),
+]
 COVERAGE_EXCLUDES = [
     str(FIRMWARE_ROOT / "tests"),
     str(FIRMWARE_ROOT / "drivers" / "gpio_sim"),
@@ -213,8 +220,8 @@ def cmd_report(_args: argparse.Namespace) -> int:
 
     # `--root` anchors the report at the firmware tree so paths in the
     # output are relative to Firmware/. `--filter` restricts to app code
-    # (src/), `--exclude` strips the test harnesses and gpio_sim shim
-    # which would otherwise muddy the percentage.
+    # (src/, drivers/, include/), `--exclude` strips the test harnesses
+    # and gpio_sim shim which would otherwise muddy the percentage.
     # search_paths is positional in gcovr's argument layout, so the
     # build-coverage tree goes at the end of the command line.
     #
@@ -231,7 +238,10 @@ def cmd_report(_args: argparse.Namespace) -> int:
         cmd = [
             "gcovr",
             "--root", str(root),
-            "--filter", COVERAGE_FILTER,
+        ]
+        for flt in COVERAGE_FILTERS:
+            cmd += ["--filter", flt]
+        cmd += [
             "--gcov-ignore-parse-errors",
             "--merge-mode-functions=merge-use-line-min",
             "--print-summary",
