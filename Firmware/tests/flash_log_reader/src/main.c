@@ -25,6 +25,7 @@
 #include "flash_log_entries.h"
 #include "flash_log_internal.h"
 #include "flash_log_reader.h"
+#include "maintenance_arena.h"
 
 #define TEST_AREA_ID    FIXED_PARTITION_ID(slot1_partition)
 #define SECTOR_SIZE     0x4000   /* 16 KiB — well within slot1 (420 KiB) */
@@ -38,6 +39,7 @@ static struct flash_sector test_sectors[N_SECTORS] = {
 };
 
 static struct fcb test_fcb;
+static uint32_t test_index_epoch;
 
 /* ---- stubs the reader links against (real ones live in flash_log.c) ---- */
 struct fcb *flash_log_internal_get_fcb(FlashLogDest_t dest)
@@ -48,6 +50,11 @@ struct fcb *flash_log_internal_get_fcb(FlashLogDest_t dest)
 uint8_t flash_log_internal_sector_count(FlashLogDest_t dest)
 {
     return (dest == FL_DEST_TELEMETRY) ? (uint8_t)N_SECTORS : 0U;
+}
+
+uint32_t flash_log_internal_index_epoch(void)
+{
+    return test_index_epoch;
 }
 
 /* ---- expected clean stream: every [hdr|payload] we wrote, concatenated ---- */
@@ -93,8 +100,34 @@ static void write_entry(uint8_t type, uint8_t fill, uint16_t len)
     expected_len += len;
 }
 
+static void write_marker(uint8_t type, const void *payload, uint16_t len)
+{
+    fl_entry_hdr_t hdr = {
+        .type = type, .flags = 0U, .length = len, .ts_boot_us = 1234U,
+    };
+    struct fcb_entry loc;
+    int rc = fcb_append(&test_fcb, (uint16_t)(sizeof(hdr) + len), &loc);
+
+    zassert_ok(rc, "marker append failed: %d", rc);
+    rc = flash_area_write(test_fcb.fap, FCB_ENTRY_FA_DATA_OFF(loc),
+                  &hdr, sizeof(hdr));
+    zassert_ok(rc, "marker header write failed: %d", rc);
+    rc = flash_area_write(test_fcb.fap,
+                  FCB_ENTRY_FA_DATA_OFF(loc) + sizeof(hdr),
+                  payload, len);
+    zassert_ok(rc, "marker payload write failed: %d", rc);
+    zassert_ok(fcb_append_finish(&test_fcb, &loc));
+
+    zassert_true(expected_len + sizeof(hdr) + len <= sizeof(expected));
+    memcpy(&expected[expected_len], &hdr, sizeof(hdr));
+    expected_len += sizeof(hdr);
+    memcpy(&expected[expected_len], payload, len);
+    expected_len += len;
+}
+
 /* the entry sizes written by the fixture (payload lengths) */
 #define BIG_PAYLOAD   1000U   /* > any reasonable chunk → must be sliced */
+#define MARKER_ENTRY_COUNT 5U
 static const uint16_t entry_payloads[] = { 14U, 24U, BIG_PAYLOAD, 8U, 200U };
 
 static void *suite_setup(void)
@@ -117,12 +150,31 @@ static void *suite_setup(void)
     rc = fcb_init(TEST_AREA_ID, &test_fcb);
     zassert_ok(rc, "fcb_init failed: %d", rc);
 
+    maint_arena_reset_for_test();
+    test_index_epoch = 0U;
     expected_len = 0U;
     for (size_t i = 0; i < ARRAY_SIZE(entry_payloads); i++) {
         /* distinct type + fill per entry so a swap/overlap is caught */
         write_entry((uint8_t)(0x10U + i), (uint8_t)(0xA0U + i),
                     entry_payloads[i]);
     }
+
+    /* Two boot IDs and two dive IDs deliberately share one physical sector.
+     * The second of each is invisible to the sector's "first marker" index and
+     * therefore proves the exact-marker fallback walk. */
+    fl_payload_boot_marker_t boot10 = { .boot_id = 10U };
+    fl_payload_dive_marker_t dive7 = {
+        .dive_number = 7U, .unix_timestamp = 1000U,
+    };
+    fl_payload_boot_marker_t boot11 = { .boot_id = 11U };
+    fl_payload_dive_marker_t dive8 = {
+        .dive_number = 8U, .unix_timestamp = 2000U,
+    };
+    write_marker(FL_TYPE_BOOT_MARKER, &boot10, sizeof(boot10));
+    write_marker(FL_TYPE_DIVE_START, &dive7, sizeof(dive7));
+    write_marker(FL_TYPE_DIVE_END, &dive7, sizeof(dive7));
+    write_marker(FL_TYPE_BOOT_MARKER, &boot11, sizeof(boot11));
+    write_marker(FL_TYPE_DIVE_START, &dive8, sizeof(dive8));
     return NULL;
 }
 
@@ -188,7 +240,7 @@ ZTEST(flash_log_reader, test_whole_entries_when_buffer_is_large)
     zassert_equal(total, expected_len, "got %zu bytes, expected %zu",
                   total, expected_len);
     zassert_mem_equal(out, expected, expected_len, "stream mismatch (large buf)");
-    zassert_equal(calls, (int)ARRAY_SIZE(entry_payloads),
+    zassert_equal(calls, (int)(ARRAY_SIZE(entry_payloads) + MARKER_ENTRY_COUNT),
                   "expected one next() per entry, got %d", calls);
 }
 
@@ -249,6 +301,117 @@ ZTEST(flash_log_reader, test_exhausted_reader_returns_zero)
                   "exhausted reader must stay finished");
 }
 
+ZTEST(flash_log_reader, test_index_summary_and_resolvers)
+{
+    FlashLogIndexSummary_t summary;
+    FlashLogRange_t range;
+
+    flash_log_reader_invalidate_index();
+    zassert_ok(flash_log_reader_index_summary(FL_DEST_TELEMETRY, &summary));
+    zassert_equal(summary.boot_id_oldest, 10U);
+    zassert_equal(summary.boot_id_latest, 10U);
+    zassert_equal(summary.boot_count, 1U);
+    zassert_equal(summary.dive_id_latest, 7U);
+    zassert_equal(summary.dive_count, 1U);
+
+    zassert_ok(flash_log_reader_resolve_all(FL_DEST_TELEMETRY, &range));
+    zassert_equal(range.dest, FL_DEST_TELEMETRY);
+    zassert_is_null(range.begin.fe_sector);
+
+    zassert_ok(flash_log_reader_resolve_latest_boot(
+        FL_DEST_TELEMETRY, &range));
+    zassert_equal(range.begin.fe_sector, &test_sectors[0]);
+    zassert_ok(flash_log_reader_resolve_boot_id(
+        FL_DEST_TELEMETRY, 10U, &range));
+    /* Boot 11 shares boot 10's sector, forcing the exact-marker walk. */
+    zassert_ok(flash_log_reader_resolve_boot_id(
+        FL_DEST_TELEMETRY, 11U, &range));
+    zassert_equal(flash_log_reader_resolve_boot_id(
+        FL_DEST_TELEMETRY, 99U, &range), -ENOENT);
+
+    zassert_ok(flash_log_reader_resolve_latest_dive(
+        FL_DEST_TELEMETRY, &range));
+    zassert_ok(flash_log_reader_resolve_dive_id(
+        FL_DEST_TELEMETRY, 7U, &range));
+    /* Dive 8 likewise proves the same-sector fallback. */
+    zassert_ok(flash_log_reader_resolve_dive_id(
+        FL_DEST_TELEMETRY, 8U, &range));
+    zassert_equal(flash_log_reader_resolve_dive_id(
+        FL_DEST_TELEMETRY, 99U, &range), -ENOENT);
+
+    /* An index-relevant writer event must force a clean rebuild. */
+    ++test_index_epoch;
+    zassert_ok(flash_log_reader_index_summary(FL_DEST_TELEMETRY, &summary));
+    zassert_equal(summary.boot_id_oldest, 10U);
+}
+
+ZTEST(flash_log_reader, test_resolver_input_and_busy_guards)
+{
+    FlashLogIndexSummary_t summary;
+    FlashLogRange_t range;
+    FlashLogDest_t invalid = (FlashLogDest_t)FL_DEST_COUNT;
+
+    zassert_equal(flash_log_reader_index_summary(invalid, &summary), -EINVAL);
+    zassert_equal(flash_log_reader_index_summary(
+        FL_DEST_TELEMETRY, NULL), -EINVAL);
+    zassert_equal(flash_log_reader_resolve_all(invalid, &range), -EINVAL);
+    zassert_equal(flash_log_reader_resolve_all(
+        FL_DEST_TELEMETRY, NULL), -EINVAL);
+    zassert_equal(flash_log_reader_resolve_all(FL_DEST_TEXT, &range), -EINVAL);
+
+    zassert_equal(flash_log_reader_resolve_latest_boot(invalid, &range),
+              -EINVAL);
+    zassert_equal(flash_log_reader_resolve_latest_boot(
+        FL_DEST_TELEMETRY, NULL), -EINVAL);
+    zassert_equal(flash_log_reader_resolve_boot_id(invalid, 1U, &range),
+              -EINVAL);
+    zassert_equal(flash_log_reader_resolve_boot_id(
+        FL_DEST_TELEMETRY, 1U, NULL), -EINVAL);
+    zassert_equal(flash_log_reader_resolve_latest_dive(invalid, &range),
+              -EINVAL);
+    zassert_equal(flash_log_reader_resolve_latest_dive(
+        FL_DEST_TELEMETRY, NULL), -EINVAL);
+    zassert_equal(flash_log_reader_resolve_dive_id(invalid, 1U, &range),
+              -EINVAL);
+    zassert_equal(flash_log_reader_resolve_dive_id(
+        FL_DEST_TELEMETRY, 1U, NULL), -EINVAL);
+
+    zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY));
+    zassert_equal(flash_log_reader_resolve_latest_boot(
+        FL_DEST_TELEMETRY, &range), -EBUSY);
+    zassert_equal(flash_log_reader_resolve_boot_id(
+        FL_DEST_TELEMETRY, 10U, &range), -EBUSY);
+    zassert_equal(flash_log_reader_resolve_latest_dive(
+        FL_DEST_TELEMETRY, &range), -EBUSY);
+    zassert_equal(flash_log_reader_resolve_dive_id(
+        FL_DEST_TELEMETRY, 7U, &range), -EBUSY);
+    maint_arena_release(MAINT_ARENA_OWNER_FACTORY);
+}
+
+ZTEST(flash_log_reader, test_reader_input_and_end_guards)
+{
+    uint8_t byte;
+    FlashLogReader_t reader = {0};
+    FlashLogRange_t range = whole_range();
+
+    flash_log_reader_open(NULL, &range);
+    flash_log_reader_open(&reader, NULL);
+    zassert_equal(flash_log_reader_next(NULL, &byte, 1U), -EINVAL);
+    zassert_equal(flash_log_reader_next(&reader, NULL, 1U), -EINVAL);
+    zassert_equal(flash_log_reader_next(&reader, &byte, 0U), -EINVAL);
+
+    range.dest = FL_DEST_TEXT;
+    flash_log_reader_open(&reader, &range);
+    zassert_equal(flash_log_reader_next(&reader, &byte, 1U), -EINVAL);
+
+    /* An exclusive end at the oldest sector boundary is immediately empty. */
+    range = whole_range();
+    range.end.fe_sector = &test_sectors[0];
+    range.end.fe_elem_off = 0U;
+    flash_log_reader_open(&reader, &range);
+    zassert_equal(flash_log_reader_next(&reader, &byte, 1U), 0);
+}
+
 ZTEST(flash_log_reader, test_clean_entry_has_no_double_header)
 {
     /* The clean wire entry is exactly sizeof(hdr)+payload per entry — guard against
@@ -258,6 +421,8 @@ ZTEST(flash_log_reader, test_clean_entry_has_no_double_header)
     for (size_t i = 0; i < ARRAY_SIZE(entry_payloads); i++) {
         want += sizeof(fl_entry_hdr_t) + entry_payloads[i];
     }
+    want += 2U * (sizeof(fl_entry_hdr_t) + sizeof(fl_payload_boot_marker_t));
+    want += 3U * (sizeof(fl_entry_hdr_t) + sizeof(fl_payload_dive_marker_t));
     zassert_equal(expected_len, want,
                   "fixture mismatch: %zu != %zu", expected_len, want);
 

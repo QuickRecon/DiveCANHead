@@ -409,6 +409,18 @@ static void fl_range_clear(FlashLogRange_t *out, FlashLogDest_t dest)
     out->dest = dest;
 }
 
+static int fl_count_entry_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
+{
+    ARG_UNUSED(loc_ctx);
+    uint32_t *count = arg;
+
+    ++(*count);
+    if (0U == (*count % FL_INDEX_WALK_WDT_KICK)) {
+        watchdog_kick();
+    }
+    return 0;
+}
+
 Status_t flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out)
 {
     Status_t rc = 0;
@@ -422,13 +434,15 @@ Status_t flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out)
         } else {
             fl_range_clear(out, dest);
             /* begin = NULL ⇒ "start at the oldest entry" for fcb_getnext */
-            Status_t est = fcb_walk(fcb_p, NULL, NULL, NULL);
-            if (est < 0) {
-                /* fcb_walk(NULL cb) returns 0 in current Zephyr —
-                 * stay tolerant. */
-                est = 0;
+            uint32_t count = 0U;
+            watchdog_kick();
+            Status_t walk_rc = fcb_walk(fcb_p, NULL, fl_count_entry_cb,
+                            &count);
+            if (walk_rc < 0) {
+                rc = walk_rc;
+            } else {
+                out->entry_count_estimate = count;
             }
-            out->entry_count_estimate = (uint32_t)est;
         }
     }
 
@@ -476,11 +490,16 @@ static Status_t fl_resolve_latest_boot_impl(FlashLogDest_t dest,
 Status_t flash_log_reader_resolve_latest_boot(FlashLogDest_t dest,
                      FlashLogRange_t *out)
 {
-    Status_t rc = fl_index_claim();
+    Status_t rc = 0;
 
-    if (0 == rc) {
-        rc = fl_resolve_latest_boot_impl(dest, out);
-        fl_index_unclaim();
+    if ((out == NULL) || (dest >= FL_DEST_COUNT)) {
+        rc = -EINVAL;
+    } else {
+        rc = fl_index_claim();
+        if (0 == rc) {
+            rc = fl_resolve_latest_boot_impl(dest, out);
+            fl_index_unclaim();
+        }
     }
     return rc;
 }
@@ -556,11 +575,16 @@ static Status_t fl_resolve_boot_id_impl(FlashLogDest_t dest, uint32_t boot_id,
 Status_t flash_log_reader_resolve_boot_id(FlashLogDest_t dest, uint32_t boot_id,
                      FlashLogRange_t *out)
 {
-    Status_t rc = fl_index_claim();
+    Status_t rc = 0;
 
-    if (0 == rc) {
-        rc = fl_resolve_boot_id_impl(dest, boot_id, out);
-        fl_index_unclaim();
+    if ((out == NULL) || (dest >= FL_DEST_COUNT)) {
+        rc = -EINVAL;
+    } else {
+        rc = fl_index_claim();
+        if (0 == rc) {
+            rc = fl_resolve_boot_id_impl(dest, boot_id, out);
+            fl_index_unclaim();
+        }
     }
     return rc;
 }
@@ -606,11 +630,16 @@ static Status_t fl_resolve_latest_dive_impl(FlashLogDest_t dest,
 Status_t flash_log_reader_resolve_latest_dive(FlashLogDest_t dest,
                      FlashLogRange_t *out)
 {
-    Status_t rc = fl_index_claim();
+    Status_t rc = 0;
 
-    if (0 == rc) {
-        rc = fl_resolve_latest_dive_impl(dest, out);
-        fl_index_unclaim();
+    if ((out == NULL) || (dest >= FL_DEST_COUNT)) {
+        rc = -EINVAL;
+    } else {
+        rc = fl_index_claim();
+        if (0 == rc) {
+            rc = fl_resolve_latest_dive_impl(dest, out);
+            fl_index_unclaim();
+        }
     }
     return rc;
 }
@@ -690,11 +719,16 @@ static Status_t fl_resolve_dive_id_impl(FlashLogDest_t dest, uint16_t dive_id,
 Status_t flash_log_reader_resolve_dive_id(FlashLogDest_t dest, uint16_t dive_id,
                      FlashLogRange_t *out)
 {
-    Status_t rc = fl_index_claim();
+    Status_t rc = 0;
 
-    if (0 == rc) {
-        rc = fl_resolve_dive_id_impl(dest, dive_id, out);
-        fl_index_unclaim();
+    if ((out == NULL) || (dest >= FL_DEST_COUNT)) {
+        rc = -EINVAL;
+    } else {
+        rc = fl_index_claim();
+        if (0 == rc) {
+            rc = fl_resolve_dive_id_impl(dest, dive_id, out);
+            fl_index_unclaim();
+        }
     }
     return rc;
 }
