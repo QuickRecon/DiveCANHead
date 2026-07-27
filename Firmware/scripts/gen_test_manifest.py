@@ -17,8 +17,92 @@ import argparse
 import json
 import re
 import sys
+from pathlib import Path
 
 DEFAULT_BITRATE = 125000  # DiveCAN is a 125 kbit/s bus
+
+
+def _validated_path(raw: str, *, must_exist: bool = False) -> Path:
+    """Resolve a CLI-supplied path and reject obviously malformed input.
+
+    This script is invoked with trusted build-system paths (CMake
+    POST_BUILD, ad-hoc dev runs) — absolute paths and arbitrary build
+    directories are legal, so this is a sanity check, not a jail. It
+    guards every filesystem access in this script against a mangled
+    argument (empty string, embedded NUL) before the path reaches
+    open()/read_text(), and — when must_exist=True — surfaces a missing
+    input as a clear FileNotFoundError instead of a bare open() failure.
+    """
+    if not raw or "\0" in raw:
+        raise ValueError(f"invalid path argument: {raw!r}")
+    resolved = Path(raw).resolve(strict=must_exist)
+    if not str(resolved):
+        raise ValueError(f"invalid path argument: {raw!r}")
+    return resolved
+
+
+# Canonical settings STORAGE order + labels. This MIRRORS the settings[] table and
+# the SETTING_INDEX_* / BUILD_ASSERT storage-index lock in
+# src/divecan/uds/uds_settings.c — keep in sync if that table changes. The cell-
+# broadcast block is fixed at CELL_MAX_COUNT (== 3, BUILD_ASSERT-locked), NOT the
+# per-variant CELL_COUNT, so every build exposes C1/C2/C3 Bcst. The HIL rig uses
+# this + the CONFIG_MENU_ORDER_* permutation below to know the WIRE order the
+# handset/UDS presents, so its label-index assumptions never silently go stale
+# when a variant reorders its menu (e.g. eCCR surfacing Battery in a menu slot).
+_SETTING_STORAGE_LABELS = [
+    "FW Commit",   # 0  SETTING_INDEX_FW_COMMIT
+    "PPO2 Mode",   # 1  SETTING_INDEX_PPO2_MODE
+    "Cal Mode",    # 2  SETTING_INDEX_CAL_MODE
+    "DepthComp",   # 3  SETTING_INDEX_DEPTH_COMP
+    "Kp x1M",      # 4  SETTING_INDEX_PID_KP
+    "Ki x1M",      # 5  SETTING_INDEX_PID_KI
+    "Kd x1M",      # 6  SETTING_INDEX_PID_KD
+    "Battery",     # 7  SETTING_INDEX_BATTERY_TYPE
+    "C1 Bcst",     # 8  SETTING_INDEX_CELL_BCST_BASE + 0
+    "C2 Bcst",     # 9  + 1
+    "C3 Bcst",     # 10 + 2 (CELL_MAX_COUNT == 3)
+]
+# Number of handset menu-order slots (CONFIG_MENU_ORDER_1..N). Mirrors
+# MENU_CONFIG_SLOTS in uds_settings.c.
+_MENU_CONFIG_SLOTS = 5
+
+
+def compute_menu_order(menu_cfg, setting_count):
+    """Wire (handset-facing) index -> storage index permutation. A direct mirror of
+    UDS_ComputeMenuOrder() in uds_settings.c: take the curated leading slots
+    (valid, in range, de-duplicated), then append every remaining setting in
+    natural storage order so nothing is hidden from UDS. Returns a list of storage
+    indices whose position is the wire index."""
+    order = []
+    for s in menu_cfg:
+        if 0 <= s < setting_count and s not in order:
+            order.append(s)
+    for s in range(setting_count):
+        if s not in order:
+            order.append(s)
+    return order
+
+
+def settings_block(cfg) -> dict:
+    """The settings menu contract: storage order + the per-variant wire order the
+    handset/UDS actually presents (permuted by CONFIG_MENU_ORDER_*). Emitted so the
+    HIL rig resolves setting indices by LABEL from the flashed binary's own menu
+    order instead of hard-coding wire indices that a variant can reorder."""
+    labels = list(_SETTING_STORAGE_LABELS)
+    count = len(labels)
+    # CONFIG_MENU_ORDER_n defaults mirror the Kconfig defaults / the C #ifndef
+    # fallbacks (identity for the leading slots: slot n -> storage n-1).
+    menu_cfg = [int_cfg(cfg, f"CONFIG_MENU_ORDER_{i + 1}", i)
+                for i in range(_MENU_CONFIG_SLOTS)]
+    wire_order = compute_menu_order(menu_cfg, count)
+    return {
+        "count": count,
+        "menu_order_config": menu_cfg,
+        "storage_labels": labels,
+        # wire index -> storage index, and the label at each wire index.
+        "wire_order": wire_order,
+        "wire_labels": [labels[s] for s in wire_order],
+    }
 
 # Battery pack voltages (volts) the rig drives onto BATT_PWR, per chemistry:
 #   chemistry -> (nominal, full, low)
@@ -37,7 +121,8 @@ BATTERY_VOLTAGE = {
 
 def parse_config(path: str) -> dict[str, str]:
     cfg: dict[str, str] = {}
-    with open(path) as f:
+    validated = _validated_path(path, must_exist=True)
+    with open(validated) as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -82,8 +167,8 @@ def dt_can_bitrate(dt_header: str | None) -> int | None:
     if not dt_header:
         return None
     try:
-        text = open(dt_header).read()
-    except OSError:
+        text = _validated_path(dt_header, must_exist=True).read_text()
+    except (OSError, ValueError):
         return None
     m = re.search(r"_S_can_[0-9a-fA-F]+_P_bitrate\s+(\d+)", text)
     if not m:
@@ -99,8 +184,8 @@ def dt_solenoid_channels(dt_header: str | None) -> int:
     if not dt_header:
         return 0
     try:
-        text = open(dt_header).read()
-    except OSError:
+        text = _validated_path(dt_header, must_exist=True).read_text()
+    except (OSError, ValueError):
         return 0
     idxs = re.findall(r"DT_N_S_solenoids_P_gpios_IDX_(\d+)_", text)
     return (max(int(i) for i in idxs) + 1) if idxs else 0
@@ -222,6 +307,11 @@ def build_manifest(cfg: dict, dt_header: str | None, variant: str = "unknown") -
             "depth_comp_capable": is_set(cfg, "CONFIG_HAS_O2_SOLENOID"),
             "depth_compensation": is_set(cfg, "CONFIG_DEPTH_COMPENSATION_DEFAULT"),
         },
+        # Settings menu contract: storage order + the per-variant WIRE order the
+        # handset/UDS presents (permuted by CONFIG_MENU_ORDER_*). The rig resolves
+        # setting indices by label from here, so a variant reordering its menu
+        # (e.g. eCCR surfacing Battery) never silently misdirects a fixed-index write.
+        "settings": settings_block(cfg),
         # Bus-level capabilities always built into this firmware (UDS menu/diag,
         # OTA over UDS, the DiveCAN menu). Emitted so HIL `requires_*` markers can
         # gate cleanly and so a future build that gates these flips them to false.
@@ -285,7 +375,8 @@ def main(argv=None) -> int:
 
     cfg = parse_config(args.config)
     manifest = build_manifest(cfg, args.dt_header, args.variant)
-    with open(args.out, "w") as f:
+    out_path = _validated_path(args.out)
+    with open(out_path, "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
     print(f"[gen_test_manifest] wrote {args.out} "
