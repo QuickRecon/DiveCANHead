@@ -1332,9 +1332,11 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
  * fitting the STM32L431's tight RAM). */
 #define DIVEO2_THREAD_STACK_SIZE 1536
 
-/* rx_buf/rx_active/rx_line/rx_line_len/tx_buf/rx_sem/tx_sem/rx_len below are
- * all re-established by diveo2_setup() before first use on every (re)start;
- * zero-initialised here purely to satisfy explicit-struct-init (S6871). */
+/* rx_buf/rx_active/rx_line/rx_line_len/tx_buf/rx_len below are all
+ * re-established by diveo2_setup() before first use on every (re)start;
+ * zero-initialised here purely to satisfy explicit-struct-init (S6871).
+ * The embedded semaphores use Zephyr's initializer because their internal
+ * aggregate layout is configuration-dependent. */
 
 #if defined(CONFIG_CELL_1_TYPE_DIVEO2)
 static struct diveo2_cell_state diveo2_cell_1 = {
@@ -1361,8 +1363,8 @@ static struct diveo2_cell_state diveo2_cell_1 = {
     .rx_line = {0},
     .rx_line_len = 0U,
     .tx_buf = {0},
-    .rx_sem = {0},
-    .tx_sem = {0},
+    .rx_sem = Z_SEM_INITIALIZER(diveo2_cell_1.rx_sem, 0, 1),
+    .tx_sem = Z_SEM_INITIALIZER(diveo2_cell_1.tx_sem, 1, 1),
     .rx_len = 0U,
     .out_chan = &chan_cell_1,
 };
@@ -1396,8 +1398,8 @@ static struct diveo2_cell_state diveo2_cell_2 = {
     .rx_line = {0},
     .rx_line_len = 0U,
     .tx_buf = {0},
-    .rx_sem = {0},
-    .tx_sem = {0},
+    .rx_sem = Z_SEM_INITIALIZER(diveo2_cell_2.rx_sem, 0, 1),
+    .tx_sem = Z_SEM_INITIALIZER(diveo2_cell_2.tx_sem, 1, 1),
     .rx_len = 0U,
     .out_chan = &chan_cell_2,
 };
@@ -1431,8 +1433,8 @@ static struct diveo2_cell_state diveo2_cell_3 = {
     .rx_line = {0},
     .rx_line_len = 0U,
     .tx_buf = {0},
-    .rx_sem = {0},
-    .tx_sem = {0},
+    .rx_sem = Z_SEM_INITIALIZER(diveo2_cell_3.rx_sem, 0, 1),
+    .tx_sem = Z_SEM_INITIALIZER(diveo2_cell_3.tx_sem, 1, 1),
     .rx_len = 0U,
     .out_chan = &chan_cell_3,
 };
