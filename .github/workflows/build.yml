@@ -18,7 +18,7 @@ concurrency:
 jobs:
   analyze:
     name: Build firmware + tests, scan
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     timeout-minutes: 90
     steps:
       - name: Checkout (full history for new-code detection and blame)
@@ -112,7 +112,7 @@ jobs:
           echo "Merged compilation database: $(jq length compile_commands.json) entries"
 
       - name: SonarCloud scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
