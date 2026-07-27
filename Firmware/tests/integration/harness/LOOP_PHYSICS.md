@@ -1,10 +1,10 @@
 # Rebreather Loop Physics — Modelling Notes
 
-Working notes from the closed-loop PID stability simulator
-(`rebreather_model.py`).  The simulator is open to characterising new
-loops by adding profiles to `LOOP_PROFILES`; this document captures the
-data and reasoning behind the defaults so future profiles can be
-calibrated against the same evidence.
+Working notes for the closed-loop plant model (`rebreather_model.py`) used by
+the targeted autotune integration tests. The model supports characterising new
+loops through profiles in `LOOP_PROFILES`; this document captures the data and
+reasoning behind the defaults so future profiles can be calibrated against the
+same evidence.
 
 ## Sources
 
@@ -271,6 +271,6 @@ testing of disturbance rejection or extreme operating points:
    `rebreather_model.py`'s docstring is re-run.
 4. Add a new entry to `LOOP_PROFILES` with a clear `source` string
    referencing the log file and fire timestamp.
-5. Optionally extend the `@pytest.mark.parametrize` list in
-   `test_pid_stability.py` to include the new profile in the test
-   matrix (this is the only test-code change required).
+5. Add a focused test that selects the profile only when it asserts a specific
+   controller or autotune contract; profiles are not run as a broad stability
+   matrix.

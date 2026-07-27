@@ -2,7 +2,7 @@
 
 Drives the autotune control/status DIDs (0xF243 / 0xF213) over UDS against
 the native_sim firmware, using the rebreather plant model to close the loop
-(same shim-driven plant as ``test_pid_stability.py``).
+through the shared-memory sensor/solenoid shim.
 
 Covered:
   * ``test_autotune_start_requires_session`` — START (0xF243) is refused

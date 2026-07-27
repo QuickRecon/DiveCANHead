@@ -1,4 +1,4 @@
-"""Closed-loop rebreather plant model for native_sim PID stability tests.
+"""Closed-loop rebreather plant model for native_sim autotune tests.
 
 Reproduces the *overshoot* characteristic seen in real DiveCAN dive logs
 (see ``log_backup/12-12-2025/``):
@@ -40,10 +40,9 @@ sensor lag per cell.  When the solenoid fires, ``f_l`` jumps because
 Adding new characterised loops
 ------------------------------
 ``LoopProfile`` carries every parameter the model needs.  ``LOOP_PROFILES``
-is a name → profile registry; appending a new entry is the only change
-required to bring a new loop into the test matrix.  Document the source
-(test rig, real dive log, vendor datasheet) in the ``source`` field so
-future edits can revisit the numbers.
+is a name → profile registry for targeted experiments.  Document the source
+(test rig, real dive log, vendor datasheet) in the ``source`` field so future
+tests can select characterised plants explicitly and revisit the numbers.
 
 Sensor time constants are physical t63 (= τ for a first-order system).
 When a datasheet quotes t90, convert with τ = t90 / 2.303 before

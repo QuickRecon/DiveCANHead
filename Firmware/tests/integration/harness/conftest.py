@@ -143,9 +143,9 @@ def launch_native_sim_firmware(append_log: bool = False,
       * ``rt_ratio=1.0`` (or ``None``) — default, simulated time tracks
         wall time 1:1.
       * ``rt_ratio=10.0`` — simulated time runs **10× faster** than
-        wall time.  Useful for tests that watch many control cycles
-        (PID stability) and only care about per-iteration timing
-        being self-consistent inside the firmware.
+        wall time.  Useful for control/autotune tests that watch many cycles
+        and only care about per-iteration timing being self-consistent inside
+        the firmware.
       * ``rt_ratio=0.1`` — simulated time runs **10× slower** than
         wall time.  Useful for ISO-TP multi-frame transfers that
         need extra wall-time headroom for IPC.
