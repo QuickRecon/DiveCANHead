@@ -30,14 +30,18 @@ static struct {
     size_t  len;
     int     save_calls;
     int     load_calls;
+    int     save_rc;
+    int     load_rc;
 } stub = {0};
 
 int __wrap_settings_save_one(const char *name, const void *value, size_t val_len)
 {
     ARG_UNUSED(name);
-    int rc = 0;
+    int rc = stub.save_rc;
 
-    if (val_len > sizeof(stub.buf)) {
+    if (0 != rc) {
+        /* Injected backend failure. */
+    } else if (val_len > sizeof(stub.buf)) {
         rc = -EINVAL;
     } else {
         memcpy(stub.buf, value, val_len);
@@ -51,7 +55,7 @@ int __wrap_settings_load_subtree(const char *subtree)
 {
     ARG_UNUSED(subtree);
     stub.load_calls++;
-    return 0;
+    return stub.load_rc;
 }
 
 /** @brief Publish a synthetic ErrorEvent and let the listener increment. */
@@ -66,6 +70,7 @@ static void publish_error(OpError_t code)
 static void reset_histogram(void *fixture)
 {
     ARG_UNUSED(fixture);
+    memset(&stub, 0, sizeof(stub));
     (void)error_histogram_clear();
     memset(&stub, 0, sizeof(stub));
 }
@@ -214,4 +219,46 @@ ZTEST(error_histogram, test_out_of_range_code_does_not_increment)
         zassert_equal(snap[i], 0U,
                   "no slot should be touched by out-of-range code");
     }
+}
+
+ZTEST(error_histogram, test_settings_runtime_loads_persisted_counts)
+{
+    uint16_t persisted[ERROR_HISTOGRAM_COUNT] = {0};
+    persisted[OP_ERR_TIMEOUT] = 17U;
+    persisted[OP_ERR_FLASH] = UINT16_MAX;
+
+    zassert_ok(settings_runtime_set("errhist/v1", persisted,
+                    sizeof(persisted)));
+
+    uint16_t snap[ERROR_HISTOGRAM_COUNT] = {0};
+    (void)error_histogram_snapshot(snap, ERROR_HISTOGRAM_COUNT);
+    zassert_equal(snap[OP_ERR_TIMEOUT], 17U);
+    zassert_equal(snap[OP_ERR_FLASH], UINT16_MAX);
+}
+
+ZTEST(error_histogram, test_settings_runtime_rejects_bad_key_and_length)
+{
+    uint16_t persisted[ERROR_HISTOGRAM_COUNT] = {0};
+
+    zassert_equal(settings_runtime_set("errhist/old", persisted,
+                       sizeof(persisted)), -ENOENT);
+    zassert_equal(settings_runtime_set("errhist/v1", persisted,
+                       sizeof(persisted) - 1U), -EIO);
+}
+
+ZTEST(error_histogram, test_clear_propagates_backend_failure)
+{
+    stub.save_rc = -ENOSPC;
+
+    zassert_equal(error_histogram_clear(), -ENOSPC);
+    zassert_equal(stub.save_calls, 0);
+}
+
+ZTEST(error_histogram, test_init_handles_backend_load_failure)
+{
+    stub.load_rc = -EIO;
+
+    error_histogram_init();
+
+    zassert_equal(stub.load_calls, 1);
 }

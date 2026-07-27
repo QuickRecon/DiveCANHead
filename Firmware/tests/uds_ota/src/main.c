@@ -1124,6 +1124,41 @@ ZTEST(uds_ota_request_download, test_busy_maintenance_arena_refused)
     zassert_false(flash_stub.open, "failed request must close slot1");
 }
 
+ZTEST(uds_ota_request_download, test_maintenance_arena_ownership_contract)
+{
+    zassert_is_null(maint_arena_claim(MAINT_ARENA_FREE));
+    zassert_equal(maint_arena_generation(), 0U);
+
+    void *ota = maint_arena_claim(MAINT_ARENA_OWNER_OTA);
+    zassert_not_null(ota);
+    zassert_equal(((uintptr_t)ota & 0x7U), 0U, "arena must be 8-byte aligned");
+    zassert_equal(maint_arena_generation(), 1U);
+
+    zassert_equal(maint_arena_claim(MAINT_ARENA_OWNER_OTA), ota,
+              "same-owner claim is idempotent");
+    zassert_equal(maint_arena_generation(), 1U,
+              "same content owner keeps the generation");
+    zassert_is_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY),
+            "exclusive owner denies another exclusive tenant");
+
+    maint_arena_release(MAINT_ARENA_OWNER_FACTORY);
+    zassert_is_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY),
+            "wrong-owner release is a no-op");
+    maint_arena_release(MAINT_ARENA_OWNER_OTA);
+
+    zassert_equal(maint_arena_claim(MAINT_ARENA_OWNER_OTA), ota);
+    zassert_equal(maint_arena_generation(), 1U,
+              "warm same-owner contents do not invalidate");
+    maint_arena_release(MAINT_ARENA_OWNER_OTA);
+
+    zassert_equal(maint_arena_claim(MAINT_ARENA_OWNER_LOG_INDEX), ota);
+    zassert_equal(maint_arena_generation(), 2U);
+    zassert_equal(maint_arena_claim(MAINT_ARENA_OWNER_AUTOTUNE), ota,
+              "exclusive work may evict the log-index cache");
+    zassert_equal(maint_arena_generation(), 3U);
+    maint_arena_release(MAINT_ARENA_OWNER_AUTOTUNE);
+}
+
 ZTEST(uds_ota_request_download, test_erase_failure_releases_arena)
 {
     uint8_t body[10];

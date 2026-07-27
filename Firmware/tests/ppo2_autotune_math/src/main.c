@@ -151,3 +151,132 @@ ZTEST(autotune_model_suite, test_mixing_reversal_reduces_gains)
     zassert_true(reverse_kp < clean_kp);
     zassert_true(reverse_ki < clean_ki);
 }
+
+ZTEST(autotune_model_suite, test_identification_rejects_invalid_arguments)
+{
+    PIDNumeric_t duty[TRACE_N] = {0};
+    PIDNumeric_t ppo2[TRACE_N] = {0};
+    AutotunePlantModel_t model = { .valid = true };
+
+    zassert_false(autotune_identify_plant(NULL, ppo2, TRACE_N, 0.5f,
+                          0.1f, 0.7f, 0.002f, &model));
+    zassert_false(model.valid, "output is cleared before rejecting input");
+    zassert_false(autotune_identify_plant(duty, NULL, TRACE_N, 0.5f,
+                          0.1f, 0.7f, 0.002f, &model));
+    zassert_false(autotune_identify_plant(duty, ppo2, TRACE_N, 0.5f,
+                          0.1f, 0.7f, 0.002f, NULL));
+    zassert_false(autotune_identify_plant(duty, ppo2, 11U, 0.5f,
+                          0.1f, 0.7f, 0.002f, &model));
+    zassert_false(autotune_identify_plant(duty, ppo2, TRACE_N, 0.0f,
+                          0.1f, 0.7f, 0.002f, &model));
+}
+
+ZTEST(autotune_model_suite, test_identification_rejects_no_response)
+{
+    PIDNumeric_t duty[TRACE_N];
+    PIDNumeric_t ppo2[TRACE_N];
+    for (uint16_t i = 0U; i < TRACE_N; ++i) {
+        duty[i] = (i < 12U) ? 0.30f : 0.10f;
+        ppo2[i] = 0.70f;
+    }
+
+    AutotunePlantModel_t model;
+    zassert_false(autotune_identify_plant(duty, ppo2, TRACE_N, 0.5f,
+                          0.10f, 0.70f, 0.002f, &model));
+    zassert_false(model.valid);
+}
+
+ZTEST(autotune_model_suite, test_identification_rejects_too_slow_rate)
+{
+    PIDNumeric_t duty[TRACE_N];
+    PIDNumeric_t ppo2[TRACE_N];
+    for (uint16_t i = 0U; i < TRACE_N; ++i) {
+        duty[i] = (i < 12U) ? 0.30f : 0.10f;
+        ppo2[i] = 0.70f + (0.004f * (PIDNumeric_t)i);
+    }
+
+    AutotunePlantModel_t model;
+    zassert_false(autotune_identify_plant(duty, ppo2, TRACE_N, 10.0f,
+                          0.10f, 0.70f, 0.002f, &model));
+    zassert_false(model.valid, "sub-0.5 mbar/s response is not identifiable");
+}
+
+ZTEST(autotune_model_suite, test_minimum_tail_window_path)
+{
+    enum { MIN_N = 12 };
+    PIDNumeric_t duty[MIN_N];
+    PIDNumeric_t ppo2[MIN_N];
+    for (uint16_t i = 0U; i < MIN_N; ++i) {
+        duty[i] = 0.30f;
+        ppo2[i] = 0.71f;
+    }
+
+    AutotunePlantModel_t model;
+    zassert_false(autotune_identify_plant(duty, ppo2, MIN_N, 0.5f,
+                          0.10f, 0.70f, 0.002f, &model));
+}
+
+ZTEST(autotune_model_suite, test_model_pid_rejects_invalid_arguments)
+{
+    AutotunePlantModel_t model = {
+        .process_gain = 0.12f,
+        .dead_time_s = 2.0f,
+        .time_constant_s = 6.0f,
+        .baseline_ppo2_bar = 0.70f,
+        .final_ppo2_bar = 0.85f,
+        .valid = true,
+    };
+    PIDNumeric_t kp;
+    PIDNumeric_t ki;
+    PIDNumeric_t kd;
+
+    zassert_false(autotune_model_pid(NULL, 0.1f, 0.0f, 100.0f,
+                        &kp, &ki, &kd));
+    zassert_false(autotune_model_pid(&model, 0.1f, 0.0f, 100.0f,
+                        NULL, &ki, &kd));
+    zassert_false(autotune_model_pid(&model, 0.1f, 0.0f, 100.0f,
+                        &kp, NULL, &kd));
+    zassert_false(autotune_model_pid(&model, 0.1f, 0.0f, 100.0f,
+                        &kp, &ki, NULL));
+
+    model.valid = false;
+    zassert_false(autotune_model_pid(&model, 0.1f, 0.0f, 100.0f,
+                        &kp, &ki, &kd));
+    model.valid = true;
+    model.process_gain = 0.0f;
+    zassert_false(autotune_model_pid(&model, 0.1f, 0.0f, 100.0f,
+                        &kp, &ki, &kd));
+    model.process_gain = 0.12f;
+    model.time_constant_s = 0.0f;
+    zassert_false(autotune_model_pid(&model, 0.1f, 0.0f, 100.0f,
+                        &kp, &ki, &kd));
+    model.time_constant_s = 6.0f;
+    zassert_false(autotune_model_pid(&model, 0.0f, 0.0f, 100.0f,
+                        &kp, &ki, &kd));
+}
+
+ZTEST(autotune_model_suite, test_model_pid_clamps_both_gain_bounds)
+{
+    AutotunePlantModel_t model = {
+        .process_gain = 1000.0f,
+        .dead_time_s = 0.0f,
+        .time_constant_s = 10.0f,
+        .baseline_ppo2_bar = 0.70f,
+        .final_ppo2_bar = 0.80f,
+        .valid = true,
+    };
+    PIDNumeric_t kp;
+    PIDNumeric_t ki;
+    PIDNumeric_t kd;
+
+    zassert_true(autotune_model_pid(&model, 0.1f, 0.01f, 10.0f,
+                       &kp, &ki, &kd));
+    zassert_within(kp, 0.01f, EPS);
+    zassert_within(ki, 0.01f, EPS);
+
+    model.process_gain = 0.000001f;
+    zassert_true(autotune_model_pid(&model, 1.0f, 0.0f, 10.0f,
+                       &kp, &ki, &kd));
+    zassert_within(kp, 10.0f, EPS);
+    zassert_within(ki, 10.0f, EPS);
+}
