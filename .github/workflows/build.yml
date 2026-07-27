@@ -1,0 +1,108 @@
+name: Build + SonarCloud Analysis
+
+# CI-based SonarCloud scan with a real compilation database, replacing
+# Automatic Analysis (which parses C without macro resolution and produces
+# thousands of false positives on Zephyr macros: ZTEST, zassert_*, LOG_*).
+# Requires: SONAR_TOKEN repo secret; Automatic Analysis switched OFF in the
+# SonarCloud UI (Administration -> Analysis Method) once this workflow is green.
+
+on:
+  push:
+    branches: [master, zephyr_rewrite]
+  pull_request:
+
+concurrency:
+  group: sonar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Build firmware + tests, scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout (full history for new-code detection and blame)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-multilib g++-multilib ninja-build device-tree-compiler ccache jq
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # zephyr revision is `main` in west.yml, so the cache key can't pin a
+      # revision — restore the newest cache and let `west update` fast-forward.
+      - name: Cache west modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            zephyr
+            modules
+            bootloader
+            tools
+          key: west-${{ hashFiles('Firmware/west.yml') }}-${{ github.run_id }}
+          restore-keys: |
+            west-${{ hashFiles('Firmware/west.yml') }}-
+            west-
+
+      - name: Initialize west workspace
+        run: |
+          pip install west
+          west init -l Firmware
+          west update --narrow -o=--depth=1
+          west packages pip --install
+
+      - name: Cache Zephyr SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/zephyr-sdk-*
+          key: zephyr-sdk-${{ hashFiles('zephyr/SDK_VERSION') }}
+
+      - name: Install Zephyr SDK (ARM toolchain + host tools)
+        run: west sdk install -t arm-zephyr-eabi
+
+      # The ARM variant build covers src/ and drivers/ under the shipped
+      # firmware configuration (Poseidon_Aren = most features enabled).
+      - name: Build Poseidon_Aren firmware (sysbuild)
+        working-directory: Firmware
+        run: |
+          west build -d build -b divecan_jr/stm32l431xx . --sysbuild -p always -- \
+            -DBOARD_ROOT=. \
+            -DEXTRA_CONF_FILE=variants/Poseidon_Aren.conf \
+            -DEXTRA_DTC_OVERLAY_FILE=variants/Poseidon_Aren.overlay
+
+      # The native_sim test builds cover tests/** and the host-only shims.
+      - name: Build native test suite
+        working-directory: Firmware
+        run: python3 scripts/native_test.py build-all
+
+      - name: Merge compilation databases
+        run: |
+          # ARM app DB listed first: for src/ files present in several DBs,
+          # keep the first (ARM/variant) entry so production code is analyzed
+          # under the shipped configuration, not a test build. Native DBs then
+          # contribute tests/** and files never compiled for ARM.
+          jq -s '
+            [ .[][] ]
+            | reduce .[] as $e ({seen: {}, out: []};
+                if .seen[$e.file] then .
+                else {seen: (.seen + {($e.file): true}),
+                      out: (.out + [$e])} end)
+            | .out
+          ' Firmware/build/Firmware/compile_commands.json \
+            Firmware/build-native/*/compile_commands.json \
+            > compile_commands.json
+          echo "Merged compilation database: $(jq length compile_commands.json) entries"
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
