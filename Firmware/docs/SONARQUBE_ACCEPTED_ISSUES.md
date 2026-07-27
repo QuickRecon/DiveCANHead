@@ -72,6 +72,12 @@ violations. Mark **Won't Fix** on SonarCloud once the rule is reviewed.
 |------|------|---------------|
 | c:S3519 (BLOCKER ×2) | `drivers/ads1x1x/adc_ads1x1x_local.c`, `adc_context_update_buffer_pointer` and `adc_context_start_sampling` | `CONTAINER_OF(ctx, struct ads1x1x_data, ctx)` recovers the driver data block from the embedded `adc_context` member — the callback signature is fixed by Zephyr's `adc_context.h` contract, and CONTAINER_OF is the canonical (and only) way to implement it. The analyzer flags the negative byte offset of the pointer arithmetic as an out-of-bounds access; it is well-defined because `ctx` is always embedded in a `struct ads1x1x_data`. Marked **False Positive** on SonarCloud (2026-07-27, PR 4 keys AZ-iJ0tU4Ln9rv4-xLxe/-xLxf); re-mark if the issues reappear on a branch analysis. |
 
+## CI workflow pip dependency locking
+
+| Rule | File / Location | Justification |
+|------|------|---------------|
+| githubactions:S8544 | `.github/workflows/build.yml`, harness pip install | All top-level packages and the harness `requirements.txt` are exact-version pinned (`==`), installed `--only-binary :all:` (single audited sdist exception), from a repo-controlled file onto a self-hosted runner. The residual ask is hash-locking (`pip-compile --generate-hashes` + `--require-hashes`); tracked as CI-maintenance follow-up. Accepted 2026-07-27 (key AZ-jITbijjNxyah3r3UF). |
+
 ## Volatile-stripping cast
 
 | Rule | File | Location | Justification |

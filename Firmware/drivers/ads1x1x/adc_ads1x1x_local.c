@@ -738,7 +738,7 @@ static int ads1x1x_adc_perform_read(const struct device *dev)
 		 * shift down. Data is also signed, so perform
 		 * division rather than shifting
 		 */
-		int16_t divisor = (int16_t)((uint32_t)1 << (ADS1X1X_FULL_SCALE_BITS - config->resolution));
+		int16_t divisor = (int16_t)((uint32_t)1 << (uint32_t)(ADS1X1X_FULL_SCALE_BITS - config->resolution));
 
 		*data->buffer++ = buf / divisor;
 
