@@ -664,7 +664,7 @@ void poseidon_accessories_shutdown(void)
      * shutdown sequence beats blocking the power-down. */
     uint32_t drain_polls = SHUTDOWN_DRAIN_MS / SHUTDOWN_DRAIN_POLL_MS;
 
-    for (uint32_t i = 0; (i < drain_polls) && !atomic_get(&accessory_parked); ++i) {
+    for (uint32_t i = 0; (i < drain_polls) && (0 == atomic_get(&accessory_parked)); ++i) {
         (void)k_msleep(SHUTDOWN_DRAIN_POLL_MS);
     }
 

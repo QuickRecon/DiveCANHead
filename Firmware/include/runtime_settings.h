@@ -133,14 +133,14 @@ static const CalibrationMode_t valid_cal_modes[] = {
  * defaults and runtime_settings_validate() rejects EVERY settings write (NRC
  * 0x31). Absolute and Total-Absolute are always valid; the two hardware-gated
  * modes are checked here. (See the FLUSH-without-flush-solenoid bug, 2026-06-25.) */
-static_assert(!IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_DIGITAL_REF) ||
+static_assert((0 == IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_DIGITAL_REF)) ||
           IS_ENABLED(CONFIG_HAS_DIGITAL_CELL),
           "Default cal mode Dig-Ref requires CONFIG_HAS_DIGITAL_CELL");
-static_assert(!IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_FLUSH) ||
+static_assert((0 == IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_FLUSH)) ||
           IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID) ||
           IS_ENABLED(CONFIG_HAS_O2_SOLENOID),
           "Default cal mode Flush requires an O2 or flush solenoid");
-static_assert(!IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_CHECK) ||
+static_assert((0 == IS_ENABLED(CONFIG_CAL_MODE_DEFAULT_CHECK)) ||
           (IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID) &&
            IS_ENABLED(CONFIG_HAS_DIL_FLUSH_SOLENOID)),
           "Default cal mode Check requires O2 flush + diluent flush solenoids");

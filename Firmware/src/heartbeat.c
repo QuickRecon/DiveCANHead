@@ -72,7 +72,7 @@ bool heartbeat_check_all_alive(void)
     bool alive = true;
 
     for (size_t i = 0; i < (size_t)HEARTBEAT_COUNT; ++i) {
-        if (0 != (mask & (atomic_val_t)BIT(i))) {
+        if (0U != ((unsigned long)mask & BIT(i))) {
             atomic_val_t now = atomic_get(&counters[i]);
             if (now == last[i]) {
                 if (!long_op) {

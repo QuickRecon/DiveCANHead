@@ -244,16 +244,16 @@ static int gpio_sim_port_set_masked_raw(const struct device *port,
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
     k_spinlock_key_t key;
 
-    mask &= config->common.port_pin_mask;
+    gpio_port_pins_t masked = mask & config->common.port_pin_mask;
 
     key = k_spin_lock(&drv_data->lock);
     gpio_port_pins_t output_mask = get_output_pins(port);
-    mask &= output_mask;
-    drv_data->output_vals &= ~mask;
-    drv_data->output_vals |= values & mask;
+    masked &= output_mask;
+    drv_data->output_vals &= ~masked;
+    drv_data->output_vals |= values & masked;
 
     gpio_port_value_t prev = drv_data->input_vals;
-    gpio_port_pins_t input_mask = mask & get_input_pins(port);
+    gpio_port_pins_t input_mask = masked & get_input_pins(port);
     (void)input_set_masked_int(port, input_mask, drv_data->output_vals);
     gpio_port_value_t cur = drv_data->input_vals;
     k_spin_unlock(&drv_data->lock, key);
@@ -268,13 +268,13 @@ static int gpio_sim_port_set_bits_raw(const struct device *port, gpio_port_pins_
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
     k_spinlock_key_t key;
 
-    pins &= config->common.port_pin_mask;
+    gpio_port_pins_t masked = pins & config->common.port_pin_mask;
 
     key = k_spin_lock(&drv_data->lock);
-    pins &= get_output_pins(port);
-    drv_data->output_vals |= pins;
+    masked &= get_output_pins(port);
+    drv_data->output_vals |= masked;
     gpio_port_value_t prev = drv_data->input_vals;
-    gpio_port_pins_t input_mask = pins & get_input_pins(port);
+    gpio_port_pins_t input_mask = masked & get_input_pins(port);
     (void)input_set_masked_int(port, input_mask, drv_data->output_vals);
     gpio_port_value_t cur = drv_data->input_vals;
     k_spin_unlock(&drv_data->lock, key);
@@ -289,13 +289,13 @@ static int gpio_sim_port_clear_bits_raw(const struct device *port, gpio_port_pin
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
     k_spinlock_key_t key;
 
-    pins &= config->common.port_pin_mask;
+    gpio_port_pins_t masked = pins & config->common.port_pin_mask;
 
     key = k_spin_lock(&drv_data->lock);
-    pins &= get_output_pins(port);
-    drv_data->output_vals &= ~pins;
+    masked &= get_output_pins(port);
+    drv_data->output_vals &= ~masked;
     gpio_port_value_t prev = drv_data->input_vals;
-    gpio_port_pins_t input_mask = pins & get_input_pins(port);
+    gpio_port_pins_t input_mask = masked & get_input_pins(port);
     (void)input_set_masked_int(port, input_mask, drv_data->output_vals);
     gpio_port_value_t cur = drv_data->input_vals;
     k_spin_unlock(&drv_data->lock, key);
@@ -310,14 +310,14 @@ static int gpio_sim_port_toggle_bits(const struct device *port, gpio_port_pins_t
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
     k_spinlock_key_t key;
 
-    pins &= config->common.port_pin_mask;
+    gpio_port_pins_t masked = pins & config->common.port_pin_mask;
 
     key = k_spin_lock(&drv_data->lock);
-    drv_data->output_vals ^= (pins & get_output_pins(port));
-    (void)input_set_masked_int(port, pins & get_input_pins(port), drv_data->output_vals);
+    drv_data->output_vals ^= (masked & get_output_pins(port));
+    (void)input_set_masked_int(port, masked & get_input_pins(port), drv_data->output_vals);
     k_spin_unlock(&drv_data->lock, key);
 
-    gpio_fire_callbacks(&drv_data->callbacks, port, pins);
+    gpio_fire_callbacks(&drv_data->callbacks, port, masked);
     return 0;
 }
 

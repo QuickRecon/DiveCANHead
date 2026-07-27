@@ -585,7 +585,7 @@ static int ads1x1x_validate_sequence(const struct device *dev, const struct adc_
 	} else {
 		ch = find_lsb_set(channels) - 1U;
 		if ((ch >= ADS1X1X_MAX_CHANNELS) ||
-		    (0U == (atomic_get(&data->channels) & BIT(ch)))) {
+		    (0U == ((uint32_t)atomic_get(&data->channels) & BIT(ch)))) {
 			LOG_ERR("channel %u not set up", ch);
 			rc = -ENOTSUP;
 		} else {
@@ -738,7 +738,9 @@ static int ads1x1x_adc_perform_read(const struct device *dev)
 		 * shift down. Data is also signed, so perform
 		 * division rather than shifting
 		 */
-		*data->buffer++ = buf / (1 << (ADS1X1X_FULL_SCALE_BITS - config->resolution));
+		int16_t divisor = (int16_t)((uint32_t)1 << (ADS1X1X_FULL_SCALE_BITS - config->resolution));
+
+		*data->buffer++ = buf / divisor;
 
 		adc_context_on_sampling_done(&data->ctx, dev);
 	}

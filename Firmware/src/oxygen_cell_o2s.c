@@ -624,10 +624,10 @@ static void o2s_cal_done_cb(const struct zbus_channel *chan)
 #if defined(CONFIG_CELL_1_TYPE_O2S)
     o2s_load_cal(&o2s_cell_1);
 #endif
-#if CONFIG_CELL_COUNT >= 2 && defined(CONFIG_CELL_2_TYPE_O2S)
+#if defined(CONFIG_CELL_COUNT) && (CONFIG_CELL_COUNT >= 2) && defined(CONFIG_CELL_2_TYPE_O2S)
     o2s_load_cal(&o2s_cell_2);
 #endif
-#if CONFIG_CELL_COUNT >= 3 && defined(CONFIG_CELL_3_TYPE_O2S)
+#if defined(CONFIG_CELL_COUNT) && (CONFIG_CELL_COUNT >= 3) && defined(CONFIG_CELL_3_TYPE_O2S)
     o2s_load_cal(&o2s_cell_3);
 #endif
 }

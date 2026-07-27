@@ -135,6 +135,11 @@ static uint8_t g_verify_buf[256];
  * whole chunk. A write returning 0 is NOT proof the bytes landed on this NOR. */
 static int verify_backend_readback(uint32_t off, const uint8_t *expected, uint32_t len)
 {
+    const struct factory_image_backend *backend = get_state()->backend;
+    if (NULL == backend) {
+        /* Callers guard this, but enforce it locally too. */
+        return -ENODEV;
+    }
     for (uint32_t v = 0U; v < len; v += (uint32_t)sizeof(g_verify_buf)) {
         uint32_t step;
         if ((len - v) < (uint32_t)sizeof(g_verify_buf)) {
@@ -142,7 +147,7 @@ static int verify_backend_readback(uint32_t off, const uint8_t *expected, uint32
         } else {
             step = (uint32_t)sizeof(g_verify_buf);
         }
-        int rc = get_state()->backend->read(off + v, g_verify_buf, step);
+        int rc = backend->read(off + v, g_verify_buf, step);
         if (0 != rc) {
             return rc;
         }
@@ -463,8 +468,13 @@ static uint32_t rd_le32(const uint8_t *p)
  * -EBADF if the header or TLV info is not well-formed. */
 static int factory_backup_image_size(uint32_t backend_size, uint32_t *out_size)
 {
+    const struct factory_image_backend *backend = get_state()->backend;
+    if (NULL == backend) {
+        /* Callers guard this, but enforce it locally too. */
+        return -ENODEV;
+    }
     uint8_t hdr[32] = {0};
-    int rc = get_state()->backend->read(0U, hdr, sizeof(hdr));
+    int rc = backend->read(0U, hdr, sizeof(hdr));
 
     if (0 != rc) {
         return rc;
@@ -503,15 +513,19 @@ static int factory_backup_image_size(uint32_t backend_size, uint32_t *out_size)
 static int copy_backend_to_slot1(void)
 {
     int result = 0;
+    const struct factory_image_backend *backend = get_state()->backend;
     const struct flash_area *slot1_fa = NULL;
     int rc = flash_area_open(PARTITION_ID(slot1_partition), &slot1_fa);
 
-    if (0 != rc) {
+    if (NULL == backend) {
+        /* Callers guard this, but enforce it locally too. */
+        result = -ENODEV;
+    } else if (0 != rc) {
         LOG_ERR("slot1 open failed: %d", rc);
         result = rc;
     } else {
         uint32_t backend_size = 0U;
-        rc = get_state()->backend->size(&backend_size);
+        rc = backend->size(&backend_size);
         if (0 != rc) {
             result = rc;
         } else {

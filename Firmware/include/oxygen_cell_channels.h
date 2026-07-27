@@ -14,11 +14,11 @@
 
 ZBUS_CHAN_DECLARE(chan_cell_1);
 
-#if CONFIG_CELL_COUNT >= 2
+#if defined(CONFIG_CELL_COUNT) && (CONFIG_CELL_COUNT >= 2)
 ZBUS_CHAN_DECLARE(chan_cell_2);
 #endif
 
-#if CONFIG_CELL_COUNT >= 3
+#if defined(CONFIG_CELL_COUNT) && (CONFIG_CELL_COUNT >= 3)
 ZBUS_CHAN_DECLARE(chan_cell_3);
 #endif
 

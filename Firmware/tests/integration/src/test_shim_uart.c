@@ -243,6 +243,11 @@ static void handle_command(struct cell_state *cell, const char *cmd)
 static size_t extract_command(const uint8_t *src, size_t len,
                               char *dst, size_t dst_size)
 {
+    if (dst_size == 0) {
+        /* No room for even the terminator; also keeps the clamp below from
+         * underflowing (dst_size - 1) into a huge copy length (S3519). */
+        return 0;
+    }
     /* Skip leading whitespace / nulls */
     size_t start = 0;
     while (start < len && (src[start] == '\0' || src[start] == ' ' ||

@@ -153,7 +153,12 @@ static size_t drain(size_t chunk, uint8_t *out, size_t out_cap, int *calls_out)
     int calls = 0;
 
     for (;;) {
-        zassert_true(total + chunk <= out_cap, "out buffer too small");
+        /* Explicit break so the analyzer can prove &out[total] stays in
+         * bounds; the zassert alone is invisible to it (S3519). */
+        if (total + chunk > out_cap) {
+            zassert_unreachable("out buffer too small");
+            break;
+        }
         int n = flash_log_reader_next(&r, &out[total], chunk);
 
         zassert_true(n >= 0, "next() errored: %d (chunk=%zu) — -28 is -ENOSPC, "

@@ -63,7 +63,7 @@ static int ads1115_emul_transfer(const struct emul *target, struct i2c_msg *msgs
 		}
 		data->reg[reg] = val;
 
-		if (reg == ADS1115_REG_CONFIG && (val & ADS1115_CONFIG_OS)) {
+		if ((reg == ADS1115_REG_CONFIG) && (0U != (val & ADS1115_CONFIG_OS))) {
 			/* Start conversion: latch MUX (bits [14:12]) and produce
 			 * its CONV value. Keep OS set so the driver's
 			 * wait_data_ready() sees "conversion ready" immediately. */

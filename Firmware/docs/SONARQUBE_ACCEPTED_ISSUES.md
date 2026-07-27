@@ -66,6 +66,12 @@ violations. Mark **Won't Fix** on SonarCloud once the rule is reviewed.
 |------|------|---------------|
 | c:S966 / c:M23_045 | `src/runtime_settings.c` lines using `CONFIG_CELL_COUNT`, anywhere `CONFIG_*` symbols appear in `#if` | The IDE-side SonarLint analyzer does not include the Zephyr build-system `autoconf.h`, so it sees `CONFIG_*` symbols as undefined (evaluates to 0). These are correctly defined at build time. **False positive in IDE only.** Mark Won't Fix once SonarCloud server-side scans (which use the actual build commands) confirm absence. |
 
+## CONTAINER_OF in adc_context callbacks
+
+| Rule | File / Location | Justification |
+|------|------|---------------|
+| c:S3519 (BLOCKER ×2) | `drivers/ads1x1x/adc_ads1x1x_local.c`, `adc_context_update_buffer_pointer` and `adc_context_start_sampling` | `CONTAINER_OF(ctx, struct ads1x1x_data, ctx)` recovers the driver data block from the embedded `adc_context` member — the callback signature is fixed by Zephyr's `adc_context.h` contract, and CONTAINER_OF is the canonical (and only) way to implement it. The analyzer flags the negative byte offset of the pointer arithmetic as an out-of-bounds access; it is well-defined because `ctx` is always embedded in a `struct ads1x1x_data`. Marked **False Positive** on SonarCloud (2026-07-27, PR 4 keys AZ-iJ0tU4Ln9rv4-xLxe/-xLxf); re-mark if the issues reappear on a branch analysis. |
+
 ## Volatile-stripping cast
 
 | Rule | File | Location | Justification |

@@ -240,7 +240,7 @@ static Status_t fl_ensure_index(FlashLogDest_t dest)
 {
     Status_t rc = 0;
 
-    if ((!atomic_get(&fl_index_valid[dest])) ||
+    if ((0 == atomic_get(&fl_index_valid[dest])) ||
         (fl_index_built_epoch[dest] != flash_log_internal_index_epoch())) {
         rc = fl_build_index(dest);
     }
