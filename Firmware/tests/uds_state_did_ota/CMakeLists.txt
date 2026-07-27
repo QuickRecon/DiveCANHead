@@ -20,6 +20,7 @@ add_link_options(
     -Wl,--wrap=factory_image_force_capture_async
     -Wl,--wrap=firmware_confirm_get_state
     -Wl,--wrap=firmware_confirm_get_pass_mask
+    -Wl,--wrap=errors_get_last_crash
     -Wl,--wrap=ISOTP_Send
 )
 
@@ -56,6 +57,9 @@ target_include_directories(app PRIVATE
 # chan_cell_2/3 definitions. Force the production value here.
 target_compile_definitions(app PRIVATE
     CONFIG_CELL_COUNT=3
+    CONFIG_CELL_1_TYPE_DIVEO2=1
+    CONFIG_CELL_2_TYPE_DIVEO2=1
+    CONFIG_CELL_3_TYPE_ANALOG=1
     CONFIG_HAS_PRESSURE_TRANSDUCER=1
     CONFIG_O2_TRANSDUCER_CHANNEL=1
     CONFIG_DIL_TRANSDUCER_CHANNEL=0

@@ -69,45 +69,67 @@ ZBUS_CHAN_DEFINE(chan_tank_pressure,
 
 const struct device __device_dts_ord_INT32_MIN __attribute__((weak)) = {0};
 
+static Numeric_t stub_vbus_voltage;
+static Numeric_t stub_vcc_voltage;
+static Numeric_t stub_battery_voltage;
+static Numeric_t stub_can_voltage;
+static Numeric_t stub_low_battery_threshold;
+static PPO2ControlSnapshot_t stub_control_snapshot;
+static AutotuneStatus_t stub_autotune_status;
+static uint16_t stub_histogram[ERROR_HISTOGRAM_COUNT];
+static bool stub_histogram_available;
+static bool stub_current_valid;
+static int32_t stub_current_ua;
+static uint32_t stub_current_age_ms;
+static bool stub_crash_valid;
+static CrashInfo_t stub_crash_info;
+
 Numeric_t power_get_vbus_voltage(const struct device *dev)
 {
     ARG_UNUSED(dev);
-    return 0.0f;
+    return stub_vbus_voltage;
 }
 
 Numeric_t power_get_vcc_voltage(const struct device *dev)
 {
     ARG_UNUSED(dev);
-    return 0.0f;
+    return stub_vcc_voltage;
 }
 
 Numeric_t power_get_battery_voltage(const struct device *dev)
 {
     ARG_UNUSED(dev);
-    return 0.0f;
+    return stub_battery_voltage;
 }
 
 Numeric_t power_get_can_voltage(const struct device *dev)
 {
     ARG_UNUSED(dev);
-    return 0.0f;
+    return stub_can_voltage;
 }
 
-Numeric_t power_get_low_battery_threshold(void) { return 0.0f; }
+Numeric_t power_get_low_battery_threshold(void)
+{
+    return stub_low_battery_threshold;
+}
 
 void ppo2_control_get_snapshot(PPO2ControlSnapshot_t *out)
 {
     if (NULL != out) {
-        (void)memset(out, 0, sizeof(*out));
+        *out = stub_control_snapshot;
     }
 }
 
 size_t error_histogram_snapshot(uint16_t *out, size_t out_count)
 {
-    if ((NULL != out) && (out_count > 0)) {
-        (void)memset(out, 0, out_count * sizeof(uint16_t));
+    size_t written = 0U;
+
+    if (stub_histogram_available && (NULL != out) &&
+        (out_count >= ERROR_HISTOGRAM_COUNT)) {
+        (void)memcpy(out, stub_histogram, sizeof(stub_histogram));
+        written = ERROR_HISTOGRAM_BYTES;
     }
-    return 0;
+    return written;
 }
 
 /* CONFIG_HWINFO is off in this test build, so the hwinfo backend isn't linked.
@@ -128,6 +150,14 @@ ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
 }
 
 int error_histogram_clear(void) { return 0; }
+
+bool __wrap_errors_get_last_crash(CrashInfo_t *out)
+{
+    if (stub_crash_valid && (NULL != out)) {
+        *out = stub_crash_info;
+    }
+    return stub_crash_valid;
+}
 
 bool calibration_is_running(void) { return false; }
 
@@ -150,7 +180,7 @@ bool ISOTP_TxQueue_IsBusy(void) { return false; }
 void ppo2_autotune_get_status(AutotuneStatus_t *out)
 {
     if (NULL != out) {
-        (void)memset(out, 0, sizeof(*out));
+        *out = stub_autotune_status;
     }
 }
 
@@ -158,9 +188,13 @@ void ppo2_autotune_request_abort(AutotuneAbortReason_t reason) { ARG_UNUSED(reas
 
 bool device_current_read(int32_t *out_ua, uint32_t *age_ms)
 {
-    ARG_UNUSED(out_ua);
-    ARG_UNUSED(age_ms);
-    return false;
+    if (NULL != out_ua) {
+        *out_ua = stub_current_ua;
+    }
+    if (NULL != age_ms) {
+        *age_ms = stub_current_age_ms;
+    }
+    return stub_current_valid;
 }
 
 uint8_t ISOTP_TxQueue_GetPendingCount(void) { return 0U; }
@@ -465,6 +499,20 @@ static void test_setup(void *fixture)
 {
     ARG_UNUSED(fixture);
     (void)memset(&fx, 0, sizeof(fx));
+    stub_vbus_voltage = 0.0f;
+    stub_vcc_voltage = 0.0f;
+    stub_battery_voltage = 0.0f;
+    stub_can_voltage = 0.0f;
+    stub_low_battery_threshold = 0.0f;
+    (void)memset(&stub_control_snapshot, 0, sizeof(stub_control_snapshot));
+    (void)memset(&stub_autotune_status, 0, sizeof(stub_autotune_status));
+    (void)memset(stub_histogram, 0, sizeof(stub_histogram));
+    stub_histogram_available = false;
+    stub_current_valid = false;
+    stub_current_ua = 0;
+    stub_current_age_ms = 0U;
+    stub_crash_valid = false;
+    (void)memset(&stub_crash_info, 0, sizeof(stub_crash_info));
     reboot_escape_armed = false;
 
     /* Default: bank header reads succeed for slot0 (idx 0), fail for slot1
@@ -1012,4 +1060,304 @@ ZTEST(uds_state_did_ota, test_F277_wrong_length_rejected)
     zassert_equal(fx.captured_response[0], UDS_SID_NEGATIVE_RESPONSE);
     zassert_equal(fx.captured_response[2], UDS_NRC_INCORRECT_MSG_LEN);
     zassert_equal(fx.factory_force_capture_async_calls, 0);
+}
+
+/* ===================================================================== */
+/* General control, power, crash, histogram, and per-cell state DIDs      */
+/* ===================================================================== */
+
+static Numeric_t captured_float(void)
+{
+    Numeric_t value = 0.0f;
+    (void)memcpy(&value, &fx.captured_response[3], sizeof(value));
+    return value;
+}
+
+static uint16_t captured_u16(void)
+{
+    return (uint16_t)fx.captured_response[3] |
+           ((uint16_t)fx.captured_response[4] << 8);
+}
+
+static uint32_t captured_u32(void)
+{
+    return (uint32_t)fx.captured_response[3] |
+           ((uint32_t)fx.captured_response[4] << 8) |
+           ((uint32_t)fx.captured_response[5] << 16) |
+           ((uint32_t)fx.captured_response[6] << 24);
+}
+
+ZTEST(uds_state_did_ota, test_control_state_scalars_and_cells_valid)
+{
+    ConsensusMsg_t consensus = {
+        .precision_consensus = 0.87,
+        .include_array = {true, false, true},
+    };
+    PPO2_t setpoint = 123U;
+
+    zassert_ok(zbus_chan_pub(&chan_consensus, &consensus, K_MSEC(100)));
+    zassert_ok(zbus_chan_pub(&chan_setpoint, &setpoint, K_MSEC(100)));
+
+    read_did(UDS_DID_CONSENSUS_PPO2);
+    zassert_within(captured_float(), 0.87f, 0.001f);
+
+    read_did(UDS_DID_SETPOINT);
+    zassert_within(captured_float(), 1.23f, 0.001f);
+
+    read_did(UDS_DID_CELLS_VALID);
+    zassert_equal(fx.captured_response_len, 4U);
+    zassert_equal(fx.captured_response[3], BIT(0) | BIT(2));
+
+    read_did(UDS_DID_UPTIME_SEC);
+    zassert_equal(fx.captured_response_len, 7U);
+}
+
+ZTEST(uds_state_did_ota, test_pid_snapshot_dids)
+{
+    stub_control_snapshot.duty_cycle = 0.25f;
+    stub_control_snapshot.integral_state = -0.75f;
+    stub_control_snapshot.saturation_count = 0x1234U;
+
+    read_did(UDS_DID_DUTY_CYCLE);
+    zassert_within(captured_float(), 0.25f, 0.001f);
+
+    read_did(UDS_DID_INTEGRAL_STATE);
+    zassert_within(captured_float(), -0.75f, 0.001f);
+
+    read_did(UDS_DID_SATURATION_COUNT);
+    zassert_equal(captured_u16(), 0x1234U);
+}
+
+ZTEST(uds_state_did_ota, test_autotune_status_and_short_buffer)
+{
+    stub_autotune_status.state = (AutotuneState_t)3;
+    stub_autotune_status.abort_reason = (AutotuneAbortReason_t)4;
+    stub_autotune_status.iteration = 0x1234U;
+    stub_autotune_status.iteration_budget = 0x5678U;
+    stub_autotune_status.best_kp = 1.25f;
+    stub_autotune_status.best_ki = 2.5f;
+    stub_autotune_status.best_kd = 3.75f;
+    stub_autotune_status.best_cost = 4.5f;
+    stub_autotune_status.elapsed_s = 0x10203040U;
+    stub_autotune_status.plant_gain = 5.5f;
+    stub_autotune_status.dead_time_s = 6.5f;
+    stub_autotune_status.time_constant_s = 7.5f;
+    stub_autotune_status.fit_rmse_bar = 8.5f;
+    stub_autotune_status.mixing_excursion_bar = 9.5f;
+    stub_autotune_status.baseline_duty = 10.5f;
+    stub_autotune_status.baseline_slope_bar_s = 11.5f;
+    stub_autotune_status.ambient_pressure_bar = 12.5f;
+    stub_autotune_status.delivered_dose_duty_s = 13.5f;
+    stub_autotune_status.baseline_noise_bar = 14.5f;
+
+    read_did(UDS_DID_AUTOTUNE_STATUS);
+    zassert_equal(fx.captured_response_len, 69U);
+    zassert_equal(fx.captured_response[3], 3U);
+    zassert_equal(fx.captured_response[4], 4U);
+    zassert_equal(captured_u16(), 0x0403U,
+                  "first u16 spans the state and reason bytes");
+    zassert_equal(fx.captured_response[5], 0x34U);
+    zassert_equal(fx.captured_response[6], 0x12U);
+
+    uint8_t short_buf[8] = {0};
+    uint16_t len = 99U;
+    zassert_false(UDS_StateDID_HandleRead(UDS_DID_AUTOTUNE_STATUS,
+                                         short_buf, sizeof(short_buf), &len));
+    zassert_equal(len, 0U);
+}
+
+ZTEST(uds_state_did_ota, test_power_monitoring_dids)
+{
+    static const struct {
+        uint16_t did;
+        Numeric_t *source;
+        Numeric_t value;
+    } cases[] = {
+        {UDS_DID_VBUS_VOLTAGE, &stub_vbus_voltage, 5.1f},
+        {UDS_DID_VCC_VOLTAGE, &stub_vcc_voltage, 3.3f},
+        {UDS_DID_BATTERY_VOLTAGE, &stub_battery_voltage, 8.2f},
+        {UDS_DID_CAN_VOLTAGE, &stub_can_voltage, 12.4f},
+        {UDS_DID_THRESHOLD_VOLTAGE, &stub_low_battery_threshold, 6.0f},
+    };
+
+    for (size_t i = 0U; i < ARRAY_SIZE(cases); ++i) {
+        *cases[i].source = cases[i].value;
+        read_did(cases[i].did);
+        zassert_within(captured_float(), cases[i].value, 0.001f,
+                       "DID 0x%04x", cases[i].did);
+    }
+
+    read_did(UDS_DID_POWER_SOURCES);
+    zassert_equal(fx.captured_response[3], 0U);
+}
+
+ZTEST(uds_state_did_ota, test_device_current_unavailable_valid_and_age_clamp)
+{
+    read_did(UDS_DID_DEVICE_CURRENT);
+    zassert_equal(fx.captured_response_len, 11U);
+    zassert_equal(fx.captured_response[9], 0U, "valid flag");
+
+    stub_current_valid = true;
+    stub_current_ua = -123456;
+    stub_current_age_ms = ((uint32_t)UINT16_MAX + 100U) * 1000U;
+    read_did(UDS_DID_DEVICE_CURRENT);
+
+    zassert_equal(captured_u32(), (uint32_t)stub_current_ua);
+    zassert_equal(fx.captured_response[7], 0xFFU, "age low");
+    zassert_equal(fx.captured_response[8], 0xFFU, "age high");
+    zassert_equal(fx.captured_response[9], 1U, "valid flag");
+    zassert_equal(fx.captured_response[10], 0U, "reserved");
+}
+
+ZTEST(uds_state_did_ota, test_crash_dids_clean_and_populated)
+{
+    read_did(UDS_DID_CRASH_VALID);
+    zassert_equal(fx.captured_response[3], 0U);
+    read_did(UDS_DID_CRASH_REASON);
+    zassert_equal(captured_u32(), 0U);
+
+    stub_crash_valid = true;
+    stub_crash_info.reason = 0x11223344U;
+    stub_crash_info.pc = 0x55667788U;
+    stub_crash_info.lr = 0x99AABBCCU;
+    stub_crash_info.cfsr = 0xDDEEFF00U;
+
+    read_did(UDS_DID_CRASH_VALID);
+    zassert_equal(fx.captured_response[3], 1U);
+
+    const uint16_t dids[] = {
+        UDS_DID_CRASH_REASON, UDS_DID_CRASH_PC,
+        UDS_DID_CRASH_LR, UDS_DID_CRASH_CFSR,
+    };
+    const uint32_t expected[] = {
+        stub_crash_info.reason, stub_crash_info.pc,
+        stub_crash_info.lr, stub_crash_info.cfsr,
+    };
+    for (size_t i = 0U; i < ARRAY_SIZE(dids); ++i) {
+        read_did(dids[i]);
+        zassert_equal(captured_u32(), expected[i], "DID 0x%04x", dids[i]);
+    }
+}
+
+ZTEST(uds_state_did_ota, test_error_histogram_available_empty_and_short)
+{
+    stub_histogram_available = true;
+    stub_histogram[0] = 0x1234U;
+    stub_histogram[ERROR_HISTOGRAM_COUNT - 1U] = 0xABCDU;
+
+    read_did(UDS_DID_ERROR_HISTOGRAM);
+    zassert_equal(fx.captured_response_len,
+                  3U + ERROR_HISTOGRAM_BYTES);
+    zassert_equal(captured_u16(), 0x1234U);
+    zassert_equal(fx.captured_response[fx.captured_response_len - 2U],
+                  0xCDU);
+    zassert_equal(fx.captured_response[fx.captured_response_len - 1U],
+                  0xABU);
+
+    uint8_t buf[ERROR_HISTOGRAM_BYTES] = {0};
+    uint16_t len = 99U;
+    zassert_false(UDS_StateDID_HandleRead(
+        UDS_DID_ERROR_HISTOGRAM, buf,
+        (uint16_t)(ERROR_HISTOGRAM_BYTES - 1U), &len));
+    zassert_equal(len, 0U);
+
+    stub_histogram_available = false;
+    zassert_false(UDS_StateDID_HandleRead(
+        UDS_DID_ERROR_HISTOGRAM, buf, sizeof(buf), &len));
+}
+
+ZTEST(uds_state_did_ota, test_digital_and_analog_cell_dids)
+{
+    ConsensusMsg_t consensus = {
+        .include_array = {true, false, true},
+    };
+    OxygenCellMsg_t digital = {
+        .cell_number = 0U,
+        .ppo2 = 88U,
+        .precision_ppo2 = 0.876,
+        .status = CELL_DEGRADED,
+        .temperature_dC = -123,
+        .err_code = 0x10203040U,
+        .phase = -456,
+        .intensity = 789,
+        .ambient_light = -1011,
+        .pressure_uhpa = 0x50607080U,
+        .humidity_mRH = -1213,
+    };
+    OxygenCellMsg_t analog = {
+        .cell_number = 2U,
+        .ppo2 = 77U,
+        .precision_ppo2 = 0.765,
+        .millivolts = 0x4567U,
+        .status = CELL_OK,
+        .raw_sample = -12345,
+    };
+
+    zassert_ok(zbus_chan_pub(&chan_consensus, &consensus, K_MSEC(100)));
+    zassert_ok(zbus_chan_pub(&chan_cell_1, &digital, K_MSEC(100)));
+    zassert_ok(zbus_chan_pub(&chan_cell_3, &analog, K_MSEC(100)));
+
+    read_did(UDS_DID_CELL_BASE + CELL_DID_PPO2);
+    zassert_within(captured_float(), 0.876f, 0.001f);
+    read_did(UDS_DID_CELL_BASE + CELL_DID_TYPE);
+    zassert_equal(fx.captured_response[3], 0U);
+    read_did(UDS_DID_CELL_BASE + CELL_DID_INCLUDED);
+    zassert_equal(fx.captured_response[3], 1U);
+    read_did(UDS_DID_CELL_BASE + CELL_DID_STATUS);
+    zassert_equal(fx.captured_response[3], CELL_DEGRADED);
+
+    const uint8_t digital_offsets[] = {
+        CELL_DID_TEMPERATURE, CELL_DID_ERROR, CELL_DID_PHASE,
+        CELL_DID_INTENSITY, CELL_DID_AMBIENT_LIGHT,
+        CELL_DID_PRESSURE, CELL_DID_HUMIDITY,
+    };
+    const uint32_t digital_values[] = {
+        (uint32_t)digital.temperature_dC, digital.err_code,
+        (uint32_t)digital.phase, (uint32_t)digital.intensity,
+        (uint32_t)digital.ambient_light, digital.pressure_uhpa,
+        (uint32_t)digital.humidity_mRH,
+    };
+    for (size_t i = 0U; i < ARRAY_SIZE(digital_offsets); ++i) {
+        read_did(UDS_DID_CELL_BASE + digital_offsets[i]);
+        zassert_equal(captured_u32(), digital_values[i],
+                      "digital offset 0x%02x", digital_offsets[i]);
+    }
+
+    const uint16_t analog_base =
+        UDS_DID_CELL_BASE + (2U * UDS_DID_CELL_RANGE);
+    read_did(analog_base + CELL_DID_TYPE);
+    zassert_equal(fx.captured_response[3], 1U);
+    read_did(analog_base + CELL_DID_RAW_ADC);
+    zassert_equal(captured_u16(), (uint16_t)analog.raw_sample);
+    read_did(analog_base + CELL_DID_MILLIVOLTS);
+    zassert_equal(captured_u16(), analog.millivolts);
+    read_did(analog_base + CELL_DID_TEMPERATURE);
+    zassert_equal(fx.captured_response[0], UDS_SID_NEGATIVE_RESPONSE,
+                  "analog-only unsupported offset must NRC");
+}
+
+ZTEST(uds_state_did_ota, test_state_did_api_bounds_and_unknowns)
+{
+    uint8_t buf[16] = {0};
+    uint16_t len = 99U;
+
+    zassert_true(UDS_StateDID_IsStateDID(UDS_DID_CONTROL_BASE));
+    zassert_true(UDS_StateDID_IsStateDID(UDS_DID_CELL_BASE));
+    zassert_false(UDS_StateDID_IsStateDID(0x1234U));
+    zassert_false(UDS_StateDID_IsStateDID(
+        UDS_DID_CELL_BASE + (CELL_MAX_COUNT * UDS_DID_CELL_RANGE)));
+
+    zassert_false(UDS_StateDID_HandleRead(
+        UDS_DID_CONTROL_BASE, NULL, sizeof(buf), &len));
+    zassert_false(UDS_StateDID_HandleRead(
+        UDS_DID_CONTROL_BASE, buf, sizeof(buf), NULL));
+    zassert_false(UDS_StateDID_HandleRead(0x1234U, buf, sizeof(buf), &len));
+    zassert_false(UDS_StateDID_HandleRead(0xF2FFU, buf, sizeof(buf), &len));
+    zassert_false(UDS_StateDID_HandleRead(
+        UDS_DID_CELL_BASE + CELL_DID_BROADCAST,
+        buf, sizeof(buf), &len));
+
+    zassert_false(UDS_StateDID_HandleRead(
+        UDS_DID_MCUBOOT_STATUS, buf, 1U, &len));
+    zassert_equal(len, 0U);
 }
