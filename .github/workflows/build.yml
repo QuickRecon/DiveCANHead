@@ -8,8 +8,9 @@ name: Build + SonarCloud Analysis
 
 on:
   push:
-    branches: [master, zephyr_rewrite]
+    branches: [master]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,6 +24,9 @@ jobs:
     name: Build firmware + tests, scan
     runs-on: [self-hosted, docker]
     timeout-minutes: 90
+    env:
+      ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+      ZEPHYR_SDK_INSTALL_DIR: ${{ github.workspace }}/.ci-cache/zephyr-sdk
     steps:
       # The repository contains two legacy gitlinks without matching
       # .gitmodules entries. actions/checkout traverses submodules while
@@ -56,19 +60,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            gcc-multilib g++-multilib ninja-build device-tree-compiler \
+            cmake gcc-multilib g++-multilib ninja-build device-tree-compiler \
             ccache jq iproute2 kmod
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            Firmware/tests/integration/harness/requirements.txt
+            Firmware/west.yml
 
       # west.yml pins Zephyr and therefore fully identifies the module graph.
-      - name: Cache west modules
-        uses: actions/cache@v5
+      - name: Restore west modules
+        id: west-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
+            .west
             zephyr
             modules
             bootloader
@@ -89,20 +99,47 @@ jobs:
         run: |
           pip install west gcovr \
             -r Firmware/tests/integration/harness/requirements.txt
-          west init -l Firmware
+          if [ ! -d .west ]; then
+            west init -l Firmware
+          fi
           west update --narrow -o=--depth=1
           west packages pip --install
 
-      - name: Cache Zephyr SDK
-        uses: actions/cache@v5
+      - name: Save west modules
+        if: steps.west-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
         with:
-          path: ~/zephyr-sdk-*
-          key: zephyr-sdk-${{ hashFiles('zephyr/SDK_VERSION') }}
+          path: |
+            .west
+            zephyr
+            modules
+            bootloader
+            tools
+          key: ${{ steps.west-cache.outputs.cache-primary-key }}
+
+      - name: Restore Zephyr SDK
+        id: zephyr-sdk-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.ZEPHYR_SDK_INSTALL_DIR }}
+          key: zephyr-sdk-v2-${{ runner.os }}-${{ hashFiles('zephyr/SDK_VERSION') }}
 
       - name: Install Zephyr SDK (ARM toolchain + host tools)
+        if: steps.zephyr-sdk-cache.outputs.cache-hit != 'true'
         env:
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: west sdk install --personal-access-token "$GH_API_TOKEN" -t arm-zephyr-eabi
+        run: |
+          west sdk install \
+            --personal-access-token "$GH_API_TOKEN" \
+            --install-dir "$ZEPHYR_SDK_INSTALL_DIR" \
+            -t arm-zephyr-eabi
+
+      - name: Save Zephyr SDK
+        if: steps.zephyr-sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.ZEPHYR_SDK_INSTALL_DIR }}
+          key: ${{ steps.zephyr-sdk-cache.outputs.cache-primary-key }}
 
       # The ARM variant build covers src/ and drivers/ under the shipped
       # firmware configuration (Poseidon_Aren = most features enabled).
