@@ -74,7 +74,9 @@ jobs:
           key: zephyr-sdk-${{ hashFiles('zephyr/SDK_VERSION') }}
 
       - name: Install Zephyr SDK (ARM toolchain + host tools)
-        run: west sdk install -t arm-zephyr-eabi
+        env:
+          GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: west sdk install --personal-access-token "$GH_API_TOKEN" -t arm-zephyr-eabi
 
       # The ARM variant build covers src/ and drivers/ under the shipped
       # firmware configuration (Poseidon_Aren = most features enabled).
