@@ -11,6 +11,7 @@
 
 #include <zephyr/ztest.h>
 #include <zephyr/kernel.h>
+#include <zephyr/drivers/flash.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
@@ -55,6 +56,8 @@ static struct {
     struct flash_area slot1_fa;
 
     bool inject_slot0_read_error;
+    bool inject_slot1_read_error;
+    bool inject_slot1_read_mismatch;
     bool inject_slot1_write_error;
     bool inject_slot1_erase_error;
 } flash_universe;
@@ -79,6 +82,9 @@ static struct {
     bool inject_erase_error;
     bool inject_flush_error;
     bool inject_mark_captured_error;
+    bool inject_read_error;
+    bool inject_size_error;
+    uint32_t backend_size;
 } mock;
 
 /* ---- Reboot capture / boot_request_upgrade ---- */
@@ -86,6 +92,11 @@ static struct {
 static struct {
     int boot_upgrade_calls;
     int boot_upgrade_arg;
+    int boot_upgrade_rc;
+    int swap_type;
+    int swap_type_calls;
+    int page_info_calls;
+    int page_info_rc;
     int reboot_calls;
     bool reboot_active;
     jmp_buf reboot_escape;
@@ -140,6 +151,9 @@ int __wrap_flash_area_read(const struct flash_area *fa, off_t offset,
         }
         src = flash_universe.slot0;
     } else if (fa == &flash_universe.slot1_fa) {
+        if (flash_universe.inject_slot1_read_error) {
+            return -EIO;
+        }
         src = flash_universe.slot1;
     } else {
         return -ENOENT;
@@ -148,6 +162,10 @@ int __wrap_flash_area_read(const struct flash_area *fa, off_t offset,
         return -EINVAL;
     }
     (void)memcpy(dst, src + offset, len);
+    if ((fa == &flash_universe.slot1_fa) &&
+        flash_universe.inject_slot1_read_mismatch && (len > 0U)) {
+        ((uint8_t *)dst)[0] ^= 0xFFU;
+    }
     return 0;
 }
 
@@ -193,7 +211,7 @@ int __wrap_boot_request_upgrade(int permanent)
 {
     hooks.boot_upgrade_calls++;
     hooks.boot_upgrade_arg = permanent;
-    return 0;
+    return hooks.boot_upgrade_rc;
 }
 
 /* stage_pending_swap() confirms the pending swap registered by reading the
@@ -201,7 +219,22 @@ int __wrap_boot_request_upgrade(int permanent)
  * trailer to our in-RAM slot1), so report the TEST swap the module expects. */
 int __wrap_mcuboot_swap_type(void)
 {
-    return BOOT_SWAP_TYPE_TEST;
+    hooks.swap_type_calls++;
+    return hooks.swap_type;
+}
+
+int __wrap_z_impl_flash_get_page_info_by_offs(
+    const struct device *dev, off_t offset, struct flash_pages_info *info)
+{
+    ARG_UNUSED(dev);
+    ARG_UNUSED(offset);
+    hooks.page_info_calls++;
+    if ((0 == hooks.page_info_rc) && (NULL != info)) {
+        info->start_offset = SLOT_SIZE - 4096U;
+        info->size = 4096U;
+        info->index = 1U;
+    }
+    return hooks.page_info_rc;
 }
 
 #if defined(__GNUC__)
@@ -255,6 +288,9 @@ static int mock_write(uint32_t offset, const void *buf, size_t len)
 static int mock_read(uint32_t offset, void *buf, size_t len)
 {
     mock.read_calls++;
+    if (mock.inject_read_error) {
+        return -EIO;
+    }
     if (mock.verify_should_mismatch) {
         /* Return bytes that differ from what was written so the
          * high-level verify-after-write step catches a fault. */
@@ -279,7 +315,10 @@ static int mock_size(uint32_t *out_size)
     if (NULL == out_size) {
         return -EINVAL;
     }
-    *out_size = SLOT_SIZE;
+    if (mock.inject_size_error) {
+        return -EIO;
+    }
+    *out_size = mock.backend_size;
     return 0;
 }
 
@@ -308,6 +347,14 @@ static const struct factory_image_backend mock_backend = {
     .is_captured    = mock_is_captured,
     .mark_captured  = mock_mark_captured,
 };
+
+/* resolve_backend() retains the flash-backend reference in this Kconfig
+ * combination even though the test injects its own backend. Keep init's
+ * no-backend path linkable without pulling the hardware backend into native. */
+const struct factory_image_backend *factory_image_get_flash_backend(void)
+{
+    return NULL;
+}
 
 /* ---- Helpers ---- */
 
@@ -379,6 +426,8 @@ static void reset_fixture(void *unused)
     (void)memset(&mock, 0, sizeof(mock));
     (void)memset(&hooks, 0, sizeof(hooks));
     mock.write_fail_after_n_calls = -1;
+    mock.backend_size = SLOT_SIZE;
+    hooks.swap_type = BOOT_SWAP_TYPE_TEST;
 
     install_slot_fa(&flash_universe.slot0_fa, SLOT0_ID, SLOT_SIZE);
     install_slot_fa(&flash_universe.slot1_fa, SLOT1_ID, SLOT_SIZE);
@@ -588,11 +637,177 @@ ZTEST(factory_image, test_restore_with_bad_magic_skips_upgrade_and_reboot)
 ZTEST(factory_image, test_restore_with_slot1_erase_failure)
 {
     mock.captured = true;
-    (void)memcpy(mock.data, IMAGE_MAGIC_LE, sizeof(IMAGE_MAGIC_LE));
+    (void)build_valid_backup_image();
     flash_universe.inject_slot1_erase_error = true;
 
     int rc = factory_image_restore_to_slot1();
 
     zassert_not_equal(rc, 0, "must error on slot1 erase failure");
     zassert_equal(hooks.boot_upgrade_calls, 0, "no upgrade requested");
+}
+
+ZTEST(factory_image, test_capture_slot0_read_error_retries_then_fails)
+{
+    flash_universe.inject_slot0_read_error = true;
+
+    int rc = factory_image_capture_now_for_test();
+
+    zassert_equal(rc, -EIO);
+    zassert_equal(mock.write_calls, 0);
+    zassert_false(mock.captured);
+}
+
+ZTEST(factory_image, test_capture_size_flush_and_mark_errors_propagate)
+{
+    mock.inject_size_error = true;
+    zassert_equal(factory_image_capture_now_for_test(), -EIO);
+    zassert_equal(mock.erase_calls, 0);
+
+    mock.inject_size_error = false;
+    mock.inject_flush_error = true;
+    zassert_equal(factory_image_capture_now_for_test(), -EIO);
+    zassert_equal(mock.mark_calls, 0);
+    zassert_false(mock.captured);
+
+    mock.inject_flush_error = false;
+    mock.inject_mark_captured_error = true;
+    zassert_equal(factory_image_capture_now_for_test(), -EIO);
+    zassert_equal(mock.mark_calls, 1);
+    zassert_false(mock.captured);
+}
+
+ZTEST(factory_image, test_capture_refuses_backend_smaller_than_slot0)
+{
+    mock.backend_size = SLOT_SIZE - 1U;
+
+    zassert_equal(factory_image_capture_now_for_test(), -ENOSPC);
+    zassert_equal(mock.erase_calls, 0);
+    zassert_equal(mock.write_calls, 0);
+}
+
+ZTEST(factory_image, test_version_and_semver_argument_and_read_failures)
+{
+    uint8_t sem_ver[8] = {0};
+
+    zassert_equal(factory_image_get_version(NULL), -EINVAL);
+    zassert_equal(factory_image_get_sem_ver(NULL), -EINVAL);
+
+    mock.captured = true;
+    (void)memcpy(mock.data, IMAGE_MAGIC_LE, sizeof(IMAGE_MAGIC_LE));
+    for (size_t i = 0U; i < sizeof(sem_ver); ++i) {
+        mock.data[20U + i] = (uint8_t)(0xA0U + i);
+    }
+    zassert_ok(factory_image_get_sem_ver(sem_ver));
+    for (size_t i = 0U; i < sizeof(sem_ver); ++i) {
+        zassert_equal(sem_ver[i], (uint8_t)(0xA0U + i));
+    }
+
+    mock.inject_read_error = true;
+    zassert_equal(factory_image_get_sem_ver(sem_ver), -EIO);
+}
+
+ZTEST(factory_image, test_null_backend_public_paths_are_safe)
+{
+    uint8_t version[4] = {0};
+    factory_image_set_backend_for_test(NULL);
+
+    zassert_equal(factory_image_capture_now_for_test(), -ENODEV);
+    zassert_equal(factory_image_restore_to_slot1(), -ENODEV);
+    zassert_equal(factory_image_get_version(version), -EINVAL);
+    zassert_false(factory_image_is_captured());
+
+    factory_image_maybe_capture_async();
+    factory_image_force_capture_async();
+    factory_image_restore_async();
+    factory_image_init();
+}
+
+ZTEST(factory_image, test_restore_rejects_malformed_tlv_metadata)
+{
+    mock.captured = true;
+    uint32_t image_size = build_valid_backup_image();
+    ARG_UNUSED(image_size);
+    uint32_t tlv_off = BACKUP_HDR_SIZE + BACKUP_IMG_SIZE + BACKUP_PROT_TLV;
+
+    mock.data[tlv_off] = 0U;
+    mock.data[tlv_off + 1U] = 0U;
+    zassert_equal(factory_image_restore_to_slot1(), -EBADF);
+
+    (void)build_valid_backup_image();
+    mock.data[tlv_off + 2U] = 0xFFU;
+    mock.data[tlv_off + 3U] = 0xFFU;
+    zassert_equal(factory_image_restore_to_slot1(), -EBADF);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_propagates_backend_size_and_read_errors)
+{
+    mock.captured = true;
+    (void)build_valid_backup_image();
+
+    mock.inject_size_error = true;
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+
+    mock.inject_size_error = false;
+    mock.inject_read_error = true;
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_refuses_image_larger_than_slot1)
+{
+    mock.captured = true;
+    uint32_t image_size = build_valid_backup_image();
+    flash_universe.slot1_fa.fa_size = image_size - 1U;
+
+    zassert_equal(factory_image_restore_to_slot1(), -ENOSPC);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_write_read_and_verify_failures_retry)
+{
+    mock.captured = true;
+    (void)build_valid_backup_image();
+
+    flash_universe.inject_slot1_write_error = true;
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+
+    flash_universe.inject_slot1_write_error = false;
+    flash_universe.inject_slot1_read_error = true;
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+
+    flash_universe.inject_slot1_read_error = false;
+    flash_universe.inject_slot1_read_mismatch = true;
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+}
+
+ZTEST(factory_image, test_restore_refuses_reboot_when_swap_never_registers)
+{
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    hooks.swap_type = BOOT_SWAP_TYPE_NONE;
+
+    int rc = factory_image_restore_to_slot1();
+
+    zassert_equal(rc, -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 5);
+    zassert_equal(hooks.swap_type_calls, 5);
+    zassert_equal(hooks.page_info_calls, 4);
+    zassert_equal(hooks.reboot_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_boot_request_error_retries_without_swap_read)
+{
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    hooks.boot_upgrade_rc = -EIO;
+
+    int rc = factory_image_restore_to_slot1();
+
+    zassert_equal(rc, -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 5);
+    zassert_equal(hooks.swap_type_calls, 0);
+    zassert_equal(hooks.page_info_calls, 4);
+    zassert_equal(hooks.reboot_calls, 0);
 }

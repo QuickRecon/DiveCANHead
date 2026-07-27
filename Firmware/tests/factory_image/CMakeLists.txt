@@ -10,6 +10,7 @@ add_link_options(
     -Wl,--wrap=flash_area_read
     -Wl,--wrap=flash_area_write
     -Wl,--wrap=flash_area_erase
+    -Wl,--wrap=z_impl_flash_get_page_info_by_offs
     -Wl,--wrap=boot_request_upgrade
     -Wl,--wrap=mcuboot_swap_type
     -Wl,--wrap=sys_reboot
