@@ -106,8 +106,15 @@ def test_ping_response_name(dut, device_id: int) -> None:
 
 @pytest.mark.parametrize("device_id", list(range(4, 16)))
 def test_ping_no_response(dut, device_id: int) -> None:
-    """Pings not addressed to the DUT do not generate an ID response."""
+    """Pings from unsupported device types do not generate a name response.
+
+    Use NAME_RESP_ID rather than ID_RESP_ID for the negative assertion:
+    the ping request for device type 4 itself uses arbitration ID 0x0D000004,
+    which is numerically identical to ID_RESP_ID.  SocketCAN loopback or
+    another client on a shared vcan interface could therefore make the
+    request look like a response when filtering by arbitration ID alone.
+    """
     can_bus, _shim = dut
     can_bus.flush_rx()
     can_bus.send(divecan.build_ping(device_id))
-    assert can_bus.wait_no_response(divecan.ID_RESP_ID)
+    assert can_bus.wait_no_response(divecan.NAME_RESP_ID)
