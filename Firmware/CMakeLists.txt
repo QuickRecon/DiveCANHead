@@ -297,7 +297,7 @@ target_sources_ifdef(CONFIG_INTEGRATION_TEST_SHIM app PRIVATE
 if(CONFIG_INTEGRATION_TEST_SHIM)
     target_sources(native_simulator INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/src/test_shim_socket_adapt.c)
-    target_link_libraries(native_simulator INTERFACE rt)
+    target_link_options(native_simulator INTERFACE "-lrt")
 endif()
 
 # --- HIL test manifest -------------------------------------------------------
