@@ -604,3 +604,171 @@ ZTEST(isotp_tx, test_block_size_handling)
     zassert_equal(test_get_frame_count(), 4); /* FF + 3 CFs */
     zassert_false(ISOTP_TxQueue_IsBusy());
 }
+
+ZTEST(isotp_rx, test_null_and_unknown_frame_inputs_are_rejected)
+{
+    uint8_t payload[] = {0x40U, 0xAAU}; /* reserved/unknown PCI type */
+    DiveCANMessage_t unknown = make_msg(TGT, SRC, payload, sizeof(payload));
+
+    ISOTP_Init(NULL, SRC, TGT, MSG_ID);
+    ISOTP_Reset(NULL);
+    ISOTP_Poll(NULL, 0U);
+    zassert_false(ISOTP_ProcessRxFrame(NULL, &unknown));
+    zassert_false(ISOTP_ProcessRxFrame(&ctx, NULL));
+    zassert_false(ISOTP_ProcessRxFrame(&ctx, &unknown));
+}
+
+ZTEST(isotp_rx, test_short_single_frame_is_rejected)
+{
+    uint8_t payload[] = {0x03U, 0xAAU};
+    DiveCANMessage_t short_sf = make_msg(TGT, SRC, payload, sizeof(payload));
+
+    zassert_false(ISOTP_ProcessRxFrame(&ctx, &short_sf));
+    zassert_false(ctx.rxComplete);
+}
+
+ZTEST(isotp_rx, test_zero_length_first_frame_is_rejected_with_overflow)
+{
+    uint8_t payload[] = {0x10U, 0x00U, 0U, 0U, 0U, 0U, 0U, 0U};
+    DiveCANMessage_t ff = make_msg(TGT, SRC, payload, sizeof(payload));
+
+    zassert_true(ISOTP_ProcessRxFrame(&ctx, &ff));
+    zassert_equal(ctx.state, ISOTP_IDLE);
+    zassert_false(ctx.rxComplete);
+    zassert_not_null(test_get_last_frame());
+    zassert_equal(test_get_last_frame()->data[0], ISOTP_FC_OVFLW);
+}
+
+ZTEST(isotp_rx, test_single_frame_restarts_an_active_reassembly)
+{
+    uint8_t ff_data[] = {0x10U, 14U, 1U, 2U, 3U, 4U, 5U, 6U};
+    DiveCANMessage_t ff = make_msg(TGT, SRC, ff_data, sizeof(ff_data));
+    zassert_true(ISOTP_ProcessRxFrame(&ctx, &ff));
+    zassert_equal(ctx.state, ISOTP_RECEIVING);
+
+    uint8_t sf_data[] = {0x02U, 0xAAU, 0xBBU};
+    DiveCANMessage_t sf = make_msg(TGT, SRC, sf_data, sizeof(sf_data));
+    zassert_true(ISOTP_ProcessRxFrame(&ctx, &sf));
+    zassert_equal(ctx.state, ISOTP_IDLE);
+    zassert_true(ctx.rxComplete);
+    zassert_equal(ctx.rxDataLength, 2U);
+    zassert_equal(ctx.rxBuffer[0], 0xAAU);
+}
+
+ZTEST(isotp_rx, test_first_frame_restarts_an_active_reassembly)
+{
+    uint8_t first_data[] = {0x10U, 14U, 1U, 2U, 3U, 4U, 5U, 6U};
+    DiveCANMessage_t first = make_msg(TGT, SRC, first_data, sizeof(first_data));
+    zassert_true(ISOTP_ProcessRxFrame(&ctx, &first));
+
+    uint8_t replacement_data[] = {0x10U, 10U, 9U, 8U, 7U, 6U, 5U, 4U};
+    DiveCANMessage_t replacement = make_msg(TGT, SRC, replacement_data,
+                            sizeof(replacement_data));
+    zassert_true(ISOTP_ProcessRxFrame(&ctx, &replacement));
+    zassert_equal(ctx.state, ISOTP_RECEIVING);
+    zassert_equal(ctx.rxDataLength, 10U);
+    zassert_equal(ctx.rxBuffer[0], 9U);
+}
+
+ZTEST(isotp_tx, test_send_and_enqueue_validate_arguments)
+{
+    uint8_t payload = 0xAAU;
+
+    zassert_false(ISOTP_Send(NULL, &payload, 1U));
+    zassert_false(ISOTP_Send(&ctx, NULL, 1U));
+    zassert_false(ISOTP_Send(&ctx, &payload, 0U));
+    zassert_false(ISOTP_Send(&ctx, &payload, ISOTP_MAX_PAYLOAD + 1U));
+
+    zassert_false(ISOTP_TxQueue_Enqueue(SRC, TGT, MSG_ID, NULL, 1U));
+    zassert_false(ISOTP_TxQueue_Enqueue(SRC, TGT, MSG_ID, &payload, 0U));
+    zassert_false(ISOTP_TxQueue_Enqueue(SRC, TGT, MSG_ID, &payload,
+                       ISOTP_TX_BUFFER_SIZE + 1U));
+}
+
+ZTEST(isotp_tx, test_flow_control_validation_and_wait_abort)
+{
+    uint8_t payload[] = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U};
+
+    zassert_false(ISOTP_TxQueue_ProcessFC(NULL));
+
+    uint8_t cts_data[] = {ISOTP_FC_CTS, 0U, 0U};
+    DiveCANMessage_t cts = make_msg(TGT, SRC, cts_data, sizeof(cts_data));
+    zassert_false(ISOTP_TxQueue_ProcessFC(&cts),
+              "an FC while idle is spurious");
+
+    zassert_true(ISOTP_Send(&ctx, payload, sizeof(payload)));
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+
+    DiveCANMessage_t wrong_target = make_msg(TGT, DIVECAN_MONITOR,
+                             cts_data, sizeof(cts_data));
+    zassert_false(ISOTP_TxQueue_ProcessFC(&wrong_target));
+    zassert_true(ISOTP_TxQueue_IsBusy());
+
+    uint8_t wait_data[] = {ISOTP_FC_WAIT, 0U, 0U};
+    DiveCANMessage_t wait = make_msg(TGT, SRC, wait_data, sizeof(wait_data));
+    zassert_true(ISOTP_TxQueue_ProcessFC(&wait));
+    zassert_false(ISOTP_TxQueue_IsBusy());
+}
+
+ZTEST(isotp_tx, test_unknown_flow_control_status_aborts)
+{
+    uint8_t payload[] = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U};
+    zassert_true(ISOTP_Send(&ctx, payload, sizeof(payload)));
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+
+    uint8_t bad_data[] = {0x33U, 0U, 0U};
+    DiveCANMessage_t bad = make_msg(TGT, SRC, bad_data, sizeof(bad_data));
+    zassert_true(ISOTP_TxQueue_ProcessFC(&bad));
+    zassert_false(ISOTP_TxQueue_IsBusy());
+}
+
+ZTEST(isotp_tx, test_flow_control_stmin_is_honoured)
+{
+    uint8_t payload[] = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U};
+    zassert_true(ISOTP_Send(&ctx, payload, sizeof(payload)));
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+
+    uint8_t fc_data[] = {ISOTP_FC_CTS, 0U, 1U};
+    DiveCANMessage_t fc = make_msg(TGT, SRC, fc_data, sizeof(fc_data));
+    zassert_true(ISOTP_TxQueue_ProcessFC(&fc));
+    zassert_false(ISOTP_TxQueue_IsBusy());
+    zassert_equal(test_get_frame_count(), 2);
+}
+
+ZTEST(isotp_tx, test_queue_full_is_reported_while_transfer_active)
+{
+    uint8_t long_payload[] = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U};
+    uint8_t short_payload[] = {0xAAU};
+
+    zassert_true(ISOTP_Send(&ctx, long_payload, sizeof(long_payload)));
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+    zassert_true(ISOTP_TxQueue_IsBusy());
+
+    zassert_true(ISOTP_TxQueue_Enqueue(SRC, TGT, MSG_ID,
+                      short_payload, sizeof(short_payload)));
+    zassert_true(ISOTP_TxQueue_Enqueue(SRC, TGT, MSG_ID,
+                      short_payload, sizeof(short_payload)));
+    zassert_equal(ISOTP_TxQueue_GetPendingCount(), ISOTP_TX_QUEUE_SIZE);
+    zassert_false(ISOTP_TxQueue_Enqueue(SRC, TGT, MSG_ID,
+                       short_payload, sizeof(short_payload)));
+}
+
+ZTEST(isotp_tx, test_queue_full_recovers_after_flow_control_timeout)
+{
+    uint8_t long_payload[] = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U};
+    uint8_t short_payload[] = {0xAAU};
+
+    zassert_true(ISOTP_Send(&ctx, long_payload, sizeof(long_payload)));
+    ISOTP_TxQueue_Poll(k_uptime_get_32());
+    zassert_true(ISOTP_TxQueue_Enqueue(SRC, TGT, MSG_ID,
+                      short_payload, sizeof(short_payload)));
+    zassert_true(ISOTP_TxQueue_Enqueue(SRC, TGT, MSG_ID,
+                      short_payload, sizeof(short_payload)));
+
+    k_msleep(ISOTP_TIMEOUT_N_BS + 1U);
+    zassert_true(ISOTP_TxQueue_Enqueue(SRC, TGT, MSG_ID,
+                      short_payload, sizeof(short_payload)),
+             "a stale in-flight transfer should be reaped to make progress");
+    zassert_false(ISOTP_TxQueue_IsBusy());
+    zassert_equal(ISOTP_TxQueue_GetPendingCount(), ISOTP_TX_QUEUE_SIZE);
+}
