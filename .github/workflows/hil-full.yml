@@ -1,0 +1,142 @@
+name: HIL Full Qualification
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Firmware variant to build and qualify
+        required: true
+        default: Poseidon_Aren
+        type: choice
+        options:
+          - Poseidon_Aren
+          - AP_Aren
+          - eCCR_classic
+          - Sidewinder_Gabriel
+
+permissions:
+  contents: read
+
+concurrency:
+  group: divecan-hil-bench
+  cancel-in-progress: false
+
+jobs:
+  hil-full:
+    name: Build, flash, and run full HIL
+    runs-on: [self-hosted, divecan-hil]
+    timeout-minutes: 180
+    env:
+      ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+      ZEPHYR_SDK_INSTALL_DIR: /home/aren/zephyr-sdk-1.0.1
+      HIL_VARIANT: ${{ inputs.variant || 'Poseidon_Aren' }}
+      HIL_BUILD_DIR: build-hil
+      TEST_RIG_DIR: /home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig
+      DIVECAN_HIL_ALLOW_DIRTY_HARNESS: ${{ vars.DIVECAN_HIL_ALLOW_DIRTY_HARNESS || '0' }}
+
+    steps:
+      # Keep this workflow on pull_request, not pull_request_target. Repository
+      # Actions settings gate external fork PRs before this self-hosted job runs.
+      #
+      # The repository contains legacy gitlinks without matching .gitmodules
+      # entries. actions/checkout traverses submodules while removing temporary
+      # credentials and can fail before the job starts, so mirror the existing
+      # CI workflow's plain git checkout.
+      - name: Checkout firmware under test
+        env:
+          CI_REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+          CI_EVENT_REF: ${{ github.ref }}
+          CI_EVENT_SHA: ${{ github.sha }}
+          CI_RUN_REF: refs/remotes/ci-hil/${{ github.run_id }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [ ! -d .git ]; then
+            git init .
+          fi
+          if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "$CI_REPOSITORY_URL"
+          else
+            git remote add origin "$CI_REPOSITORY_URL"
+          fi
+          git fetch --force --prune --no-recurse-submodules origin \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/tags/*:refs/tags/*' \
+            "+${CI_EVENT_REF}:${CI_RUN_REF}"
+          git checkout --force "$CI_EVENT_SHA"
+          git clean -ffdx
+
+      - name: Validate runner and trusted harness
+        run: |
+          test -d "$TEST_RIG_DIR"
+          test -x "$TEST_RIG_DIR/scripts/flash_and_test.py"
+          git -C "$TEST_RIG_DIR" rev-parse --is-inside-work-tree
+          echo "Harness commit: $(git -C "$TEST_RIG_DIR" rev-parse HEAD)"
+
+          if [ "$DIVECAN_HIL_ALLOW_DIRTY_HARNESS" != "1" ]; then
+            if ! git -C "$TEST_RIG_DIR" diff --quiet ||
+               ! git -C "$TEST_RIG_DIR" diff --cached --quiet ||
+               [ -n "$(git -C "$TEST_RIG_DIR" ls-files --others --exclude-standard)" ]; then
+              echo "::error title=Dirty HIL harness::Commit or clean the out-of-tree Test Rig checkout before using it as a required gate."
+              git -C "$TEST_RIG_DIR" status --short
+              exit 2
+            fi
+          else
+            echo "::warning title=Dirty HIL harness allowed::DIVECAN_HIL_ALLOW_DIRTY_HARNESS=1; results are not tied to a clean harness checkout."
+          fi
+
+      - name: Prepare west workspace
+        run: |
+          echo "/home/aren/zephyr-venv/bin" >> "$GITHUB_PATH"
+          if [ ! -d zephyr ]; then
+            /home/aren/zephyr-venv/bin/west init -l Firmware
+            /home/aren/zephyr-venv/bin/west update --narrow -o=--depth=1
+          else
+            /home/aren/zephyr-venv/bin/west update --narrow -o=--depth=1
+          fi
+          /home/aren/zephyr-venv/bin/west packages pip --install
+
+      - name: Build firmware variant
+        working-directory: Firmware
+        run: |
+          case "$HIL_VARIANT" in
+            Poseidon_Aren|AP_Aren|eCCR_classic|Sidewinder_Gabriel) ;;
+            *)
+              echo "::error title=Invalid HIL variant::$HIL_VARIANT"
+              exit 2
+              ;;
+          esac
+
+          west build -d "$HIL_BUILD_DIR" -b divecan_jr/stm32l431xx . --sysbuild -p always -- \
+            -DBOARD_ROOT=. \
+            -DEXTRA_CONF_FILE="variants/${HIL_VARIANT}.conf" \
+            -DEXTRA_DTC_OVERLAY_FILE="variants/${HIL_VARIANT}.overlay"
+
+      - name: Validate matched HIL artifacts
+        working-directory: Firmware
+        run: |
+          test -s "$HIL_BUILD_DIR/Firmware/zephyr/test_manifest.json"
+          test -s "$HIL_BUILD_DIR/Firmware/zephyr/zephyr.signed.bin"
+          if ! find "$HIL_BUILD_DIR" -maxdepth 2 \( -name 'merged_*.hex' -o -path '*/zephyr/zephyr.hex' \) -type f -size +0c | grep -q .; then
+            echo "::error title=Missing flash image::No merged_*.hex or zephyr/zephyr.hex under Firmware/$HIL_BUILD_DIR"
+            exit 2
+          fi
+
+      - name: Flash DUT and run full HIL suite
+        run: |
+          mkdir -p "$RUNNER_TEMP/divecan-hil"
+          log="$RUNNER_TEMP/divecan-hil/hil-full.log"
+          set +e
+          "$TEST_RIG_DIR/scripts/flash_and_test.py" "$GITHUB_WORKSPACE/Firmware/$HIL_BUILD_DIR" 2>&1 | tee "$log"
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "HIL pytest status: $status" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Archive HIL log
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: hil-full-${{ github.run_id }}
+          path: ${{ runner.temp }}/divecan-hil/
+          retention-days: 14
