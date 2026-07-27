@@ -52,6 +52,14 @@ jobs:
             west-${{ hashFiles('Firmware/west.yml') }}-
             west-
 
+      # `west packages pip --install` refuses to run outside a virtualenv, so
+      # all Python tooling lives in one; putting its bin dir on GITHUB_PATH
+      # makes every later step (west build, native_test.py) use it too.
+      - name: Create Python virtualenv
+        run: |
+          python3 -m venv "$HOME/zephyr-venv"
+          echo "$HOME/zephyr-venv/bin" >> "$GITHUB_PATH"
+
       - name: Initialize west workspace
         run: |
           pip install west
