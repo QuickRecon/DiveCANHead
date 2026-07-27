@@ -165,13 +165,13 @@ static uint16_t pack_consensus_status(const ConsensusMsg_t *c)
     uint16_t include1 = 0U;
     uint16_t include2 = 0U;
 
-    if (true == c->include_array[0]) {
+    if (c->include_array[0]) {
         include0 = 1U;
     }
-    if (true == c->include_array[1]) {
+    if (c->include_array[1]) {
         include1 = 1U;
     }
-    if (true == c->include_array[2]) {
+    if (c->include_array[2]) {
         include2 = 1U;
     }
 

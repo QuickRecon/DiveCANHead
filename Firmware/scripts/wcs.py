@@ -68,6 +68,24 @@ def _validated_path(raw: str) -> str:
     return resolved
 
 
+def _validated_manual_path(raw: str) -> str:
+    """Resolve the manual-overrides (.msu) path and require it to stay inside
+    the repository tree or the invoking directory. Unlike build dirs, the
+    manual file always ships with the repo (scripts/wcs_manual.msu), so a
+    path resolving elsewhere indicates a mangled argument, not a legal use.
+    """
+    resolved = _validated_path(raw)
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cwd = os.path.realpath(os.getcwd())
+    contained = any(
+        resolved == base or resolved.startswith(base + os.sep)
+        for base in (repo_root, cwd)
+    )
+    if not contained:
+        raise SystemExit(f"manual overrides file outside repo/cwd: {raw!r}")
+    return resolved
+
+
 # ---- Data classes ----
 
 
@@ -411,7 +429,9 @@ def main() -> None:
     if not os.path.isdir(build_dir):
         sys.exit(f"build dir '{build_dir}' not found")
 
-    manual_file = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_MANUAL_FILE
+    manual_file = _validated_manual_path(
+        sys.argv[2] if len(sys.argv) > 2 else DEFAULT_MANUAL_FILE
+    )
 
     tus = find_tus(build_dir)
     if not tus:

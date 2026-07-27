@@ -361,7 +361,7 @@ ZTEST(isotp_tx, test_multiframe_ff_with_padding)
     /* DiveCAN FF: [PCI_hi][len_lo][pad=0x00][5 data bytes]
      * Length field = payload + 1 (padding) = 11 = 0x00B */
     zassert_equal(ff->data[0] & 0xF0, 0x10); /* FF PCI */
-    uint16_t len = (uint16_t)(((uint16_t)(ff->data[0] & 0x0FU) << 8U) | ff->data[1]);
+    uint16_t len = (uint16_t)((uint16_t)((uint16_t)(ff->data[0] & 0x0FU) << 8U) | ff->data[1]);
     zassert_equal(len, 11); /* 10 + 1 padding */
     zassert_equal(ff->data[2], 0x00); /* DiveCAN padding */
     zassert_equal(ff->data[3], 1); /* first data byte */
