@@ -16,8 +16,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: sonar-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep each revision isolated so multiple self-hosted runners can validate
+  # successive PR updates concurrently.
+  group: sonar-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   analyze:
