@@ -16,7 +16,6 @@
 import { decodePostStatus, decodeMcubootStatus } from '../firmware/McubootStatus.js';
 import { decodeErrorHistogram, summarizeErrorHistogram } from '../errors/ErrorHistogram.js';
 import { ByteUtils } from '../utils/ByteUtils.js';
-import { ByteUtils } from '../utils/ByteUtils.js';
 
 // ============================================================================
 // Service IDs (SID)
