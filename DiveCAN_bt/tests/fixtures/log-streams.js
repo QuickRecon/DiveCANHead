@@ -5,8 +5,8 @@
  * tested against hand-authored TLV streams.
  */
 
-import {
-  LOG_DOWNLOAD_MAGIC,
+import { LOG_DOWNLOAD_MAGIC } from '../../src/uds/constants.js';
+export {
   FL_ENTRY_HDR_LEN,
   FL_TYPE_BOOT_MARKER,
   FL_TYPE_DIVE_START,
@@ -63,6 +63,3 @@ export function canFramePayload(id, dlc, data) {
 export function logTextPayload(level, moduleId, text) {
   return [level, ...u16le(moduleId), ...new TextEncoder().encode(text)];
 }
-
-export { FL_ENTRY_HDR_LEN, FL_TYPE_BOOT_MARKER, FL_TYPE_DIVE_START, FL_TYPE_LOG_TEXT,
-  FL_TYPE_CAN_RX, FL_TYPE_BATCH, FL_TYPE_END_OF_STREAM };

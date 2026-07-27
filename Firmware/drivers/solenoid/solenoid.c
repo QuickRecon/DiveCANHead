@@ -80,7 +80,7 @@ static void deadman_top_cb(const struct device *counter_dev, void *user_data)
     /* ISR context: a failed GPIO write cannot be reported via the zbus
      * error channel (op_error_publish takes a mutex), so the return is
      * dropped here.  The thread-context off-paths below capture it. */
-    for (uint8_t i = 0; i < cfg->num_channels; i++) {
+    for (uint8_t i = 0; i < cfg->num_channels; ++i) {
         (void)gpio_pin_set_dt(&cfg->gpios[i], 0);
     }
 
@@ -158,14 +158,14 @@ static void sol_current_begin(const struct device *dev, uint8_t channel,
 
     /* Baseline is the pre-fire idle draw — the current cached value is correct.
      * Only arm the window when we actually have a baseline to subtract. */
-    if (device_current_read(&ua, NULL)) {
+    if (true == device_current_read(&ua, NULL)) {
         int64_t now = k_uptime_get();
         k_spinlock_key_t key = k_spin_lock(&cs->lock);
         cs->baseline_ua[channel] = ua;
         cs->peak_ua[channel] = ua;
         cs->fire_start_ms[channel] = now;
         cs->judge_deadline_ms[channel] =
-            now + (int64_t)(duration_us / SOL_US_PER_MS) + SOL_JUDGE_MARGIN_MS;
+            now + (duration_us / SOL_US_PER_MS) + SOL_JUDGE_MARGIN_MS;
         k_spin_unlock(&cs->lock, key);
     }
 
@@ -294,29 +294,29 @@ int solenoid_fire(const struct device *dev, uint8_t channel,
           uint32_t duration_us)
 {
     const struct solenoid_config *cfg = dev->config;
+    int ret = 0;
 
     if (channel >= cfg->num_channels) {
-        return -EINVAL;
-    }
-    if (duration_us == 0) {
+        ret = -EINVAL;
+    } else if (0U == duration_us) {
         solenoid_off(dev, channel);
-        return 0;
-    }
+    } else {
+        ret = arm_timer(dev, duration_us);
 
-    int ret = arm_timer(dev, duration_us);
-
-    if (ret == 0) {
+        if (0 == ret) {
 #ifdef CONFIG_SOLENOID_CURRENT_CHECK
-        /* Snapshot the idle baseline and open the judge window for this fire. */
-        sol_current_begin(dev, channel, duration_us);
+            /* Snapshot the idle baseline and open the judge window for this fire. */
+            sol_current_begin(dev, channel, duration_us);
 #endif
-        int set_ret = gpio_pin_set_dt(&cfg->gpios[channel], 1);
+            int set_ret = gpio_pin_set_dt(&cfg->gpios[channel], 1);
 
-        if (0 != set_ret) {
-            OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-set_ret));
-            ret = set_ret;
+            if (0 != set_ret) {
+                OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-set_ret));
+                ret = set_ret;
+            }
         }
     }
+
     return ret;
 }
 
@@ -353,7 +353,7 @@ void solenoid_all_off(const struct device *dev)
     /* Stop the deadman overflow (no compare-channel alarm to cancel — basic timer). */
     (void)counter_stop(cfg->counter);
 
-    for (uint8_t i = 0; i < cfg->num_channels; i++) {
+    for (uint8_t i = 0; i < cfg->num_channels; ++i) {
         int ret = gpio_pin_set_dt(&cfg->gpios[i], 0);
 
         if (0 != ret) {
@@ -385,28 +385,33 @@ uint8_t solenoid_channel_count(const struct device *dev)
 static int solenoid_init(const struct device *dev)
 {
     const struct solenoid_config *cfg = dev->config;
+    int rc = 0;
 
-    if (!device_is_ready(cfg->counter)) {
+    if (false == device_is_ready(cfg->counter)) {
         LOG_ERR("counter device not ready");
-        return -ENODEV;
+        rc = -ENODEV;
+    } else {
+        for (uint8_t i = 0; (i < cfg->num_channels) && (0 == rc); ++i) {
+            if (false == gpio_is_ready_dt(&cfg->gpios[i])) {
+                LOG_ERR("GPIO for channel %u not ready", i);
+                rc = -ENODEV;
+            } else {
+                int ret = gpio_pin_configure_dt(&cfg->gpios[i],
+                                GPIO_OUTPUT_INACTIVE);
+                if (ret < 0) {
+                    LOG_ERR("failed to configure channel %u: %d", i, ret);
+                    rc = ret;
+                }
+            }
+        }
+
+        if (0 == rc) {
+            LOG_INF("%u channels, max %u us",
+                cfg->num_channels, cfg->max_on_time_us);
+        }
     }
 
-    for (uint8_t i = 0; i < cfg->num_channels; i++) {
-        if (!gpio_is_ready_dt(&cfg->gpios[i])) {
-            LOG_ERR("GPIO for channel %u not ready", i);
-            return -ENODEV;
-        }
-        int ret = gpio_pin_configure_dt(&cfg->gpios[i],
-                        GPIO_OUTPUT_INACTIVE);
-        if (ret < 0) {
-            LOG_ERR("failed to configure channel %u: %d", i, ret);
-            return ret;
-        }
-    }
-
-    LOG_INF("%u channels, max %u us",
-        cfg->num_channels, cfg->max_on_time_us);
-    return 0;
+    return rc;
 }
 
 #ifdef CONFIG_SOLENOID_CURRENT_CHECK
@@ -432,7 +437,7 @@ SolCurrentClass_t solenoid_current_aggregate(const struct device *dev)
     SolCurrentClass_t agg = SOL_CURRENT_NORM;
     bool any_under = false;
 
-    for (uint8_t i = 0; i < cfg->num_channels; i++) {
+    for (uint8_t i = 0; i < cfg->num_channels; ++i) {
         if (SOL_CURRENT_OVER == cs->status[i]) {
             agg = SOL_CURRENT_OVER;
         } else if (SOL_CURRENT_UNDER == cs->status[i]) {

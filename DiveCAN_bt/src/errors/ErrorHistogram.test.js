@@ -34,7 +34,7 @@ describe('ErrorHistogram', () => {
     counts[17] = 258;   // ISOTP_TIMEOUT = 0x0102 -> exercises LE byte order
     const entries = decodeErrorHistogram(buildHistogram(counts));
 
-    expect(entries.length).toBe(38);
+    expect(entries).toHaveLength(38);
     expect(entries[9]).toMatchObject({ index: 9, name: 'CELL_FAILURE', count: 3 });
     expect(entries[17]).toMatchObject({ index: 17, name: 'ISOTP_TIMEOUT', count: 258 });
     expect(entries[0]).toMatchObject({ index: 0, name: 'NONE', count: 0 });
@@ -43,7 +43,7 @@ describe('ErrorHistogram', () => {
   it('tolerates a short payload by decoding only complete slots', () => {
     // Only 4 bytes -> 2 slots
     const entries = decodeErrorHistogram(new Uint8Array([1, 0, 5, 0]));
-    expect(entries.length).toBe(2);
+    expect(entries).toHaveLength(2);
     expect(entries[0].count).toBe(1);
     expect(entries[1].count).toBe(5);
   });

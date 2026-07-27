@@ -18,6 +18,7 @@
 #include <stddef.h>
 #include <zephyr/fs/fcb.h>
 
+#include "common.h"
 #include "flash_log.h"
 #include "flash_log_internal.h"
 
@@ -67,27 +68,27 @@ void flash_log_reader_invalidate_index(void);
  * @param out  Receives the summary; zeroed on no markers.
  * @return 0 on success, negative errno on FCB walk failure.
  */
-int flash_log_reader_index_summary(FlashLogDest_t dest,
+Status_t flash_log_reader_index_summary(FlashLogDest_t dest,
                                    FlashLogIndexSummary_t *out);
 
 /** @brief Resolve "the latest boot on `dest`" into an iterable range. */
-int flash_log_reader_resolve_latest_boot(FlashLogDest_t dest,
+Status_t flash_log_reader_resolve_latest_boot(FlashLogDest_t dest,
                      FlashLogRange_t *out);
 
 /** @brief Resolve "the latest dive on `dest`" into an iterable range. */
-int flash_log_reader_resolve_latest_dive(FlashLogDest_t dest,
+Status_t flash_log_reader_resolve_latest_dive(FlashLogDest_t dest,
                      FlashLogRange_t *out);
 
 /** @brief Resolve "boot id N on `dest`" into an iterable range. */
-int flash_log_reader_resolve_boot_id(FlashLogDest_t dest, uint32_t boot_id,
+Status_t flash_log_reader_resolve_boot_id(FlashLogDest_t dest, uint32_t boot_id,
                      FlashLogRange_t *out);
 
 /** @brief Resolve "dive number N on `dest`" into an iterable range. */
-int flash_log_reader_resolve_dive_id(FlashLogDest_t dest, uint16_t dive_id,
+Status_t flash_log_reader_resolve_dive_id(FlashLogDest_t dest, uint16_t dive_id,
                      FlashLogRange_t *out);
 
 /** @brief Resolve "everything on `dest`" into an iterable range. */
-int flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out);
+Status_t flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out);
 
 /** @brief Prepare a cursor to stream `range`. */
 void flash_log_reader_open(FlashLogReader_t *r, const FlashLogRange_t *range);
@@ -98,7 +99,7 @@ void flash_log_reader_open(FlashLogReader_t *r, const FlashLogRange_t *range);
  * @return positive bytes written, 0 if the range is exhausted,
  *         negative errno on flash error.
  */
-int flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_size);
+Status_t flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_size);
 
 #ifdef __cplusplus
 }

@@ -38,7 +38,7 @@ ZBUS_CHAN_DECLARE(chan_battery_status);
  * @param dev Power management device (use POWER_DEVICE)
  * @return 0 on success, negative errno on failure
  */
-int power_vbus_enable(const struct device *dev);
+Status_t power_vbus_enable(const struct device *dev);
 
 /**
  * @brief Disable the VBUS peripheral bus.
@@ -49,7 +49,7 @@ int power_vbus_enable(const struct device *dev);
  * @param dev Power management device (use POWER_DEVICE)
  * @return 0 on success, negative errno on failure
  */
-int power_vbus_disable(const struct device *dev);
+Status_t power_vbus_disable(const struct device *dev);
 
 /**
  * @brief Check if the VBUS peripheral bus is currently enabled.
@@ -124,7 +124,7 @@ bool power_is_can_active(const struct device *dev);
  * @param dev Power management device (use POWER_DEVICE)
  * @return Does not return on success; negative errno if shutdown cannot be entered
  */
-int power_shutdown(const struct device *dev);
+Status_t power_shutdown(const struct device *dev);
 
 /**
  * @brief Return the low-battery threshold voltage for the configured chemistry.

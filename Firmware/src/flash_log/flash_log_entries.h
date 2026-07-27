@@ -13,6 +13,8 @@
 
 #include <stdint.h>
 
+#include "common.h"
+
 #define FL_ENTRY_FLAG_DROP_PRECEDED  (1U << 0)
 
 /** @brief Common header prepended to every TLV entry. 12 bytes. */
@@ -68,10 +70,10 @@ typedef struct {
 
 /** @brief Payload for FL_TYPE_PID_SNAPSHOT. */
 typedef struct {
-    float    integral;
-    uint16_t saturation_count;
-    float    duty;
-    uint8_t  setpoint;
+    Numeric_t integral;
+    uint16_t  saturation_count;
+    Numeric_t duty;
+    uint8_t   setpoint;
 } __packed fl_payload_pid_t;
 
 /** @brief Payload for FL_TYPE_SOLENOID_FIRE. */

@@ -29,6 +29,7 @@
 #include <stddef.h>
 #include <zephyr/drivers/can.h>
 
+#include "common.h"
 #include "oxygen_cell_types.h"
 #include "errors.h"
 
@@ -129,10 +130,10 @@ typedef struct {
 
 /* ---- PID snapshot payload ---- */
 typedef struct {
-    float    integral;
-    uint16_t saturation_count;
-    float    duty;
-    uint8_t  setpoint;
+    Numeric_t integral;
+    uint16_t  saturation_count;
+    Numeric_t duty;
+    uint8_t   setpoint;
 } FlashLogPidSnapshot_t;
 
 /* ---- Solenoid closed-loop current check payload ----
@@ -162,7 +163,7 @@ typedef struct {
  *
  * @return 0 on success, negative errno on mount failure
  */
-int flash_log_init(void);
+Status_t flash_log_init(void);
 
 /**
  * @brief Record the boot marker into both FCBs.
@@ -195,7 +196,7 @@ void flash_log_resume(void);
  * @param out Caller-allocated stats struct; populated in-place.
  * @return 0 on success, -EINVAL if out is NULL.
  */
-int flash_log_stats(FlashLogStats_t *out);
+Status_t flash_log_stats(FlashLogStats_t *out);
 
 /* ---- Producer enqueue API ----
  *
@@ -250,11 +251,11 @@ void flash_log_enqueue_text(uint8_t level, uint16_t module_id,
  * immediately; readers always return the current cached value.
  */
 
-uint8_t flash_log_get_rtt_level(void);
-int     flash_log_set_rtt_level(uint8_t level);
+uint8_t  flash_log_get_rtt_level(void);
+Status_t flash_log_set_rtt_level(uint8_t level);
 
-uint8_t flash_log_get_can_verbose(void);
-int     flash_log_set_can_verbose(uint8_t bitmask);
+uint8_t  flash_log_get_can_verbose(void);
+Status_t flash_log_set_can_verbose(uint8_t bitmask);
 
 uint32_t flash_log_get_boot_id(void);
 
@@ -266,7 +267,7 @@ uint32_t flash_log_get_boot_id(void);
  * @param stream_mask Bit 0 = telemetry, bit 1 = text. 0 = no-op.
  * @return 0 on success, negative errno on flash failure.
  */
-int flash_log_erase(uint8_t stream_mask);
+Status_t flash_log_erase(uint8_t stream_mask);
 
 #ifdef __cplusplus
 }

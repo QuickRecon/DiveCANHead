@@ -1512,7 +1512,7 @@
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
-    import { STATE_DIDS, ALL_READ_DIDS, EXTRA_READ_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT, UDS_SESSION_PROGRAMMING, AUTOTUNE_STATE_DONE, AUTOTUNE_STATE_ABORTED } from '../src/uds/constants.js';
+    import { ALL_READ_DIDS, EXTRA_READ_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT, UDS_SESSION_PROGRAMMING, AUTOTUNE_STATE_DONE, AUTOTUNE_STATE_ABORTED } from '../src/uds/constants.js';
     import { parseMcubootImage, formatVersion } from '../src/firmware/McubootImage.js';
     import { parseLogStream, decodeRecord } from '../src/logs/LogParser.js';
     import { toJSON as logToJSON, toCSV as logToCSV, toRawBin as logToRawBin, triggerDownload } from '../src/logs/LogExport.js';
@@ -1986,7 +1986,8 @@
       // grouped by category and in registry order.
       const extraByCategory = {};
       for (const [key, info] of Object.entries(EXTRA_READ_DIDS)) {
-        (extraByCategory[info.category] ||= []).push([key, info]);
+        if (!extraByCategory[info.category]) { extraByCategory[info.category] = []; }
+        extraByCategory[info.category].push([key, info]);
       }
       for (const [category, entries] of Object.entries(extraByCategory)) {
         const section = document.createElement('div');
@@ -2222,6 +2223,88 @@
     };
 
     // ---------- Settings editor (UDS 0x9xxx menu) ----------
+    // Build the select/number-input control for one setting and return a
+    // getValue() accessor that reads the current control value as a BigInt.
+    const buildSettingValueControl = async (s, pidWireSetting, controls) => {
+      let getValue;
+      if (s.kind === SETTING_KIND_TEXT && s.optionCount > 0) {
+        const select = document.createElement('select');
+        for (let i = 0; i < s.optionCount; i++) {
+          const opt = document.createElement('option');
+          opt.value = String(i);
+          opt.textContent = await stack.uds.getSettingOptionLabel(s.index, i);
+          select.appendChild(opt);
+        }
+        select.value = String(Number(s.currentValue));
+        select.disabled = !s.editable;
+        controls.appendChild(select);
+        getValue = () => BigInt(select.value);
+      } else {
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        if (pidWireSetting) {
+          input.max = String(Number(s.maxValue) / 1000000);
+          input.step = '0.000001';
+          input.value = String(Number(s.currentValue) / 1000000);
+          input.title = 'Real PID gain (resolution 0.000001)';
+        } else {
+          input.max = String(s.maxValue);
+          input.value = String(s.currentValue);
+        }
+        input.disabled = !s.editable;
+        input.style.width = '120px';
+        controls.appendChild(input);
+        getValue = () => BigInt(Math.round(Number(input.value) *
+          (pidWireSetting ? 1000000 : 1)));
+      }
+      return getValue;
+    };
+
+    // Append the Set/Save action buttons for an editable setting.
+    const appendSettingActionButtons = (s, getValue, controls) => {
+      const setBtn = document.createElement('button');
+      setBtn.className = 'small';
+      setBtn.textContent = 'Set';
+      setBtn.title = 'Apply now (volatile)';
+      setBtn.addEventListener('click', async () => {
+        try { await stack.uds.writeSettingValue(s.index, getValue()); elements.settingsStatus.textContent = `Set "${s.label}"`; }
+        catch (e) { elements.settingsStatus.textContent = `Set failed: ${e.message}`; }
+      });
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'small';
+      saveBtn.textContent = 'Save';
+      saveBtn.title = 'Persist to NVS (may need power-cycle)';
+      saveBtn.addEventListener('click', async () => {
+        try { await stack.uds.saveSetting(s.index, getValue()); elements.settingsStatus.textContent = `Saved "${s.label}"`; }
+        catch (e) { elements.settingsStatus.textContent = `Save failed: ${e.message}`; }
+      });
+      controls.appendChild(setBtn);
+      controls.appendChild(saveBtn);
+    };
+
+    // Build one setting's row (label + value control + Set/Save buttons).
+    const buildSettingRow = async (s) => {
+      const pidWireSetting = /^(Kp|Ki|Kd) x1M$/.exec(s.label);
+      const row = document.createElement('div');
+      row.className = 'setting-row';
+      const label = document.createElement('label');
+      label.textContent = pidWireSetting ? `PID ${pidWireSetting[1]}` : s.label;
+      row.appendChild(label);
+
+      const controls = document.createElement('div');
+      controls.className = 'setting-controls';
+      controls.style.display = 'flex';
+      controls.style.gap = '8px';
+      controls.style.alignItems = 'center';
+
+      const getValue = await buildSettingValueControl(s, pidWireSetting, controls);
+      if (s.editable) { appendSettingActionButtons(s, getValue, controls); }
+
+      row.appendChild(controls);
+      return row;
+    };
+
     const loadSettings = async () => {
       if (!stack) return;
       elements.settingsStatus.textContent = 'Reading settings...';
@@ -2232,75 +2315,7 @@
         container.innerHTML = '';
 
         for (const s of settings) {
-          const pidWireSetting = /^(Kp|Ki|Kd) x1M$/.exec(s.label);
-          const row = document.createElement('div');
-          row.className = 'setting-row';
-          const label = document.createElement('label');
-          label.textContent = pidWireSetting ? `PID ${pidWireSetting[1]}` : s.label;
-          row.appendChild(label);
-
-          const controls = document.createElement('div');
-          controls.className = 'setting-controls';
-          controls.style.display = 'flex';
-          controls.style.gap = '8px';
-          controls.style.alignItems = 'center';
-
-          let getValue;
-          if (s.kind === SETTING_KIND_TEXT && s.optionCount > 0) {
-            const select = document.createElement('select');
-            for (let i = 0; i < s.optionCount; i++) {
-              const opt = document.createElement('option');
-              opt.value = String(i);
-              opt.textContent = await stack.uds.getSettingOptionLabel(s.index, i);
-              select.appendChild(opt);
-            }
-            select.value = String(Number(s.currentValue));
-            select.disabled = !s.editable;
-            controls.appendChild(select);
-            getValue = () => BigInt(select.value);
-          } else {
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.min = '0';
-            if (pidWireSetting) {
-              input.max = String(Number(s.maxValue) / 1000000);
-              input.step = '0.000001';
-              input.value = String(Number(s.currentValue) / 1000000);
-              input.title = 'Real PID gain (resolution 0.000001)';
-            } else {
-              input.max = String(s.maxValue);
-              input.value = String(s.currentValue);
-            }
-            input.disabled = !s.editable;
-            input.style.width = '120px';
-            controls.appendChild(input);
-            getValue = () => BigInt(Math.round(Number(input.value) *
-              (pidWireSetting ? 1000000 : 1)));
-          }
-
-          if (s.editable) {
-            const setBtn = document.createElement('button');
-            setBtn.className = 'small';
-            setBtn.textContent = 'Set';
-            setBtn.title = 'Apply now (volatile)';
-            setBtn.addEventListener('click', async () => {
-              try { await stack.uds.writeSettingValue(s.index, getValue()); elements.settingsStatus.textContent = `Set "${s.label}"`; }
-              catch (e) { elements.settingsStatus.textContent = `Set failed: ${e.message}`; }
-            });
-            const saveBtn = document.createElement('button');
-            saveBtn.className = 'small';
-            saveBtn.textContent = 'Save';
-            saveBtn.title = 'Persist to NVS (may need power-cycle)';
-            saveBtn.addEventListener('click', async () => {
-              try { await stack.uds.saveSetting(s.index, getValue()); elements.settingsStatus.textContent = `Saved "${s.label}"`; }
-              catch (e) { elements.settingsStatus.textContent = `Save failed: ${e.message}`; }
-            });
-            controls.appendChild(setBtn);
-            controls.appendChild(saveBtn);
-          }
-
-          row.appendChild(controls);
-          container.appendChild(row);
+          container.appendChild(await buildSettingRow(s));
         }
         elements.settingsStatus.textContent = `${settings.length} settings loaded`;
       } catch (error) {
@@ -2339,12 +2354,14 @@
           ['Firmware', fw], ['Variant', variant], ['Hardware', String(hw)], ['Serial', serial]
         ];
         if (status) {
-          pairs.push(['Swap type', status.swapTypeName]);
-          pairs.push(['Confirmed', status.confirmed ? 'yes' : 'NO (unconfirmed)']);
-          pairs.push(['Running slot', String(status.runningSlot)]);
-          pairs.push(['Slot0 version', formatVersion(status.slot0Version)]);
-          pairs.push(['Slot1 (pending)', formatVersion(status.slot1Version)]);
-          pairs.push(['Factory', formatVersion(status.factoryVersion)]);
+          pairs.push(
+            ['Swap type', status.swapTypeName],
+            ['Confirmed', status.confirmed ? 'yes' : 'NO (unconfirmed)'],
+            ['Running slot', String(status.runningSlot)],
+            ['Slot0 version', formatVersion(status.slot0Version)],
+            ['Slot1 (pending)', formatVersion(status.slot1Version)],
+            ['Factory', formatVersion(status.factoryVersion)]
+          );
         }
         if (post) pairs.push(['POST passed', post.passed.join(', ') || '(none)']);
         renderKV($('fwStatusGrid'), pairs);
@@ -2592,8 +2609,9 @@
               `Boot ${bootId} (${bootsCompleted + 1}/${totalBoots}), ${records} records, ${received} bytes...`;
           } else {
             if (entryCount > 0) setLogProgress(Math.min(100, (records / entryCount) * 100));
+            const estimateSuffix = entryCount ? ` / ~${entryCount}` : '';
             $('logMessage').textContent =
-              `${records}${entryCount ? ` / ~${entryCount}` : ''} records, ${received} bytes...`;
+              `${records}${estimateSuffix} records, ${received} bytes...`;
           }
         };
         const result = allBoots
@@ -2616,6 +2634,12 @@
       }
     };
 
+    const formatDetailValue = (v) => {
+      let formatted = v;
+      if (Array.isArray(v)) { formatted = `[${v}]`; }
+      return formatted;
+    };
+
     const renderLogRecords = () => {
       $('logRecordCount').textContent = String(logRecords.length);
       const body = $('logRecordBody');
@@ -2625,7 +2649,7 @@
         const tr = document.createElement('tr');
         tr.style.borderBottom = '1px solid #222';
         const details = decoded
-          ? Object.entries(decoded).map(([k, v]) => `${k}=${Array.isArray(v) ? `[${v}]` : v}`).join(' ')
+          ? Object.entries(decoded).map(([k, v]) => `${k}=${formatDetailValue(v)}`).join(' ')
           : `${rec.payload.length} bytes`;
         tr.innerHTML = `<td style="padding:4px;">${i}</td><td style="padding:4px;">${rec.typeName}</td>` +
           `<td style="padding:4px;">${rec.tsUs}</td><td style="padding:4px;color:#aaa;">${details}</td>`;
@@ -2774,12 +2798,25 @@
     // Render a decoded histogram into the table. Non-zero rows are highlighted;
     // zero-count rows are hidden unless "Show zero-count codes" is checked. The
     // NONE sentinel (index 0) is never shown.
-    const renderErrorHistogram = (entries) => {
-      lastErrorEntries = entries;
-      const body = $('errorTableBody');
-      const showAll = $('errorShowAll').checked;
-      body.innerHTML = '';
+    // Build one error-histogram table row.
+    const buildErrorHistogramRow = (e) => {
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid #2a2a2a';
+      if (e.count > 0) { tr.style.background = 'rgba(255, 90, 90, 0.12)'; }
+      const countColor = e.count > 0 ? '#ff8a8a' : '#666';
+      const nameColor = e.count > 0 ? '#e0e0e0' : '#999';
+      tr.innerHTML =
+        `<td style="padding:6px 8px;color:#777;font-family:monospace;">${e.index}</td>` +
+        `<td style="padding:6px 8px;color:${nameColor};font-family:monospace;">${e.name}</td>` +
+        `<td style="padding:6px 8px;color:#888;">${e.category}</td>` +
+        `<td style="padding:6px 8px;color:#aaa;">${e.description}</td>` +
+        `<td style="padding:6px 8px;text-align:right;color:${countColor};font-weight:bold;">${e.count}</td>`;
+      return tr;
+    };
 
+    // Append a row per visible entry (skips the NONE sentinel, and zero-count
+    // entries unless "show all" is checked); tallies tripped codes/events.
+    const appendErrorHistogramRows = (entries, showAll, body) => {
       let trippedCodes = 0;
       let totalEvents = 0;
       let rows = 0;
@@ -2787,30 +2824,31 @@
         if (e.index === 0) continue;  // NONE sentinel
         if (e.count > 0) { trippedCodes += 1; totalEvents += e.count; }
         if (e.count === 0 && !showAll) continue;
-
-        const tr = document.createElement('tr');
-        tr.style.borderBottom = '1px solid #2a2a2a';
-        if (e.count > 0) { tr.style.background = 'rgba(255, 90, 90, 0.12)'; }
-        const countColor = e.count > 0 ? '#ff8a8a' : '#666';
-        const nameColor = e.count > 0 ? '#e0e0e0' : '#999';
-        tr.innerHTML =
-          `<td style="padding:6px 8px;color:#777;font-family:monospace;">${e.index}</td>` +
-          `<td style="padding:6px 8px;color:${nameColor};font-family:monospace;">${e.name}</td>` +
-          `<td style="padding:6px 8px;color:#888;">${e.category}</td>` +
-          `<td style="padding:6px 8px;color:#aaa;">${e.description}</td>` +
-          `<td style="padding:6px 8px;text-align:right;color:${countColor};font-weight:bold;">${e.count}</td>`;
-        body.appendChild(tr);
+        body.appendChild(buildErrorHistogramRow(e));
         rows += 1;
       }
+      return { trippedCodes, totalEvents, rows };
+    };
+
+    const renderErrorHistogram = (entries) => {
+      lastErrorEntries = entries;
+      const body = $('errorTableBody');
+      const showAll = $('errorShowAll').checked;
+      body.innerHTML = '';
+
+      const { trippedCodes, totalEvents, rows } = appendErrorHistogramRows(entries, showAll, body);
 
       if (rows === 0) {
         body.innerHTML =
           '<tr><td colspan="5" style="padding:10px;color:#4caf50;">No errors logged — all counters zero.</td></tr>';
       }
 
-      $('errorSummary').textContent = trippedCodes === 0
-        ? 'No errors logged'
-        : `${trippedCodes} code${trippedCodes === 1 ? '' : 's'} tripped · ${totalEvents} total events`;
+      let errorSummaryText = 'No errors logged';
+      if (trippedCodes !== 0) {
+        const codeSuffix = trippedCodes === 1 ? '' : 's';
+        errorSummaryText = `${trippedCodes} code${codeSuffix} tripped · ${totalEvents} total events`;
+      }
+      $('errorSummary').textContent = errorSummaryText;
     };
 
     const refreshErrorHistogram = async () => {
@@ -3049,6 +3087,7 @@
           recordAutotuneSample(status, live);
         } catch (liveErr) {
           // Live readout is best-effort; ignore a single failed tick.
+          console.warn('Autotune live readout failed', liveErr);
         }
 
         if (status.state === AUTOTUNE_STATE_DONE || status.state === AUTOTUNE_STATE_ABORTED) {
@@ -3065,6 +3104,7 @@
         }
       } catch (e) {
         // Transient (e.g. request already pending during a poll clash) — retry next tick.
+        console.warn('Autotune status poll tick failed', e);
       }
     };
 

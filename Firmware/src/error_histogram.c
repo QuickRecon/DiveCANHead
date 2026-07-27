@@ -196,7 +196,7 @@ static void save_timer_expiry(struct k_timer *t)
 
 static K_TIMER_DEFINE(save_timer, save_timer_expiry, NULL);
 
-int error_histogram_clear(void)
+Status_t error_histogram_clear(void)
 {
     for (size_t i = 0U; i < ERROR_HISTOGRAM_COUNT; ++i) {
         (void)atomic_set(&histogram[i], 0);

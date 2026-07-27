@@ -15,6 +15,8 @@
 
 import { decodePostStatus, decodeMcubootStatus } from '../firmware/McubootStatus.js';
 import { decodeErrorHistogram, summarizeErrorHistogram } from '../errors/ErrorHistogram.js';
+import { ByteUtils } from '../utils/ByteUtils.js';
+import { ByteUtils } from '../utils/ByteUtils.js';
 
 // ============================================================================
 // Service IDs (SID)
@@ -480,6 +482,120 @@ export function decodeDeviceCurrent(data) {
   return { valid, currentUa, currentMa: currentUa / 1000, ageS };
 }
 
+/** DID type 'string': NUL-padded ASCII, trailing NULs trimmed. @private */
+function formatStringDID(data) {
+  return ByteUtils.trimTrailing(new TextDecoder().decode(data), '\0');
+}
+
+/** DID type 'uint8'. @private */
+function formatUint8DID(data) {
+  return data.length ? data[0] : undefined;
+}
+
+/** DID type 'uint32' (LE). @private */
+function formatUint32DID(view, data) {
+  return data.length >= 4 ? view.getUint32(0, true) : undefined;
+}
+
+/** DID type 'hex32' (LE, rendered as 0x-prefixed hex). @private */
+function formatHex32DID(view, data) {
+  return data.length >= 4
+    ? `0x${view.getUint32(0, true).toString(16).padStart(8, '0')}`
+    : undefined;
+}
+
+/** DID type 'semver': major.minor.revision(+build), 0xFF-filled = 'n/a'. @private */
+function formatSemverDID(view, data) {
+  let formatted = 'n/a';
+  if (data.length >= 8) {
+    let allFF = true;
+    for (let i = 0; i < 8; i++) { if (data[i] !== 0xFF) { allFF = false; break; } }
+    if (!allFF) {
+      const rev = view.getUint16(2, true);
+      const build = view.getUint32(4, true);
+      formatted = `${data[0]}.${data[1]}.${rev}` + (build ? `+${build}` : '');
+    }
+  }
+  return formatted;
+}
+
+/** DID type 'post_status' (0xF271): [0] PostState_t, [1] pass mask, [2..3] reserved. @private */
+function formatPostStatusDID(data) {
+  const post = decodePostStatus(data);
+  let formatted = 'n/a';
+  if (post) {
+    const passed = post.passed.length ? post.passed.join(', ') : 'none';
+    formatted = `${post.stateName} · passed: ${passed}`;
+  }
+  return formatted;
+}
+
+/**
+ * DID type 'poseidon_gauge' (0xF236): [0] percent, [1] flags (b0
+ * ever_received, b1 fresh, b2 stale), [2..3] age_seconds (LE). Poseidon
+ * builds only.
+ * @private
+ */
+function formatPoseidonGaugeDID(view, data) {
+  let formatted = 'n/a';
+  if (data.length >= 4) {
+    const flags = data[1];
+    const everReceived = (flags & 0x01) !== 0;
+    if (!everReceived) {
+      formatted = 'no data';
+    } else {
+      const fresh = (flags & 0x02) !== 0;
+      const age = view.getUint16(2, true);
+      formatted = `${data[0]}% · ${fresh ? 'fresh' : 'stale'} · age ${age}s`;
+    }
+  }
+  return formatted;
+}
+
+/** DID type 'mcuboot' (0xF270): 16-byte MCUBoot/OTA status struct. @private */
+function formatMcubootDID(data) {
+  const m = decodeMcubootStatus(data);
+  let formatted = 'n/a';
+  if (m) {
+    const fmtVer = (v) => (v ? `${v.major}.${v.minor}.${v.revision}` : 'none');
+    const confirmed = m.confirmed ? 'confirmed' : 'UNCONFIRMED';
+    formatted = `${m.swapTypeName} · ${confirmed} · run slot${m.runningSlot}` +
+      ` · s0 ${fmtVer(m.slot0Version)} · s1 ${fmtVer(m.slot1Version)}`;
+  }
+  return formatted;
+}
+
+/**
+ * DID type 'error_histogram' (0xF260): uint16[OP_ERR_MAX] LE. Full per-code
+ * breakdown lives on the Errors tab; here we show a one-line summary.
+ * @private
+ */
+function formatErrorHistogramDID(data) {
+  const { trippedCodes, totalEvents } = summarizeErrorHistogram(decodeErrorHistogram(data));
+  let formatted = `${trippedCodes} code${trippedCodes === 1 ? '' : 's'}, ${totalEvents} events`;
+  if (trippedCodes === 0) { formatted = 'no errors logged'; }
+  return formatted;
+}
+
+/** DID type 'hex' (and the fallback for any unrecognised type). @private */
+function formatHexDID(data) {
+  return Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ');
+}
+
+/** Per-type formatters for parseExtraDIDValue(), keyed by EXTRA_READ_DIDS[key].type. */
+const EXTRA_DID_FORMATTERS = {
+  string: (view, data) => formatStringDID(data),
+  uint8: (view, data) => formatUint8DID(data),
+  uint32: formatUint32DID,
+  hex32: formatHex32DID,
+  semver: formatSemverDID,
+  post_status: (view, data) => formatPostStatusDID(data),
+  poseidon_gauge: formatPoseidonGaugeDID,
+  mcuboot: (view, data) => formatMcubootDID(data),
+  error_histogram: (view, data) => formatErrorHistogramDID(data),
+  hex: (view, data) => formatHexDID(data)
+};
+
 /**
  * Format a raw extra-DID payload into a displayable value based on its type.
  * @param {Object} info - Entry from EXTRA_READ_DIDS
@@ -489,62 +605,6 @@ export function decodeDeviceCurrent(data) {
 export function parseExtraDIDValue(info, data) {
   if (!data) return undefined;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  switch (info.type) {
-    case 'string':
-      return new TextDecoder().decode(data).replace(/\0+$/, '');
-    case 'uint8':
-      return data.length ? data[0] : undefined;
-    case 'uint32':
-      return data.length >= 4 ? view.getUint32(0, true) : undefined;
-    case 'hex32':
-      return data.length >= 4
-        ? `0x${view.getUint32(0, true).toString(16).padStart(8, '0')}`
-        : undefined;
-    case 'semver': {
-      if (data.length < 8) return 'n/a';
-      let allFF = true;
-      for (let i = 0; i < 8; i++) { if (data[i] !== 0xFF) { allFF = false; break; } }
-      if (allFF) return 'n/a';
-      const rev = view.getUint16(2, true);
-      const build = view.getUint32(4, true);
-      return `${data[0]}.${data[1]}.${rev}` + (build ? `+${build}` : '');
-    }
-    case 'post_status': {
-      // 0xF271: [0] PostState_t, [1] pass mask, [2..3] reserved.
-      const post = decodePostStatus(data);
-      if (!post) return 'n/a';
-      const passed = post.passed.length ? post.passed.join(', ') : 'none';
-      return `${post.stateName} · passed: ${passed}`;
-    }
-    case 'poseidon_gauge': {
-      // 0xF236: [0] percent, [1] flags (b0 ever_received, b1 fresh, b2 stale),
-      // [2..3] age_seconds (LE). Poseidon builds only.
-      if (data.length < 4) return 'n/a';
-      const flags = data[1];
-      const everReceived = (flags & 0x01) !== 0;
-      if (!everReceived) return 'no data';
-      const fresh = (flags & 0x02) !== 0;
-      const age = view.getUint16(2, true);
-      return `${data[0]}% · ${fresh ? 'fresh' : 'stale'} · age ${age}s`;
-    }
-    case 'mcuboot': {
-      // 0xF270: 16-byte MCUBoot/OTA status struct.
-      const m = decodeMcubootStatus(data);
-      if (!m) return 'n/a';
-      const fmtVer = (v) => (v ? `${v.major}.${v.minor}.${v.revision}` : 'none');
-      const confirmed = m.confirmed ? 'confirmed' : 'UNCONFIRMED';
-      return `${m.swapTypeName} · ${confirmed} · run slot${m.runningSlot}` +
-        ` · s0 ${fmtVer(m.slot0Version)} · s1 ${fmtVer(m.slot1Version)}`;
-    }
-    case 'error_histogram': {
-      // 0xF260: uint16[OP_ERR_MAX] LE. Full per-code breakdown lives on the
-      // Errors tab; here we show a one-line summary.
-      const { trippedCodes, totalEvents } = summarizeErrorHistogram(decodeErrorHistogram(data));
-      if (trippedCodes === 0) return 'no errors logged';
-      return `${trippedCodes} code${trippedCodes === 1 ? '' : 's'}, ${totalEvents} events`;
-    }
-    case 'hex':
-    default:
-      return Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ');
-  }
+  const formatter = EXTRA_DID_FORMATTERS[info.type] ?? formatHexDID;
+  return formatter(view, data);
 }

@@ -28,6 +28,13 @@
 #include "errors.h"
 #include "common.h"
 
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
+
 /**
  * @brief Map a raw coefficient sentinel from *_cal_coefficient() to a CalResult_t.
  *
@@ -38,21 +45,14 @@
  */
 static CalResult_t cal_classify_coeff_error(CalCoeff_t coeff)
 {
-    CalResult_t result;
+    CalResult_t result = CAL_RESULT_FAILED;
+
     if (coeff <= CAL_COEFF_ERR_RANGE_THRESHOLD) {
         result = CAL_RESULT_OUT_OF_RANGE;
-    } else {
-        result = CAL_RESULT_FAILED;
     }
+
     return result;
 }
-
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
 
 /* ---- Named constants ---- */
 
@@ -64,6 +64,8 @@ LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
 #define CAL_SETTLE_MS       4000U       /* settle time before reading cells */
 #define CAL_CELL_SLOT_2     2U          /* cell index for third cell (0-based) */
 #define CAL_KEY_BUF_LEN     16U         /* settings key string buffer length */
+#define CAL_KEY_PREFIX_LEN  4U          /* strlen("cell") in a "cal/cellN" settings key */
+#define MILLIVOLTS_SCALE_DIVISOR 100U   /* Millivolts_t (0.01 mV units) -> ShortMillivolts_t (mV) */
 /* Raised 1024->2048 (HIT_LIST #5): at 1024 the cal thread overflowed its stack
  * during a calibration -> K_ERR_STACK_CHK_FAIL (reason 2) at k_sem_take,
  * rebooting the head mid-cal (confirmed by crash-record thread=cal_thread). The
@@ -86,7 +88,9 @@ LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
  * handset-loss failsafe) rather than pinning the diver at the hypoxic floor. */
 static const PPO2_t CAL_SUPPRESS_SETPOINT_CB = 19U;
 static const PPO2_t CAL_RESTORE_FALLBACK_CB = 70U;
-static const uint32_t CAL_SETPOINT_TIMEOUT_MS = 100U;
+/* Timeout for every zbus_chan_read()/zbus_pub_checked() call in this file
+ * (setpoint suppress/restore, per-cell reads, response publish). */
+static const uint32_t CAL_ZBUS_TIMEOUT_MS = 100U;
 
 /* ---- Atomic calibration guard (bug #7 fix) ---- */
 
@@ -162,18 +166,23 @@ static CalCoeff_t cal_cache[CELL_MAX_COUNT] = {0};
 
 /* Parse "cellN" (N = 0..CELL_MAX_COUNT-1) and return the cell index,
  * or -1 if the key doesn't fit that pattern. */
-static int cal_parse_cell_key(const char *name)
+static int32_t cal_parse_cell_key(const char *name)
 {
-    if (strncmp(name, "cell", 4) != 0) {
-        return -1;
+    int32_t result = -1;
+
+    if (0 == strncmp(name, "cell", CAL_KEY_PREFIX_LEN)) {
+        char *end = NULL;
+        /* strtol() returns long by C standard contract; the local stays
+         * long so the comparisons below match its type exactly. */
+        long n = strtol(name + CAL_KEY_PREFIX_LEN, &end, 10);
+
+        if (((name + CAL_KEY_PREFIX_LEN) != end) && ('\0' == *end) &&
+            (0 <= n) && (n < (long)CELL_MAX_COUNT)) {
+            result = (int32_t)n;
+        }
     }
-    char *end = NULL;
-    long n = strtol(name + 4, &end, 10);
-    if (end == name + 4 || *end != '\0' || n < 0 ||
-        n >= (long)CELL_MAX_COUNT) {
-        return -1;
-    }
-    return (int)n;
+
+    return result;
 }
 
 /* Settings handler set(): called by settings_load() / load_subtree() for
@@ -182,33 +191,44 @@ static int cal_parse_cell_key(const char *name)
 static int cal_settings_set(const char *name, size_t len,
                             settings_read_cb read_cb, void *cb_arg)
 {
+    int result = 0;
+    int32_t cell = cal_parse_cell_key(name);
+
     (void)len;
-    int cell = cal_parse_cell_key(name);
-    if (cell < 0) {
-        return -ENOENT;
+
+    if (0 > cell) {
+        result = -ENOENT;
+    } else {
+        CalCoeff_t value = 0.0f;
+        ssize_t got = read_cb(cb_arg, &value, sizeof(value));
+
+        if ((ssize_t)sizeof(value) != got) {
+            result = -EIO;
+        } else {
+            cal_cache[cell] = value;
+        }
     }
-    CalCoeff_t value = 0.0f;
-    ssize_t got = read_cb(cb_arg, &value, sizeof(value));
-    if (got != (ssize_t)sizeof(value)) {
-        return -EIO;
-    }
-    cal_cache[cell] = value;
-    return 0;
+
+    return result;
 }
 
 /* Settings handler get(): used by settings_runtime_get("cal/cellN", ...).
  * Returns the cached value's length on success so the caller can size-check. */
 static int cal_settings_get(const char *name, char *val, int val_len_max)
 {
-    int cell = cal_parse_cell_key(name);
-    if (cell < 0) {
-        return -ENOENT;
+    int result = 0;
+    int32_t cell = cal_parse_cell_key(name);
+
+    if (0 > cell) {
+        result = -ENOENT;
+    } else if ((size_t)val_len_max < sizeof(CalCoeff_t)) {
+        result = -EINVAL;
+    } else {
+        (void)memcpy(val, &cal_cache[cell], sizeof(CalCoeff_t));
+        result = (int)sizeof(CalCoeff_t);
     }
-    if ((size_t)val_len_max < sizeof(CalCoeff_t)) {
-        return -EINVAL;
-    }
-    (void)memcpy(val, &cal_cache[cell], sizeof(CalCoeff_t));
-    return (int)sizeof(CalCoeff_t);
+
+    return result;
 }
 
 SETTINGS_STATIC_HANDLER_DEFINE(cal_handler, "cal",
@@ -219,20 +239,22 @@ SETTINGS_STATIC_HANDLER_DEFINE(cal_handler, "cal",
 static Status_t cal_save_coefficient(uint8_t cell_num, CalCoeff_t coeff)
 {
     char key[CAL_KEY_BUF_LEN] = {0};
+    Status_t result = 0;
 
     (void)snprintf(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
 
-    Status_t ret = settings_save_one(key, &coeff, sizeof(coeff));
-    if (ret != 0) {
-        return ret;
+    result = settings_save_one(key, &coeff, sizeof(coeff));
+
+    if (0 == result) {
+        /* Force the cache to reload from NVS so the validation readback in
+         * cal_validate_and_save() reflects what actually got persisted to
+         * flash, not what we just tried to write.  This catches a class of
+         * failures where NVS accepts the write but the backing flash is
+         * full/corrupt. */
+        result = settings_load_subtree("cal");
     }
 
-    /* Force the cache to reload from NVS so the validation readback in
-     * cal_validate_and_save() reflects what actually got persisted to
-     * flash, not what we just tried to write.  This catches a class of
-     * failures where NVS accepts the write but the backing flash is
-     * full/corrupt. */
-    return settings_load_subtree("cal");
+    return result;
 }
 
 /**
@@ -251,7 +273,7 @@ static Status_t cal_load_coefficient(uint8_t cell_num, CalCoeff_t *coeff)
 
     Status_t len = settings_runtime_get(key, coeff, sizeof(*coeff));
 
-    if (len != (int)sizeof(*coeff)) {
+    if (len != (Status_t)sizeof(*coeff)) {
         result = -ENOENT;
     }
 
@@ -271,7 +293,7 @@ static CalResult_t cal_read_cell_1(OxygenCellMsg_t *data)
 {
     CalResult_t result = CAL_RESULT_OK;
 
-    if (0 != zbus_chan_read(&chan_cell_1, data, K_MSEC(100))) {
+    if (0 != zbus_chan_read(&chan_cell_1, data, K_MSEC(CAL_ZBUS_TIMEOUT_MS))) {
         result = CAL_RESULT_FAILED;
     }
 
@@ -290,7 +312,7 @@ static CalResult_t cal_read_cell_2(OxygenCellMsg_t *data)
 {
     CalResult_t result = CAL_RESULT_OK;
 
-    if (0 != zbus_chan_read(&chan_cell_2, data, K_MSEC(100))) {
+    if (0 != zbus_chan_read(&chan_cell_2, data, K_MSEC(CAL_ZBUS_TIMEOUT_MS))) {
         result = CAL_RESULT_FAILED;
     }
 
@@ -309,7 +331,7 @@ static CalResult_t cal_read_cell_3(OxygenCellMsg_t *data)
 {
     CalResult_t result = CAL_RESULT_OK;
 
-    if (0 != zbus_chan_read(&chan_cell_3, data, K_MSEC(100))) {
+    if (0 != zbus_chan_read(&chan_cell_3, data, K_MSEC(CAL_ZBUS_TIMEOUT_MS))) {
         result = CAL_RESULT_FAILED;
     }
 
@@ -348,7 +370,7 @@ static CalResult_t cal_compute_coeff_cell_1(PPO2_t target_ppo2,
             (Numeric_t)cell_data.millivolts / COUNTS_TO_MILLIS);
 
         *coeff_out = analog_cal_coefficient(approx_counts, target_ppo2);
-        *mv_out = (ShortMillivolts_t)(cell_data.millivolts / 100U);
+        *mv_out = (ShortMillivolts_t)(cell_data.millivolts / MILLIVOLTS_SCALE_DIVISOR);
     }
 
     return result;
@@ -447,7 +469,7 @@ static CalResult_t cal_compute_coeff_cell_2(PPO2_t target_ppo2,
             (Numeric_t)cell_data.millivolts / COUNTS_TO_MILLIS);
 
         *coeff_out = analog_cal_coefficient(approx_counts, target_ppo2);
-        *mv_out = (ShortMillivolts_t)(cell_data.millivolts / 100U);
+        *mv_out = (ShortMillivolts_t)(cell_data.millivolts / MILLIVOLTS_SCALE_DIVISOR);
     }
 
     return result;
@@ -534,7 +556,7 @@ static CalResult_t cal_compute_coeff_cell_3(PPO2_t target_ppo2,
             (Numeric_t)cell_data.millivolts / COUNTS_TO_MILLIS);
 
         *coeff_out = analog_cal_coefficient(approx_counts, target_ppo2);
-        *mv_out = (ShortMillivolts_t)(cell_data.millivolts / 100U);
+        *mv_out = (ShortMillivolts_t)(cell_data.millivolts / MILLIVOLTS_SCALE_DIVISOR);
     }
 
     return result;
@@ -666,11 +688,14 @@ static CalResult_t cal_validate_and_save(uint8_t cell_num, Numeric_t new_coeff)
     CalResult_t result = CAL_RESULT_OK;
 
     if (new_coeff < 0.0f) {
+        const char *reason = "FAILED";
+
         result = cal_classify_coeff_error(new_coeff);
+        if (CAL_RESULT_OUT_OF_RANGE == result) {
+            reason = "OUT_OF_RANGE";
+        }
         LOG_WRN("validate cell %u: %s (coeff=%.6f)",
-                cell_num,
-                (CAL_RESULT_OUT_OF_RANGE == result) ? "OUT_OF_RANGE" : "FAILED",
-                (double)new_coeff);
+                cell_num, reason, (double)new_coeff);
     }
     else {
         Status_t save_err = cal_save_coefficient(cell_num, new_coeff);
@@ -764,20 +789,20 @@ static CalResult_t cal_digital_reference(CalRequest_t *req,
 
     /* Select the first digital (DiveO2) cell as reference */
 #if defined(CONFIG_CELL_1_TYPE_DIVEO2)
-    if (0 == zbus_chan_read(&chan_cell_1, &ref_data, K_MSEC(100))) {
+    if (0 == zbus_chan_read(&chan_cell_1, &ref_data, K_MSEC(CAL_ZBUS_TIMEOUT_MS))) {
         found_ref = true;
     }
 #elif CONFIG_CELL_COUNT >= 2 && defined(CONFIG_CELL_2_TYPE_DIVEO2)
-    if (0 == zbus_chan_read(&chan_cell_2, &ref_data, K_MSEC(100))) {
+    if (0 == zbus_chan_read(&chan_cell_2, &ref_data, K_MSEC(CAL_ZBUS_TIMEOUT_MS))) {
         found_ref = true;
     }
 #elif CONFIG_CELL_COUNT >= 3 && defined(CONFIG_CELL_3_TYPE_DIVEO2)
-    if (0 == zbus_chan_read(&chan_cell_3, &ref_data, K_MSEC(100))) {
+    if (0 == zbus_chan_read(&chan_cell_3, &ref_data, K_MSEC(CAL_ZBUS_TIMEOUT_MS))) {
         found_ref = true;
     }
 #endif
 
-    if (!found_ref || (ref_data.status != CELL_OK)) {
+    if ((!found_ref) || (ref_data.status != CELL_OK)) {
         /* We can't find a digital cell to cal with */
         OP_ERROR(OP_ERR_CAL_METHOD);
         result = CAL_RESULT_REJECTED;
@@ -937,7 +962,7 @@ static CalResult_t cal_solenoid_flush(const CalRequest_t *req,
 #elif defined(CONFIG_HAS_O2_SOLENOID)
         (void)sol_o2_inject_fire(CAL_FLUSH_US);
 #endif
-        k_msleep(CAL_FLUSH_MS);
+        (void)k_msleep(CAL_FLUSH_MS);
     }
 
     return cal_total_absolute(req, resp);
@@ -970,13 +995,13 @@ static CalResult_t cal_check(const CalRequest_t *req, CalResponse_t *resp)
     /* O2 flush leg: drive the cells toward high PPO2. */
     for (uint8_t i = 0; i < CHECK_FLUSH_SECONDS; ++i) {
         (void)sol_o2_flush_fire(CAL_FLUSH_US);
-        k_msleep(CAL_FLUSH_MS);
+        (void)k_msleep(CAL_FLUSH_MS);
     }
 
     /* Diluent flush leg: drive the cells toward low PPO2. */
     for (uint8_t i = 0; i < CHECK_FLUSH_SECONDS; ++i) {
         (void)sol_dil_flush_fire(CAL_FLUSH_US);
-        k_msleep(CAL_FLUSH_MS);
+        (void)k_msleep(CAL_FLUSH_MS);
     }
 
     return CAL_RESULT_OK;   /* CHECK is a diagnostic; it never fails. */
@@ -1080,17 +1105,17 @@ static void cal_executing_entry(void *obj)
     switch (sm->request.method) {
     case CAL_DIGITAL_REFERENCE:
         /* Give the shearwater time to catch up */
-        k_msleep(CAL_SETTLE_MS);
+        (void)k_msleep(CAL_SETTLE_MS);
         sm->response.result = cal_digital_reference(&sm->request,
                                                     &sm->response);
         break;
     case CAL_ANALOG_ABSOLUTE:
-        k_msleep(CAL_SETTLE_MS);
+        (void)k_msleep(CAL_SETTLE_MS);
         sm->response.result = cal_analog_absolute(&sm->request,
                                                   &sm->response);
         break;
     case CAL_TOTAL_ABSOLUTE:
-        k_msleep(CAL_SETTLE_MS);
+        (void)k_msleep(CAL_SETTLE_MS);
         sm->response.result = cal_total_absolute(&sm->request,
                                                  &sm->response);
         break;
@@ -1146,8 +1171,8 @@ static void cal_done_entry(void *obj)
     CalSmCtx_t *sm = (CalSmCtx_t *)obj;
 
     LOG_INF("Cal result: %d", sm->response.result);
-    zbus_pub_checked(&chan_cal_response, &sm->response, K_MSEC(100));
-    smf_set_terminate(SMF_CTX(sm), 1);
+    zbus_pub_checked(&chan_cal_response, &sm->response, K_MSEC(CAL_ZBUS_TIMEOUT_MS));
+    (void)smf_set_terminate(SMF_CTX(sm), 1);
 }
 
 /**
@@ -1158,8 +1183,8 @@ static void cal_failed_entry(void *obj)
     CalSmCtx_t *sm = (CalSmCtx_t *)obj;
 
     LOG_INF("Cal result: %d", sm->response.result);
-    zbus_pub_checked(&chan_cal_response, &sm->response, K_MSEC(100));
-    smf_set_terminate(SMF_CTX(sm), 1);
+    zbus_pub_checked(&chan_cal_response, &sm->response, K_MSEC(CAL_ZBUS_TIMEOUT_MS));
+    (void)smf_set_terminate(SMF_CTX(sm), 1);
 }
 
 static const struct smf_state cal_states[CAL_STATE_COUNT] = {
@@ -1252,11 +1277,11 @@ static PPO2_t cal_suppress_setpoint(void)
 {
     PPO2_t saved_setpoint = CAL_RESTORE_FALLBACK_CB;
     (void)zbus_chan_read(&chan_setpoint, &saved_setpoint,
-                         K_MSEC(CAL_SETPOINT_TIMEOUT_MS));
+                         K_MSEC(CAL_ZBUS_TIMEOUT_MS));
 
     PPO2_t cal_setpoint = CAL_SUPPRESS_SETPOINT_CB;
     zbus_pub_checked(&chan_setpoint, &cal_setpoint,
-                     K_MSEC(CAL_SETPOINT_TIMEOUT_MS));
+                     K_MSEC(CAL_ZBUS_TIMEOUT_MS));
 
     return saved_setpoint;
 }
@@ -1269,7 +1294,7 @@ static PPO2_t cal_suppress_setpoint(void)
 static void cal_restore_setpoint(PPO2_t saved_setpoint)
 {
     zbus_pub_checked(&chan_setpoint, &saved_setpoint,
-                     K_MSEC(CAL_SETPOINT_TIMEOUT_MS));
+                     K_MSEC(CAL_ZBUS_TIMEOUT_MS));
 }
 
 static void cal_thread_fn(void *p1, void *p2, void *p3)

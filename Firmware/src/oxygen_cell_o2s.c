@@ -321,6 +321,14 @@ static void o2s_broadcast(struct o2s_cell_state *cell)
         .millivolts = 0U,
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
+        .raw_sample = 0,
+        .temperature_dC = 0,
+        .err_code = 0U,
+        .phase = 0,
+        .intensity = 0,
+        .ambient_light = 0,
+        .pressure_uhpa = 0U,
+        .humidity_mRH = 0,
     };
 
     zbus_pub_checked(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
@@ -345,10 +353,13 @@ static void o2s_load_cal(struct o2s_cell_state *cell)
         (coeff > O2S_CAL_LOWER) && (coeff < O2S_CAL_UPPER)) {
         cell->cal_coeff = coeff;
         cell->status = CELL_OK;
+
+        Numeric_t frac_milli = (coeff - (int32_t)coeff) * (Numeric_t)MILLI_SCALE;
+
         LOG_INF("O2S cell %u: loaded cal coeff %d.%03d",
                 cell->cell_number,
                 (int32_t)coeff,
-                (int32_t)((coeff - (int32_t)coeff) * (Numeric_t)MILLI_SCALE));
+                (int32_t)frac_milli);
     } else {
         /* O2S is a digital, factory-calibrated cell: the default coefficient
          * is valid and NO user calibration is required (only analog cells need
@@ -363,12 +374,6 @@ static void o2s_load_cal(struct o2s_cell_state *cell)
 }
 
 /**
- * @brief Clean and parse the last received UART message, update cell state,
- *        and broadcast the result.
- *
- * @param cell  Cell state containing last_message and output channel.
- */
-/**
  * @brief True if the message is an O2S measurement response ("Mn"/"Mm") whose
  *        value token is present but fails to parse as a number.
  *
@@ -381,37 +386,43 @@ static void o2s_load_cal(struct o2s_cell_state *cell)
  */
 static bool o2s_is_malformed_measurement(const char *msg)
 {
-    if (msg == NULL) {
-        return false;
+    bool malformed = false;
+
+    if (msg != NULL) {
+        char copy[O2S_RX_BUFFER_LEN] = {0};
+
+        (void)strncpy(copy, msg, sizeof(copy) - 1U);
+        copy[sizeof(copy) - 1U] = '\0';
+
+        char *saveptr = NULL;
+        const char *cmd = strtok_r(copy, STRTOF_SEP, &saveptr);
+
+        if ((cmd != NULL) &&
+            ((0 == strcmp(cmd, GET_OXY_RESPONSE)) ||
+             (0 == strcmp(cmd, GET_OXY_COMMAND)))) {
+            const char *val = strtok_r(NULL, STRTOF_SEP, &saveptr);
+
+            if (val != NULL) {
+                /* A value is present: malformed iff it is not a fully-consumed number. */
+                char *end = NULL;
+
+                (void)strtof(val, &end);
+                malformed = (end == val) || ('\0' != *end);
+            }
+            /* else: echo only, no value present — not malformed */
+        }
+        /* else: not a measurement command */
     }
 
-    char copy[O2S_RX_BUFFER_LEN] = {0};
-
-    (void)strncpy(copy, msg, sizeof(copy) - 1U);
-    copy[sizeof(copy) - 1U] = '\0';
-
-    char *saveptr = NULL;
-    const char *cmd = strtok_r(copy, STRTOF_SEP, &saveptr);
-
-    if ((cmd == NULL) ||
-        ((0 != strcmp(cmd, GET_OXY_RESPONSE)) &&
-         (0 != strcmp(cmd, GET_OXY_COMMAND)))) {
-        return false; /* not a measurement command */
-    }
-
-    const char *val = strtok_r(NULL, STRTOF_SEP, &saveptr);
-
-    if (val == NULL) {
-        return false; /* echo only, no value present — not malformed */
-    }
-
-    /* A value is present: malformed iff it is not a fully-consumed number. */
-    char *end = NULL;
-
-    (void)strtof(val, &end);
-    return (end == val) || ('\0' != *end);
+    return malformed;
 }
 
+/**
+ * @brief Clean and parse the last received UART message, update cell state,
+ *        and broadcast the result.
+ *
+ * @param cell  Cell state containing last_message and output channel.
+ */
 static void o2s_process_rx(struct o2s_cell_state *cell)
 {
     char msgArray[O2S_RX_BUFFER_LEN] = {0};
@@ -480,10 +491,18 @@ static bool o2s_setup(struct o2s_cell_state *cell)
             .millivolts = 0U,
             .status = cell->status,
             .timestamp_ticks = k_uptime_ticks(),
+            .raw_sample = 0,
+            .temperature_dC = 0,
+            .err_code = 0U,
+            .phase = 0,
+            .intensity = 0,
+            .ambient_light = 0,
+            .pressure_uhpa = 0U,
+            .humidity_mRH = 0,
         };
         zbus_pub_checked(cell->out_chan, &init_msg, ZBUS_PUB_TIMEOUT_MS);
 
-        k_msleep(CELL_STARTUP_DELAY_MS);
+        (void)k_msleep(CELL_STARTUP_DELAY_MS);
     }
     return ok;
 }
@@ -540,7 +559,7 @@ __maybe_unused static void o2s_cell_thread(void *p1, void *p2, void *p3)
             }
 
             /* O2S samples at ~1Hz, wait between samples */
-            k_msleep(SAMPLE_INTERVAL_MS);
+            (void)k_msleep(SAMPLE_INTERVAL_MS);
         }
     }
 }

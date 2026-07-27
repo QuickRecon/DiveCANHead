@@ -26,6 +26,74 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "common.h"
+
+/**
+ * @brief Bring the backend up so subsequent calls are usable.
+ *
+ * Mount a filesystem, open a flash area, verify the sidecar file —
+ * whatever the backend needs to make the rest of its API valid.
+ * Idempotent: a second call must succeed if the first did.
+ */
+typedef Status_t (*factory_backend_init_fn)(void);
+
+/**
+ * @brief Erase the entire factory store, clearing any prior image.
+ *
+ * Called at the start of every capture. The backend should not
+ * touch the captured flag during erase — that is sequenced by the
+ * high-level capture engine after verify-after-write succeeds.
+ */
+typedef Status_t (*factory_backend_erase_fn)(void);
+
+/**
+ * @brief Append-ish write — backends must accept any offset.
+ *
+ * @param offset Byte offset from the start of the store.
+ * @param buf    Data to write.
+ * @param len    Number of bytes; backends should not assume alignment.
+ */
+typedef Status_t (*factory_backend_write_fn)(uint32_t offset, const void *buf, size_t len);
+
+/**
+ * @brief Read previously-written data back for verification.
+ */
+typedef Status_t (*factory_backend_read_fn)(uint32_t offset, void *buf, size_t len);
+
+/**
+ * @brief Synchronise any buffered writes to the underlying medium.
+ *
+ * For the flash backend this is a no-op (writes are persistent on
+ * return). The filesystem backend uses it to call ``fs_sync``.
+ */
+typedef Status_t (*factory_backend_flush_fn)(void);
+
+/**
+ * @brief Report the total writable capacity in bytes.
+ *
+ * The capture engine uses this to sanity-check that slot0 actually
+ * fits in the backend before starting the long erase/write loop.
+ */
+typedef Status_t (*factory_backend_size_fn)(uint32_t *out_size);
+
+/**
+ * @brief Return true if a complete, verified capture exists.
+ *
+ * Must reflect persistent state — a power loss between
+ * mark_captured(true) and the next boot must still yield true on
+ * the next is_captured() call.
+ */
+typedef bool (*factory_backend_is_captured_fn)(void);
+
+/**
+ * @brief Set or clear the captured flag.
+ *
+ * The capture engine calls this with @c true only after a full
+ * write-verify-read pass, so a mid-capture power loss leaves the
+ * flag at @c false and the next boot re-attempts capture cleanly.
+ */
+typedef Status_t (*factory_backend_mark_captured_fn)(bool captured);
+
 /**
  * @brief Vtable of operations a factory-image backend must provide.
  *
@@ -35,71 +103,14 @@
  * error to the caller — the backend never has to retry internally.
  */
 struct factory_image_backend {
-    /**
-     * @brief Bring the backend up so subsequent calls are usable.
-     *
-     * Mount a filesystem, open a flash area, verify the sidecar file —
-     * whatever the backend needs to make the rest of its API valid.
-     * Idempotent: a second call must succeed if the first did.
-     */
-    int (*init)(void);
-
-    /**
-     * @brief Erase the entire factory store, clearing any prior image.
-     *
-     * Called at the start of every capture. The backend should not
-     * touch the captured flag during erase — that is sequenced by the
-     * high-level capture engine after verify-after-write succeeds.
-     */
-    int (*erase)(void);
-
-    /**
-     * @brief Append-ish write — backends must accept any offset.
-     *
-     * @param offset Byte offset from the start of the store.
-     * @param buf    Data to write.
-     * @param len    Number of bytes; backends should not assume alignment.
-     */
-    int (*write)(uint32_t offset, const void *buf, size_t len);
-
-    /**
-     * @brief Read previously-written data back for verification.
-     */
-    int (*read)(uint32_t offset, void *buf, size_t len);
-
-    /**
-     * @brief Synchronise any buffered writes to the underlying medium.
-     *
-     * For the flash backend this is a no-op (writes are persistent on
-     * return). The filesystem backend uses it to call ``fs_sync``.
-     */
-    int (*flush)(void);
-
-    /**
-     * @brief Report the total writable capacity in bytes.
-     *
-     * The capture engine uses this to sanity-check that slot0 actually
-     * fits in the backend before starting the long erase/write loop.
-     */
-    int (*size)(uint32_t *out_size);
-
-    /**
-     * @brief Return true if a complete, verified capture exists.
-     *
-     * Must reflect persistent state — a power loss between
-     * mark_captured(true) and the next boot must still yield true on
-     * the next is_captured() call.
-     */
-    bool (*is_captured)(void);
-
-    /**
-     * @brief Set or clear the captured flag.
-     *
-     * The capture engine calls this with @c true only after a full
-     * write-verify-read pass, so a mid-capture power loss leaves the
-     * flag at @c false and the next boot re-attempts capture cleanly.
-     */
-    int (*mark_captured)(bool captured);
+    factory_backend_init_fn init;
+    factory_backend_erase_fn erase;
+    factory_backend_write_fn write;
+    factory_backend_read_fn read;
+    factory_backend_flush_fn flush;
+    factory_backend_size_fn size;
+    factory_backend_is_captured_fn is_captured;
+    factory_backend_mark_captured_fn mark_captured;
 };
 
 /**

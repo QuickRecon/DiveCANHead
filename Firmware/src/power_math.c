@@ -57,7 +57,7 @@ static const Numeric_t LOW_BATT_THRESHOLD_FALLBACK = 6.0f;
  */
 static Numeric_t power_low_battery_threshold_for(BatteryType_t type)
 {
-    Numeric_t threshold;
+    Numeric_t threshold = LOW_BATT_THRESHOLD_FALLBACK;
     switch (type) {
     case BATTERY_TYPE_9V:
         threshold = 7.7f;

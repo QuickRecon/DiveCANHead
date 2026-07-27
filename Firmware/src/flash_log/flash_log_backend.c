@@ -56,8 +56,23 @@ static uint8_t fl_backend_charbuf[16];
 /* Pre-resolved source-ID set we never want to mirror into the FCB.
  * Looked up lazily on first process() call because LOG_MODULE_REGISTER
  * IDs aren't stable across compilation units before logging init. */
-static int16_t fl_self_ids[3] = { -1, -1, -1 };
-static bool fl_self_ids_resolved;
+#define FL_SELF_ID_COUNT 3U
+
+static const size_t FL_SELF_ID_FLASH_LOG = 0U;
+static const size_t FL_SELF_ID_FLASH_LOG_BACKEND = 1U;
+static const size_t FL_SELF_ID_FLASH_LOG_LISTENERS = 2U;
+
+static int16_t *fl_get_self_ids(void)
+{
+    static int16_t ids[FL_SELF_ID_COUNT] = { -1, -1, -1 };
+    return ids;
+}
+
+static bool *fl_get_self_ids_resolved(void)
+{
+    static bool resolved;
+    return &resolved;
+}
 
 static atomic_t fl_in_backend;
 
@@ -71,7 +86,11 @@ static int fl_data_out(uint8_t *data, size_t length, void *ctx)
 
     size_t remaining = (FL_BACKEND_LINE_MAX > fl_backend_line_len) ?
         (FL_BACKEND_LINE_MAX - fl_backend_line_len) : 0U;
-    size_t copy = (length > remaining) ? remaining : length;
+    size_t copy = length;
+
+    if (copy > remaining) {
+        copy = remaining;
+    }
 
     if (copy > 0U) {
         (void)memcpy(&fl_backend_line[fl_backend_line_len], data, copy);
@@ -89,21 +108,26 @@ LOG_OUTPUT_DEFINE(fl_log_output, fl_data_out, fl_backend_charbuf,
 
 static void fl_resolve_self_ids(void)
 {
-    if (fl_self_ids_resolved) {
-        return;
+    bool *resolved = fl_get_self_ids_resolved();
+
+    if (!*resolved) {
+        int16_t *ids = fl_get_self_ids();
+
+        ids[FL_SELF_ID_FLASH_LOG] = log_source_id_get("flash_log");
+        ids[FL_SELF_ID_FLASH_LOG_BACKEND] = log_source_id_get("flash_log_backend");
+        ids[FL_SELF_ID_FLASH_LOG_LISTENERS] = log_source_id_get("flash_log_listeners");
+        *resolved = true;
     }
-    fl_self_ids[0] = log_source_id_get("flash_log");
-    fl_self_ids[1] = log_source_id_get("flash_log_backend");
-    fl_self_ids[2] = log_source_id_get("flash_log_listeners");
-    fl_self_ids_resolved = true;
 }
 
 static bool fl_should_drop(int16_t src_id)
 {
     bool drop = false;
+    int16_t *ids = fl_get_self_ids();
+    size_t count = FL_SELF_ID_COUNT;
 
-    for (size_t i = 0; i < ARRAY_SIZE(fl_self_ids); ++i) {
-        if ((fl_self_ids[i] >= 0) && (src_id == fl_self_ids[i])) {
+    for (size_t i = 0; i < count; ++i) {
+        if ((ids[i] >= 0) && (src_id == ids[i])) {
             drop = true;
         }
     }
@@ -118,52 +142,42 @@ static void fl_process(const struct log_backend *const backend,
     /* Reentry guard — should never fire in practice but cheap insurance
      * against a deferred-log path that re-enters us on the same
      * thread. */
-    if (atomic_set(&fl_in_backend, 1) == 1) {
-        return;
-    }
+    if (atomic_set(&fl_in_backend, 1) != 1) {
+        uint8_t level = log_msg_get_level(&msg->log);
+        int16_t src_id = log_msg_get_source_id(&msg->log);
 
-    fl_resolve_self_ids();
+        fl_resolve_self_ids();
 
-    uint8_t level = log_msg_get_level(&msg->log);
-    int16_t src_id = log_msg_get_source_id(&msg->log);
+        if ((level <= flash_log_get_rtt_level()) && !fl_should_drop(src_id)) {
+            uint32_t flags = LOG_OUTPUT_FLAG_LEVEL |
+                     LOG_OUTPUT_FLAG_TIMESTAMP |
+                     LOG_OUTPUT_FLAG_CRLF_NONE;
 
-    if (level > flash_log_get_rtt_level()) {
-        atomic_set(&fl_in_backend, 0);
-        return;
-    }
+            fl_backend_line_len = 0U;
 
-    if (fl_should_drop(src_id)) {
-        atomic_set(&fl_in_backend, 0);
-        return;
-    }
+            log_output_msg_process(&fl_log_output, &msg->log, flags);
+            log_output_flush(&fl_log_output);
 
-    fl_backend_line_len = 0U;
-
-    uint32_t flags = LOG_OUTPUT_FLAG_LEVEL |
-             LOG_OUTPUT_FLAG_TIMESTAMP |
-             LOG_OUTPUT_FLAG_CRLF_NONE;
-
-    log_output_msg_process(&fl_log_output, &msg->log, flags);
-    log_output_flush(&fl_log_output);
-
-    if (fl_backend_line_len > 0U) {
-        /* Strip trailing newline if the formatter left one. */
-        if (fl_backend_line[fl_backend_line_len - 1U] == (uint8_t)'\n') {
-            fl_backend_line_len -= 1U;
+            if (fl_backend_line_len > 0U) {
+                /* Strip trailing newline if the formatter left one. */
+                if (fl_backend_line[fl_backend_line_len - 1U] == (uint8_t)'\n') {
+                    fl_backend_line_len -= 1U;
+                }
+                flash_log_enqueue_text(level, (uint16_t)src_id,
+                               (const char *)fl_backend_line,
+                               fl_backend_line_len);
+            }
         }
-        flash_log_enqueue_text(level, (uint16_t)src_id,
-                       (const char *)fl_backend_line,
-                       fl_backend_line_len);
-    }
 
-    atomic_set(&fl_in_backend, 0);
+        atomic_set(&fl_in_backend, 0);
+    }
 }
 
 static void fl_init(struct log_backend const *const backend)
 {
     ARG_UNUSED(backend);
     fl_backend_line_len = 0U;
-    fl_self_ids_resolved = false;
+    *fl_get_self_ids_resolved() = false;
 }
 
 static void fl_panic(struct log_backend const *const backend)

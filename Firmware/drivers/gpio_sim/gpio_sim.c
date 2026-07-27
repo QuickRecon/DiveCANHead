@@ -62,7 +62,7 @@ static gpio_port_pins_t get_input_pins(const struct device *port)
     gpio_port_pins_t result = 0;
 
     for (gpio_pin_t i = 0; i < config->num_pins; ++i) {
-        if (drv_data->flags[i] & GPIO_INPUT) {
+        if (0 != (drv_data->flags[i] & GPIO_INPUT)) {
             result |= BIT(i);
         }
     }
@@ -76,7 +76,7 @@ static gpio_port_pins_t get_output_pins(const struct device *port)
     gpio_port_pins_t result = 0;
 
     for (gpio_pin_t i = 0; i < config->num_pins; ++i) {
-        if (drv_data->flags[i] & GPIO_OUTPUT) {
+        if (0 != (drv_data->flags[i] & GPIO_OUTPUT)) {
             result |= BIT(i);
         }
     }
@@ -102,20 +102,19 @@ static void pend_interrupt(const struct device *port, gpio_port_pins_t mask,
     gpio_port_pins_t changed = (prev ^ cur) & mask;
 
     for (gpio_pin_t i = 0; i < config->num_pins; ++i) {
-        if (!(changed & BIT(i))) {
-            continue;
-        }
-        bool rising = (cur & BIT(i)) && !(prev & BIT(i));
-        bool falling = !(cur & BIT(i)) && (prev & BIT(i));
+        if (0 != (changed & BIT(i))) {
+            bool rising = (0 != (cur & BIT(i))) && (0 == (prev & BIT(i)));
+            bool falling = (0 == (cur & BIT(i))) && (0 != (prev & BIT(i)));
 
-        if ((rising && (drv_data->flags[i] & GPIO_INT_HIGH_1)) ||
-            (falling && (drv_data->flags[i] & GPIO_INT_LOW_0))) {
-            drv_data->interrupts |= BIT(i);
+            if ((rising && (0 != (drv_data->flags[i] & GPIO_INT_HIGH_1))) ||
+                (falling && (0 != (drv_data->flags[i] & GPIO_INT_LOW_0)))) {
+                drv_data->interrupts |= BIT(i);
+            }
         }
     }
 
     gpio_port_pins_t pending = drv_data->interrupts & drv_data->enabled_interrupts;
-    if (pending) {
+    if (0 != pending) {
         gpio_fire_callbacks(&drv_data->callbacks, port, pending);
         drv_data->interrupts &= ~pending;
     }
@@ -131,7 +130,7 @@ int gpio_sim_drive(const struct device *port, gpio_pin_t pin, int value)
     key = k_spin_lock(&drv_data->lock);
     drv_data->externally_driven |= BIT(pin);
     gpio_port_value_t prev = drv_data->input_vals;
-    if (value) {
+    if (0 != value) {
         drv_data->input_vals |= BIT(pin);
     } else {
         drv_data->input_vals &= ~BIT(pin);
@@ -156,8 +155,13 @@ int gpio_sim_release(const struct device *port, gpio_pin_t pin)
 int gpio_sim_output_get(const struct device *port, gpio_pin_t pin)
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
+    int result = 0;
 
-    return (drv_data->output_vals & BIT(pin)) ? 1 : 0;
+    if (0 != (drv_data->output_vals & BIT(pin))) {
+        result = 1;
+    }
+
+    return result;
 }
 
 /* ---- GPIO Driver API ---- */
@@ -168,61 +172,68 @@ static int gpio_sim_pin_configure(const struct device *port, gpio_pin_t pin,
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
     k_spinlock_key_t key;
+    int rc = 0;
 
-    if (flags & (GPIO_OPEN_DRAIN | GPIO_OPEN_SOURCE)) {
-        return -ENOTSUP;
-    }
+    if (0 != (flags & (GPIO_OPEN_DRAIN | GPIO_OPEN_SOURCE))) {
+        rc = -ENOTSUP;
+    } else if (0 == (config->common.port_pin_mask & BIT(pin))) {
+        rc = -EINVAL;
+    } else {
+        key = k_spin_lock(&drv_data->lock);
+        drv_data->flags[pin] = flags;
 
-    if ((config->common.port_pin_mask & BIT(pin)) == 0) {
-        return -EINVAL;
-    }
-
-    key = k_spin_lock(&drv_data->lock);
-    drv_data->flags[pin] = flags;
-
-    if (flags & GPIO_OUTPUT) {
-        if (flags & GPIO_OUTPUT_INIT_LOW) {
-            drv_data->output_vals &= ~BIT(pin);
-            if (flags & GPIO_INPUT) {
-                (void)input_set_masked_int(port, BIT(pin), drv_data->output_vals);
+        if (0 != (flags & GPIO_OUTPUT)) {
+            if (0 != (flags & GPIO_OUTPUT_INIT_LOW)) {
+                drv_data->output_vals &= ~BIT(pin);
+                if (0 != (flags & GPIO_INPUT)) {
+                    (void)input_set_masked_int(port, BIT(pin), drv_data->output_vals);
+                }
+            } else if (0 != (flags & GPIO_OUTPUT_INIT_HIGH)) {
+                drv_data->output_vals |= BIT(pin);
+                if (0 != (flags & GPIO_INPUT)) {
+                    (void)input_set_masked_int(port, BIT(pin), drv_data->output_vals);
+                }
+            } else {
+                /* No action required */
             }
-        } else if (flags & GPIO_OUTPUT_INIT_HIGH) {
-            drv_data->output_vals |= BIT(pin);
-            if (flags & GPIO_INPUT) {
-                (void)input_set_masked_int(port, BIT(pin), drv_data->output_vals);
+        } else if (0 != (flags & GPIO_INPUT)) {
+            /* Only apply pull defaults to pins NOT externally driven */
+            if (0 == (drv_data->externally_driven & BIT(pin))) {
+                if (0 != (flags & GPIO_PULL_UP)) {
+                    (void)input_set_masked_int(port, BIT(pin), BIT(pin));
+                } else if (0 != (flags & GPIO_PULL_DOWN)) {
+                    (void)input_set_masked_int(port, BIT(pin), 0);
+                } else {
+                    /* No action required */
+                }
             }
+        } else {
+            /* No action required */
         }
-    } else if (flags & GPIO_INPUT) {
-        /* Only apply pull defaults to pins NOT externally driven */
-        if (!(drv_data->externally_driven & BIT(pin))) {
-            if (flags & GPIO_PULL_UP) {
-                (void)input_set_masked_int(port, BIT(pin), BIT(pin));
-            } else if (flags & GPIO_PULL_DOWN) {
-                (void)input_set_masked_int(port, BIT(pin), 0);
-            }
-        }
+
+        k_spin_unlock(&drv_data->lock, key);
+        gpio_fire_callbacks(&drv_data->callbacks, port, BIT(pin));
+        drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
     }
 
-    k_spin_unlock(&drv_data->lock, key);
-    gpio_fire_callbacks(&drv_data->callbacks, port, BIT(pin));
-    drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
-
-    return 0;
+    return rc;
 }
 
 static int gpio_sim_port_get_raw(const struct device *port, gpio_port_value_t *values)
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
     k_spinlock_key_t key;
+    int rc = 0;
 
-    if (values == NULL) {
-        return -EINVAL;
+    if (NULL == values) {
+        rc = -EINVAL;
+    } else {
+        key = k_spin_lock(&drv_data->lock);
+        *values = drv_data->input_vals & get_input_pins(port);
+        k_spin_unlock(&drv_data->lock, key);
     }
 
-    key = k_spin_lock(&drv_data->lock);
-    *values = drv_data->input_vals & get_input_pins(port);
-    k_spin_unlock(&drv_data->lock, key);
-    return 0;
+    return rc;
 }
 
 static int gpio_sim_port_set_masked_raw(const struct device *port,
@@ -317,50 +328,56 @@ static int gpio_sim_pin_interrupt_configure(const struct device *port, gpio_pin_
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
     k_spinlock_key_t key;
+    int rc = 0;
 
-    if ((BIT(pin) & config->common.port_pin_mask) == 0) {
-        return -EINVAL;
-    }
+    if (0 == (BIT(pin) & config->common.port_pin_mask)) {
+        rc = -EINVAL;
+    } else {
+        if (GPIO_INT_MODE_DISABLED != mode) {
+            switch (trig) {
+            case GPIO_INT_TRIG_LOW:
+            case GPIO_INT_TRIG_HIGH:
+            case GPIO_INT_TRIG_BOTH:
+                break;
+            default:
+                rc = -EINVAL;
+                break;
+            }
+        }
 
-    if (mode != GPIO_INT_MODE_DISABLED) {
-        switch (trig) {
-        case GPIO_INT_TRIG_LOW:
-        case GPIO_INT_TRIG_HIGH:
-        case GPIO_INT_TRIG_BOTH:
-            break;
-        default:
-            return -EINVAL;
+        if (0 == rc) {
+            key = k_spin_lock(&drv_data->lock);
+            drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
+
+            switch (mode) {
+            case GPIO_INT_MODE_DISABLED:
+                drv_data->flags[pin] &= ~GPIO_SIM_INT_BITMASK;
+                drv_data->flags[pin] |= GPIO_INT_DISABLE;
+                drv_data->enabled_interrupts &= ~((gpio_port_pins_t)BIT(pin));
+                break;
+            case GPIO_INT_MODE_LEVEL:
+            case GPIO_INT_MODE_EDGE:
+                drv_data->flags[pin] &= ~GPIO_SIM_INT_BITMASK;
+                drv_data->flags[pin] |= (mode | trig);
+                drv_data->enabled_interrupts |= BIT(pin);
+                break;
+            default:
+                rc = -EINVAL;
+                break;
+            }
+
+            k_spin_unlock(&drv_data->lock, key);
+
+            if (0 == rc) {
+                if (0 != (BIT(pin) & (drv_data->interrupts & drv_data->enabled_interrupts))) {
+                    gpio_fire_callbacks(&drv_data->callbacks, port, BIT(pin));
+                    drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
+                }
+            }
         }
     }
 
-    key = k_spin_lock(&drv_data->lock);
-    drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
-
-    switch (mode) {
-    case GPIO_INT_MODE_DISABLED:
-        drv_data->flags[pin] &= ~GPIO_SIM_INT_BITMASK;
-        drv_data->flags[pin] |= GPIO_INT_DISABLE;
-        drv_data->enabled_interrupts &= ~((gpio_port_pins_t)BIT(pin));
-        break;
-    case GPIO_INT_MODE_LEVEL:
-    case GPIO_INT_MODE_EDGE:
-        drv_data->flags[pin] &= ~GPIO_SIM_INT_BITMASK;
-        drv_data->flags[pin] |= (mode | trig);
-        drv_data->enabled_interrupts |= BIT(pin);
-        break;
-    default:
-        k_spin_unlock(&drv_data->lock, key);
-        return -EINVAL;
-    }
-
-    k_spin_unlock(&drv_data->lock, key);
-
-    if (BIT(pin) & (drv_data->interrupts & drv_data->enabled_interrupts)) {
-        gpio_fire_callbacks(&drv_data->callbacks, port, BIT(pin));
-        drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
-    }
-
-    return 0;
+    return rc;
 }
 
 static int gpio_sim_manage_callback(const struct device *port,

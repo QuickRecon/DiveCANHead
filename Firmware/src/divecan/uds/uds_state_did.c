@@ -186,6 +186,17 @@ static const size_t MB_STATUS_OFF_VER_FAC = 12U;
 
 static const uint8_t INVALID_VERSION_BYTE = 0xFFU;
 
+/* Byte offsets within the writeSemVer8/writeSemVer4 payload:
+ * major(1) + minor(1) + revision(2 LE) [+ build_num(4 LE) for the 8-byte form]. */
+static const size_t SEMVER_OFF_MAJOR   = 0U;
+static const size_t SEMVER_OFF_MINOR   = 1U;
+static const size_t SEMVER_OFF_REV_LO  = 2U;
+static const size_t SEMVER_OFF_REV_HI  = 3U;
+static const size_t SEMVER_OFF_BUILD_0 = 4U;
+static const size_t SEMVER_OFF_BUILD_1 = 5U;
+static const size_t SEMVER_OFF_BUILD_2 = 6U;
+static const size_t SEMVER_OFF_BUILD_3 = 7U;
+
 /**
  * @brief Encode an MCUBoot sem_ver into the 8-byte on-wire layout.
  *
@@ -193,14 +204,14 @@ static const uint8_t INVALID_VERSION_BYTE = 0xFFU;
  */
 static void writeSemVer8(uint8_t *buf, const struct mcuboot_img_sem_ver *v)
 {
-    buf[0] = v->major;
-    buf[1] = v->minor;
-    buf[2] = (uint8_t)(v->revision);
-    buf[3] = (uint8_t)((uint16_t)(v->revision) >> DIVECAN_BYTE_WIDTH);
-    buf[4] = (uint8_t)(v->build_num);
-    buf[5] = (uint8_t)(v->build_num >> DIVECAN_BYTE_WIDTH);
-    buf[6] = (uint8_t)(v->build_num >> DIVECAN_TWO_BYTE_WIDTH);
-    buf[7] = (uint8_t)(v->build_num >> DIVECAN_THREE_BYTE_WIDTH);
+    buf[SEMVER_OFF_MAJOR] = v->major;
+    buf[SEMVER_OFF_MINOR] = v->minor;
+    buf[SEMVER_OFF_REV_LO] = (uint8_t)(v->revision);
+    buf[SEMVER_OFF_REV_HI] = (uint8_t)((uint16_t)(v->revision) >> DIVECAN_BYTE_WIDTH);
+    buf[SEMVER_OFF_BUILD_0] = (uint8_t)(v->build_num);
+    buf[SEMVER_OFF_BUILD_1] = (uint8_t)(v->build_num >> DIVECAN_BYTE_WIDTH);
+    buf[SEMVER_OFF_BUILD_2] = (uint8_t)(v->build_num >> DIVECAN_TWO_BYTE_WIDTH);
+    buf[SEMVER_OFF_BUILD_3] = (uint8_t)(v->build_num >> DIVECAN_THREE_BYTE_WIDTH);
 }
 
 /**
@@ -211,10 +222,10 @@ static void writeSemVer8(uint8_t *buf, const struct mcuboot_img_sem_ver *v)
  */
 static void writeSemVer4(uint8_t *buf, const struct mcuboot_img_sem_ver *v)
 {
-    buf[0] = v->major;
-    buf[1] = v->minor;
-    buf[2] = (uint8_t)(v->revision);
-    buf[3] = (uint8_t)((uint16_t)(v->revision) >> DIVECAN_BYTE_WIDTH);
+    buf[SEMVER_OFF_MAJOR] = v->major;
+    buf[SEMVER_OFF_MINOR] = v->minor;
+    buf[SEMVER_OFF_REV_LO] = (uint8_t)(v->revision);
+    buf[SEMVER_OFF_REV_HI] = (uint8_t)((uint16_t)(v->revision) >> DIVECAN_BYTE_WIDTH);
 }
 
 /**
@@ -246,7 +257,7 @@ static bool readBankSemVer(uint8_t area_id, struct mcuboot_img_sem_ver *out)
 static void fillSlotVersion8(uint8_t area_id, uint8_t *buf)
 {
     struct mcuboot_img_sem_ver v = {0};
-    if (readBankSemVer(area_id, &v)) {
+    if (true == readBankSemVer(area_id, &v)) {
         writeSemVer8(buf, &v);
     } else {
         writeInvalidVersion(buf, OTA_VERSION_LEN);
@@ -256,7 +267,7 @@ static void fillSlotVersion8(uint8_t area_id, uint8_t *buf)
 static void fillSlotVersion4(uint8_t area_id, uint8_t *buf)
 {
     struct mcuboot_img_sem_ver v = {0};
-    if (readBankSemVer(area_id, &v)) {
+    if (true == readBankSemVer(area_id, &v)) {
         writeSemVer4(buf, &v);
     } else {
         writeInvalidVersion(buf, OTA_VERSION_SHORT_LEN);
@@ -301,7 +312,7 @@ static void buildMcubootStatus(uint8_t *buf)
     }
     buf[MB_STATUS_OFF_SWAP] = (uint8_t)swap;
 
-    if (boot_is_img_confirmed()) {
+    if (true == boot_is_img_confirmed()) {
         buf[MB_STATUS_OFF_CONFIRM] = 1U;
     } else {
         buf[MB_STATUS_OFF_CONFIRM] = 0U;
@@ -322,6 +333,12 @@ static void buildMcubootStatus(uint8_t *buf)
     fillFactoryVersion4(&buf[MB_STATUS_OFF_VER_FAC]);
 }
 
+/* Byte offsets within the 4-byte POST_STATUS payload. */
+static const size_t POST_STATUS_OFF_STATE = 0U;
+static const size_t POST_STATUS_OFF_MASK  = 1U;
+static const size_t POST_STATUS_OFF_RSVD0 = 2U;
+static const size_t POST_STATUS_OFF_RSVD1 = 3U;
+
 /**
  * @brief Build the 4-byte POST_STATUS payload.
  *
@@ -330,10 +347,10 @@ static void buildMcubootStatus(uint8_t *buf)
  */
 static void buildPostStatus(uint8_t *buf)
 {
-    buf[0] = (uint8_t)firmware_confirm_get_state();
-    buf[1] = (uint8_t)(firmware_confirm_get_pass_mask() & BYTE_MASK);
-    buf[2] = 0U;
-    buf[3] = 0U;
+    buf[POST_STATUS_OFF_STATE] = (uint8_t)firmware_confirm_get_state();
+    buf[POST_STATUS_OFF_MASK] = (uint8_t)(firmware_confirm_get_pass_mask() & BYTE_MASK);
+    buf[POST_STATUS_OFF_RSVD0] = 0U;
+    buf[POST_STATUS_OFF_RSVD1] = 0U;
 }
 
 /**
@@ -490,6 +507,337 @@ static void buildAutotuneStatus(uint8_t *buf)
  * ============================================================================ */
 
 /**
+ * @brief Build the CELLS_VALID bitmask (one bit per included cell).
+ *
+ * @param buf Destination buffer; must have at least 1 byte available
+ * @param len Out: number of bytes written to buf
+ */
+static void buildCellsValidStatus(uint8_t *buf, uint16_t *len)
+{
+    ConsensusMsg_t consensus = {0};
+    uint8_t valid = 0U;
+    uint8_t i = 0U;
+
+    (void)zbus_chan_read(&chan_consensus, &consensus, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
+    for (i = 0U; i < CELL_MAX_COUNT; ++i) {
+        if (consensus.include_array[i]) {
+            valid |= (1U << i);
+        }
+    }
+    buf[0] = valid;
+    *len = sizeof(uint8_t);
+}
+
+/**
+ * @brief Handle the AUTOTUNE_STATUS DID: bounds-check then serialise.
+ *
+ * @param buf    Destination buffer; must have at least AUTOTUNE_STATUS_LEN bytes
+ * @param maxLen Caller-supplied response buffer capacity
+ * @param len    Out: number of bytes written to buf
+ * @return true if the payload fit and was written, false if maxLen was too small
+ */
+static bool handleAutotuneStatusDID(uint8_t *buf, uint16_t maxLen, uint16_t *len)
+{
+    bool result = true;
+
+    if (maxLen < AUTOTUNE_STATUS_LEN) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+        result = false;
+    } else {
+        buildAutotuneStatus(buf);
+        *len = (uint16_t)AUTOTUNE_STATUS_LEN;
+    }
+    return result;
+}
+
+#ifdef CONFIG_POSEIDON_ACCESSORIES
+/* Byte layout of the 4-byte POSEIDON_GAUGE DID payload. */
+static const uint8_t POSEIDON_GAUGE_LEN          = 4U;
+static const size_t  POSEIDON_GAUGE_OFF_AGE      = 2U;
+static const uint8_t POSEIDON_FLAG_EVER_RECEIVED = 1U;
+static const uint8_t POSEIDON_FLAG_FRESH         = 2U;
+static const uint8_t POSEIDON_FLAG_STALE         = 4U;
+
+/**
+ * @brief Serialise the Poseidon gauge status DID payload.
+ *
+ * Layout: percent(1) + flags(1) + age_seconds(2 LE).
+ *
+ * @param buf Destination buffer; must have at least POSEIDON_GAUGE_LEN bytes
+ * @param len Out: number of bytes written to buf
+ */
+static void buildPoseidonGaugeStatus(uint8_t *buf, uint16_t *len)
+{
+    PoseidonGaugeStatus_t gauge = {0};
+    uint8_t flags = 0U;
+
+    poseidon_gauge_status(&gauge);
+    if (gauge.ever_received) {
+        flags |= POSEIDON_FLAG_EVER_RECEIVED;
+    }
+    if (gauge.fresh) {
+        flags |= POSEIDON_FLAG_FRESH;
+    } else {
+        flags |= POSEIDON_FLAG_STALE;
+    }
+    buf[0] = gauge.percent;
+    buf[1] = flags;
+    writeUint16(&buf[POSEIDON_GAUGE_OFF_AGE], gauge.age_seconds);
+    *len = (uint16_t)POSEIDON_GAUGE_LEN;
+}
+#endif
+
+/**
+ * @brief Serialise the whole-device current-draw DID payload.
+ *
+ * Reads the generic current-provider API (device_current.h). A provider
+ * that hasn't reported yet (or doesn't exist on this variant) still
+ * yields a fixed-size payload with valid=0.
+ *
+ * @param buf Destination buffer; must have at least DEV_CURRENT_LEN bytes
+ * @param len Out: number of bytes written to buf
+ */
+static void buildDeviceCurrentStatus(uint8_t *buf, uint16_t *len)
+{
+    int32_t current_ua = 0;
+    uint32_t age_ms = 0U;
+    uint32_t age_s = 0U;
+    bool valid = false;
+
+    valid = device_current_read(&current_ua, &age_ms);
+    age_s = age_ms / DEV_CURRENT_MS_PER_S;
+    writeUint32(&buf[DEV_CURRENT_OFF_UA], (uint32_t)current_ua);
+    writeUint16(&buf[DEV_CURRENT_OFF_AGE],
+                (uint16_t)MIN(age_s, (uint32_t)UINT16_MAX));
+    if (valid) {
+        buf[DEV_CURRENT_OFF_VALID] = 1U;
+    } else {
+        buf[DEV_CURRENT_OFF_VALID] = 0U;
+    }
+    buf[DEV_CURRENT_OFF_RSVD] = 0U;
+    *len = (uint16_t)DEV_CURRENT_LEN;
+}
+
+#if defined(CONFIG_HAS_PRESSURE_TRANSDUCER) && (CONFIG_O2_TRANSDUCER_CHANNEL >= 0)
+/**
+ * @brief Serialise the O2 cylinder pressure DID payload.
+ *
+ * @param buf Destination buffer; must have at least sizeof(uint16_t) bytes
+ * @param len Out: number of bytes written to buf
+ * @return true if the tank-pressure channel produced a fresh reading, false otherwise
+ */
+static bool buildO2CylPressureStatus(uint8_t *buf, uint16_t *len)
+{
+    TankPressureMsg_t tank = {0};
+    bool result = false;
+
+    if (0 == zbus_chan_read(&chan_tank_pressure, &tank,
+                            K_MSEC(STATE_DID_READ_TIMEOUT_MS))) {
+        writeUint16(buf, tank.o2_decibar);
+        *len = sizeof(tank.o2_decibar);
+        result = true;
+    }
+    return result;
+}
+#endif
+
+#if defined(CONFIG_HAS_PRESSURE_TRANSDUCER) && (CONFIG_DIL_TRANSDUCER_CHANNEL >= 0)
+/**
+ * @brief Serialise the diluent cylinder pressure DID payload.
+ *
+ * @param buf Destination buffer; must have at least sizeof(uint16_t) bytes
+ * @param len Out: number of bytes written to buf
+ * @return true if the tank-pressure channel produced a fresh reading, false otherwise
+ */
+static bool buildDilCylPressureStatus(uint8_t *buf, uint16_t *len)
+{
+    TankPressureMsg_t tank = {0};
+    bool result = false;
+
+    if (0 == zbus_chan_read(&chan_tank_pressure, &tank,
+                            K_MSEC(STATE_DID_READ_TIMEOUT_MS))) {
+        writeUint16(buf, tank.dil_decibar);
+        *len = sizeof(tank.dil_decibar);
+        result = true;
+    }
+    return result;
+}
+#endif
+
+/* Selects which CrashInfo_t field a crash DID exposes. */
+typedef enum {
+    CRASH_FIELD_REASON = 0,
+    CRASH_FIELD_PC     = 1,
+    CRASH_FIELD_LR     = 2,
+    CRASH_FIELD_CFSR   = 3,
+} CrashField_t;
+
+/**
+ * @brief Extract one uint32 field from a crash info snapshot.
+ *
+ * @param info  Crash info snapshot; must not be NULL
+ * @param field Which field to extract
+ * @return The requested field's value
+ */
+static uint32_t crashInfoField(const CrashInfo_t *info, CrashField_t field)
+{
+    uint32_t result = 0U;
+
+    switch (field) {
+    case CRASH_FIELD_REASON:
+        result = info->reason;
+        break;
+    case CRASH_FIELD_PC:
+        result = info->pc;
+        break;
+    case CRASH_FIELD_LR:
+        result = info->lr;
+        break;
+    case CRASH_FIELD_CFSR:
+        result = info->cfsr;
+        break;
+    default:
+        result = 0U;
+        break;
+    }
+    return result;
+}
+
+/**
+ * @brief Serialise the CRASH_VALID DID: 1 if a crash snapshot exists, else 0.
+ *
+ * @param buf Destination buffer; must have at least 1 byte available
+ * @param len Out: number of bytes written to buf
+ */
+static void buildCrashValidStatus(uint8_t *buf, uint16_t *len)
+{
+    CrashInfo_t info = {0};
+
+    if (errors_get_last_crash(&info)) {
+        buf[0] = 1U;
+    } else {
+        buf[0] = 0U;
+    }
+    *len = sizeof(uint8_t);
+}
+
+/**
+ * @brief Serialise a single uint32 crash-info field DID.
+ *
+ * Reports 0 if no crash snapshot is available.
+ *
+ * @param buf   Destination buffer; must have at least sizeof(uint32_t) bytes
+ * @param len   Out: number of bytes written to buf
+ * @param field Which crash-info field this DID exposes
+ */
+static void buildCrashFieldStatus(uint8_t *buf, uint16_t *len, CrashField_t field)
+{
+    CrashInfo_t info = {0};
+    uint32_t val = 0U;
+
+    if (errors_get_last_crash(&info)) {
+        val = crashInfoField(&info, field);
+    }
+    writeUint32(buf, val);
+    *len = sizeof(uint32_t);
+}
+
+/**
+ * @brief Serialise the error histogram DID payload.
+ *
+ * @param buf    Destination buffer
+ * @param maxLen Caller-supplied response buffer capacity
+ * @param len    Out: number of bytes written to buf
+ * @return true if the histogram fit and was written, false on overflow or an empty snapshot
+ */
+static bool buildErrorHistogramStatus(uint8_t *buf, uint16_t maxLen, uint16_t *len)
+{
+    bool result = true;
+
+    if (maxLen < ERROR_HISTOGRAM_BYTES) {
+        /* Caller bundled this DID with so many others that the
+         * remaining response buffer can't hold the full histogram —
+         * fail this DID so ReadDataByIdentifier emits NRC instead
+         * of overflowing the buffer. */
+        OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+        result = false;
+    } else {
+        uint16_t snap[ERROR_HISTOGRAM_COUNT] = {0};
+        size_t written = error_histogram_snapshot(snap, ERROR_HISTOGRAM_COUNT);
+
+        if (written > 0U) {
+            size_t i = 0U;
+
+            for (i = 0U; i < ERROR_HISTOGRAM_COUNT; ++i) {
+                writeUint16(&buf[i * sizeof(uint16_t)], snap[i]);
+            }
+            *len = (uint16_t)written;
+        } else {
+            result = false;
+        }
+    }
+    return result;
+}
+
+#ifdef CONFIG_FLASH_LOG
+/**
+ * @brief Serialise the LOG_STATS DID payload (raw FlashLogStats_t).
+ *
+ * @param buf    Destination buffer
+ * @param maxLen Caller-supplied response buffer capacity
+ * @param len    Out: number of bytes written to buf
+ * @return true if the stats struct fit and was written, false on overflow
+ */
+static bool buildLogStatsStatus(uint8_t *buf, uint16_t maxLen, uint16_t *len)
+{
+    const size_t required = sizeof(FlashLogStats_t);
+    bool result = true;
+
+    if (maxLen < required) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+        result = false;
+    } else {
+        FlashLogStats_t stats = {0};
+
+        (void)flash_log_stats(&stats);
+        (void)memcpy(buf, &stats, required);
+        *len = (uint16_t)required;
+    }
+    return result;
+}
+
+/* Wire size of the LOG_SELECTOR_RESULT DID payload: stream u8, start_id u16,
+ * end_id u16, entry_count u32, total_bytes u32, status u32. */
+static const size_t LOG_SELECTOR_RESULT_LEN = 20U;
+
+/**
+ * @brief Serialise the LOG_SELECTOR_RESULT DID payload.
+ *
+ * Result struct is populated by uds_log_download.c after a RoutineControl
+ * selector call. Pre-cleared so an un-selected read returns all zeros /
+ * status=ENOENT.
+ *
+ * @param buf    Destination buffer
+ * @param maxLen Caller-supplied response buffer capacity
+ * @param len    Out: number of bytes written to buf
+ * @return true if the payload fit and was written, false on overflow
+ */
+static bool buildLogSelectorResultStatus(uint8_t *buf, uint16_t maxLen, uint16_t *len)
+{
+    bool result = true;
+
+    if (maxLen < LOG_SELECTOR_RESULT_LEN) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+        result = false;
+    } else {
+        UDS_LogDownload_FillSelectorResult(buf, LOG_SELECTOR_RESULT_LEN);
+        *len = (uint16_t)LOG_SELECTOR_RESULT_LEN;
+    }
+    return result;
+}
+#endif
+
+/**
  * @brief Handle a read request for a PPO2 control state DID (0xF2xx)
  *
  * Reads live data from zbus channels and power management API, then serialises
@@ -521,18 +869,8 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         break;
 
     case UDS_DID_CELLS_VALID:
-    {
-        (void)zbus_chan_read(&chan_consensus, &consensus, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
-        uint8_t valid = 0U;
-        for (uint8_t i = 0U; i < CELL_MAX_COUNT; ++i) {
-            if (consensus.include_array[i]) {
-                valid |= (1U << i);
-            }
-        }
-        buf[0] = valid;
-        *len = sizeof(uint8_t);
+        buildCellsValidStatus(buf, len);
         break;
-    }
 
     case UDS_DID_ALARM_STATE:
 #ifdef CONFIG_ALARM
@@ -576,13 +914,7 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
     }
 
     case UDS_DID_AUTOTUNE_STATUS:
-        if (maxLen < AUTOTUNE_STATUS_LEN) {
-            OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
-            result = false;
-        } else {
-            buildAutotuneStatus(buf);
-            *len = (uint16_t)AUTOTUNE_STATUS_LEN;
-        }
+        result = handleAutotuneStatusDID(buf, maxLen, len);
         break;
 
     case UDS_DID_UPTIME_SEC:
@@ -624,54 +956,21 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
 
     case UDS_DID_POSEIDON_GAUGE:
 #ifdef CONFIG_POSEIDON_ACCESSORIES
-    {
-        PoseidonGaugeStatus_t gauge = {0};
-        poseidon_gauge_status(&gauge);
-        buf[0] = gauge.percent;
-        buf[1] = (uint8_t)((gauge.ever_received ? 1U : 0U) |
-                           (gauge.fresh ? 2U : 0U) |
-                           (gauge.fresh ? 0U : 4U));
-        writeUint16(&buf[2], gauge.age_seconds);
-        *len = 4U;
+        buildPoseidonGaugeStatus(buf, len);
         break;
-    }
 #else
         result = false;
         break;
 #endif
 
     case UDS_DID_DEVICE_CURRENT:
-    {
-        /* Whole-device instantaneous current draw via the generic provider API
-         * (device_current.h). Packed struct (see DEV_CURRENT_OFF_* above); the
-         * validity flag lets a batched read succeed on variants with no current
-         * provider (or before the first sample), where it reports valid=0. */
-        int32_t current_ua = 0;
-        uint32_t age_ms = 0U;
-        bool valid = device_current_read(&current_ua, &age_ms);
-        uint32_t age_s = age_ms / DEV_CURRENT_MS_PER_S;
-        writeUint32(&buf[DEV_CURRENT_OFF_UA], (uint32_t)current_ua);
-        writeUint16(&buf[DEV_CURRENT_OFF_AGE],
-                    (uint16_t)MIN(age_s, (uint32_t)UINT16_MAX));
-        buf[DEV_CURRENT_OFF_VALID] = valid ? 1U : 0U;
-        buf[DEV_CURRENT_OFF_RSVD] = 0U;
-        *len = (uint16_t)DEV_CURRENT_LEN;
+        buildDeviceCurrentStatus(buf, len);
         break;
-    }
 
     case UDS_DID_O2_CYL_PRESSURE:
 #if defined(CONFIG_HAS_PRESSURE_TRANSDUCER) && (CONFIG_O2_TRANSDUCER_CHANNEL >= 0)
-    {
-        TankPressureMsg_t tank = {0};
-        if (0 == zbus_chan_read(&chan_tank_pressure, &tank,
-                                K_MSEC(STATE_DID_READ_TIMEOUT_MS))) {
-            writeUint16(buf, tank.o2_decibar);
-            *len = sizeof(tank.o2_decibar);
-        } else {
-            result = false;
-        }
+        result = buildO2CylPressureStatus(buf, len);
         break;
-    }
 #else
         result = false;
         break;
@@ -679,139 +978,45 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
 
     case UDS_DID_DIL_CYL_PRESSURE:
 #if defined(CONFIG_HAS_PRESSURE_TRANSDUCER) && (CONFIG_DIL_TRANSDUCER_CHANNEL >= 0)
-    {
-        TankPressureMsg_t tank = {0};
-        if (0 == zbus_chan_read(&chan_tank_pressure, &tank,
-                                K_MSEC(STATE_DID_READ_TIMEOUT_MS))) {
-            writeUint16(buf, tank.dil_decibar);
-            *len = sizeof(tank.dil_decibar);
-        } else {
-            result = false;
-        }
+        result = buildDilCylPressureStatus(buf, len);
         break;
-    }
 #else
         result = false;
         break;
 #endif
 
     case UDS_DID_CRASH_VALID:
-    {
-        CrashInfo_t info = {0};
-        if (errors_get_last_crash(&info)) {
-            buf[0] = 1U;
-        } else {
-            buf[0] = 0U;
-        }
-        *len = sizeof(uint8_t);
+        buildCrashValidStatus(buf, len);
         break;
-    }
 
     case UDS_DID_CRASH_REASON:
-    {
-        CrashInfo_t info = {0};
-        uint32_t val = 0U;
-        if (errors_get_last_crash(&info)) {
-            val = info.reason;
-        }
-        writeUint32(buf, val);
-        *len = sizeof(uint32_t);
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_REASON);
         break;
-    }
 
     case UDS_DID_CRASH_PC:
-    {
-        CrashInfo_t info = {0};
-        uint32_t val = 0U;
-        if (errors_get_last_crash(&info)) {
-            val = info.pc;
-        }
-        writeUint32(buf, val);
-        *len = sizeof(uint32_t);
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_PC);
         break;
-    }
 
     case UDS_DID_CRASH_LR:
-    {
-        CrashInfo_t info = {0};
-        uint32_t val = 0U;
-        if (errors_get_last_crash(&info)) {
-            val = info.lr;
-        }
-        writeUint32(buf, val);
-        *len = sizeof(uint32_t);
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_LR);
         break;
-    }
 
     case UDS_DID_CRASH_CFSR:
-    {
-        CrashInfo_t info = {0};
-        uint32_t val = 0U;
-        if (errors_get_last_crash(&info)) {
-            val = info.cfsr;
-        }
-        writeUint32(buf, val);
-        *len = sizeof(uint32_t);
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_CFSR);
         break;
-    }
 
     case UDS_DID_ERROR_HISTOGRAM:
-    {
-        if (maxLen < ERROR_HISTOGRAM_BYTES) {
-            /* Caller bundled this DID with so many others that the
-             * remaining response buffer can't hold the full histogram —
-             * fail this DID so ReadDataByIdentifier emits NRC instead
-             * of overflowing the buffer. */
-            OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
-            result = false;
-        } else {
-            uint16_t snap[ERROR_HISTOGRAM_COUNT] = {0};
-            size_t written = error_histogram_snapshot(snap,
-                                  ERROR_HISTOGRAM_COUNT);
-            if (written > 0U) {
-                for (size_t i = 0U; i < ERROR_HISTOGRAM_COUNT; ++i) {
-                    writeUint16(&buf[i * sizeof(uint16_t)],
-                            snap[i]);
-                }
-                *len = (uint16_t)written;
-            } else {
-                result = false;
-            }
-        }
+        result = buildErrorHistogramStatus(buf, maxLen, len);
         break;
-    }
 
 #ifdef CONFIG_FLASH_LOG
-    case UDS_DID_LOG_STATS: {
-        const size_t required = sizeof(FlashLogStats_t);
-        if (maxLen < required) {
-            OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
-            result = false;
-        } else {
-            FlashLogStats_t stats = {0};
-            (void)flash_log_stats(&stats);
-            (void)memcpy(buf, &stats, required);
-            *len = (uint16_t)required;
-        }
+    case UDS_DID_LOG_STATS:
+        result = buildLogStatsStatus(buf, maxLen, len);
         break;
-    }
 
-    case UDS_DID_LOG_SELECTOR_RESULT: {
-        /* Result struct is populated by uds_log_download.c after a
-         * RoutineControl selector call. 20 bytes:
-         *   stream u8, start_id u16, end_id u16, entry_count u32,
-         *   total_bytes u32, status u32. Pre-cleared so an
-         *   un-selected read returns all zeros / status=ENOENT. */
-        const size_t required = 20U;
-        if (maxLen < required) {
-            OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
-            result = false;
-        } else {
-            UDS_LogDownload_FillSelectorResult(buf, required);
-            *len = (uint16_t)required;
-        }
+    case UDS_DID_LOG_SELECTOR_RESULT:
+        result = buildLogSelectorResultStatus(buf, maxLen, len);
         break;
-    }
 
     case UDS_DID_LOG_VERBOSITY:
         buf[0] = flash_log_get_rtt_level();

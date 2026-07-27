@@ -75,6 +75,12 @@ LOG_MODULE_REGISTER(cell_diveo2, LOG_LEVEL_INF);
 #define PYRO_DETAIL_COMMAND     "#MRAW"
 #define PYRO_OXY_COMMAND        "#MOXY"
 #define STRTOL_BASE          10
+/* Length of the "#D"/"#M" family prefix, before the 3-char command suffix. */
+#define DIVEO2_HEADER_PREFIX_LEN 2U
+/* Auto-detect cycles through 3 phases: passive listen, DiveO2 poll, Pyro poll. */
+#define DIVEO2_DETECT_PHASE_COUNT 3U
+/* Zero-based index of the third cell slot. */
+#define THIRD_CELL_INDEX 2U
 
 /* Broadcast (streaming) mode: #BCST <interval_ms>; 0 disables. The cell then
  * streams unsolicited #?RAW frames. 250 ms (4 Hz) sits comfortably under the
@@ -85,7 +91,7 @@ LOG_MODULE_REGISTER(cell_diveo2, LOG_LEVEL_INF);
 /* Timeouts */
 #define DIGITAL_RESPONSE_TIMEOUT_MS 1000
 #define CELL_STARTUP_DELAY_MS       1000
-#define MIN_SAMPLE_INTERVAL_MS      100
+#define MIN_SAMPLE_INTERVAL_MS      100U
 #define UART_RX_TIMEOUT_MS          2000
 /* Max wait for a TX DMA to drain tx_buf before reusing it (a few bytes at
  * 19200 8N1 take ~5 ms; 50 ms is a generous ceiling that also bounds a stuck TX). */
@@ -264,20 +270,20 @@ static bool diveo2_all_non_null(const char *const *fields, uint8_t count)
  */
 static bool diveo2_parse_i32(const char *tok, int32_t *out)
 {
-    if ((tok == NULL) || (out == NULL) || ('\0' == tok[0])) {
-        return false;
+    bool success = false;
+
+    if ((tok != NULL) && (out != NULL) && ('\0' != tok[0])) {
+        char *end = NULL;
+        long val = strtol(tok, &end, STRTOL_BASE);
+
+        /* Accept only if something was consumed and no trailing chars remain. */
+        if ((tok != end) && ('\0' == *end)) {
+            *out = (int32_t)val;
+            success = true;
+        }
     }
 
-    char *end = NULL;
-    long val = strtol(tok, &end, STRTOL_BASE);
-
-    /* Reject if nothing was consumed or any trailing character remains. */
-    if ((end == tok) || ('\0' != *end)) {
-        return false;
-    }
-
-    *out = (int32_t)val;
-    return true;
+    return success;
 }
 
 /**
@@ -292,9 +298,11 @@ static bool diveo2_parse_i32(const char *tok, int32_t *out)
  */
 static bool diveo2_header_is(const char *hdr, const char *suffix)
 {
-    return (hdr != NULL) && ('#' == hdr[0]) &&
-           (('D' == hdr[1]) || ('M' == hdr[1])) &&
-           (0 == strcmp(&hdr[2], suffix));
+    bool valid_prefix = (hdr != NULL) && ('#' == hdr[0]) &&
+                        (('D' == hdr[1]) || ('M' == hdr[1]));
+
+    return valid_prefix &&
+           (0 == strcmp(&hdr[DIVEO2_HEADER_PREFIX_LEN], suffix));
 }
 
 /**
@@ -311,19 +319,21 @@ static bool diveo2_header_is(const char *hdr, const char *suffix)
  */
 static bool diveo2_is_measurement(const char *msg)
 {
-    if (msg == NULL) {
-        return false;
+    bool result = false;
+
+    if (msg != NULL) {
+        char copy[DIVEO2_RX_BUFFER_LEN] = {0};
+
+        (void)strncpy(copy, msg, sizeof(copy) - 1U);
+        copy[sizeof(copy) - 1U] = '\0';
+
+        char *saveptr = NULL;
+        const char *hdr = strtok_r(copy, " ", &saveptr);
+
+        result = diveo2_header_is(hdr, "RAW") || diveo2_header_is(hdr, "OXY");
     }
 
-    char copy[DIVEO2_RX_BUFFER_LEN] = {0};
-
-    (void)strncpy(copy, msg, sizeof(copy) - 1U);
-    copy[sizeof(copy) - 1U] = '\0';
-
-    char *saveptr = NULL;
-    const char *hdr = strtok_r(copy, " ", &saveptr);
-
-    return diveo2_header_is(hdr, "RAW") || diveo2_header_is(hdr, "OXY");
+    return result;
 }
 
 /**
@@ -455,9 +465,8 @@ bool diveo2_parse_detailed_response(const char *message,
             bool all_numeric = diveo2_all_non_null(
                 fields, DIVEO2_DETAILED_FIELD_COUNT);
 
-            for (uint8_t i = 0U; all_numeric &&
-                                 (i < DIVEO2_DETAILED_FIELD_COUNT); ++i) {
-                if (!diveo2_parse_i32(fields[i], &vals[i])) {
+            for (uint8_t i = 0U; i < DIVEO2_DETAILED_FIELD_COUNT; ++i) {
+                if (all_numeric && !diveo2_parse_i32(fields[i], &vals[i])) {
                     all_numeric = false;
                 }
             }
@@ -590,6 +599,23 @@ static void diveo2_feed_rx(struct diveo2_cell_state *cell,
 }
 
 /**
+ * @brief Re-arm UART RX after an unexpected UART_RX_DISABLED event.
+ *
+ * Factored out of the UART callback's switch case to keep the case body
+ * short (S1151).
+ *
+ * @param cell  Cell state whose RX line accumulator/buffer are reset.
+ */
+static void diveo2_rearm_rx(struct diveo2_cell_state *cell)
+{
+    cell->rx_line_len = 0U;
+    cell->rx_active = 0U;
+    (void)uart_rx_enable(cell->uart_dev, cell->rx_buf[0],
+                         DIVEO2_RX_BUFFER_LEN,
+                         UART_RX_IDLE_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
+}
+
+/**
  * @brief UART async callback for the DiveO2 cell driver.
  *
  * RX is kept continuously enabled (double-buffered) so a broadcast stream is
@@ -624,11 +650,7 @@ static void diveo2_uart_callback(const struct device *dev,
         break;
     case UART_RX_DISABLED:
         /* Should not happen in steady state; re-arm to recover. */
-        cell->rx_line_len = 0U;
-        cell->rx_active = 0U;
-        (void)uart_rx_enable(cell->uart_dev, cell->rx_buf[0],
-                             DIVEO2_RX_BUFFER_LEN,
-                             UART_RX_IDLE_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
+        diveo2_rearm_rx(cell);
         break;
     default:
         break;
@@ -640,7 +662,13 @@ static void diveo2_uart_callback(const struct device *dev,
  */
 static const char *diveo2_detail_cmd(CellProtocol_t proto)
 {
-    return (CELL_PROTO_PYRO == proto) ? PYRO_DETAIL_COMMAND : DIVEO2_DETAIL_COMMAND;
+    const char *cmd = DIVEO2_DETAIL_COMMAND;
+
+    if (CELL_PROTO_PYRO == proto) {
+        cmd = PYRO_DETAIL_COMMAND;
+    }
+
+    return cmd;
 }
 
 /**
@@ -673,7 +701,7 @@ static void diveo2_send_command(struct diveo2_cell_state *cell,
          * cell's line parser (the NUL prepends to the next command). */
         size_t len = strnlen((char *)cell->tx_buf, sizeof(cell->tx_buf));
 
-        int tx_rc = uart_tx(cell->uart_dev, cell->tx_buf, len, SYS_FOREVER_US);
+        Status_t tx_rc = uart_tx(cell->uart_dev, cell->tx_buf, len, SYS_FOREVER_US);
         if (0 != tx_rc) {
             OP_ERROR_DETAIL(OP_ERR_UART, (uint32_t)(-tx_rc));
             /* TX never started — release the slot so we don't deadlock. */
@@ -948,14 +976,16 @@ static bool diveo2_wait_frame(struct diveo2_cell_state *cell, int32_t timeout_ms
 static void diveo2_set_cell_broadcast(struct diveo2_cell_state *cell, bool on)
 {
     char cmd[DIVEO2_TX_BUFFER_LEN] = {0};
+    const char *state = "off";
 
     if (on) {
         (void)snprintf(cmd, sizeof(cmd), "#BCST %u", DIVEO2_BCST_INTERVAL_MS);
+        state = "on";
     } else {
         (void)snprintf(cmd, sizeof(cmd), "#BCST 0");
     }
     diveo2_send_command(cell, cmd);
-    LOG_INF("Cell %u: broadcast %s", cell->cell_number, on ? "on" : "off");
+    LOG_INF("Cell %u: broadcast %s", cell->cell_number, state);
 }
 
 /**
@@ -1001,12 +1031,22 @@ static void diveo2_apply_broadcast(struct diveo2_cell_state *cell, bool want_on)
     if (want_on != is_on) {
         diveo2_set_cell_broadcast(cell, want_on);
     } else {
+        const char *state = "off";
+
+        if (want_on) {
+            state = "on";
+        }
         /* Cell already in the desired streaming state — no #BCST, no flash
          * write. */
         LOG_DBG("Cell %u: broadcast already %s, skip #BCST",
-                cell->cell_number, want_on ? "on" : "off");
+                cell->cell_number, state);
     }
-    cell->mode = want_on ? CELL_MODE_BROADCAST : CELL_MODE_POLLED;
+
+    if (want_on) {
+        cell->mode = CELL_MODE_BROADCAST;
+    } else {
+        cell->mode = CELL_MODE_POLLED;
+    }
 }
 
 /**
@@ -1034,8 +1074,11 @@ static void diveo2_detect_step(struct diveo2_cell_state *cell)
             cell->mode = CELL_MODE_BROADCAST;
         }
     } else {
-        CellProtocol_t guess = (1U == cell->detect_phase) ?
-                               CELL_PROTO_DIVEO2 : CELL_PROTO_PYRO;
+        CellProtocol_t guess = CELL_PROTO_PYRO;
+
+        if (1U == cell->detect_phase) {
+            guess = CELL_PROTO_DIVEO2;
+        }
 
         diveo2_send_command(cell, diveo2_detail_cmd(guess));
         if (diveo2_wait_frame(cell, UART_RX_TIMEOUT_MS) &&
@@ -1046,11 +1089,19 @@ static void diveo2_detect_step(struct diveo2_cell_state *cell)
 
     if (CELL_PROTO_UNKNOWN == cell->protocol) {
         /* Advance to the next detection phase next loop. */
-        cell->detect_phase = (uint8_t)((cell->detect_phase + 1U) % 3U);
+        cell->detect_phase = (uint8_t)((cell->detect_phase + 1U) % DIVEO2_DETECT_PHASE_COUNT);
     } else {
+        const char *proto_name = "DiveO2";
+        const char *mode_name = "polled";
+
+        if (CELL_PROTO_PYRO == cell->protocol) {
+            proto_name = "Pyro";
+        }
+        if (CELL_MODE_BROADCAST == cell->mode) {
+            mode_name = "broadcast";
+        }
         LOG_INF("Cell %u: detected %s, %s mode", cell->cell_number,
-                (CELL_PROTO_PYRO == cell->protocol) ? "Pyro" : "DiveO2",
-                (CELL_MODE_BROADCAST == cell->mode) ? "broadcast" : "polled");
+                proto_name, mode_name);
         /* Apply the persistent enforce-broadcast setting once, at detection.
          * Read it HERE (not at thread start): the cell thread auto-starts at
          * boot and would race main()'s runtime_settings_load(), reading the
@@ -1116,7 +1167,7 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
          * Continuous double-buffered reception (the callback hands back the
          * spare buffer on UART_RX_BUF_REQUEST) means a broadcast stream is never
          * re-synced mid-frame — the root-cause fix for broadcast mis-framing. */
-        int en_rc = uart_rx_enable(cell->uart_dev, cell->rx_buf[0],
+        Status_t en_rc = uart_rx_enable(cell->uart_dev, cell->rx_buf[0],
                                    DIVEO2_RX_BUFFER_LEN,
                                    UART_RX_IDLE_TIMEOUT_MS * UART_TIMEOUT_US_PER_MS);
         if (0 != en_rc) {
@@ -1139,11 +1190,19 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
             .millivolts = 0U,
             .status = cell->status,
             .timestamp_ticks = k_uptime_ticks(),
+            .raw_sample = 0,
+            .temperature_dC = 0,
+            .err_code = 0U,
+            .phase = 0,
+            .intensity = 0,
+            .ambient_light = 0,
+            .pressure_uhpa = 0U,
+            .humidity_mRH = 0,
         };
         zbus_pub_checked(cell->out_chan, &init_msg, ZBUS_PUB_TIMEOUT_MS);
 
         /* The cell needs 1 second to power up before it accepts commands */
-        k_msleep(CELL_STARTUP_DELAY_MS);
+        (void)k_msleep(CELL_STARTUP_DELAY_MS);
     }
     return ok;
 }
@@ -1216,7 +1275,7 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
                 (uint64_t)(k_uptime_ticks() - loop_start));
 
             if (elapsed_ms < MIN_SAMPLE_INTERVAL_MS) {
-                k_msleep((int32_t)(MIN_SAMPLE_INTERVAL_MS - (int32_t)elapsed_ms));
+                (void)k_msleep((int32_t)(MIN_SAMPLE_INTERVAL_MS - (int32_t)elapsed_ms));
             }
         }
     }
@@ -1338,7 +1397,7 @@ void diveo2_request_broadcast(uint8_t cell_number, bool on)
     }
 #endif
 #if defined(CONFIG_CELL_3_TYPE_DIVEO2) && CONFIG_CELL_COUNT >= 3
-    if (2U == cell_number) {
+    if (THIRD_CELL_INDEX == cell_number) {
         req = &diveo2_cell_3.broadcast_req;
     }
 #endif

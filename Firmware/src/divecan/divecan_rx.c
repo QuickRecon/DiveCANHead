@@ -58,6 +58,12 @@ LOG_MODULE_REGISTER(divecan_rx, LOG_LEVEL_INF);
 /* Cell index for the third oxygen cell (0-based) */
 static const uint8_t CELL_IDX_2 = 2U;
 
+/* Low nibble of a DiveCAN arbitration id carries the sender/target device type */
+static const uint8_t DIVECAN_TYPE_MASK = 0x0FU;
+
+/* Timeout for the zbus publishes issued from this thread's dispatch handlers */
+static const uint32_t ZBUS_PUB_TIMEOUT_MS = 100U;
+
 /* Device identity — compile-time constants */
 static const DiveCANDevice_t device_spec = {
     .name = "DIVECAN",
@@ -184,25 +190,25 @@ static void can_rx_callback(const struct device *dev, struct can_frame *frame,
      * are CAN bus echoes that bxCAN drops in hardware but the
      * native-linux CAN driver delivers anyway.  Filtering here keeps
      * the behaviour consistent across both backends. */
-    if ((frame->id & 0xFFU) == (uint8_t)DIVECAN_SOLO) {
-        return;
-    }
-
-    DiveCANMessage_t msg = {
-        .id = frame->id,
-        .length = frame->dlc,
-    };
-    (void)memcpy(msg.data, frame->data, frame->dlc);
+    if ((frame->id & BYTE_MASK) == (uint8_t)DIVECAN_SOLO) {
+        /* Echo of our own transmission; nothing to enqueue */
+    } else {
+        DiveCANMessage_t msg = {
+            .id = frame->id,
+            .length = frame->dlc,
+        };
+        (void)memcpy(msg.data, frame->data, frame->dlc);
 
 #ifdef CONFIG_FLASH_LOG
-    /* ISR-safe enqueue; the helper internally gates on the runtime
-     * LOG_CAN_VERBOSE bit so this is a single u8 load when capture is
-     * disabled. */
-    flash_log_enqueue_can_rx_isr(frame);
+        /* ISR-safe enqueue; the helper internally gates on the runtime
+         * LOG_CAN_VERBOSE bit so this is a single u8 load when capture is
+         * disabled. */
+        flash_log_enqueue_can_rx_isr(frame);
 #endif
 
-    if (0 != k_msgq_put(&can_rx_msgq, &msg, K_NO_WAIT)) {
-        OP_ERROR(OP_ERR_CAN_OVERFLOW);
+        if (0 != k_msgq_put(&can_rx_msgq, &msg, K_NO_WAIT)) {
+            OP_ERROR(OP_ERR_CAN_OVERFLOW);
+        }
     }
 }
 
@@ -307,7 +313,7 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
                  * ping, but do NOT restore the pre-loss setpoint: once the
                  * fallback has latched to 0.70 bar the diver must actively
                  * re-select their setpoint on the returning handset. */
-                if ((uint8_t)(message.id & 0x0FU) ==
+                if ((uint8_t)(message.id & DIVECAN_TYPE_MASK) ==
                     (uint8_t)DIVECAN_CONTROLLER) {
                     last_handset_ping_ms = k_uptime_get_32();
                     handset_seen = true;
@@ -398,8 +404,8 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
                            handset_seen, handset_lost_applied,
                            HANDSET_PING_TIMEOUT_MS)) {
             PPO2_t safe_setpoint = HANDSET_LOST_SETPOINT_CB;
-            int rc = zbus_chan_pub(&chan_setpoint, &safe_setpoint,
-                        K_MSEC(100));
+            Status_t rc = zbus_chan_pub(&chan_setpoint, &safe_setpoint,
+                        K_MSEC(ZBUS_PUB_TIMEOUT_MS));
             if (0 == rc) {
                 handset_lost_applied = true;
                 LOG_WRN("Handset ping lost >%u ms; setpoint reverted to 0.70 bar",
@@ -501,7 +507,6 @@ static void RespBusInit(const DiveCANMessage_t *message)
  */
 static void RespPing(const DiveCANMessage_t *message)
 {
-    static const uint8_t DIVECAN_TYPE_MASK = 0x0FU;
     DiveCANType_t devType = device_spec.type;
 
     /* We only want to reply to a ping from the handset */
@@ -547,8 +552,8 @@ static void RespPing(const DiveCANMessage_t *message)
 
         /* DiveCANError_t bits 0–1 carry battery state, bits 2–3 carry
          * solenoid state — designed to be OR-combined into a single byte. */
-        DiveCANError_t err =
-            (DiveCANError_t)((uint8_t)bat_err | (uint8_t)sol_err);
+        uint8_t errBits = (uint8_t)bat_err | (uint8_t)sol_err;
+        DiveCANError_t err = (DiveCANError_t)errBits;
 
         txStatus(devType, batteryV, setpoint, err, true);
         txName(devType, device_spec.name);
@@ -607,7 +612,7 @@ static void RespCal(const DiveCANMessage_t *message)
              * never dequeue it and thus never release the guard, so we must
              * release it here or calibration is locked out forever. */
             Status_t pub_ret = zbus_chan_pub(&chan_cal_request, &req,
-                                             K_MSEC(100));
+                                             K_MSEC(ZBUS_PUB_TIMEOUT_MS));
             if (0 != pub_ret) {
                 calibration_release();
                 OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-pub_ret));
@@ -626,10 +631,10 @@ static void RespSetpoint(const DiveCANMessage_t *message)
     /* Clamp to the valid 0.40–1.60 bar range: an out-of-spec handset request must
      * never drive the loop to an unsafe setpoint (see runtime_settings.h). */
     PPO2_t setpoint = clamp_setpoint_cb(message->data[0]);
-    zbus_pub_checked(&chan_setpoint, &setpoint, K_MSEC(100));
+    zbus_pub_checked(&chan_setpoint, &setpoint, K_MSEC(ZBUS_PUB_TIMEOUT_MS));
     /* Diver-commanded mirror: drives the setpoint-change flush. The
      * handset-loss failsafe deliberately does not publish here. */
-    zbus_pub_checked(&chan_setpoint_cmd, &setpoint, K_MSEC(100));
+    zbus_pub_checked(&chan_setpoint_cmd, &setpoint, K_MSEC(ZBUS_PUB_TIMEOUT_MS));
 }
 
 /**
@@ -642,7 +647,7 @@ static void RespAtmos(const DiveCANMessage_t *message)
     uint16_t pressure = (uint16_t)(
         ((uint16_t)((uint16_t)message->data[2] << DIVECAN_BYTE_WIDTH)) |
         message->data[3]);
-    zbus_pub_checked(&chan_atmos_pressure, &pressure, K_MSEC(100));
+    zbus_pub_checked(&chan_atmos_pressure, &pressure, K_MSEC(ZBUS_PUB_TIMEOUT_MS));
 }
 
 /**
@@ -657,7 +662,7 @@ static void RespShutdown(void)
      * management subsystem handle the sequence asynchronously instead
      * of blocking the CAN task for up to 2 seconds. */
     bool shutdown = true;
-    zbus_pub_checked(&chan_shutdown_request, &shutdown, K_MSEC(100));
+    zbus_pub_checked(&chan_shutdown_request, &shutdown, K_MSEC(ZBUS_PUB_TIMEOUT_MS));
     LOG_INF("Shutdown requested via BUS_OFF");
 }
 
@@ -684,7 +689,7 @@ static void RespDiving(const DiveCANMessage_t *message)
         .dive_number = diveNumber,
         .unix_timestamp = unixTimestamp,
     };
-    zbus_pub_checked(&chan_dive_state, &state, K_MSEC(100));
+    zbus_pub_checked(&chan_dive_state, &state, K_MSEC(ZBUS_PUB_TIMEOUT_MS));
 
     if (state.diving) {
         LOG_INF("Dive #%u started at %u", diveNumber, unixTimestamp);
@@ -700,7 +705,7 @@ static void RespDiving(const DiveCANMessage_t *message)
  */
 static void RespSerialNumber(const DiveCANMessage_t *message)
 {
-    DiveCANType_t origin = (DiveCANType_t)(0x0FU & (message->id));
+    DiveCANType_t origin = (DiveCANType_t)(DIVECAN_TYPE_MASK & (message->id));
     char serial_number[MAX_CAN_RX_LENGTH + 1U] = {0};
     (void)memcpy(serial_number, message->data, MAX_CAN_RX_LENGTH);
     LOG_INF("Serial of device %d: %s", origin, serial_number);

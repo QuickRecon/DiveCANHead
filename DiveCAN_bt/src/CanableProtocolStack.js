@@ -13,12 +13,12 @@ export class CanableProtocolStack {
       // Keep addressed UDS traffic off the permanent 0xFF log-push channel.
       sourceAddress: options.sourceAddress ?? 0xFE,
       targetAddress: options.targetAddress ?? 0x04,
-      ...(options.transport || {})
+      ...options.transport
     });
     this._logTransport = new IsoTpCanTransport(this._can, {
       sourceAddress: options.logAddress ?? 0xFF,
       targetAddress: options.targetAddress ?? 0x04,
-      ...(options.logTransport || {})
+      ...options.logTransport
     });
     this._uds = new UDSClient(this._transport, options.uds);
     this._ota = new OTAManager(this._uds, options.ota);
@@ -47,8 +47,15 @@ export class CanableProtocolStack {
     this._logs.on('progress', p => this.emit('logProgress', p));
     this._logs.on('done', p => this.emit('logDownloadDone', p));
   }
-  on(e, cb) { (this.events[e] ||= []).push(cb); return this; }
-  off(e, cb) { if (this.events[e]) this.events[e] = this.events[e].filter(x => x !== cb); return this; }
+  on(e, cb) {
+    if (!this.events[e]) { this.events[e] = []; }
+    this.events[e].push(cb);
+    return this;
+  }
+  off(e, cb) {
+    if (this.events[e]) { this.events[e] = this.events[e].filter(x => x !== cb); }
+    return this;
+  }
   emit(e, ...a) { for (const cb of this.events[e] || []) { try { cb(...a); } catch (error) { console.error(`Handler for ${e} failed`, error); } } }
   async connect(port = null) { await this._can.connect(port); this._startHandsetGuardian(); }
   async disconnect() { this._stopHandsetGuardian(); this._transport.reset(); this._logTransport.reset(); await this._can.disconnect(); }

@@ -181,7 +181,7 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .label = "Battery",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = (uint64_t)(BATTERY_TYPE_COUNT - 1),
+        .maxValue = (uint64_t)BATTERY_TYPE_COUNT - 1U,
         .options = batteryTypeOptions,
         .optionCount = (uint8_t)BATTERY_TYPE_COUNT
     },
@@ -277,26 +277,27 @@ uint8_t UDS_ComputeMenuOrder(const int16_t *cfg, uint8_t cfgLen,
     uint8_t n = 0U;
 
     /* 1. Curated leading slots: valid, in range, de-duplicated. */
-    for (uint8_t i = 0U; (cfg != NULL) && (i < cfgLen); i++) {
+    for (uint8_t i = 0U; (cfg != NULL) && (i < cfgLen); ++i) {
         int16_t s = cfg[i];
         if ((s < 0) || (s >= (int16_t)settingCount)) {
-            continue; /* empty slot (-1) or a setting absent from this build */
-        }
-        bool dup = false;
-        for (uint8_t k = 0U; k < n; k++) {
-            if (out[k] == (uint8_t)s) {
-                dup = true;
+            /* empty slot (-1) or a setting absent from this build */
+        } else {
+            bool dup = false;
+            for (uint8_t k = 0U; k < n; ++k) {
+                if (out[k] == (uint8_t)s) {
+                    dup = true;
+                }
             }
-        }
-        if (!dup) {
-            out[n++] = (uint8_t)s;
+            if (!dup) {
+                out[n++] = (uint8_t)s;
+            }
         }
     }
 
     /* 2. Append every remaining setting in natural order (kept reachable). */
-    for (uint8_t s = 0U; s < settingCount; s++) {
+    for (uint8_t s = 0U; s < settingCount; ++s) {
         bool present = false;
-        for (uint8_t k = 0U; k < n; k++) {
+        for (uint8_t k = 0U; k < n; ++k) {
             if (out[k] == s) {
                 present = true;
             }
@@ -322,9 +323,18 @@ static void menu_order_ensure(void)
  * existing `>= SETTING_COUNT` bounds checks reject it. */
 static uint8_t menu_to_storage(uint8_t wireIndex)
 {
+    uint8_t storage = SETTING_COUNT;
+
     menu_order_ensure();
-    return (wireIndex < menuOrderLen) ? menuOrder[wireIndex] : SETTING_COUNT;
+    if (wireIndex < menuOrderLen) {
+        storage = menuOrder[wireIndex];
+    }
+    return storage;
 }
+
+/* Nibble packing for UDS_DID_SETTING_LABEL_BASE-relative DIDs */
+static const uint16_t SETTING_DID_INDEX_SHIFT = 4U;
+static const uint16_t SETTING_DID_NIBBLE_MASK = 0x0FU;
 
 void UDS_DecodeSettingLabelDID(uint16_t did, uint8_t *settingIndex,
                    uint8_t *optionIndex)
@@ -333,10 +343,10 @@ void UDS_DecodeSettingLabelDID(uint16_t did, uint8_t *settingIndex,
      * setting index in the HIGH nibble, option index in the LOW nibble. */
     uint16_t offset = (uint16_t)(did - (uint16_t)UDS_DID_SETTING_LABEL_BASE);
     if (settingIndex != NULL) {
-        *settingIndex = (uint8_t)((offset >> 4U) & 0x0FU);
+        *settingIndex = (uint8_t)((offset >> SETTING_DID_INDEX_SHIFT) & SETTING_DID_NIBBLE_MASK);
     }
     if (optionIndex != NULL) {
-        *optionIndex = (uint8_t)(offset & 0x0FU);
+        *optionIndex = (uint8_t)(offset & SETTING_DID_NIBBLE_MASK);
     }
 }
 
@@ -347,8 +357,9 @@ uint16_t UDS_FormatOptionLabel(const char *label, uint8_t *out, uint16_t width)
      * slot and the handset drops it (repeating the previous row). Labels longer
      * than width are truncated. See handset-menu-option-label-format. */
     uint16_t labelLen = (uint16_t)strnlen(label, width);
+    uint16_t padLen = (uint16_t)(width - labelLen);
     (void)memcpy(out, label, labelLen);
-    (void)memset(&out[labelLen], ' ', (size_t)(width - labelLen));
+    (void)memset(&out[labelLen], ' ', (size_t)padLen);
     return width;
 }
 
@@ -399,48 +410,50 @@ uint64_t UDS_GetSettingValue(uint8_t index)
 
     uint8_t bcstCell = 0U;
     if (setting_is_cell_bcst(storageIndex, &bcstCell)) {
-        return rs.enforceBroadcast[bcstCell] ? 1U : 0U;
-    }
-
-    switch (storageIndex) {
-    case SETTING_INDEX_FW_COMMIT:
-        result = 0U;
-        break;
-    case SETTING_INDEX_PPO2_MODE:
-        result = (uint64_t)rs.ppo2ControlMode;
-        break;
-    case SETTING_INDEX_CAL_MODE:
-        result = (uint64_t)rs.calibrationMode;
-        break;
-    case SETTING_INDEX_DEPTH_COMP:
-        if (rs.depthCompensation) {
+        if (rs.enforceBroadcast[bcstCell]) {
             result = 1U;
         }
-        break;
-    /* PID gains are stored as float but exposed as integer micro-units. ROUND
-     * (not truncate) on the way out: a wire value W set as W/1000 lands at the
-     * nearest float, and W/1000*1000 can fall just under W (e.g. 9 -> 0.009f ->
-     * 8.999...). lroundf recovers W exactly for the whole 0..100000 range:
-     * worst-case accumulated float32 error there is < 0.01, far inside the
-     * 0.5 rounding guard band, so any gain written round-trips losslessly.
-     * Single-precision on purpose — the double version of this math was one
-     * of the last soft-double callers on this FPU-single-only part. Gains
-     * are validated >= 0, so round-to-nearest is symmetric-safe. */
-    case SETTING_INDEX_PID_KP:
-        result = (uint64_t)lroundf(rs.pidKp * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
-        break;
-    case SETTING_INDEX_PID_KI:
-        result = (uint64_t)lroundf(rs.pidKi * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
-        break;
-    case SETTING_INDEX_PID_KD:
-        result = (uint64_t)lroundf(rs.pidKd * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
-        break;
-    case SETTING_INDEX_BATTERY_TYPE:
-        result = (uint64_t)rs.batteryType;
-        break;
-    default:
-        OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
-        break;
+    } else {
+        switch (storageIndex) {
+        case SETTING_INDEX_FW_COMMIT:
+            result = 0U;
+            break;
+        case SETTING_INDEX_PPO2_MODE:
+            result = (uint64_t)rs.ppo2ControlMode;
+            break;
+        case SETTING_INDEX_CAL_MODE:
+            result = (uint64_t)rs.calibrationMode;
+            break;
+        case SETTING_INDEX_DEPTH_COMP:
+            if (rs.depthCompensation) {
+                result = 1U;
+            }
+            break;
+        /* PID gains are stored as float but exposed as integer micro-units. ROUND
+         * (not truncate) on the way out: a wire value W set as W/1000 lands at the
+         * nearest float, and W/1000*1000 can fall just under W (e.g. 9 -> 0.009f ->
+         * 8.999...). lroundf recovers W exactly for the whole 0..100000 range:
+         * worst-case accumulated float32 error there is < 0.01, far inside the
+         * 0.5 rounding guard band, so any gain written round-trips losslessly.
+         * Single-precision on purpose — the double version of this math was one
+         * of the last soft-double callers on this FPU-single-only part. Gains
+         * are validated >= 0, so round-to-nearest is symmetric-safe. */
+        case SETTING_INDEX_PID_KP:
+            result = (uint64_t)lroundf(rs.pidKp * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
+            break;
+        case SETTING_INDEX_PID_KI:
+            result = (uint64_t)lroundf(rs.pidKi * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
+            break;
+        case SETTING_INDEX_PID_KD:
+            result = (uint64_t)lroundf(rs.pidKd * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
+            break;
+        case SETTING_INDEX_BATTERY_TYPE:
+            result = (uint64_t)rs.batteryType;
+            break;
+        default:
+            OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
+            break;
+        }
     }
 
     return result;
@@ -526,22 +539,22 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
  * non-persistable indices (out of range, or the read-only FW Commit at 0). */
 static bool setting_index_to_field(uint8_t index, RuntimeSettingField_t *field)
 {
+    bool ok = true;
     uint8_t bcstCell = 0U;
+
     if (setting_is_cell_bcst(index, &bcstCell)) {
         *field = RT_FIELD_BCST; /* the whole enforceBroadcast[] is one key */
-        return true;
-    }
-
-    bool ok = true;
-    switch (index) {
-    case SETTING_INDEX_PPO2_MODE:    *field = RT_FIELD_PPO2;    break;
-    case SETTING_INDEX_CAL_MODE:     *field = RT_FIELD_CAL;     break;
-    case SETTING_INDEX_DEPTH_COMP:   *field = RT_FIELD_DEPTH;   break;
-    case SETTING_INDEX_PID_KP:       *field = RT_FIELD_KP;      break;
-    case SETTING_INDEX_PID_KI:       *field = RT_FIELD_KI;      break;
-    case SETTING_INDEX_PID_KD:       *field = RT_FIELD_KD;      break;
-    case SETTING_INDEX_BATTERY_TYPE: *field = RT_FIELD_BATTERY; break;
-    default:                         ok = false;                break;
+    } else {
+        switch (index) {
+        case SETTING_INDEX_PPO2_MODE:    *field = RT_FIELD_PPO2;    break;
+        case SETTING_INDEX_CAL_MODE:     *field = RT_FIELD_CAL;     break;
+        case SETTING_INDEX_DEPTH_COMP:   *field = RT_FIELD_DEPTH;   break;
+        case SETTING_INDEX_PID_KP:       *field = RT_FIELD_KP;      break;
+        case SETTING_INDEX_PID_KI:       *field = RT_FIELD_KI;      break;
+        case SETTING_INDEX_PID_KD:       *field = RT_FIELD_KD;      break;
+        case SETTING_INDEX_BATTERY_TYPE: *field = RT_FIELD_BATTERY; break;
+        default:                         ok = false;                break;
+        }
     }
     return ok;
 }

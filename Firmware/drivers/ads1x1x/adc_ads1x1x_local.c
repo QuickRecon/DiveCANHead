@@ -48,6 +48,13 @@ LOG_MODULE_REGISTER(ADS1X1X, CONFIG_ADC_LOG_LEVEL);
  * selections. 4 logical channels is sufficient for every cell distribution. */
 #define ADS1X1X_MAX_CHANNELS 4
 
+/* ADS1x1x wake-up-from-power-down delay, per datasheet. */
+static const uint32_t ADS1X1X_POWERUP_DELAY_US = 25U;
+/* Poll interval while waiting for the OS (conversion-done) bit in CONFIG. */
+static const uint32_t ADS1X1X_POLL_INTERVAL_US = 100U;
+/* Register width in bits; ads111x uses the full width, ads101x the upper 12b. */
+static const uint8_t ADS1X1X_FULL_SCALE_BITS = 16U;
+
 struct ads1x1x_channel_cfg {
 	uint16_t config;        /* CONFIG word (MUX/PGA/DR/MODE/COMP), without OS */
 	k_timeout_t ready_time; /* DR-derived data-ready delay for this channel */
@@ -202,7 +209,7 @@ struct ads1x1x_data {
 	/* Last channel that ran a KEPT conversion on this (possibly shared) chip, or -1
 	 * at init. Used to discard one conversion after a MUX change so a high-impedance
 	 * input settles before the kept conversion. */
-	int last_converted_channel;
+	int32_t last_converted_channel;
 #ifdef ADC_ADS1X1X_TRIGGER
 	struct gpio_callback gpio_cb;
 	struct k_work work;
@@ -246,19 +253,18 @@ static inline int ads1x1x_setup_rdy_interrupt(const struct device *dev, bool ena
 static int ads1x1x_read_reg(const struct device *dev, enum ads1x1x_reg reg_addr, uint16_t *buf)
 {
 	const struct ads1x1x_config *config = dev->config;
-	uint16_t reg_val;
+	uint16_t reg_val = 0;
 	int ret;
 
 	ret = i2c_burst_read_dt(&config->bus, reg_addr, (uint8_t *)&reg_val, sizeof(reg_val));
 	if (ret != 0) {
 		LOG_ERR("ADS1X1X[0x%X]: error reading register 0x%X (%d)", config->bus.addr,
 			reg_addr, ret);
-		return ret;
+	} else {
+		*buf = sys_be16_to_cpu(reg_val);
 	}
 
-	*buf = sys_be16_to_cpu(reg_val);
-
-	return 0;
+	return ret;
 }
 
 static int ads1x1x_write_reg(const struct device *dev, enum ads1x1x_reg reg_addr, uint16_t reg_val)
@@ -271,14 +277,12 @@ static int ads1x1x_write_reg(const struct device *dev, enum ads1x1x_reg reg_addr
 	sys_put_be16(reg_val, &buf[1]);
 
 	ret = i2c_write_dt(&config->bus, buf, sizeof(buf));
-
 	if (ret != 0) {
 		LOG_ERR("ADS1X1X[0x%X]: error writing register 0x%X (%d)", config->bus.addr,
 			reg_addr, ret);
-		return ret;
 	}
 
-	return 0;
+	return ret;
 }
 
 static int ads1x1x_start_conversion(const struct device *dev)
@@ -344,78 +348,77 @@ static inline int ads1x1x_acq_time_to_dr(const struct device *dev, uint16_t acq_
 	 * within here for microsecond units. Use Tick units and allow the user to
 	 * specify the ODR directly.
 	 */
-	if (acq_time != ADC_ACQ_TIME_DEFAULT && ADC_ACQ_TIME_UNIT(acq_time) != ADC_ACQ_TIME_TICKS) {
-		return -EINVAL;
-	}
-
-	if (acq_time == ADC_ACQ_TIME_DEFAULT) {
-		odr = ADS1X1X_CONFIG_DR_DEFAULT;
-		odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_DEFAULT];
+	if ((acq_time != ADC_ACQ_TIME_DEFAULT) &&
+	    (ADC_ACQ_TIME_UNIT(acq_time) != ADC_ACQ_TIME_TICKS)) {
+		odr = -EINVAL;
 	} else {
-		switch (acq_value) {
-		case ADS1X1X_CONFIG_DR_8_128:
-			odr = ADS1X1X_CONFIG_DR_8_128;
-			odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_8_128];
-			break;
-		case ADS1X1X_CONFIG_DR_16_250:
-			odr = ADS1X1X_CONFIG_DR_16_250;
-			odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_16_250];
-			break;
-		case ADS1X1X_CONFIG_DR_32_490:
-			odr = ADS1X1X_CONFIG_DR_32_490;
-			odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_32_490];
-			break;
-		case ADS1X1X_CONFIG_DR_64_920:
-			odr = ADS1X1X_CONFIG_DR_64_920;
-			odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_64_920];
-			break;
-		case ADS1X1X_CONFIG_DR_128_1600:
-			odr = ADS1X1X_CONFIG_DR_128_1600;
-			odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_128_1600];
-			break;
-		case ADS1X1X_CONFIG_DR_250_2400:
-			odr = ADS1X1X_CONFIG_DR_250_2400;
-			odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_250_2400];
-			break;
-		case ADS1X1X_CONFIG_DR_475_3300:
-			odr = ADS1X1X_CONFIG_DR_475_3300;
-			odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_475_3300];
-			break;
-		case ADS1X1X_CONFIG_DR_860_3300:
-			odr = ADS1X1X_CONFIG_DR_860_3300;
-			odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_860_3300];
-			break;
-		default:
-			break;
+		if (acq_time == ADC_ACQ_TIME_DEFAULT) {
+			odr = ADS1X1X_CONFIG_DR_DEFAULT;
+			odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_DEFAULT];
+		} else {
+			switch (acq_value) {
+			case ADS1X1X_CONFIG_DR_8_128:
+				odr = ADS1X1X_CONFIG_DR_8_128;
+				odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_8_128];
+				break;
+			case ADS1X1X_CONFIG_DR_16_250:
+				odr = ADS1X1X_CONFIG_DR_16_250;
+				odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_16_250];
+				break;
+			case ADS1X1X_CONFIG_DR_32_490:
+				odr = ADS1X1X_CONFIG_DR_32_490;
+				odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_32_490];
+				break;
+			case ADS1X1X_CONFIG_DR_64_920:
+				odr = ADS1X1X_CONFIG_DR_64_920;
+				odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_64_920];
+				break;
+			case ADS1X1X_CONFIG_DR_128_1600:
+				odr = ADS1X1X_CONFIG_DR_128_1600;
+				odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_128_1600];
+				break;
+			case ADS1X1X_CONFIG_DR_250_2400:
+				odr = ADS1X1X_CONFIG_DR_250_2400;
+				odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_250_2400];
+				break;
+			case ADS1X1X_CONFIG_DR_475_3300:
+				odr = ADS1X1X_CONFIG_DR_475_3300;
+				odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_475_3300];
+				break;
+			case ADS1X1X_CONFIG_DR_860_3300:
+				odr = ADS1X1X_CONFIG_DR_860_3300;
+				odr_delay_us = odr_delay[ADS1X1X_CONFIG_DR_860_3300];
+				break;
+			default:
+				break;
+			}
 		}
-	}
 
-	/* As per the datasheet, 25us is needed to wake-up from power down mode
-	 */
-	odr_delay_us += 25;
-	data->ready_time = K_USEC(odr_delay_us);
+		/* As per the datasheet, a wake-up from power down mode is needed. */
+		odr_delay_us += ADS1X1X_POWERUP_DELAY_US;
+		data->ready_time = K_USEC(odr_delay_us);
+	}
 
 	return odr;
 }
 
 static int ads1x1x_wait_data_ready(const struct device *dev)
 {
-	int rc;
+	int rc = 0;
 	struct ads1x1x_data *data = dev->data;
+	uint16_t status = 0;
+	bool ready = false;
 
 	k_sleep(data->ready_time);
-	uint16_t status = 0;
 
 	rc = ads1x1x_read_reg(dev, ADS1X1X_REG_CONFIG, &status);
-	if (rc != 0) {
-		return rc;
-	}
 
-	while (!(status & ADS1X1X_CONFIG_OS)) {
-		k_sleep(K_USEC(100));
-		rc = ads1x1x_read_reg(dev, ADS1X1X_REG_CONFIG, &status);
-		if (rc != 0) {
-			return rc;
+	while ((0 == rc) && (false == ready)) {
+		if (0 != (status & ADS1X1X_CONFIG_OS)) {
+			ready = true;
+		} else {
+			(void)k_sleep(K_USEC(ADS1X1X_POLL_INTERVAL_US));
+			rc = ads1x1x_read_reg(dev, ADS1X1X_REG_CONFIG, &status);
 		}
 	}
 
@@ -429,129 +432,139 @@ static int ads1x1x_channel_setup(const struct device *dev,
 	struct ads1x1x_data *data = dev->data;
 	uint16_t config = 0;
 	int dr = 0;
+	int rc = 0;
 
 	if (channel_cfg->channel_id >= ADS1X1X_MAX_CHANNELS) {
 		LOG_ERR("unsupported channel id '%d'", channel_cfg->channel_id);
-		return -EINVAL;
-	}
-
-	if (channel_cfg->reference != ADC_REF_INTERNAL) {
+		rc = -EINVAL;
+	} else if (channel_cfg->reference != ADC_REF_INTERNAL) {
 		LOG_ERR("unsupported channel reference type '%d'", channel_cfg->reference);
-		return -ENOTSUP;
-	}
-
+		rc = -ENOTSUP;
+	} else {
 #ifdef ADC_ADS1X1X_CONFIGURABLE_INPUTS
-	if (ads_config->multiplexer) {
-		/* the device has an input multiplexer */
-		if (channel_cfg->differential) {
-			if (channel_cfg->input_positive == 0 && channel_cfg->input_negative == 1) {
-				config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_DIFF_0_1);
-			} else if (channel_cfg->input_positive == 0 &&
-				   channel_cfg->input_negative == 3) {
-				config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_DIFF_0_3);
-			} else if (channel_cfg->input_positive == 1 &&
-				   channel_cfg->input_negative == 3) {
-				config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_DIFF_1_3);
-			} else if (channel_cfg->input_positive == 2 &&
-				   channel_cfg->input_negative == 3) {
-				config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_DIFF_2_3);
+		if (ads_config->multiplexer) {
+			/* the device has an input multiplexer */
+			if (channel_cfg->differential) {
+				if (channel_cfg->input_positive == 0 &&
+				    channel_cfg->input_negative == 1) {
+					config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_DIFF_0_1);
+				} else if (channel_cfg->input_positive == 0 &&
+					   channel_cfg->input_negative == 3) {
+					config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_DIFF_0_3);
+				} else if (channel_cfg->input_positive == 1 &&
+					   channel_cfg->input_negative == 3) {
+					config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_DIFF_1_3);
+				} else if (channel_cfg->input_positive == 2 &&
+					   channel_cfg->input_negative == 3) {
+					config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_DIFF_2_3);
+				} else {
+					LOG_ERR("unsupported input positive '%d' and input negative '%d'",
+						channel_cfg->input_positive, channel_cfg->input_negative);
+					rc = -ENOTSUP;
+				}
 			} else {
-				LOG_ERR("unsupported input positive '%d' and input negative '%d'",
-					channel_cfg->input_positive, channel_cfg->input_negative);
-				return -ENOTSUP;
-			}
-		} else {
-			if (channel_cfg->input_positive == 0) {
-				config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_SINGLE_0);
-			} else if (channel_cfg->input_positive == 1) {
-				config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_SINGLE_1);
-			} else if (channel_cfg->input_positive == 2) {
-				config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_SINGLE_2);
-			} else if (channel_cfg->input_positive == 3) {
-				config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_SINGLE_3);
-			} else {
-				LOG_ERR("unsupported input positive '%d'",
-					channel_cfg->input_positive);
-				return -ENOTSUP;
+				if (channel_cfg->input_positive == 0) {
+					config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_SINGLE_0);
+				} else if (channel_cfg->input_positive == 1) {
+					config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_SINGLE_1);
+				} else if (channel_cfg->input_positive == 2) {
+					config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_SINGLE_2);
+				} else if (channel_cfg->input_positive == 3) {
+					config |= ADS1X1X_CONFIG_MUX(ADS1X15_CONFIG_MUX_SINGLE_3);
+				} else {
+					LOG_ERR("unsupported input positive '%d'",
+						channel_cfg->input_positive);
+					rc = -ENOTSUP;
+				}
 			}
 		}
-	}
 #endif /* ADC_ADS1X1X_CONFIGURABLE_INPUTS */
 
-	dr = ads1x1x_acq_time_to_dr(dev, channel_cfg->acquisition_time);
-	if (dr < 0) {
-		LOG_ERR("unsupported channel acquisition time 0x%02x",
-			channel_cfg->acquisition_time);
-		return -ENOTSUP;
+		if (0 == rc) {
+			dr = ads1x1x_acq_time_to_dr(dev, channel_cfg->acquisition_time);
+			if (dr < 0) {
+				LOG_ERR("unsupported channel acquisition time 0x%02x",
+					channel_cfg->acquisition_time);
+				rc = -ENOTSUP;
+			} else {
+				config |= ADS1X1X_CONFIG_DR(dr);
+
+				if (ads_config->pga) {
+					/* programmable gain amplifier support */
+					switch (channel_cfg->gain) {
+					case ADC_GAIN_1_3:
+						config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_6144);
+						break;
+					case ADC_GAIN_1_2:
+						config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_4096);
+						break;
+					case ADC_GAIN_1:
+						config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_2048);
+						break;
+					case ADC_GAIN_2:
+						config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_1024);
+						break;
+					case ADC_GAIN_4:
+						config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_512);
+						break;
+					case ADC_GAIN_8:
+						config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_256);
+						break;
+					default:
+						LOG_ERR("unsupported channel gain '%d'", channel_cfg->gain);
+						rc = -ENOTSUP;
+						break;
+					}
+				} else {
+					/* no programmable gain amplifier, so only allow ADC_GAIN_1 */
+					if (channel_cfg->gain != ADC_GAIN_1) {
+						LOG_ERR("unsupported channel gain '%d'", channel_cfg->gain);
+						rc = -ENOTSUP;
+					}
+				}
+
+				if (0 == rc) {
+					/* Only single shot supported */
+					config |= ADS1X1X_CONFIG_MODE;
+
+					/* disable comparator */
+					config |= ADS1X1X_CONFIG_COMP_MODE;
+
+					/* Store the channel's config (without OS); the MUX is
+					 * programmed at conversion start, not here, so several
+					 * channels can coexist on one device without the last
+					 * setup clobbering another channel's MUX.
+					 * ads1x1x_acq_time_to_dr() left this channel's
+					 * data-ready delay in data->ready_time — snapshot it
+					 * per channel. */
+					data->channel_cfg[channel_cfg->channel_id].config = config;
+					data->channel_cfg[channel_cfg->channel_id].ready_time =
+						data->ready_time;
+					data->channel_cfg[channel_cfg->channel_id].differential =
+						channel_cfg->differential;
+					atomic_or(&data->channels, BIT(channel_cfg->channel_id));
+				}
+			}
+		}
 	}
 
-	config |= ADS1X1X_CONFIG_DR(dr);
-
-	if (ads_config->pga) {
-		/* programmable gain amplifier support */
-		switch (channel_cfg->gain) {
-		case ADC_GAIN_1_3:
-			config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_6144);
-			break;
-		case ADC_GAIN_1_2:
-			config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_4096);
-			break;
-		case ADC_GAIN_1:
-			config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_2048);
-			break;
-		case ADC_GAIN_2:
-			config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_1024);
-			break;
-		case ADC_GAIN_4:
-			config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_512);
-			break;
-		case ADC_GAIN_8:
-			config |= ADS1X1X_CONFIG_PGA(ADS1X1X_CONFIG_PGA_256);
-			break;
-		default:
-			LOG_ERR("unsupported channel gain '%d'", channel_cfg->gain);
-			return -ENOTSUP;
-		}
-	} else {
-		/* no programmable gain amplifier, so only allow ADC_GAIN_1 */
-		if (channel_cfg->gain != ADC_GAIN_1) {
-			LOG_ERR("unsupported channel gain '%d'", channel_cfg->gain);
-			return -ENOTSUP;
-		}
-	}
-
-	/* Only single shot supported */
-	config |= ADS1X1X_CONFIG_MODE;
-
-	/* disable comparator */
-	config |= ADS1X1X_CONFIG_COMP_MODE;
-
-	/* Store the channel's config (without OS); the MUX is programmed at
-	 * conversion start, not here, so several channels can coexist on one
-	 * device without the last setup clobbering another channel's MUX.
-	 * ads1x1x_acq_time_to_dr() left this channel's data-ready delay in
-	 * data->ready_time — snapshot it per channel. */
-	data->channel_cfg[channel_cfg->channel_id].config = config;
-	data->channel_cfg[channel_cfg->channel_id].ready_time = data->ready_time;
-	data->channel_cfg[channel_cfg->channel_id].differential = channel_cfg->differential;
-	atomic_or(&data->channels, BIT(channel_cfg->channel_id));
-
-	return 0;
+	return rc;
 }
 
 static int ads1x1x_validate_buffer_size(const struct adc_sequence *sequence)
 {
 	size_t needed = sizeof(int16_t);
+	int rc = 0;
 
-	if (sequence->options) {
+	if (NULL != sequence->options) {
 		needed *= (1 + sequence->options->extra_samplings);
 	}
 
 	if (sequence->buffer_size < needed) {
-		return -ENOMEM;
+		rc = -ENOMEM;
 	}
 
-	return 0;
+	return rc;
 }
 
 static int ads1x1x_validate_sequence(const struct device *dev, const struct adc_sequence *sequence)
@@ -559,42 +572,46 @@ static int ads1x1x_validate_sequence(const struct device *dev, const struct adc_
 	const struct ads1x1x_config *config = dev->config;
 	struct ads1x1x_data *data = dev->data;
 	uint32_t channels = sequence->channels;
-	uint8_t resolution;
-	uint8_t ch;
-	int err;
+	uint8_t resolution = 0;
+	uint8_t ch = 0;
+	int err = 0;
+	int rc = 0;
 
 	/* Exactly one channel per read (the ADS1115 converts one MUX at a time;
 	 * the consumer threads each read their own channel). */
-	if (channels == 0U || (channels & (channels - 1U)) != 0U) {
+	if ((0U == channels) || (0U != (channels & (channels - 1U)))) {
 		LOG_ERR("only single-channel sequences supported");
-		return -ENOTSUP;
+		rc = -ENOTSUP;
+	} else {
+		ch = find_lsb_set(channels) - 1U;
+		if ((ch >= ADS1X1X_MAX_CHANNELS) ||
+		    (0U == (atomic_get(&data->channels) & BIT(ch)))) {
+			LOG_ERR("channel %u not set up", ch);
+			rc = -ENOTSUP;
+		} else {
+			if (true == data->channel_cfg[ch].differential) {
+				resolution = config->resolution;
+			} else {
+				resolution = config->resolution - 1U;
+			}
+
+			if (sequence->resolution != resolution) {
+				LOG_ERR("unsupported resolution %d", sequence->resolution);
+				rc = -ENOTSUP;
+			} else if (0U != sequence->oversampling) {
+				LOG_ERR("oversampling not supported");
+				rc = -ENOTSUP;
+			} else {
+				err = ads1x1x_validate_buffer_size(sequence);
+				if (0 != err) {
+					LOG_ERR("buffer size too small");
+					rc = -ENOTSUP;
+				}
+			}
+		}
 	}
 
-	ch = find_lsb_set(channels) - 1U;
-	if (ch >= ADS1X1X_MAX_CHANNELS || (atomic_get(&data->channels) & BIT(ch)) == 0) {
-		LOG_ERR("channel %u not set up", ch);
-		return -ENOTSUP;
-	}
-
-	resolution = data->channel_cfg[ch].differential ? config->resolution
-							: config->resolution - 1;
-	if (sequence->resolution != resolution) {
-		LOG_ERR("unsupported resolution %d", sequence->resolution);
-		return -ENOTSUP;
-	}
-
-	if (sequence->oversampling) {
-		LOG_ERR("oversampling not supported");
-		return -ENOTSUP;
-	}
-
-	err = ads1x1x_validate_buffer_size(sequence);
-	if (err) {
-		LOG_ERR("buffer size too small");
-		return -ENOTSUP;
-	}
-
-	return 0;
+	return rc;
 }
 
 static void adc_context_update_buffer_pointer(struct adc_context *ctx, bool repeat_sampling)
@@ -609,7 +626,7 @@ static void adc_context_update_buffer_pointer(struct adc_context *ctx, bool repe
 static void adc_context_start_sampling(struct adc_context *ctx)
 {
 	struct ads1x1x_data *data = CONTAINER_OF(ctx, struct ads1x1x_data, ctx);
-	int ret;
+	int ret = 0;
 
 	data->repeat_buffer = data->buffer;
 
@@ -620,83 +637,85 @@ static void adc_context_start_sampling(struct adc_context *ctx)
 		 * than handing it off to the acquisition thread.
 		 */
 		adc_context_complete(ctx, ret);
-		return;
-	}
-
-	/* Give semaphore only if the thread is running */
-	if (data->tid) {
-		k_sem_give(&data->acq_sem);
+	} else {
+		/* Give semaphore only if the thread is running */
+		if (NULL != data->tid) {
+			k_sem_give(&data->acq_sem);
+		}
 	}
 }
 
 static int ads1x1x_adc_start_read(const struct device *dev, const struct adc_sequence *sequence)
 {
-	int rc;
+	int rc = 0;
 	struct ads1x1x_data *data = dev->data;
 
 	rc = ads1x1x_validate_sequence(dev, sequence);
-	if (rc != 0) {
-		return rc;
-	}
+	if (0 == rc) {
+		/* Single bit, guaranteed by validate_sequence. Latch the channel for
+		 * start_conversion (runs under the adc_context lock taken by the caller). */
+		data->active_channel = find_lsb_set(sequence->channels) - 1U;
 
-	/* Single bit, guaranteed by validate_sequence. Latch the channel for
-	 * start_conversion (runs under the adc_context lock taken by the caller). */
-	data->active_channel = find_lsb_set(sequence->channels) - 1U;
+		data->buffer = sequence->buffer;
 
-	data->buffer = sequence->buffer;
-
-	/* Discard one conversion after a MUX change so the high-impedance (~10k) cell
-	 * input settles before the KEPT conversion. The two cells on a shared ADS1115
-	 * alternate, so the mux changes every read; with single-shot conversions the first
-	 * sample after a mux switch is unsettled (intermittent ~0 reads, worse the larger
-	 * the other channel's voltage — confirmed on-rig). This throwaway runs under the
-	 * same adc_context lock as the kept read (so the other cell can't re-switch the mux
-	 * between them) and uses the synchronous OS-poll wait; the kept conversion (and the
-	 * ALERT/RDY interrupt, if configured) is started below, so the RDY pin is not armed
-	 * for this throwaway. A lone cell (mux never changes) only discards on its first
-	 * read. Defence-in-depth alongside the slower 32 SPS rate. */
-	if ((int)data->active_channel != data->last_converted_channel) {
-		rc = ads1x1x_start_conversion(dev);   /* sets data->ready_time for this channel */
-		if (rc != 0) {
-			return rc;
+		/* Discard one conversion after a MUX change so the high-impedance (~10k) cell
+		 * input settles before the KEPT conversion. The two cells on a shared ADS1115
+		 * alternate, so the mux changes every read; with single-shot conversions the first
+		 * sample after a mux switch is unsettled (intermittent ~0 reads, worse the larger
+		 * the other channel's voltage — confirmed on-rig). This throwaway runs under the
+		 * same adc_context lock as the kept read (so the other cell can't re-switch the mux
+		 * between them) and uses the synchronous OS-poll wait; the kept conversion (and the
+		 * ALERT/RDY interrupt, if configured) is started below, so the RDY pin is not armed
+		 * for this throwaway. A lone cell (mux never changes) only discards on its first
+		 * read. Defence-in-depth alongside the slower 32 SPS rate. */
+		if ((int32_t)data->active_channel != data->last_converted_channel) {
+			rc = ads1x1x_start_conversion(dev); /* sets data->ready_time for this channel */
+			if (0 == rc) {
+				/* Just wait the conversion time for the input to settle; we
+				 * discard the result, so DON'T wait_data_ready() (its I2C read
+				 * of CONFIG runs on the caller's — the analog cell — thread and
+				 * pushed those threads to ~92% stack high-water). A bare
+				 * k_sleep keeps the discard off the cell-thread stack. */
+				(void)k_sleep(data->ready_time);
+			}
 		}
-		/* Just wait the conversion time for the input to settle; we discard the
-		 * result, so DON'T wait_data_ready() (its I2C read of CONFIG runs on the
-		 * caller's — the analog cell — thread and pushed those threads to ~92% stack
-		 * high-water). A bare k_sleep keeps the discard off the cell-thread stack. */
-		k_sleep(data->ready_time);
-	}
-	data->last_converted_channel = (int)data->active_channel;
+
+		if (0 == rc) {
+			data->last_converted_channel = (int32_t)data->active_channel;
 
 #ifdef ADC_ADS1X1X_TRIGGER
-	const struct ads1x1x_config *config = dev->config;
+			const struct ads1x1x_config *config = dev->config;
 
-	if (config->alert_rdy.port) {
-		rc = ads1x1x_setup_rdy_pin(dev, true);
-		if (rc < 0) {
-			LOG_ERR("Could not configure GPIO Alert/RDY");
-			return rc;
-		}
-		rc = ads1x1x_setup_rdy_interrupt(dev, true);
-		if (rc < 0) {
-			LOG_ERR("Could not configure Alert/RDY interrupt");
-			return rc;
-		}
-	}
+			if (config->alert_rdy.port) {
+				rc = ads1x1x_setup_rdy_pin(dev, true);
+				if (rc < 0) {
+					LOG_ERR("Could not configure GPIO Alert/RDY");
+				} else {
+					rc = ads1x1x_setup_rdy_interrupt(dev, true);
+					if (rc < 0) {
+						LOG_ERR("Could not configure Alert/RDY interrupt");
+					}
+				}
+			}
 #endif
 
-	adc_context_start_read(&data->ctx, sequence);
+			if (0 == rc) {
+				adc_context_start_read(&data->ctx, sequence);
+				rc = adc_context_wait_for_completion(&data->ctx);
+			}
+		}
+	}
 
-	return adc_context_wait_for_completion(&data->ctx);
+	return rc;
 }
 
 static int ads1x1x_adc_read_async(const struct device *dev, const struct adc_sequence *sequence,
 				  struct k_poll_signal *async)
 {
-	int rc;
+	int rc = 0;
 	struct ads1x1x_data *data = dev->data;
 
-	adc_context_lock(&data->ctx, async ? true : false, async);
+	adc_context_lock(&data->ctx, (NULL != async), async);
 	rc = ads1x1x_adc_start_read(dev, sequence);
 	adc_context_release(&data->ctx, rc);
 
@@ -705,24 +724,24 @@ static int ads1x1x_adc_read_async(const struct device *dev, const struct adc_seq
 
 static int ads1x1x_adc_perform_read(const struct device *dev)
 {
-	int rc;
+	int rc = 0;
 	struct ads1x1x_data *data = dev->data;
 	const struct ads1x1x_config *config = dev->config;
-	int16_t buf;
+	int16_t buf = 0;
 
 	rc = ads1x1x_read_reg(dev, ADS1X1X_REG_CONV, &buf);
-	if (rc != 0) {
+	if (0 != rc) {
 		adc_context_complete(&data->ctx, rc);
-		return rc;
-	}
-	/* The ads101x stores it's 12b data in the upper part
-	 * while the ads111x uses all 16b in the register, so
-	 * shift down. Data is also signed, so perform
-	 * division rather than shifting
-	 */
-	*data->buffer++ = buf / (1 << (16 - config->resolution));
+	} else {
+		/* The ads101x stores it's 12b data in the upper part
+		 * while the ads111x uses all 16b in the register, so
+		 * shift down. Data is also signed, so perform
+		 * division rather than shifting
+		 */
+		*data->buffer++ = buf / (1 << (ADS1X1X_FULL_SCALE_BITS - config->resolution));
 
-	adc_context_on_sampling_done(&data->ctx, dev);
+		adc_context_on_sampling_done(&data->ctx, dev);
+	}
 
 	return rc;
 }
@@ -739,19 +758,18 @@ static void ads1x1x_acquisition_thread(void *p1, void *p2, void *p3)
 
 	const struct device *dev = p1;
 	struct ads1x1x_data *data = dev->data;
-	int rc;
+	int rc = 0;
 
 	while (true) {
 		k_sem_take(&data->acq_sem, K_FOREVER);
 
 		rc = ads1x1x_wait_data_ready(dev);
-		if (rc != 0) {
+		if (0 != rc) {
 			LOG_ERR("failed to get ready status (err %d)", rc);
 			adc_context_complete(&data->ctx, rc);
-			continue;
+		} else {
+			(void)ads1x1x_adc_perform_read(dev);
 		}
-
-		ads1x1x_adc_perform_read(dev);
 	}
 }
 
@@ -839,6 +857,7 @@ static int ads1x1x_init(const struct device *dev)
 {
 	const struct ads1x1x_config *config = dev->config;
 	struct ads1x1x_data *data = dev->data;
+	int rc = 0;
 
 	data->dev = dev;
 	data->last_converted_channel = -1;
@@ -847,33 +866,35 @@ static int ads1x1x_init(const struct device *dev)
 
 	if (!device_is_ready(config->bus.bus)) {
 		LOG_ERR("I2C bus %s not ready", config->bus.bus->name);
-		return -ENODEV;
-	}
-
+		rc = -ENODEV;
+	} else {
 #ifdef ADC_ADS1X1X_TRIGGER
-	if (config->alert_rdy.port) {
-		if (ads1x1x_init_interrupt(dev) < 0) {
-			LOG_ERR("Failed to initialize interrupt.");
-			return -EIO;
-		}
-	} else
+		if (config->alert_rdy.port) {
+			if (ads1x1x_init_interrupt(dev) < 0) {
+				LOG_ERR("Failed to initialize interrupt.");
+				rc = -EIO;
+			}
+		} else
 #endif
-	{
-		LOG_DBG("Using acquisition thread");
+		{
+			LOG_DBG("Using acquisition thread");
 
-		data->tid =
-			k_thread_create(&data->thread, data->stack,
-					K_THREAD_STACK_SIZEOF(data->stack),
-					(k_thread_entry_t)ads1x1x_acquisition_thread,
-					(void *)dev, NULL, NULL,
-					CONFIG_ADC_ADS1X1X_LOCAL_ACQUISITION_THREAD_PRIO,
-					0, K_NO_WAIT);
-		k_thread_name_set(data->tid, "adc_ads1x1x");
+			data->tid =
+				k_thread_create(&data->thread, data->stack,
+						K_THREAD_STACK_SIZEOF(data->stack),
+						(k_thread_entry_t)ads1x1x_acquisition_thread,
+						(void *)dev, NULL, NULL,
+						CONFIG_ADC_ADS1X1X_LOCAL_ACQUISITION_THREAD_PRIO,
+						0, K_NO_WAIT);
+			k_thread_name_set(data->tid, "adc_ads1x1x");
+		}
+
+		if (0 == rc) {
+			adc_context_unlock_unconditionally(&data->ctx);
+		}
 	}
 
-	adc_context_unlock_unconditionally(&data->ctx);
-
-	return 0;
+	return rc;
 }
 
 static DEVICE_API(adc, ads1x1x_api) = {

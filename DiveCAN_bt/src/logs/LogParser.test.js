@@ -31,7 +31,7 @@ describe('LogParser', () => {
       buildRecord(FL_TYPE_DIVE_START, diveMarkerPayload(7, 1700000000), { tsUs: 2000 })
     ]);
     const records = parseLogStream(stream);
-    expect(records.length).toBe(2);
+    expect(records).toHaveLength(2);
     expect(records[0].type).toBe(FL_TYPE_BOOT_MARKER);
     expect(records[0].tsUs).toBe(1000n);
     expect(decodeBootMarker(records[0].payload)).toEqual({
@@ -64,7 +64,7 @@ describe('LogParser', () => {
       buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'unreachable'))
     ]);
     const records = parseLogStream(stream);
-    expect(records.length).toBe(1);
+    expect(records).toHaveLength(1);
   });
 
   it('breaks on a truncated tail without throwing', () => {
@@ -72,7 +72,7 @@ describe('LogParser', () => {
     // Append a header claiming a longer payload than exists
     const truncated = new Uint8Array([...good, FL_TYPE_LOG_TEXT, 0, 0xFF, 0x00, 0, 0, 0, 0, 0, 0, 0, 0]);
     const records = parseLogStream(truncated);
-    expect(records.length).toBe(1);
+    expect(records).toHaveLength(1);
   });
 
   it('decodeRecord dispatches by type', () => {

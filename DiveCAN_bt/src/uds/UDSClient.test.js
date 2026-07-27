@@ -39,7 +39,7 @@ describe('UDSClient', () => {
   describe('constructor', () => {
     it('sets up transport message handler', () => {
       expect(transport.events['message']).toBeDefined();
-      expect(transport.events['message'].length).toBe(1);
+      expect(transport.events['message']).toHaveLength(1);
     });
 
     it('accepts options', () => {
@@ -304,7 +304,7 @@ describe('UDSClient', () => {
 
       // Requests must have gone out in submission order, one at a time.
       const sent = transport.getAllSent();
-      expect(sent.length).toBe(2);
+      expect(sent).toHaveLength(2);
       expect(Array.from(sent[0])).toEqual([0x22, 0xF2, 0x00]);
       expect(Array.from(sent[1])).toEqual([0x22, 0xF2, 0x01]);
     });
@@ -364,7 +364,7 @@ describe('UDSClient', () => {
 
         const entries = await client.readErrorHistogram();
 
-        expect(entries.length).toBe(38);
+        expect(entries).toHaveLength(38);
         expect(entries[9]).toMatchObject({ name: 'CELL_FAILURE', count: 3 });
         expect(entries[17]).toMatchObject({ name: 'ISOTP_TIMEOUT', count: 258 });
       });

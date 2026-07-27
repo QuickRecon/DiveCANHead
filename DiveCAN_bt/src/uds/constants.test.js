@@ -77,7 +77,7 @@ describe('UDS constants', () => {
 
     it('returns empty object for invalid cell number', () => {
       const dids = getCellDIDs(99);
-      expect(Object.keys(dids).length).toBe(0);
+      expect(Object.keys(dids)).toHaveLength(0);
     });
 
     it('all returned DIDs have correct prefix', () => {
@@ -191,7 +191,7 @@ describe('UDS constants', () => {
     it('DID addresses are unique', () => {
       const dids = Object.values(STATE_DIDS).map(info => info.did);
       const uniqueDids = [...new Set(dids)];
-      expect(dids.length).toBe(uniqueDids.length);
+      expect(dids).toHaveLength(uniqueDids.length);
     });
 
     it('cell DIDs follow expected pattern', () => {

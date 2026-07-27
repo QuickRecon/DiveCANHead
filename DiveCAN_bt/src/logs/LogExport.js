@@ -29,10 +29,20 @@ export function buildExportRows(records) {
   });
 }
 
+/** Format a decoded field value: arrays as "[a,b,c]", everything else as-is. */
+function formatFieldValue(v) {
+  let formatted = v;
+  if (Array.isArray(v)) {
+    const joined = v.join(',');
+    formatted = `[${joined}]`;
+  }
+  return formatted;
+}
+
 /** Serialise a decoded object into a compact "k=v" summary string. */
 function summarise(decoded) {
   return Object.entries(decoded)
-    .map(([k, v]) => `${k}=${Array.isArray(v) ? `[${v.join(',')}]` : v}`)
+    .map(([k, v]) => `${k}=${formatFieldValue(v)}`)
     .join(' ');
 }
 
@@ -96,6 +106,6 @@ export function triggerDownload(filename, content, mime = 'application/octet-str
   a.download = filename;
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
+  a.remove();
   URL.revokeObjectURL(url);
 }

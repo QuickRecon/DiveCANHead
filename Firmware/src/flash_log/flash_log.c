@@ -126,7 +126,7 @@ uint8_t flash_log_internal_sector_count(FlashLogDest_t dest);
 
 uint8_t flash_log_internal_sector_count(FlashLogDest_t dest)
 {
-    uint8_t result;
+    uint8_t result = 0U;
 
     if (FL_DEST_TELEMETRY == dest) {
         result = FL_TELEMETRY_SECTOR_COUNT;
@@ -142,7 +142,7 @@ uint8_t flash_log_internal_sector_count(FlashLogDest_t dest)
 
 static struct fcb *fl_get_fcb(FlashLogDest_t dest)
 {
-    struct fcb *result;
+    struct fcb *result = NULL;
 
     if (FL_DEST_TELEMETRY == dest) {
         result = &fl_telemetry_fcb;
@@ -161,7 +161,7 @@ struct fcb *flash_log_internal_get_fcb(FlashLogDest_t dest)
 
 static atomic_t *fl_get_drop_counter(FlashLogDest_t dest)
 {
-    atomic_t *result;
+    atomic_t *result = NULL;
 
     if (FL_DEST_TELEMETRY == dest) {
         result = &fl_drops_telemetry;
@@ -175,7 +175,7 @@ static atomic_t *fl_get_drop_counter(FlashLogDest_t dest)
 
 static uint8_t *fl_get_last_drop_type(FlashLogDest_t dest)
 {
-    uint8_t *result;
+    uint8_t *result = NULL;
 
     if (FL_DEST_TELEMETRY == dest) {
         result = &fl_last_drop_type_telemetry;
@@ -225,35 +225,36 @@ static void fl_bump_index_epoch(void)
 static void fl_enqueue(FlashLogDest_t dest, uint8_t type,
                const void *payload, uint16_t length)
 {
-    if (!atomic_get(&fl_initialized)) {
-        return;
-    }
+    if (atomic_get(&fl_initialized)) {
+        uint16_t copy_length = length;
 
-    uint16_t copy_length = length;
-    if (copy_length > sizeof(((LogIngestSlot_t *)0)->payload)) {
-        /* Caller bug — truncate to fit. Don't LOG_ERR (recursion). */
-        copy_length = sizeof(((LogIngestSlot_t *)0)->payload);
-    }
-
-    LogIngestSlot_t slot = {
-        .dest = (uint8_t)dest,
-        .type = type,
-        .length = copy_length,
-        .ts_us = fl_now_us(),
-    };
-    if ((payload != NULL) && (copy_length > 0U)) {
-        (void)memcpy(slot.payload, payload, copy_length);
-    }
-
-    int rc = k_msgq_put(&fl_ingest_msgq, &slot, K_NO_WAIT);
-    if (0 != rc) {
-        atomic_t *ctr = fl_get_drop_counter(dest);
-        uint8_t *last = fl_get_last_drop_type(dest);
-        if (ctr != NULL) {
-            (void)atomic_inc(ctr);
+        if (copy_length > sizeof(((LogIngestSlot_t *)0)->payload)) {
+            /* Caller bug — truncate to fit. Don't LOG_ERR (recursion). */
+            copy_length = sizeof(((LogIngestSlot_t *)0)->payload);
         }
-        if (last != NULL) {
-            *last = type;
+
+        LogIngestSlot_t slot = {
+            .dest = (uint8_t)dest,
+            .type = type,
+            .length = copy_length,
+            .ts_us = fl_now_us(),
+        };
+        if ((payload != NULL) && (copy_length > 0U)) {
+            (void)memcpy(slot.payload, payload, copy_length);
+        }
+
+        Status_t rc = k_msgq_put(&fl_ingest_msgq, &slot, K_NO_WAIT);
+
+        if (0 != rc) {
+            atomic_t *ctr = fl_get_drop_counter(dest);
+            uint8_t *last = fl_get_last_drop_type(dest);
+
+            if (ctr != NULL) {
+                (void)atomic_inc(ctr);
+            }
+            if (last != NULL) {
+                *last = type;
+            }
         }
     }
 }
@@ -262,116 +263,129 @@ static void fl_enqueue(FlashLogDest_t dest, uint8_t type,
 
 void flash_log_enqueue_can_rx_isr(const struct can_frame *frame)
 {
-    if ((frame == NULL) || (0U == (fl_can_verbose & 0x01U))) {
-        return;
+    if ((frame != NULL) && (0U != (fl_can_verbose & 0x01U))) {
+        fl_payload_can_frame_t p = {
+            .id = frame->id,
+            .dlc = frame->dlc,
+            .reserved = 0U,
+        };
+        (void)memcpy(p.data, frame->data, sizeof(p.data));
+        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CAN_RX, &p, sizeof(p));
     }
-
-    fl_payload_can_frame_t p = {
-        .id = frame->id,
-        .dlc = frame->dlc,
-        .reserved = 0U,
-    };
-    (void)memcpy(p.data, frame->data, sizeof(p.data));
-    fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CAN_RX, &p, sizeof(p));
 }
 
 void flash_log_enqueue_can_tx(const struct can_frame *frame)
 {
-    if ((frame == NULL) || (0U == (fl_can_verbose & 0x02U))) {
-        return;
+    if ((frame != NULL) && (0U != (fl_can_verbose & 0x02U))) {
+        fl_payload_can_frame_t p = {
+            .id = frame->id,
+            .dlc = frame->dlc,
+            .reserved = 0U,
+        };
+        (void)memcpy(p.data, frame->data, sizeof(p.data));
+        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CAN_TX, &p, sizeof(p));
     }
-
-    fl_payload_can_frame_t p = {
-        .id = frame->id,
-        .dlc = frame->dlc,
-        .reserved = 0U,
-    };
-    (void)memcpy(p.data, frame->data, sizeof(p.data));
-    fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CAN_TX, &p, sizeof(p));
 }
+
+/* Consensus status/include packing layout — see fl_payload_consensus_t's
+ * status_packed doc comment for the bit map. */
+static const uint16_t FL_CONSENSUS_STATUS_MASK = 0x03U;
+static const uint16_t FL_CONSENSUS_CELL0_INCLUDE_SHIFT = 2U;
+static const uint16_t FL_CONSENSUS_CELL1_STATUS_SHIFT = 3U;
+static const uint16_t FL_CONSENSUS_CELL1_INCLUDE_SHIFT = 5U;
+static const uint16_t FL_CONSENSUS_CELL2_STATUS_SHIFT = 6U;
+static const uint16_t FL_CONSENSUS_CELL2_INCLUDE_SHIFT = 8U;
 
 void flash_log_enqueue_consensus(const ConsensusMsg_t *c, PPO2_t setpoint)
 {
-    if (c == NULL) {
-        return;
+    if (c != NULL) {
+        /* Pack status (2 bits each) + include (1 bit each):
+         *   bit 0..1: status[0], bit 2: include[0]
+         *   bit 3..4: status[1], bit 5: include[1]
+         *   bit 6..7: status[2]
+         *   bit 8: include[2]
+         *
+         * include_array[] entries are materialised into plain uint16_t
+         * 0/1 values before shifting so no bitwise operator is ever
+         * applied directly to a bool operand.
+         */
+        uint16_t include0 = 0U;
+        uint16_t include1 = 0U;
+        uint16_t include2 = 0U;
+
+        if (c->include_array[0]) {
+            include0 = 1U;
+        }
+        if (c->include_array[1]) {
+            include1 = 1U;
+        }
+        if (c->include_array[2]) {
+            include2 = 1U;
+        }
+
+        uint16_t packed = 0U;
+        packed |= (uint16_t)((uint16_t)(c->status_array[0] & FL_CONSENSUS_STATUS_MASK));
+        packed |= (uint16_t)(include0 << FL_CONSENSUS_CELL0_INCLUDE_SHIFT);
+        packed |= (uint16_t)((uint16_t)(c->status_array[1] & FL_CONSENSUS_STATUS_MASK)
+                             << FL_CONSENSUS_CELL1_STATUS_SHIFT);
+        packed |= (uint16_t)(include1 << FL_CONSENSUS_CELL1_INCLUDE_SHIFT);
+        packed |= (uint16_t)((uint16_t)(c->status_array[2] & FL_CONSENSUS_STATUS_MASK)
+                             << FL_CONSENSUS_CELL2_STATUS_SHIFT);
+        packed |= (uint16_t)(include2 << FL_CONSENSUS_CELL2_INCLUDE_SHIFT);
+
+        fl_payload_consensus_t p = {
+            .consensus_ppo2 = c->consensus_ppo2,
+            .ppo2_array = { c->ppo2_array[0], c->ppo2_array[1], c->ppo2_array[2] },
+            .milli_array = { c->milli_array[0], c->milli_array[1], c->milli_array[2] },
+            .status_packed = packed,
+            .confidence = c->confidence,
+            .setpoint = setpoint,
+        };
+        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CONSENSUS, &p, sizeof(p));
     }
-
-    /* Pack status (2 bits each) + include (1 bit each):
-     *   bit 0..1: status[0], bit 2: include[0]
-     *   bit 3..4: status[1], bit 5: include[1]
-     *   bit 6..7: status[2]
-     *   bit 8: include[2]
-     */
-    uint16_t packed = 0U;
-    packed |= (uint16_t)((uint16_t)(c->status_array[0]  & 0x03U) << 0U);
-    packed |= (uint16_t)((uint16_t)(c->include_array[0])         << 2U);
-    packed |= (uint16_t)((uint16_t)(c->status_array[1]  & 0x03U) << 3U);
-    packed |= (uint16_t)((uint16_t)(c->include_array[1])         << 5U);
-    packed |= (uint16_t)((uint16_t)(c->status_array[2]  & 0x03U) << 6U);
-    packed |= (uint16_t)((uint16_t)(c->include_array[2])         << 8U);
-
-    fl_payload_consensus_t p = {
-        .consensus_ppo2 = c->consensus_ppo2,
-        .ppo2_array = { c->ppo2_array[0], c->ppo2_array[1], c->ppo2_array[2] },
-        .milli_array = { c->milli_array[0], c->milli_array[1], c->milli_array[2] },
-        .status_packed = packed,
-        .confidence = c->confidence,
-        .setpoint = setpoint,
-    };
-    fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CONSENSUS, &p, sizeof(p));
 }
 
 void flash_log_enqueue_pid_snapshot(const FlashLogPidSnapshot_t *snap)
 {
-    if (snap == NULL) {
-        return;
+    if (snap != NULL) {
+        fl_payload_pid_t p = {
+            .integral = snap->integral,
+            .saturation_count = snap->saturation_count,
+            .duty = snap->duty,
+            .setpoint = snap->setpoint,
+        };
+        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_PID_SNAPSHOT, &p, sizeof(p));
     }
-
-    fl_payload_pid_t p = {
-        .integral = snap->integral,
-        .saturation_count = snap->saturation_count,
-        .duty = snap->duty,
-        .setpoint = snap->setpoint,
-    };
-    fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_PID_SNAPSHOT, &p, sizeof(p));
 }
 
 void flash_log_enqueue_solenoid_fire(const SolenoidFireEvent_t *evt)
 {
-    if (evt == NULL) {
-        return;
+    if (evt != NULL) {
+        fl_payload_solenoid_fire_t p = {
+            .kind = evt->kind,
+            .requested_on_us = evt->requested_on_us,
+            .off_us = evt->off_us,
+        };
+        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_SOLENOID_FIRE, &p, sizeof(p));
     }
-
-    fl_payload_solenoid_fire_t p = {
-        .kind = evt->kind,
-        .requested_on_us = evt->requested_on_us,
-        .off_us = evt->off_us,
-    };
-    fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_SOLENOID_FIRE, &p, sizeof(p));
 }
 
 void flash_log_enqueue_solenoid_current(const FlashLogSolenoidCurrent_t *rec)
 {
-    if (rec == NULL) {
-        return;
+    if (rec != NULL) {
+        fl_payload_solenoid_current_t p = {
+            .role = rec->role,
+            .classification = rec->classification,
+            .baseline_ua = rec->baseline_ua,
+            .fire_ua = rec->fire_ua,
+            .delta_ua = rec->delta_ua,
+        };
+        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_SOLENOID_CURRENT, &p, sizeof(p));
     }
-
-    fl_payload_solenoid_current_t p = {
-        .role = rec->role,
-        .classification = rec->classification,
-        .baseline_ua = rec->baseline_ua,
-        .fire_ua = rec->fire_ua,
-        .delta_ua = rec->delta_ua,
-    };
-    fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_SOLENOID_CURRENT, &p, sizeof(p));
 }
 
 void flash_log_enqueue_cell_raw(const OxygenCellMsg_t *cell)
 {
-    if (cell == NULL) {
-        return;
-    }
-
     /* DiveO2 cells fill the temp/err/phase/intensity/ambient/pressure/
      * humidity fields. O2S and analog leave most zero. The cheapest
      * discriminator is err_code+phase being non-zero (DiveO2) vs
@@ -379,56 +393,55 @@ void flash_log_enqueue_cell_raw(const OxygenCellMsg_t *cell)
      * disambiguation we use status alone — analog drivers go via the
      * analog payload, digital via either DiveO2 or O2S based on which
      * ancillary fields are populated. */
-
-    if ((cell->phase != 0) || (cell->temperature_dC != 0) ||
-        (cell->pressure_uhpa != 0U) || (cell->humidity_mRH != 0)) {
-        /* DiveO2 */
-        fl_payload_cell_diveo2_t p = {
-            .cell_index = cell->cell_number,
-            .ppo2 = cell->ppo2,
-            .temperature_dC = cell->temperature_dC,
-            .err_code = cell->err_code,
-            .phase = cell->phase,
-            .intensity = cell->intensity,
-            .ambient_light = cell->ambient_light,
-            .pressure_uhpa = cell->pressure_uhpa,
-            .humidity_mRH = cell->humidity_mRH,
-        };
-        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_DIVEO2,
-               &p, sizeof(p));
-    } else if (cell->raw_sample != 0) {
-        /* Analog (raw ADC counts populated) */
-        fl_payload_cell_analog_t p = {
-            .cell_index = cell->cell_number,
-            .ppo2 = cell->ppo2,
-            .raw_adc = cell->raw_sample,
-            .millivolts = cell->millivolts,
-        };
-        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_ANALOG,
-               &p, sizeof(p));
-    } else {
-        /* O2S (minimal — ppo2 + status only) */
-        fl_payload_cell_o2s_t p = {
-            .cell_index = cell->cell_number,
-            .ppo2 = cell->ppo2,
-            .status = (uint8_t)cell->status,
-        };
-        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_O2S,
-               &p, sizeof(p));
+    if (cell != NULL) {
+        if ((cell->phase != 0) || (cell->temperature_dC != 0) ||
+            (cell->pressure_uhpa != 0U) || (cell->humidity_mRH != 0)) {
+            /* DiveO2 */
+            fl_payload_cell_diveo2_t p = {
+                .cell_index = cell->cell_number,
+                .ppo2 = cell->ppo2,
+                .temperature_dC = cell->temperature_dC,
+                .err_code = cell->err_code,
+                .phase = cell->phase,
+                .intensity = cell->intensity,
+                .ambient_light = cell->ambient_light,
+                .pressure_uhpa = cell->pressure_uhpa,
+                .humidity_mRH = cell->humidity_mRH,
+            };
+            fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_DIVEO2,
+                   &p, sizeof(p));
+        } else if (cell->raw_sample != 0) {
+            /* Analog (raw ADC counts populated) */
+            fl_payload_cell_analog_t p = {
+                .cell_index = cell->cell_number,
+                .ppo2 = cell->ppo2,
+                .raw_adc = cell->raw_sample,
+                .millivolts = cell->millivolts,
+            };
+            fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_ANALOG,
+                   &p, sizeof(p));
+        } else {
+            /* O2S (minimal — ppo2 + status only) */
+            fl_payload_cell_o2s_t p = {
+                .cell_index = cell->cell_number,
+                .ppo2 = cell->ppo2,
+                .status = (uint8_t)cell->status,
+            };
+            fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_O2S,
+                   &p, sizeof(p));
+        }
     }
 }
 
 void flash_log_enqueue_error(const ErrorEvent_t *e)
 {
-    if (e == NULL) {
-        return;
+    if (e != NULL) {
+        fl_payload_error_t p = {
+            .code = (uint32_t)e->code,
+            .detail = e->detail,
+        };
+        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_ERROR_EVENT, &p, sizeof(p));
     }
-
-    fl_payload_error_t p = {
-        .code = (uint32_t)e->code,
-        .detail = e->detail,
-    };
-    fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_ERROR_EVENT, &p, sizeof(p));
 }
 
 void flash_log_enqueue_dive_marker(bool is_start, uint16_t dive_number,
@@ -447,27 +460,31 @@ void flash_log_enqueue_dive_marker(bool is_start, uint16_t dive_number,
 void flash_log_enqueue_text(uint8_t level, uint16_t module_id,
                 const char *msg, size_t len)
 {
-    if ((msg == NULL) && (len > 0U)) {
-        return;
+    if ((msg != NULL) || (len == 0U)) {
+        /* Inline-compose a header + tail because the LOG_TEXT payload is
+         * variable-length. Use a temporary buffer sized to the slot
+         * payload. */
+        static const size_t HDR_SIZE = sizeof(fl_payload_log_text_t);
+        const size_t MAX_TAIL =
+            sizeof(((LogIngestSlot_t *)0)->payload) - HDR_SIZE;
+        size_t tail = len;
+
+        if (tail > MAX_TAIL) {
+            tail = MAX_TAIL;
+        }
+
+        uint8_t buf[CONFIG_FLASH_LOG_MAX_ENTRY_BYTES];
+        fl_payload_log_text_t *hdr = (fl_payload_log_text_t *)buf;
+
+        hdr->level = level;
+        hdr->module_id = module_id;
+        if ((msg != NULL) && (tail > 0U)) {
+            (void)memcpy(&buf[HDR_SIZE], msg, tail);
+        }
+
+        fl_enqueue(FL_DEST_TEXT, FL_TYPE_LOG_TEXT, buf,
+               (uint16_t)(HDR_SIZE + tail));
     }
-
-    /* Inline-compose a header + tail because the LOG_TEXT payload is
-     * variable-length. Use a temporary buffer sized to the slot payload. */
-    static const size_t HDR_SIZE = sizeof(fl_payload_log_text_t);
-    const size_t MAX_TAIL =
-        sizeof(((LogIngestSlot_t *)0)->payload) - HDR_SIZE;
-    size_t tail = (len > MAX_TAIL) ? MAX_TAIL : len;
-
-    uint8_t buf[CONFIG_FLASH_LOG_MAX_ENTRY_BYTES];
-    fl_payload_log_text_t *hdr = (fl_payload_log_text_t *)buf;
-    hdr->level = level;
-    hdr->module_id = module_id;
-    if ((msg != NULL) && (tail > 0U)) {
-        (void)memcpy(&buf[HDR_SIZE], msg, tail);
-    }
-
-    fl_enqueue(FL_DEST_TEXT, FL_TYPE_LOG_TEXT, buf,
-           (uint16_t)(HDR_SIZE + tail));
 }
 
 /* ---- Writer thread ----
@@ -490,7 +507,7 @@ void flash_log_enqueue_text(uint8_t level, uint16_t module_id,
  * the larger of the two original buffers. */
 static uint8_t fl_writer_scratch[sizeof(fl_entry_hdr_t) + CONFIG_FLASH_LOG_MAX_ENTRY_BYTES];
 
-static int fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
+static Status_t fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
                  uint8_t flags, uint64_t ts_us,
                  const void *payload, uint16_t length)
 {
@@ -501,7 +518,7 @@ static int fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
         .ts_boot_us = ts_us,
     };
     struct fcb_entry loc;
-    int rc = fcb_append(fcb_p, (uint16_t)(sizeof(hdr) + length), &loc);
+    Status_t rc = fcb_append(fcb_p, (uint16_t)(sizeof(hdr) + length), &loc);
     if (0 != rc) {
         if (-ENOSPC == rc) {
             /* Ring is full — erase oldest sector and retry once. */
@@ -550,22 +567,20 @@ static void fl_emit_drop_marker_if_any(FlashLogDest_t dest)
     atomic_t *ctr = fl_get_drop_counter(dest);
     uint8_t *last = fl_get_last_drop_type(dest);
     struct fcb *fcb_p = fl_get_fcb(dest);
-    if ((ctr == NULL) || (last == NULL) || (fcb_p == NULL)) {
-        return;
-    }
 
-    atomic_val_t snapshot = atomic_clear(ctr);
-    if (0 == snapshot) {
-        return;
-    }
+    if ((ctr != NULL) && (last != NULL) && (fcb_p != NULL)) {
+        atomic_val_t snapshot = atomic_clear(ctr);
 
-    fl_payload_drop_marker_t p = {
-        .count = (uint32_t)snapshot,
-        .last_dropped_type = *last,
-    };
-    (void)fl_write_entry_to_fcb(fcb_p, FL_TYPE_DROP_MARKER,
-                    FL_ENTRY_FLAG_DROP_PRECEDED,
-                    fl_now_us(), &p, sizeof(p));
+        if (0 != snapshot) {
+            fl_payload_drop_marker_t p = {
+                .count = (uint32_t)snapshot,
+                .last_dropped_type = *last,
+            };
+            (void)fl_write_entry_to_fcb(fcb_p, FL_TYPE_DROP_MARKER,
+                            FL_ENTRY_FLAG_DROP_PRECEDED,
+                            fl_now_us(), &p, sizeof(p));
+        }
+    }
 }
 
 /* ---- Packed batch staging ----
@@ -586,23 +601,28 @@ static void fl_emit_drop_marker_if_any(FlashLogDest_t dest)
 static uint8_t fl_batch_buf[FL_BATCH_BUF_BYTES];
 static size_t  fl_batch_len;
 
+static const uint16_t FL_BATCH_TS_BYTE_COUNT = 8U;
+
 static bool fl_batch_append(const LogIngestSlot_t *slot)
 {
+    bool appended = false;
     size_t need = FL_BATCH_HDR_BYTES + slot->length;
-    if (fl_batch_len + need > sizeof(fl_batch_buf)) {
-        return false;
+
+    if (fl_batch_len + need <= sizeof(fl_batch_buf)) {
+        uint8_t *p = &fl_batch_buf[fl_batch_len];
+
+        p[0] = slot->dest;
+        p[1] = slot->type;
+        p[2] = (uint8_t)(slot->length & BYTE_MASK);
+        p[3] = (uint8_t)((slot->length >> BYTE_WIDTH) & BYTE_MASK);
+        for (uint8_t b = 0U; b < FL_BATCH_TS_BYTE_COUNT; ++b) {
+            p[4U + b] = (uint8_t)((slot->ts_us >> (BYTE_WIDTH * b)) & BYTE_MASK);
+        }
+        (void)memcpy(&p[FL_BATCH_HDR_BYTES], slot->payload, slot->length);
+        fl_batch_len += need;
+        appended = true;
     }
-    uint8_t *p = &fl_batch_buf[fl_batch_len];
-    p[0] = slot->dest;
-    p[1] = slot->type;
-    p[2] = (uint8_t)(slot->length & 0xFFU);
-    p[3] = (uint8_t)((slot->length >> 8) & 0xFFU);
-    for (uint8_t b = 0U; b < 8U; ++b) {
-        p[4U + b] = (uint8_t)((slot->ts_us >> (8U * b)) & 0xFFU);
-    }
-    (void)memcpy(&p[FL_BATCH_HDR_BYTES], slot->payload, slot->length);
-    fl_batch_len += need;
-    return true;
+    return appended;
 }
 
 /* Write all TELEMETRY non-marker records staged in fl_batch_buf as ONE FCB entry
@@ -624,25 +644,29 @@ static void fl_write_telemetry_batch(void)
     uint64_t first_ts = 0U;
     bool have = false;
     size_t off = 0U;
-    while (off + FL_BATCH_HDR_BYTES <= fl_batch_len) {
+    bool truncated = false;
+
+    while ((off + FL_BATCH_HDR_BYTES <= fl_batch_len) && !truncated) {
         const uint8_t *p = &fl_batch_buf[off];
         FlashLogDest_t dest = (FlashLogDest_t)p[0];
         uint8_t type = p[1];
-        uint16_t length = (uint16_t)((uint16_t)p[2] | (uint16_t)((uint16_t)p[3] << 8U));
+        uint16_t length = (uint16_t)((uint16_t)p[2] | (uint16_t)((uint16_t)p[3] << BYTE_WIDTH));
         size_t rec = FL_BATCH_HDR_BYTES + length;
+
         if (off + rec > fl_batch_len) {
-            break;
-        }
-        if ((FL_DEST_TELEMETRY == dest) && !fl_is_marker_type(type)) {
-            if (!have) {
-                for (uint8_t b = 0U; b < 8U; ++b) {
-                    first_ts |= ((uint64_t)p[4U + b]) << (8U * b);
+            truncated = true;
+        } else {
+            if ((FL_DEST_TELEMETRY == dest) && !fl_is_marker_type(type)) {
+                if (!have) {
+                    for (uint8_t b = 0U; b < FL_BATCH_TS_BYTE_COUNT; ++b) {
+                        first_ts |= (uint64_t)(((uint64_t)p[4U + b]) << (BYTE_WIDTH * b));
+                    }
+                    have = true;
                 }
-                have = true;
+                total += sizeof(fl_entry_hdr_t) + length;
             }
-            total += sizeof(fl_entry_hdr_t) + length;
+            off += rec;
         }
-        off += rec;
     }
     if (!have) {
         return;
@@ -656,7 +680,7 @@ static void fl_write_telemetry_batch(void)
         .ts_boot_us = first_ts,
     };
     struct fcb_entry loc;
-    int rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
+    Status_t rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
     if (-ENOSPC == rc) {
         rc = fcb_rotate(fcb_p);
         if (0 == rc) {
@@ -674,43 +698,48 @@ static void fl_write_telemetry_batch(void)
     /* Pass B: write each telemetry sub-record [fl_entry_hdr_t + payload],
      * coalesced into one flash write per sub-record. */
     off = 0U;
-    while ((0 == rc) && (off + FL_BATCH_HDR_BYTES <= fl_batch_len)) {
+    truncated = false;
+    while ((0 == rc) && (off + FL_BATCH_HDR_BYTES <= fl_batch_len) && !truncated) {
         const uint8_t *p = &fl_batch_buf[off];
         FlashLogDest_t dest = (FlashLogDest_t)p[0];
         uint8_t type = p[1];
-        uint16_t length = (uint16_t)((uint16_t)p[2] | (uint16_t)((uint16_t)p[3] << 8U));
+        uint16_t length = (uint16_t)((uint16_t)p[2] | (uint16_t)((uint16_t)p[3] << BYTE_WIDTH));
         size_t rec = FL_BATCH_HDR_BYTES + length;
+
         if (off + rec > fl_batch_len) {
-            break;
-        }
-        if ((FL_DEST_TELEMETRY == dest) && !fl_is_marker_type(type)) {
-            uint64_t ts = 0U;
-            for (uint8_t b = 0U; b < 8U; ++b) {
-                ts |= ((uint64_t)p[4U + b]) << (8U * b);
-            }
-            fl_entry_hdr_t sh = {
-                .type = type,
-                .flags = 0U,
-                .length = length,
-                .ts_boot_us = ts,
-            };
-            size_t wlen = sizeof(sh) + length;
-            if (wlen <= sizeof(fl_writer_scratch)) {
-                (void)memcpy(fl_writer_scratch, &sh, sizeof(sh));
-                if (length > 0U) {
-                    (void)memcpy(&fl_writer_scratch[sizeof(sh)], &p[FL_BATCH_HDR_BYTES], length);
+            truncated = true;
+        } else {
+            if ((FL_DEST_TELEMETRY == dest) && !fl_is_marker_type(type)) {
+                uint64_t ts = 0U;
+
+                for (uint8_t b = 0U; b < FL_BATCH_TS_BYTE_COUNT; ++b) {
+                    ts |= (uint64_t)(((uint64_t)p[4U + b]) << (BYTE_WIDTH * b));
                 }
-                rc = flash_area_write(fcb_p->fap, woff, fl_writer_scratch, wlen);
-            } else {
-                rc = flash_area_write(fcb_p->fap, woff, &sh, sizeof(sh));
-                if ((0 == rc) && (length > 0U)) {
-                    rc = flash_area_write(fcb_p->fap, woff + (off_t)sizeof(sh),
-                                  &p[FL_BATCH_HDR_BYTES], length);
+                fl_entry_hdr_t sh = {
+                    .type = type,
+                    .flags = 0U,
+                    .length = length,
+                    .ts_boot_us = ts,
+                };
+                size_t wlen = sizeof(sh) + length;
+
+                if (wlen <= sizeof(fl_writer_scratch)) {
+                    (void)memcpy(fl_writer_scratch, &sh, sizeof(sh));
+                    if (length > 0U) {
+                        (void)memcpy(&fl_writer_scratch[sizeof(sh)], &p[FL_BATCH_HDR_BYTES], length);
+                    }
+                    rc = flash_area_write(fcb_p->fap, woff, fl_writer_scratch, wlen);
+                } else {
+                    rc = flash_area_write(fcb_p->fap, woff, &sh, sizeof(sh));
+                    if ((0 == rc) && (length > 0U)) {
+                        rc = flash_area_write(fcb_p->fap, woff + (off_t)sizeof(sh),
+                                      &p[FL_BATCH_HDR_BYTES], length);
+                    }
                 }
+                woff += (off_t)wlen;
             }
-            woff += (off_t)wlen;
+            off += rec;
         }
-        off += rec;
     }
 
     if (0 == rc) {
@@ -725,58 +754,72 @@ static void fl_write_telemetry_batch(void)
  * watchdog. */
 static void fl_batch_flush(void)
 {
-    if (fl_batch_len == 0U) {
-        return;
-    }
-    heartbeat_set_long_op(true);
+    if (fl_batch_len != 0U) {
+        bool truncated = false;
 
-    fl_emit_drop_marker_if_any(FL_DEST_TELEMETRY);
-    fl_emit_drop_marker_if_any(FL_DEST_TEXT);
+        heartbeat_set_long_op(true);
 
-    /* Pass 1: markers (mirrored) + TEXT records → individual entries, so the
-     * boot-time index walk still finds dive/boot markers and the (slow) text ring
-     * keeps per-message granularity. */
-    size_t off = 0U;
-    while (off + FL_BATCH_HDR_BYTES <= fl_batch_len) {
-        const uint8_t *p = &fl_batch_buf[off];
-        FlashLogDest_t dest = (FlashLogDest_t)p[0];
-        uint8_t type = p[1];
-        uint16_t length = (uint16_t)((uint16_t)p[2] | (uint16_t)((uint16_t)p[3] << 8U));
-        size_t rec = FL_BATCH_HDR_BYTES + length;
-        if (off + rec > fl_batch_len) {
-            break; /* truncation guard — should never happen */
-        }
-        bool marker = fl_is_marker_type(type);
-        if (marker || (FL_DEST_TEXT == dest)) {
-            uint64_t ts = 0U;
-            for (uint8_t b = 0U; b < 8U; ++b) {
-                ts |= ((uint64_t)p[4U + b]) << (8U * b);
-            }
-            const uint8_t *payload = &p[FL_BATCH_HDR_BYTES];
-            struct fcb *primary = fl_get_fcb(dest);
-            if (primary != NULL) {
-                (void)fl_write_entry_to_fcb(primary, type, 0U, ts, payload, length);
-            }
-            if (marker) {
-                FlashLogDest_t mirror_dest =
-                    (FL_DEST_TELEMETRY == dest) ? FL_DEST_TEXT : FL_DEST_TELEMETRY;
-                struct fcb *mirror = fl_get_fcb(mirror_dest);
-                if (mirror != NULL) {
-                    (void)fl_write_entry_to_fcb(mirror, type, 0U, ts, payload, length);
+        fl_emit_drop_marker_if_any(FL_DEST_TELEMETRY);
+        fl_emit_drop_marker_if_any(FL_DEST_TEXT);
+
+        /* Pass 1: markers (mirrored) + TEXT records → individual entries, so
+         * the boot-time index walk still finds dive/boot markers and the
+         * (slow) text ring keeps per-message granularity. */
+        size_t off = 0U;
+
+        while ((off + FL_BATCH_HDR_BYTES <= fl_batch_len) && !truncated) {
+            const uint8_t *p = &fl_batch_buf[off];
+            FlashLogDest_t dest = (FlashLogDest_t)p[0];
+            uint8_t type = p[1];
+            uint16_t length = (uint16_t)((uint16_t)p[2] | (uint16_t)((uint16_t)p[3] << BYTE_WIDTH));
+            size_t rec = FL_BATCH_HDR_BYTES + length;
+
+            if (off + rec > fl_batch_len) {
+                truncated = true; /* truncation guard — should never happen */
+            } else {
+                bool marker = fl_is_marker_type(type);
+
+                if (marker || (FL_DEST_TEXT == dest)) {
+                    uint64_t ts = 0U;
+
+                    for (uint8_t b = 0U; b < FL_BATCH_TS_BYTE_COUNT; ++b) {
+                        ts |= (uint64_t)(((uint64_t)p[4U + b]) << (BYTE_WIDTH * b));
+                    }
+                    const uint8_t *payload = &p[FL_BATCH_HDR_BYTES];
+                    struct fcb *primary = fl_get_fcb(dest);
+
+                    if (primary != NULL) {
+                        (void)fl_write_entry_to_fcb(primary, type, 0U, ts, payload, length);
+                    }
+                    if (marker) {
+                        FlashLogDest_t mirror_dest;
+
+                        if (FL_DEST_TELEMETRY == dest) {
+                            mirror_dest = FL_DEST_TEXT;
+                        } else {
+                            mirror_dest = FL_DEST_TELEMETRY;
+                        }
+
+                        struct fcb *mirror = fl_get_fcb(mirror_dest);
+
+                        if (mirror != NULL) {
+                            (void)fl_write_entry_to_fcb(mirror, type, 0U, ts, payload, length);
+                        }
+                        /* A new boot/dive key is now on flash — any index
+                         * built before this point no longer resolves it. */
+                        fl_bump_index_epoch();
+                    }
                 }
-                /* A new boot/dive key is now on flash — any index built
-                 * before this point no longer resolves it. */
-                fl_bump_index_epoch();
+                off += rec;
             }
         }
-        off += rec;
+
+        /* Pass 2: all TELEMETRY non-marker records → one batched entry. */
+        fl_write_telemetry_batch();
+
+        fl_batch_len = 0U;
+        heartbeat_set_long_op(false);
     }
-
-    /* Pass 2: all TELEMETRY non-marker records → one batched entry. */
-    fl_write_telemetry_batch();
-
-    fl_batch_len = 0U;
-    heartbeat_set_long_op(false);
 }
 
 static void fl_writer_thread(void *arg1, void *arg2, void *arg3)
@@ -784,6 +827,9 @@ static void fl_writer_thread(void *arg1, void *arg2, void *arg3)
     ARG_UNUSED(arg1);
     ARG_UNUSED(arg2);
     ARG_UNUSED(arg3);
+
+    static const int32_t FL_WRITER_BACKOFF_MS = 50;
+    static const int64_t FL_WRITER_MAX_WAIT_MS = 250;
 
     heartbeat_register(HEARTBEAT_FLASH_LOG);
     int64_t next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
@@ -793,42 +839,51 @@ static void fl_writer_thread(void *arg1, void *arg2, void *arg3)
 
         /* Honour pause without spinning hot and without flushing (the flash must
          * stay quiet during e.g. an OTA). Held entries flush after resume. */
-        if (atomic_get(&fl_paused)) {
-            k_msleep(50);
+        if (0 != atomic_get(&fl_paused)) {
+            (void)k_msleep(FL_WRITER_BACKOFF_MS);
             next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
-            continue;
-        }
+        } else {
+            /* Block for the next entry, but wake at least every 250 ms to
+             * kick the heartbeat and check the flush deadline. */
+            int64_t to_flush = next_flush - k_uptime_get();
+            uint32_t wait;
 
-        /* Block for the next entry, but wake at least every 250 ms to kick the
-         * heartbeat and check the flush deadline. */
-        int64_t to_flush = next_flush - k_uptime_get();
-        uint32_t wait = (to_flush <= 0) ? 0U :
-                        ((to_flush < 250) ? (uint32_t)to_flush : 250U);
+            if (to_flush <= 0) {
+                wait = 0U;
+            } else if (to_flush < FL_WRITER_MAX_WAIT_MS) {
+                wait = (uint32_t)to_flush;
+            } else {
+                wait = (uint32_t)FL_WRITER_MAX_WAIT_MS;
+            }
 
-        LogIngestSlot_t slot;
-        int rc = k_msgq_get(&fl_ingest_msgq, &slot, K_MSEC(wait));
-        if (0 == rc) {
-            if (!fl_batch_append(&slot)) {
-                /* Buffer full before the window elapsed — flush now, then stage
-                 * the entry that didn't fit. */
+            LogIngestSlot_t slot;
+            Status_t rc = k_msgq_get(&fl_ingest_msgq, &slot, K_MSEC(wait));
+
+            if (0 == rc) {
+                if (!fl_batch_append(&slot)) {
+                    /* Buffer full before the window elapsed — flush now, then
+                     * stage the entry that didn't fit. */
+                    fl_batch_flush();
+                    next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
+                    (void)fl_batch_append(&slot);
+                }
+                /* Markers are critical — flush immediately so a power-cut
+                 * can't lose a dive start/end or boot record. */
+                if (fl_is_marker_type(slot.type)) {
+                    fl_batch_flush();
+                    next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
+                }
+            } else if (-EAGAIN != rc) {
+                /* Kernel-level error; back off briefly. */
+                (void)k_msleep(FL_WRITER_BACKOFF_MS);
+            } else {
+                /* No action required */
+            }
+
+            if (k_uptime_get() >= next_flush) {
                 fl_batch_flush();
                 next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
-                (void)fl_batch_append(&slot);
             }
-            /* Markers are critical — flush immediately so a power-cut can't lose
-             * a dive start/end or boot record. */
-            if (fl_is_marker_type(slot.type)) {
-                fl_batch_flush();
-                next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
-            }
-        } else if (-EAGAIN != rc) {
-            /* Kernel-level error; back off briefly. */
-            k_msleep(50);
-        }
-
-        if (k_uptime_get() >= next_flush) {
-            fl_batch_flush();
-            next_flush = k_uptime_get() + FL_BATCH_WINDOW_MS;
         }
     }
 }
@@ -839,6 +894,14 @@ K_THREAD_DEFINE(fl_writer_tid, CONFIG_FLASH_LOG_WRITER_STACK,
 
 /* ---- Settings handler for the "log" subtree ---- */
 
+/* fl_rtt_level valid range and fl_can_verbose bitmask width, shared between
+ * the settings-load validation below and the runtime setters. */
+static const uint8_t FL_RTT_LEVEL_MIN = 1U;
+static const uint8_t FL_RTT_LEVEL_MAX = 4U;
+static const uint8_t FL_CAN_VERBOSE_MASK = 0x03U;
+
+/* Return type is `int` per Zephyr's settings_handler_static.h_set contract
+ * (settings/settings.h), not a project-owned return code. */
 static int fl_settings_set(const char *name, size_t len,
                settings_read_cb read_cb, void *cb_arg)
 {
@@ -853,13 +916,14 @@ static int fl_settings_set(const char *name, size_t len,
     } else if (0 == strcmp(name, "rtt_level")) {
         uint8_t v = 0U;
         ssize_t got = read_cb(cb_arg, &v, sizeof(v));
-        if (((ssize_t)sizeof(v) == got) && (v >= 1U) && (v <= 4U)) {
+        if (((ssize_t)sizeof(v) == got) && (v >= FL_RTT_LEVEL_MIN) &&
+            (v <= FL_RTT_LEVEL_MAX)) {
             fl_rtt_level = v;
         }
     } else if (0 == strcmp(name, "can_verbose")) {
         uint8_t v = 0U;
         ssize_t got = read_cb(cb_arg, &v, sizeof(v));
-        if (((ssize_t)sizeof(v) == got) && (v <= 0x03U)) {
+        if (((ssize_t)sizeof(v) == got) && (v <= FL_CAN_VERBOSE_MASK)) {
             fl_can_verbose = v;
         }
     } else {
@@ -891,7 +955,7 @@ static void fl_populate_sectors(struct flash_sector *arr, off_t base,
     }
 }
 
-static int fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
+static Status_t fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
             int area_id, off_t partition_offset, uint8_t sector_count)
 {
     fl_populate_sectors(sectors, partition_offset, sector_count);
@@ -908,7 +972,7 @@ static int fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
      * grinds for tens of seconds and the board never reaches normal operation.
      * Trade-off: entries are validated by the fixed end-marker, not a CRC (still
      * catches truncated/torn writes). See the fcb defs + FL_FCB_MAGIC bump. */
-    int rc = fcb_init(area_id, fcb_p);
+    Status_t rc = fcb_init(area_id, fcb_p);
     if (0 != rc) {
         /* One-shot recovery: erase the partition and retry. fcb_init bails fast
          * here (sector-0 magic mismatch → -ENOMSG, no entry walk) on stale or
@@ -918,7 +982,8 @@ static int fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
          * feeding. The spi_nor driver k_sleeps while polling WIP
          * (CONFIG_SPI_NOR_SLEEP_WHILE_WAITING_UNTIL_READY), so the low-prio feeder
          * still gets scheduled during the erase. */
-        const struct flash_area *fa;
+        const struct flash_area *fa = NULL;
+
         if (0 == flash_area_open(area_id, &fa)) {
             heartbeat_set_long_op(true);
             (void)flash_area_erase(fa, 0U, fa->fa_size);
@@ -931,45 +996,53 @@ static int fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
     return rc;
 }
 
-int flash_log_init(void)
+static const uint32_t FL_INIT_ERR_CODE_MASK = 0xFFFFU;
+
+Status_t flash_log_init(void)
 {
+    Status_t result = 0;
+
     if (atomic_set(&fl_initialized, 1) == 1) {
-        return 0;
+        result = 0;
+    } else {
+        /* Settings subsystem may already be up (runtime_settings loaded
+         * during calibration_init). settings_subsys_init is idempotent. */
+        (void)settings_subsys_init();
+        (void)settings_load_subtree("log");
+
+        Status_t rc_telemetry = fl_mount_fcb(&fl_telemetry_fcb,
+                        fl_telemetry_sectors,
+                        PARTITION_ID(log_telemetry_partition),
+                        PARTITION_OFFSET(log_telemetry_partition),
+                        FL_TELEMETRY_SECTOR_COUNT);
+        Status_t rc_text = fl_mount_fcb(&fl_text_fcb,
+                       fl_text_sectors,
+                       PARTITION_ID(log_text_partition),
+                       PARTITION_OFFSET(log_text_partition),
+                       FL_TEXT_SECTOR_COUNT);
+
+        if ((0 != rc_telemetry) || (0 != rc_text)) {
+            /* Persistent failure — keep initialized=true so producers
+             * still see the gate as set (and drop counters still
+             * increment), but mark the system so that writer no-ops
+             * by leaving fl_paused asserted. */
+            atomic_set(&fl_paused, 1);
+            op_error_publish(OP_ERR_FLASH,
+                     (((uint32_t)rc_telemetry << TWO_BYTE_WIDTH) |
+                            ((uint32_t)rc_text & FL_INIT_ERR_CODE_MASK)));
+            if (0 != rc_telemetry) {
+                result = rc_telemetry;
+            } else {
+                result = rc_text;
+            }
+        } else {
+            /* Increment + persist boot counter. */
+            fl_boot_id += 1U;
+            (void)settings_save_one("log/boot_id", &fl_boot_id, sizeof(fl_boot_id));
+            result = 0;
+        }
     }
-
-    /* Settings subsystem may already be up (runtime_settings loaded
-     * during calibration_init). settings_subsys_init is idempotent. */
-    (void)settings_subsys_init();
-    (void)settings_load_subtree("log");
-
-    int rc_telemetry = fl_mount_fcb(&fl_telemetry_fcb,
-                    fl_telemetry_sectors,
-                    PARTITION_ID(log_telemetry_partition),
-                    PARTITION_OFFSET(log_telemetry_partition),
-                    FL_TELEMETRY_SECTOR_COUNT);
-    int rc_text = fl_mount_fcb(&fl_text_fcb,
-                   fl_text_sectors,
-                   PARTITION_ID(log_text_partition),
-                   PARTITION_OFFSET(log_text_partition),
-                   FL_TEXT_SECTOR_COUNT);
-
-    if ((0 != rc_telemetry) || (0 != rc_text)) {
-        /* Persistent failure — keep initialized=true so producers
-         * still see the gate as set (and drop counters still
-         * increment), but mark the system so that writer no-ops
-         * by leaving fl_paused asserted. */
-        atomic_set(&fl_paused, 1);
-        op_error_publish(OP_ERR_FLASH,
-                 (((uint32_t)rc_telemetry << 16U) |
-                        ((uint32_t)rc_text & 0xFFFFU)));
-        return (0 != rc_telemetry) ? rc_telemetry : rc_text;
-    }
-
-    /* Increment + persist boot counter. */
-    fl_boot_id += 1U;
-    (void)settings_save_one("log/boot_id", &fl_boot_id, sizeof(fl_boot_id));
-
-    return 0;
+    return result;
 }
 
 void flash_log_pause(void)
@@ -1021,11 +1094,11 @@ uint8_t flash_log_get_rtt_level(void)
     return fl_rtt_level;
 }
 
-int flash_log_set_rtt_level(uint8_t level)
+Status_t flash_log_set_rtt_level(uint8_t level)
 {
-    int rc = 0;
+    Status_t rc = 0;
 
-    if ((level < 1U) || (level > 4U)) {
+    if ((level < FL_RTT_LEVEL_MIN) || (level > FL_RTT_LEVEL_MAX)) {
         rc = -EINVAL;
     } else {
         fl_rtt_level = level;
@@ -1043,11 +1116,11 @@ uint8_t flash_log_get_can_verbose(void)
     return fl_can_verbose;
 }
 
-int flash_log_set_can_verbose(uint8_t bitmask)
+Status_t flash_log_set_can_verbose(uint8_t bitmask)
 {
-    int rc = 0;
+    Status_t rc = 0;
 
-    if (bitmask > 0x03U) {
+    if (bitmask > FL_CAN_VERBOSE_MASK) {
         rc = -EINVAL;
     } else {
         fl_can_verbose = bitmask;
@@ -1091,9 +1164,9 @@ static void fl_populate_index_stats(FlashLogDest_t dest,
     ARG_UNUSED(fcb_stats);
 }
 
-int flash_log_stats(FlashLogStats_t *out)
+Status_t flash_log_stats(FlashLogStats_t *out)
 {
-    int rc = 0;
+    Status_t rc = 0;
 
     if (out == NULL) {
         rc = -EINVAL;
@@ -1127,38 +1200,43 @@ int flash_log_stats(FlashLogStats_t *out)
  * the lowest-priority feeder — so an unfed full-ring clear (48 MiB) overruns the
  * 32 s IWDG and reboots the head (same hazard as the index-build walk; see
  * flash_log_reader.c). Feed directly, like flash_mass_erase. */
-static int fl_fcb_clear_fed(struct fcb *fcbp)
+static Status_t fl_fcb_clear_fed(struct fcb *fcbp)
 {
-    int rc = 0;
+    Status_t rc = 0;
+    bool empty = (0 != fcb_is_empty(fcbp));
 
-    while (0 == fcb_is_empty(fcbp)) {
+    while (!empty && (0 == rc)) {
         watchdog_kick();
         rc = fcb_rotate(fcbp);
-        if (0 != rc) {
-            break;
-        }
+        empty = (0 != fcb_is_empty(fcbp));
     }
     watchdog_kick();
     return rc;
 }
 
-int flash_log_erase(uint8_t stream_mask)
+/* stream_mask bits — bit 0 = telemetry FCB, bit 1 = text FCB. */
+static const uint8_t FL_ERASE_STREAM_TELEMETRY = 0x01U;
+static const uint8_t FL_ERASE_STREAM_TEXT = 0x02U;
+
+Status_t flash_log_erase(uint8_t stream_mask)
 {
-    int rc = 0;
+    Status_t rc = 0;
 
     if (0U == stream_mask) {
         /* No-op. */
     } else {
         /* Hold writes off while we erase. */
         flash_log_pause();
-        if (0U != (stream_mask & 0x01U)) {
-            int r = fl_fcb_clear_fed(&fl_telemetry_fcb);
+        if (0U != (stream_mask & FL_ERASE_STREAM_TELEMETRY)) {
+            Status_t r = fl_fcb_clear_fed(&fl_telemetry_fcb);
+
             if (0 != r) {
                 rc = r;
             }
         }
-        if ((0 == rc) && (0U != (stream_mask & 0x02U))) {
-            int r = fl_fcb_clear_fed(&fl_text_fcb);
+        if ((0 == rc) && (0U != (stream_mask & FL_ERASE_STREAM_TEXT))) {
+            Status_t r = fl_fcb_clear_fed(&fl_text_fcb);
+
             if (0 != r) {
                 rc = r;
             }

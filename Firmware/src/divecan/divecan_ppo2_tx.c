@@ -66,7 +66,7 @@ static const uint8_t CELL_IDX_2 = 2U;
 static void tx_tank_pressures(void)
 {
     TankPressureMsg_t tank = {0};
-    int rc = zbus_chan_read(&chan_tank_pressure, &tank,
+    Status_t rc = zbus_chan_read(&chan_tank_pressure, &tank,
                             K_MSEC(CONSENSUS_READ_TIMEOUT_MS));
     int64_t stale_ticks = k_ms_to_ticks_ceil64(TANK_PRESSURE_STALE_MS);
 
@@ -105,7 +105,7 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
 
     while (true) {
         ConsensusMsg_t consensus = {0};
-        int rc = zbus_chan_read(&chan_consensus, &consensus,
+        Status_t rc = zbus_chan_read(&chan_consensus, &consensus,
                                 K_MSEC(CONSENSUS_READ_TIMEOUT_MS));
 
         if (0 != rc) {
@@ -145,7 +145,7 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
         tx_tank_pressures();
 #endif
 
-        k_msleep(PPO2_TX_INTERVAL_MS);
+        (void)k_msleep(PPO2_TX_INTERVAL_MS);
     }
 }
 

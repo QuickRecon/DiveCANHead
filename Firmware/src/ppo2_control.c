@@ -257,6 +257,8 @@ void ppo2_control_set_autotune_duty(bool enabled, Numeric_t duty)
         clamped_duty = 0.0f;
     } else if (clamped_duty > 1.0f) {
         clamped_duty = 1.0f;
+    } else {
+        /* Within range — no clamp required. */
     }
     *getAutotuneDuty() = clamped_duty;
     *getAutotuneDutyEnabled() = enabled;
@@ -274,8 +276,8 @@ Numeric_t ppo2_control_effective_duty(Numeric_t commanded_duty,
         SOLENOID_MIN_FIRE_MS, SOLENOID_MAX_FIRE_MS);
     Numeric_t effective = 0.0f;
     if (timing.should_fire) {
-        effective = (Numeric_t)timing.on_duration_us /
-            (Numeric_t)(SOLENOID_CYCLE_MS * US_PER_MS);
+        const uint32_t cycle_us = SOLENOID_CYCLE_MS * US_PER_MS;
+        effective = (Numeric_t)timing.on_duration_us / (Numeric_t)cycle_us;
     }
     return effective;
 }
@@ -467,7 +469,7 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
     wait_for_ppo2_init();  /* don't read the mode until init has loaded it from NVS */
     PPO2ControlMode_t mode = *getActiveMode();
     if (mode != PPO2CONTROL_PID) {
-        LOG_INF("PID thread suspended (mode %d)", (int)mode);
+        LOG_INF("PID thread suspended (mode %d)", (int32_t)mode);
         k_thread_suspend(k_current_get());
     }
 
@@ -481,7 +483,7 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
     while (true) {
         heartbeat_kick(HEARTBEAT_PPO2_PID);
         ConsensusMsg_t consensus = {0};
-        int rc = zbus_chan_read(&chan_consensus, &consensus,
+        Status_t rc = zbus_chan_read(&chan_consensus, &consensus,
                                 K_MSEC(CHAN_OP_TIMEOUT_MS));
 
         if (0 != rc) {
@@ -525,7 +527,7 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
                 LOG_INF("consensus recovered, controller resumed");
             }
 
-            PIDNumeric_t duty;
+            PIDNumeric_t duty = 0.0f;
             if (*getAutotuneDutyEnabled()) {
                 duty = (PIDNumeric_t)*getAutotuneDuty();
             } else {
@@ -536,16 +538,16 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
             zbus_pub_checked(&chan_duty_cycle, &pub, K_MSEC(CHAN_OP_TIMEOUT_MS));
 #ifdef CONFIG_FLASH_LOG
             const FlashLogPidSnapshot_t snap = {
-                .integral = (float)state->integralState,
+                .integral = state->integralState,
                 .saturation_count = state->saturationCount,
-                .duty = (float)duty,
+                .duty = duty,
                 .setpoint = setpoint,
             };
             flash_log_enqueue_pid_snapshot(&snap);
 #endif
         }
 
-        k_msleep((int32_t)PID_PERIOD_MS);
+        (void)k_msleep((int32_t)PID_PERIOD_MS);
     }
 }
 
@@ -582,8 +584,11 @@ static void pid_sleep_kicking_us(uint32_t total_us)
         /* Service the current judge window mid-phase so a fire's delayed draw is
          * caught within its window rather than only at the once-per-cycle poll. */
         poll_solenoid_current();
-        uint32_t chunk = (remaining_us < step_us) ? remaining_us : step_us;
-        k_usleep((int32_t)chunk);
+        uint32_t chunk = step_us;
+        if (remaining_us < step_us) {
+            chunk = remaining_us;
+        }
+        (void)k_usleep((int32_t)chunk);
         remaining_us -= chunk;
     }
 }
@@ -664,9 +669,11 @@ static void mk15_sleep_kicking(uint32_t total_ms)
     while (remaining > 0U) {
         heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
         poll_solenoid_current();  /* service the current judge window mid-phase */
-        uint32_t chunk = (remaining < MK15_HEARTBEAT_STEP_MS) ?
-                         remaining : MK15_HEARTBEAT_STEP_MS;
-        k_msleep((int32_t)chunk);
+        uint32_t chunk = MK15_HEARTBEAT_STEP_MS;
+        if (remaining < MK15_HEARTBEAT_STEP_MS) {
+            chunk = remaining;
+        }
+        (void)k_msleep((int32_t)chunk);
         remaining -= chunk;
     }
 }
@@ -682,7 +689,7 @@ static void mk15_sleep_kicking(uint32_t total_ms)
 static void run_mk15_fire_cycle(void)
 {
     ConsensusMsg_t consensus = {0};
-    int rc = zbus_chan_read(&chan_consensus, &consensus,
+    Status_t rc = zbus_chan_read(&chan_consensus, &consensus,
                             K_MSEC(CHAN_OP_TIMEOUT_MS));
 
     if (0 != rc) {
@@ -796,8 +803,8 @@ static void run_setpoint_flush_check(void)
                 dir_name = "O2";
             }
             LOG_INF("Setpoint %u->%u cb: %s flush for %u ms",
-                (unsigned int)previous, (unsigned int)current,
-                dir_name, (unsigned int)CONFIG_SOL_FLUSH_TIME);
+                (uint32_t)previous, (uint32_t)current,
+                dir_name, (uint32_t)CONFIG_SOL_FLUSH_TIME);
 #ifdef CONFIG_FLASH_LOG
             const SolenoidFireEvent_t fire_evt = {
                 .kind = SOL_FIRE_EVT_FLUSH_START,
@@ -824,7 +831,7 @@ static void run_setpoint_flush_check(void)
         }
         else if (-ENODEV == rc) {
             /* Flush solenoid for this direction not wired on this variant. */
-            LOG_DBG("Setpoint flush skipped: role absent (dir %d)", (int)dir);
+            LOG_DBG("Setpoint flush skipped: role absent (dir %d)", (int32_t)dir);
         }
         else {
             OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
@@ -857,11 +864,11 @@ static void solenoid_fire_thread_fn(void *p1, void *p2, void *p3)
         while (true) {
             heartbeat_kick(HEARTBEAT_SOLENOID_FIRE);
             poll_solenoid_current();
-            k_msleep((int32_t)SOL_OFF_SERVICE_MS);
+            (void)k_msleep((int32_t)SOL_OFF_SERVICE_MS);
         }
     }
 
-    LOG_INF("Solenoid fire thread started (mode %d)", (int)mode);
+    LOG_INF("Solenoid fire thread started (mode %d)", (int32_t)mode);
     heartbeat_register(HEARTBEAT_SOLENOID_FIRE);
 
 #if CONFIG_SOL_FLUSH_TIME > 0
@@ -883,7 +890,7 @@ static void solenoid_fire_thread_fn(void *p1, void *p2, void *p3)
         }
         else {
             /* Defensive — should be suspended above. */
-            k_msleep((int32_t)SOLENOID_CYCLE_MS);
+            (void)k_msleep((int32_t)SOLENOID_CYCLE_MS);
         }
 
         /* Report the driver's closed-loop current verdict for the fire(s) this
@@ -919,7 +926,7 @@ void ppo2_control_init(void)
     publish_solenoid_status(DIVECAN_ERR_SOL_NORM);
 
     LOG_INF("PPO2 control init: mode=%d depth_comp=%d kp=%.4f ki=%.4f kd=%.4f",
-        (int)*getActiveMode(), (int)*getDepthCompEnabled(),
+        (int32_t)*getActiveMode(), (int32_t)*getDepthCompEnabled(),
         (double)settings.pidKp, (double)settings.pidKi,
         (double)settings.pidKd);
 

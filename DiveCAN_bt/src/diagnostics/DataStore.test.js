@@ -45,7 +45,7 @@ describe('DataStore', () => {
     it('adds point to new series', () => {
       store._addPoint('test', 100, 42);
       const series = store.getSeries('test');
-      expect(series.length).toBe(1);
+      expect(series).toHaveLength(1);
       expect(series[0].value).toBe(42);
       expect(series[0].timestamp).toBe(100);
     });
@@ -54,22 +54,22 @@ describe('DataStore', () => {
       store._addPoint('test', 100, 1);
       store._addPoint('test', 101, 2);
       const series = store.getSeries('test');
-      expect(series.length).toBe(2);
+      expect(series).toHaveLength(2);
     });
 
     it('ignores undefined values', () => {
       store._addPoint('test', 100, undefined);
-      expect(store.getSeries('test').length).toBe(0);
+      expect(store.getSeries('test')).toHaveLength(0);
     });
 
     it('ignores null values', () => {
       store._addPoint('test', 100, null);
-      expect(store.getSeries('test').length).toBe(0);
+      expect(store.getSeries('test')).toHaveLength(0);
     });
 
     it('ignores NaN values', () => {
       store._addPoint('test', 100, NaN);
-      expect(store.getSeries('test').length).toBe(0);
+      expect(store.getSeries('test')).toHaveLength(0);
     });
 
     it('prunes old points by age', () => {
@@ -91,7 +91,7 @@ describe('DataStore', () => {
       smallStore._addPoint('test', 103, 4);
 
       const series = smallStore.getSeries('test');
-      expect(series.length).toBe(3);
+      expect(series).toHaveLength(3);
       expect(series[0].value).toBe(2);  // First point pruned
     });
   });

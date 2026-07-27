@@ -20,7 +20,11 @@ import { decodeBootMarker, makeRecordCounter, parseLogStream } from './LogParser
 
 class EventEmitter {
   constructor() { this.events = {}; }
-  on(event, cb) { (this.events[event] ||= []).push(cb); return this; }
+  on(event, cb) {
+    if (!this.events[event]) { this.events[event] = []; }
+    this.events[event].push(cb);
+    return this;
+  }
   off(event, cb) {
     if (this.events[event]) this.events[event] = this.events[event].filter(f => f !== cb);
     return this;
@@ -103,7 +107,7 @@ export class LogDownloader extends EventEmitter {
     super();
     this.uds = uds;
     this.options = options;
-    this.timeouts = { ...LOG_TIMEOUTS, ...(options.timeouts || {}) };
+    this.timeouts = { ...LOG_TIMEOUTS, ...options.timeouts };
     this.maxChunk = options.maxChunk ?? constants.LOG_DOWNLOAD_BLE_CHUNK;
   }
 
@@ -134,7 +138,7 @@ export class LogDownloader extends EventEmitter {
   /** DID 0xF283 -> text-log verbosity (1=ERR..4=DBG). */
   async readVerbosity() {
     const d = await this.uds.readDataByIdentifier(constants.DID_LOG_VERBOSITY);
-    return d && d.length ? d[0] : null;
+    return d?.length ? d[0] : null;
   }
 
   /** DID 0xF283 write. */
@@ -145,7 +149,7 @@ export class LogDownloader extends EventEmitter {
   /** DID 0xF284 -> CAN-capture bitmask (bit0=RX, bit1=TX). */
   async readCanCapture() {
     const d = await this.uds.readDataByIdentifier(constants.DID_LOG_CAN_VERBOSE);
-    return d && d.length ? d[0] : null;
+    return d?.length ? d[0] : null;
   }
 
   /** DID 0xF284 write. */
@@ -186,6 +190,74 @@ export class LogDownloader extends EventEmitter {
   }
 
   /**
+   * Resolve + validate the oldest..current boot-id range from FCB stats.
+   * @private
+   */
+  _resolveBootRange(streamStats, maxBoots) {
+    const oldest = streamStats.bootIdOldest;
+    const current = streamStats.bootIdCurrent;
+    if (current < oldest) throw new Error('Wrapped boot-id ranges are not supported');
+    const totalBoots = current - oldest + 1;
+    if (totalBoots > maxBoots) {
+      throw new Error(`Refusing to scan ${totalBoots} boot ids (limit ${maxBoots})`);
+    }
+    return { oldest, current, totalBoots };
+  }
+
+  /**
+   * Find the record index one past the end of the boot range starting at `marker`
+   * (i.e. the next boot marker, or the end of the array).
+   * @private
+   */
+  _findBootRangeEnd(bootRecords, marker) {
+    let end = bootRecords.length;
+    for (let i = marker + 1; i < bootRecords.length; i++) {
+      if (bootMarkerId(bootRecords[i]) !== null) { end = i; break; }
+    }
+    return end;
+  }
+
+  /**
+   * Download one boot's range and trim it to the records that actually belong
+   * to `bootId` (boot ranges are sector-granular and can overlap).
+   * @returns {Promise<{result:Object, records:Array|null}|null>} null if the
+   *   boot id has no retained range (a gap, not a failure).
+   * @private
+   */
+  async _downloadOneBoot(bootId, oldest, stream, opts, progressCtx) {
+    let result = null;
+    try {
+      result = await this.downloadLog({
+        ...opts,
+        stream,
+        selector: (downloader) => downloader.selectByBoot(bootId, stream),
+        onProgress: ({ received, records: bootRecords, entryCount }) => {
+          opts.onProgress?.({
+            received: progressCtx.totalReceived + received,
+            records: progressCtx.recordsSoFar + bootRecords,
+            entryCount,
+            bootId,
+            bootsCompleted: progressCtx.bootsCompleted,
+            totalBoots: progressCtx.totalBoots
+          });
+        }
+      });
+    } catch (error) {
+      // Boot IDs are monotonic but gaps are possible. A missing boot is not a
+      // reason to lose every other retained range.
+      if (error?.nrc === constants.NRC_CONDITIONS_NOT_CORRECT) { return null; }
+      throw error;
+    }
+
+    const bootRecords = parseLogStream(result.raw);
+    const marker = bootRecords.findIndex(rec => bootMarkerId(rec) === bootId);
+    if (marker < 0) { return { result, records: null }; }
+    const start = bootId === oldest ? 0 : marker;
+    const end = this._findBootRangeEnd(bootRecords, marker);
+    return { result, records: bootRecords.slice(start, end) };
+  }
+
+  /**
    * Download all records reachable through the frozen firmware's existing
    * by-boot selector. Boot ranges are sector-granular and can overlap, so each
    * response is trimmed at its exact boot markers before the records are
@@ -200,61 +272,109 @@ export class LogDownloader extends EventEmitter {
     const streamStats = stream === constants.LOG_STREAM_TEXT ? stats?.text : stats?.telemetry;
     if (!streamStats) throw new Error('Flash-log stats are unavailable');
 
-    const oldest = streamStats.bootIdOldest;
-    const current = streamStats.bootIdCurrent;
-    if (current < oldest) throw new Error('Wrapped boot-id ranges are not supported');
-    const totalBoots = current - oldest + 1;
-    const maxBoots = opts.maxBoots ?? 4096;
-    if (totalBoots > maxBoots) {
-      throw new Error(`Refusing to scan ${totalBoots} boot ids (limit ${maxBoots})`);
-    }
+    const { oldest, current, totalBoots } = this._resolveBootRange(streamStats, opts.maxBoots ?? 4096);
 
     const downloads = [];
     const records = [];
     let totalReceived = 0;
     for (let bootId = oldest; bootId <= current; bootId++) {
       if (opts.signal?.aborted) throw new DOMException('Log download cancelled', 'AbortError');
-      let result;
-      try {
-        result = await this.downloadLog({
-          ...opts,
-          stream,
-          selector: (downloader) => downloader.selectByBoot(bootId, stream),
-          onProgress: ({ received, records: bootRecords, entryCount }) => {
-            opts.onProgress?.({
-              received: totalReceived + received,
-              records: records.length + bootRecords,
-              entryCount,
-              bootId,
-              bootsCompleted: downloads.length,
-              totalBoots
-            });
-          }
-        });
-      } catch (error) {
-        // Boot IDs are monotonic but gaps are possible. A missing boot is not a
-        // reason to lose every other retained range.
-        if (error?.nrc === constants.NRC_CONDITIONS_NOT_CORRECT) continue;
-        throw error;
-      }
+      const outcome = await this._downloadOneBoot(bootId, oldest, stream, opts, {
+        totalReceived, recordsSoFar: records.length, bootsCompleted: downloads.length, totalBoots
+      });
+      if (!outcome) continue;
 
-      downloads.push({ bootId, ...result });
-      totalReceived += result.raw.length;
-      const bootRecords = parseLogStream(result.raw);
-      const marker = bootRecords.findIndex(rec => bootMarkerId(rec) === bootId);
-      if (marker < 0) continue;
-      const start = bootId === oldest ? 0 : marker;
-      let end = bootRecords.length;
-      for (let i = marker + 1; i < bootRecords.length; i++) {
-        if (bootMarkerId(bootRecords[i]) !== null) { end = i; break; }
-      }
-      records.push(...bootRecords.slice(start, end));
+      downloads.push({ bootId, ...outcome.result });
+      totalReceived += outcome.result.raw.length;
+      if (outcome.records) records.push(...outcome.records);
     }
 
     if (downloads.length === 0) throw new Error('No retained boot ranges could be downloaded');
     const raw = encodeRecordStream(records, stream);
     this.emit('doneAllBoots', { raw, records, downloads, stats });
     return { raw, records, downloads, stats };
+  }
+
+  /** Resolve a boot/dive range via the caller's selector, or default to latest boot. @private */
+  async _runSelector(opts, stream) {
+    if (opts.selector) {
+      await opts.selector(this);
+    } else {
+      await this.selectLatestBoot(stream);
+    }
+  }
+
+  /**
+   * Read the resolved range for a progress denominator (best-effort).
+   * NOTE: the firmware hard-codes total_bytes to 0 (it avoids a pre-walk), so
+   * entry_count is the only usable progress denominator — drive the bar off
+   * the running record count vs this estimate.
+   * @private
+   */
+  async _readSelectorEstimate() {
+    let selector = null;
+    let entryCount = 0;
+    try {
+      selector = await this.readSelectorResult();
+      entryCount = selector?.entryCount || 0;
+    } catch { /* selector-result read is advisory */ }
+    return { selector, entryCount };
+  }
+
+  /** Grow `acc` (doubling) so it can hold `accLen + extra` bytes. @private */
+  _ensureCapacity(acc, accLen, extra) {
+    let grown = acc;
+    if (accLen + extra > acc.length) {
+      let cap = acc.length * 2;
+      while (cap < accLen + extra) { cap *= 2; }
+      grown = new Uint8Array(cap);
+      grown.set(acc.subarray(0, accLen));
+    }
+    return grown;
+  }
+
+  /**
+   * Pull chunks (seq from 1, wrap skipping 0; short chunk = EOS). Bytes are
+   * appended into a single amortised-growth buffer so the resumable record
+   * counter (progress) stays O(total), not O(total^2).
+   * @private
+   */
+  async _pullLogChunks(opts, negotiatedBlock, maxBlocks, entryCount) {
+    const chunkLens = [];
+    const countRecords = makeRecordCounter();
+    let acc = new Uint8Array(4096);
+    let accLen = 0;
+    let received = 0;
+    let seq = 1;
+    for (let i = 0; i < maxBlocks; i++) {
+      if (opts.signal?.aborted) break;
+      const resp = await this.uds.transferData(seq, [], this.timeouts.block);
+      const body = resp.slice(2); // strip [0x76, seq]
+      acc = this._ensureCapacity(acc, accLen, body.length);
+      acc.set(body, accLen);
+      accLen += body.length;
+      chunkLens.push(body.length);
+      received += body.length;
+      const records = countRecords(acc.subarray(0, accLen));
+      const progress = { received, records, entryCount, chunks: chunkLens.length };
+      this.emit('progress', progress);
+      if (opts.onProgress) opts.onProgress(progress);
+      seq = (seq + 1) & 0xFF;
+      if (seq === 0) seq = 1;
+      if (body.length < negotiatedBlock) break; // short chunk = end of stream
+    }
+    return { acc, accLen, chunkLens };
+  }
+
+  /** Anchor on the DCLG magic, trimming any leading garbage. @private */
+  _trimToMagic(rawAll) {
+    const magic = ByteUtils.uint32ToLE(constants.LOG_DOWNLOAD_MAGIC);
+    let idx = -1;
+    for (let i = 0; i + 4 <= rawAll.length; i++) {
+      if (rawAll[i] === magic[0] && rawAll[i + 1] === magic[1]
+        && rawAll[i + 2] === magic[2] && rawAll[i + 3] === magic[3]) { idx = i; break; }
+    }
+    return rawAll.slice(Math.max(idx, 0));
   }
 
   /**
@@ -275,22 +395,9 @@ export class LogDownloader extends EventEmitter {
     const maxBlocks = opts.maxBlocks ?? 4096;
 
     // 1. Resolve a range.
-    if (opts.selector) {
-      await opts.selector(this);
-    } else {
-      await this.selectLatestBoot(stream);
-    }
+    await this._runSelector(opts, stream);
 
-    // Read the resolved range for a progress denominator (best-effort).
-    // NOTE: the firmware hard-codes total_bytes to 0 (it avoids a pre-walk), so
-    // entry_count is the only usable progress denominator — drive the bar off
-    // the running record count vs this estimate.
-    let selector = null;
-    let entryCount = 0;
-    try {
-      selector = await this.readSelectorResult();
-      entryCount = selector?.entryCount || 0;
-    } catch { /* selector-result read is advisory */ }
+    const { selector, entryCount } = await this._readSelectorEstimate();
 
     // 2. Arm the stream.
     await this.beginStream();
@@ -299,51 +406,14 @@ export class LogDownloader extends EventEmitter {
     const negotiatedBlock = await this.uds.requestDownload(
       constants.LOG_DOWNLOAD_SENTINEL_ADDR, maxChunk, { sizeEndian: 'LE' }, this.timeouts.block);
 
-    // 4. Pull chunks (seq from 1, wrap skipping 0; short chunk = EOS). Bytes are
-    //    appended into a single amortised-growth buffer so the resumable record
-    //    counter (progress) stays O(total), not O(total^2).
-    const chunkLens = [];
-    const countRecords = makeRecordCounter();
-    let acc = new Uint8Array(4096);
-    let accLen = 0;
-    let received = 0;
-    let seq = 1;
-    for (let i = 0; i < maxBlocks; i++) {
-      if (opts.signal?.aborted) break;
-      const resp = await this.uds.transferData(seq, [], this.timeouts.block);
-      const body = resp.slice(2); // strip [0x76, seq]
-      if (accLen + body.length > acc.length) {
-        let cap = acc.length * 2;
-        while (cap < accLen + body.length) { cap *= 2; }
-        const bigger = new Uint8Array(cap);
-        bigger.set(acc.subarray(0, accLen));
-        acc = bigger;
-      }
-      acc.set(body, accLen);
-      accLen += body.length;
-      chunkLens.push(body.length);
-      received += body.length;
-      const records = countRecords(acc.subarray(0, accLen));
-      const progress = { received, records, entryCount, chunks: chunkLens.length };
-      this.emit('progress', progress);
-      if (opts.onProgress) opts.onProgress(progress);
-      seq = (seq + 1) & 0xFF;
-      if (seq === 0) seq = 1;
-      if (body.length < negotiatedBlock) break; // short chunk = end of stream
-    }
+    // 4. Pull chunks until a short chunk (or abort) ends the stream.
+    const { acc, accLen, chunkLens } = await this._pullLogChunks(opts, negotiatedBlock, maxBlocks, entryCount);
 
     // 5. End the transfer.
     await this.uds.requestTransferExit(this.timeouts.block);
 
     // 6. Anchor on the DCLG magic, trimming any leading garbage.
-    const rawAll = acc.subarray(0, accLen);
-    const magic = ByteUtils.uint32ToLE(constants.LOG_DOWNLOAD_MAGIC);
-    let idx = -1;
-    for (let i = 0; i + 4 <= rawAll.length; i++) {
-      if (rawAll[i] === magic[0] && rawAll[i + 1] === magic[1]
-        && rawAll[i + 2] === magic[2] && rawAll[i + 3] === magic[3]) { idx = i; break; }
-    }
-    const raw = rawAll.slice(idx < 0 ? 0 : idx);
+    const raw = this._trimToMagic(acc.subarray(0, accLen));
 
     this.emit('done', { raw, negotiatedBlock, chunkLens });
     return { raw, negotiatedBlock, chunkLens, selector };

@@ -47,22 +47,25 @@ LOG_MODULE_REGISTER(thread_analyzer_paced, LOG_LEVEL_INF);
 
 static void paced_cb(struct thread_analyzer_info *info)
 {
-    size_t free = info->stack_size - info->stack_used;
-    unsigned int pct = (info->stack_size > 0U) ?
-        (unsigned int)((info->stack_used * 100U) / info->stack_size) : 0U;
+    size_t stack_free = info->stack_size - info->stack_used;
+    uint32_t pct = 0U;
+
+    if (info->stack_size > 0U) {
+        pct = (uint32_t)((info->stack_used * 100U) / info->stack_size);
+    }
 
 #ifdef CONFIG_THREAD_RUNTIME_STATS
     LOG_INF(" %-20s: STACK: unused %zu usage %zu / %zu (%u %%); CPU: %u %%",
-            info->name, free, info->stack_used, info->stack_size, pct,
+            info->name, stack_free, info->stack_used, info->stack_size, pct,
             info->utilization);
 #else
     LOG_INF(" %-20s: STACK: unused %zu usage %zu / %zu (%u %%)",
-            info->name, free, info->stack_used, info->stack_size, pct);
+            info->name, stack_free, info->stack_used, info->stack_size, pct);
 #endif
 
     /* Yield to the log processing thread so the message we just
      * queued reaches the RTT backend before the next one queues. */
-    k_msleep(PACED_PER_THREAD_DELAY_MS);
+    (void)k_msleep(PACED_PER_THREAD_DELAY_MS);
 }
 
 static void paced_thread(void *p1, void *p2, void *p3)
@@ -73,7 +76,7 @@ static void paced_thread(void *p1, void *p2, void *p3)
 
     while (true) {
         thread_analyzer_run(paced_cb, 0U);
-        k_msleep(PACED_PASS_INTERVAL_MS);
+        (void)k_msleep(PACED_PASS_INTERVAL_MS);
     }
 }
 

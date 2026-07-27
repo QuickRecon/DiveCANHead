@@ -1,11 +1,21 @@
 // Web Serial connection for CANable adapters running slcan/Lawicel firmware.
 export class CanableConnection {
   constructor(options = {}) { this.options = { baudRate: 115200, canSpeed: 'S4', ...options }; this.events = {}; this.port = null; this.reader = null; this.writer = null; this.line = ''; }
-  on(e, cb) { (this.events[e] ||= []).push(cb); return this; }
-  off(e, cb) { if (this.events[e]) this.events[e] = this.events[e].filter(x => x !== cb); return this; }
+  on(e, cb) {
+    if (!this.events[e]) { this.events[e] = []; }
+    this.events[e].push(cb);
+    return this;
+  }
+  off(e, cb) {
+    if (this.events[e]) { this.events[e] = this.events[e].filter(x => x !== cb); }
+    return this;
+  }
   emit(e, ...args) { for (const cb of this.events[e] || []) cb(...args); }
   static isSupported() { return typeof navigator !== 'undefined' && navigator.serial !== undefined; }
-  async requestPort(filters = []) { if (!CanableConnection.isSupported()) throw new Error('Web Serial is not available'); return navigator.serial.requestPort(filters.length ? { filters } : {}); }
+  async requestPort(filters = []) {
+    if (!CanableConnection.isSupported()) { throw new Error('Web Serial is not available'); }
+    return navigator.serial.requestPort(filters.length ? { filters } : {});
+  }
   async connect(port = null) {
     if (this.isConnected) return;
     this.port = port || await this.requestPort(this.options.filters || []);
@@ -15,7 +25,10 @@ export class CanableConnection {
     catch (error) { await this.disconnect(); throw error; }
     this.emit('connected');
   }
-  async command(text) { if (!this.writer) throw new Error('CANable is not connected'); await this.writer.write(new TextEncoder().encode(text)); }
+  async command(text) {
+    if (!this.writer) { throw new Error('CANable is not connected'); }
+    await this.writer.write(new TextEncoder().encode(text));
+  }
   async sendFrame(id, data, extended = true) {
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     if (bytes.length > 8) throw new RangeError('Classic CAN frames are limited to 8 data bytes');
@@ -24,8 +37,20 @@ export class CanableConnection {
     const payload = [...bytes].map(b => b.toString(16).toUpperCase().padStart(2, '0')).join('');
     await this.command(`${prefix}${canId}${bytes.length.toString(16).toUpperCase()}${payload}\r`);
   }
-  async _readLoop() { const decoder = new TextDecoder(); try { while (this.reader) { const { value, done } = await this.reader.read(); if (done) break; this._consume(decoder.decode(value, { stream: true })); } } catch (e) { if (this.reader) this.emit('error', e); } }
-  _consume(text) { for (const ch of text) { if (ch === '\r' || ch === '\a') { const line = this.line; this.line = ''; if (ch === '\a') this.emit('error', new Error('CANable rejected command')); else if (line) this._parseFrame(line); } else if (ch !== '\n') this.line += ch; } }
+  async _readLoop() {
+    const decoder = new TextDecoder();
+    try {
+      while (this.reader) {
+        const { value, done } = await this.reader.read();
+        if (done) { break; }
+        this._consume(decoder.decode(value, { stream: true }));
+      }
+    } catch (e) {
+      if (this.reader) { this.emit('error', e); }
+    }
+  }
+  // '\x07' is the slcan BEL error byte; JS has no '\a' escape (it would just be the letter 'a').
+  _consume(text) { for (const ch of text) { if (ch === '\r' || ch === '\x07') { const line = this.line; this.line = ''; if (ch === '\x07') this.emit('error', new Error('CANable rejected command')); else if (line) this._parseFrame(line); } else if (ch !== '\n') this.line += ch; } }
   _parseFrame(line) {
     const extended = line[0] === 'T' || line[0] === 'R'; if (!extended && line[0] !== 't' && line[0] !== 'r') return;
     const remote = line[0] === 'R' || line[0] === 'r', width = extended ? 8 : 3;

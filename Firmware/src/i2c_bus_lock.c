@@ -87,10 +87,10 @@ static bool i2c1_get_lines(bool *scl_high, bool *sda_high)
 
 static bool i2c1_activity_guard_elapsed(void)
 {
-    uint32_t now = k_uptime_get_32();
+    uint32_t now = (uint32_t)k_uptime_get_32();
     uint32_t last = (uint32_t)atomic_get(&last_bus_activity_ms);
 
-    return (uint32_t)(now - last) >= I2C1_QUIET_GUARD_MS;
+    return (now - last) >= I2C1_QUIET_GUARD_MS;
 }
 
 /**
@@ -98,38 +98,42 @@ static bool i2c1_activity_guard_elapsed(void)
  * Caller holds i2c1_bus_mutex, preventing another local controller transfer
  * from occupying the gap while it is being measured.
  */
-static int i2c1_wait_quiet(void)
+static Status_t i2c1_wait_quiet(void)
 {
-    uint32_t started = k_uptime_get_32();
+    Status_t result = -EBUSY;
+    uint32_t started = (uint32_t)k_uptime_get_32();
     uint32_t idle_since = started;
     bool measuring_idle = false;
 
-    while ((uint32_t)(k_uptime_get_32() - started) <
-           I2C1_QUIET_TIMEOUT_MS) {
-        bool scl_high;
-        bool sda_high;
-        uint32_t now = k_uptime_get_32();
+    while ((result == -EBUSY) &&
+           (((uint32_t)k_uptime_get_32() - started) < I2C1_QUIET_TIMEOUT_MS)) {
+        bool scl_high = false;
+        bool sda_high = false;
+        uint32_t now = (uint32_t)k_uptime_get_32();
 
         if (!i2c1_get_lines(&scl_high, &sda_high)) {
-            return -EIO;
+            result = -EIO;
         }
-
-        if (scl_high && sda_high && i2c1_activity_guard_elapsed()) {
+        else if (scl_high && sda_high && i2c1_activity_guard_elapsed()) {
             if (!measuring_idle) {
                 idle_since = now;
                 measuring_idle = true;
-            } else if ((uint32_t)(now - idle_since) >=
-                       I2C1_QUIET_GUARD_MS) {
-                return 0;
+            } else if ((now - idle_since) >= I2C1_QUIET_GUARD_MS) {
+                result = 0;
+            } else {
+                /* Still within the guard interval — keep measuring. */
             }
-        } else {
+        }
+        else {
             measuring_idle = false;
         }
 
-        k_usleep(I2C1_LINE_POLL_US);
+        if (result == -EBUSY) {
+            (void)k_usleep(I2C1_LINE_POLL_US);
+        }
     }
 
-    return -EBUSY;
+    return result;
 }
 
 /**
@@ -139,45 +143,58 @@ static int i2c1_wait_quiet(void)
  */
 static enum i2c1_line_state i2c1_classify_lines(void)
 {
-    uint32_t started = k_uptime_get_32();
+    enum i2c1_line_state result = I2C1_LINES_ACTIVE;
+    uint32_t started = (uint32_t)k_uptime_get_32();
     uint32_t state_since = started;
     bool previous_scl = false;
     bool previous_sda = false;
     bool have_previous = false;
+    bool done = false;
 
-    while ((uint32_t)(k_uptime_get_32() - started) <
-           I2C1_CLASSIFY_TIMEOUT_MS) {
-        bool scl_high;
-        bool sda_high;
-        uint32_t now = k_uptime_get_32();
-        uint32_t stable_ms;
+    while ((!done) &&
+           (((uint32_t)k_uptime_get_32() - started) < I2C1_CLASSIFY_TIMEOUT_MS)) {
+        bool scl_high = false;
+        bool sda_high = false;
+        uint32_t now = (uint32_t)k_uptime_get_32();
+        uint32_t stable_ms = 0U;
 
         if (!i2c1_get_lines(&scl_high, &sda_high)) {
-            return I2C1_LINES_ACTIVE;
+            /* result stays I2C1_LINES_ACTIVE */
+            done = true;
         }
+        else {
+            if ((!have_previous) || (scl_high != previous_scl) ||
+                (sda_high != previous_sda)) {
+                previous_scl = scl_high;
+                previous_sda = sda_high;
+                state_since = now;
+                have_previous = true;
+            }
 
-        if (!have_previous || (scl_high != previous_scl) ||
-            (sda_high != previous_sda)) {
-            previous_scl = scl_high;
-            previous_sda = sda_high;
-            state_since = now;
-            have_previous = true;
-        }
+            stable_ms = now - state_since;
+            if (scl_high && sda_high && (stable_ms >= I2C1_QUIET_GUARD_MS)) {
+                result = I2C1_LINES_IDLE;
+                done = true;
+            }
+            else if (stable_ms >= I2C1_STUCK_CONFIRM_MS) {
+                if (scl_high) {
+                    result = I2C1_LINES_SDA_STUCK;
+                } else {
+                    result = I2C1_LINES_SCL_STUCK;
+                }
+                done = true;
+            }
+            else {
+                /* Not yet stable long enough to classify — keep polling. */
+            }
 
-        stable_ms = (uint32_t)(now - state_since);
-        if (scl_high && sda_high &&
-            (stable_ms >= I2C1_QUIET_GUARD_MS)) {
-            return I2C1_LINES_IDLE;
+            if (!done) {
+                (void)k_usleep(I2C1_LINE_POLL_US);
+            }
         }
-        if (stable_ms >= I2C1_STUCK_CONFIRM_MS) {
-            return scl_high ? I2C1_LINES_SDA_STUCK
-                            : I2C1_LINES_SCL_STUCK;
-        }
-
-        k_usleep(I2C1_LINE_POLL_US);
     }
 
-    return I2C1_LINES_ACTIVE;
+    return result;
 }
 
 #if defined(CONFIG_SOC_FAMILY_STM32) && DT_NODE_EXISTS(DT_NODELABEL(i2c1))
@@ -222,9 +239,9 @@ void i2c1_bus_lock(void)
     (void)k_mutex_lock(&i2c1_bus_mutex, K_FOREVER);
 }
 
-int i2c1_bus_lock_quiet(void)
+Status_t i2c1_bus_lock_quiet(void)
 {
-    int ret;
+    Status_t ret = 0;
 
     i2c1_bus_lock();
     ret = i2c1_wait_quiet();
@@ -245,10 +262,10 @@ void i2c1_bus_note_activity(void)
     atomic_set(&last_bus_activity_ms, (atomic_val_t)k_uptime_get_32());
 }
 
-int i2c1_bus_recover(void)
+Status_t i2c1_bus_recover(void)
 {
-    int ret = -ENODEV;
-    enum i2c1_line_state state;
+    Status_t ret = -ENODEV;
+    enum i2c1_line_state state = I2C1_LINES_ACTIVE;
 
     if (i2c1_dev != NULL) {
         i2c1_bus_lock();
@@ -285,7 +302,7 @@ int i2c1_bus_recover(void)
     return ret;
 }
 
-bool i2c1_error_is_transient(int rc)
+bool i2c1_error_is_transient(Status_t rc)
 {
     /* Arbitration loss / BUSY / a glitched transfer on the multimaster bus are
      * all retryable; a hard error code (e.g. -EINVAL, -ENODEV) is not. */
@@ -293,9 +310,9 @@ bool i2c1_error_is_transient(int rc)
            (rc == -ETIMEDOUT) || (rc == -EIO);
 }
 
-static int i2c1_try_once(int (*xfer)(void *ctx), void *ctx)
+static Status_t i2c1_try_once(I2c1XferFn_t xfer, void *ctx)
 {
-    int ret = i2c1_bus_lock_quiet();
+    Status_t ret = i2c1_bus_lock_quiet();
 
     if (ret == 0) {
         ret = xfer(ctx);
@@ -305,30 +322,37 @@ static int i2c1_try_once(int (*xfer)(void *ctx), void *ctx)
     return ret;
 }
 
-int i2c1_transact(int (*xfer)(void *ctx), void *ctx, uint8_t attempts,
+Status_t i2c1_transact(I2c1XferFn_t xfer, void *ctx, uint8_t attempts,
           uint32_t backoff_base_ms, uint32_t backoff_jitter_ms)
 {
-    int ret = -EBUSY;
+    Status_t ret = -EBUSY;
 
     if ((xfer == NULL) || (attempts == 0U)) {
-        return -EINVAL;
+        ret = -EINVAL;
     }
+    else {
+        uint8_t a = 0U;
 
-    for (uint8_t a = 0U; (a < attempts) && i2c1_error_is_transient(ret); ++a) {
-        if (a > 0U) {
-            uint32_t delay = backoff_base_ms << (a - 1U);
-            uint32_t jitter = (backoff_jitter_ms != 0U)
-                    ? (k_cycle_get_32() % backoff_jitter_ms) : 0U;
-            k_msleep((int32_t)(delay + jitter));
+        while ((a < attempts) && i2c1_error_is_transient(ret)) {
+            if (a > 0U) {
+                uint32_t delay = backoff_base_ms << (a - 1U);
+                uint32_t jitter = 0U;
+                if (backoff_jitter_ms != 0U) {
+                    jitter = (uint32_t)k_cycle_get_32() % backoff_jitter_ms;
+                }
+                const uint32_t total_delay_ms = delay + jitter;
+                (void)k_msleep((int32_t)total_delay_ms);
+            }
+            ret = i2c1_try_once(xfer, ctx);
+            ++a;
         }
-        ret = i2c1_try_once(xfer, ctx);
-    }
 
-    /* Still wedged after every avoid+retry: classify the lines and recover
-     * (idle -> PE reset; SDA-stuck -> nine-clock bus clear; live traffic left
-     * alone), then make one final attempt rather than surfacing the failure. */
-    if (i2c1_error_is_transient(ret) && (i2c1_bus_recover() == 0)) {
-        ret = i2c1_try_once(xfer, ctx);
+        /* Still wedged after every avoid+retry: classify the lines and recover
+         * (idle -> PE reset; SDA-stuck -> nine-clock bus clear; live traffic left
+         * alone), then make one final attempt rather than surfacing the failure. */
+        if (i2c1_error_is_transient(ret) && (i2c1_bus_recover() == 0)) {
+            ret = i2c1_try_once(xfer, ctx);
+        }
     }
 
     return ret;

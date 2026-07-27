@@ -18,7 +18,6 @@
 
 import * as constants from '../uds/constants.js';
 import { UDSError, ValidationError } from '../errors/ProtocolErrors.js';
-import { ByteUtils } from '../utils/ByteUtils.js';
 import { parseMcubootImage } from './McubootImage.js';
 import {
   decodeMcubootStatus, decodePostStatus, decodeSemVer8
@@ -26,7 +25,11 @@ import {
 
 class EventEmitter {
   constructor() { this.events = {}; }
-  on(event, cb) { (this.events[event] ||= []).push(cb); return this; }
+  on(event, cb) {
+    if (!this.events[event]) { this.events[event] = []; }
+    this.events[event].push(cb);
+    return this;
+  }
   off(event, cb) {
     if (this.events[event]) this.events[event] = this.events[event].filter(f => f !== cb);
     return this;
@@ -74,7 +77,7 @@ export class OTAManager extends EventEmitter {
     super();
     this.uds = uds;
     this.options = options;
-    this.timeouts = { ...OTA_TIMEOUTS, ...(options.timeouts || {}) };
+    this.timeouts = { ...OTA_TIMEOUTS, ...options.timeouts };
   }
 
   /** Enter the programming session (surface only; NRC 0x22 while diving). */
@@ -231,8 +234,8 @@ export class OTAManager extends EventEmitter {
     for (let i = 0; i < attempts; i++) {
       try {
         status = await this.readMcubootStatus();
-        if (status && status.confirmed) { outcome = 'confirmed'; break; }
-        if (status && status.swapType === MCUBOOT_SWAP_REVERT) { outcome = 'reverted'; break; }
+        if (status?.confirmed) { outcome = 'confirmed'; break; }
+        if (status?.swapType === MCUBOOT_SWAP_REVERT) { outcome = 'reverted'; break; }
       } catch {
         // Head may be mid-reboot — tolerate transient read failures and retry.
       }

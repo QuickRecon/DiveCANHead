@@ -90,7 +90,13 @@ bool heartbeat_check_all_alive(void)
 
 void heartbeat_set_long_op(bool in_progress)
 {
-    (void)atomic_set(get_long_op_flag(), in_progress ? 1 : 0);
+    atomic_val_t flag_val = 0;
+
+    if (in_progress) {
+        flag_val = 1;
+    }
+
+    (void)atomic_set(get_long_op_flag(), flag_val);
 }
 
 void heartbeat_reset_for_test(void)

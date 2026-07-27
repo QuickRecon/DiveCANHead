@@ -179,7 +179,7 @@ static bool send_consecutive_frames(TxSmCtx_t *sm)
             stminMs = sm->txSTmin;
         }
         if (stminMs > 0) {
-            k_msleep((int32_t)stminMs);
+            (void)k_msleep((int32_t)stminMs);
         }
 
         /* Build CF */
@@ -314,7 +314,7 @@ static enum smf_state_result tx_wait_fc_run(void *obj)
         smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
     } else if (TX_EVT_TICK == sm->event) {
         uint32_t currentTime = k_uptime_get_32();
-        if ((currentTime - sm->txLastFrameTime) > ISOTP_TIMEOUT_N_BS) {
+        if ((currentTime - sm->txLastFrameTime) > (uint32_t)ISOTP_TIMEOUT_N_BS) {
             smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
         }
     } else {
@@ -384,8 +384,8 @@ bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
              * pending request to free a slot, and retry so the responder
              * self-heals instead of wedging. */
             TxSmCtx_t *sm = getTxSm();
-            if (!tx_sm_is_idle(sm) &&
-                ((k_uptime_get_32() - sm->txLastFrameTime) > ISOTP_TIMEOUT_N_BS)) {
+            if ((!tx_sm_is_idle(sm)) &&
+                ((k_uptime_get_32() - sm->txLastFrameTime) > (uint32_t)ISOTP_TIMEOUT_N_BS)) {
                 smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
                 sm->event = TX_EVT_TICK;
                 (void)smf_run_state(SMF_CTX(sm));

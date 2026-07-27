@@ -116,7 +116,7 @@ bool errors_get_last_crash(CrashInfo_t *out)
 FUNC_NORETURN void must_succeed_failed(const char *expr, Status_t rc,
                     const char *file, uint32_t line)
 {
-    printk("MUST_SUCCEED failed: %s = %d @ %s:%u\n",
+    (void)printk("MUST_SUCCEED failed: %s = %d @ %s:%u\n",
            expr, rc, file, line);
     k_oops();
     CODE_UNREACHABLE;
@@ -174,7 +174,7 @@ void zbus_pub_checked(const struct zbus_channel *chan, const void *msg,
 FUNC_NORETURN void fatal_op_error(FatalOpError_t code, const char *file,
                    uint32_t line)
 {
-    printk("FATAL OP_ERR %d @ %s:%u\n", (int32_t)code, file, line);
+    (void)printk("FATAL OP_ERR %d @ %s:%u\n", (int32_t)code, file, line);
 
     crash_noinit.magic = CRASH_MAGIC;
     crash_noinit.reason = (uint32_t)code;
@@ -229,13 +229,13 @@ void k_sys_fatal_error_handler(uint32_t reason,
         crash_noinit.pc = esf->basic.pc;
         crash_noinit.lr = esf->basic.lr;
     } else {
-        printk("*** FATAL: reason %u  (no ESF) ***\n", reason);
+        (void)printk("*** FATAL: reason %u  (no ESF) ***\n", reason);
         crash_noinit.pc = 0U;
         crash_noinit.lr = 0U;
     }
 #else
     ARG_UNUSED(esf);
-    printk("*** FATAL: reason %u ***\n", reason);
+    (void)printk("*** FATAL: reason %u ***\n", reason);
     crash_noinit.pc = 0U;
     crash_noinit.lr = 0U;
 #endif
@@ -245,7 +245,7 @@ void k_sys_fatal_error_handler(uint32_t reason,
     /* Record the faulting thread so a stack overflow (K_ERR_STACK_CHK_FAIL=2)
      * can be attributed to a specific thread on the next boot. */
     crash_noinit.thread = (uint32_t)(uintptr_t)k_current_get();
-    printk("*** FATAL thread=%s (%p) ***\n",
+    (void)printk("*** FATAL thread=%s (%p) ***\n",
            k_thread_name_get(k_current_get()), (void *)k_current_get());
 
 #if defined(CONFIG_CPU_CORTEX_M)

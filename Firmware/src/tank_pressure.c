@@ -127,11 +127,11 @@ static void transducer_init(struct transducer_state *t)
  * @return 0 on success (t->adc_sample_buf holds the raw count), else the
  *         adc_read_dt() errno.
  */
-static int transducer_read_xfer(void *ctx)
+static Status_t transducer_read_xfer(void *ctx)
 {
     struct transducer_state *t = (struct transducer_state *)ctx;
 
-    return (int)adc_read_dt(t->adc, &t->adc_seq);
+    return adc_read_dt(t->adc, &t->adc_seq);
 }
 
 /**
@@ -263,10 +263,10 @@ static void tank_pressure_thread(void *p1, void *p2, void *p3)
         zbus_pub_checked(&chan_tank_pressure, &msg,
                          K_MSEC(TANK_PUBLISH_TIMEOUT_MS));
 
-        int32_t jitter = (int32_t)(k_cycle_get_32() %
-                         (2U * TANK_SAMPLE_JITTER_MS + 1U)) -
-                         (int32_t)TANK_SAMPLE_JITTER_MS;
-        k_msleep(TANK_SAMPLE_INTERVAL_MS + jitter);
+        uint32_t jitter_mod = (2U * TANK_SAMPLE_JITTER_MS) + 1U;
+        uint32_t jitter_raw = k_cycle_get_32() % jitter_mod;
+        int32_t jitter = (int32_t)jitter_raw - (int32_t)TANK_SAMPLE_JITTER_MS;
+        (void)k_msleep(TANK_SAMPLE_INTERVAL_MS + jitter);
     }
 }
 

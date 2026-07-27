@@ -26,6 +26,7 @@
 #include "heartbeat.h"
 #include "errors.h"
 #include "maintenance_arena.h"
+#include "common.h"
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
 #endif
@@ -68,6 +69,24 @@ const struct factory_image_backend *factory_image_get_flash_backend(void);
 #define IMAGE_HEADER_IMG_SIZE_OFFSET   12U   /* ih_img_size        u32 */
 #define IMAGE_TLV_INFO_MAGIC           0x6907U /* unprotected TLV info magic */
 #define IMAGE_TLV_INFO_TOT_OFFSET      2U    /* it_tlv_tot within image_tlv_info */
+
+/* Size in bytes of the leading image_tlv_info {magic, tot} pair. Must be a
+ * #define (not static const) — it also sizes a stack array below, and this
+ * codebase forbids VLAs. */
+#define IMAGE_TLV_INFO_SIZE  4U
+
+/** @brief Byte index of the 3rd/4th bytes in a little-endian 32-bit read. */
+static const uint8_t LE32_BYTE2_IDX = 2U;
+static const uint8_t LE32_BYTE3_IDX = 3U;
+
+/** @brief Retry budget for confirming the staged pending swap registered. */
+static const int STAGE_SWAP_MAX_ATTEMPTS = 5;
+
+/** @brief Byte length of factory_image_get_version()'s output buffer. */
+static const size_t VERSION_FIELD_LEN = 4U;
+
+/** @brief Byte length of factory_image_get_sem_ver()'s output buffer. */
+static const size_t SEM_VER_FIELD_LEN = 8U;
 
 /** @brief Delay before sys_reboot() so a UDS positive response can drain. */
 #define RESTORE_REBOOT_DELAY_MS  200
@@ -117,8 +136,12 @@ static uint8_t g_verify_buf[256];
 static int verify_backend_readback(uint32_t off, const uint8_t *expected, uint32_t len)
 {
     for (uint32_t v = 0U; v < len; v += (uint32_t)sizeof(g_verify_buf)) {
-        uint32_t step = ((len - v) < (uint32_t)sizeof(g_verify_buf))
-                      ? (len - v) : (uint32_t)sizeof(g_verify_buf);
+        uint32_t step;
+        if ((len - v) < (uint32_t)sizeof(g_verify_buf)) {
+            step = len - v;
+        } else {
+            step = (uint32_t)sizeof(g_verify_buf);
+        }
         int rc = get_state()->backend->read(off + v, g_verify_buf, step);
         if (0 != rc) {
             return rc;
@@ -135,8 +158,12 @@ static int verify_slot1_readback(const struct flash_area *fa, uint32_t off,
                                  const uint8_t *expected, uint32_t len)
 {
     for (uint32_t v = 0U; v < len; v += (uint32_t)sizeof(g_verify_buf)) {
-        uint32_t step = ((len - v) < (uint32_t)sizeof(g_verify_buf))
-                      ? (len - v) : (uint32_t)sizeof(g_verify_buf);
+        uint32_t step;
+        if ((len - v) < (uint32_t)sizeof(g_verify_buf)) {
+            step = len - v;
+        } else {
+            step = (uint32_t)sizeof(g_verify_buf);
+        }
         int rc = flash_area_read(fa, off + v, g_verify_buf, step);
         if (0 != rc) {
             return rc;
@@ -199,8 +226,14 @@ static int copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
                                  const struct flash_area *slot0_fa)
 {
     int result = 0;
-    uint32_t copy_size = (slot0_size < backend_size) ? slot0_size : backend_size;
+    uint32_t copy_size;
     uint8_t *chunk = get_chunk_buffer();
+
+    if (slot0_size < backend_size) {
+        copy_size = slot0_size;
+    } else {
+        copy_size = backend_size;
+    }
 
     for (uint32_t off = 0U; off < copy_size; off += CHUNK_SIZE) {
         uint32_t this_chunk = ((copy_size - off) < (uint32_t)CHUNK_SIZE)
@@ -212,7 +245,7 @@ static int copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
          * error OR silent data mismatch — the shared SPI NOR's fast programming
          * path can corrupt a chunk with the write still returning 0. */
         int attempt = 0;
-        int rc;
+        int rc = 0;
         do {
             rc = flash_area_read(slot0_fa, off, chunk, this_chunk);
             if (0 == rc) {
@@ -221,7 +254,7 @@ static int copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
             if (0 == rc) {
                 rc = verify_backend_readback(off, chunk, this_chunk);
             }
-            attempt++;
+            ++attempt;
         } while ((0 != rc) && (attempt < COPY_MAX_ATTEMPTS));
 
         if (0 != rc) {
@@ -411,13 +444,14 @@ static void ensure_work_q_started(void)
 
 static uint16_t rd_le16(const uint8_t *p)
 {
-    return (uint16_t)((uint16_t)p[0] | (uint16_t)((uint16_t)p[1] << 8U));
+    return (uint16_t)((uint16_t)p[0] | (uint16_t)((uint16_t)p[1] << BYTE_WIDTH));
 }
 
 static uint32_t rd_le32(const uint8_t *p)
 {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8U)
-         | ((uint32_t)p[2] << 16U) | ((uint32_t)p[3] << 24U);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << BYTE_WIDTH)
+         | ((uint32_t)p[LE32_BYTE2_IDX] << TWO_BYTE_WIDTH)
+         | ((uint32_t)p[LE32_BYTE3_IDX] << THREE_BYTE_WIDTH);
 }
 
 /* Compute the exact byte length of the captured factory image (header + payload
@@ -429,7 +463,7 @@ static uint32_t rd_le32(const uint8_t *p)
  * -EBADF if the header or TLV info is not well-formed. */
 static int factory_backup_image_size(uint32_t backend_size, uint32_t *out_size)
 {
-    uint8_t hdr[32];
+    uint8_t hdr[32] = {0};
     int rc = get_state()->backend->read(0U, hdr, sizeof(hdr));
 
     if (0 != rc) {
@@ -445,10 +479,10 @@ static int factory_backup_image_size(uint32_t backend_size, uint32_t *out_size)
     uint32_t tlv_off = hdr_size + img_size + prot_tlv;
 
     /* The unprotected TLV area starts with an image_tlv_info {magic, tot}. */
-    if ((tlv_off + 4U) > backend_size) {
+    if ((tlv_off + IMAGE_TLV_INFO_SIZE) > backend_size) {
         return -EBADF;
     }
-    uint8_t tlvinfo[4];
+    uint8_t tlvinfo[IMAGE_TLV_INFO_SIZE] = {0};
     rc = get_state()->backend->read(tlv_off, tlvinfo, sizeof(tlvinfo));
     if (0 != rc) {
         return rc;
@@ -529,7 +563,7 @@ static int copy_backend_to_slot1(void)
                         if (0 == rc) {
                             rc = verify_slot1_readback(slot1_fa, off, chunk, this_chunk);
                         }
-                        attempt++;
+                        ++attempt;
                     } while ((0 != rc) && (attempt < COPY_MAX_ATTEMPTS));
 
                     if (0 != rc) {
@@ -578,7 +612,7 @@ static int stage_pending_swap(const struct flash_area *slot1_fa)
 {
     int rc = -EIO;
 
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < STAGE_SWAP_MAX_ATTEMPTS; ++i) {
         /* Trailer is already erased on entry (image-only copy); re-erase only
          * between retries (a partial magic can't be re-written without erasing). */
         if (i > 0) {
@@ -657,7 +691,7 @@ int factory_image_restore_to_slot1(void)
         maint_arena_release(MAINT_ARENA_OWNER_FACTORY);
 
         if (0 == result) {
-            k_msleep(RESTORE_REBOOT_DELAY_MS);
+            (void)k_msleep(RESTORE_REBOOT_DELAY_MS);
             sys_reboot(SYS_REBOOT_COLD);
         }
     }
@@ -736,12 +770,12 @@ static int factory_image_read_version_field(uint8_t *out_bytes, size_t len)
 
 int factory_image_get_version(uint8_t out_version[4])
 {
-    return factory_image_read_version_field(out_version, 4U);
+    return factory_image_read_version_field(out_version, VERSION_FIELD_LEN);
 }
 
 int factory_image_get_sem_ver(uint8_t out_sem_ver[8])
 {
-    return factory_image_read_version_field(out_sem_ver, 8U);
+    return factory_image_read_version_field(out_sem_ver, SEM_VER_FIELD_LEN);
 }
 
 /* ---- Public API ---- */

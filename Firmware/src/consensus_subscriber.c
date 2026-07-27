@@ -61,7 +61,7 @@ static const uint8_t CELL_IDX_2 = 2U;
 static void read_cell_or_fail(const struct zbus_channel *chan,
                               OxygenCellMsg_t *out)
 {
-    int rc = zbus_chan_read(chan, out, K_MSEC(CHAN_OP_TIMEOUT_MS));
+    Status_t rc = zbus_chan_read(chan, out, K_MSEC(CHAN_OP_TIMEOUT_MS));
 
     if (0 != rc) {
         OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
@@ -130,7 +130,7 @@ static void consensus_thread_fn(void *p1, void *p2, void *p3)
 #endif
         zbus_pub_checked(&chan_consensus, &result, K_MSEC(CHAN_OP_TIMEOUT_MS));
 
-        k_msleep((int32_t)CONSENSUS_PERIOD_MS);
+        (void)k_msleep((int32_t)CONSENSUS_PERIOD_MS);
     }
 }
 

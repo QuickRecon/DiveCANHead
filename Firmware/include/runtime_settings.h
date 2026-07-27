@@ -64,16 +64,23 @@ static const PPO2ControlMode_t valid_ppo2_control_modes[] = {
  *         the exact 0.19 bar hypoxic-diluent setpoint as a special exception. */
 static inline PPO2_t clamp_setpoint_cb(PPO2_t setpoint_cb)
 {
+    PPO2_t result = setpoint_cb;
+
     if (setpoint_cb == PPO2_SETPOINT_HYPOXIC_CB) {
-        return (PPO2_t)PPO2_SETPOINT_HYPOXIC_CB;
+        result = (PPO2_t)PPO2_SETPOINT_HYPOXIC_CB;
     }
-    if (setpoint_cb < PPO2_SETPOINT_MIN_CB) {
-        return (PPO2_t)PPO2_SETPOINT_MIN_CB;
+    else if (setpoint_cb < PPO2_SETPOINT_MIN_CB) {
+        result = (PPO2_t)PPO2_SETPOINT_MIN_CB;
     }
-    if (setpoint_cb > PPO2_SETPOINT_MAX_CB) {
-        return (PPO2_t)PPO2_SETPOINT_MAX_CB;
+    else if (setpoint_cb > PPO2_SETPOINT_MAX_CB) {
+        result = (PPO2_t)PPO2_SETPOINT_MAX_CB;
     }
-    return setpoint_cb;
+    else
+    {
+        /* No action required */
+    }
+
+    return result;
 }
 
 /* ---- Calibration Mode ----
@@ -220,7 +227,7 @@ typedef struct {
  * @param out Destination for loaded settings (must not be NULL)
  * @return 0 on success, negative errno on NVS failure
  */
-int runtime_settings_load(RuntimeSettings_t *out);
+Status_t runtime_settings_load(RuntimeSettings_t *out);
 
 /**
  * @brief Persist settings to NVS.
@@ -228,7 +235,7 @@ int runtime_settings_load(RuntimeSettings_t *out);
  * @param settings Settings to write (must not be NULL)
  * @return 0 on success, negative errno on NVS failure
  */
-int runtime_settings_save(const RuntimeSettings_t *settings);
+Status_t runtime_settings_save(const RuntimeSettings_t *settings);
 
 /** @brief Identifies a single persistable runtime setting (one NVS key). */
 typedef enum {
@@ -257,7 +264,7 @@ typedef enum {
  * @return 0 on success, -EINVAL if the live cache fails validation, or a
  *         negative errno from the settings backend
  */
-int runtime_settings_save_field(RuntimeSettingField_t field);
+Status_t runtime_settings_save_field(RuntimeSettingField_t field);
 
 /**
  * @brief Apply settings to the in-memory cache WITHOUT persisting to NVS.
@@ -270,7 +277,7 @@ int runtime_settings_save_field(RuntimeSettingField_t field);
  * @param settings Settings to apply (must not be NULL)
  * @return 0 on success, -EINVAL if the settings fail validation
  */
-int runtime_settings_set_volatile(const RuntimeSettings_t *settings);
+Status_t runtime_settings_set_volatile(const RuntimeSettings_t *settings);
 
 /**
  * @brief Copy the current in-memory settings cache into *out.

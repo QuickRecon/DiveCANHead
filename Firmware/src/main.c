@@ -44,6 +44,9 @@ static const uint32_t STARTUP_DELAY_MS = 1000U;
 /* Heartbeat LED blink period (ms) */
 static const uint32_t BLINK_PERIOD_MS = 500U;
 
+/* Post-preamble-line drain delay (ms) — see preamble_line() header comment. */
+static const uint32_t PREAMBLE_LINE_DRAIN_MS = 50U;
+
 /* Boot indicator: a short, fast LED burst at the very top of main() — before
  * any flash/FCB work — so each boot is visually distinct from the steady ~1 Hz
  * heartbeat. A healthy boot shows the burst ONCE then the slow heartbeat; a
@@ -62,15 +65,14 @@ static const uint32_t BLINK_PERIOD_MS = 500U;
  */
 static void boot_indicator(void)
 {
-    if (!device_is_ready(led.port)) {
-        return;
-    }
-    (void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
-    for (uint32_t i = 0U; i < BOOT_BLINK_COUNT; ++i) {
-        (void)gpio_pin_set_dt(&led, 1);
-        k_msleep(BOOT_BLINK_ON_MS);
-        (void)gpio_pin_set_dt(&led, 0);
-        k_msleep(BOOT_BLINK_OFF_MS);
+    if (device_is_ready(led.port)) {
+        (void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+        for (uint32_t i = 0U; i < BOOT_BLINK_COUNT; ++i) {
+            (void)gpio_pin_set_dt(&led, 1);
+            (void)k_msleep(BOOT_BLINK_ON_MS);
+            (void)gpio_pin_set_dt(&led, 0);
+            (void)k_msleep(BOOT_BLINK_OFF_MS);
+        }
     }
 }
 
@@ -252,37 +254,43 @@ static void preamble_line(const char *fmt, ...)
     va_list ap;
 
     va_start(ap, fmt);
-    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    int32_t n = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
-    if (n < 0) {
-        return;
-    }
-
-    LOG_INF("%s", buf);
-    k_msleep(50);
+    if (n >= 0) {
+        LOG_INF("%s", buf);
+        (void)k_msleep(PREAMBLE_LINE_DRAIN_MS);
 
 #ifdef CONFIG_FLASH_LOG
-    /* Guarantee capture regardless of runtime verbosity. log_source_id_get
-     * returns -1 if the source isn't registered; treat that as "use 0"
-     * so the entry still lands in the FCB. */
-    size_t len = ((size_t)n >= sizeof(buf)) ? (sizeof(buf) - 1U) : (size_t)n;
-    int src = log_source_id_get("main");
-    if (src < 0) {
-        src = 0;
-    }
-    flash_log_enqueue_text((uint8_t)LOG_LEVEL_INF, (uint16_t)src, buf, len);
+        /* Guarantee capture regardless of runtime verbosity. log_source_id_get
+         * returns -1 if the source isn't registered; treat that as "use 0"
+         * so the entry still lands in the FCB. */
+        size_t len = (size_t)n;
+        if ((size_t)n >= sizeof(buf)) {
+            len = sizeof(buf) - 1U;
+        }
+        Status_t src = log_source_id_get("main");
+        if (src < 0) {
+            src = 0;
+        }
+        flash_log_enqueue_text((uint8_t)LOG_LEVEL_INF, (uint16_t)src, buf, len);
 #endif
+    }
 }
 
 #ifdef CONFIG_FLASH_LOG
+/** Percentage scale factor for sector-usage reporting. */
+static const uint32_t PERCENT_SCALE = 100U;
+
 static uint8_t fl_used_pct(uint16_t free_sectors, uint16_t total_sectors)
 {
-    if ((total_sectors == 0U) || (free_sectors > total_sectors)) {
-        return 0U;
+    uint8_t pct = 0U;
+
+    if ((total_sectors != 0U) && (free_sectors <= total_sectors)) {
+        uint16_t used = total_sectors - free_sectors;
+        pct = (uint8_t)((PERCENT_SCALE * (uint32_t)used) / (uint32_t)total_sectors);
     }
-    uint16_t used = total_sectors - free_sectors;
-    return (uint8_t)((100U * (uint32_t)used) / (uint32_t)total_sectors);
+    return pct;
 }
 #endif
 
@@ -307,7 +315,7 @@ static void emit_startup_preamble(void)
     preamble_line("Zephyr: %s", KERNEL_VERSION_STRING);
     preamble_line("Board: %s", CONFIG_BOARD);
 #ifdef CONFIG_FLASH_LOG
-    preamble_line("Boot ID: %u", (unsigned int)flash_log_get_boot_id());
+    preamble_line("Boot ID: %u", flash_log_get_boot_id());
 #endif
 
     preamble_line("Cells: %d", CONFIG_CELL_COUNT);
@@ -335,15 +343,33 @@ static void emit_startup_preamble(void)
 #else
     preamble_line("Solenoids: none (solenoid driver disabled)");
 #endif
+    const char *o2_sol_flag = "N";
+    if (0 != IS_ENABLED(CONFIG_HAS_O2_SOLENOID)) {
+        o2_sol_flag = "Y";
+    }
+    const char *flush_sol_flag = "N";
+    if (0 != IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID)) {
+        flush_sol_flag = "Y";
+    }
+    const char *digital_cell_flag = "N";
+    if (0 != IS_ENABLED(CONFIG_HAS_DIGITAL_CELL)) {
+        digital_cell_flag = "Y";
+    }
+    const char *analog_cell_flag = "N";
+    if (0 != IS_ENABLED(CONFIG_HAS_ANALOG_CELL)) {
+        analog_cell_flag = "Y";
+    }
     preamble_line("Has flags: o2_sol=%s flush_sol=%s digital_cell=%s analog_cell=%s",
-                  IS_ENABLED(CONFIG_HAS_O2_SOLENOID)   ? "Y" : "N",
-                  IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID) ? "Y" : "N",
-                  IS_ENABLED(CONFIG_HAS_DIGITAL_CELL)   ? "Y" : "N",
-                  IS_ENABLED(CONFIG_HAS_ANALOG_CELL)    ? "Y" : "N");
+                  o2_sol_flag, flush_sol_flag, digital_cell_flag, analog_cell_flag);
+
+    const char *depth_comp_default_flag = "N";
+    if (0 != IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT)) {
+        depth_comp_default_flag = "Y";
+    }
     preamble_line("Compile defaults: ppo2=%s cal=%s depth_comp=%s",
                   COMPILE_PPO2_DEFAULT_STR,
                   COMPILE_CAL_DEFAULT_STR,
-                  IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT) ? "Y" : "N");
+                  depth_comp_default_flag);
 
     /* Runtime config snapshot. Re-loading from NVS here (rather than
      * reading a cached struct) is one extra settings_runtime_get per
@@ -354,11 +380,15 @@ static void emit_startup_preamble(void)
     preamble_line("Runtime config:");
     preamble_line("  PPO2 mode: %s", ppo2_mode_name(rt.ppo2ControlMode));
     preamble_line("  Cal mode: %s", cal_mode_name(rt.calibrationMode));
-    preamble_line("  Depth comp: %s", rt.depthCompensation ? "Y" : "N");
+    const char *depth_comp_flag = "N";
+    if (rt.depthCompensation) {
+        depth_comp_flag = "Y";
+    }
+    preamble_line("  Depth comp: %s", depth_comp_flag);
     preamble_line("  PID gains x1000: Kp=%d Ki=%d Kd=%d",
-                  (int)lroundf(rt.pidKp * (float)PID_GAIN_DISPLAY_SCALE),
-                  (int)lroundf(rt.pidKi * (float)PID_GAIN_DISPLAY_SCALE),
-                  (int)lroundf(rt.pidKd * (float)PID_GAIN_DISPLAY_SCALE));
+                  (int32_t)lroundf(rt.pidKp * PID_GAIN_DISPLAY_SCALE),
+                  (int32_t)lroundf(rt.pidKi * PID_GAIN_DISPLAY_SCALE),
+                  (int32_t)lroundf(rt.pidKd * PID_GAIN_DISPLAY_SCALE));
     preamble_line("  Battery type: %s", battery_type_name(rt.batteryType));
 
 #ifdef CONFIG_FLASH_LOG
@@ -368,20 +398,23 @@ static void emit_startup_preamble(void)
                                       stats.telemetry.sectors_total);
         uint8_t txt_pct = fl_used_pct(stats.text.sectors_free,
                                       stats.text.sectors_total);
+        const uint16_t tel_used = stats.telemetry.sectors_total - stats.telemetry.sectors_free;
+        const uint16_t txt_used = stats.text.sectors_total - stats.text.sectors_free;
+
         preamble_line("Flash log:");
         preamble_line("  Telemetry: %u/%u sectors used (%u%%) boots=%u..%u dives=%u drops=%u",
-                      (unsigned int)(stats.telemetry.sectors_total - stats.telemetry.sectors_free),
-                      (unsigned int)stats.telemetry.sectors_total,
-                      (unsigned int)tel_pct,
-                      (unsigned int)stats.telemetry.boot_id_oldest,
-                      (unsigned int)stats.telemetry.boot_id_current,
-                      (unsigned int)stats.telemetry.dive_id_latest,
-                      (unsigned int)stats.telemetry.drops_since_boot);
+                      (uint32_t)tel_used,
+                      (uint32_t)stats.telemetry.sectors_total,
+                      (uint32_t)tel_pct,
+                      stats.telemetry.boot_id_oldest,
+                      stats.telemetry.boot_id_current,
+                      (uint32_t)stats.telemetry.dive_id_latest,
+                      stats.telemetry.drops_since_boot);
         preamble_line("  Text:      %u/%u sectors used (%u%%) drops=%u",
-                      (unsigned int)(stats.text.sectors_total - stats.text.sectors_free),
-                      (unsigned int)stats.text.sectors_total,
-                      (unsigned int)txt_pct,
-                      (unsigned int)stats.text.drops_since_boot);
+                      (uint32_t)txt_used,
+                      (uint32_t)stats.text.sectors_total,
+                      (uint32_t)txt_pct,
+                      stats.text.drops_since_boot);
     }
 #endif
 
@@ -478,7 +511,7 @@ Status_t main(void)
              * develop on. Re-enable for production builds (consider
              * gating on a Kconfig such as CONFIG_DIVECAN_REQUIRE_CAN_TRAFFIC).
              */
-            k_msleep(STARTUP_DELAY_MS);
+            (void)k_msleep(STARTUP_DELAY_MS);
 #if 0
             if (!power_is_can_active(POWER_DEVICE)) {
                 LOG_WRN("CAN bus not active — entering shutdown");
@@ -490,8 +523,8 @@ Status_t main(void)
              * all auto-started by K_THREAD_DEFINE — no manual init needed.
              * Main thread blinks the heartbeat LED. */
             while (1) {
-                gpio_pin_toggle_dt(&led);
-                k_msleep(BLINK_PERIOD_MS);
+                (void)gpio_pin_toggle_dt(&led);
+                (void)k_msleep(BLINK_PERIOD_MS);
             }
         }
     }

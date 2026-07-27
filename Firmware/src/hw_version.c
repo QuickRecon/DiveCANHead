@@ -34,6 +34,7 @@ static const uint32_t BLINK_OFF_MS = 100U;
 static const uint32_t BLINK_GROUP_PAUSE_MS = 1000U;
 static const uint32_t HALT_NO_LED_TICK_MS = 1000U;
 static const uint8_t BLINKS_PER_GROUP = 3U;
+static const uint8_t THIRD_PIN_IDX = 2U;
 /* Referenced from inside the DT_INST_FOREACH_STATUS_OKAY macro chain below;
  * GCC's unused-detection cannot see through the expansion, so mark it
  * explicitly. */
@@ -129,11 +130,11 @@ static void blink_forever(const struct gpio_dt_spec *led)
     while (true) {
         for (uint8_t i = 0U; i < BLINKS_PER_GROUP; ++i) {
             (void)gpio_pin_set_dt(led, 1);
-            k_msleep(BLINK_ON_MS);
+            (void)k_msleep(BLINK_ON_MS);
             (void)gpio_pin_set_dt(led, 0);
-            k_msleep(BLINK_OFF_MS);
+            (void)k_msleep(BLINK_OFF_MS);
         }
-        k_msleep(BLINK_GROUP_PAUSE_MS);
+        (void)k_msleep(BLINK_GROUP_PAUSE_MS);
     }
 }
 
@@ -154,16 +155,16 @@ static void halt_with_blink(const struct hw_version_config *cfg,
     LOG_ERR("HW version mismatch! Expected [%s,%s,%s] got [%s,%s,%s]",
         pin_state_name(cfg->expected[0]),
         pin_state_name(cfg->expected[1]),
-        pin_state_name(cfg->expected[2]),
+        pin_state_name(cfg->expected[THIRD_PIN_IDX]),
         pin_state_name(actual[0]),
         pin_state_name(actual[1]),
-        pin_state_name(actual[2]));
+        pin_state_name(actual[THIRD_PIN_IDX]));
 
-    printk("*** HW VERSION MISMATCH — halting ***\n");
+    (void)printk("*** HW VERSION MISMATCH — halting ***\n");
 
     if (!cfg->has_error_led) {
         while (true) {
-            k_msleep(HALT_NO_LED_TICK_MS);
+            (void)k_msleep(HALT_NO_LED_TICK_MS);
         }
     } else {
         (void)gpio_pin_configure_dt(&cfg->error_led, GPIO_OUTPUT_ACTIVE);
@@ -179,15 +180,15 @@ static void halt_with_blink(const struct hw_version_config *cfg,
  */
 static void print_pin_states(const char *prefix, const uint8_t *actual)
 {
-    printk("%s: [", prefix);
+    (void)printk("%s: [", prefix);
     for (uint8_t i = 0U; i < MAX_PINS; ++i) {
         const char *sep = "";
         if ((i + 1U) < MAX_PINS) {
             sep = ",";
         }
-        printk("%s%s", pin_state_name(actual[i]), sep);
+        (void)printk("%s%s", pin_state_name(actual[i]), sep);
     }
-    printk("]\n");
+    (void)printk("]\n");
 }
 
 /**

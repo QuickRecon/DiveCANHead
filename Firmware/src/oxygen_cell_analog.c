@@ -38,6 +38,13 @@ LOG_MODULE_REGISTER(cell_analog, LOG_LEVEL_INF);
  * edge the solenoid-fire thread already hit. 1024 B restores margin. */
 #define ANALOG_CELL_STACK_SIZE 1024
 
+/* Timeout for the zbus_pub_checked() calls in this file. */
+static const uint32_t ZBUS_PUB_TIMEOUT_MS = 100U;
+
+/* Scale to render the calibration coefficient's fractional part as 6 decimal
+ * digits in the "%d.%06d" log format. */
+static const Numeric_t CAL_COEFF_FRACTION_SCALE = 1000000.0f;
+
 /*
  * ADC channel mapping now lives in devicetree, not here. The board DTS defines
  * a channel@N node per analog cell (device + differential AIN pair + gain) and
@@ -124,9 +131,16 @@ static void analog_publish(struct analog_cell_state *cell)
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
         .raw_sample = (int32_t)cell->last_counts,
+        .temperature_dC = 0,
+        .err_code = 0U,
+        .phase = 0,
+        .intensity = 0,
+        .ambient_light = 0,
+        .pressure_uhpa = 0U,
+        .humidity_mRH = 0,
     };
 
-    zbus_pub_checked(cell->out_chan, &msg, K_MSEC(100));
+    zbus_pub_checked(cell->out_chan, &msg, K_MSEC(ZBUS_PUB_TIMEOUT_MS));
 }
 
 /**
@@ -182,9 +196,13 @@ static void analog_load_cal(struct analog_cell_state *cell)
         (coeff >= ANALOG_CAL_LOWER) && (coeff <= ANALOG_CAL_UPPER)) {
         cell->cal_coeff = coeff;
         cell->status = CELL_OK;
+
+        int32_t whole = (int32_t)coeff;
+        Numeric_t frac_micro = (coeff - (Numeric_t)whole) * CAL_COEFF_FRACTION_SCALE;
+
         LOG_INF("Cell %u: loaded cal coeff %d.%06d",
             cell->cell_number,
-            (int)coeff, (int)((coeff - (int)coeff) * 1000000));
+            whole, (int32_t)frac_micro);
     } else {
         /* Bug #3 pattern: if cal is missing or out of range, set
          * CELL_NEED_CAL so the consensus algorithm excludes us */
@@ -228,8 +246,16 @@ static void analog_cell_thread(void *p1, void *p2, void *p3)
         .millivolts = 0,
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
+        .raw_sample = 0,
+        .temperature_dC = 0,
+        .err_code = 0U,
+        .phase = 0,
+        .intensity = 0,
+        .ambient_light = 0,
+        .pressure_uhpa = 0U,
+        .humidity_mRH = 0,
     };
-    zbus_pub_checked(cell->out_chan, &init_msg, K_MSEC(100));
+    zbus_pub_checked(cell->out_chan, &init_msg, K_MSEC(ZBUS_PUB_TIMEOUT_MS));
 
     if (0 != analog_cell_init_adc(cell)) {
         cell->status = CELL_FAIL;
@@ -246,7 +272,7 @@ static void analog_cell_thread(void *p1, void *p2, void *p3)
              * immediately, so explicitly enforce the sample rate
              * here to avoid spinning at maximum speed and starving
              * other threads of the publisher's zbus queue. */
-            k_msleep(ANALOG_SAMPLE_INTERVAL_MS);
+            (void)k_msleep(ANALOG_SAMPLE_INTERVAL_MS);
         }
     }
 }

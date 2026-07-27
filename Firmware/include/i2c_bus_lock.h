@@ -27,6 +27,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "common.h"
+
 /**
  * @brief Acquire exclusive use of the i2c1 controller for a master transfer.
  *
@@ -45,7 +47,7 @@ void i2c1_bus_lock(void);
  * @return 0 on success, or -EBUSY if no quiet window appeared before the
  *         bounded timeout. On error the mutex is not held.
  */
-int i2c1_bus_lock_quiet(void);
+Status_t i2c1_bus_lock_quiet(void);
 
 /**
  * @brief Release the i2c1 controller acquired via i2c1_bus_lock().
@@ -74,13 +76,13 @@ void i2c1_bus_note_activity(void);
  *         native_sim); -EBUSY if the bus remains active or SCL is stuck low;
  *         -ENOSYS if bus recovery is unavailable; or a driver error code.
  */
-int i2c1_bus_recover(void);
+Status_t i2c1_bus_recover(void);
 
 /**
  * @brief True if @p rc is a transient i2c1 error worth retrying (arbitration
  * loss / BUSY / bus glitch on the multimaster bus) rather than a hard fault.
  */
-bool i2c1_error_is_transient(int rc);
+bool i2c1_error_is_transient(Status_t rc);
 
 /**
  * @brief Unified multimaster-safe i2c1 transfer: avoid + retry + recover.
@@ -101,7 +103,9 @@ bool i2c1_error_is_transient(int rc);
  * @param backoff_jitter_ms Upper bound of the random jitter added each backoff.
  * @return 0 on success, or the last @p xfer / lock error.
  */
-int i2c1_transact(int (*xfer)(void *ctx), void *ctx, uint8_t attempts,
+typedef Status_t (*I2c1XferFn_t)(void *ctx);
+
+Status_t i2c1_transact(I2c1XferFn_t xfer, void *ctx, uint8_t attempts,
           uint32_t backoff_base_ms, uint32_t backoff_jitter_ms);
 
 #endif /* I2C_BUS_LOCK_H */

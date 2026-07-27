@@ -18,6 +18,8 @@
  * legacy firmware set is delegated to one-time provisioning.
  */
 
+#include "common.h"
+
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -39,7 +41,7 @@ static bool bit_matches(uint32_t value, uint32_t pos, uint32_t expected)
     return actual == expected;
 }
 
-static int option_bytes_assert(void)
+static Status_t option_bytes_assert(void)
 {
     FLASH_OBProgramInitTypeDef current = {0};
     HAL_FLASHEx_OBGetConfig(&current);
@@ -50,14 +52,14 @@ static int option_bytes_assert(void)
 
     if (ok_nBOOT0 && ok_nSWBOOT0) {
         LOG_INF("Option bytes OK: nBOOT0=%u nSWBOOT0=%u (USERConfig=0x%08x)",
-                EXPECTED_nBOOT0, EXPECTED_nSWBOOT0, (unsigned)optr);
+                EXPECTED_nBOOT0, EXPECTED_nSWBOOT0, optr);
     } else {
         LOG_ERR("Option bytes WRONG: nBOOT0=%u/%u nSWBOOT0=%u/%u "
                 "(USERConfig=0x%08x). Reprovision via "
                 "STM32_Programmer_CLI -ob nSWBOOT0=0 nBOOT0=1.",
-                (unsigned)((optr >> FLASH_OPTR_nBOOT0_Pos) & 1U), EXPECTED_nBOOT0,
-                (unsigned)((optr >> FLASH_OPTR_nSWBOOT0_Pos) & 1U), EXPECTED_nSWBOOT0,
-                (unsigned)optr);
+                (optr >> FLASH_OPTR_nBOOT0_Pos) & 1U, EXPECTED_nBOOT0,
+                (optr >> FLASH_OPTR_nSWBOOT0_Pos) & 1U, EXPECTED_nSWBOOT0,
+                optr);
     }
     return 0;
 }

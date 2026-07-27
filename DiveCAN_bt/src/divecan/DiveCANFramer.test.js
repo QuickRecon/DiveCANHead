@@ -129,7 +129,7 @@ describe('DiveCANFramer', () => {
 
       expect(result.source).toBe(0x80);
       expect(result.target).toBe(0xFF);
-      expect(result.length).toBe(4);
+      expect(result).toHaveLength(4);
       expect(Array.from(result.payload)).toEqual([0x62, 0xF2, 0x00]);
     });
 
@@ -191,7 +191,7 @@ describe('DiveCANFramer', () => {
 
       const result = framer.parse(datagram);
       // Should use actual payload length
-      expect(result.payload.length).toBe(3);
+      expect(result.payload).toHaveLength(3);
     });
   });
 

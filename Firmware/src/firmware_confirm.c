@@ -29,6 +29,7 @@
 #include <zephyr/dfu/mcuboot.h>
 
 #include "firmware_confirm.h"
+#include "common.h"
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_types.h"
 #include "divecan/include/divecan_channels.h"
@@ -104,12 +105,10 @@ static bool cell_is_alive(const struct zbus_channel *chan)
 {
     OxygenCellMsg_t msg = {0};
     bool alive = false;
-    int rc = zbus_chan_read(chan, &msg, K_MSEC(ZBUS_READ_TIMEOUT_MS));
+    Status_t rc = zbus_chan_read(chan, &msg, K_MSEC(ZBUS_READ_TIMEOUT_MS));
 
-    if (0 == rc) {
-        if ((CELL_OK == msg.status) || (CELL_NEED_CAL == msg.status)) {
-            alive = true;
-        }
+    if ((0 == rc) && ((CELL_OK == msg.status) || (CELL_NEED_CAL == msg.status))) {
+        alive = true;
     }
     return alive;
 }
@@ -121,12 +120,10 @@ static bool consensus_is_alive(void)
 {
     ConsensusMsg_t msg = {0};
     bool alive = false;
-    int rc = zbus_chan_read(&chan_consensus, &msg, K_MSEC(ZBUS_READ_TIMEOUT_MS));
+    Status_t rc = zbus_chan_read(&chan_consensus, &msg, K_MSEC(ZBUS_READ_TIMEOUT_MS));
 
-    if (0 == rc) {
-        if (PPO2_FAIL != msg.consensus_ppo2) {
-            alive = true;
-        }
+    if ((0 == rc) && (PPO2_FAIL != msg.consensus_ppo2)) {
+        alive = true;
     }
     return alive;
 }
@@ -139,8 +136,8 @@ static bool solenoid_is_alive(void)
     DiveCANError_t status = DIVECAN_ERR_NONE;
     bool alive = false;
 #ifdef CONFIG_HAS_O2_SOLENOID
-    int rc = zbus_chan_read(&chan_solenoid_status, &status,
-                            K_MSEC(ZBUS_READ_TIMEOUT_MS));
+    Status_t rc = zbus_chan_read(&chan_solenoid_status, &status,
+                                 K_MSEC(ZBUS_READ_TIMEOUT_MS));
     if (0 == rc) {
         if (DIVECAN_ERR_SOL_NORM == status) {
             alive = true;
@@ -194,14 +191,14 @@ static void abort_and_reboot(PostState_t fail_state)
 {
     (void)atomic_set(&s_post_state, (atomic_val_t)fail_state);
     OP_ERROR_DETAIL(OP_ERR_POST_FAIL, (uint32_t)fail_state);
-    LOG_ERR("POST failed in state %d — rebooting (no confirm)", (int)fail_state);
+    LOG_ERR("POST failed in state %d — rebooting (no confirm)", (int32_t)fail_state);
 
 #ifdef CONFIG_ZTEST
     /* In test builds the wrap stub takes over and notes the call; don't
      * burn wall time on a sleep we don't need. */
     sys_reboot(SYS_REBOOT_COLD);
 #else
-    k_msleep(POST_REBOOT_DELAY_MS);
+    (void)k_msleep(POST_REBOOT_DELAY_MS);
     sys_reboot(SYS_REBOOT_COLD);
 #endif
 }
@@ -410,7 +407,7 @@ static void post_confirmed_entry(void *obj)
     PostSmCtx_t *sm = (PostSmCtx_t *)obj;
 
 #ifndef CONFIG_ZTEST
-    int rc = boot_write_img_confirmed();
+    Status_t rc = boot_write_img_confirmed();
     if (0 != rc) {
         LOG_ERR("boot_write_img_confirmed failed: %d", rc);
         OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
@@ -502,7 +499,7 @@ static void run_post_sequence(void)
 
     smf_set_initial(SMF_CTX(&sm), &post_states[POST_WAITING_CELLS]);
     while (0 == smf_run_state(SMF_CTX(&sm))) {
-        k_msleep(POLL_INTERVAL_MS);
+        (void)k_msleep(POLL_INTERVAL_MS);
     }
 }
 
@@ -548,17 +545,20 @@ void firmware_confirm_reset_for_test(void)
  * where the "POST deferred on a swapped REVERT image" regression lived). */
 PostInitAction_t firmware_confirm_decide(bool confirmed, int swap_type)
 {
+    PostInitAction_t result;
+
     if (confirmed) {
-        return POST_ACTION_SILENT;
+        result = POST_ACTION_SILENT;
+    } else if (BOOT_SWAP_TYPE_TEST == swap_type) {
+        /* Defer ONLY a queued TEST swap (still running the old image). A freshly-SWAPPED
+         * unconfirmed image reports BOOT_SWAP_TYPE_REVERT ("revert next boot unless
+         * confirmed") and MUST be validated — the earlier `!= NONE` check wrongly deferred
+         * it, so POST never ran on a swapped image and every OTA reverted. */
+        result = POST_ACTION_DEFER;
+    } else {
+        result = POST_ACTION_RUN;   /* REVERT (swapped, awaiting confirm) or NONE */
     }
-    /* Defer ONLY a queued TEST swap (still running the old image). A freshly-SWAPPED
-     * unconfirmed image reports BOOT_SWAP_TYPE_REVERT ("revert next boot unless
-     * confirmed") and MUST be validated — the earlier `!= NONE` check wrongly deferred
-     * it, so POST never ran on a swapped image and every OTA reverted. */
-    if (BOOT_SWAP_TYPE_TEST == swap_type) {
-        return POST_ACTION_DEFER;
-    }
-    return POST_ACTION_RUN;   /* REVERT (swapped, awaiting confirm) or NONE */
+    return result;
 }
 
 #ifndef CONFIG_ZTEST
@@ -591,8 +591,8 @@ void firmware_confirm_init(void)
         (void)atomic_set(&s_post_state, (atomic_val_t)POST_CONFIRMED);
         LOG_INF("TEST swap queued — POST deferred to next boot");
         break;
-    case POST_ACTION_RUN:
     default:
+        /* POST_ACTION_RUN (swapped, awaiting confirm) falls through to here. */
         LOG_INF("Image not yet confirmed (swap=%d) — running POST (%d ms deadline)",
                 swap, (int)POST_DEADLINE_MS);
         k_thread_start(firmware_confirm_thread);

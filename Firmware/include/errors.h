@@ -16,6 +16,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
 
+#include "common.h"
+
 /* ---- Crash info (persisted in noinit RAM across warm resets) ---- */
 
 /** @brief Magic value written to CrashInfo_t.magic to mark a valid crash record. */
@@ -60,8 +62,8 @@ bool errors_get_last_crash(CrashInfo_t *out);
  * @param file Source filename (__FILE__)
  * @param line Source line number (__LINE__)
  */
-FUNC_NORETURN void must_succeed_failed(const char *expr, int rc,
-                    const char *file, unsigned int line);
+FUNC_NORETURN void must_succeed_failed(const char *expr, Status_t rc,
+                    const char *file, uint32_t line);
 
 #define MUST_SUCCEED(expr) do {                    \
     int _must_rc = (expr);                     \
@@ -316,7 +318,7 @@ typedef enum {
  * @param line Source line number (__LINE__)
  */
 FUNC_NORETURN void fatal_op_error(FatalOpError_t code, const char *file,
-                   unsigned int line);
+                   uint32_t line);
 
 #define FATAL_OP_ERROR(code) \
     fatal_op_error((code), __FILE__, __LINE__)

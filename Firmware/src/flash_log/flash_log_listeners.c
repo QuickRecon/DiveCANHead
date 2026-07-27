@@ -39,18 +39,18 @@ LOG_MODULE_REGISTER(flash_log_listeners, LOG_LEVEL_NONE);
 static void consensus_listener_cb(const struct zbus_channel *chan)
 {
     const ConsensusMsg_t *msg = zbus_chan_const_msg(chan);
-    if (msg == NULL) {
-        return;
+
+    if (msg != NULL) {
+        /* K_NO_WAIT is REQUIRED: this is a zbus listener (fired synchronously
+         * inside a chan_consensus publish), where a blocking cross-channel
+         * read risks deadlock / stalls the publisher. On a rare miss the
+         * flash-log record simply carries setpoint 0 — a logging artefact,
+         * not a live control/display value. */
+        PPO2_t setpoint = 0U;
+        (void)zbus_chan_read(&chan_setpoint, &setpoint, K_NO_WAIT);
+
+        flash_log_enqueue_consensus(msg, setpoint);
     }
-
-    /* K_NO_WAIT is REQUIRED: this is a zbus listener (fired synchronously inside
-     * a chan_consensus publish), where a blocking cross-channel read risks
-     * deadlock / stalls the publisher. On a rare miss the flash-log record simply
-     * carries setpoint 0 — a logging artefact, not a live control/display value. */
-    PPO2_t setpoint = 0U;
-    (void)zbus_chan_read(&chan_setpoint, &setpoint, K_NO_WAIT);
-
-    flash_log_enqueue_consensus(msg, setpoint);
 }
 
 ZBUS_LISTENER_DEFINE(fl_consensus_listener, consensus_listener_cb);
@@ -61,10 +61,10 @@ ZBUS_CHAN_ADD_OBS(chan_consensus, fl_consensus_listener, 4);
 static void cell_listener_cb(const struct zbus_channel *chan)
 {
     const OxygenCellMsg_t *msg = zbus_chan_const_msg(chan);
-    if (msg == NULL) {
-        return;
+
+    if (msg != NULL) {
+        flash_log_enqueue_cell_raw(msg);
     }
-    flash_log_enqueue_cell_raw(msg);
 }
 
 ZBUS_LISTENER_DEFINE(fl_cell_listener, cell_listener_cb);
@@ -81,19 +81,14 @@ ZBUS_CHAN_ADD_OBS(chan_cell_3, fl_cell_listener, 4);
 static void dive_state_listener_cb(const struct zbus_channel *chan)
 {
     const DiveState_t *state = zbus_chan_const_msg(chan);
-    if (state == NULL) {
-        return;
-    }
 
     /* Channel initial value is dive_number = 0; filter to avoid emitting
      * a spurious DIVE_END marker at boot. */
-    if (state->dive_number == 0U) {
-        return;
+    if ((state != NULL) && (state->dive_number != 0U)) {
+        flash_log_enqueue_dive_marker(state->diving,
+                          (uint16_t)state->dive_number,
+                          state->unix_timestamp);
     }
-
-    flash_log_enqueue_dive_marker(state->diving,
-                      (uint16_t)state->dive_number,
-                      state->unix_timestamp);
 }
 
 ZBUS_LISTENER_DEFINE(fl_dive_state_listener, dive_state_listener_cb);
@@ -104,15 +99,12 @@ ZBUS_CHAN_ADD_OBS(chan_dive_state, fl_dive_state_listener, 4);
 static void error_listener_cb(const struct zbus_channel *chan)
 {
     const ErrorEvent_t *evt = zbus_chan_const_msg(chan);
-    if (evt == NULL) {
-        return;
-    }
+
     /* Channel initial value is OP_ERR_NONE; filter it out so flash isn't
      * polluted with a no-op at boot. */
-    if (evt->code == OP_ERR_NONE) {
-        return;
+    if ((evt != NULL) && (evt->code != OP_ERR_NONE)) {
+        flash_log_enqueue_error(evt);
     }
-    flash_log_enqueue_error(evt);
 }
 
 ZBUS_LISTENER_DEFINE(fl_error_listener, error_listener_cb);
@@ -123,10 +115,10 @@ ZBUS_CHAN_ADD_OBS(chan_error, fl_error_listener, 4);
 static void solenoid_fire_listener_cb(const struct zbus_channel *chan)
 {
     const SolenoidFireEvent_t *evt = zbus_chan_const_msg(chan);
-    if (evt == NULL) {
-        return;
+
+    if (evt != NULL) {
+        flash_log_enqueue_solenoid_fire(evt);
     }
-    flash_log_enqueue_solenoid_fire(evt);
 }
 
 ZBUS_LISTENER_DEFINE(fl_solenoid_fire_listener, solenoid_fire_listener_cb);

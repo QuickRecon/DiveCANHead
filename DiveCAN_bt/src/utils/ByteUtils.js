@@ -213,4 +213,18 @@ export class ByteUtils {
     }
     return bytes;
   }
+
+  /**
+   * Trim trailing padding characters (e.g. NUL/space) from a decoded string.
+   * A plain linear scan, not a regex — avoids the non-linear-backtracking
+   * profile of an unanchored `/[chars]+$/` pattern on untrusted-length input.
+   * @param {string} str - Decoded string
+   * @param {string} chars - Characters to treat as trailing padding
+   * @returns {string}
+   */
+  static trimTrailing(str, chars) {
+    let end = str.length;
+    while (end > 0 && chars.includes(str[end - 1])) { end -= 1; }
+    return str.slice(0, end);
+  }
 }

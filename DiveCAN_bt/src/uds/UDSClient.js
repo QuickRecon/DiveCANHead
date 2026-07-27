@@ -478,7 +478,7 @@ export class UDSClient extends EventEmitter {
    */
   async readFirmwareVersion() {
     const data = await this.readDataByIdentifier(constants.DID_FIRMWARE_VERSION);
-    return new TextDecoder().decode(data).replace(/\0+$/, '');
+    return ByteUtils.trimTrailing(new TextDecoder().decode(data), '\0');
   }
 
   /**
@@ -487,7 +487,7 @@ export class UDSClient extends EventEmitter {
    */
   async readVariantName() {
     const data = await this.readDataByIdentifier(constants.DID_VARIANT_NAME);
-    return new TextDecoder().decode(data).replace(/\0+$/, '');
+    return ByteUtils.trimTrailing(new TextDecoder().decode(data), '\0');
   }
 
   /**
@@ -537,7 +537,7 @@ export class UDSClient extends EventEmitter {
 
     const L = constants.SETTING_LABEL_LEN;
     // Label is a fixed-width padded field (trim trailing NUL/space padding).
-    const label = new TextDecoder().decode(data.slice(0, L)).replace(/[\0 ]+$/, '');
+    const label = ByteUtils.trimTrailing(new TextDecoder().decode(data.slice(0, L)), '\0 ');
     const kind = data[L + 1];
     const editable = data[L + 2] === 1;
 
@@ -577,7 +577,7 @@ export class UDSClient extends EventEmitter {
     const did = constants.DID_SETTING_LABEL_BASE + (settingIndex << 4) + optionIndex;
     const data = await this.readDataByIdentifier(did);
     // 9-byte space-padded, no NUL terminator.
-    return new TextDecoder().decode(data).replace(/[\0 ]+$/, '');
+    return ByteUtils.trimTrailing(new TextDecoder().decode(data), '\0 ');
   }
 
   /**
@@ -870,7 +870,7 @@ export class UDSClient extends EventEmitter {
         // the 0.1 bar precision while mapping its wire failure sentinel to NaN
         // so unavailable/bad readings are not plotted as 6553.5 bar.
         const decibar = view.getUint16(0, true);
-        return decibar === 0xFFFF ? NaN : decibar / 10;
+        return decibar === 0xFFFF ? Number.NaN : decibar / 10;
       }
       case 'uint8':
         return data[0];
@@ -882,7 +882,7 @@ export class UDSClient extends EventEmitter {
         // unavailable reading (no provider / no sample yet) becomes NaN, which
         // the store skips for plotting and the power page renders as "--".
         const decoded = constants.decodeDeviceCurrent(data);
-        return decoded && decoded.valid ? decoded.currentMa : NaN;
+        return decoded?.valid ? decoded.currentMa : Number.NaN;
       }
       default:
         return data;
@@ -935,23 +935,51 @@ export class UDSClient extends EventEmitter {
    * @param {Function} progressCallback - Optional callback (current, total) => void
    * @returns {Promise<Object>} Complete state object
    */
-  async fetchAllState(cellTypes, progressCallback = null) {
-    // Collect all DIDs to read
+  /**
+   * Collect every DID to fetch for a full state read: control state plus
+   * every cell DID valid for that cell's configured type.
+   * @private
+   */
+  _collectAllStateDIDs(cellTypes) {
     const allDIDs = [];
 
-    // Add control state DIDs
     const controlDIDs = constants.getControlStateDIDs();
     for (const info of Object.values(controlDIDs)) {
       allDIDs.push(info.did);
     }
 
-    // Add cell DIDs (filtered by type)
     for (let cellNum = 0; cellNum < 3; cellNum++) {
       const validDIDs = constants.getValidCellDIDs(cellNum, cellTypes[cellNum]);
       for (const info of Object.values(validDIDs)) {
         allDIDs.push(info.did);
       }
     }
+
+    return allDIDs;
+  }
+
+  /**
+   * Read one chunk of DIDs into `result`. If the chunk read fails (a DID in
+   * it is unsupported on this variant, or the head is slow/desynced), retry
+   * each DID individually so a single failure doesn't blank the whole fetch.
+   * @private
+   */
+  async _fetchChunkWithFallback(chunk, result) {
+    try {
+      Object.assign(result, await this.readDIDsParsed(chunk));
+    } catch (error) {
+      for (const did of chunk) {
+        try {
+          Object.assign(result, await this.readDIDsParsed([did]));
+        } catch (didError) {
+          // Skip this DID for this cycle.
+        }
+      }
+    }
+  }
+
+  async fetchAllState(cellTypes, progressCallback = null) {
+    const allDIDs = this._collectAllStateDIDs(cellTypes);
 
     // Split into chunks to fit within BLE MTU constraints
     // Request format: 1 (SID) + N*2 (DID bytes) must fit in ~20 byte MTU
@@ -967,20 +995,7 @@ export class UDSClient extends EventEmitter {
       }
 
       const chunk = allDIDs.slice(i, i + DIDS_PER_REQUEST);
-      try {
-        Object.assign(result, await this.readDIDsParsed(chunk));
-      } catch (error) {
-        // A DID in this chunk is unsupported on this variant, or the head is
-        // slow/desynced. Retry each DID individually so a single failure doesn't
-        // blank the whole fetch and break the connect.
-        for (const did of chunk) {
-          try {
-            Object.assign(result, await this.readDIDsParsed([did]));
-          } catch (didError) {
-            // Skip this DID for this cycle.
-          }
-        }
-      }
+      await this._fetchChunkWithFallback(chunk, result);
     }
 
     // Add cell types to result

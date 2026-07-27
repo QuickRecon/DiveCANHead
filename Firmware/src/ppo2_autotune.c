@@ -81,6 +81,12 @@ static const Numeric_t MILLIUNITS = 1000.0f;
 static const PPO2_t AUTOTUNE_DEFAULT_BASE_CB = 70U;
 /** Default incremental excitation duty (%). */
 static const uint8_t AUTOTUNE_DEFAULT_DUTY_STEP_PCT = 20U;
+/** Lower bound on the sanitised excitation duty step (%). */
+static const uint8_t AUTOTUNE_DUTY_STEP_MIN_PCT = 5U;
+/** Upper bound on the sanitised excitation duty step (%). */
+static const uint8_t AUTOTUNE_DUTY_STEP_MAX_PCT = 30U;
+/** Divisor applied to AUTOTUNE_BASELINE_SAMPLES to split a baseline window in half. */
+static const uint16_t AUTOTUNE_BASELINE_HALF_DIVISOR = 2U;
 
 /** Model synthesis uses the real controller's 100 ms update interval. */
 static const PIDNumeric_t PID_CONTROLLER_DT_S = 0.1f;
@@ -179,7 +185,7 @@ static void status_update_elapsed(void)
 {
     (void)k_mutex_lock(&autotune_mutex, K_FOREVER);
     AutotuneShared_t *s = getShared();
-    s->status.elapsed_s = (k_uptime_get_32() - s->start_uptime_ms) / MS_PER_SEC;
+    s->status.elapsed_s = ((uint32_t)k_uptime_get_32() - s->start_uptime_ms) / MS_PER_SEC;
     (void)k_mutex_unlock(&autotune_mutex);
 }
 
@@ -208,7 +214,7 @@ static AutotuneAbortReason_t check_safety(void)
     AutotuneShared_t *s = getShared();
     bool aborted = s->abort_req;
     AutotuneAbortReason_t req_reason = s->abort_reason;
-    uint32_t elapsed_ms = k_uptime_get_32() - s->start_uptime_ms;
+    uint32_t elapsed_ms = (uint32_t)k_uptime_get_32() - s->start_uptime_ms;
     (void)k_mutex_unlock(&autotune_mutex);
 
     if (aborted) {
@@ -269,7 +275,7 @@ static AutotuneAbortReason_t autotune_wait(uint32_t duration_ms)
     while ((waited < duration_ms) && (AUTOTUNE_ABORT_NONE == reason)) {
         reason = check_safety();
         if (AUTOTUNE_ABORT_NONE == reason) {
-            k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
+            (void)k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
             waited += AUTOTUNE_SAMPLE_PERIOD_MS;
             status_update_elapsed();
         }
@@ -304,7 +310,7 @@ static AutotuneAbortReason_t autotune_observe(PIDNumeric_t *duty_trace,
         reason = check_safety();
         if (AUTOTUNE_ABORT_NONE == reason) {
             ConsensusMsg_t consensus = {0};
-            int rc = zbus_chan_read(&chan_consensus, &consensus,
+            Status_t rc = zbus_chan_read(&chan_consensus, &consensus,
                         K_MSEC(CHAN_TIMEOUT_MS));
             if (0 == rc) {
                 if (PPO2_FAIL == consensus.consensus_ppo2) {
@@ -327,7 +333,7 @@ static AutotuneAbortReason_t autotune_observe(PIDNumeric_t *duty_trace,
                 }
             }
             if (AUTOTUNE_ABORT_NONE == reason) {
-                k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
+                (void)k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
                 status_update_elapsed();
             }
         }
@@ -373,10 +379,12 @@ static void sanitize_params(AutotuneParams_t *p)
     if (0U == step) {
         step = AUTOTUNE_DEFAULT_DUTY_STEP_PCT;
     }
-    if (step < 5U) {
-        step = 5U;
-    } else if (step > 30U) {
-        step = 30U;
+    if (step < AUTOTUNE_DUTY_STEP_MIN_PCT) {
+        step = AUTOTUNE_DUTY_STEP_MIN_PCT;
+    } else if (step > AUTOTUNE_DUTY_STEP_MAX_PCT) {
+        step = AUTOTUNE_DUTY_STEP_MAX_PCT;
+    } else {
+        /* Within range — no clamp required. */
     }
 
     p->base_setpoint_cb = base;
@@ -439,7 +447,7 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
                                 K_MSEC(CHAN_TIMEOUT_MS));
                     *pressure_mbar_out = pressure_mbar;
                     duty = ppo2_control_effective_duty(duty, pressure_mbar);
-                    if (i < (AUTOTUNE_BASELINE_SAMPLES / 2U)) {
+                    if (i < (AUTOTUNE_BASELINE_SAMPLES / AUTOTUNE_BASELINE_HALF_DIVISOR)) {
                         first_half_y +=
                             (PIDNumeric_t)consensus.precision_consensus;
                     } else {
@@ -450,14 +458,15 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
                     sum_y_sq += (PIDNumeric_t)consensus.precision_consensus *
                         (PIDNumeric_t)consensus.precision_consensus;
                     sum_u += (PIDNumeric_t)duty;
-                    k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
+                    (void)k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
                     status_update_elapsed();
                 }
             }
             if (AUTOTUNE_ABORT_NONE == reason) {
                 aggregate_y += sum_y;
                 aggregate_u += sum_u;
-                PIDNumeric_t samples_seen = (PIDNumeric_t)(window + 1U) *
+                const uint16_t windows_seen = (uint16_t)(window + 1U);
+                PIDNumeric_t samples_seen = (PIDNumeric_t)windows_seen *
                     (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES;
                 *baseline_duty = aggregate_u / samples_seen;
                 *baseline_ppo2 = aggregate_y / samples_seen;
@@ -471,8 +480,9 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
                     first_window_mean = window_mean;
                     /* Retain a within-window estimate until a longer baseline
                      * exists; it is diagnostic only at this point. */
-                    PIDNumeric_t half_n =
-                        (PIDNumeric_t)(AUTOTUNE_BASELINE_SAMPLES / 2U);
+                    const uint16_t half_samples =
+                        AUTOTUNE_BASELINE_SAMPLES / AUTOTUNE_BASELINE_HALF_DIVISOR;
+                    PIDNumeric_t half_n = (PIDNumeric_t)half_samples;
                     *baseline_slope =
                         ((second_half_y / half_n) -
                          (first_half_y / half_n)) /
@@ -485,7 +495,7 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
                 }
                 status_set_baseline(*baseline_duty, *baseline_slope,
                             *pressure_mbar_out);
-                baseline_stable = (window + 1U == AUTOTUNE_BASELINE_MAX_WINDOWS) &&
+                baseline_stable = ((window + 1U) == AUTOTUNE_BASELINE_MAX_WINDOWS) &&
                     (fabsf(*baseline_slope) <= 0.002f);
             }
         }
@@ -498,6 +508,8 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
                 duty_step = AUTOTUNE_MIN_DUTY_STEP;
             } else if (duty_step > AUTOTUNE_MAX_DUTY_STEP) {
                 duty_step = AUTOTUNE_MAX_DUTY_STEP;
+            } else {
+                /* Within range — no clamp required. */
             }
             PIDNumeric_t excited_duty = *baseline_duty + duty_step;
             if (excited_duty > 0.95f) {
@@ -520,7 +532,7 @@ static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct
 
 static void run_autotune(void)
 {
-    AutotuneParams_t params;
+    AutotuneParams_t params = {0};
     (void)k_mutex_lock(&autotune_mutex, K_FOREVER);
     params = getShared()->params;
     (void)k_mutex_unlock(&autotune_mutex);
@@ -564,15 +576,15 @@ static void run_autotune(void)
         }
     }
     if ((AUTOTUNE_ABORT_NONE == reason) &&
-        !autotune_identify_plant(trace->duty, trace->ppo2,
+        (!autotune_identify_plant(trace->duty, trace->ppo2,
                      AUTOTUNE_OBSERVE_SAMPLES, AUTOTUNE_DT_S,
-                     baseline_duty, baseline_ppo2, baseline_noise, &model)) {
+                     baseline_duty, baseline_ppo2, baseline_noise, &model))) {
         reason = AUTOTUNE_ABORT_IDENTIFY;
     }
     if ((AUTOTUNE_ABORT_NONE == reason) &&
-        !autotune_model_pid(&model, PID_CONTROLLER_DT_S,
+        (!autotune_model_pid(&model, PID_CONTROLLER_DT_S,
                     PID_GAIN_MIN, PID_GAIN_MAX,
-                    &tuned_kp, &tuned_ki, &tuned_kd)) {
+                    &tuned_kp, &tuned_ki, &tuned_kd))) {
         reason = AUTOTUNE_ABORT_TUNING;
     }
     if (AUTOTUNE_ABORT_NONE == reason) {
@@ -600,7 +612,7 @@ static void run_autotune(void)
         ppo2_control_set_gains_live(fb_kp, fb_ki, fb_kd);
         publish_setpoint(restore_sp);
         LOG_WRN("autotune aborted (reason %d) after %u iters",
-            (int)reason, 1U);
+            (int32_t)reason, 1U);
         status_finish(AUTOTUNE_ABORTED, reason);
     }
     else {
@@ -617,10 +629,14 @@ static void run_autotune(void)
         /* Log gains as integer milliunits (gain x1000) rather than %f: the
          * picolibc float-formatting path is the main stack consumer, and
          * avoiding it lets the thread run on a smaller stack (see stack note). */
+        const Numeric_t kp_milliunits = best_kp * MILLIUNITS;
+        const Numeric_t ki_milliunits = best_ki * MILLIUNITS;
+        const Numeric_t kd_milliunits = best_kd * MILLIUNITS;
+        const Numeric_t cost_milliunits = model.fit_rmse_bar * MILLIUNITS;
         LOG_INF("autotune done: kp=%d ki=%d kd=%d cost=%d (milliunits, %u iters)",
-            (int)(best_kp * MILLIUNITS), (int)(best_ki * MILLIUNITS),
-            (int)(best_kd * MILLIUNITS),
-            (int)((Numeric_t)model.fit_rmse_bar * MILLIUNITS), 1U);
+            (int32_t)kp_milliunits, (int32_t)ki_milliunits,
+            (int32_t)kd_milliunits,
+            (int32_t)cost_milliunits, 1U);
         status_finish(AUTOTUNE_DONE, AUTOTUNE_ABORT_NONE);
     }
 }
@@ -670,14 +686,14 @@ Status_t ppo2_autotune_start(const AutotuneParams_t *params)
             s->abort_req = false;
             s->abort_reason = AUTOTUNE_ABORT_NONE;
             s->running = true;
-            s->start_uptime_ms = k_uptime_get_32();
+            s->start_uptime_ms = (uint32_t)k_uptime_get_32();
             (void)memset(&s->status, 0, sizeof(s->status));
             s->status.state = AUTOTUNE_SETTLING;
             s->status.iteration_budget = s->params.iteration_budget;
             k_sem_give(&autotune_start_sem);
             LOG_INF("autotune start: base=%u cb duty_step=%u pct",
-                (unsigned int)s->params.base_setpoint_cb,
-                (unsigned int)s->params.excitation_duty_pct);
+                (uint32_t)s->params.base_setpoint_cb,
+                (uint32_t)s->params.excitation_duty_pct);
         }
         (void)k_mutex_unlock(&autotune_mutex);
     }

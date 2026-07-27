@@ -75,6 +75,14 @@ static const uint8_t ADC_RESOLUTION_BITS = 12U;
  * the image, which we don't have the flash budget for. */
 static const int32_t MILLIVOLTS_PER_VOLT = 1000;
 
+/* battery_divider_ratio is stored in milli-units (7250 = 7.25x); these split
+ * it into whole and two-decimal-place fraction for LOG_INF formatting. */
+static const uint16_t BATTERY_DIVIDER_WHOLE_SCALE = 1000U;
+static const uint16_t BATTERY_DIVIDER_FRACTION_SCALE = 10U;
+
+/* zbus publish timeout for the periodic battery status message. */
+static const uint32_t BATTERY_STATUS_PUBLISH_TIMEOUT_MS = 100U;
+
 /* ---- ADC voltage sampling ---- */
 
 /**
@@ -163,7 +171,7 @@ static Numeric_t sample_vcc_voltage(const struct power_config *cfg)
  * @param spec  GPIO to drive.
  * @param value Logical level to write.
  */
-static void set_gpio_checked(const struct gpio_dt_spec *spec, int value)
+static void set_gpio_checked(const struct gpio_dt_spec *spec, int32_t value)
 {
     Status_t ret = gpio_pin_set_dt(spec, value);
 
@@ -388,7 +396,7 @@ bool power_is_can_active(const struct device *dev)
  * USART, so there are no call sites and -Werror=unused-function would fail. */
 __maybe_unused static void suspend_uart_if_ready(const struct device *dev)
 {
-    if (device_is_ready(dev)) {
+    if (true == device_is_ready(dev)) {
         (void)pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
     }
 }
@@ -490,11 +498,11 @@ Status_t power_shutdown(const struct device *dev)
 
     /* Step 5: arm wakeup and clear stale flags. */
     __disable_irq();
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF2);
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF3);
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF4);
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF5);
+    (void)__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
+    (void)__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF2);
+    (void)__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF3);
+    (void)__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF4);
+    (void)__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF5);
 
     HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN2_LOW);
     HAL_PWREx_DisableInternalWakeUpLine();
@@ -573,7 +581,7 @@ static Status_t power_init(const struct device *dev)
          * reference support. */
         data->adc_ready = false;
 
-        if (device_is_ready(cfg->battery_adc_dev)) {
+        if (true == device_is_ready(cfg->battery_adc_dev)) {
             struct adc_channel_cfg ch_cfg = {
                 .gain = ADC_GAIN_1,
                 .reference = ADC_REF_INTERNAL,
@@ -652,18 +660,18 @@ static Status_t power_init(const struct device *dev)
          * Non-fatal if absent or not ready — VCC reads return -1.0 via
          * the has_vcc_sense gate in sample_vcc_voltage. */
         if ((0 == result) && cfg->has_vcc_sense &&
-            !device_is_ready(cfg->vcc_sense_dev)) {
+            (false == device_is_ready(cfg->vcc_sense_dev))) {
             LOG_WRN("VCC sense sensor not ready (VCC reads disabled)");
         }
 
         if (0 == result) {
             const char *vcc_state = "absent";
-            if (cfg->has_vcc_sense && device_is_ready(cfg->vcc_sense_dev)) {
+            if (cfg->has_vcc_sense && (true == device_is_ready(cfg->vcc_sense_dev))) {
                 vcc_state = "ready";
             }
             LOG_INF("Power subsystem initialized (batt-divider=%u.%02ux, vcc-sense=%s)",
-                cfg->battery_divider_ratio / 1000,
-                (cfg->battery_divider_ratio % 1000) / 10,
+                cfg->battery_divider_ratio / BATTERY_DIVIDER_WHOLE_SCALE,
+                (cfg->battery_divider_ratio % BATTERY_DIVIDER_WHOLE_SCALE) / BATTERY_DIVIDER_FRACTION_SCALE,
                 vcc_state);
         }
     }
@@ -758,7 +766,7 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
     const struct device *dev = POWER_DEVICE;
 
     /* Wait for system to stabilize before starting voltage monitoring */
-    k_msleep(BATTERY_SAMPLE_INTERVAL_MS);
+    (void)k_msleep(BATTERY_SAMPLE_INTERVAL_MS);
 
     while (true) {
         Numeric_t voltage = power_get_battery_voltage(dev);
@@ -773,21 +781,22 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
                        (voltage < threshold),
         };
 
-        zbus_pub_checked(&chan_battery_status, &status, K_MSEC(100));
+        zbus_pub_checked(&chan_battery_status, &status,
+                 K_MSEC(BATTERY_STATUS_PUBLISH_TIMEOUT_MS));
 
         if (status.low_battery) {
             /* Integer millivolts: whole = mv/1000, fraction = mv%1000.
              * Both values are strictly positive here (low_battery requires
              * voltage > 0 and the threshold is positive), so the modulo
              * fraction never comes out negative. */
-            int32_t voltage_mv = (int32_t)(voltage * (Numeric_t)MILLIVOLTS_PER_VOLT);
-            int32_t threshold_mv = (int32_t)(threshold * (Numeric_t)MILLIVOLTS_PER_VOLT);
+            int32_t voltage_mv = voltage * (Numeric_t)MILLIVOLTS_PER_VOLT;
+            int32_t threshold_mv = threshold * (Numeric_t)MILLIVOLTS_PER_VOLT;
             LOG_WRN("Low battery: %d.%03dV (threshold %d.%03dV)",
                 voltage_mv / MILLIVOLTS_PER_VOLT, voltage_mv % MILLIVOLTS_PER_VOLT,
                 threshold_mv / MILLIVOLTS_PER_VOLT, threshold_mv % MILLIVOLTS_PER_VOLT);
         }
 
-        k_msleep(BATTERY_SAMPLE_INTERVAL_MS);
+        (void)k_msleep(BATTERY_SAMPLE_INTERVAL_MS);
     }
 }
 
@@ -840,70 +849,75 @@ static void shutdown_thread_fn(void *p1, void *p2, void *p3)
     bool req = false;
 
     while (true) {
-        if (0 != zbus_sub_wait_msg(&shutdown_sub, &chan, &req, K_FOREVER)) {
-            /* Wait error — retry on next iteration */
-            continue;
-        }
-        if (!req) {
-            continue;
-        }
+        if (0 == zbus_sub_wait_msg(&shutdown_sub, &chan, &req, K_FOREVER)) {
+            if (req) {
+                LOG_INF("Shutdown requested — entering abort window");
 
-        LOG_INF("Shutdown requested — entering abort window");
+                /* Dual-action shutdown. Powering down requires BOTH a BUS_OFF
+                 * message (which woke this thread) AND the CAN bus going quiet
+                 * (CAN_EN inactive) — so neither a spurious message nor a
+                 * spurious BUS_EN blip alone can shut us down. Order is
+                 * irrelevant: BUS_OFF may arrive before or after the bus goes
+                 * quiet. BUS_OFF is a CAN frame, so it can only arrive over a
+                 * LIVE bus — CAN_EN is typically still asserted at this instant
+                 * and the handset de-asserts it shortly after; so we WAIT for
+                 * the bus to go quiet rather than aborting on the initial
+                 * active state (the old logic aborted immediately on that and
+                 * the head could never sleep on real hardware).
+                 *
+                 * We watch the WHOLE window: commit only if the bus went quiet
+                 * and STAYED quiet through to the end. Abort if the bus is held
+                 * active the entire window (spurious message, handset still
+                 * using the bus) OR if CAN_EN comes back active after going
+                 * quiet (re-assert — a spurious shutdown we must not honour). */
+                bool saw_quiet = false;       /* bus confirmed inactive at least once */
+                bool reasserted = false;      /* came back active after going quiet */
+                bool abort_scan = false;      /* re-assertion already detected; stop scanning */
+                uint8_t inactive_run = 0;
 
-        /* Dual-action shutdown. Powering down requires BOTH a BUS_OFF message
-         * (which woke this thread) AND the CAN bus going quiet (CAN_EN inactive)
-         * — so neither a spurious message nor a spurious BUS_EN blip alone can
-         * shut us down. Order is irrelevant: BUS_OFF may arrive before or after
-         * the bus goes quiet. BUS_OFF is a CAN frame, so it can only arrive over
-         * a LIVE bus — CAN_EN is typically still asserted at this instant and the
-         * handset de-asserts it shortly after; so we WAIT for the bus to go quiet
-         * rather than aborting on the initial active state (the old logic aborted
-         * immediately on that and the head could never sleep on real hardware).
-         *
-         * We watch the WHOLE window: commit only if the bus went quiet and STAYED
-         * quiet through to the end. Abort if the bus is held active the entire
-         * window (spurious message, handset still using the bus) OR if CAN_EN
-         * comes back active after going quiet (re-assert — a spurious shutdown we
-         * must not honour). */
-        bool saw_quiet = false;       /* bus confirmed inactive at least once */
-        bool reasserted = false;      /* came back active after going quiet */
-        uint8_t inactive_run = 0;
-        for (uint8_t i = 0; i < SHUTDOWN_ABORT_WINDOW_ATTEMPTS; ++i) {
-            if (power_is_can_active(dev)) {
-                inactive_run = 0;
-                if (saw_quiet) {
-                    /* Re-assertion within the window — bail out. */
-                    reasserted = true;
-                    break;
+                for (uint8_t i = 0; i < SHUTDOWN_ABORT_WINDOW_ATTEMPTS; ++i) {
+                    if (!abort_scan) {
+                        if (power_is_can_active(dev)) {
+                            inactive_run = 0;
+                            if (saw_quiet) {
+                                /* Re-assertion within the window — bail out. */
+                                reasserted = true;
+                                abort_scan = true;
+                            }
+                        } else {
+                            ++inactive_run;
+                            if (inactive_run >= SHUTDOWN_CONFIRM_INACTIVE_POLLS) {
+                                saw_quiet = true;
+                            }
+                        }
+                        (void)k_msleep(SHUTDOWN_ABORT_POLL_MS);
+                    }
                 }
-            } else if (++inactive_run >= SHUTDOWN_CONFIRM_INACTIVE_POLLS) {
-                saw_quiet = true;
-            }
-            k_msleep(SHUTDOWN_ABORT_POLL_MS);
-        }
 
-        if (reasserted) {
-            LOG_INF("Bus reasserted during abort window — staying up");
-            continue;
-        }
-        if (!saw_quiet) {
-            LOG_INF("Bus held active through abort window — staying up");
-            continue;
-        }
-
-        LOG_INF("Bus went quiet and stayed quiet — committing to shutdown");
+                if (reasserted) {
+                    LOG_INF("Bus reasserted during abort window — staying up");
+                } else if (!saw_quiet) {
+                    LOG_INF("Bus held active through abort window — staying up");
+                } else {
+                    LOG_INF("Bus went quiet and stayed quiet — committing to shutdown");
 #if defined(CONFIG_POSEIDON_ACCESSORIES)
-        /* Send the Poseidon HUD/Battery their documented low-power shutdown
-         * sequence while VBUS is still up (power_shutdown() drops it almost
-         * immediately). Committed path only — an aborted shutdown never reaches
-         * here, so the peers are never told to sleep mid-dive. */
-        poseidon_accessories_shutdown();
+                    /* Send the Poseidon HUD/Battery their documented low-power
+                     * shutdown sequence while VBUS is still up (power_shutdown()
+                     * drops it almost immediately). Committed path only — an
+                     * aborted shutdown never reaches here, so the peers are
+                     * never told to sleep mid-dive. */
+                    poseidon_accessories_shutdown();
 #endif
-        (void)power_shutdown(dev);
-        /* power_shutdown() does not return on a healthy build.  If it
-         * does (e.g. HAL refused to enter SHUTDOWN), fall through to
-         * the next iteration so the system is responsive to bus
-         * traffic rather than spinning here. */
+                    (void)power_shutdown(dev);
+                    /* power_shutdown() does not return on a healthy build.  If
+                     * it does (e.g. HAL refused to enter SHUTDOWN), fall through
+                     * to the next iteration so the system is responsive to bus
+                     * traffic rather than spinning here. */
+                }
+            }
+        } else {
+            /* Wait error — retry on next iteration */
+        }
     }
 }
 

@@ -80,25 +80,32 @@ static atomic_t upb_in_backend;
 
 static int upb_data_out(uint8_t *data, size_t length, void *ctx)
 {
+    int consumed = 0;
+
     ARG_UNUSED(ctx);
 
-    if ((data == NULL) || (length == 0U)) {
-        return 0;
+    if ((data != NULL) && (length != 0U)) {
+        size_t remaining = 0U;
+        if (UPB_LINE_MAX > upb_line_len) {
+            remaining = UPB_LINE_MAX - upb_line_len;
+        }
+        size_t copy = length;
+        if (copy > remaining) {
+            copy = remaining;
+        }
+
+        if (copy > 0U) {
+            (void)memcpy(&upb_line[upb_line_len], data, copy);
+            upb_line_len += copy;
+        }
+
+        /* Claim the whole chunk was consumed; bytes past UPB_LINE_MAX are
+         * dropped intentionally (= log line truncated to fit one UDS WDBI
+         * frame). */
+        consumed = (int)length;
     }
 
-    size_t remaining = (UPB_LINE_MAX > upb_line_len) ?
-        (UPB_LINE_MAX - upb_line_len) : 0U;
-    size_t copy = (length > remaining) ? remaining : length;
-
-    if (copy > 0U) {
-        (void)memcpy(&upb_line[upb_line_len], data, copy);
-        upb_line_len += copy;
-    }
-
-    /* Claim the whole chunk was consumed; bytes past UPB_LINE_MAX are
-     * dropped intentionally (= log line truncated to fit one UDS WDBI
-     * frame). */
-    return (int)length;
+    return consumed;
 }
 
 LOG_OUTPUT_DEFINE(upb_log_output, upb_data_out, upb_charbuf,
@@ -106,19 +113,19 @@ LOG_OUTPUT_DEFINE(upb_log_output, upb_data_out, upb_charbuf,
 
 static void upb_resolve_self_ids(void)
 {
-    if (upb_self_ids_resolved) {
-        return;
+    if (!upb_self_ids_resolved) {
+        upb_self_ids[0] = log_source_id_get("uds_log_push");
+        upb_self_ids[1] = log_source_id_get("uds_log_push_backend");
+        upb_self_ids_resolved = true;
     }
-    upb_self_ids[0] = log_source_id_get("uds_log_push");
-    upb_self_ids[1] = log_source_id_get("uds_log_push_backend");
-    upb_self_ids_resolved = true;
 }
 
 static bool upb_should_drop(int16_t src_id)
 {
     bool drop = false;
+    size_t count = ARRAY_SIZE(upb_self_ids);
 
-    for (size_t i = 0; i < ARRAY_SIZE(upb_self_ids); ++i) {
+    for (size_t i = 0; i < count; ++i) {
         if ((upb_self_ids[i] >= 0) && (src_id == upb_self_ids[i])) {
             drop = true;
         }
@@ -133,33 +140,32 @@ static bool upb_should_drop(int16_t src_id)
  * logging is initialised. */
 static void upb_resolve_force(void)
 {
-    if (upb_force_resolved) {
-        return;
-    }
-    upb_force_resolved = true;
+    if (!upb_force_resolved) {
+        upb_force_resolved = true;
 
-    const char *p = CONFIG_LOG_PUSH_FORCE_INF_MODULES;
-    char name[UPB_NAME_BUF];
-    while ((*p != '\0') && (upb_force_count < CONFIG_LOG_PUSH_FORCE_INF_MAX)) {
-        while ((' ' == *p) || (',' == *p)) {
-            ++p;
-        }
-        size_t n = 0U;
-        while ((*p != '\0') && (*p != ' ') && (*p != ',') &&
-               (n < (sizeof(name) - 1U))) {
-            name[n] = *p;
-            ++n;
-            ++p;
-        }
-        name[n] = '\0';
-        while ((*p != '\0') && (*p != ' ') && (*p != ',')) {
-            ++p; /* discard any tail of an over-long name */
-        }
-        if (n > 0U) {
-            int16_t id = (int16_t)log_source_id_get(name);
-            if (id >= 0) {
-                upb_force_ids[upb_force_count] = id;
-                ++upb_force_count;
+        const char *p = CONFIG_LOG_PUSH_FORCE_INF_MODULES;
+        char name[UPB_NAME_BUF] = {0};
+        while ((*p != '\0') && (upb_force_count < CONFIG_LOG_PUSH_FORCE_INF_MAX)) {
+            while ((' ' == *p) || (',' == *p)) {
+                ++p;
+            }
+            size_t n = 0U;
+            while ((*p != '\0') && (*p != ' ') && (*p != ',') &&
+                   (n < (sizeof(name) - 1U))) {
+                name[n] = *p;
+                ++n;
+                ++p;
+            }
+            name[n] = '\0';
+            while ((*p != '\0') && (*p != ' ') && (*p != ',')) {
+                ++p; /* discard any tail of an over-long name */
+            }
+            if (n > 0U) {
+                int16_t id = (int16_t)log_source_id_get(name);
+                if (id >= 0) {
+                    upb_force_ids[upb_force_count] = id;
+                    ++upb_force_count;
+                }
             }
         }
     }
@@ -183,52 +189,47 @@ static void upb_process(const struct log_backend *const backend,
     ARG_UNUSED(backend);
 
     if (atomic_set(&upb_in_backend, 1) == 1) {
-        return;
-    }
+        /* Reentrant call; drop to break the loop. */
+    } else {
+        upb_resolve_self_ids();
+        upb_resolve_force();
 
-    upb_resolve_self_ids();
-    upb_resolve_force();
+        uint8_t level = log_msg_get_level(&msg->log);
+        int16_t src_id = log_msg_get_source_id(&msg->log);
 
-    uint8_t level = log_msg_get_level(&msg->log);
-    int16_t src_id = log_msg_get_source_id(&msg->log);
-
-    /* Global runtime verbosity, elevated to INF for compile-time force-listed
-     * modules (CONFIG_LOG_PUSH_FORCE_INF_MODULES) so they stream to the BT
-     * client without raising verbosity for everything else. */
-    uint8_t threshold = flash_log_get_rtt_level();
-    if ((threshold < LOG_LEVEL_INF) && upb_is_forced(src_id)) {
-        threshold = LOG_LEVEL_INF;
-    }
-    if (level > threshold) {
-        atomic_set(&upb_in_backend, 0);
-        return;
-    }
-
-    if (upb_should_drop(src_id)) {
-        atomic_set(&upb_in_backend, 0);
-        return;
-    }
-
-    upb_line_len = 0U;
-
-    uint32_t flags = LOG_OUTPUT_FLAG_LEVEL |
-                     LOG_OUTPUT_FLAG_TIMESTAMP |
-                     LOG_OUTPUT_FLAG_CRLF_NONE;
-
-    log_output_msg_process(&upb_log_output, &msg->log, flags);
-    log_output_flush(&upb_log_output);
-
-    if (upb_line_len > 0U) {
-        /* Strip trailing newline if the formatter left one — keeps each
-         * UDS WDBI frame as one log line, terminator-free. */
-        if (upb_line[upb_line_len - 1U] == (uint8_t)'\n') {
-            upb_line_len -= 1U;
+        /* Global runtime verbosity, elevated to INF for compile-time force-listed
+         * modules (CONFIG_LOG_PUSH_FORCE_INF_MODULES) so they stream to the BT
+         * client without raising verbosity for everything else. */
+        uint8_t threshold = flash_log_get_rtt_level();
+        if ((threshold < LOG_LEVEL_INF) && upb_is_forced(src_id)) {
+            threshold = LOG_LEVEL_INF;
         }
-        (void)UDS_LogPush_SendLogMessage((const char *)upb_line,
-                                         (uint16_t)upb_line_len);
-    }
 
-    atomic_set(&upb_in_backend, 0);
+        if ((level > threshold) || upb_should_drop(src_id)) {
+            /* Below the active threshold, or on the self-drop list; nothing to push. */
+        } else {
+            upb_line_len = 0U;
+
+            uint32_t flags = LOG_OUTPUT_FLAG_LEVEL |
+                             LOG_OUTPUT_FLAG_TIMESTAMP |
+                             LOG_OUTPUT_FLAG_CRLF_NONE;
+
+            log_output_msg_process(&upb_log_output, &msg->log, flags);
+            log_output_flush(&upb_log_output);
+
+            if (upb_line_len > 0U) {
+                /* Strip trailing newline if the formatter left one — keeps each
+                 * UDS WDBI frame as one log line, terminator-free. */
+                if (upb_line[upb_line_len - 1U] == (uint8_t)'\n') {
+                    upb_line_len -= 1U;
+                }
+                (void)UDS_LogPush_SendLogMessage((const char *)upb_line,
+                                                 (uint16_t)upb_line_len);
+            }
+        }
+
+        atomic_set(&upb_in_backend, 0);
+    }
 }
 
 static void upb_init(struct log_backend const *const backend)

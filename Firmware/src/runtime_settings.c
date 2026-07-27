@@ -67,8 +67,9 @@ static RuntimeSettings_t *getCached(void)
 static bool ppo2_mode_valid(PPO2ControlMode_t val)
 {
     bool found = false;
+    size_t count = ARRAY_SIZE(valid_ppo2_control_modes);
 
-    for (size_t i = 0; i < ARRAY_SIZE(valid_ppo2_control_modes); ++i) {
+    for (size_t i = 0; i < count; ++i) {
         if (valid_ppo2_control_modes[i] == val) {
             found = true;
         }
@@ -85,8 +86,9 @@ static bool ppo2_mode_valid(PPO2ControlMode_t val)
 static bool cal_mode_valid(CalibrationMode_t val)
 {
     bool found = false;
+    size_t count = ARRAY_SIZE(valid_cal_modes);
 
-    for (size_t i = 0; i < ARRAY_SIZE(valid_cal_modes); ++i) {
+    for (size_t i = 0; i < count; ++i) {
         if (valid_cal_modes[i] == val) {
             found = true;
         }
@@ -385,7 +387,8 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
         };
 
         Status_t first_err = 0;
-        for (size_t i = 0; i < ARRAY_SIZE(rc_codes); ++i) {
+        size_t rc_codes_count = ARRAY_SIZE(rc_codes);
+        for (size_t i = 0; i < rc_codes_count; ++i) {
             if ((0 == first_err) && (0 != rc_codes[i])) {
                 first_err = rc_codes[i];
             }
@@ -405,57 +408,55 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
 Status_t runtime_settings_save_field(RuntimeSettingField_t field)
 {
     RuntimeSettings_t *cached = getCached();
+    Status_t rc = -EINVAL;
 
     /* The live cache is the source of truth; the value being saved was already
      * applied + validated via runtime_settings_set_volatile(). Re-validate the
      * whole struct as a cheap guard, but persist ONLY the one key — no NVS
      * reload, so other fields' volatile edits remain live and unpersisted. */
-    if (!runtime_settings_validate(cached)) {
-        return -EINVAL;
-    }
-
-    Status_t rc;
-    switch (field) {
-    case RT_FIELD_PPO2: {
-        uint8_t v = (uint8_t)cached->ppo2ControlMode;
-        rc = settings_save_one(SETTINGS_SUBTREE "/ppo2", &v, sizeof(v));
-        break;
-    }
-    case RT_FIELD_CAL: {
-        uint8_t v = (uint8_t)cached->calibrationMode;
-        rc = settings_save_one(SETTINGS_SUBTREE "/cal", &v, sizeof(v));
-        break;
-    }
-    case RT_FIELD_DEPTH:
-        rc = settings_save_one(SETTINGS_SUBTREE "/depth",
-                       &cached->depthCompensation,
-                       sizeof(cached->depthCompensation));
-        break;
-    case RT_FIELD_KP:
-        rc = settings_save_one(SETTINGS_SUBTREE "/kp",
-                       &cached->pidKp, sizeof(cached->pidKp));
-        break;
-    case RT_FIELD_KI:
-        rc = settings_save_one(SETTINGS_SUBTREE "/ki",
-                       &cached->pidKi, sizeof(cached->pidKi));
-        break;
-    case RT_FIELD_KD:
-        rc = settings_save_one(SETTINGS_SUBTREE "/kd",
-                       &cached->pidKd, sizeof(cached->pidKd));
-        break;
-    case RT_FIELD_BATTERY: {
-        uint8_t v = (uint8_t)cached->batteryType;
-        rc = settings_save_one(SETTINGS_SUBTREE "/bat", &v, sizeof(v));
-        break;
-    }
-    case RT_FIELD_BCST:
-        rc = settings_save_one(SETTINGS_SUBTREE "/bcst",
-                       cached->enforceBroadcast,
-                       sizeof(cached->enforceBroadcast));
-        break;
-    default:
-        rc = -EINVAL;
-        break;
+    if (runtime_settings_validate(cached)) {
+        switch (field) {
+        case RT_FIELD_PPO2: {
+            uint8_t v = (uint8_t)cached->ppo2ControlMode;
+            rc = settings_save_one(SETTINGS_SUBTREE "/ppo2", &v, sizeof(v));
+            break;
+        }
+        case RT_FIELD_CAL: {
+            uint8_t v = (uint8_t)cached->calibrationMode;
+            rc = settings_save_one(SETTINGS_SUBTREE "/cal", &v, sizeof(v));
+            break;
+        }
+        case RT_FIELD_DEPTH:
+            rc = settings_save_one(SETTINGS_SUBTREE "/depth",
+                           &cached->depthCompensation,
+                           sizeof(cached->depthCompensation));
+            break;
+        case RT_FIELD_KP:
+            rc = settings_save_one(SETTINGS_SUBTREE "/kp",
+                           &cached->pidKp, sizeof(cached->pidKp));
+            break;
+        case RT_FIELD_KI:
+            rc = settings_save_one(SETTINGS_SUBTREE "/ki",
+                           &cached->pidKi, sizeof(cached->pidKi));
+            break;
+        case RT_FIELD_KD:
+            rc = settings_save_one(SETTINGS_SUBTREE "/kd",
+                           &cached->pidKd, sizeof(cached->pidKd));
+            break;
+        case RT_FIELD_BATTERY: {
+            uint8_t v = (uint8_t)cached->batteryType;
+            rc = settings_save_one(SETTINGS_SUBTREE "/bat", &v, sizeof(v));
+            break;
+        }
+        case RT_FIELD_BCST:
+            rc = settings_save_one(SETTINGS_SUBTREE "/bcst",
+                           cached->enforceBroadcast,
+                           sizeof(cached->enforceBroadcast));
+            break;
+        default:
+            rc = -EINVAL;
+            break;
+        }
     }
 
     return rc;

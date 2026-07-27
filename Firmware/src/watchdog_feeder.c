@@ -31,6 +31,7 @@
 #include <stm32l4xx_ll_iwdg.h>
 #endif
 
+#include "common.h"
 #include "errors.h"
 #include "heartbeat.h"
 
@@ -88,9 +89,9 @@ BUILD_ASSERT(DT_NODE_HAS_STATUS(WDT_NODE, okay),
 #define EXPECTED_IWDG_PR    LL_IWDG_PRESCALER_256
 #define EXPECTED_IWDG_RLR   3999U
 
-static int wdt_channel_id_get_or_init(const struct device *wdt)
+static Status_t wdt_channel_id_get_or_init(const struct device *wdt)
 {
-    static int cached_channel_id = -1;
+    static Status_t cached_channel_id = -1;
 
     if (cached_channel_id < 0) {
         struct wdt_timeout_cfg cfg = {
@@ -101,13 +102,13 @@ static int wdt_channel_id_get_or_init(const struct device *wdt)
             .callback = NULL,
             .flags = WDT_FLAG_RESET_SOC,
         };
-        int channel = wdt_install_timeout(wdt, &cfg);
+        Status_t channel = wdt_install_timeout(wdt, &cfg);
         if (channel < 0) {
             FATAL_OP_ERROR(FATAL_UNDEFINED_STATE);
         }
         else
         {
-            int rc = wdt_setup(wdt, WDT_OPT_PAUSE_HALTED_BY_DBG);
+            Status_t rc = wdt_setup(wdt, WDT_OPT_PAUSE_HALTED_BY_DBG);
             if (0 != rc) {
                 FATAL_OP_ERROR(FATAL_UNDEFINED_STATE);
             }
@@ -132,8 +133,8 @@ static int wdt_channel_id_get_or_init(const struct device *wdt)
                 {
                     cached_channel_id = channel;
                     LOG_INF("IWDG armed: channel=%d, timeout=%ums, PR=%u, RLR=%u (verified)",
-                        channel, (unsigned)WDT_TIMEOUT_MS,
-                        (unsigned)actual_pr, (unsigned)actual_rlr);
+                        channel, WDT_TIMEOUT_MS,
+                        actual_pr, actual_rlr);
                 }
             }
         }
@@ -146,14 +147,12 @@ void watchdog_kick(void)
 {
     const struct device *wdt = DEVICE_DT_GET(WDT_NODE);
 
-    if (!device_is_ready(wdt)) {
-        return;
-    }
+    if (device_is_ready(wdt)) {
+        Status_t channel = wdt_channel_id_get_or_init(wdt);
 
-    int channel = wdt_channel_id_get_or_init(wdt);
-
-    if (channel >= 0) {
-        (void)wdt_feed(wdt, channel);
+        if (channel >= 0) {
+            (void)wdt_feed(wdt, channel);
+        }
     }
 }
 
@@ -169,21 +168,21 @@ static void watchdog_feeder_thread(void *p1, void *p2, void *p3)
     }
     else
     {
-        int channel = wdt_channel_id_get_or_init(wdt);
+        Status_t channel = wdt_channel_id_get_or_init(wdt);
 
         /* First sleep gives every registered thread time to take its
          * first lap before we start enforcing liveness. Without this,
          * threads that registered late in boot would all read as
          * stalled on the very first check and the IWDG would fire
          * before the system ever runs steady-state. */
-        k_msleep(WDT_FEED_INTERVAL_MS);
+        (void)k_msleep(WDT_FEED_INTERVAL_MS);
         (void)heartbeat_check_all_alive();
         (void)wdt_feed(wdt, channel);
 
         while (true) {
-            k_msleep(WDT_FEED_INTERVAL_MS);
+            (void)k_msleep(WDT_FEED_INTERVAL_MS);
             if (heartbeat_check_all_alive()) {
-                int rc = wdt_feed(wdt, channel);
+                Status_t rc = wdt_feed(wdt, channel);
                 if (0 != rc) {
                     LOG_ERR("wdt_feed failed: %d", rc);
                 }

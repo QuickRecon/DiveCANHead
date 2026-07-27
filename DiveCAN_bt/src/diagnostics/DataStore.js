@@ -418,6 +418,7 @@ export class DataStore {
         this._updateDIDValues({ [key]: value }, timestamp);
       } catch (error) {
         // Per-DID failure (unknown/absent DID, NRC) — leave value unchanged.
+        console.warn(`Failed to poll extra DID ${key} (0x${info.did.toString(16)})`, error);
       }
     }
   }

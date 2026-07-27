@@ -18,6 +18,8 @@
 #include <zephyr/sys/util.h>
 #include <autoconf.h>
 
+#include "common.h"
+
 /** @brief Sentinel value for a solenoid role that is not wired on this variant. */
 #define SOL_ROLE_NOT_PRESENT (-1)
 
@@ -34,7 +36,7 @@
  * @param duration_us On-time in microseconds (clamped to max-on-time-us)
  * @return 0 on success, negative errno on failure
  */
-static inline int sol_o2_inject_fire(uint32_t duration_us)
+static inline Status_t sol_o2_inject_fire(uint32_t duration_us)
 {
     return solenoid_fire(SOL_DEVICE,
                  CONFIG_SOL_O2_INJECT_CHANNEL, duration_us);
@@ -54,7 +56,7 @@ static inline void sol_o2_inject_off(void)
  * @param duration_us On-time in microseconds
  * @return 0 on success, -ENODEV if role not present on this variant, negative errno on failure
  */
-static inline int sol_o2_flush_fire(uint32_t duration_us)
+static inline Status_t sol_o2_flush_fire(uint32_t duration_us)
 {
 #if CONFIG_SOL_O2_FLUSH_CHANNEL != SOL_ROLE_NOT_PRESENT
     return solenoid_fire(SOL_DEVICE,
@@ -83,7 +85,7 @@ static inline void sol_o2_flush_off(void)
  * @param duration_us On-time in microseconds
  * @return 0 on success, -ENODEV if role not present on this variant, negative errno on failure
  */
-static inline int sol_dil_flush_fire(uint32_t duration_us)
+static inline Status_t sol_dil_flush_fire(uint32_t duration_us)
 {
 #if CONFIG_SOL_DIL_FLUSH_CHANNEL != SOL_ROLE_NOT_PRESENT
     return solenoid_fire(SOL_DEVICE,
@@ -112,7 +114,7 @@ static inline void sol_dil_flush_off(void)
  * @param duration_us On-time in microseconds
  * @return 0 on success, -ENODEV if role not present on this variant, negative errno on failure
  */
-static inline int sol_o2_inject_2_fire(uint32_t duration_us)
+static inline Status_t sol_o2_inject_2_fire(uint32_t duration_us)
 {
 #if CONFIG_SOL_O2_INJECT_2_CHANNEL != SOL_ROLE_NOT_PRESENT
     return solenoid_fire(SOL_DEVICE,
@@ -137,7 +139,7 @@ static inline void sol_o2_inject_2_off(void)
 
 #else /* !CONFIG_SOLENOID — no solenoid hardware on this variant */
 
-static inline int sol_o2_inject_fire(uint32_t duration_us)
+static inline Status_t sol_o2_inject_fire(uint32_t duration_us)
 {
     ARG_UNUSED(duration_us);
     return -ENODEV;
@@ -145,9 +147,10 @@ static inline int sol_o2_inject_fire(uint32_t duration_us)
 
 static inline void sol_o2_inject_off(void)
 {
+    /* No-op: CONFIG_SOLENOID=n, no solenoid hardware on this variant. */
 }
 
-static inline int sol_o2_flush_fire(uint32_t duration_us)
+static inline Status_t sol_o2_flush_fire(uint32_t duration_us)
 {
     ARG_UNUSED(duration_us);
     return -ENODEV;
@@ -155,9 +158,10 @@ static inline int sol_o2_flush_fire(uint32_t duration_us)
 
 static inline void sol_o2_flush_off(void)
 {
+    /* No-op: CONFIG_SOLENOID=n, no solenoid hardware on this variant. */
 }
 
-static inline int sol_dil_flush_fire(uint32_t duration_us)
+static inline Status_t sol_dil_flush_fire(uint32_t duration_us)
 {
     ARG_UNUSED(duration_us);
     return -ENODEV;
@@ -165,9 +169,10 @@ static inline int sol_dil_flush_fire(uint32_t duration_us)
 
 static inline void sol_dil_flush_off(void)
 {
+    /* No-op: CONFIG_SOLENOID=n, no solenoid hardware on this variant. */
 }
 
-static inline int sol_o2_inject_2_fire(uint32_t duration_us)
+static inline Status_t sol_o2_inject_2_fire(uint32_t duration_us)
 {
     ARG_UNUSED(duration_us);
     return -ENODEV;
@@ -175,6 +180,7 @@ static inline int sol_o2_inject_2_fire(uint32_t duration_us)
 
 static inline void sol_o2_inject_2_off(void)
 {
+    /* No-op: CONFIG_SOLENOID=n, no solenoid hardware on this variant. */
 }
 
 #endif /* CONFIG_SOLENOID */

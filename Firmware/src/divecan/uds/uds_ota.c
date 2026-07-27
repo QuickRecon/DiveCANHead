@@ -291,7 +291,7 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
                 UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
                              UDS_NRC_GENERAL_PROG_FAIL);
             } else if (length > (uint32_t)fa->fa_size) {
-                flash_area_close(fa);
+                (void)flash_area_close(fa);
                 OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
                         UDS_NRC_REQUEST_OUT_OF_RANGE);
                 UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
@@ -301,7 +301,7 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
                 /* Maintenance arena busy — a factory capture/restore is
                  * using the shared scratch region. Transient (capture is a
                  * one-shot on a freshly-flashed unit); the tester retries. */
-                flash_area_close(fa);
+                (void)flash_area_close(fa);
                 OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
                         UDS_NRC_CONDITIONS_NOT_CORRECT);
                 UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
@@ -334,7 +334,7 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
 #endif
                 error_histogram_resume();
                 heartbeat_set_long_op(false);
-                flash_area_close(fa);
+                (void)flash_area_close(fa);
 
                 if (0 != rc) {
                     OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
@@ -381,6 +381,8 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
              * re-run) and the claim must be handed back here. */
             sm->flashCtx = NULL;
             maint_arena_release(MAINT_ARENA_OWNER_OTA);
+        } else {
+            /* No action required */
         }
     }
 }
@@ -675,7 +677,7 @@ static enum smf_state_result ota_awaiting_activate_run(void *obj)
 static void ota_activating_entry(void *obj)
 {
     ARG_UNUSED(obj);
-    k_msleep(ACTIVATE_REBOOT_DELAY_MS);
+    (void)k_msleep(ACTIVATE_REBOOT_DELAY_MS);
     sys_reboot(SYS_REBOOT_COLD);
 }
 
@@ -769,41 +771,44 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
                 size_t walkStart = tlvOff + TLV_INFO_HEADER_LEN;
                 size_t walkEnd = tlvOff + (size_t)tlvTot;
                 size_t cursor = walkStart;
+                bool tlvWalkDone = false;
 
-                while ((cursor + TLV_HEADER_LEN) <= walkEnd) {
+                while (((cursor + TLV_HEADER_LEN) <= walkEnd) && !tlvWalkDone) {
                     uint8_t tlvHdr[TLV_HEADER_LEN] = {0};
                     rc = flash_area_read(fa, cursor, tlvHdr,
                                  sizeof(tlvHdr));
                     if (0 != rc) {
                         OP_ERROR_DETAIL(OP_ERR_FLASH,
                                 (uint32_t)(-rc));
-                        break;
-                    }
-                    uint16_t tType =
-                        (uint16_t)tlvHdr[0] |
-                        (uint16_t)((uint16_t)tlvHdr[1] << BYTE_SHIFT_8);
-                    uint16_t tLen =
-                        (uint16_t)tlvHdr[2] |
-                        (uint16_t)((uint16_t)tlvHdr[3] << BYTE_SHIFT_8);
+                        tlvWalkDone = true;
+                    } else {
+                        uint16_t tType =
+                            (uint16_t)tlvHdr[0] |
+                            (uint16_t)((uint16_t)tlvHdr[1] << BYTE_SHIFT_8);
+                        uint16_t tLen =
+                            (uint16_t)tlvHdr[2] |
+                            (uint16_t)((uint16_t)tlvHdr[3] << BYTE_SHIFT_8);
 
-                    if ((TLV_TYPE_SHA256 == tType) &&
-                        (IMG_SHA256_LEN == tLen)) {
-                        rc = flash_area_read(
-                            fa, cursor + TLV_HEADER_LEN,
-                            outHash, IMG_SHA256_LEN);
-                        if (0 == rc) {
-                            *outHashedLen =
-                                (size_t)hdrSize +
-                                (size_t)imgSize;
-                            ok = true;
+                        if ((TLV_TYPE_SHA256 == tType) &&
+                            (IMG_SHA256_LEN == tLen)) {
+                            rc = flash_area_read(
+                                fa, cursor + TLV_HEADER_LEN,
+                                outHash, IMG_SHA256_LEN);
+                            if (0 == rc) {
+                                *outHashedLen =
+                                    (size_t)hdrSize +
+                                    (size_t)imgSize;
+                                ok = true;
+                            } else {
+                                OP_ERROR_DETAIL(
+                                    OP_ERR_FLASH,
+                                    (uint32_t)(-rc));
+                            }
+                            tlvWalkDone = true;
                         } else {
-                            OP_ERROR_DETAIL(
-                                OP_ERR_FLASH,
-                                (uint32_t)(-rc));
+                            cursor += TLV_HEADER_LEN + (size_t)tLen;
                         }
-                        break;
                     }
-                    cursor += TLV_HEADER_LEN + (size_t)tLen;
                 }
             }
         }
@@ -831,7 +836,7 @@ static int validateSlot1(void)
         uint8_t expectedHash[IMG_SHA256_LEN] = {0};
         size_t hashedLen = 0;
         bool gotHash = extractSlot1Sha256(fa, expectedHash, &hashedLen);
-        flash_area_close(fa);
+        (void)flash_area_close(fa);
 
         if (!gotHash) {
             LOG_ERR("validateSlot1: no SHA-256 TLV in slot1");

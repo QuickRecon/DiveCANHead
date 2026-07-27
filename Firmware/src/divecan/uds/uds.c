@@ -53,6 +53,11 @@ static const size_t SI_COUNT_OFF = 4U;
 static const uint16_t UDS_SINGLE_VALUE_LEN = 5U;
 static const uint16_t SETTING_VALUE_WRITE_LEN = 12U;
 
+/* zbus timeouts for UDS-triggered publishes/reads. Bounded so a stalled
+ * subscriber can never hang the UDS handler thread. */
+static const uint32_t UDS_ZBUS_PUB_TIMEOUT_MS = 100U;
+static const uint32_t UDS_ZBUS_READ_TIMEOUT_MS = 10U;
+
 /* Magic data byte required on the OTA-action / erase write DIDs (0xF275–0xF279).
  * Treating these as "command" DIDs that demand a deliberate non-zero byte
  * keeps an accidental zero-fill write from triggering a reboot. */
@@ -96,6 +101,8 @@ static const uint16_t UDS_SESSION_CTRL_RESP_LEN = 2U;
 static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
+static void dispatchOtaOrLogDownload(UDSContext_t *ctx, uint8_t sid, const uint8_t *requestData, uint16_t requestLength);
+static void dispatchRoutineControl(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
 static bool readSettingInfoDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
 static bool readSettingValueDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
 static bool readSettingLabelDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
@@ -136,7 +143,7 @@ bool UDS_IsInDive(void)
 {
     bool in_dive = false;
     uint16_t ambient_mbar = 0;
-    if (0 == zbus_chan_read(&chan_atmos_pressure, &ambient_mbar, K_MSEC(10))) {
+    if (0 == zbus_chan_read(&chan_atmos_pressure, &ambient_mbar, K_MSEC(UDS_ZBUS_READ_TIMEOUT_MS))) {
         if (ambient_mbar > DIVE_AMBIENT_PRESSURE_THRESHOLD_MBAR) {
             in_dive = true;
         }
@@ -190,6 +197,69 @@ void UDS_MaintainSession(UDSContext_t *ctx)
 }
 
 /**
+ * @brief Route SID 0x34/0x36/0x37 (RequestDownload / TransferData /
+ *        RequestTransferExit) to the log-download reader or firmware OTA.
+ *
+ * The log-download path claims the transfer only when
+ * UDS_LogDownload_Claims() recognises the request; everything else falls
+ * through to the OTA handler.
+ *
+ * @param ctx           UDS context
+ * @param sid           Service ID being dispatched (0x34/0x36/0x37)
+ * @param requestData   Request bytes starting at the SID byte
+ * @param requestLength Total byte count of requestData
+ */
+static void dispatchOtaOrLogDownload(UDSContext_t *ctx, uint8_t sid,
+                                     const uint8_t *requestData,
+                                     uint16_t requestLength)
+{
+#ifdef CONFIG_FLASH_LOG
+    if (UDS_LogDownload_Claims(sid, requestData)) {
+        UDS_LogDownload_Handle(ctx, requestData, requestLength);
+    } else {
+        UDS_OTA_Handle(ctx, requestData, requestLength);
+    }
+#else
+    ARG_UNUSED(sid);
+    UDS_OTA_Handle(ctx, requestData, requestLength);
+#endif
+}
+
+/**
+ * @brief Route SID 0x31 (RoutineControl) to the log-download reader or OTA.
+ *
+ * RoutineControl RIDs 0xF100-0xF1FF belong to the log download path;
+ * everything else stays with OTA.
+ *
+ * @param ctx           UDS context
+ * @param requestData   Request bytes starting at the SID byte
+ * @param requestLength Total byte count of requestData
+ */
+static void dispatchRoutineControl(UDSContext_t *ctx,
+                                   const uint8_t *requestData,
+                                   uint16_t requestLength)
+{
+#ifdef CONFIG_FLASH_LOG
+    /* RoutineControl RIDs 0xF1xx belong to the log download path; everything
+     * else stays with OTA. */
+    static const uint16_t ROUTINE_CONTROL_MIN_LEN = 5U; /* pad+SID+subFn+RID_HI+RID_LO */
+    static const uint16_t LOG_DOWNLOAD_RID_BASE = 0xF100U;
+    static const uint16_t LOG_DOWNLOAD_RID_END = 0xF1FFU;
+
+    uint16_t rid = (uint16_t)((uint16_t)requestData[UDS_SID_IDX + 2U] << DIVECAN_BYTE_WIDTH) |
+               (uint16_t)requestData[UDS_SID_IDX + 3U];
+    if ((requestLength >= ROUTINE_CONTROL_MIN_LEN) &&
+        (rid >= LOG_DOWNLOAD_RID_BASE) && (rid <= LOG_DOWNLOAD_RID_END)) {
+        UDS_LogDownload_HandleRoutine(ctx, requestData, requestLength);
+    } else {
+        UDS_OTA_Handle(ctx, requestData, requestLength);
+    }
+#else
+    UDS_OTA_Handle(ctx, requestData, requestLength);
+#endif
+}
+
+/**
  * @brief Process a UDS request message and dispatch to the appropriate service handler
  *
  * Currently handles SID 0x22 (ReadDataByIdentifier) and 0x2E (WriteDataByIdentifier).
@@ -225,33 +295,10 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
         case UDS_SID_REQUEST_DOWNLOAD:
         case UDS_SID_TRANSFER_DATA:
         case UDS_SID_REQUEST_TRANSFER_EXIT:
-#ifdef CONFIG_FLASH_LOG
-            if (UDS_LogDownload_Claims(sid, requestData)) {
-                UDS_LogDownload_Handle(ctx, requestData, requestLength);
-            } else
-#endif
-            {
-                UDS_OTA_Handle(ctx, requestData, requestLength);
-            }
+            dispatchOtaOrLogDownload(ctx, sid, requestData, requestLength);
             break;
         case UDS_SID_ROUTINE_CONTROL:
-#ifdef CONFIG_FLASH_LOG
-            {
-                /* RoutineControl RIDs 0xF1xx belong to the log
-                 * download path; everything else stays with OTA. */
-                uint16_t rid = (uint16_t)((uint16_t)requestData[UDS_SID_IDX + 2U] << DIVECAN_BYTE_WIDTH) |
-                           (uint16_t)requestData[UDS_SID_IDX + 3U];
-                if ((requestLength >= 5U) &&
-                    (rid >= 0xF100U) && (rid <= 0xF1FFU)) {
-                    UDS_LogDownload_HandleRoutine(ctx, requestData,
-                                      requestLength);
-                } else {
-                    UDS_OTA_Handle(ctx, requestData, requestLength);
-                }
-            }
-#else
-            UDS_OTA_Handle(ctx, requestData, requestLength);
-#endif
+            dispatchRoutineControl(ctx, requestData, requestLength);
             break;
 
         default:
@@ -489,10 +536,14 @@ static bool readSettingCountDID(uint8_t *buf, uint16_t dataOffset,
     return true;
 }
 
+/* Fixed set of exact-match read DIDs (no CONFIG_* gating), so an explicit
+ * count is safe here (unlike writeDidTable below, which varies by variant). */
+#define UDS_READ_DID_TABLE_COUNT 5U
+
 static const struct {
     uint16_t did;
     UdsReadDidFn fn;
-} readDidTable[] = {
+} readDidTable[UDS_READ_DID_TABLE_COUNT] = {
     { UDS_DID_FIRMWARE_VERSION, readFirmwareVersionDID },
     { UDS_DID_HARDWARE_VERSION, readHardwareVersionDID },
     { UDS_DID_VARIANT_NAME,     readVariantNameDID },
@@ -516,14 +567,16 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
         buf[1] = (uint8_t)(did);
         uint16_t dataOffset = UDS_DID_SIZE;
         bool dispatched = false;
+        const size_t readDidTableCount = ARRAY_SIZE(readDidTable);
 
-        for (size_t i = 0; i < ARRAY_SIZE(readDidTable); ++i) {
-            if (readDidTable[i].did == did) {
-                result = readDidTable[i].fn(buf, dataOffset,
+        size_t readIdx = 0;
+        while ((readIdx < readDidTableCount) && !dispatched) {
+            if (readDidTable[readIdx].did == did) {
+                result = readDidTable[readIdx].fn(buf, dataOffset,
                                 maxAvailable, bytesWritten);
                 dispatched = true;
-                break;
             }
+            ++readIdx;
         }
 
         if (dispatched) {
@@ -568,10 +621,10 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx,
                        const uint8_t *requestData,
                        uint16_t requestLength)
 {
-    if (requestLength < UDS_MIN_REQ_LEN) {
-        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
-        UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
-    } else if (((requestLength - UDS_DID_SIZE) % UDS_DID_SIZE) != 0U) {
+    /* Short-circuit order matters: the length check must run first so the
+     * modulus check never underflows requestLength - UDS_DID_SIZE. */
+    if ((requestLength < UDS_MIN_REQ_LEN) ||
+        (((requestLength - UDS_DID_SIZE) % UDS_DID_SIZE) != 0U)) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
@@ -784,10 +837,10 @@ static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData,
         /* Clamp to the valid 0.40–1.60 bar range (see runtime_settings.h) so an
          * out-of-range write can never apply an unsafe setpoint. */
         PPO2_t ppo2 = clamp_setpoint_cb(requestData[UDS_DATA_IDX]);
-        zbus_pub_checked(&chan_setpoint, &ppo2, K_MSEC(100));
+        zbus_pub_checked(&chan_setpoint, &ppo2, K_MSEC(UDS_ZBUS_PUB_TIMEOUT_MS));
         /* Diver-commanded mirror: drives the setpoint-change flush (the
          * handset-loss failsafe publishes only chan_setpoint). */
-        zbus_pub_checked(&chan_setpoint_cmd, &ppo2, K_MSEC(100));
+        zbus_pub_checked(&chan_setpoint_cmd, &ppo2, K_MSEC(UDS_ZBUS_PUB_TIMEOUT_MS));
 
         ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
         ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
@@ -831,7 +884,7 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
              * thread, not a listener): a miss would silently calibrate against
              * the 1013 default instead of the real pressure. */
             uint16_t atmoPressure = 1013;
-            (void)zbus_chan_read(&chan_atmos_pressure, &atmoPressure, K_MSEC(10));
+            (void)zbus_chan_read(&chan_atmos_pressure, &atmoPressure, K_MSEC(UDS_ZBUS_READ_TIMEOUT_MS));
 
             /* Honor the Cal Mode setting rather than hardcoding the method. */
             CalRequest_t req = {
@@ -839,7 +892,7 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
                 .fo2 = fo2,
                 .pressure_mbar = atmoPressure,
             };
-            zbus_pub_checked(&chan_cal_request, &req, K_MSEC(100));
+            zbus_pub_checked(&chan_cal_request, &req, K_MSEC(UDS_ZBUS_PUB_TIMEOUT_MS));
 
             ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
             ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
@@ -903,7 +956,7 @@ static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
         } else {
-            int rc = solenoid_fire(SOL_DEVICE, channel, SOLENOID_OVERRIDE_ON_US);
+            Status_t rc = solenoid_fire(SOL_DEVICE, channel, SOLENOID_OVERRIDE_ON_US);
             if (0 != rc) {
                 OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
@@ -1120,7 +1173,7 @@ static bool writeHistogramClearDID(UDSContext_t *ctx,
 {
     ARG_UNUSED(requestLength);
 
-    int rc = error_histogram_clear();
+    Status_t rc = error_histogram_clear();
 
     if (0 != rc) {
         OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)rc);
@@ -1225,7 +1278,7 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
                 LOG_INF("Force-revert: slot1 re-staged, rebooting");
                 buildWriteDidPositiveResponse(ctx, requestData);
                 UDS_SendResponse(ctx);
-                k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
+                (void)k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
                 sys_reboot(SYS_REBOOT_COLD);
             }
         }
@@ -1262,18 +1315,22 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
          * dark; the tool should expect the unit to drop off then reboot. */
         buildWriteDidPositiveResponse(ctx, requestData);
         UDS_SendResponse(ctx);
-        for (uint32_t i = 0U; i < FLASH_ERASE_TX_FLUSH_POLLS; ++i) {
+        uint32_t flushPolls = 0U;
+        bool flushDone = false;
+        while ((flushPolls < FLASH_ERASE_TX_FLUSH_POLLS) && !flushDone) {
             ISOTP_TxQueue_Poll(k_uptime_get_32());
-            if (!ISOTP_TxQueue_IsBusy() &&
+            if ((!ISOTP_TxQueue_IsBusy()) &&
                 (0U == ISOTP_TxQueue_GetPendingCount())) {
-                break;
+                flushDone = true;
+            } else {
+                (void)k_msleep(FLASH_ERASE_TX_FLUSH_POLL_MS);
             }
-            k_msleep(FLASH_ERASE_TX_FLUSH_POLL_MS);
+            ++flushPolls;
         }
 #ifdef CONFIG_FLASH_LOG
         flash_log_pause();
 #endif
-        int erc = flash_mass_erase_external();   /* watchdog-fed via watchdog_kick() */
+        Status_t erc = flash_mass_erase_external();   /* watchdog-fed via watchdog_kick() */
         if (0 != erc) {
             /* The external-NOR wipe did not fully complete. Record it and still
              * reboot to a defined state, but do NOT let the reboot MASK the
@@ -1288,7 +1345,7 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
         /* Give the deferred logging thread a slice to drain the result to
          * RTT/console before the cold reboot preempts it (otherwise a failed
          * erase leaves no trace). */
-        k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
+        (void)k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
         sys_reboot(SYS_REBOOT_COLD);
     }
     return true;
@@ -1323,13 +1380,17 @@ static bool writeNvsEraseDID(UDSContext_t *ctx,
          * queued ACK). */
         buildWriteDidPositiveResponse(ctx, requestData);
         UDS_SendResponse(ctx);
-        for (uint32_t i = 0U; i < FLASH_ERASE_TX_FLUSH_POLLS; ++i) {
+        uint32_t flushPolls = 0U;
+        bool flushDone = false;
+        while ((flushPolls < FLASH_ERASE_TX_FLUSH_POLLS) && !flushDone) {
             ISOTP_TxQueue_Poll(k_uptime_get_32());
-            if (!ISOTP_TxQueue_IsBusy() &&
+            if ((!ISOTP_TxQueue_IsBusy()) &&
                 (0U == ISOTP_TxQueue_GetPendingCount())) {
-                break;
+                flushDone = true;
+            } else {
+                (void)k_msleep(FLASH_ERASE_TX_FLUSH_POLL_MS);
             }
-            k_msleep(FLASH_ERASE_TX_FLUSH_POLL_MS);
+            ++flushPolls;
         }
 #ifdef CONFIG_FLASH_LOG
         /* The settings partition shares the SPI NOR with the log; pause the log
@@ -1340,7 +1401,7 @@ static bool writeNvsEraseDID(UDSContext_t *ctx,
         int rc = flash_area_open(PARTITION_ID(storage_partition), &fa);
         if (0 == rc) {
             rc = flash_area_erase(fa, 0U, fa->fa_size);
-            flash_area_close(fa);
+            (void)flash_area_close(fa);
         }
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
@@ -1384,7 +1445,7 @@ static bool writeRestoreFactoryDID(UDSContext_t *ctx,
         LOG_INF("Restore-factory: kicking factory_image_restore_async");
         buildWriteDidPositiveResponse(ctx, requestData);
         UDS_SendResponse(ctx);
-        k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
+        (void)k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
         factory_image_restore_async();
     }
     return true;
@@ -1456,7 +1517,7 @@ static bool writeLogEraseDID(UDSContext_t *ctx,
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
     } else {
         uint8_t stream_mask = requestData[UDS_DATA_IDX] & 0x03U;
-        int rc = flash_log_erase(stream_mask);
+        Status_t rc = flash_log_erase(stream_mask);
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)rc);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
@@ -1484,7 +1545,7 @@ static bool writeLogVerbosityDID(UDSContext_t *ctx,
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                      UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        int rc = flash_log_set_rtt_level(requestData[UDS_DATA_IDX]);
+        Status_t rc = flash_log_set_rtt_level(requestData[UDS_DATA_IDX]);
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
                     UDS_NRC_REQUEST_OUT_OF_RANGE);
@@ -1513,7 +1574,7 @@ static bool writeLogCanVerboseDID(UDSContext_t *ctx,
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                      UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        int rc = flash_log_set_can_verbose(requestData[UDS_DATA_IDX]);
+        Status_t rc = flash_log_set_can_verbose(requestData[UDS_DATA_IDX]);
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
                     UDS_NRC_REQUEST_OUT_OF_RANGE);
@@ -1580,13 +1641,15 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
                    (uint16_t)requestData[UDS_DID_LO_IDX];
 
         bool dispatched = false;
-        for (size_t i = 0; i < ARRAY_SIZE(writeDidTable); ++i) {
-            if (writeDidTable[i].did == did) {
-                (void)writeDidTable[i].fn(ctx, requestData,
+        const size_t writeDidTableCount = ARRAY_SIZE(writeDidTable);
+        size_t writeIdx = 0;
+        while ((writeIdx < writeDidTableCount) && !dispatched) {
+            if (writeDidTable[writeIdx].did == did) {
+                (void)writeDidTable[writeIdx].fn(ctx, requestData,
                               requestLength);
                 dispatched = true;
-                break;
             }
+            ++writeIdx;
         }
 
         if (dispatched) {

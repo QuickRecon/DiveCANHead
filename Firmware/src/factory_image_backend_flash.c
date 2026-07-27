@@ -25,6 +25,7 @@
 
 #include "factory_image_backend.h"
 #include "errors.h"
+#include "common.h"
 
 LOG_MODULE_REGISTER(factory_image_flash, LOG_LEVEL_INF);
 
@@ -49,10 +50,10 @@ static struct backend_state *get_state(void)
 
 /* ---- Settings handler: replay flag on init ---- */
 
-static int factory_flag_settings_set(const char *name, size_t len,
-                                     settings_read_cb read_cb, void *cb_arg)
+static Status_t factory_flag_settings_set(const char *name, size_t len,
+                                          settings_read_cb read_cb, void *cb_arg)
 {
-    int result = -ENOENT;
+    Status_t result = -ENOENT;
     ARG_UNUSED(len);
 
     if (0 == strcmp(name, FACTORY_FLAG_LEAF)) {
@@ -74,11 +75,11 @@ SETTINGS_STATIC_HANDLER_DEFINE(factory_flag_handler, FACTORY_FLAG_SUBTREE,
 
 /* ---- Backend ops ---- */
 
-static int flash_backend_init(void)
+static Status_t flash_backend_init(void)
 {
-    int result = 0;
+    Status_t result = 0;
     if (!get_state()->initialised) {
-        int rc = settings_load_subtree(FACTORY_FLAG_SUBTREE);
+        Status_t rc = settings_load_subtree(FACTORY_FLAG_SUBTREE);
         if (0 != rc) {
             LOG_WRN("Settings load (%s) failed: %d", FACTORY_FLAG_SUBTREE, rc);
             /* Treat as "not captured" and continue — the next capture
@@ -90,11 +91,11 @@ static int flash_backend_init(void)
     return result;
 }
 
-static int flash_backend_erase(void)
+static Status_t flash_backend_erase(void)
 {
     const struct flash_area *fa = NULL;
-    int rc = flash_area_open(PARTITION_ID(factory_partition), &fa);
-    int result = -EIO;
+    Status_t rc = flash_area_open(PARTITION_ID(factory_partition), &fa);
+    Status_t result = -EIO;
 
     if (0 == rc) {
         rc = flash_area_erase(fa, 0, fa->fa_size);
@@ -112,11 +113,11 @@ static int flash_backend_erase(void)
     return result;
 }
 
-static int flash_backend_write(uint32_t offset, const void *buf, size_t len)
+static Status_t flash_backend_write(uint32_t offset, const void *buf, size_t len)
 {
     const struct flash_area *fa = NULL;
-    int rc = flash_area_open(PARTITION_ID(factory_partition), &fa);
-    int result = -EIO;
+    Status_t rc = flash_area_open(PARTITION_ID(factory_partition), &fa);
+    Status_t result = -EIO;
 
     if (0 == rc) {
         rc = flash_area_write(fa, offset, buf, len);
@@ -124,7 +125,7 @@ static int flash_backend_write(uint32_t offset, const void *buf, size_t len)
             result = 0;
         } else {
             LOG_ERR("flash_area_write @0x%x len=%zu failed: %d",
-                    (unsigned)offset, len, rc);
+                    offset, len, rc);
             result = rc;
         }
         flash_area_close(fa);
@@ -134,11 +135,11 @@ static int flash_backend_write(uint32_t offset, const void *buf, size_t len)
     return result;
 }
 
-static int flash_backend_read(uint32_t offset, void *buf, size_t len)
+static Status_t flash_backend_read(uint32_t offset, void *buf, size_t len)
 {
     const struct flash_area *fa = NULL;
-    int rc = flash_area_open(PARTITION_ID(factory_partition), &fa);
-    int result = -EIO;
+    Status_t rc = flash_area_open(PARTITION_ID(factory_partition), &fa);
+    Status_t result = -EIO;
 
     if (0 == rc) {
         rc = flash_area_read(fa, offset, buf, len);
@@ -146,7 +147,7 @@ static int flash_backend_read(uint32_t offset, void *buf, size_t len)
             result = 0;
         } else {
             LOG_ERR("flash_area_read @0x%x len=%zu failed: %d",
-                    (unsigned)offset, len, rc);
+                    offset, len, rc);
             result = rc;
         }
         flash_area_close(fa);
@@ -156,17 +157,17 @@ static int flash_backend_read(uint32_t offset, void *buf, size_t len)
     return result;
 }
 
-static int flash_backend_flush(void)
+static Status_t flash_backend_flush(void)
 {
     /* flash_area_write is synchronous on SPI NOR — nothing to flush. */
     return 0;
 }
 
-static int flash_backend_size(uint32_t *out_size)
+static Status_t flash_backend_size(uint32_t *out_size)
 {
     const struct flash_area *fa = NULL;
-    int rc = flash_area_open(PARTITION_ID(factory_partition), &fa);
-    int result = -EIO;
+    Status_t rc = flash_area_open(PARTITION_ID(factory_partition), &fa);
+    Status_t result = -EIO;
 
     if (0 == rc) {
         if (NULL != out_size) {
@@ -185,11 +186,18 @@ static bool flash_backend_is_captured(void)
     return get_state()->captured;
 }
 
-static int flash_backend_mark_captured(bool captured)
+static Status_t flash_backend_mark_captured(bool captured)
 {
-    uint8_t value = captured ? 1U : 0U;
-    int rc = settings_save_one(FACTORY_FLAG_KEY, &value, sizeof(value));
-    int result = -EIO;
+    uint8_t value;
+    Status_t rc;
+    Status_t result = -EIO;
+
+    if (captured) {
+        value = 1U;
+    } else {
+        value = 0U;
+    }
+    rc = settings_save_one(FACTORY_FLAG_KEY, &value, sizeof(value));
 
     if (0 == rc) {
         get_state()->captured = captured;
