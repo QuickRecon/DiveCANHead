@@ -24,14 +24,33 @@ jobs:
     runs-on: [self-hosted, docker]
     timeout-minutes: 90
     steps:
+      # The repository contains two legacy gitlinks without matching
+      # .gitmodules entries. actions/checkout traverses submodules while
+      # removing its temporary credentials and fails before the job can start.
+      # This public, read-only checkout fetches full history without installing
+      # credentials or invoking any submodule commands.
       - name: Checkout (full history for new-code detection and blame)
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          # This job never pushes. Avoid persisting credentials and the
-          # recursive submodule cleanup that trips over legacy gitlinks
-          # missing from .gitmodules.
-          persist-credentials: false
+        env:
+          CI_REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+          CI_EVENT_REF: ${{ github.ref }}
+          CI_EVENT_SHA: ${{ github.sha }}
+          CI_RUN_REF: refs/remotes/ci/${{ github.run_id }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [ ! -d .git ]; then
+            git init .
+          fi
+          if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "$CI_REPOSITORY_URL"
+          else
+            git remote add origin "$CI_REPOSITORY_URL"
+          fi
+          git fetch --force --prune --no-recurse-submodules origin \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/tags/*:refs/tags/*' \
+            "+${CI_EVENT_REF}:${CI_RUN_REF}"
+          git checkout --force "$CI_EVENT_SHA"
+          git clean -ffdx
 
       - name: Install host packages
         run: |
