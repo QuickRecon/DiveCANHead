@@ -59,8 +59,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
+            ca-certificates curl gnupg \
             gcc-multilib g++-multilib ninja-build device-tree-compiler \
             ccache jq iproute2 kmod
+          . /etc/os-release
+          llvm_codename="${VERSION_CODENAME:?missing Ubuntu version codename}"
+          sudo install -d -m 0755 /etc/apt/keyrings
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key |
+            sudo gpg --dearmor --yes -o /etc/apt/keyrings/apt.llvm.org.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/${llvm_codename}/ llvm-toolchain-${llvm_codename}-22 main" |
+            sudo tee /etc/apt/sources.list.d/apt.llvm.org.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang-22 llvm-22 lld-22 libclang-rt-22-dev
+          test "$(clang-22 --version | sed -n '1s/.*version \([0-9.]*\).*/\1/p')" = 22.1.8
+          clang-22 --version
+          test "$(clang-22 -print-target-triple)" = x86_64-pc-linux-gnu
+          echo "LLVM_TOOLCHAIN_PATH=/usr/lib/llvm-22" >> "$GITHUB_ENV"
+          echo "GCOV_EXECUTABLE=/usr/lib/llvm-22/bin/llvm-cov gcov" >> "$GITHUB_ENV"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -108,23 +124,16 @@ jobs:
           sdk_version=$(tr -d '\r\n' < zephyr/SDK_VERSION)
           sdk_dir="$ZEPHYR_SDK_INSTALL_DIR/zephyr-sdk-$sdk_version"
           arm_gcc="$sdk_dir/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
-          native_clang="$sdk_dir/llvm/bin/clang"
-          native_llvm_cov="$sdk_dir/llvm/bin/llvm-cov"
-          if [ -x "$arm_gcc" ] &&
-             [ -x "$native_clang" ] &&
-             [ -x "$native_llvm_cov" ]; then
+          if [ -x "$arm_gcc" ]; then
             echo "Using persistent Zephyr SDK $sdk_version at $sdk_dir"
           else
             west sdk install \
               --personal-access-token "$GH_API_TOKEN" \
               --install-base "$ZEPHYR_SDK_INSTALL_DIR" \
               --no-hosttools \
-              --llvm \
               -t arm-zephyr-eabi
           fi
-          "$native_clang" --version
-          echo "LLVM_TOOLCHAIN_PATH=$sdk_dir/llvm" >> "$GITHUB_ENV"
-          echo "GCOV_EXECUTABLE=$native_llvm_cov gcov" >> "$GITHUB_ENV"
+          "$arm_gcc" --version
 
       # The ARM variant build covers src/ and drivers/ under the shipped
       # firmware configuration (Poseidon_Aren = most features enabled).
@@ -152,8 +161,8 @@ jobs:
         working-directory: Firmware
         env:
           # native_sim otherwise silently switches to the image's host GCC.
-          # Use the SDK's LLVM toolchain so runner image upgrades cannot
-          # regress this build to an obsolete compiler.
+          # Use the explicitly installed LLVM 22 toolchain so runner image
+          # upgrades cannot change the compiler underneath coverage builds.
           ZEPHYR_TOOLCHAIN_VARIANT: host/llvm
         run: |
           python3 scripts/coverage.py clean
