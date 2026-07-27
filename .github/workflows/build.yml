@@ -96,6 +96,12 @@ jobs:
         with:
           python-version: '3.12.10'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24.13.1'
+          package-manager-cache: false
+
       # This runner's tool cache is a persistent host volume. Keep the large
       # west module graph, pip downloads, and SDK there directly instead of
       # compressing and transferring multi-gigabyte GitHub cache archives.
@@ -105,7 +111,10 @@ jobs:
         run: |
           project_cache="$RUNNER_TOOL_CACHE/DiveCANHead"
           west_cache="$project_cache/west-$WEST_MANIFEST_HASH"
-          mkdir -p "$project_cache/pip" "$project_cache/sdk" "$west_cache"
+          mkdir -p \
+            "$project_cache/npm" "$project_cache/pip" \
+            "$project_cache/sdk" "$west_cache"
+          echo "NPM_CONFIG_CACHE=$project_cache/npm" >> "$GITHUB_ENV"
           echo "PIP_CACHE_DIR=$project_cache/pip" >> "$GITHUB_ENV"
           echo "ZEPHYR_SDK_INSTALL_DIR=$project_cache/sdk" >> "$GITHUB_ENV"
           for path in zephyr modules bootloader tools; do
@@ -113,6 +122,48 @@ jobs:
             mkdir -p "$target"
             ln -s "$target" "$path"
           done
+
+      - name: Run DiveCAN_bt tests and collect coverage
+        id: divecan_bt_results
+        working-directory: DiveCAN_bt
+        run: |
+          npm_status=0
+          npm ci --ignore-scripts --no-audit --no-fund || npm_status=$?
+          if (( npm_status == 0 )); then
+            npm run test:coverage -- --reporter=dot --silent ||
+              npm_status=$?
+          fi
+
+          coverage_status=0
+          if [ -s coverage/lcov.info ]; then
+            # Vitest writes paths relative to DiveCAN_bt; Sonar scans from the
+            # repository root, so make that prefix explicit in every record.
+            sed -i 's|^SF:src/|SF:DiveCAN_bt/src/|' coverage/lcov.info
+            if ! grep -q '^SF:DiveCAN_bt/src/' coverage/lcov.info; then
+              coverage_status=1
+              echo "::error title=DiveCAN_bt coverage::LCOV contains no DiveCAN_bt source records."
+            elif grep '^SF:' coverage/lcov.info |
+                grep -qv '^SF:DiveCAN_bt/src/'; then
+              coverage_status=1
+              echo "::error title=DiveCAN_bt coverage::LCOV contains a source path outside DiveCAN_bt/src."
+            fi
+          else
+            coverage_status=1
+            echo "::error title=DiveCAN_bt coverage::Vitest did not produce coverage/lcov.info."
+          fi
+
+          tests_failed=false
+          if (( npm_status != 0 || coverage_status != 0 )); then
+            tests_failed=true
+            echo "::warning title=DiveCAN_bt test failure::npm status $npm_status; coverage status $coverage_status. Firmware coverage and SonarCloud will continue before the job fails."
+          fi
+          echo "failed=$tests_failed" >> "$GITHUB_OUTPUT"
+          {
+            echo "### DiveCAN_bt test execution"
+            echo
+            echo "- Vitest/npm status: $npm_status"
+            echo "- LCOV validation status: $coverage_status"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # `west packages pip --install` refuses to run outside a virtualenv, so
       # all Python tooling lives in one; putting its bin dir on GITHUB_PATH
@@ -250,8 +301,10 @@ jobs:
       - name: Archive coverage report
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: firmware-coverage-${{ github.run_id }}
-          path: Firmware/coverage-report/
+          name: coverage-${{ github.run_id }}
+          path: |
+            Firmware/coverage-report/
+            DiveCAN_bt/coverage/
           retention-days: 14
 
       - name: SonarCloud scan
@@ -261,7 +314,10 @@ jobs:
           SONAR_HOST_URL: https://sonarcloud.io
 
       - name: Enforce test results
-        if: always() && steps.test_results.outputs.failed == 'true'
+        if: >-
+          always() &&
+          (steps.test_results.outputs.failed == 'true' ||
+           steps.divecan_bt_results.outputs.failed == 'true')
         run: |
-          echo "::error title=Test failures::One or more native or integration tests failed; see the test step for details."
+          echo "::error title=Test failures::One or more firmware, integration, or DiveCAN_bt tests failed; see the test steps for details."
           exit 1
