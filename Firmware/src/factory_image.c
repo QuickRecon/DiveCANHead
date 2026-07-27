@@ -262,8 +262,10 @@ static Status_t slot0_open(const struct flash_area **out_fa)
 
 /* ---- Capture engine ---- */
 
-static Status_t copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
-                                      const struct flash_area *slot0_fa)
+static Status_t copy_slot0_to_backend(
+    const struct factory_image_backend *backend,
+    uint32_t slot0_size, uint32_t backend_size,
+    const struct flash_area *slot0_fa)
 {
     Status_t result = 0;
     uint32_t copy_size = 0U;
@@ -290,7 +292,7 @@ static Status_t copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size
         do {
             rc = flash_area_read(slot0_fa, (off_t)off, chunk, this_chunk);
             if (0 == rc) {
-                rc = get_state()->backend->write(off, chunk, this_chunk);
+                rc = backend->write(off, chunk, this_chunk);
             }
             if (0 == rc) {
                 rc = verify_backend_readback(off, chunk, this_chunk);
@@ -324,26 +326,30 @@ static Status_t copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size
  * @return 0 on success, negative errno on any step failure.
  */
 static Status_t capture_copy_and_bless(const struct flash_area *slot0_fa,
+                                       const struct factory_image_backend *backend,
                                        uint32_t backend_size)
 {
     Status_t result = 0;
     uint32_t slot0_size = (uint32_t)slot0_fa->fa_size;
 
-    if (slot0_size > backend_size) {
+    if (NULL == backend) {
+        result = -ENODEV;
+    } else if (slot0_size > backend_size) {
         LOG_ERR("slot0 (%u B) > backend (%u B); refusing capture",
                 (unsigned)slot0_size, (unsigned)backend_size);
         result = -ENOSPC;
     } else {
-        Status_t rc = get_state()->backend->erase();
+        Status_t rc = backend->erase();
         if (0 != rc) {
             result = rc;
         } else {
-            rc = copy_slot0_to_backend(slot0_size, backend_size, slot0_fa);
+            rc = copy_slot0_to_backend(backend, slot0_size, backend_size,
+                                       slot0_fa);
             if (0 == rc) {
-                rc = get_state()->backend->flush();
+                rc = backend->flush();
             }
             if (0 == rc) {
-                rc = get_state()->backend->mark_captured(true);
+                rc = backend->mark_captured(true);
             }
             result = rc;
         }
@@ -361,25 +367,31 @@ static Status_t capture_copy_and_bless(const struct flash_area *slot0_fa,
 static Status_t capture_sequence(void)
 {
     Status_t result = 0;
-    Status_t rc = get_state()->backend->init();
+    const struct factory_image_backend *backend = get_state()->backend;
 
-    if (0 != rc) {
-        LOG_ERR("Backend init failed: %d", rc);
-        result = rc;
+    if (NULL == backend) {
+        result = -ENODEV;
     } else {
-        uint32_t backend_size = 0U;
-        rc = get_state()->backend->size(&backend_size);
+        Status_t rc = backend->init();
         if (0 != rc) {
+            LOG_ERR("Backend init failed: %d", rc);
             result = rc;
         } else {
-            const struct flash_area *slot0_fa = NULL;
-            rc = slot0_open(&slot0_fa);
+            uint32_t backend_size = 0U;
+            rc = backend->size(&backend_size);
             if (0 != rc) {
-                LOG_ERR("slot0 open failed: %d", rc);
                 result = rc;
             } else {
-                result = capture_copy_and_bless(slot0_fa, backend_size);
-                flash_area_close(slot0_fa);
+                const struct flash_area *slot0_fa = NULL;
+                rc = slot0_open(&slot0_fa);
+                if (0 != rc) {
+                    LOG_ERR("slot0 open failed: %d", rc);
+                    result = rc;
+                } else {
+                    result = capture_copy_and_bless(slot0_fa, backend,
+                                                    backend_size);
+                    flash_area_close(slot0_fa);
+                }
             }
         }
     }
