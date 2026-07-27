@@ -25,6 +25,7 @@ jobs:
     runs-on: [self-hosted, docker]
     timeout-minutes: 90
     env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/.ci-cache/pip
       ZEPHYR_TOOLCHAIN_VARIANT: zephyr
       ZEPHYR_SDK_INSTALL_DIR: ${{ github.workspace }}/.ci-cache/zephyr-sdk
     steps:
@@ -60,17 +61,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake gcc-multilib g++-multilib ninja-build device-tree-compiler \
+            gcc-multilib g++-multilib ninja-build device-tree-compiler \
             ccache jq iproute2 kmod
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: |
-            Firmware/tests/integration/harness/requirements.txt
-            Firmware/west.yml
+
+      - name: Restore pip downloads
+        id: pip-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.PIP_CACHE_DIR }}
+          key: pip-v2-${{ runner.os }}-py312-${{ hashFiles('Firmware/tests/integration/harness/requirements.txt', 'Firmware/west.yml') }}
 
       # west.yml pins Zephyr and therefore fully identifies the module graph.
       - name: Restore west modules
@@ -97,7 +101,7 @@ jobs:
 
       - name: Initialize west workspace
         run: |
-          pip install west gcovr \
+          pip install west gcovr 'cmake>=3.20,<4' \
             -r Firmware/tests/integration/harness/requirements.txt
           if [ ! -d .west ]; then
             west init -l Firmware
@@ -116,6 +120,13 @@ jobs:
             bootloader
             tools
           key: ${{ steps.west-cache.outputs.cache-primary-key }}
+
+      - name: Save pip downloads
+        if: steps.pip-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.PIP_CACHE_DIR }}
+          key: ${{ steps.pip-cache.outputs.cache-primary-key }}
 
       - name: Restore Zephyr SDK
         id: zephyr-sdk-cache
