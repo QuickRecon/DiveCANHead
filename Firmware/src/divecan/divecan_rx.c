@@ -150,6 +150,32 @@ uint32_t divecan_rx_get_bus_id_count(void)
     return (uint32_t)atomic_get(get_bus_id_count());
 }
 
+/* ---- Handset-loss setpoint failsafe state ---- */
+
+/**
+ * @brief Handset-loss setpoint failsafe state, persisted across RX thread loop iterations.
+ *
+ * Touched only from the RX thread (updated on BUS_ID receipt via
+ * NoteHandsetPing, evaluated at the end of divecan_rx_thread's loop body),
+ * so no atomics are needed.
+ */
+typedef struct {
+    uint32_t lastHandsetPingMs; /**< Uptime (ms) of the last handset (DIVECAN_CONTROLLER) ping */
+    bool handsetSeen;           /**< True once a controller ping has arrived at least once */
+    bool handsetLostApplied;    /**< True once the 0.70 bar fallback setpoint has been published */
+} HandsetFailsafeState_t;
+
+/**
+ * @brief Return pointer to the file-scoped handset failsafe state
+ *
+ * @return Pointer to the singleton HandsetFailsafeState_t
+ */
+static HandsetFailsafeState_t *getHandsetFailsafeState(void)
+{
+    static HandsetFailsafeState_t state = {0};
+    return &state;
+}
+
 /* ---- Forward declarations ---- */
 
 static void RespBusInit(const DiveCANMessage_t *message);
@@ -165,6 +191,8 @@ static void PollISOTPContexts(uint32_t now);
 static void ProcessISOTPCompletion(uint32_t now);
 static bool ProcessMenuMessage(const DiveCANMessage_t *message);
 static void InitializeUDSContexts(void);
+static void NoteHandsetPing(const DiveCANMessage_t *message);
+static void DispatchMessage(const DiveCANMessage_t *message);
 
 /* ---- CAN RX filter callback ---- */
 
@@ -196,6 +224,7 @@ static void can_rx_callback(const struct device *dev, struct can_frame *frame,
         DiveCANMessage_t msg = {
             .id = frame->id,
             .length = frame->dlc,
+            .data = {0},
         };
         (void)memcpy(msg.data, frame->data, frame->dlc);
 
@@ -213,6 +242,111 @@ static void can_rx_callback(const struct device *dev, struct can_frame *frame,
 }
 
 /* ---- Main RX thread ---- */
+
+/**
+ * @brief Update handset-liveness bookkeeping for the setpoint failsafe on a BUS_ID_ID ping.
+ *
+ * Only the handset (DIVECAN_CONTROLLER) counts — mirrors RespPing's low-nibble
+ * sender extraction. Re-arms the failsafe on every ping, but does NOT restore
+ * the pre-loss setpoint: once the fallback has latched to 0.70 bar the diver
+ * must actively re-select their setpoint on the returning handset.
+ *
+ * @param message Received BUS_ID_ID ping message
+ */
+static void NoteHandsetPing(const DiveCANMessage_t *message)
+{
+    if ((uint8_t)(message->id & DIVECAN_TYPE_MASK) == (uint8_t)DIVECAN_CONTROLLER) {
+        HandsetFailsafeState_t *hfState = getHandsetFailsafeState();
+        hfState->lastHandsetPingMs = k_uptime_get_32();
+        hfState->handsetSeen = true;
+        hfState->handsetLostApplied = false;
+    }
+}
+
+/**
+ * @brief Dispatch a dequeued DiveCAN message to its response handler.
+ *
+ * Extracted from divecan_rx_thread's main loop to keep that function's
+ * complexity within budget. Behavior matches the original inline switch.
+ *
+ * @param message Dequeued CAN message (must not be NULL)
+ */
+static void DispatchMessage(const DiveCANMessage_t *message)
+{
+    /* Drop the source/dest stuff, we're listening for anything from anyone */
+    uint32_t message_id = message->id & DIVECAN_ID_MASK;
+
+    switch (message_id) {
+    case BUS_ID_ID:
+        /* Respond to pings */
+        bump_count(get_bus_id_count());
+        NoteHandsetPing(message);
+        RespPing(message);
+        break;
+    case BUS_NAME_ID:
+        break;
+    case BUS_OFF_ID:
+        /* Turn off bus */
+        RespShutdown();
+        break;
+    case PPO2_PPO2_ID:
+        break;
+    case HUD_STAT_ID:
+        break;
+    case PPO2_ATMOS_ID:
+        RespAtmos(message);
+        break;
+    case MENU_ID:
+        (void)ProcessMenuMessage(message);
+        break;
+    case TANK_PRESSURE_ID:
+        break;
+    case PPO2_MILLIS_ID:
+        break;
+    case CAL_ID:
+        break;
+    case CAL_REQ_ID:
+        /* Respond to calibration request */
+        RespCal(message);
+        break;
+    case CO2_STATUS_ID:
+        break;
+    case CO2_ID:
+        break;
+    case CO2_CAL_ID:
+        break;
+    case CO2_CAL_REQ_ID:
+        break;
+    case BUS_MENU_OPEN_ID:
+        break;
+    case BUS_INIT_ID:
+        /* Bus Init */
+        bump_count(get_bus_init_count());
+        RespBusInit(message);
+        break;
+    case RMS_TEMP_ID:
+        break;
+    case RMS_TEMP_ENABLED_ID:
+        break;
+    case PPO2_SETPOINT_ID:
+        /* Deal with setpoint being set */
+        RespSetpoint(message);
+        break;
+    case PPO2_STATUS_ID:
+        break;
+    case BUS_STATUS_ID:
+        break;
+    case DIVING_ID:
+        RespDiving(message);
+        break;
+    case CAN_SERIAL_NUMBER_ID:
+        RespSerialNumber(message);
+        break;
+    default:
+        LOG_WRN("Unknown msg 0x%08x", message_id);
+        break;
+    }
+}
 
 /**
  * @brief Thread entry: initialize CAN hardware then dispatch inbound DiveCAN messages
@@ -285,13 +419,6 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
     LOG_INF("DiveCAN RX thread started");
     heartbeat_register(HEARTBEAT_DIVECAN_RX);
 
-    /* Handset-loss setpoint failsafe state. Touched only from this thread
-     * (updated on BUS_ID receipt, evaluated in the poll section below), so no
-     * atomics are needed. */
-    uint32_t last_handset_ping_ms = 0U;
-    bool handset_seen = false;         /* a controller ping has arrived at least once */
-    bool handset_lost_applied = false; /* the 0.70 bar fallback has been published */
-
     while (true) {
         heartbeat_kick(HEARTBEAT_DIVECAN_RX);
         DiveCANMessage_t message = {0};
@@ -299,91 +426,7 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
                     K_MSEC(RX_TIMEOUT_MS));
 
         if (0 == rx_ret) {
-            /* Drop the source/dest stuff, we're listening for
-             * anything from anyone */
-            uint32_t message_id = message.id & DIVECAN_ID_MASK;
-
-            switch (message_id) {
-            case BUS_ID_ID:
-                /* Respond to pings */
-                bump_count(get_bus_id_count());
-                /* Track handset liveness for the setpoint failsafe. Only the
-                 * handset (DIVECAN_CONTROLLER) counts — mirror RespPing's
-                 * low-nibble sender extraction. Re-arm the failsafe on every
-                 * ping, but do NOT restore the pre-loss setpoint: once the
-                 * fallback has latched to 0.70 bar the diver must actively
-                 * re-select their setpoint on the returning handset. */
-                if ((uint8_t)(message.id & DIVECAN_TYPE_MASK) ==
-                    (uint8_t)DIVECAN_CONTROLLER) {
-                    last_handset_ping_ms = k_uptime_get_32();
-                    handset_seen = true;
-                    handset_lost_applied = false;
-                }
-                RespPing(&message);
-                break;
-            case BUS_NAME_ID:
-                break;
-            case BUS_OFF_ID:
-                /* Turn off bus */
-                RespShutdown();
-                break;
-            case PPO2_PPO2_ID:
-                break;
-            case HUD_STAT_ID:
-                break;
-            case PPO2_ATMOS_ID:
-                RespAtmos(&message);
-                break;
-            case MENU_ID:
-                (void)ProcessMenuMessage(&message);
-                break;
-            case TANK_PRESSURE_ID:
-                break;
-            case PPO2_MILLIS_ID:
-                break;
-            case CAL_ID:
-                break;
-            case CAL_REQ_ID:
-                /* Respond to calibration request */
-                RespCal(&message);
-                break;
-            case CO2_STATUS_ID:
-                break;
-            case CO2_ID:
-                break;
-            case CO2_CAL_ID:
-                break;
-            case CO2_CAL_REQ_ID:
-                break;
-            case BUS_MENU_OPEN_ID:
-                break;
-            case BUS_INIT_ID:
-                /* Bus Init */
-                bump_count(get_bus_init_count());
-                RespBusInit(&message);
-                break;
-            case RMS_TEMP_ID:
-                break;
-            case RMS_TEMP_ENABLED_ID:
-                break;
-            case PPO2_SETPOINT_ID:
-                /* Deal with setpoint being set */
-                RespSetpoint(&message);
-                break;
-            case PPO2_STATUS_ID:
-                break;
-            case BUS_STATUS_ID:
-                break;
-            case DIVING_ID:
-                RespDiving(&message);
-                break;
-            case CAN_SERIAL_NUMBER_ID:
-                RespSerialNumber(&message);
-                break;
-            default:
-                LOG_WRN("Unknown msg 0x%08x", message_id);
-                break;
-            }
+            DispatchMessage(&message);
         }
 
         /* Poll ISO-TP and process completed transfers */
@@ -395,19 +438,21 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
          * for HANDSET_PING_TIMEOUT_MS, publish a safe 0.70 bar setpoint so the
          * control loop (and the bus status report) fall back to a conservative
          * target. Edge-triggered and latched: published once on the alive→lost
-         * transition and held until a handset ping re-arms it (see the BUS_ID
-         * case). Unsigned subtraction is wrap-safe across the k_uptime_get_32
+         * transition and held until a handset ping re-arms it (see
+         * NoteHandsetPing, called from DispatchMessage's BUS_ID_ID case).
+         * Unsigned subtraction is wrap-safe across the k_uptime_get_32
          * rollover. The latch is only set on a confirmed publish, so a rare
          * contended-lock miss retries next iteration rather than leaving a
          * high setpoint in place. */
-        if (handset_failsafe_should_revert(now, last_handset_ping_ms,
-                           handset_seen, handset_lost_applied,
+        HandsetFailsafeState_t *hfState = getHandsetFailsafeState();
+        if (handset_failsafe_should_revert(now, hfState->lastHandsetPingMs,
+                           hfState->handsetSeen, hfState->handsetLostApplied,
                            HANDSET_PING_TIMEOUT_MS)) {
             PPO2_t safe_setpoint = HANDSET_LOST_SETPOINT_CB;
             Status_t rc = zbus_chan_pub(&chan_setpoint, &safe_setpoint,
                         K_MSEC(ZBUS_PUB_TIMEOUT_MS));
             if (0 == rc) {
-                handset_lost_applied = true;
+                hfState->handsetLostApplied = true;
                 LOG_WRN("Handset ping lost >%u ms; setpoint reverted to 0.70 bar",
                     HANDSET_PING_TIMEOUT_MS);
             } else {

@@ -30,7 +30,7 @@
 #include "errors.h"
 #include "heartbeat.h"
 
-#include <stdio.h>
+#include <zephyr/sys/printk.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -274,7 +274,7 @@ static bool diveo2_parse_i32(const char *tok, int32_t *out)
 
     if ((tok != NULL) && (out != NULL) && ('\0' != tok[0])) {
         char *end = NULL;
-        long val = strtol(tok, &end, STRTOL_BASE);
+        int64_t val = strtol(tok, &end, STRTOL_BASE);
 
         /* Accept only if something was consumed and no trailing chars remain. */
         if ((tok != end) && ('\0' == *end)) {
@@ -466,7 +466,7 @@ bool diveo2_parse_detailed_response(const char *message,
                 fields, DIVEO2_DETAILED_FIELD_COUNT);
 
             for (uint8_t i = 0U; i < DIVEO2_DETAILED_FIELD_COUNT; ++i) {
-                if (all_numeric && !diveo2_parse_i32(fields[i], &vals[i])) {
+                if (all_numeric && (!diveo2_parse_i32(fields[i], &vals[i]))) {
                     all_numeric = false;
                 }
             }
@@ -576,9 +576,12 @@ static void diveo2_feed_rx(struct diveo2_cell_state *cell,
                            const struct uart_event_rx *rx)
 {
     for (size_t i = 0U; i < rx->len; ++i) {
-        char c = (char)rx->buf[rx->offset + i];
+        /* Raw numeric byte from the UART DMA buffer — kept as uint8_t (not
+         * plain char) until it is stored into the char-typed line
+         * accumulator below, per project char/byte typing convention. */
+        uint8_t byte = rx->buf[rx->offset + i];
 
-        if (('\r' == c) || ('\n' == c)) {
+        if (('\r' == byte) || ('\n' == byte)) {
             /* Complete frame — hand it to the thread. Empty lines (back-to-back
              * CR/LF) are ignored so framing survives CR+LF terminators. */
             if (cell->rx_line_len > 0U) {
@@ -590,7 +593,7 @@ static void diveo2_feed_rx(struct diveo2_cell_state *cell,
                 k_sem_give(&cell->rx_sem);
             }
         } else if (cell->rx_line_len < (DIVEO2_RX_BUFFER_LEN - 1U)) {
-            cell->rx_line[cell->rx_line_len++] = c;
+            cell->rx_line[cell->rx_line_len++] = (char)byte;
         } else {
             /* Overrun (no terminator within a frame) — drop and resync. */
             cell->rx_line_len = 0U;
@@ -788,7 +791,7 @@ static void diveo2_load_cal(struct diveo2_cell_state *cell)
 {
     char key[DIVEO2_KEY_BUFFER_LEN] = {0};
 
-    (void)snprintf(key, sizeof(key), "cal/cell%u", cell->cell_number);
+    (void)snprintk(key, sizeof(key), "cal/cell%u", cell->cell_number);
 
     CalCoeff_t coeff = 0.0f;
     Status_t len = settings_runtime_get(key, &coeff, sizeof(coeff));
@@ -979,10 +982,10 @@ static void diveo2_set_cell_broadcast(struct diveo2_cell_state *cell, bool on)
     const char *state = "off";
 
     if (on) {
-        (void)snprintf(cmd, sizeof(cmd), "#BCST %u", DIVEO2_BCST_INTERVAL_MS);
+        (void)snprintk(cmd, sizeof(cmd), "#BCST %u", DIVEO2_BCST_INTERVAL_MS);
         state = "on";
     } else {
-        (void)snprintf(cmd, sizeof(cmd), "#BCST 0");
+        (void)snprintk(cmd, sizeof(cmd), "#BCST 0");
     }
     diveo2_send_command(cell, cmd);
     LOG_INF("Cell %u: broadcast %s", cell->cell_number, state);
@@ -1011,6 +1014,26 @@ static bool diveo2_observe_broadcasting(struct diveo2_cell_state *cell,
 }
 
 /**
+ * @brief Render a boolean streaming flag as "on"/"off" for log messages.
+ *
+ * Split out of diveo2_apply_broadcast() so the string is genuinely read (via
+ * the return) instead of being stored to a local that only feeds a
+ * LOG_DBG() call compiled out under this module's LOG_LEVEL_INF.
+ *
+ * @param on  Streaming state to render.
+ * @return "on" if on is true, "off" otherwise.
+ */
+static const char *diveo2_on_off_str(bool on)
+{
+    const char *result = "off";
+
+    if (on) {
+        result = "on";
+    }
+    return result;
+}
+
+/**
  * @brief Drive the cell to the desired broadcast state, writing #BCST ONLY when
  *        the cell's OBSERVED state differs from desired.
  *
@@ -1031,15 +1054,10 @@ static void diveo2_apply_broadcast(struct diveo2_cell_state *cell, bool want_on)
     if (want_on != is_on) {
         diveo2_set_cell_broadcast(cell, want_on);
     } else {
-        const char *state = "off";
-
-        if (want_on) {
-            state = "on";
-        }
         /* Cell already in the desired streaming state — no #BCST, no flash
          * write. */
         LOG_DBG("Cell %u: broadcast already %s, skip #BCST",
-                cell->cell_number, state);
+                cell->cell_number, diveo2_on_off_str(want_on));
     }
 
     if (want_on) {
@@ -1136,9 +1154,9 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
 {
     bool ok = true;
 
-    k_sem_init(&cell->rx_sem, 0, 1);
+    (void)k_sem_init(&cell->rx_sem, 0, 1);
     /* tx_sem starts available (1): tx_buf is free until the first send. */
-    k_sem_init(&cell->tx_sem, 1, 1);
+    (void)k_sem_init(&cell->tx_sem, 1, 1);
 
     /* Re-detect protocol/mode from scratch each (re)start. */
     cell->protocol = CELL_PROTO_UNKNOWN;
@@ -1146,7 +1164,7 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
     cell->detect_phase = 0U;
     cell->rx_line_len = 0U;
     cell->rx_active = 0U;
-    atomic_set(&cell->broadcast_req, BCST_REQ_NONE);
+    (void)atomic_set(&cell->broadcast_req, BCST_REQ_NONE);
 
     if (false == device_is_ready(cell->uart_dev)) {
         LOG_ERR("UART not ready for cell %u", cell->cell_number);
@@ -1275,7 +1293,14 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
                 (uint64_t)(k_uptime_ticks() - loop_start));
 
             if (elapsed_ms < MIN_SAMPLE_INTERVAL_MS) {
-                (void)k_msleep((int32_t)(MIN_SAMPLE_INTERVAL_MS - (int32_t)elapsed_ms));
+                /* elapsed_ms is provably < MIN_SAMPLE_INTERVAL_MS (100) here,
+                 * so the uint32_t narrowing cast is lossless; the subtraction
+                 * then stays in unsigned arithmetic (matching
+                 * MIN_SAMPLE_INTERVAL_MS's type) with a single final cast for
+                 * the k_msleep() int32_t parameter. */
+                uint32_t remaining_ms = MIN_SAMPLE_INTERVAL_MS - (uint32_t)elapsed_ms;
+
+                (void)k_msleep((int32_t)remaining_ms);
             }
         }
     }
@@ -1286,7 +1311,9 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
  * The per-cell state structs are mutable file-scope storage because the
  * K_THREAD_DEFINE macro requires a stable address known at compile time.
  * Wrapping behind an accessor would defeat that contract. M23_388 is
- * suppressed for these specific declarations via sonar-project.properties.
+ * accepted per-issue on SonarCloud for these specific declarations (no
+ * blanket rule suppression exists in sonar-project.properties — see
+ * docs/SONARQUBE_ACCEPTED_ISSUES.md).
  *
  * Cell → UART mapping: USART1 = Cell 1, USART2 = Cell 2, USART3 = Cell 3
  */
@@ -1305,14 +1332,39 @@ __maybe_unused static void diveo2_cell_thread(void *p1, void *p2, void *p3)
  * fitting the STM32L431's tight RAM). */
 #define DIVEO2_THREAD_STACK_SIZE 1536
 
+/* rx_buf/rx_active/rx_line/rx_line_len/tx_buf/rx_sem/tx_sem/rx_len below are
+ * all re-established by diveo2_setup() before first use on every (re)start;
+ * zero-initialised here purely to satisfy explicit-struct-init (S6871). */
+
 #if defined(CONFIG_CELL_1_TYPE_DIVEO2)
 static struct diveo2_cell_state diveo2_cell_1 = {
     .cell_number = 0,
+    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart1)),
+    .protocol = CELL_PROTO_UNKNOWN,
+    .mode = CELL_MODE_POLLED,
+    .detect_phase = 0U,
+    .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
     .cal_coeff = DIVEO2_CAL_DEFAULT,
     .status = CELL_FAIL,
-    .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
+    .cell_sample = 0,
+    .temperature = 0,
+    .err_code = 0U,
+    .phase = 0,
+    .intensity = 0,
+    .ambient_light = 0,
+    .pressure = 0,
+    .humidity = 0,
+    .last_ppo2_ticks = 0,
+    .last_message = {0},
+    .rx_buf = {{0}},
+    .rx_active = 0U,
+    .rx_line = {0},
+    .rx_line_len = 0U,
+    .tx_buf = {0},
+    .rx_sem = {0},
+    .tx_sem = {0},
+    .rx_len = 0U,
     .out_chan = &chan_cell_1,
-    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart1)),
 };
 K_THREAD_DEFINE(diveo2_thread_1, DIVEO2_THREAD_STACK_SIZE,
         diveo2_cell_thread, &diveo2_cell_1, NULL, NULL,
@@ -1322,11 +1374,32 @@ K_THREAD_DEFINE(diveo2_thread_1, DIVEO2_THREAD_STACK_SIZE,
 #if defined(CONFIG_CELL_2_TYPE_DIVEO2) && CONFIG_CELL_COUNT >= 2
 static struct diveo2_cell_state diveo2_cell_2 = {
     .cell_number = 1,
+    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart2)),
+    .protocol = CELL_PROTO_UNKNOWN,
+    .mode = CELL_MODE_POLLED,
+    .detect_phase = 0U,
+    .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
     .cal_coeff = DIVEO2_CAL_DEFAULT,
     .status = CELL_FAIL,
-    .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
+    .cell_sample = 0,
+    .temperature = 0,
+    .err_code = 0U,
+    .phase = 0,
+    .intensity = 0,
+    .ambient_light = 0,
+    .pressure = 0,
+    .humidity = 0,
+    .last_ppo2_ticks = 0,
+    .last_message = {0},
+    .rx_buf = {{0}},
+    .rx_active = 0U,
+    .rx_line = {0},
+    .rx_line_len = 0U,
+    .tx_buf = {0},
+    .rx_sem = {0},
+    .tx_sem = {0},
+    .rx_len = 0U,
     .out_chan = &chan_cell_2,
-    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart2)),
 };
 K_THREAD_DEFINE(diveo2_thread_2, DIVEO2_THREAD_STACK_SIZE,
         diveo2_cell_thread, &diveo2_cell_2, NULL, NULL,
@@ -1336,11 +1409,32 @@ K_THREAD_DEFINE(diveo2_thread_2, DIVEO2_THREAD_STACK_SIZE,
 #if defined(CONFIG_CELL_3_TYPE_DIVEO2) && CONFIG_CELL_COUNT >= 3
 static struct diveo2_cell_state diveo2_cell_3 = {
     .cell_number = 2,
+    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart3)),
+    .protocol = CELL_PROTO_UNKNOWN,
+    .mode = CELL_MODE_POLLED,
+    .detect_phase = 0U,
+    .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
     .cal_coeff = DIVEO2_CAL_DEFAULT,
     .status = CELL_FAIL,
-    .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
+    .cell_sample = 0,
+    .temperature = 0,
+    .err_code = 0U,
+    .phase = 0,
+    .intensity = 0,
+    .ambient_light = 0,
+    .pressure = 0,
+    .humidity = 0,
+    .last_ppo2_ticks = 0,
+    .last_message = {0},
+    .rx_buf = {{0}},
+    .rx_active = 0U,
+    .rx_line = {0},
+    .rx_line_len = 0U,
+    .tx_buf = {0},
+    .rx_sem = {0},
+    .tx_sem = {0},
+    .rx_len = 0U,
     .out_chan = &chan_cell_3,
-    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart3)),
 };
 K_THREAD_DEFINE(diveo2_thread_3, DIVEO2_THREAD_STACK_SIZE,
         diveo2_cell_thread, &diveo2_cell_3, NULL, NULL,
@@ -1403,7 +1497,12 @@ void diveo2_request_broadcast(uint8_t cell_number, bool on)
 #endif
 
     if (req != NULL) {
-        atomic_set(req, on ? (atomic_val_t)BCST_REQ_ON : (atomic_val_t)BCST_REQ_OFF);
+        atomic_val_t val = (atomic_val_t)BCST_REQ_OFF;
+
+        if (on) {
+            val = (atomic_val_t)BCST_REQ_ON;
+        }
+        (void)atomic_set(req, val);
     } else {
         /* Not a DiveO2/UART cell on this build — reject. */
         OP_ERROR_DETAIL(OP_ERR_CONFIG, cell_number);

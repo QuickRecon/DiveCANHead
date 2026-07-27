@@ -92,7 +92,7 @@ typedef bool (*factory_backend_is_captured_fn)(void);
  * write-verify-read pass, so a mid-capture power loss leaves the
  * flag at @c false and the next boot re-attempts capture cleanly.
  */
-typedef Status_t (*factory_backend_mark_captured_fn)(bool captured);
+typedef Status_t (*factory_backend_mark_capt_fn)(bool captured);
 
 /**
  * @brief Vtable of operations a factory-image backend must provide.
@@ -110,7 +110,7 @@ struct factory_image_backend {
     factory_backend_flush_fn flush;
     factory_backend_size_fn size;
     factory_backend_is_captured_fn is_captured;
-    factory_backend_mark_captured_fn mark_captured;
+    factory_backend_mark_capt_fn mark_captured;
 };
 
 /**

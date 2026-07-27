@@ -416,6 +416,17 @@ static DiveCANError_t sol_current_to_divecan(SolCurrentClass_t verdict)
 }
 #endif /* CONFIG_SOLENOID */
 
+#ifdef CONFIG_SOLENOID
+/** Last aggregate solenoid-current status published to chan_solenoid_status.
+ *  Fire-thread-only state (single writer — poll_solenoid_current is only
+ *  ever called from the solenoid fire thread). */
+static DiveCANError_t *getLastPublishedSolStatus(void)
+{
+    static DiveCANError_t last_published = DIVECAN_ERR_SOL_NORM;
+    return &last_published;
+}
+#endif /* CONFIG_SOLENOID */
+
 /** Poll the driver's current-check result after a fire cycle: log any fresh
  *  per-channel reading and publish the aggregate status on change. */
 static void poll_solenoid_current(void)
@@ -439,12 +450,12 @@ static void poll_solenoid_current(void)
 #endif
     }
 
-    static DiveCANError_t last_published = DIVECAN_ERR_SOL_NORM;
+    DiveCANError_t *last_published = getLastPublishedSolStatus();
     DiveCANError_t status =
         sol_current_to_divecan(solenoid_current_aggregate(SOL_DEVICE));
-    if (status != last_published) {
+    if (status != *last_published) {
         publish_solenoid_status(status);
-        last_published = status;
+        *last_published = status;
     }
 #endif /* CONFIG_SOLENOID */
 }
@@ -708,9 +719,9 @@ static void run_mk15_fire_cycle(void)
     /* Check if now is a time when we fire the solenoid */
     if ((d_setpoint > measurement) &&
         (PPO2_FAIL != consensus.consensus_ppo2)) {
-        Status_t rc = inject_solenoid_fire(MK15_ON_TIME_MS * US_PER_MS);
-        if (rc < 0) {
-            OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
+        Status_t fire_rc = inject_solenoid_fire(MK15_ON_TIME_MS * US_PER_MS);
+        if (fire_rc < 0) {
+            OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-fire_rc));
         }
 #ifdef CONFIG_FLASH_LOG
         else {

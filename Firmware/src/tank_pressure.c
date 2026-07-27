@@ -129,7 +129,7 @@ static void transducer_init(struct transducer_state *t)
  */
 static Status_t transducer_read_xfer(void *ctx)
 {
-    struct transducer_state *t = (struct transducer_state *)ctx;
+    const struct transducer_state *t = (const struct transducer_state *)ctx;
 
     return adc_read_dt(t->adc, &t->adc_seq);
 }
@@ -150,10 +150,10 @@ static Status_t transducer_read_xfer(void *ctx)
  */
 static Status_t transducer_read_retry(struct transducer_state *t)
 {
-    return (Status_t)i2c1_transact(transducer_read_xfer, t,
-                                   TANK_ADC_MAX_ATTEMPTS,
-                                   TANK_ADC_RETRY_BASE_MS,
-                                   TANK_ADC_RETRY_JITTER_MS);
+    return i2c1_transact(transducer_read_xfer, t,
+                         TANK_ADC_MAX_ATTEMPTS,
+                         TANK_ADC_RETRY_BASE_MS,
+                         TANK_ADC_RETRY_JITTER_MS);
 }
 
 /**
@@ -201,25 +201,43 @@ static TankPressure_t transducer_sample(struct transducer_state *t)
 #if defined(CONFIG_O2_TRANSDUCER_CHANNEL) && (CONFIG_O2_TRANSDUCER_CHANNEL >= 0)
 static const struct adc_dt_spec o2_transducer_adc =
     ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), CONFIG_O2_TRANSDUCER_CHANNEL);
-static struct transducer_state o2_transducer = {
-    .adc = &o2_transducer_adc,
-    .min_mv = CONFIG_O2_TRANSDUCER_MIN,
-    .max_mv = CONFIG_O2_TRANSDUCER_MAX,
-    .limit_bar = CONFIG_O2_TRANSDUCER_LIMIT,
-    .ready = false,
-};
+
+/** Module state behind a static accessor (M23_388) — single owner is
+ *  tank_pressure_thread; the pointer is stable across the thread's lifetime. */
+static struct transducer_state *get_o2_transducer(void)
+{
+    static struct transducer_state state = {
+        .adc = &o2_transducer_adc,
+        .min_mv = CONFIG_O2_TRANSDUCER_MIN,
+        .max_mv = CONFIG_O2_TRANSDUCER_MAX,
+        .limit_bar = CONFIG_O2_TRANSDUCER_LIMIT,
+        .ready = false,
+        .adc_sample_buf = 0,
+        .adc_seq = {0},
+    };
+    return &state;
+}
 #endif
 
 #if defined(CONFIG_DIL_TRANSDUCER_CHANNEL) && (CONFIG_DIL_TRANSDUCER_CHANNEL >= 0)
 static const struct adc_dt_spec dil_transducer_adc =
     ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), CONFIG_DIL_TRANSDUCER_CHANNEL);
-static struct transducer_state dil_transducer = {
-    .adc = &dil_transducer_adc,
-    .min_mv = CONFIG_DIL_TRANSDUCER_MIN,
-    .max_mv = CONFIG_DIL_TRANSDUCER_MAX,
-    .limit_bar = CONFIG_DIL_TRANSDUCER_LIMIT,
-    .ready = false,
-};
+
+/** Module state behind a static accessor (M23_388) — single owner is
+ *  tank_pressure_thread; the pointer is stable across the thread's lifetime. */
+static struct transducer_state *get_dil_transducer(void)
+{
+    static struct transducer_state state = {
+        .adc = &dil_transducer_adc,
+        .min_mv = CONFIG_DIL_TRANSDUCER_MIN,
+        .max_mv = CONFIG_DIL_TRANSDUCER_MAX,
+        .limit_bar = CONFIG_DIL_TRANSDUCER_LIMIT,
+        .ready = false,
+        .adc_sample_buf = 0,
+        .adc_seq = {0},
+    };
+    return &state;
+}
 #endif
 
 /**
@@ -239,10 +257,10 @@ static void tank_pressure_thread(void *p1, void *p2, void *p3)
     ARG_UNUSED(p3);
 
 #if defined(CONFIG_O2_TRANSDUCER_CHANNEL) && (CONFIG_O2_TRANSDUCER_CHANNEL >= 0)
-    transducer_init(&o2_transducer);
+    transducer_init(get_o2_transducer());
 #endif
 #if defined(CONFIG_DIL_TRANSDUCER_CHANNEL) && (CONFIG_DIL_TRANSDUCER_CHANNEL >= 0)
-    transducer_init(&dil_transducer);
+    transducer_init(get_dil_transducer());
 #endif
 
     while (true) {
@@ -253,10 +271,10 @@ static void tank_pressure_thread(void *p1, void *p2, void *p3)
         };
 
 #if defined(CONFIG_O2_TRANSDUCER_CHANNEL) && (CONFIG_O2_TRANSDUCER_CHANNEL >= 0)
-        msg.o2_decibar = transducer_sample(&o2_transducer);
+        msg.o2_decibar = transducer_sample(get_o2_transducer());
 #endif
 #if defined(CONFIG_DIL_TRANSDUCER_CHANNEL) && (CONFIG_DIL_TRANSDUCER_CHANNEL >= 0)
-        msg.dil_decibar = transducer_sample(&dil_transducer);
+        msg.dil_decibar = transducer_sample(get_dil_transducer());
 #endif
         msg.timestamp_ticks = k_uptime_ticks();
 

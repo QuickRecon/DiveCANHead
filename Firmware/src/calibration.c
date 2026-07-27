@@ -29,7 +29,7 @@
 #include "common.h"
 
 #include <math.h>
-#include <stdio.h>
+#include <zephyr/sys/printk.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -144,7 +144,7 @@ bool calibration_try_acquire(void)
  */
 void calibration_release(void)
 {
-    atomic_clear(getCalRunning());
+    (void)atomic_clear(getCalRunning());
 }
 
 /* ---- Settings persistence for calibration coefficients ---- */
@@ -152,17 +152,20 @@ void calibration_release(void)
 #define CAL_SETTINGS_KEY "cal/cell"
 
 /**
- * @brief Persist a calibration coefficient to non-volatile settings storage.
+ * @brief Return a pointer to the module-static in-memory calibration cache.
  *
- * @param cell_num Zero-based cell index (0–2).
- * @param coeff    Calibration coefficient to store.
- * @return 0 on success, negative errno on settings write failure.
+ * Backs the "cal" settings subtree. Populated by the settings handlers below
+ * (called both by settings_load() at boot and by settings_load_subtree()
+ * after writes). Cells and the validation readback both read from this
+ * cache via settings_runtime_get.
+ *
+ * @return Pointer to the CELL_MAX_COUNT-element cache array.
  */
-/* In-memory cache backing the "cal" settings subtree.  Populated by the
- * settings handler below (called both by settings_load() at boot and by
- * settings_load_subtree() after writes).  Cells and the validation
- * readback both read from this cache via settings_runtime_get. */
-static CalCoeff_t cal_cache[CELL_MAX_COUNT] = {0};
+static CalCoeff_t *getCalCache(void)
+{
+    static CalCoeff_t cal_cache[CELL_MAX_COUNT] = {0};
+    return cal_cache;
+}
 
 /* Parse "cellN" (N = 0..CELL_MAX_COUNT-1) and return the cell index,
  * or -1 if the key doesn't fit that pattern. */
@@ -172,12 +175,12 @@ static int32_t cal_parse_cell_key(const char *name)
 
     if (0 == strncmp(name, "cell", CAL_KEY_PREFIX_LEN)) {
         char *end = NULL;
-        /* strtol() returns long by C standard contract; the local stays
-         * long so the comparisons below match its type exactly. */
-        long n = strtol(name + CAL_KEY_PREFIX_LEN, &end, 10);
+        /* strtol() returns long by C standard contract; int64_t safely
+         * holds a long on both 32- and 64-bit strtol() implementations. */
+        int64_t n = strtol(name + CAL_KEY_PREFIX_LEN, &end, 10);
 
         if (((name + CAL_KEY_PREFIX_LEN) != end) && ('\0' == *end) &&
-            (0 <= n) && (n < (long)CELL_MAX_COUNT)) {
+            (0 <= n) && (n < (int64_t)CELL_MAX_COUNT)) {
             result = (int32_t)n;
         }
     }
@@ -191,7 +194,7 @@ static int32_t cal_parse_cell_key(const char *name)
 static int cal_settings_set(const char *name, size_t len,
                             settings_read_cb read_cb, void *cb_arg)
 {
-    int result = 0;
+    Status_t result = 0;
     int32_t cell = cal_parse_cell_key(name);
 
     (void)len;
@@ -205,7 +208,7 @@ static int cal_settings_set(const char *name, size_t len,
         if ((ssize_t)sizeof(value) != got) {
             result = -EIO;
         } else {
-            cal_cache[cell] = value;
+            getCalCache()[cell] = value;
         }
     }
 
@@ -216,7 +219,7 @@ static int cal_settings_set(const char *name, size_t len,
  * Returns the cached value's length on success so the caller can size-check. */
 static int cal_settings_get(const char *name, char *val, int val_len_max)
 {
-    int result = 0;
+    Status_t result = 0;
     int32_t cell = cal_parse_cell_key(name);
 
     if (0 > cell) {
@@ -224,8 +227,8 @@ static int cal_settings_get(const char *name, char *val, int val_len_max)
     } else if ((size_t)val_len_max < sizeof(CalCoeff_t)) {
         result = -EINVAL;
     } else {
-        (void)memcpy(val, &cal_cache[cell], sizeof(CalCoeff_t));
-        result = (int)sizeof(CalCoeff_t);
+        (void)memcpy(val, &getCalCache()[cell], sizeof(CalCoeff_t));
+        result = (Status_t)sizeof(CalCoeff_t);
     }
 
     return result;
@@ -236,12 +239,19 @@ SETTINGS_STATIC_HANDLER_DEFINE(cal_handler, "cal",
                                cal_settings_set,
                                NULL, NULL);
 
+/**
+ * @brief Persist a calibration coefficient to non-volatile settings storage.
+ *
+ * @param cell_num Zero-based cell index (0–2).
+ * @param coeff    Calibration coefficient to store.
+ * @return 0 on success, negative errno on settings write failure.
+ */
 static Status_t cal_save_coefficient(uint8_t cell_num, CalCoeff_t coeff)
 {
     char key[CAL_KEY_BUF_LEN] = {0};
     Status_t result = 0;
 
-    (void)snprintf(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
+    (void)snprintk(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
 
     result = settings_save_one(key, &coeff, sizeof(coeff));
 
@@ -269,7 +279,7 @@ static Status_t cal_load_coefficient(uint8_t cell_num, CalCoeff_t *coeff)
     char key[CAL_KEY_BUF_LEN] = {0};
     Status_t result = 0;
 
-    (void)snprintf(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
+    (void)snprintk(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
 
     Status_t len = settings_runtime_get(key, coeff, sizeof(*coeff));
 
@@ -389,7 +399,7 @@ static CalResult_t cal_compute_coeff_cell_1(PPO2_t target_ppo2,
  * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
  */
 static CalResult_t cal_compute_coeff_cell_1(PPO2_t target_ppo2,
-                                             ShortMillivolts_t *mv_out,
+                                             const ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
 {
     OxygenCellMsg_t cell_data = {0};
@@ -484,7 +494,7 @@ static CalResult_t cal_compute_coeff_cell_2(PPO2_t target_ppo2,
  * @return CAL_RESULT_OK on success, CAL_RESULT_FAILED if the cell read times out.
  */
 static CalResult_t cal_compute_coeff_cell_2(PPO2_t target_ppo2,
-                                             ShortMillivolts_t *mv_out,
+                                             const ShortMillivolts_t *mv_out,
                                              Numeric_t *coeff_out)
 {
     OxygenCellMsg_t cell_data = {0};
@@ -767,6 +777,41 @@ static CalResult_t calibrate_cell(uint8_t cell_num, PPO2_t target_ppo2,
 /* ---- Calibration methods ---- */
 
 /**
+ * @brief Calibrate cell i against the digital reference PPO2, but only if it's an analog cell.
+ *
+ * Split out of cal_digital_reference()'s per-cell loop to keep that
+ * function's if|for nesting within the project limit (S134).
+ *
+ * @param i     Zero-based cell index.
+ * @param ppo2  Reference PPO2 (centibar) from the digital reference cell.
+ * @param resp  Calibration response; resp->cell_mv[i] is populated if cell i is analog.
+ * @return CAL_RESULT_OK if cell i is not analog (skipped) or calibrated
+ *         successfully; otherwise the failure/rejection code from calibrate_cell().
+ */
+static CalResult_t cal_digital_reference_cell(uint8_t i, PPO2_t ppo2,
+                                               CalResponse_t *resp)
+{
+    CalResult_t result = CAL_RESULT_OK;
+    bool is_analog = false;
+
+#if defined(CONFIG_CELL_1_TYPE_ANALOG)
+    if (0U == i) { is_analog = true; }
+#endif
+#if CONFIG_CELL_COUNT >= 2 && defined(CONFIG_CELL_2_TYPE_ANALOG)
+    if (1U == i) { is_analog = true; }
+#endif
+#if CONFIG_CELL_COUNT >= 3 && defined(CONFIG_CELL_3_TYPE_ANALOG)
+    if (CAL_CELL_SLOT_2 == i) { is_analog = true; }
+#endif
+
+    if (is_analog) {
+        result = calibrate_cell(i, ppo2, &resp->cell_mv[i]);
+    }
+
+    return result;
+}
+
+/**
  * @brief Calibrate analog cells using the first available DiveO2 cell as a live PPO2 reference.
  *
  * Reads the reference cell's PPO2 and pressure via zbus, derives the target PPO2
@@ -822,26 +867,10 @@ static CalResult_t cal_digital_reference(CalRequest_t *req,
 
             /* Calibrate all analog cells against the digital reference PPO2 */
             for (uint8_t i = 0; i < CONFIG_CELL_COUNT; ++i) {
-                /* Only calibrate analog cells in digital reference mode */
-                bool is_analog = false;
+                CalResult_t cell_result = cal_digital_reference_cell(i, ppo2, resp);
 
-#if defined(CONFIG_CELL_1_TYPE_ANALOG)
-                if (0U == i) { is_analog = true; }
-#endif
-#if CONFIG_CELL_COUNT >= 2 && defined(CONFIG_CELL_2_TYPE_ANALOG)
-                if (1U == i) { is_analog = true; }
-#endif
-#if CONFIG_CELL_COUNT >= 3 && defined(CONFIG_CELL_3_TYPE_ANALOG)
-                if (CAL_CELL_SLOT_2 == i) { is_analog = true; }
-#endif
-
-                if (is_analog) {
-                    CalResult_t cell_result = calibrate_cell(
-                        i, ppo2, &resp->cell_mv[i]);
-
-                    if (CAL_RESULT_OK != cell_result) {
-                        result = cell_result;
-                    }
+                if (CAL_RESULT_OK != cell_result) {
+                    result = cell_result;
                 }
             }
 
@@ -984,7 +1013,7 @@ static CalResult_t cal_solenoid_flush(const CalRequest_t *req,
  * @return CAL_RESULT_OK unconditionally.
  */
 #if defined(CONFIG_HAS_FLUSH_SOLENOID) && defined(CONFIG_HAS_DIL_FLUSH_SOLENOID)
-static CalResult_t cal_check(const CalRequest_t *req, CalResponse_t *resp)
+static CalResult_t cal_check(const CalRequest_t *req, const CalResponse_t *resp)
 {
     (void)req;
     (void)resp;
@@ -1208,11 +1237,13 @@ static const struct smf_state cal_states[CAL_STATE_COUNT] = {
 static void run_calibration_sm(const CalRequest_t *req)
 {
     CalSmCtx_t sm = {
+        .smf = {0},
         .request = *req,
         .response = {
             .result = CAL_RESULT_FAILED,
             .cell_mv = {0, 0, 0},
         },
+        .previous_cals = {0},
     };
 
     smf_set_initial(SMF_CTX(&sm), &cal_states[CAL_STATE_BACKING_UP]);

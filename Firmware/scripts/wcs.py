@@ -141,39 +141,51 @@ class CallGraph:
         self.locals: Dict[str, Dict[str, CallNode]] = {}
         self.weak: Dict[str, CallNode] = {}
 
+    def _register_global(self, s: Symbol, tu_label: str) -> None:
+        if s.name in self.globals or s.name in self.locals:
+            raise RuntimeError(f"Multiple declarations of {s.name}")
+        self.globals[s.name] = {
+            "tu": tu_label,
+            "name": s.name,
+            "binding": s.binding,
+        }
+
+    def _register_local(self, s: Symbol, tu_label: str) -> None:
+        if s.name in self.locals and tu_label in self.locals[s.name]:
+            raise RuntimeError(f"Multiple declarations of {s.name}")
+        self.locals.setdefault(s.name, {})[tu_label] = {
+            "tu": tu_label,
+            "name": s.name,
+            "binding": s.binding,
+        }
+
+    def _register_weak(self, s: Symbol, tu_label: str) -> None:
+        if s.name in self.weak:
+            # Weak duplicates are common (e.g. default fault handler);
+            # keep the first.
+            return
+        self.weak[s.name] = {
+            "tu": tu_label,
+            "name": s.name,
+            "binding": s.binding,
+        }
+
     def read_obj(self, tu_obj: str, tu_label: str) -> None:
         """Read symbols (bindings) from the object file for one TU."""
+        # Split into one _register_* helper per binding kind (S3776: the
+        # inlined-if-per-branch form pushed this function's cognitive
+        # complexity over the project limit).
         for s in read_symbols(tu_obj):
             if s.type != "FUNC":
                 continue
             if s.binding == "GLOBAL":
-                if s.name in self.globals or s.name in self.locals:
-                    raise Exception(f"Multiple declarations of {s.name}")
-                self.globals[s.name] = {
-                    "tu": tu_label,
-                    "name": s.name,
-                    "binding": s.binding,
-                }
+                self._register_global(s, tu_label)
             elif s.binding == "LOCAL":
-                if s.name in self.locals and tu_label in self.locals[s.name]:
-                    raise Exception(f"Multiple declarations of {s.name}")
-                self.locals.setdefault(s.name, {})[tu_label] = {
-                    "tu": tu_label,
-                    "name": s.name,
-                    "binding": s.binding,
-                }
+                self._register_local(s, tu_label)
             elif s.binding == "WEAK":
-                if s.name in self.weak:
-                    # Weak duplicates are common (e.g. default fault handler);
-                    # keep the first.
-                    continue
-                self.weak[s.name] = {
-                    "tu": tu_label,
-                    "name": s.name,
-                    "binding": s.binding,
-                }
+                self._register_weak(s, tu_label)
             else:
-                raise Exception(
+                raise RuntimeError(
                     f'Unknown binding "{s.binding}" for symbol {s.name}'
                 )
 
@@ -200,8 +212,9 @@ class CallGraph:
             r"^;; Function (.*) \((\S+), funcdef_no=\d+(, [a-z_]+=\d+)*\)"
             r"( \([a-z ]+\))?$"
         )
-        static_call = re.compile(r'^.*\(call.*"(.*)".*$')
-        other_call = re.compile(r"^.*call .*$")
+        # [^"]* / non-greedy .*? instead of nested .* groups avoids the
+        # catastrophic-backtracking shape S8786 flags on RTL dump lines.
+        static_call = re.compile(r'\(call.*?"([^"]*)"')
 
         node: CallNode | None = None
         with open(tu_rtl, "rt", encoding="latin_1") as fh:
@@ -222,18 +235,23 @@ class CallGraph:
                 if node is None:
                     continue
 
-                m = static_call.match(line)
+                m = static_call.search(line)
                 if m:
                     node["calls"].add(m.group(1))
                     continue
 
-                m = other_call.match(line)
-                if m:
+                # Plain substring test — no regex needed for an unanchored
+                # "does this line mention a call" check.
+                if "call " in line:
                     node["has_ptr_call"] = True
 
     def read_su(self, tu_su: str, tu_label: str) -> None:
         """Read per-function local stack usage from a .su file."""
-        su_line = re.compile(r"^(.+):(\d+):(\d+):(.+)\t(\d+)\t(\S+)$")
+        # Negated character classes ([^:]+, [^\t]+) instead of .+ bound each
+        # capture to its delimiter, avoiding the ambiguous-backtracking shape
+        # S8786 flags (ties to the GCC .su format: no colons in Linux build
+        # paths, no tabs in a C function signature).
+        su_line = re.compile(r"^([^:]+):(\d+):(\d+):([^\t]+)\t(\d+)\t(\S+)$")
         with open(tu_su, "rt", encoding="latin_1") as fh:
             for i, line in enumerate(fh, start=1):
                 m = su_line.match(line)
@@ -379,6 +397,47 @@ def read_symbols(file: str) -> List[Symbol]:
     return out
 
 
+def _find_rtl_candidate(files: List[str], base: str) -> str | None:
+    """Find the RTL dfinish filename matching `base` among `files`, or None.
+
+    Any file whose name starts with base + ".c." and ends with
+    RTL_EXT_TAIL is a match (the pass-number infix is GCC-version-dependent).
+    """
+    prefix = base + ".c."
+    for cand in files:
+        if cand.startswith(prefix) and cand.endswith(RTL_EXT_TAIL):
+            return cand
+    return None
+
+
+def _tu_from_obj(
+    root: str, f: str, files: List[str], build_dir: str
+) -> Tuple[str, str, str, str] | None:
+    """Build one (obj, su, rtl, tu_label) tuple for candidate object file `f`.
+
+    Returns None if `f` isn't a .c.obj, or its matching .c.su / dfinish
+    sibling is missing — an incomplete TU is silently skipped by the caller.
+    """
+    result = None
+
+    if f.endswith(OBJ_EXT):
+        base = f[: -len(OBJ_EXT)]  # e.g. "foo" from "foo.c.obj"
+        obj = os.path.join(root, f)
+        su = os.path.join(root, base + SU_EXT)
+
+        if os.path.exists(su):
+            rtl_name = _find_rtl_candidate(files, base)
+
+            if rtl_name is not None:
+                rtl = os.path.join(root, rtl_name)
+                tu_label = "./" + os.path.relpath(
+                    os.path.join(root, base + ".c"), build_dir
+                )
+                result = (obj, su, rtl, tu_label)
+
+    return result
+
+
 def find_tus(build_dir: str) -> List[Tuple[str, str, str, str]]:
     """Find (obj, su, rtl, tu_label) tuples for every TU with all three files.
 
@@ -397,27 +456,9 @@ def find_tus(build_dir: str) -> List[Tuple[str, str, str, str]]:
     tus: List[Tuple[str, str, str, str]] = []
     for root, _, files in os.walk(build_dir):
         for f in files:
-            if not f.endswith(OBJ_EXT):
-                continue
-            base = f[: -len(OBJ_EXT)]  # e.g. "foo" from "foo.c.obj"
-            obj = os.path.join(root, f)
-            su = os.path.join(root, base + SU_EXT)
-            if not os.path.exists(su):
-                continue
-            # Find the matching dfinish — any file whose name starts with
-            # base + ".c." and ends with ".dfinish".
-            rtl = None
-            prefix = base + ".c."
-            for cand in files:
-                if cand.startswith(prefix) and cand.endswith(RTL_EXT_TAIL):
-                    rtl = os.path.join(root, cand)
-                    break
-            if rtl is None:
-                continue
-            tu_label = "./" + os.path.relpath(
-                os.path.join(root, base + ".c"), build_dir
-            )
-            tus.append((obj, su, rtl, tu_label))
+            tu = _tu_from_obj(root, f, files, build_dir)
+            if tu is not None:
+                tus.append(tu)
     return tus
 
 

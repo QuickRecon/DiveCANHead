@@ -114,8 +114,8 @@ LOG_OUTPUT_DEFINE(upb_log_output, upb_data_out, upb_charbuf,
 static void upb_resolve_self_ids(void)
 {
     if (!upb_self_ids_resolved) {
-        upb_self_ids[0] = log_source_id_get("uds_log_push");
-        upb_self_ids[1] = log_source_id_get("uds_log_push_backend");
+        upb_self_ids[0] = (int16_t)log_source_id_get("uds_log_push");
+        upb_self_ids[1] = (int16_t)log_source_id_get("uds_log_push_backend");
         upb_self_ids_resolved = true;
     }
 }
@@ -228,7 +228,7 @@ static void upb_process(const struct log_backend *const backend,
             }
         }
 
-        atomic_set(&upb_in_backend, 0);
+        (void)atomic_set(&upb_in_backend, 0);
     }
 }
 
@@ -267,10 +267,12 @@ static int upb_format_set(const struct log_backend *const backend,
 
 static const struct log_backend_api upb_backend_api = {
     .process = upb_process,
+    .dropped = upb_dropped,
     .panic = upb_panic,
     .init = upb_init,
-    .dropped = upb_dropped,
+    .is_ready = NULL,
     .format_set = upb_format_set,
+    .notify = NULL,
 };
 
 LOG_BACKEND_DEFINE(uds_log_push_backend, upb_backend_api, true);

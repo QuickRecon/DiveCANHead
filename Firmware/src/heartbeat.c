@@ -52,7 +52,7 @@ static atomic_val_t *get_last_snapshot(void)
 void heartbeat_register(HeartbeatId_t id)
 {
     if (id < HEARTBEAT_COUNT) {
-        (void)atomic_or(get_registered_mask(), (atomic_val_t)BIT(id));
+        (void)atomic_or(get_registered_mask(), BIT(id));
     }
 }
 
@@ -66,20 +66,18 @@ void heartbeat_kick(HeartbeatId_t id)
 bool heartbeat_check_all_alive(void)
 {
     atomic_val_t mask = atomic_get(get_registered_mask());
-    atomic_t *counters = get_heartbeats();
+    const atomic_t *counters = get_heartbeats();
     atomic_val_t *last = get_last_snapshot();
     bool long_op = (0 != atomic_get(get_long_op_flag()));
     bool alive = true;
 
     for (size_t i = 0; i < (size_t)HEARTBEAT_COUNT; ++i) {
-        if (0U != ((unsigned long)mask & BIT(i))) {
+        if (0U != ((uint32_t)mask & BIT(i))) {
             atomic_val_t now = atomic_get(&counters[i]);
-            if (now == last[i]) {
-                if (!long_op) {
-                    LOG_WRN("Heartbeat slot %u stalled at %ld",
-                        (unsigned)i, (long)now);
-                    alive = false;
-                }
+            if ((now == last[i]) && (!long_op)) {
+                LOG_WRN("Heartbeat slot %u stalled at %ld",
+                    (unsigned)i, (long)now);
+                alive = false;
             }
             last[i] = now;
         }
@@ -104,10 +102,10 @@ void heartbeat_reset_for_test(void)
     atomic_t *counters = get_heartbeats();
     atomic_val_t *last = get_last_snapshot();
 
-    atomic_set(get_registered_mask(), 0);
-    atomic_set(get_long_op_flag(), 0);
+    (void)atomic_set(get_registered_mask(), 0);
+    (void)atomic_set(get_long_op_flag(), 0);
     for (size_t i = 0; i < (size_t)HEARTBEAT_COUNT; ++i) {
-        atomic_set(&counters[i], 0);
+        (void)atomic_set(&counters[i], 0);
         last[i] = 0;
     }
 }

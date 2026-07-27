@@ -23,6 +23,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "common.h"
+
 /**
  * @brief Backend-init plus settings replay.
  *
@@ -63,7 +65,7 @@ void factory_image_force_capture_async(void);
  * the copy verification fails. Never returns on success — sys_reboot
  * fires once slot1 is staged.
  */
-int factory_image_restore_to_slot1(void);
+Status_t factory_image_restore_to_slot1(void);
 
 /**
  * @brief Kick a factory restore on the factory workqueue (async) and return.
@@ -84,7 +86,7 @@ void factory_image_restore_async(void);
  * @return 0 on success, negative errno if the backup is missing or the
  *         header magic doesn't match.
  */
-int factory_image_get_version(uint8_t out_version[4]);
+Status_t factory_image_get_version(uint8_t out_version[4]);
 
 /**
  * @brief Read the full 8-byte MCUBoot sem_ver from the factory backup.
@@ -96,7 +98,7 @@ int factory_image_get_version(uint8_t out_version[4]);
  * @return 0 on success, negative errno if the backup is missing or the
  *         header magic doesn't match.
  */
-int factory_image_get_sem_ver(uint8_t out_sem_ver[8]);
+Status_t factory_image_get_sem_ver(uint8_t out_sem_ver[8]);
 
 #ifdef CONFIG_ZTEST
 /**
@@ -105,7 +107,7 @@ int factory_image_get_sem_ver(uint8_t out_sem_ver[8]);
  * Bypasses the work queue so ztest can drive capture deterministically
  * inside a test case and assert on the recorded state.
  */
-int factory_image_capture_now_for_test(void);
+Status_t factory_image_capture_now_for_test(void);
 
 /**
  * @brief Reset the module's cached state (test-only).

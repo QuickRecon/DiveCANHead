@@ -73,13 +73,22 @@ LOG_MODULE_REGISTER(fw_confirm, LOG_LEVEL_INF);
 
 /* ---- File-scope state ----
  *
- * Atomic primitives so accessor functions don't need a mutex; the POST
- * thread is the sole writer for state/pass_mask, every other reader is
- * a snapshot via atomic_get().
+ * Atomic primitives wrapped in static accessors (M23_388) so no mutex is
+ * needed; the POST thread is the sole writer for state/pass_mask, every
+ * other reader is a snapshot via atomic_get().
  */
 
-static atomic_t s_post_state = (atomic_val_t)POST_INIT;
-static atomic_t s_post_pass_mask;
+static atomic_t *get_post_state_atomic(void)
+{
+    static atomic_t post_state = (atomic_val_t)POST_INIT;
+    return &post_state;
+}
+
+static atomic_t *get_post_pass_mask_atomic(void)
+{
+    static atomic_t post_pass_mask;
+    return &post_pass_mask;
+}
 
 /* ---- Helpers ---- */
 
@@ -88,8 +97,8 @@ static atomic_t s_post_pass_mask;
  */
 static void mark_check_passed(uint32_t bit, PostState_t next_state)
 {
-    (void)atomic_or(&s_post_pass_mask, (atomic_val_t)BIT(bit));
-    (void)atomic_set(&s_post_state, (atomic_val_t)next_state);
+    (void)atomic_or(get_post_pass_mask_atomic(), BIT(bit));
+    (void)atomic_set(get_post_state_atomic(), (atomic_val_t)next_state);
 }
 
 /**
@@ -138,10 +147,8 @@ static bool solenoid_is_alive(void)
 #ifdef CONFIG_HAS_O2_SOLENOID
     Status_t rc = zbus_chan_read(&chan_solenoid_status, &status,
                                  K_MSEC(ZBUS_READ_TIMEOUT_MS));
-    if (0 == rc) {
-        if (DIVECAN_ERR_SOL_NORM == status) {
-            alive = true;
-        }
+    if ((0 == rc) && (DIVECAN_ERR_SOL_NORM == status)) {
+        alive = true;
     }
 #else
     (void)status;
@@ -189,7 +196,7 @@ static int64_t deadline_remaining_ms(int64_t start_ms)
  */
 static void abort_and_reboot(PostState_t fail_state)
 {
-    (void)atomic_set(&s_post_state, (atomic_val_t)fail_state);
+    (void)atomic_set(get_post_state_atomic(), (atomic_val_t)fail_state);
     OP_ERROR_DETAIL(OP_ERR_POST_FAIL, (uint32_t)fail_state);
     LOG_ERR("POST failed in state %d — rebooting (no confirm)", (int32_t)fail_state);
 
@@ -241,7 +248,7 @@ BUILD_ASSERT(POST_INIT == 0, "post_states[] index must match enum");
 static void enter_waiting_state(PostSmCtx_t *sm, PostState_t state)
 {
     sm->state_start_ms = k_uptime_get();
-    (void)atomic_set(&s_post_state, (atomic_val_t)state);
+    (void)atomic_set(get_post_state_atomic(), (atomic_val_t)state);
 }
 
 /**
@@ -492,7 +499,9 @@ static const struct smf_state post_states[] = {
 static void run_post_sequence(void)
 {
     PostSmCtx_t sm = {
+        .smf           = {0},
         .start_ms      = k_uptime_get(),
+        .state_start_ms = 0,
         .tx_baseline   = divecan_send_get_tx_count(),
         .rx_baseline   = handset_rx_total(),
     };
@@ -507,12 +516,12 @@ static void run_post_sequence(void)
 
 PostState_t firmware_confirm_get_state(void)
 {
-    return (PostState_t)atomic_get(&s_post_state);
+    return (PostState_t)atomic_get(get_post_state_atomic());
 }
 
 uint32_t firmware_confirm_get_pass_mask(void)
 {
-    return (uint32_t)atomic_get(&s_post_pass_mask);
+    return (uint32_t)atomic_get(get_post_pass_mask_atomic());
 }
 
 #ifdef CONFIG_ZTEST
@@ -523,8 +532,8 @@ void firmware_confirm_run_sync_for_test(void)
 
 void firmware_confirm_reset_for_test(void)
 {
-    (void)atomic_set(&s_post_state, (atomic_val_t)POST_INIT);
-    (void)atomic_set(&s_post_pass_mask, 0);
+    (void)atomic_set(get_post_state_atomic(), (atomic_val_t)POST_INIT);
+    (void)atomic_set(get_post_pass_mask_atomic(), 0);
 }
 #endif
 
@@ -545,7 +554,7 @@ void firmware_confirm_reset_for_test(void)
  * where the "POST deferred on a swapped REVERT image" regression lived). */
 PostInitAction_t firmware_confirm_decide(bool confirmed, int swap_type)
 {
-    PostInitAction_t result;
+    PostInitAction_t result = POST_ACTION_RUN;
 
     if (confirmed) {
         result = POST_ACTION_SILENT;
@@ -582,13 +591,13 @@ void firmware_confirm_init(void)
 
     switch (firmware_confirm_decide(confirmed, swap)) {
     case POST_ACTION_SILENT:
-        (void)atomic_set(&s_post_state, (atomic_val_t)POST_CONFIRMED);
+        (void)atomic_set(get_post_state_atomic(), (atomic_val_t)POST_CONFIRMED);
         LOG_INF("Image already confirmed — POST silent");
         break;
     case POST_ACTION_DEFER:
         /* NB effectively unreachable at init: the old image boots confirmed; kept
          * defensively so a queued TEST swap never POSTs the wrong (old) image. */
-        (void)atomic_set(&s_post_state, (atomic_val_t)POST_CONFIRMED);
+        (void)atomic_set(get_post_state_atomic(), (atomic_val_t)POST_CONFIRMED);
         LOG_INF("TEST swap queued — POST deferred to next boot");
         break;
     default:

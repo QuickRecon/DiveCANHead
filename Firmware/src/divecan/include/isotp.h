@@ -30,7 +30,7 @@
 
 /* ISO-TP Configuration */
 #define ISOTP_MAX_PAYLOAD 256      /**< Maximum payload size (sized for binary state vector + overhead) */
-#define ISOTP_TIMEOUT_N_BS 1000    /**< ms - Timeout waiting for FC after sending FF */
+#define ISOTP_TIMEOUT_N_BS 1000U   /**< ms - Timeout waiting for FC after sending FF */
 #define ISOTP_TIMEOUT_N_CR 1000    /**< ms - Timeout waiting for CF after FC or previous CF */
 #define ISOTP_DEFAULT_BLOCK_SIZE 0 /**< 0 = infinite (no additional FC frames needed) */
 #define ISOTP_DEFAULT_STMIN 0      /**< 0 ms minimum separation time between CF frames */

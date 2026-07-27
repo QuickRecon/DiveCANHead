@@ -10,8 +10,8 @@ for conf in "$@"; do
         | sed 's/_[^_]*$//' \
         | sort | uniq -d)
 
-    if [ -n "$dupes" ]; then
-        echo "ERROR: $conf has duplicate choice assignments:"
+    if [[ -n "$dupes" ]]; then
+        echo "ERROR: $conf has duplicate choice assignments:" >&2
         for prefix in $dupes; do
             grep "${prefix}_" "$conf"
         done
@@ -19,7 +19,7 @@ for conf in "$@"; do
     fi
 done
 
-if [ $rc -eq 0 ]; then
+if [[ $rc -eq 0 ]]; then
     echo "All variant configs clean."
 fi
 exit $rc

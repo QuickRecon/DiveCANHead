@@ -20,7 +20,7 @@
 /** @brief Common header prepended to every TLV entry. 12 bytes. */
 typedef struct {
     uint8_t  type;        /* FlashLogType_t */
-    uint8_t  flags;       /* FL_ENTRY_FLAG_* */
+    uint8_t  flags;       /* bitmask of FL_ENTRY_FLAG values */
     uint16_t length;      /* payload bytes after this header */
     uint64_t ts_boot_us;  /* k_uptime_ticks() converted to microseconds */
 } __packed fl_entry_hdr_t;
@@ -78,9 +78,9 @@ typedef struct {
 
 /** @brief Payload for FL_TYPE_SOLENOID_FIRE. */
 typedef struct {
-    uint8_t  kind;              /* 0=inject start, 1=inject end,
-                                 * 2=flush start, 3=flush end
-                                 * (SOL_FIRE_EVT_* in flash_log.h) */
+    uint8_t  kind;              /* inject start, inject end, flush start or
+                                 * flush end; see SOL_FIRE_EVT values in
+                                 * flash_log.h */
     uint32_t requested_on_us;
     uint32_t off_us;
 } __packed fl_payload_solenoid_fire_t;

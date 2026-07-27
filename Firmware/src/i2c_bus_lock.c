@@ -16,6 +16,10 @@
 
 #include <errno.h>
 
+#if defined(CONFIG_SOC_FAMILY_STM32) && DT_NODE_EXISTS(DT_NODELABEL(i2c1))
+#include <stm32_ll_i2c.h>
+#endif
+
 LOG_MODULE_REGISTER(i2c_bus_lock, LOG_LEVEL_INF);
 
 /* PE must stay low this long for the I2Cv2 state-machine reset to take; the
@@ -37,7 +41,19 @@ LOG_MODULE_REGISTER(i2c_bus_lock, LOG_LEVEL_INF);
  * block in an iterable section for compile-time static initialisation, the
  * same pattern SonarQube M23_388 accepts for K_THREAD_DEFINE. */
 K_MUTEX_DEFINE(i2c1_bus_mutex);
-static atomic_t last_bus_activity_ms;
+
+/**
+ * @brief Return a pointer to the module-static last-bus-activity timestamp.
+ *
+ * @return Pointer to the atomic_t holding the millisecond uptime of the
+ *         last observed i2c1 transfer.
+ */
+static atomic_t *getLastBusActivityMs(void)
+{
+    static atomic_t last_bus_activity_ms;
+
+    return &last_bus_activity_ms;
+}
 
 /* Resolve the i2c1 controller at build time where it exists (all real
  * hardware variants); NULL on topologies without the node (native_sim uses
@@ -69,26 +85,30 @@ enum i2c1_line_state {
 
 static bool i2c1_get_lines(bool *scl_high, bool *sda_high)
 {
+    bool result = true;
+
 #if I2C1_HAS_LINE_GPIOS
-    int scl = gpio_pin_get_dt(&i2c1_scl);
-    int sda = gpio_pin_get_dt(&i2c1_sda);
+    Status_t scl = gpio_pin_get_dt(&i2c1_scl);
+    Status_t sda = gpio_pin_get_dt(&i2c1_sda);
 
     if ((scl < 0) || (sda < 0)) {
-        return false;
+        result = false;
+    } else {
+        *scl_high = scl != 0;
+        *sda_high = sda != 0;
     }
-    *scl_high = scl != 0;
-    *sda_high = sda != 0;
 #else
     *scl_high = true;
     *sda_high = true;
 #endif
-    return true;
+
+    return result;
 }
 
 static bool i2c1_activity_guard_elapsed(void)
 {
-    uint32_t now = (uint32_t)k_uptime_get_32();
-    uint32_t last = (uint32_t)atomic_get(&last_bus_activity_ms);
+    uint32_t now = k_uptime_get_32();
+    uint32_t last = (uint32_t)atomic_get(getLastBusActivityMs());
 
     return (now - last) >= I2C1_QUIET_GUARD_MS;
 }
@@ -101,15 +121,15 @@ static bool i2c1_activity_guard_elapsed(void)
 static Status_t i2c1_wait_quiet(void)
 {
     Status_t result = -EBUSY;
-    uint32_t started = (uint32_t)k_uptime_get_32();
+    uint32_t started = k_uptime_get_32();
     uint32_t idle_since = started;
     bool measuring_idle = false;
 
     while ((result == -EBUSY) &&
-           (((uint32_t)k_uptime_get_32() - started) < I2C1_QUIET_TIMEOUT_MS)) {
+           ((k_uptime_get_32() - started) < I2C1_QUIET_TIMEOUT_MS)) {
         bool scl_high = false;
         bool sda_high = false;
-        uint32_t now = (uint32_t)k_uptime_get_32();
+        uint32_t now = k_uptime_get_32();
 
         if (!i2c1_get_lines(&scl_high, &sda_high)) {
             result = -EIO;
@@ -144,7 +164,7 @@ static Status_t i2c1_wait_quiet(void)
 static enum i2c1_line_state i2c1_classify_lines(void)
 {
     enum i2c1_line_state result = I2C1_LINES_ACTIVE;
-    uint32_t started = (uint32_t)k_uptime_get_32();
+    uint32_t started = k_uptime_get_32();
     uint32_t state_since = started;
     bool previous_scl = false;
     bool previous_sda = false;
@@ -152,10 +172,10 @@ static enum i2c1_line_state i2c1_classify_lines(void)
     bool done = false;
 
     while ((!done) &&
-           (((uint32_t)k_uptime_get_32() - started) < I2C1_CLASSIFY_TIMEOUT_MS)) {
+           ((k_uptime_get_32() - started) < I2C1_CLASSIFY_TIMEOUT_MS)) {
         bool scl_high = false;
         bool sda_high = false;
-        uint32_t now = (uint32_t)k_uptime_get_32();
+        uint32_t now = k_uptime_get_32();
         uint32_t stable_ms = 0U;
 
         if (!i2c1_get_lines(&scl_high, &sda_high)) {
@@ -198,7 +218,6 @@ static enum i2c1_line_state i2c1_classify_lines(void)
 }
 
 #if defined(CONFIG_SOC_FAMILY_STM32) && DT_NODE_EXISTS(DT_NODELABEL(i2c1))
-#include <stm32_ll_i2c.h>
 
 /**
  * @brief Clear a latched STM32 hardware BUSY flag by pulsing peripheral-enable.
@@ -259,7 +278,7 @@ void i2c1_bus_unlock(void)
 
 void i2c1_bus_note_activity(void)
 {
-    atomic_set(&last_bus_activity_ms, (atomic_val_t)k_uptime_get_32());
+    (void)atomic_set(getLastBusActivityMs(), (atomic_val_t)k_uptime_get_32());
 }
 
 Status_t i2c1_bus_recover(void)
@@ -338,7 +357,7 @@ Status_t i2c1_transact(I2c1XferFn_t xfer, void *ctx, uint8_t attempts,
                 uint32_t delay = backoff_base_ms << (a - 1U);
                 uint32_t jitter = 0U;
                 if (backoff_jitter_ms != 0U) {
-                    jitter = (uint32_t)k_cycle_get_32() % backoff_jitter_ms;
+                    jitter = k_cycle_get_32() % backoff_jitter_ms;
                 }
                 const uint32_t total_delay_ms = delay + jitter;
                 (void)k_msleep((int32_t)total_delay_ms);

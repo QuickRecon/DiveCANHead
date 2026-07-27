@@ -35,10 +35,11 @@ for arg in "$@"; do
         --rtt-only) RTT_ONLY=true; NO_BUILD=true ;;
         --no-build) NO_BUILD=true ;;
         --erase)    ERASE=true ;;
+        *) ;;
     esac
 done
 
-if [ "$NO_BUILD" = false ]; then
+if [[ "$NO_BUILD" = false ]]; then
     echo "=== Building ==="
     # --sysbuild pulls in MCUBoot as a child image. The resulting
     # build/merged_<board>.hex contains bootloader + signed app and
@@ -49,7 +50,7 @@ if [ "$NO_BUILD" = false ]; then
     # Detect that case and wipe build/ before retrying. The sysbuild
     # top-level cache sets CMAKE_PROJECT_NAME to "sysbuild_toplevel"
     # — its absence means this is a plain (non-sysbuild) build dir.
-    if [ -f build/CMakeCache.txt ] && \
+    if [[ -f build/CMakeCache.txt ]] && \
        ! grep -q "^CMAKE_PROJECT_NAME:STATIC=sysbuild_toplevel" build/CMakeCache.txt; then
         echo "    build/ was non-sysbuild — clearing"
         rm -rf build
@@ -64,7 +65,7 @@ if [ "$NO_BUILD" = false ]; then
            -DEXTRA_DTC_OVERLAY_FILE=variants/dev_full.overlay
 fi
 
-if [ "$RTT_ONLY" = false ]; then
+if [[ "$RTT_ONLY" = false ]]; then
     # Force option bytes to ignore the physical BOOT0 pin and always boot
     # from main flash. The Jr boards we've seen have BOOT0 floating high,
     # which sends every reset to the STM32 ROM bootloader and breaks
@@ -77,7 +78,7 @@ if [ "$RTT_ONLY" = false ]; then
                          | tail -3 || true
 fi
 
-if [ "$ERASE" = true ]; then
+if [[ "$ERASE" = true ]]; then
     echo "=== Mass-erasing chip ==="
     # STM32CubeProgrammer's "under reset" (mode=UR) connect handles
     # chips that openocd can't halt — needed when firmware enters
@@ -88,7 +89,7 @@ if [ "$ERASE" = true ]; then
     STM32_Programmer_CLI -c port=SWD mode=UR reset=HWrst -e all
 fi
 
-if [ "$RTT_ONLY" = false ]; then
+if [[ "$RTT_ONLY" = false ]]; then
     echo "=== Flashing ==="
     # Same rationale as the erase path: use the stm32cubeprogrammer
     # runner instead of openocd. The runner is pre-configured in the

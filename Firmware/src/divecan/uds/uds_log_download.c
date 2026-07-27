@@ -284,6 +284,97 @@ static Status_t fl_resolve_by_dive(FlashLogDest_t stream, const uint8_t *data,
     return flash_log_reader_resolve_dive_id(stream, dive_id, range);
 }
 
+/**
+ * @brief Validate payload length then resolve a "select by boot id" selector.
+ *
+ * Keeps the RID_SELECT_BY_BOOT switch case to a single call so it stays
+ * within the switch-case line budget.
+ *
+ * @param stream   Destination stream the selector applies to
+ * @param data     Selector payload
+ * @param data_len Bytes available in data
+ * @param range    Output range populated on success
+ * @param rc_out   Out: flash_log_reader_resolve_boot_id() result, only set on length-OK
+ * @return 0 if the length check passed (rc_out is meaningful), else UDS_NRC_INCORRECT_MSG_LEN
+ */
+static uint8_t fl_resolve_by_boot_checked(FlashLogDest_t stream, const uint8_t *data,
+                      uint16_t data_len, FlashLogRange_t *range,
+                      Status_t *rc_out)
+{
+    uint8_t nrc = 0U;
+
+    if (data_len < LOG_SELECT_BOOT_MIN_LEN) {
+        nrc = UDS_NRC_INCORRECT_MSG_LEN;
+    } else {
+        *rc_out = fl_resolve_by_boot(stream, data, range);
+    }
+
+    return nrc;
+}
+
+/**
+ * @brief Validate payload length then resolve a "select by dive id" selector.
+ *
+ * Keeps the RID_SELECT_BY_DIVE switch case to a single call so it stays
+ * within the switch-case line budget.
+ *
+ * @param stream   Destination stream the selector applies to
+ * @param data     Selector payload
+ * @param data_len Bytes available in data
+ * @param range    Output range populated on success
+ * @param rc_out   Out: flash_log_reader_resolve_dive_id() result, only set on length-OK
+ * @return 0 if the length check passed (rc_out is meaningful), else UDS_NRC_INCORRECT_MSG_LEN
+ */
+static uint8_t fl_resolve_by_dive_checked(FlashLogDest_t stream, const uint8_t *data,
+                      uint16_t data_len, FlashLogRange_t *range,
+                      Status_t *rc_out)
+{
+    uint8_t nrc = 0U;
+
+    if (data_len < LOG_SELECT_DIVE_MIN_LEN) {
+        nrc = UDS_NRC_INCORRECT_MSG_LEN;
+    } else {
+        *rc_out = fl_resolve_by_dive(stream, data, range);
+    }
+
+    return nrc;
+}
+
+/**
+ * @brief Map a selector-resolve outcome to an NRC and pack the selector-result DID payload.
+ *
+ * Called after the switch(rid) in fl_resolve_selector resolves @p rc. On
+ * success (rc==0), transitions the SM to LD_SELECTED and packs the result
+ * with entry_count_estimate; on -ENOENT or any other failure, packs a
+ * zeroed/status-only result and returns the matching NRC.
+ *
+ * @param stream Destination stream the selector applied to
+ * @param rc     flash_log_reader resolve outcome (0 = success, negative errno)
+ * @return 0 on success, else the UDS_NRC_* to reply with
+ */
+static uint8_t fl_finish_selector(FlashLogDest_t stream, Status_t rc)
+{
+    LogDownloadSM_t *sm = fl_sm();
+    uint8_t nrc;
+
+    if (0 == rc) {
+        sm->state = LD_SELECTED;
+        sm->header_sent = false;
+        sm->next_seq = 0x01U;
+        fl_pack_selector_result((uint8_t)stream, 0U, 0U,
+                    sm->range.entry_count_estimate, 0U, 0);
+        nrc = 0U;
+    } else if (rc == -ENOENT) {
+        fl_pack_selector_result((uint8_t)stream, 0U, 0U, 0U, 0U, (int32_t)rc);
+        nrc = UDS_NRC_CONDITIONS_NOT_CORRECT;
+    } else {
+        fl_pack_selector_result((uint8_t)stream, 0U, 0U, 0U, 0U, (int32_t)rc);
+        nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
+    }
+
+    return nrc;
+}
+
 static uint8_t fl_resolve_selector(uint16_t rid, const uint8_t *data,
                    uint16_t data_len)
 {
@@ -309,19 +400,11 @@ static uint8_t fl_resolve_selector(uint16_t rid, const uint8_t *data,
                 break;
 
             case RID_SELECT_BY_BOOT:
-                if (data_len < LOG_SELECT_BOOT_MIN_LEN) {
-                    nrc = UDS_NRC_INCORRECT_MSG_LEN;
-                } else {
-                    rc = fl_resolve_by_boot(stream, data, &sm->range);
-                }
+                nrc = fl_resolve_by_boot_checked(stream, data, data_len, &sm->range, &rc);
                 break;
 
             case RID_SELECT_BY_DIVE:
-                if (data_len < LOG_SELECT_DIVE_MIN_LEN) {
-                    nrc = UDS_NRC_INCORRECT_MSG_LEN;
-                } else {
-                    rc = fl_resolve_by_dive(stream, data, &sm->range);
-                }
+                nrc = fl_resolve_by_dive_checked(stream, data, data_len, &sm->range, &rc);
                 break;
 
             case RID_SELECT_BY_RANGE:
@@ -336,22 +419,7 @@ static uint8_t fl_resolve_selector(uint16_t rid, const uint8_t *data,
             }
 
             if (0U == nrc) {
-                if (0 == rc) {
-                    sm->state = LD_SELECTED;
-                    sm->header_sent = false;
-                    sm->next_seq = 0x01U;
-                    fl_pack_selector_result((uint8_t)stream, 0U, 0U,
-                                sm->range.entry_count_estimate, 0U, 0);
-                    nrc = 0U;
-                } else if (rc == -ENOENT) {
-                    fl_pack_selector_result((uint8_t)stream, 0U, 0U, 0U, 0U,
-                                (int32_t)rc);
-                    nrc = UDS_NRC_CONDITIONS_NOT_CORRECT;
-                } else {
-                    fl_pack_selector_result((uint8_t)stream, 0U, 0U, 0U, 0U,
-                                (int32_t)rc);
-                    nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
-                }
+                nrc = fl_finish_selector(stream, rc);
             }
         }
     }
@@ -532,7 +600,7 @@ static const size_t HDR_ENTRY_CNT_B3_IDX   = 15U;
 
 static size_t fl_build_header(uint8_t *buf)
 {
-    LogDownloadSM_t *sm = fl_sm();
+    const LogDownloadSM_t *sm = fl_sm();
     uint8_t stream = (uint8_t)sm->range.dest;
     uint32_t entry_count = sm->range.entry_count_estimate;
 
@@ -554,6 +622,75 @@ static size_t fl_build_header(uint8_t *buf)
     buf[HDR_ENTRY_CNT_B2_IDX] = (uint8_t)((entry_count >> BYTE_SHIFT_16) & BYTE_MASK);
     buf[HDR_ENTRY_CNT_B3_IDX] = (uint8_t)((entry_count >> BYTE_SHIFT_24) & BYTE_MASK);
     return LOG_HEADER_BYTES;
+}
+
+/**
+ * @brief Prime the chunk buffer with the stream header if not yet sent.
+ *
+ * Extracted from fl_handle_transfer_data to keep its nesting depth and
+ * cognitive complexity within budget.
+ *
+ * @param sm  Log-download SM; header_sent is set on success
+ * @param out Chunk buffer to write the header into
+ * @param cap Total chunk buffer capacity
+ * @param used In/out: bytes used in @p out; advanced by the header length on success
+ * @return true if @p cap is too small to hold the header (caller should fail
+ *         the chunk), false otherwise (including the already-sent case, a no-op)
+ */
+static bool fl_prime_header(LogDownloadSM_t *sm, uint8_t *out, size_t cap,
+                size_t *used)
+{
+    bool fail = false;
+
+    if (!sm->header_sent) {
+        if (cap < LOG_HEADER_BYTES) {
+            fail = true;
+        } else {
+            *used = fl_build_header(out);
+            sm->header_sent = true;
+        }
+    }
+
+    return fail;
+}
+
+/**
+ * @brief Pull TLV entries from the reader until the chunk buffer fills or the range exhausts.
+ *
+ * Extracted from fl_handle_transfer_data to keep its nesting depth and
+ * cognitive complexity within budget.
+ *
+ * @param reader Flash-log reader positioned at the next entry
+ * @param out    Chunk buffer (entries appended starting at *used)
+ * @param cap    Total chunk buffer capacity
+ * @param used   In/out: bytes already used in @p out; advanced by this call
+ * @return true on a hard read failure (caller should fail the chunk), false otherwise
+ */
+static bool fl_fill_chunk_body(FlashLogReader_t *reader, uint8_t *out,
+                size_t cap, size_t *used)
+{
+    bool fail = false;
+    bool fetching = true;
+
+    while ((*used < cap) && fetching) {
+        size_t remaining = cap - *used;
+        Status_t rc = flash_log_reader_next(reader, &out[*used], remaining);
+
+        if (0 == rc) {
+            /* Range exhausted — short chunk. */
+            fetching = false;
+        } else if (-ENOSPC == rc) {
+            /* Entry larger than remaining space — emit on next 0x36. */
+            fetching = false;
+        } else if (rc < 0) {
+            fail = true;
+            fetching = false;
+        } else {
+            *used += (size_t)rc;
+        }
+    }
+
+    return fail;
 }
 
 static void fl_handle_transfer_data(UDSContext_t *ctx,
@@ -585,57 +722,25 @@ static void fl_handle_transfer_data(UDSContext_t *ctx,
 
             *fl_stream_activity_ms() = k_uptime_get_32();   /* stall-abort watchdog */
 
-            if (!sm->header_sent) {
-                if (cap < LOG_HEADER_BYTES) {
-                    fail = true;
-                } else {
-                    used += fl_build_header(out);
-                    sm->header_sent = true;
-                }
+            fail = fl_prime_header(sm, out, cap, &used);
+
+            if (!fail) {
+                fail = fl_fill_chunk_body(&sm->reader, out, cap, &used);
             }
 
             if (fail) {
                 UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
                              UDS_NRC_GENERAL_PROG_FAIL);
             } else {
-                bool fetching = true;
+                ctx->responseBuffer[UDS_PAD_IDX] =
+                    UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET;
+                ctx->responseBuffer[UDS_SID_IDX] = seq;
+                ctx->responseLength = (uint16_t)(LOG_TRANSFER_RESP_HDR_LEN + used);
+                UDS_SendResponse(ctx);
 
-                /* Pull TLV entries until the buffer fills or the range
-                 * exhausts. */
-                while ((used < cap) && fetching) {
-                    size_t remaining = cap - used;
-                    Status_t rc = flash_log_reader_next(&sm->reader, &out[used],
-                                       remaining);
-
-                    if (0 == rc) {
-                        /* Range exhausted — short chunk. */
-                        fetching = false;
-                    } else if (-ENOSPC == rc) {
-                        /* Entry larger than remaining space — emit on next
-                         * 0x36. */
-                        fetching = false;
-                    } else if (rc < 0) {
-                        fail = true;
-                        fetching = false;
-                    } else {
-                        used += (size_t)rc;
-                    }
-                }
-
-                if (fail) {
-                    UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
-                                 UDS_NRC_GENERAL_PROG_FAIL);
-                } else {
-                    ctx->responseBuffer[UDS_PAD_IDX] =
-                        UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET;
-                    ctx->responseBuffer[UDS_SID_IDX] = seq;
-                    ctx->responseLength = (uint16_t)(LOG_TRANSFER_RESP_HDR_LEN + used);
-                    UDS_SendResponse(ctx);
-
-                    sm->next_seq += 1U;
-                    if (0U == sm->next_seq) {
-                        sm->next_seq = 1U;  /* wrap, skip 0 */
-                    }
+                sm->next_seq += 1U;
+                if (0U == sm->next_seq) {
+                    sm->next_seq = 1U;  /* wrap, skip 0 */
                 }
             }
         }

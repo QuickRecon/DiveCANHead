@@ -43,8 +43,9 @@ static const atomic_val_t HIST_MAX_COUNT = (atomic_val_t)UINT16_MAX;
  * listener increments it in the publisher's context and the snapshot
  * accessor reads it from any thread — both paths need a stable address.
  * Wrapping behind an accessor would defeat the atomic contract and bloat
- * every increment with an indirect call. M23_388 is suppressed for these
- * specific declarations via sonar-project.properties.
+ * every increment with an indirect call. M23_388 is accepted per-issue on
+ * SonarCloud for these declarations (no blanket rule suppression exists in
+ * sonar-project.properties — see docs/SONARQUBE_ACCEPTED_ISSUES.md).
  */
 
 static atomic_t histogram[ERROR_HISTOGRAM_COUNT];
@@ -174,12 +175,12 @@ static void save_work_handler(struct k_work *work)
 
 void error_histogram_pause(void)
 {
-    atomic_set(&save_paused, 1);
+    (void)atomic_set(&save_paused, 1);
 }
 
 void error_histogram_resume(void)
 {
-    atomic_set(&save_paused, 0);
+    (void)atomic_set(&save_paused, 0);
 }
 
 static K_WORK_DELAYABLE_DEFINE(save_work, save_work_handler);

@@ -12,8 +12,7 @@
 #include <zephyr/drivers/adc.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
-
-#include <stdio.h>
+#include <zephyr/sys/printk.h>
 
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
@@ -187,7 +186,7 @@ static void analog_load_cal(struct analog_cell_state *cell)
 {
     char key[16] = {0};
 
-    (void)snprintf(key, sizeof(key), "cal/cell%u", cell->cell_number);
+    (void)snprintk(key, sizeof(key), "cal/cell%u", cell->cell_number);
 
     CalCoeff_t coeff = 0.0f;
     Status_t len = settings_runtime_get(key, &coeff, sizeof(coeff));
@@ -326,8 +325,12 @@ static struct analog_cell_state cell_1_state = {
     .cell_number = 0,
     .cal_coeff = 0.0f,
     .status = CELL_NEED_CAL,
+    .last_counts = 0,
+    .last_reading_ticks = 0,
     .out_chan = &chan_cell_1,
     .adc = &cell_1_adc,
+    .adc_sample_buf = 0,
+    .adc_seq = {0},
 };
 K_THREAD_DEFINE(analog_cell_1, ANALOG_CELL_STACK_SIZE,
         analog_cell_thread, &cell_1_state, NULL, NULL,
@@ -341,8 +344,12 @@ static struct analog_cell_state cell_2_state = {
     .cell_number = 1,
     .cal_coeff = 0.0f,
     .status = CELL_NEED_CAL,
+    .last_counts = 0,
+    .last_reading_ticks = 0,
     .out_chan = &chan_cell_2,
     .adc = &cell_2_adc,
+    .adc_sample_buf = 0,
+    .adc_seq = {0},
 };
 K_THREAD_DEFINE(analog_cell_2, ANALOG_CELL_STACK_SIZE,
         analog_cell_thread, &cell_2_state, NULL, NULL,
@@ -356,8 +363,12 @@ static struct analog_cell_state cell_3_state = {
     .cell_number = 2,
     .cal_coeff = 0.0f,
     .status = CELL_NEED_CAL,
+    .last_counts = 0,
+    .last_reading_ticks = 0,
     .out_chan = &chan_cell_3,
     .adc = &cell_3_adc,
+    .adc_sample_buf = 0,
+    .adc_seq = {0},
 };
 K_THREAD_DEFINE(analog_cell_3, ANALOG_CELL_STACK_SIZE,
         analog_cell_thread, &cell_3_state, NULL, NULL,

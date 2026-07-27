@@ -120,7 +120,7 @@ static Status_t flash_backend_write(uint32_t offset, const void *buf, size_t len
     Status_t result = -EIO;
 
     if (0 == rc) {
-        rc = flash_area_write(fa, offset, buf, len);
+        rc = flash_area_write(fa, (off_t)offset, buf, len);
         if (0 == rc) {
             result = 0;
         } else {
@@ -142,7 +142,7 @@ static Status_t flash_backend_read(uint32_t offset, void *buf, size_t len)
     Status_t result = -EIO;
 
     if (0 == rc) {
-        rc = flash_area_read(fa, offset, buf, len);
+        rc = flash_area_read(fa, (off_t)offset, buf, len);
         if (0 == rc) {
             result = 0;
         } else {
@@ -188,8 +188,8 @@ static bool flash_backend_is_captured(void)
 
 static Status_t flash_backend_mark_captured(bool captured)
 {
-    uint8_t value;
-    Status_t rc;
+    uint8_t value = 0U;
+    Status_t rc = -EIO;
     Status_t result = -EIO;
 
     if (captured) {

@@ -57,7 +57,7 @@ struct gpio_sim_data {
 
 static gpio_port_pins_t get_input_pins(const struct device *port)
 {
-    struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
+    const struct gpio_sim_data *drv_data = (const struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
     gpio_port_pins_t result = 0;
 
@@ -71,7 +71,7 @@ static gpio_port_pins_t get_input_pins(const struct device *port)
 
 static gpio_port_pins_t get_output_pins(const struct device *port)
 {
-    struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
+    const struct gpio_sim_data *drv_data = (const struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
     gpio_port_pins_t result = 0;
 
@@ -125,9 +125,8 @@ static void pend_interrupt(const struct device *port, gpio_port_pins_t mask,
 int gpio_sim_drive(const struct device *port, gpio_pin_t pin, int value)
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
-    k_spinlock_key_t key;
 
-    key = k_spin_lock(&drv_data->lock);
+    k_spinlock_key_t key = k_spin_lock(&drv_data->lock);
     drv_data->externally_driven |= BIT(pin);
     gpio_port_value_t prev = drv_data->input_vals;
     if (0 != value) {
@@ -137,16 +136,15 @@ int gpio_sim_drive(const struct device *port, gpio_pin_t pin, int value)
     }
     k_spin_unlock(&drv_data->lock, key);
 
-    pend_interrupt(port, BIT(pin), prev, drv_data->input_vals);
+    pend_interrupt(port, (gpio_port_pins_t)BIT(pin), prev, drv_data->input_vals);
     return 0;
 }
 
 int gpio_sim_release(const struct device *port, gpio_pin_t pin)
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
-    k_spinlock_key_t key;
 
-    key = k_spin_lock(&drv_data->lock);
+    k_spinlock_key_t key = k_spin_lock(&drv_data->lock);
     drv_data->externally_driven &= ~BIT(pin);
     k_spin_unlock(&drv_data->lock, key);
     return 0;
@@ -154,7 +152,7 @@ int gpio_sim_release(const struct device *port, gpio_pin_t pin)
 
 int gpio_sim_output_get(const struct device *port, gpio_pin_t pin)
 {
-    struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
+    const struct gpio_sim_data *drv_data = (const struct gpio_sim_data *)port->data;
     int result = 0;
 
     if (0 != (drv_data->output_vals & BIT(pin))) {
@@ -166,12 +164,52 @@ int gpio_sim_output_get(const struct device *port, gpio_pin_t pin)
 
 /* ---- GPIO Driver API ---- */
 
+/* Apply the output/input portion of a pin's flags to the simulated pin state.
+ * Caller must hold drv_data->lock. Extracted from gpio_sim_pin_configure to keep
+ * its cognitive complexity within bounds; behaviour is identical to the inline
+ * chain it replaced. */
+static void gpio_sim_apply_io_flags(struct gpio_sim_data *drv_data,
+                                    const struct device *port,
+                                    gpio_pin_t pin, gpio_flags_t flags)
+{
+    if (0 != (flags & GPIO_OUTPUT)) {
+        if (0 != (flags & GPIO_OUTPUT_INIT_LOW)) {
+            drv_data->output_vals &= ~BIT(pin);
+            if (0 != (flags & GPIO_INPUT)) {
+                (void)input_set_masked_int(port, (gpio_port_pins_t)BIT(pin),
+                                           drv_data->output_vals);
+            }
+        } else if (0 != (flags & GPIO_OUTPUT_INIT_HIGH)) {
+            drv_data->output_vals |= BIT(pin);
+            if (0 != (flags & GPIO_INPUT)) {
+                (void)input_set_masked_int(port, (gpio_port_pins_t)BIT(pin),
+                                           drv_data->output_vals);
+            }
+        } else {
+            /* No action required */
+        }
+    } else if (0 != (flags & GPIO_INPUT)) {
+        /* Only apply pull defaults to pins NOT externally driven */
+        if (0 == (drv_data->externally_driven & BIT(pin))) {
+            if (0 != (flags & GPIO_PULL_UP)) {
+                (void)input_set_masked_int(port, (gpio_port_pins_t)BIT(pin),
+                                           (gpio_port_value_t)BIT(pin));
+            } else if (0 != (flags & GPIO_PULL_DOWN)) {
+                (void)input_set_masked_int(port, (gpio_port_pins_t)BIT(pin), 0);
+            } else {
+                /* No action required */
+            }
+        }
+    } else {
+        /* No action required */
+    }
+}
+
 static int gpio_sim_pin_configure(const struct device *port, gpio_pin_t pin,
                                   gpio_flags_t flags)
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
-    k_spinlock_key_t key;
     int rc = 0;
 
     if (0 != (flags & (GPIO_OPEN_DRAIN | GPIO_OPEN_SOURCE))) {
@@ -179,40 +217,12 @@ static int gpio_sim_pin_configure(const struct device *port, gpio_pin_t pin,
     } else if (0 == (config->common.port_pin_mask & BIT(pin))) {
         rc = -EINVAL;
     } else {
-        key = k_spin_lock(&drv_data->lock);
+        k_spinlock_key_t key = k_spin_lock(&drv_data->lock);
         drv_data->flags[pin] = flags;
-
-        if (0 != (flags & GPIO_OUTPUT)) {
-            if (0 != (flags & GPIO_OUTPUT_INIT_LOW)) {
-                drv_data->output_vals &= ~BIT(pin);
-                if (0 != (flags & GPIO_INPUT)) {
-                    (void)input_set_masked_int(port, BIT(pin), drv_data->output_vals);
-                }
-            } else if (0 != (flags & GPIO_OUTPUT_INIT_HIGH)) {
-                drv_data->output_vals |= BIT(pin);
-                if (0 != (flags & GPIO_INPUT)) {
-                    (void)input_set_masked_int(port, BIT(pin), drv_data->output_vals);
-                }
-            } else {
-                /* No action required */
-            }
-        } else if (0 != (flags & GPIO_INPUT)) {
-            /* Only apply pull defaults to pins NOT externally driven */
-            if (0 == (drv_data->externally_driven & BIT(pin))) {
-                if (0 != (flags & GPIO_PULL_UP)) {
-                    (void)input_set_masked_int(port, BIT(pin), BIT(pin));
-                } else if (0 != (flags & GPIO_PULL_DOWN)) {
-                    (void)input_set_masked_int(port, BIT(pin), 0);
-                } else {
-                    /* No action required */
-                }
-            }
-        } else {
-            /* No action required */
-        }
-
+        gpio_sim_apply_io_flags(drv_data, port, pin, flags);
         k_spin_unlock(&drv_data->lock, key);
-        gpio_fire_callbacks(&drv_data->callbacks, port, BIT(pin));
+
+        gpio_fire_callbacks(&drv_data->callbacks, port, (gpio_port_pins_t)BIT(pin));
         drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
     }
 
@@ -222,13 +232,12 @@ static int gpio_sim_pin_configure(const struct device *port, gpio_pin_t pin,
 static int gpio_sim_port_get_raw(const struct device *port, gpio_port_value_t *values)
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
-    k_spinlock_key_t key;
     int rc = 0;
 
     if (NULL == values) {
         rc = -EINVAL;
     } else {
-        key = k_spin_lock(&drv_data->lock);
+        k_spinlock_key_t key = k_spin_lock(&drv_data->lock);
         *values = drv_data->input_vals & get_input_pins(port);
         k_spin_unlock(&drv_data->lock, key);
     }
@@ -242,11 +251,10 @@ static int gpio_sim_port_set_masked_raw(const struct device *port,
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
-    k_spinlock_key_t key;
 
     gpio_port_pins_t masked = mask & config->common.port_pin_mask;
 
-    key = k_spin_lock(&drv_data->lock);
+    k_spinlock_key_t key = k_spin_lock(&drv_data->lock);
     gpio_port_pins_t output_mask = get_output_pins(port);
     masked &= output_mask;
     drv_data->output_vals &= ~masked;
@@ -266,11 +274,10 @@ static int gpio_sim_port_set_bits_raw(const struct device *port, gpio_port_pins_
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
-    k_spinlock_key_t key;
 
     gpio_port_pins_t masked = pins & config->common.port_pin_mask;
 
-    key = k_spin_lock(&drv_data->lock);
+    k_spinlock_key_t key = k_spin_lock(&drv_data->lock);
     masked &= get_output_pins(port);
     drv_data->output_vals |= masked;
     gpio_port_value_t prev = drv_data->input_vals;
@@ -287,11 +294,10 @@ static int gpio_sim_port_clear_bits_raw(const struct device *port, gpio_port_pin
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
-    k_spinlock_key_t key;
 
     gpio_port_pins_t masked = pins & config->common.port_pin_mask;
 
-    key = k_spin_lock(&drv_data->lock);
+    k_spinlock_key_t key = k_spin_lock(&drv_data->lock);
     masked &= get_output_pins(port);
     drv_data->output_vals &= ~masked;
     gpio_port_value_t prev = drv_data->input_vals;
@@ -308,11 +314,10 @@ static int gpio_sim_port_toggle_bits(const struct device *port, gpio_port_pins_t
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
-    k_spinlock_key_t key;
 
     gpio_port_pins_t masked = pins & config->common.port_pin_mask;
 
-    key = k_spin_lock(&drv_data->lock);
+    k_spinlock_key_t key = k_spin_lock(&drv_data->lock);
     drv_data->output_vals ^= (masked & get_output_pins(port));
     (void)input_set_masked_int(port, masked & get_input_pins(port), drv_data->output_vals);
     k_spin_unlock(&drv_data->lock, key);
@@ -321,13 +326,12 @@ static int gpio_sim_port_toggle_bits(const struct device *port, gpio_port_pins_t
     return 0;
 }
 
-static int gpio_sim_pin_interrupt_configure(const struct device *port, gpio_pin_t pin,
-                                            enum gpio_int_mode mode,
-                                            enum gpio_int_trig trig)
+static int gpio_sim_pin_int_configure(const struct device *port, gpio_pin_t pin,
+                                      enum gpio_int_mode mode,
+                                      enum gpio_int_trig trig)
 {
     struct gpio_sim_data *drv_data = (struct gpio_sim_data *)port->data;
     const struct gpio_sim_config *config = (const struct gpio_sim_config *)port->config;
-    k_spinlock_key_t key;
     int rc = 0;
 
     if (0 == (BIT(pin) & config->common.port_pin_mask)) {
@@ -346,7 +350,7 @@ static int gpio_sim_pin_interrupt_configure(const struct device *port, gpio_pin_
         }
 
         if (0 == rc) {
-            key = k_spin_lock(&drv_data->lock);
+            k_spinlock_key_t key = k_spin_lock(&drv_data->lock);
             drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
 
             switch (mode) {
@@ -368,11 +372,11 @@ static int gpio_sim_pin_interrupt_configure(const struct device *port, gpio_pin_
 
             k_spin_unlock(&drv_data->lock, key);
 
-            if (0 == rc) {
-                if (0 != (BIT(pin) & (drv_data->interrupts & drv_data->enabled_interrupts))) {
-                    gpio_fire_callbacks(&drv_data->callbacks, port, BIT(pin));
-                    drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
-                }
+            if ((0 == rc) &&
+                (0 != ((gpio_port_pins_t)BIT(pin) &
+                       (drv_data->interrupts & drv_data->enabled_interrupts)))) {
+                gpio_fire_callbacks(&drv_data->callbacks, port, (gpio_port_pins_t)BIT(pin));
+                drv_data->interrupts &= ~((gpio_port_pins_t)BIT(pin));
             }
         }
     }
@@ -390,7 +394,7 @@ static int gpio_sim_manage_callback(const struct device *port,
 
 static uint32_t gpio_sim_get_pending_int(const struct device *dev)
 {
-    struct gpio_sim_data *drv_data = (struct gpio_sim_data *)dev->data;
+    const struct gpio_sim_data *drv_data = (const struct gpio_sim_data *)dev->data;
 
     return drv_data->interrupts;
 }
@@ -402,7 +406,7 @@ static DEVICE_API(gpio, gpio_sim_driver) = {
     .port_set_bits_raw = gpio_sim_port_set_bits_raw,
     .port_clear_bits_raw = gpio_sim_port_clear_bits_raw,
     .port_toggle_bits = gpio_sim_port_toggle_bits,
-    .pin_interrupt_configure = gpio_sim_pin_interrupt_configure,
+    .pin_interrupt_configure = gpio_sim_pin_int_configure,
     .manage_callback = gpio_sim_manage_callback,
     .get_pending_int = gpio_sim_get_pending_int,
 };

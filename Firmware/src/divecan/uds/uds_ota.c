@@ -154,7 +154,7 @@ static const struct smf_state ota_states[OTA_STATE_COUNT];
 static bool extractSlot1Sha256(const struct flash_area *fa,
                    uint8_t outHash[IMG_SHA256_LEN],
                    size_t *outHashedLen);
-static int  validateSlot1(void);
+static Status_t validateSlot1(void);
 
 /**
  * @brief Map a SID byte to the SMF event vocabulary.
@@ -239,6 +239,78 @@ static void ota_idle_entry(void *obj)
 }
 
 /**
+ * @brief Erase slot1 and initialise the streaming flash writer for a new OTA download.
+ *
+ * The OTA writer (flash_img/stream_flash) is built WITHOUT erase
+ * (CONFIG_IMG_ERASE_PROGRESSIVELY and CONFIG_STREAM_FLASH_ERASE are both
+ * off), so it assumes slot1 is already blank. Erase it up front here — a
+ * multi-second SPI NOR erase — guarded by the heartbeat long-op flag so
+ * divecan_rx's heartbeat going stale during the blocking erase doesn't trip
+ * the watchdog (same pattern as factory_image restore). Without this, a
+ * slot1 holding prior content makes the streamed writes land on un-erased
+ * NOR and the upload stalls/corrupts (the first such write stalled >30 s
+ * on HW). Also holds off the periodic error-histogram NVS save (its
+ * settings/NVS/spi_nor write chain runs on the system workqueue and would
+ * both contend on the SPI-NOR and overflow the 1024 B workqueue stack) and,
+ * with CONFIG_FLASH_LOG, the flash-log writer (would otherwise block behind
+ * the erase / contend for the bus).
+ *
+ * Closes @p fa unconditionally before returning. On success, populates
+ * sm->bytesExpected/bytesReceived/nextSeq for the new transfer. Sends a UDS
+ * negative response on any failure (erase or flash_img_init_id) — the
+ * caller only needs to check the return value.
+ *
+ * @param sm     OTA SM context; sm->flashCtx must already point at the claimed arena
+ * @param fa     Open slot1 flash area (closed by this function before returning)
+ * @param length Declared download length (bytes); staged into sm->bytesExpected on success
+ * @return true on success, false on erase/init failure (NRC already sent)
+ */
+static bool ota_erase_and_init_download(OtaSmCtx_t *sm,
+                     const struct flash_area *fa,
+                     uint32_t length)
+{
+    UDSContext_t *ctx = sm->udsCtx;
+    bool ok = false;
+
+    heartbeat_set_long_op(true);
+    error_histogram_pause();
+#ifdef CONFIG_FLASH_LOG
+    flash_log_pause();
+#endif
+    int rc = flash_area_erase(fa, 0U, fa->fa_size);
+#ifdef CONFIG_FLASH_LOG
+    flash_log_resume();
+#endif
+    error_histogram_resume();
+    heartbeat_set_long_op(false);
+    (void)flash_area_close(fa);
+
+    if (0 != rc) {
+        OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+        UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
+                     UDS_NRC_GENERAL_PROG_FAIL);
+    } else {
+        (void)memset(sm->flashCtx, 0, sizeof(*sm->flashCtx));
+
+        rc = flash_img_init_id(sm->flashCtx,
+                       PARTITION_ID(slot1_partition));
+        if (0 != rc) {
+            OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+            UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
+                         UDS_NRC_GENERAL_PROG_FAIL);
+        } else {
+            sm->bytesExpected = length;
+            sm->bytesReceived = 0;
+            sm->nextSeq = 1U;
+            LOG_INF("OTA 0x34 download accepted: %u bytes", length);
+            ok = true;
+        }
+    }
+
+    return ok;
+}
+
+/**
  * @brief IDLE.run handler for OTA_EVT_REQUEST_DOWNLOAD.
  *
  * Validates session and dive state, parses the request, erases slot1,
@@ -307,59 +379,7 @@ static void ota_handle_request_download(OtaSmCtx_t *sm)
                 UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
                              UDS_NRC_CONDITIONS_NOT_CORRECT);
             } else {
-                /* The OTA writer (flash_img/stream_flash) is built WITHOUT
-                 * erase (CONFIG_IMG_ERASE_PROGRESSIVELY and
-                 * CONFIG_STREAM_FLASH_ERASE are both off), so it assumes slot1
-                 * is already blank. Erase it up front here — a multi-second SPI
-                 * NOR erase — guarded by the heartbeat long-op flag so
-                 * divecan_rx's heartbeat going stale during the blocking erase
-                 * doesn't trip the watchdog (same pattern as factory_image
-                 * restore). Without this, a slot1 holding prior content makes
-                 * the streamed writes land on un-erased NOR and the upload
-                 * stalls/corrupts (the first such write stalled >30 s on HW). */
-                heartbeat_set_long_op(true);
-                /* Also hold off the periodic error-histogram NVS save — its
-                 * settings/NVS/spi_nor write chain runs on the system
-                 * workqueue and would both contend on the SPI-NOR and
-                 * overflow the 1024 B workqueue stack. */
-                error_histogram_pause();
-#ifdef CONFIG_FLASH_LOG
-                /* Hold the flash-log writer off the shared SPI NOR for the
-                 * erase (it would otherwise block behind it / contend). */
-                flash_log_pause();
-#endif
-                rc = flash_area_erase(fa, 0U, fa->fa_size);
-#ifdef CONFIG_FLASH_LOG
-                flash_log_resume();
-#endif
-                error_histogram_resume();
-                heartbeat_set_long_op(false);
-                (void)flash_area_close(fa);
-
-                if (0 != rc) {
-                    OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
-                    UDS_SendNegativeResponse(
-                        ctx, UDS_SID_REQUEST_DOWNLOAD,
-                        UDS_NRC_GENERAL_PROG_FAIL);
-                } else {
-                    (void)memset(sm->flashCtx, 0, sizeof(*sm->flashCtx));
-
-                    rc = flash_img_init_id(sm->flashCtx,
-                                   PARTITION_ID(slot1_partition));
-                    if (0 != rc) {
-                        OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
-                        UDS_SendNegativeResponse(
-                            ctx, UDS_SID_REQUEST_DOWNLOAD,
-                            UDS_NRC_GENERAL_PROG_FAIL);
-                    } else {
-                        sm->bytesExpected = length;
-                        sm->bytesReceived = 0;
-                        sm->nextSeq = 1U;
-                        LOG_INF("OTA 0x34 download accepted: %u bytes",
-                            length);
-                        ok = true;
-                    }
-                }
+                ok = ota_erase_and_init_download(sm, fa, length);
             }
         }
 
@@ -602,7 +622,7 @@ static void ota_handle_routine_control(OtaSmCtx_t *sm)
             UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
                          UDS_NRC_CONDITIONS_NOT_CORRECT);
         } else {
-            int rc = validateSlot1();
+            Status_t rc = validateSlot1();
             if (0 != rc) {
                 LOG_ERR("OTA activate: slot1 validate failed %d", rc);
                 OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
@@ -709,6 +729,113 @@ void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *requestData,
 /* ---- SHA-256 validation pipeline ---- */
 
 /**
+ * @brief Outcome of inspecting a single TLV entry during the slot1 trailer walk.
+ */
+typedef enum {
+    TLV_WALK_CONTINUE = 0, /**< Not the SHA-256 entry; caller should advance and keep walking */
+    TLV_WALK_FOUND,         /**< SHA-256 entry found and copied into outHash */
+    TLV_WALK_ERROR,          /**< A flash read failed; caller should stop (already logged) */
+} TlvWalkResult_e;
+
+/**
+ * @brief Read one TLV entry at @p cursor and check whether it is the SHA-256 entry.
+ *
+ * On ::TLV_WALK_FOUND, @p outHash is filled and the walk should stop.
+ * On ::TLV_WALK_CONTINUE, @p nextCursor is advanced past this entry's header
+ * and payload so the caller can read the next one.
+ * On ::TLV_WALK_ERROR, a flash read failed (already reported via
+ * OP_ERROR_DETAIL) and the walk should stop.
+ *
+ * @param fa         Slot1 flash area, already opened by caller
+ * @param cursor     Byte offset of this TLV entry's header
+ * @param outHash    32-byte buffer to fill with the hash if this is the SHA-256 entry
+ * @param nextCursor Out: advanced past this entry when the result is ::TLV_WALK_CONTINUE
+ * @return Outcome of inspecting this entry
+ */
+static TlvWalkResult_e readOneTlvEntry(const struct flash_area *fa,
+                    size_t cursor,
+                    uint8_t outHash[IMG_SHA256_LEN],
+                    size_t *nextCursor)
+{
+    TlvWalkResult_e result;
+    uint8_t tlvHdr[TLV_HEADER_LEN] = {0};
+    int rc = flash_area_read(fa, (off_t)cursor, tlvHdr, sizeof(tlvHdr));
+
+    if (0 != rc) {
+        OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+        result = TLV_WALK_ERROR;
+    } else {
+        uint16_t tType =
+            (uint16_t)tlvHdr[0] |
+            (uint16_t)((uint16_t)tlvHdr[1] << BYTE_SHIFT_8);
+        uint16_t tLen =
+            (uint16_t)tlvHdr[2] |
+            (uint16_t)((uint16_t)tlvHdr[3] << BYTE_SHIFT_8);
+
+        if ((TLV_TYPE_SHA256 == tType) && (IMG_SHA256_LEN == tLen)) {
+            rc = flash_area_read(fa, (off_t)(cursor + TLV_HEADER_LEN), outHash,
+                         IMG_SHA256_LEN);
+            if (0 == rc) {
+                result = TLV_WALK_FOUND;
+            } else {
+                OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+                result = TLV_WALK_ERROR;
+            }
+        } else {
+            *nextCursor = cursor + TLV_HEADER_LEN + (size_t)tLen;
+            result = TLV_WALK_CONTINUE;
+        }
+    }
+
+    return result;
+}
+
+/**
+ * @brief Walk the unprotected TLV section of slot1 looking for the SHA-256 entry.
+ *
+ * Extracted from extractSlot1Sha256 to keep that function's nesting depth
+ * within budget: this owns the header+FF-frame walk loop as a self-contained
+ * call rather than a fourth level of nested if/else inside the caller.
+ *
+ * @param fa           Slot1 flash area, already opened by caller
+ * @param tlvOff       Byte offset of the image_tlv_info header
+ * @param tlvTot       Total size of the unprotected TLV section (from image_tlv_info)
+ * @param hdrSize      Image header size (ih_hdr_size), used to compute outHashedLen
+ * @param imgSize      Image body size (ih_img_size), used to compute outHashedLen
+ * @param outHash      32-byte buffer to fill with the hash, if found
+ * @param outHashedLen Out: number of bytes covered by the hash (hdrSize + imgSize)
+ * @return true if the SHA-256 entry was found and copied into outHash
+ */
+static bool walkTlvSectionForSha256(const struct flash_area *fa,
+                    size_t tlvOff, uint16_t tlvTot,
+                    uint16_t hdrSize, uint32_t imgSize,
+                    uint8_t outHash[IMG_SHA256_LEN],
+                    size_t *outHashedLen)
+{
+    bool ok = false;
+    size_t walkEnd = tlvOff + (size_t)tlvTot;
+    size_t cursor = tlvOff + TLV_INFO_HEADER_LEN;
+    bool tlvWalkDone = false;
+
+    while (((cursor + TLV_HEADER_LEN) <= walkEnd) && (!tlvWalkDone)) {
+        TlvWalkResult_e walkResult =
+            readOneTlvEntry(fa, cursor, outHash, &cursor);
+
+        if (TLV_WALK_FOUND == walkResult) {
+            *outHashedLen = (size_t)hdrSize + (size_t)imgSize;
+            ok = true;
+            tlvWalkDone = true;
+        } else if (TLV_WALK_ERROR == walkResult) {
+            tlvWalkDone = true;
+        } else {
+            /* TLV_WALK_CONTINUE: cursor already advanced. */
+        }
+    }
+
+    return ok;
+}
+
+/**
  * @brief Extract the MCUBoot image's SHA-256 hash from slot1's TLV trailer.
  *
  * Walks the unprotected TLV section looking for IMAGE_TLV_SHA256 (type 0x10,
@@ -754,7 +881,7 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
 
         /* Read the image_tlv_info magic + total size. */
         uint8_t tlvInfo[TLV_INFO_HEADER_LEN] = {0};
-        rc = flash_area_read(fa, tlvOff, tlvInfo, sizeof(tlvInfo));
+        rc = flash_area_read(fa, (off_t)tlvOff, tlvInfo, sizeof(tlvInfo));
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
         } else {
@@ -768,48 +895,8 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
             if (TLV_INFO_MAGIC_UNPROT != tlvMagic) {
                 /* No unprotected TLV section -> no SHA-256 */
             } else {
-                size_t walkStart = tlvOff + TLV_INFO_HEADER_LEN;
-                size_t walkEnd = tlvOff + (size_t)tlvTot;
-                size_t cursor = walkStart;
-                bool tlvWalkDone = false;
-
-                while (((cursor + TLV_HEADER_LEN) <= walkEnd) && !tlvWalkDone) {
-                    uint8_t tlvHdr[TLV_HEADER_LEN] = {0};
-                    rc = flash_area_read(fa, cursor, tlvHdr,
-                                 sizeof(tlvHdr));
-                    if (0 != rc) {
-                        OP_ERROR_DETAIL(OP_ERR_FLASH,
-                                (uint32_t)(-rc));
-                        tlvWalkDone = true;
-                    } else {
-                        uint16_t tType =
-                            (uint16_t)tlvHdr[0] |
-                            (uint16_t)((uint16_t)tlvHdr[1] << BYTE_SHIFT_8);
-                        uint16_t tLen =
-                            (uint16_t)tlvHdr[2] |
-                            (uint16_t)((uint16_t)tlvHdr[3] << BYTE_SHIFT_8);
-
-                        if ((TLV_TYPE_SHA256 == tType) &&
-                            (IMG_SHA256_LEN == tLen)) {
-                            rc = flash_area_read(
-                                fa, cursor + TLV_HEADER_LEN,
-                                outHash, IMG_SHA256_LEN);
-                            if (0 == rc) {
-                                *outHashedLen =
-                                    (size_t)hdrSize +
-                                    (size_t)imgSize;
-                                ok = true;
-                            } else {
-                                OP_ERROR_DETAIL(
-                                    OP_ERR_FLASH,
-                                    (uint32_t)(-rc));
-                            }
-                            tlvWalkDone = true;
-                        } else {
-                            cursor += TLV_HEADER_LEN + (size_t)tLen;
-                        }
-                    }
-                }
+                ok = walkTlvSectionForSha256(fa, tlvOff, tlvTot, hdrSize,
+                                 imgSize, outHash, outHashedLen);
             }
         }
     }
@@ -824,9 +911,9 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
  *
  * @return 0 on hash match, negative errno on mismatch or read error
  */
-static int validateSlot1(void)
+static Status_t validateSlot1(void)
 {
-    int result = -EIO;
+    Status_t result = -EIO;
     const struct flash_area *fa = NULL;
     int rc = flash_area_open(PARTITION_ID(slot1_partition), &fa);
     if (0 != rc) {

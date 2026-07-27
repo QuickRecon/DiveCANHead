@@ -81,7 +81,7 @@ static const uint16_t BATTERY_DIVIDER_WHOLE_SCALE = 1000U;
 static const uint16_t BATTERY_DIVIDER_FRACTION_SCALE = 10U;
 
 /* zbus publish timeout for the periodic battery status message. */
-static const uint32_t BATTERY_STATUS_PUBLISH_TIMEOUT_MS = 100U;
+static const uint32_t BATTERY_PUBLISH_TIMEOUT_MS = 100U;
 
 /* ---- ADC voltage sampling ---- */
 
@@ -283,7 +283,7 @@ Numeric_t power_get_vbus_voltage(const struct device *dev)
     Numeric_t result = -1.0f;
 
     if (cfg->has_vbus_sense) {
-        /* TODO(aren.leishman@gmail.com, 2026-05-11): Rev2 path — read vbus-sense-io-channels */
+        /* TODO(aren.leishman@gmail.com): Rev2 path — read vbus-sense-io-channels, target 2026-05-11 */
     } else if (cfg->has_vcc_sense) {
         /* Jr: VBUS == VCC physically (shared regulator), so reading the
          * VCC sensor is the most accurate VBUS measurement available. */
@@ -331,7 +331,7 @@ Numeric_t power_get_can_voltage(const struct device *dev)
     Numeric_t result = -1.0f;
 
     if (cfg->has_can_sense) {
-        /* TODO(aren.leishman@gmail.com, 2026-05-11): Rev2 path — read can-sense-io-channels */
+        /* TODO(aren.leishman@gmail.com): Rev2 path — read can-sense-io-channels, target 2026-05-11 */
     } else {
         /* No CAN sense hardware on Jr; return unavailable sentinel */
     }
@@ -547,6 +547,106 @@ static void clear_standby_pull_config(void)
 #endif
 
 /**
+ * @brief Set up the battery voltage ADC channel and conversion sequence.
+ *
+ * Non-fatal if the ADC device isn't ready or channel setup fails — voltage
+ * reads simply return -1.0 via the data->adc_ready gate in
+ * sample_battery_voltage(). Split out of power_init() to keep that
+ * function's cognitive complexity within the project limit.
+ *
+ * @param cfg Driver config containing the ADC device handle and channel.
+ * @param data Driver data; adc_ready and batt_seq are populated on success.
+ */
+static void setup_battery_adc(const struct power_config *cfg, struct power_data *data)
+{
+    data->adc_ready = false;
+
+    if (true == device_is_ready(cfg->battery_adc_dev)) {
+        struct adc_channel_cfg ch_cfg = {
+            .gain = ADC_GAIN_1,
+            .reference = ADC_REF_INTERNAL,
+            .acquisition_time = ADC_ACQ_TIME_MAX,
+            .channel_id = cfg->battery_adc_channel,
+            .differential = 0,
+#if defined(CONFIG_ADC_CONFIGURABLE_INPUTS)
+            /* Pulled in globally by the ADS1x1x external-ADC driver on
+             * variants that have one; this internal-ADC channel has no
+             * selectable input pair, so both are left at 0. */
+            .input_positive = 0,
+            .input_negative = 0,
+#endif
+        };
+
+        Status_t adc_ret = adc_channel_setup(cfg->battery_adc_dev, &ch_cfg);
+
+        if (0 == adc_ret) {
+            data->batt_seq.channels = BIT(cfg->battery_adc_channel);
+            data->batt_seq.resolution = ADC_RESOLUTION_BITS;
+            data->batt_seq.oversampling = 0;
+            data->batt_seq.buffer = &data->batt_sample;
+            data->batt_seq.buffer_size = sizeof(data->batt_sample);
+            data->adc_ready = true;
+        } else {
+            LOG_WRN("Battery ADC setup failed: %d (voltage reads disabled)",
+                adc_ret);
+        }
+    } else {
+        LOG_WRN("Battery ADC not ready (voltage reads disabled)");
+    }
+}
+
+/**
+ * @brief Configure the CAN enable/shutdown/silent GPIOs and, on Rev2, the bus-select mux.
+ *
+ * Each GPIO is configured only if present in cfg; the first configuration
+ * failure short-circuits the remaining steps. Split out of power_init() to
+ * keep that function's cognitive complexity within the project limit.
+ *
+ * @param cfg Driver config containing the optional CAN control GPIOs.
+ * @return 0 on success, negative errno from the first failing gpio_pin_configure_dt() call.
+ */
+static Status_t configure_can_gpios(const struct power_config *cfg)
+{
+    Status_t result = 0;
+
+    if (cfg->has_can_en) {
+        result = gpio_pin_configure_dt(&cfg->can_en, GPIO_INPUT);
+        if (0 != result) {
+            LOG_ERR("CAN enable GPIO config failed: %d", result);
+        }
+    }
+
+    /* Configure CAN silent output if present. Driven INACTIVE (silent
+     * line low → transceiver in normal mode). A push-pull output holds
+     * this regardless of the TCAN334's internal pull-down or any pull
+     * left over from a previous shutdown, so the bus comes up on every
+     * boot — cold or warm. */
+    if ((0 == result) && cfg->has_can_shdn) {
+        result = gpio_pin_configure_dt(&cfg->can_shdn, GPIO_OUTPUT_INACTIVE);
+        if (0 != result) {
+            LOG_ERR("CAN shutdown GPIO config failed: %d", result);
+        }
+    }
+
+    if ((0 == result) && cfg->has_can_silent) {
+        result = gpio_pin_configure_dt(&cfg->can_silent, GPIO_OUTPUT_INACTIVE);
+        if (0 != result) {
+            LOG_ERR("CAN silent GPIO config failed: %d", result);
+        }
+    }
+
+    /* Configure bus select mux GPIOs if present (Rev2 only) */
+    if ((0 == result) && cfg->has_bus_select) {
+        result = gpio_pin_configure_dt(&cfg->bus_sel[0], GPIO_OUTPUT_INACTIVE);
+        if (0 == result) {
+            result = gpio_pin_configure_dt(&cfg->bus_sel[1], GPIO_OUTPUT_INACTIVE);
+        }
+    }
+
+    return result;
+}
+
+/**
  * @brief Zephyr driver init: configure ADC, CAN GPIOs, and optional bus-select mux.
  *
  * Called by the kernel at POST_KERNEL priority 91. ADC init failure is non-fatal
@@ -574,87 +674,13 @@ static Status_t power_init(const struct device *dev)
         LOG_ERR("VBUS regulator device not ready");
         result = -ENODEV;
     } else {
-        /* Set up the battery voltage ADC channel.
-         * Non-fatal if ADC init fails — GPIO operations (VBUS, mux, CAN)
+        /* Non-fatal if ADC init fails — GPIO operations (VBUS, mux, CAN)
          * still work, only voltage reads return -1. This allows the driver
          * to function on native_sim where the ADC emulator has limited
          * reference support. */
-        data->adc_ready = false;
+        setup_battery_adc(cfg, data);
 
-        if (true == device_is_ready(cfg->battery_adc_dev)) {
-            struct adc_channel_cfg ch_cfg = {
-                .gain = ADC_GAIN_1,
-                .reference = ADC_REF_INTERNAL,
-                .acquisition_time = ADC_ACQ_TIME_MAX,
-                .channel_id = cfg->battery_adc_channel,
-                .differential = 0,
-            };
-
-            Status_t adc_ret = adc_channel_setup(cfg->battery_adc_dev, &ch_cfg);
-
-            if (0 == adc_ret) {
-                data->batt_seq.channels = BIT(cfg->battery_adc_channel);
-                data->batt_seq.resolution = ADC_RESOLUTION_BITS;
-                data->batt_seq.oversampling = 0;
-                data->batt_seq.buffer = &data->batt_sample;
-                data->batt_seq.buffer_size = sizeof(data->batt_sample);
-                data->adc_ready = true;
-            } else {
-                LOG_WRN("Battery ADC setup failed: %d (voltage reads disabled)",
-                    adc_ret);
-            }
-        } else {
-            LOG_WRN("Battery ADC not ready (voltage reads disabled)");
-        }
-
-        /* Configure CAN enable input if present */
-        Status_t ret = 0;
-
-        if (cfg->has_can_en) {
-            ret = gpio_pin_configure_dt(&cfg->can_en, GPIO_INPUT);
-            if (0 != ret) {
-                LOG_ERR("CAN enable GPIO config failed: %d", ret);
-                result = ret;
-            }
-        }
-
-        /* Configure CAN shutdown output if present */
-        if ((0 == result) && cfg->has_can_shdn) {
-            ret = gpio_pin_configure_dt(&cfg->can_shdn,
-                            GPIO_OUTPUT_INACTIVE);
-            if (0 != ret) {
-                LOG_ERR("CAN shutdown GPIO config failed: %d", ret);
-                result = ret;
-            }
-        }
-
-        /* Configure CAN silent output if present. Driven INACTIVE (silent
-         * line low → transceiver in normal mode). A push-pull output holds
-         * this regardless of the TCAN334's internal pull-down or any pull
-         * left over from a previous shutdown, so the bus comes up on every
-         * boot — cold or warm. */
-        if ((0 == result) && cfg->has_can_silent) {
-            ret = gpio_pin_configure_dt(&cfg->can_silent,
-                            GPIO_OUTPUT_INACTIVE);
-            if (0 != ret) {
-                LOG_ERR("CAN silent GPIO config failed: %d", ret);
-                result = ret;
-            }
-        }
-
-        /* Configure bus select mux GPIOs if present (Rev2 only) */
-        if ((0 == result) && cfg->has_bus_select) {
-            ret = gpio_pin_configure_dt(&cfg->bus_sel[0],
-                            GPIO_OUTPUT_INACTIVE);
-            if (0 == ret) {
-                ret = gpio_pin_configure_dt(&cfg->bus_sel[1],
-                                GPIO_OUTPUT_INACTIVE);
-            }
-
-            if (0 != ret) {
-                result = ret;
-            }
-        }
+        result = configure_can_gpios(cfg);
 
         /* Sanity check the optional VCC sense sensor (e.g. st,stm32-vbat).
          * Non-fatal if absent or not ready — VCC reads return -1.0 via
@@ -782,15 +808,15 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
         };
 
         zbus_pub_checked(&chan_battery_status, &status,
-                 K_MSEC(BATTERY_STATUS_PUBLISH_TIMEOUT_MS));
+                 K_MSEC(BATTERY_PUBLISH_TIMEOUT_MS));
 
         if (status.low_battery) {
             /* Integer millivolts: whole = mv/1000, fraction = mv%1000.
              * Both values are strictly positive here (low_battery requires
              * voltage > 0 and the threshold is positive), so the modulo
              * fraction never comes out negative. */
-            int32_t voltage_mv = voltage * (Numeric_t)MILLIVOLTS_PER_VOLT;
-            int32_t threshold_mv = threshold * (Numeric_t)MILLIVOLTS_PER_VOLT;
+            int32_t voltage_mv = (int32_t)(voltage * (Numeric_t)MILLIVOLTS_PER_VOLT);
+            int32_t threshold_mv = (int32_t)(threshold * (Numeric_t)MILLIVOLTS_PER_VOLT);
             LOG_WRN("Low battery: %d.%03dV (threshold %d.%03dV)",
                 voltage_mv / MILLIVOLTS_PER_VOLT, voltage_mv % MILLIVOLTS_PER_VOLT,
                 threshold_mv / MILLIVOLTS_PER_VOLT, threshold_mv % MILLIVOLTS_PER_VOLT);
@@ -838,6 +864,66 @@ K_THREAD_DEFINE(battery_monitor, 512,
 ZBUS_MSG_SUBSCRIBER_DEFINE(shutdown_sub);
 ZBUS_CHAN_ADD_OBS(chan_shutdown_request, shutdown_sub, 0);
 
+/**
+ * @brief Poll CAN_EN through the shutdown abort window and classify the outcome.
+ *
+ * Dual-action shutdown. Powering down requires BOTH a BUS_OFF message (which
+ * woke the caller) AND the CAN bus going quiet (CAN_EN inactive) — so neither
+ * a spurious message nor a spurious BUS_EN blip alone can shut us down.
+ * BUS_OFF is a CAN frame, so it can only arrive over a LIVE bus — CAN_EN is
+ * typically still asserted at this instant and the handset de-asserts it
+ * shortly after; so this scans WAITING for the bus to go quiet rather than
+ * aborting on the initial active state (the old logic aborted immediately on
+ * that and the head could never sleep on real hardware).
+ *
+ * The whole window is watched: commit only if the bus went quiet and STAYED
+ * quiet through to the end. Abort if the bus is held active the entire
+ * window (spurious message, handset still using the bus) OR if CAN_EN comes
+ * back active after going quiet (re-assert — a spurious shutdown that must
+ * not be honoured).
+ *
+ * @param dev Power subsystem device handle, passed to power_is_can_active().
+ * @return true if the bus went quiet and stayed quiet through the whole
+ *         window (caller should commit to shutdown); false if the bus was
+ *         held active throughout, or re-asserted after going quiet.
+ */
+static bool scan_shutdown_abort_window(const struct device *dev)
+{
+    bool saw_quiet = false;       /* bus confirmed inactive at least once */
+    bool reasserted = false;      /* came back active after going quiet */
+    bool abort_scan = false;      /* re-assertion already detected; stop scanning */
+    uint8_t inactive_run = 0;
+
+    for (uint8_t i = 0; i < SHUTDOWN_ABORT_WINDOW_ATTEMPTS; ++i) {
+        if (!abort_scan) {
+            if (power_is_can_active(dev)) {
+                inactive_run = 0;
+                if (saw_quiet) {
+                    /* Re-assertion within the window — bail out. */
+                    reasserted = true;
+                    abort_scan = true;
+                }
+            } else {
+                ++inactive_run;
+                if (inactive_run >= SHUTDOWN_CONFIRM_INACTIVE_POLLS) {
+                    saw_quiet = true;
+                }
+            }
+            (void)k_msleep(SHUTDOWN_ABORT_POLL_MS);
+        }
+    }
+
+    if (reasserted) {
+        LOG_INF("Bus reasserted during abort window — staying up");
+    } else if (!saw_quiet) {
+        LOG_INF("Bus held active through abort window — staying up");
+    } else {
+        /* No action required — caller logs the commit decision. */
+    }
+
+    return saw_quiet && !reasserted;
+}
+
 static void shutdown_thread_fn(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1);
@@ -853,52 +939,7 @@ static void shutdown_thread_fn(void *p1, void *p2, void *p3)
             if (req) {
                 LOG_INF("Shutdown requested — entering abort window");
 
-                /* Dual-action shutdown. Powering down requires BOTH a BUS_OFF
-                 * message (which woke this thread) AND the CAN bus going quiet
-                 * (CAN_EN inactive) — so neither a spurious message nor a
-                 * spurious BUS_EN blip alone can shut us down. Order is
-                 * irrelevant: BUS_OFF may arrive before or after the bus goes
-                 * quiet. BUS_OFF is a CAN frame, so it can only arrive over a
-                 * LIVE bus — CAN_EN is typically still asserted at this instant
-                 * and the handset de-asserts it shortly after; so we WAIT for
-                 * the bus to go quiet rather than aborting on the initial
-                 * active state (the old logic aborted immediately on that and
-                 * the head could never sleep on real hardware).
-                 *
-                 * We watch the WHOLE window: commit only if the bus went quiet
-                 * and STAYED quiet through to the end. Abort if the bus is held
-                 * active the entire window (spurious message, handset still
-                 * using the bus) OR if CAN_EN comes back active after going
-                 * quiet (re-assert — a spurious shutdown we must not honour). */
-                bool saw_quiet = false;       /* bus confirmed inactive at least once */
-                bool reasserted = false;      /* came back active after going quiet */
-                bool abort_scan = false;      /* re-assertion already detected; stop scanning */
-                uint8_t inactive_run = 0;
-
-                for (uint8_t i = 0; i < SHUTDOWN_ABORT_WINDOW_ATTEMPTS; ++i) {
-                    if (!abort_scan) {
-                        if (power_is_can_active(dev)) {
-                            inactive_run = 0;
-                            if (saw_quiet) {
-                                /* Re-assertion within the window — bail out. */
-                                reasserted = true;
-                                abort_scan = true;
-                            }
-                        } else {
-                            ++inactive_run;
-                            if (inactive_run >= SHUTDOWN_CONFIRM_INACTIVE_POLLS) {
-                                saw_quiet = true;
-                            }
-                        }
-                        (void)k_msleep(SHUTDOWN_ABORT_POLL_MS);
-                    }
-                }
-
-                if (reasserted) {
-                    LOG_INF("Bus reasserted during abort window — staying up");
-                } else if (!saw_quiet) {
-                    LOG_INF("Bus held active through abort window — staying up");
-                } else {
+                if (scan_shutdown_abort_window(dev)) {
                     LOG_INF("Bus went quiet and stayed quiet — committing to shutdown");
 #if defined(CONFIG_POSEIDON_ACCESSORIES)
                     /* Send the Poseidon HUD/Battery their documented low-power

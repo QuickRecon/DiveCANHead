@@ -341,10 +341,21 @@ static const struct i2c_target_callbacks target_cb = {
     .read_requested = target_read_requested,
     .write_received = target_write_received,
     .read_processed = target_read_processed,
+#if defined(CONFIG_I2C_TARGET_BUFFER_MODE)
+    /* Not used by this driver (target_stop parses the raw byte buffer
+     * itself); explicit NULL so the initializer stays complete if buffer
+     * mode is ever enabled for this board. */
+    .buf_write_received = NULL,
+    .buf_read_requested = NULL,
+#endif
     .stop = target_stop,
     .error = target_error,
 };
+/* .node is private, driver-owned state (see struct i2c_target_config doc
+ * comment: "Private, do not modify") — deliberately left to its zero
+ * default rather than touched here. */
 static struct i2c_target_config target_cfg = {
+    .flags = 0U,
     .address = DISPLAY_ADDR,
     .callbacks = &target_cb,
 };
@@ -408,30 +419,31 @@ bool poseidon_gauge_voltage_byte(uint8_t *value)
 void poseidon_gauge_status(PoseidonGaugeStatus_t *s)
 {
     if (s == NULL) {
-        return;
-    }
-    k_spinlock_key_t key = k_spin_lock(&gauge_lock);
-    bool seen = percent_seen;
-    uint8_t pct = percent;
-    int64_t at = percent_at;
-    k_spin_unlock(&gauge_lock, key);
-
-    int64_t age = INT64_MAX;
-    if (seen) {
-        age = (k_uptime_get() - at);
-    }
-
-    if (seen) {
-        s->percent = pct;
+        /* Expected: caller passed no destination; nothing to fill in. */
     } else {
-        s->percent = POSEIDON_PERCENT_UNKNOWN;
-    }
-    s->ever_received = seen;
-    s->fresh = seen && (age <= GAUGE_STALE_MS);
-    if (seen) {
-        s->age_seconds = (uint16_t)MIN(age / MS_PER_SECOND, UINT16_MAX);
-    } else {
-        s->age_seconds = UINT16_MAX;
+        k_spinlock_key_t key = k_spin_lock(&gauge_lock);
+        bool seen = percent_seen;
+        uint8_t pct = percent;
+        int64_t at = percent_at;
+        k_spin_unlock(&gauge_lock, key);
+
+        int64_t age = INT64_MAX;
+        if (seen) {
+            age = (k_uptime_get() - at);
+        }
+
+        if (seen) {
+            s->percent = pct;
+        } else {
+            s->percent = POSEIDON_PERCENT_UNKNOWN;
+        }
+        s->ever_received = seen;
+        s->fresh = seen && (age <= GAUGE_STALE_MS);
+        if (seen) {
+            s->age_seconds = (uint16_t)MIN(age / MS_PER_SECOND, UINT16_MAX);
+        } else {
+            s->age_seconds = UINT16_MAX;
+        }
     }
 }
 
@@ -471,21 +483,24 @@ static Status_t send_retry_locked(uint8_t addr, uint8_t cmd, uint8_t data)
     Status_t rc = -EIO;
     bool sent = false;
 
-    for (uint8_t attempt = 0; (attempt < POSEIDON_SEND_ATTEMPTS) && !sent; ++attempt) {
+    uint8_t attempt = 0U;
+    while ((attempt < POSEIDON_SEND_ATTEMPTS) && (!sent)) {
         rc = send_frame_locked(addr, cmd, data);
         if (rc == 0) {
             sent = true;
         } else {
             uint32_t delay_ms = (uint32_t)POSEIDON_RETRY_BASE_MS << attempt;
             uint32_t jitter_ms = k_cycle_get_32() % POSEIDON_RETRY_JITTER_MS;
-            (void)k_msleep((int32_t)(delay_ms + jitter_ms));
+            uint32_t total_delay_ms = delay_ms + jitter_ms;
+            (void)k_msleep((int32_t)total_delay_ms);
         }
+        ++attempt;
     }
     /* Retries exhausted inside a group lock: a multimaster wedge that won't
      * self-clear. Recover (recursive lock — same thread) and try once more so a
      * grouped command sequence isn't dropped by a transient collision. Shares
      * i2c1_bus_recover() with the single-frame i2c1_transact() path. */
-    if (!sent && i2c1_error_is_transient(rc) && (i2c1_bus_recover() == 0)) {
+    if ((!sent) && i2c1_error_is_transient(rc) && (i2c1_bus_recover() == 0)) {
         rc = send_frame_locked(addr, cmd, data);
     }
     return rc;
@@ -528,7 +543,7 @@ static void refresh_outputs(AlarmMask_t alarms)
     bool speaker_armed = battery_inited;
     Status_t battery_rc = send_retry_locked(BATTERY_ADDR, POSEIDON_CMD_HEARTBEAT, POSEIDON_HEARTBEAT_NORMAL);
     uint32_t battery_rc_bits = (uint32_t)battery_rc;
-    if (!battery_inited && (battery_rc == 0)) {
+    if ((!battery_inited) && (battery_rc == 0)) {
         battery_rc_bits |= (uint32_t)send_retry_locked(BATTERY_ADDR, BATTERY_CMD_INIT, 0x00U);
         battery_rc = (Status_t)battery_rc_bits;
         battery_inited = (battery_rc == 0);
@@ -544,11 +559,11 @@ static void refresh_outputs(AlarmMask_t alarms)
     i2c1_bus_note_activity();
     i2c1_bus_unlock();
 
-    if ((hud_rc != 0) && !hud_failed) {
+    if ((hud_rc != 0) && (!hud_failed)) {
         OP_ERROR_DETAIL(OP_ERR_I2C_BUS, ((uint32_t)HUD_ADDR << 24) |
                         (uint32_t)((-hud_rc) & 0xFFFF));
     }
-    if ((battery_rc != 0) && !battery_failed) {
+    if ((battery_rc != 0) && (!battery_failed)) {
         OP_ERROR_DETAIL(OP_ERR_I2C_BUS, ((uint32_t)BATTERY_ADDR << 24) |
                         (uint32_t)((-battery_rc) & 0xFFFF));
     }
@@ -594,7 +609,7 @@ static void solicit_current(void)
     int64_t at = current_at;
     k_spin_unlock(&gauge_lock, key);
 
-    bool stale = !seen || ((now - at) > CURRENT_SOLICIT_STALE_MS);
+    bool stale = (!seen) || ((now - at) > CURRENT_SOLICIT_STALE_MS);
     int64_t interval = CURRENT_SOLICIT_STALE_MS;
 
     if (last_solicit_failed) {
@@ -621,6 +636,8 @@ static void solicit_current(void)
              * multi-frame push every attempt for as long as the fault lasts). */
             last_fail_log = now;
             LOG_WRN("DS2782 current solicit failing (rc=%d); backing off", rc);
+        } else {
+            /* No action required — within the fail-log rate-limit window. */
         }
     }
 }
@@ -656,40 +673,45 @@ void poseidon_accessories_shutdown(void)
     /* Runs in the power shutdown thread's context at the commit point, before
      * VBUS (and with it the HUD/Battery) loses power. Guard re-entry. */
     if (!atomic_cas(&shutdown_active, 0, 1)) {
-        return;
-    }
-    /* Wait (bounded) for the periodic thread to see the flag, finish any
-     * in-flight refresh_outputs() and park so it can't slip a normal heartbeat
-     * in after our shutdown frame. Send anyway on timeout — a best-effort
-     * shutdown sequence beats blocking the power-down. */
-    uint32_t drain_polls = SHUTDOWN_DRAIN_MS / SHUTDOWN_DRAIN_POLL_MS;
+        /* Expected: shutdown already committed by a previous call. */
+    } else {
+        /* Wait (bounded) for the periodic thread to see the flag, finish any
+         * in-flight refresh_outputs() and park so it can't slip a normal
+         * heartbeat in after our shutdown frame. Send anyway on timeout — a
+         * best-effort shutdown sequence beats blocking the power-down. */
+        uint32_t drain_polls = SHUTDOWN_DRAIN_MS / SHUTDOWN_DRAIN_POLL_MS;
+        uint32_t drain_iter = 0U;
+        bool parked = (0 != atomic_get(&accessory_parked));
 
-    for (uint32_t i = 0; (i < drain_polls) && (0 == atomic_get(&accessory_parked)); ++i) {
-        (void)k_msleep(SHUTDOWN_DRAIN_POLL_MS);
-    }
+        while ((drain_iter < drain_polls) && (!parked)) {
+            (void)k_msleep(SHUTDOWN_DRAIN_POLL_MS);
+            parked = (0 != atomic_get(&accessory_parked));
+            ++drain_iter;
+        }
 
-    /* Documented low-power shutdown sequence (EMULATOR_SPEC_BATTERY_HUD.md §6.6):
-     * turn the controllable loads off first so the peers' final state doesn't
-     * depend on the current alarm/actuator state, then send the deliberate
-     * shutdown heartbeat (CMD 0x00 data=0x01) to each peer, Battery last. Each
-     * send_retry_locked() blocks until its write completes, satisfying "wait
-     * for ACK before the next frame". We drive only the HUD and Battery here —
-     * this head IS the system Head, so it does not address 0x42 (itself).
-     * Merely stopping heartbeats is NOT enough: without the explicit shutdown
-     * frame the HUD's 120 s watchdog would later fire its LED/vibrator alarm
-     * and raise current. */
-    i2c1_bus_lock();
-    (void)send_retry_locked(HUD_ADDR, HUD_CMD_VIBRATOR, POSEIDON_STATE_OFF);       /* vibrator off */
-    (void)send_retry_locked(HUD_ADDR, HUD_CMD_LED, POSEIDON_STATE_OFF);            /* red LED off */
-    (void)send_retry_locked(BATTERY_ADDR, BATTERY_CMD_LED, POSEIDON_STATE_OFF);    /* buddy LED off */
-    (void)send_retry_locked(BATTERY_ADDR, BATTERY_CMD_SPEAKER,
-                            BEEP_PATTERN_STOP);             /* speaker stop */
-    (void)send_retry_locked(HUD_ADDR, POSEIDON_CMD_HEARTBEAT,
-                            POSEIDON_HEARTBEAT_SHUTDOWN);   /* HUD shutdown */
-    (void)send_retry_locked(BATTERY_ADDR, POSEIDON_CMD_HEARTBEAT,
-                            POSEIDON_HEARTBEAT_SHUTDOWN);   /* Battery last */
-    i2c1_bus_note_activity();
-    i2c1_bus_unlock();
+        /* Documented low-power shutdown sequence (EMULATOR_SPEC_BATTERY_HUD.md
+         * §6.6): turn the controllable loads off first so the peers' final
+         * state doesn't depend on the current alarm/actuator state, then send
+         * the deliberate shutdown heartbeat (CMD 0x00 data=0x01) to each peer,
+         * Battery last. Each send_retry_locked() blocks until its write
+         * completes, satisfying "wait for ACK before the next frame". We
+         * drive only the HUD and Battery here — this head IS the system Head,
+         * so it does not address 0x42 (itself). Merely stopping heartbeats is
+         * NOT enough: without the explicit shutdown frame the HUD's 120 s
+         * watchdog would later fire its LED/vibrator alarm and raise current. */
+        i2c1_bus_lock();
+        (void)send_retry_locked(HUD_ADDR, HUD_CMD_VIBRATOR, POSEIDON_STATE_OFF);       /* vibrator off */
+        (void)send_retry_locked(HUD_ADDR, HUD_CMD_LED, POSEIDON_STATE_OFF);            /* red LED off */
+        (void)send_retry_locked(BATTERY_ADDR, BATTERY_CMD_LED, POSEIDON_STATE_OFF);    /* buddy LED off */
+        (void)send_retry_locked(BATTERY_ADDR, BATTERY_CMD_SPEAKER,
+                                BEEP_PATTERN_STOP);             /* speaker stop */
+        (void)send_retry_locked(HUD_ADDR, POSEIDON_CMD_HEARTBEAT,
+                                POSEIDON_HEARTBEAT_SHUTDOWN);   /* HUD shutdown */
+        (void)send_retry_locked(BATTERY_ADDR, POSEIDON_CMD_HEARTBEAT,
+                                POSEIDON_HEARTBEAT_SHUTDOWN);   /* Battery last */
+        i2c1_bus_note_activity();
+        i2c1_bus_unlock();
+    }
 }
 
 static void accessories_thread(void *a, void *b, void *c)
@@ -718,7 +740,7 @@ static void accessories_thread(void *a, void *b, void *c)
              * poseidon_accessories_shutdown() and stop driving the peers. Keep
              * feeding our watchdog slot (never touching I2C again) until the
              * rails drop. */
-            atomic_set(&accessory_parked, 1);
+            (void)atomic_set(&accessory_parked, 1);
             while (true) {
                 heartbeat_kick(HEARTBEAT_ACCESSORIES);
                 (void)k_msleep(PARKED_HEARTBEAT_POLL_MS);

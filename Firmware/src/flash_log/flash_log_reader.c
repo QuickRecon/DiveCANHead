@@ -62,22 +62,39 @@ BUILD_ASSERT(FL_INDEX_TOTAL_ENTRIES * sizeof(FlashLogIndexEntry_t) <=
              "log reader index must fit the maintenance arena "
              "(did an FCB sector count grow?)");
 
-static FlashLogIndexEntry_t *fl_index_base; /* arena; valid under claim */
-static uint32_t fl_index_built_gen;         /* arena gen at last build */
+/* All mutable index-tracking state lives behind a single static accessor so
+ * the module owns no plain file-scope globals (see CLAUDE.md static-accessor
+ * pattern). `base` points into the shared maintenance arena and is only valid
+ * while a claim is held. */
+typedef struct {
+    FlashLogIndexEntry_t *base; /* arena; valid under claim */
+    uint32_t built_gen;         /* arena gen at last build */
+    atomic_t valid[FL_DEST_COUNT];
+    /* Writer index-epoch captured when each dest's index was built. A mismatch
+     * with the live epoch means an index-relevant write (boot/dive marker,
+     * erase) landed after the build — the index would silently miss that key
+     * (or resolve "latest" to a stale answer), so it is rebuilt. Ordinary
+     * telemetry batches do not move the epoch, keeping the rebuild off the
+     * steady-state selector path. */
+    uint32_t built_epoch[FL_DEST_COUNT];
+} fl_index_state_t;
 
-static atomic_t fl_index_valid[FL_DEST_COUNT] = {
-    ATOMIC_INIT(0), ATOMIC_INIT(0),
-};
+static fl_index_state_t *fl_state(void)
+{
+    static fl_index_state_t state;
+    return &state;
+}
 
 static FlashLogIndexEntry_t *fl_index_for(FlashLogDest_t dest)
 {
     FlashLogIndexEntry_t *r = NULL; /* NULL == no claim held */
+    FlashLogIndexEntry_t *base = fl_state()->base;
 
-    if (NULL != fl_index_base) {
+    if (NULL != base) {
         if (FL_DEST_TELEMETRY == dest) {
-            r = fl_index_base;
+            r = base;
         } else if (FL_DEST_TEXT == dest) {
-            r = &fl_index_base[FL_TELEMETRY_SECTOR_COUNT];
+            r = &base[FL_TELEMETRY_SECTOR_COUNT];
         } else {
             /* No action required */
         }
@@ -86,7 +103,7 @@ static FlashLogIndexEntry_t *fl_index_for(FlashLogDest_t dest)
 }
 
 /* Claim the arena for the duration of one resolver call. On success
- * fl_index_base is set; if another tenant wrote the arena since our last
+ * fl_state()->base is set; if another tenant wrote the arena since our last
  * build (generation moved), both destinations are marked invalid so
  * fl_ensure_index rebuilds. -EBUSY while an OTA/factory op holds the
  * arena — the UDS layer surfaces that as a negative response and the
@@ -99,13 +116,14 @@ static Status_t fl_index_claim(void)
     if (NULL == base) {
         rc = -EBUSY;
     } else {
-        fl_index_base = base;
+        fl_index_state_t *st = fl_state();
+        st->base = base;
 
         uint32_t gen = maint_arena_generation();
-        if (gen != fl_index_built_gen) {
-            atomic_set(&fl_index_valid[FL_DEST_TELEMETRY], 0);
-            atomic_set(&fl_index_valid[FL_DEST_TEXT], 0);
-            fl_index_built_gen = gen;
+        if (gen != st->built_gen) {
+            (void)atomic_set(&st->valid[FL_DEST_TELEMETRY], 0);
+            (void)atomic_set(&st->valid[FL_DEST_TEXT], 0);
+            st->built_gen = gen;
         }
     }
     return rc;
@@ -113,7 +131,7 @@ static Status_t fl_index_claim(void)
 
 static void fl_index_unclaim(void)
 {
-    fl_index_base = NULL;
+    fl_state()->base = NULL;
     maint_arena_release(MAINT_ARENA_OWNER_LOG_INDEX);
 }
 
@@ -137,13 +155,54 @@ static size_t fl_sector_index(const struct fcb *fcb_p,
     return (size_t)(sector - fcb_p->f_sectors);
 }
 
+/**
+ * @brief Read a marker payload and fold it into its sector's index row.
+ *
+ * Extracted from the walk callback so the per-entry classification stays
+ * within the project's nesting limit; behaviour is identical to the inline
+ * form it replaced.
+ *
+ * @param e Index row for the sector containing this marker.
+ * @param fap Flash area the entry lives in.
+ * @param payload_off Byte offset of the marker payload within @p fap.
+ * @param type Marker TLV type (BOOT_MARKER / DIVE_START / DIVE_END).
+ */
+static void fl_index_apply_marker(FlashLogIndexEntry_t *e,
+                                  const struct flash_area *fap,
+                                  off_t payload_off, uint8_t type)
+{
+    if (type == FL_TYPE_BOOT_MARKER) {
+        fl_payload_boot_marker_t p = {0};
+
+        if (0 == flash_area_read(fap, payload_off, &p, sizeof(p))) {
+            if (e->first_boot_id == FL_INVALID_BOOT_ID) {
+                e->first_boot_id = p.boot_id;
+            }
+            e->flags |= FL_INDEX_FLAG_HAS_BOOT;
+        }
+    } else {
+        fl_payload_dive_marker_t p = {0};
+
+        if (0 == flash_area_read(fap, payload_off, &p, sizeof(p))) {
+            if (e->first_dive_id == FL_INVALID_DIVE_ID) {
+                e->first_dive_id = p.dive_number;
+            }
+            if (type == FL_TYPE_DIVE_START) {
+                e->flags |= FL_INDEX_FLAG_HAS_DIVE_START;
+            } else {
+                e->flags |= FL_INDEX_FLAG_HAS_DIVE_END;
+            }
+        }
+    }
+}
+
 /* Return type is `int` per Zephyr's fcb_walk_cb contract (fs/fcb.h), not
  * a project-owned return code. */
 static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
 {
     fl_index_build_ctx_t *ctx = arg;
-    fl_entry_hdr_t hdr;
-    Status_t rc;
+    fl_entry_hdr_t hdr = {0};
+    Status_t rc = 0;
 
     /* Keep the IWDG fed across the (potentially very long) full-ring walk. */
     ctx->walked += 1U;
@@ -152,7 +211,7 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
     }
 
     rc = flash_area_read(loc_ctx->fap,
-                 FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc),
+                 (off_t)FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc),
                  &hdr, sizeof(hdr));
 
     /* Skip unreadable / non-marker entries — don't fail the whole walk. */
@@ -164,43 +223,15 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
 
         if (s_idx < (size_t)ctx->fcb_p->f_sector_cnt) {
             FlashLogIndexEntry_t *e = &ctx->index[s_idx];
-            off_t payload_off = FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc) + sizeof(hdr);
+            off_t payload_off =
+                (off_t)(FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc) + sizeof(hdr));
 
-            if (hdr.type == FL_TYPE_BOOT_MARKER) {
-                fl_payload_boot_marker_t p;
-
-                if (0 == flash_area_read(loc_ctx->fap, payload_off, &p, sizeof(p))) {
-                    if (e->first_boot_id == FL_INVALID_BOOT_ID) {
-                        e->first_boot_id = p.boot_id;
-                    }
-                    e->flags |= FL_INDEX_FLAG_HAS_BOOT;
-                }
-            } else {
-                fl_payload_dive_marker_t p;
-
-                if (0 == flash_area_read(loc_ctx->fap, payload_off, &p, sizeof(p))) {
-                    if (e->first_dive_id == FL_INVALID_DIVE_ID) {
-                        e->first_dive_id = p.dive_number;
-                    }
-                    if (hdr.type == FL_TYPE_DIVE_START) {
-                        e->flags |= FL_INDEX_FLAG_HAS_DIVE_START;
-                    } else {
-                        e->flags |= FL_INDEX_FLAG_HAS_DIVE_END;
-                    }
-                }
-            }
+            fl_index_apply_marker(e, loc_ctx->fap, payload_off, hdr.type);
         }
     }
 
     return 0;
 }
-
-/* Writer index-epoch captured when each dest's index was built. A mismatch with
- * the live epoch means an index-relevant write (boot/dive marker, erase) landed
- * after the build — the index would silently miss that key (or resolve
- * "latest" to a stale answer), so it is rebuilt. Ordinary telemetry batches do
- * not move the epoch, keeping the rebuild off the steady-state selector path. */
-static uint32_t fl_index_built_epoch[FL_DEST_COUNT];
 
 static Status_t fl_build_index(FlashLogDest_t dest)
 {
@@ -229,8 +260,8 @@ static Status_t fl_build_index(FlashLogDest_t dest)
         watchdog_kick();   /* feed once before the walk begins */
         rc = fcb_walk(fcb_p, NULL, fl_index_walk_cb, &ctx);
         if (0 == rc) {
-            fl_index_built_epoch[dest] = epoch;
-            atomic_set(&fl_index_valid[dest], 1);
+            fl_state()->built_epoch[dest] = epoch;
+            (void)atomic_set(&fl_state()->valid[dest], 1);
         }
     }
     return rc;
@@ -240,8 +271,8 @@ static Status_t fl_ensure_index(FlashLogDest_t dest)
 {
     Status_t rc = 0;
 
-    if ((0 == atomic_get(&fl_index_valid[dest])) ||
-        (fl_index_built_epoch[dest] != flash_log_internal_index_epoch())) {
+    if ((0 == atomic_get(&fl_state()->valid[dest])) ||
+        (fl_state()->built_epoch[dest] != flash_log_internal_index_epoch())) {
         rc = fl_build_index(dest);
     }
     return rc;
@@ -271,9 +302,9 @@ typedef struct {
 static int fl_marker_scan_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
 {
     fl_marker_scan_ctx_t *ctx = arg;
-    fl_entry_hdr_t hdr;
+    fl_entry_hdr_t hdr = {0};
     int result = 0;   /* nonzero stops fcb_walk */
-    Status_t rc;
+    Status_t rc = 0;
 
     ctx->walked += 1U;
     if (0U == (ctx->walked % FL_INDEX_WALK_WDT_KICK)) {
@@ -281,22 +312,23 @@ static int fl_marker_scan_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
     }
 
     rc = flash_area_read(loc_ctx->fap,
-                 FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc),
+                 (off_t)FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc),
                  &hdr, sizeof(hdr));
     if ((0 == rc) && (hdr.type == ctx->marker_type)) {
-        off_t payload_off = FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc) + sizeof(hdr);
+        off_t payload_off =
+            (off_t)(FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc) + sizeof(hdr));
         uint32_t entry_id = 0U;
         bool have_id = false;
 
         if (FL_TYPE_BOOT_MARKER == ctx->marker_type) {
-            fl_payload_boot_marker_t p;
+            fl_payload_boot_marker_t p = {0};
 
             if (0 == flash_area_read(loc_ctx->fap, payload_off, &p, sizeof(p))) {
                 entry_id = p.boot_id;
                 have_id = true;
             }
         } else {
-            fl_payload_dive_marker_t p;
+            fl_payload_dive_marker_t p = {0};
 
             if (0 == flash_area_read(loc_ctx->fap, payload_off, &p, sizeof(p))) {
                 entry_id = p.dive_number;
@@ -331,8 +363,8 @@ static size_t fl_scan_for_marker(struct fcb *fcb_p, uint8_t marker_type,
 
 void flash_log_reader_invalidate_index(void)
 {
-    atomic_set(&fl_index_valid[FL_DEST_TELEMETRY], 0);
-    atomic_set(&fl_index_valid[FL_DEST_TEXT], 0);
+    (void)atomic_set(&fl_state()->valid[FL_DEST_TELEMETRY], 0);
+    (void)atomic_set(&fl_state()->valid[FL_DEST_TEXT], 0);
 }
 
 /* ---- Index summary entrypoint (pure reducer lives in flash_log_index.c) ---- */
@@ -409,7 +441,7 @@ static Status_t fl_resolve_latest_boot_impl(FlashLogDest_t dest,
     Status_t rc = fl_ensure_index(dest);
 
     if (0 == rc) {
-        FlashLogIndexEntry_t *index = fl_index_for(dest);
+        const FlashLogIndexEntry_t *index = fl_index_for(dest);
         struct fcb *fcb_p = flash_log_internal_get_fcb(dest);
 
         if ((index == NULL) || (fcb_p == NULL) || (out == NULL)) {
@@ -459,7 +491,7 @@ static Status_t fl_resolve_boot_id_impl(FlashLogDest_t dest, uint32_t boot_id,
     Status_t rc = fl_ensure_index(dest);
 
     if (0 == rc) {
-        FlashLogIndexEntry_t *index = fl_index_for(dest);
+        const FlashLogIndexEntry_t *index = fl_index_for(dest);
         struct fcb *fcb_p = flash_log_internal_get_fcb(dest);
 
         if ((index == NULL) || (fcb_p == NULL) || (out == NULL)) {
@@ -539,7 +571,7 @@ static Status_t fl_resolve_latest_dive_impl(FlashLogDest_t dest,
     Status_t rc = fl_ensure_index(dest);
 
     if (0 == rc) {
-        FlashLogIndexEntry_t *index = fl_index_for(dest);
+        const FlashLogIndexEntry_t *index = fl_index_for(dest);
         struct fcb *fcb_p = flash_log_internal_get_fcb(dest);
 
         if ((index == NULL) || (fcb_p == NULL) || (out == NULL)) {
@@ -589,7 +621,7 @@ static Status_t fl_resolve_dive_id_impl(FlashLogDest_t dest, uint16_t dive_id,
     Status_t rc = fl_ensure_index(dest);
 
     if (0 == rc) {
-        FlashLogIndexEntry_t *index = fl_index_for(dest);
+        const FlashLogIndexEntry_t *index = fl_index_for(dest);
         struct fcb *fcb_p = flash_log_internal_get_fcb(dest);
 
         if ((index == NULL) || (fcb_p == NULL) || (out == NULL)) {
@@ -683,7 +715,7 @@ void flash_log_reader_open(FlashLogReader_t *r, const FlashLogRange_t *range)
 
 Status_t flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_size)
 {
-    Status_t result;
+    Status_t result = 0;
 
     if ((r == NULL) || (buf == NULL) || (buf_size == 0U)) {
         result = -EINVAL;
@@ -747,7 +779,8 @@ Status_t flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_siz
 
                 if (n > 0U) {
                     read_rc = flash_area_read(fcb_p->fap,
-                                 FCB_ENTRY_FA_DATA_OFF(r->cursor) + r->emit_off,
+                                 (off_t)(FCB_ENTRY_FA_DATA_OFF(r->cursor) +
+                                         r->emit_off),
                                  buf, n);
                 }
 

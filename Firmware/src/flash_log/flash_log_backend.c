@@ -80,27 +80,32 @@ static int fl_data_out(uint8_t *data, size_t length, void *ctx)
 {
     ARG_UNUSED(ctx);
 
-    if ((data == NULL) || (length == 0U)) {
-        return 0;
+    int result = 0;
+
+    if ((data != NULL) && (length != 0U)) {
+        size_t remaining = 0U;
+
+        if (FL_BACKEND_LINE_MAX > fl_backend_line_len) {
+            remaining = FL_BACKEND_LINE_MAX - fl_backend_line_len;
+        }
+
+        size_t copy = length;
+
+        if (copy > remaining) {
+            copy = remaining;
+        }
+
+        if (copy > 0U) {
+            (void)memcpy(&fl_backend_line[fl_backend_line_len], data, copy);
+            fl_backend_line_len += copy;
+        }
+
+        /* Always claim we consumed the whole chunk; the formatter doesn't
+         * retry on a short return. Bytes past FL_BACKEND_LINE_MAX are
+         * dropped intentionally (= log message truncated to fit). */
+        result = (int)length;
     }
-
-    size_t remaining = (FL_BACKEND_LINE_MAX > fl_backend_line_len) ?
-        (FL_BACKEND_LINE_MAX - fl_backend_line_len) : 0U;
-    size_t copy = length;
-
-    if (copy > remaining) {
-        copy = remaining;
-    }
-
-    if (copy > 0U) {
-        (void)memcpy(&fl_backend_line[fl_backend_line_len], data, copy);
-        fl_backend_line_len += copy;
-    }
-
-    /* Always claim we consumed the whole chunk; the formatter doesn't
-     * retry on a short return. Bytes past FL_BACKEND_LINE_MAX are
-     * dropped intentionally (= log message truncated to fit). */
-    return (int)length;
+    return result;
 }
 
 LOG_OUTPUT_DEFINE(fl_log_output, fl_data_out, fl_backend_charbuf,
@@ -113,9 +118,11 @@ static void fl_resolve_self_ids(void)
     if (!*resolved) {
         int16_t *ids = fl_get_self_ids();
 
-        ids[FL_SELF_ID_FLASH_LOG] = log_source_id_get("flash_log");
-        ids[FL_SELF_ID_FLASH_LOG_BACKEND] = log_source_id_get("flash_log_backend");
-        ids[FL_SELF_ID_FLASH_LOG_LISTENERS] = log_source_id_get("flash_log_listeners");
+        ids[FL_SELF_ID_FLASH_LOG] = (int16_t)log_source_id_get("flash_log");
+        ids[FL_SELF_ID_FLASH_LOG_BACKEND] =
+            (int16_t)log_source_id_get("flash_log_backend");
+        ids[FL_SELF_ID_FLASH_LOG_LISTENERS] =
+            (int16_t)log_source_id_get("flash_log_listeners");
         *resolved = true;
     }
 }
@@ -123,7 +130,7 @@ static void fl_resolve_self_ids(void)
 static bool fl_should_drop(int16_t src_id)
 {
     bool drop = false;
-    int16_t *ids = fl_get_self_ids();
+    const int16_t *ids = fl_get_self_ids();
     size_t count = FL_SELF_ID_COUNT;
 
     for (size_t i = 0; i < count; ++i) {
@@ -148,7 +155,7 @@ static void fl_process(const struct log_backend *const backend,
 
         fl_resolve_self_ids();
 
-        if ((level <= flash_log_get_rtt_level()) && !fl_should_drop(src_id)) {
+        if ((level <= flash_log_get_rtt_level()) && (!fl_should_drop(src_id))) {
             uint32_t flags = LOG_OUTPUT_FLAG_LEVEL |
                      LOG_OUTPUT_FLAG_TIMESTAMP |
                      LOG_OUTPUT_FLAG_CRLF_NONE;
@@ -169,7 +176,7 @@ static void fl_process(const struct log_backend *const backend,
             }
         }
 
-        atomic_set(&fl_in_backend, 0);
+        (void)atomic_set(&fl_in_backend, 0);
     }
 }
 

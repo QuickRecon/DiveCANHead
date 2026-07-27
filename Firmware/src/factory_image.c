@@ -80,7 +80,7 @@ static const uint8_t LE32_BYTE2_IDX = 2U;
 static const uint8_t LE32_BYTE3_IDX = 3U;
 
 /** @brief Retry budget for confirming the staged pending swap registered. */
-static const int STAGE_SWAP_MAX_ATTEMPTS = 5;
+static const uint8_t STAGE_SWAP_MAX_ATTEMPTS = 5U;
 
 /** @brief Byte length of factory_image_get_version()'s output buffer. */
 static const size_t VERSION_FIELD_LEN = 4U;
@@ -126,58 +126,85 @@ static uint8_t *get_chunk_buffer(void)
 /* Read-back verify scratch. Shared + static (not on-stack) to keep it off the
  * 2 KB factory-workqueue stack that capture/restore run on; capture and restore
  * are mutually exclusive under the FACTORY arena claim, so a single buffer is
- * safe. */
-static uint8_t g_verify_buf[256];
+ * safe. Behind a static accessor per the module-state convention. */
+#define VERIFY_BUF_SIZE 256U
 
-/* Re-read `len` bytes at `off` from the just-written backend and compare against
- * the source data still held in `expected`. Returns 0 on match, the read rc on a
- * read error, or -EIO on a data mismatch, so the caller's retry loop re-does the
- * whole chunk. A write returning 0 is NOT proof the bytes landed on this NOR. */
-static int verify_backend_readback(uint32_t off, const uint8_t *expected, uint32_t len)
+static uint8_t *get_verify_buf(void)
 {
-    const struct factory_image_backend *backend = get_state()->backend;
-    if (NULL == backend) {
-        /* Callers guard this, but enforce it locally too. */
-        return -ENODEV;
-    }
-    for (uint32_t v = 0U; v < len; v += (uint32_t)sizeof(g_verify_buf)) {
-        uint32_t step;
-        if ((len - v) < (uint32_t)sizeof(g_verify_buf)) {
-            step = len - v;
-        } else {
-            step = (uint32_t)sizeof(g_verify_buf);
-        }
-        int rc = backend->read(off + v, g_verify_buf, step);
-        if (0 != rc) {
-            return rc;
-        }
-        if (0 != memcmp(expected + v, g_verify_buf, step)) {
-            return -EIO;
-        }
-    }
-    return 0;
+    static uint8_t verify_buf[VERIFY_BUF_SIZE];
+    return verify_buf;
 }
 
-/* As verify_backend_readback, but the destination is a flash_area (slot1). */
-static int verify_slot1_readback(const struct flash_area *fa, uint32_t off,
-                                 const uint8_t *expected, uint32_t len)
+/**
+ * @brief Re-read and compare backend bytes against the source just written.
+ *
+ * A write returning 0 is NOT proof the bytes landed on this NOR, so the
+ * caller's retry loop re-does the whole chunk on any mismatch.
+ *
+ * @param off      Backend byte offset that was written.
+ * @param expected Source data still held in RAM to compare against.
+ * @param len      Number of bytes to verify.
+ * @return 0 on match, the read rc on a read error, or -EIO on a data mismatch.
+ */
+static Status_t verify_backend_readback(uint32_t off, const uint8_t *expected,
+                                        uint32_t len)
 {
-    for (uint32_t v = 0U; v < len; v += (uint32_t)sizeof(g_verify_buf)) {
-        uint32_t step;
-        if ((len - v) < (uint32_t)sizeof(g_verify_buf)) {
-            step = len - v;
-        } else {
-            step = (uint32_t)sizeof(g_verify_buf);
-        }
-        int rc = flash_area_read(fa, off + v, g_verify_buf, step);
-        if (0 != rc) {
-            return rc;
-        }
-        if (0 != memcmp(expected + v, g_verify_buf, step)) {
-            return -EIO;
+    Status_t result = 0;
+    const struct factory_image_backend *backend = get_state()->backend;
+
+    if (NULL == backend) {
+        /* Callers guard this, but enforce it locally too. */
+        result = -ENODEV;
+    } else {
+        uint8_t *verify_buf = get_verify_buf();
+        for (uint32_t v = 0U; (0 == result) && (v < len); v += VERIFY_BUF_SIZE) {
+            uint32_t step = VERIFY_BUF_SIZE;
+            if ((len - v) < VERIFY_BUF_SIZE) {
+                step = len - v;
+            }
+            Status_t rc = backend->read(off + v, verify_buf, step);
+            if (0 != rc) {
+                result = rc;
+            } else if (0 != memcmp(expected + v, verify_buf, step)) {
+                result = -EIO;
+            } else {
+                /* chunk matches — continue */
+            }
         }
     }
-    return 0;
+    return result;
+}
+
+/**
+ * @brief As verify_backend_readback, but the destination is a flash_area (slot1).
+ *
+ * @param fa       Opened slot1 flash area.
+ * @param off      Byte offset within the flash area that was written.
+ * @param expected Source data still held in RAM to compare against.
+ * @param len      Number of bytes to verify.
+ * @return 0 on match, the read rc on a read error, or -EIO on a data mismatch.
+ */
+static Status_t verify_slot1_readback(const struct flash_area *fa, uint32_t off,
+                                      const uint8_t *expected, uint32_t len)
+{
+    Status_t result = 0;
+    uint8_t *verify_buf = get_verify_buf();
+
+    for (uint32_t v = 0U; (0 == result) && (v < len); v += VERIFY_BUF_SIZE) {
+        uint32_t step = VERIFY_BUF_SIZE;
+        if ((len - v) < VERIFY_BUF_SIZE) {
+            step = len - v;
+        }
+        Status_t rc = flash_area_read(fa, (off_t)(off + v), verify_buf, step);
+        if (0 != rc) {
+            result = rc;
+        } else if (0 != memcmp(expected + v, verify_buf, step)) {
+            result = -EIO;
+        } else {
+            /* chunk matches — continue */
+        }
+    }
+    return result;
 }
 
 /* ---- Backend resolution ---- */
@@ -218,20 +245,28 @@ static void set_long_op(bool in_progress)
     heartbeat_set_long_op(in_progress);
 }
 
+/** @brief Kick every heartbeat slot so a multi-second copy doesn't tip stale. */
+static void kick_all_heartbeats(void)
+{
+    for (uint32_t slot = 0U; slot < (uint32_t)HEARTBEAT_COUNT; ++slot) {
+        heartbeat_kick((HeartbeatId_t)slot);
+    }
+}
+
 /* ---- Slot0 reader (production: flash_area_*; tests --wrap it) ---- */
 
-static int slot0_open(const struct flash_area **out_fa)
+static Status_t slot0_open(const struct flash_area **out_fa)
 {
     return flash_area_open(PARTITION_ID(slot0_partition), out_fa);
 }
 
 /* ---- Capture engine ---- */
 
-static int copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
-                                 const struct flash_area *slot0_fa)
+static Status_t copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
+                                      const struct flash_area *slot0_fa)
 {
-    int result = 0;
-    uint32_t copy_size;
+    Status_t result = 0;
+    uint32_t copy_size = 0U;
     uint8_t *chunk = get_chunk_buffer();
 
     if (slot0_size < backend_size) {
@@ -240,19 +275,20 @@ static int copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
         copy_size = backend_size;
     }
 
-    for (uint32_t off = 0U; off < copy_size; off += CHUNK_SIZE) {
-        uint32_t this_chunk = ((copy_size - off) < (uint32_t)CHUNK_SIZE)
-                            ? (copy_size - off)
-                            : (uint32_t)CHUNK_SIZE;
+    for (uint32_t off = 0U; (0 == result) && (off < copy_size); off += CHUNK_SIZE) {
+        uint32_t this_chunk = (uint32_t)CHUNK_SIZE;
+        if ((copy_size - off) < (uint32_t)CHUNK_SIZE) {
+            this_chunk = copy_size - off;
+        }
 
         /* Read slot0, write the backend, then READ THE BACKEND BACK and compare
          * against what we just wrote. Retry the whole read/write/verify on any
          * error OR silent data mismatch — the shared SPI NOR's fast programming
          * path can corrupt a chunk with the write still returning 0. */
-        int attempt = 0;
-        int rc = 0;
+        uint8_t attempt = 0U;
+        Status_t rc = 0;
         do {
-            rc = flash_area_read(slot0_fa, off, chunk, this_chunk);
+            rc = flash_area_read(slot0_fa, (off_t)off, chunk, this_chunk);
             if (0 == rc) {
                 rc = get_state()->backend->write(off, chunk, this_chunk);
             }
@@ -266,22 +302,93 @@ static int copy_slot0_to_backend(uint32_t slot0_size, uint32_t backend_size,
             LOG_ERR("backend copy @0x%x failed after %d tries: %d",
                     (unsigned)off, attempt, rc);
             result = rc;
-            break;
-        }
-        /* Kick every safety-critical heartbeat slot so the per-slot
-         * liveness check in the watchdog feeder doesn't tip stale
-         * during this multi-second copy. The long-op flag is a
-         * belt-and-braces escape hatch on top of this. */
-        for (uint32_t slot = 0U; slot < (uint32_t)HEARTBEAT_COUNT; ++slot) {
-            heartbeat_kick((HeartbeatId_t)slot);
+        } else {
+            /* Kick every safety-critical heartbeat slot so the per-slot
+             * liveness check in the watchdog feeder doesn't tip stale
+             * during this multi-second copy. The long-op flag is a
+             * belt-and-braces escape hatch on top of this. */
+            kick_all_heartbeats();
         }
     }
     return result;
 }
 
-static int do_capture(void)
+/**
+ * @brief Size-check, erase, copy slot0 into the backend, then flush + bless it.
+ *
+ * copy_slot0_to_backend read-back-verifies every chunk, so the backend is
+ * already proven byte-exact before we flush and set the captured flag.
+ *
+ * @param slot0_fa     Opened slot0 flash area (source).
+ * @param backend_size Writable capacity of the backend store.
+ * @return 0 on success, negative errno on any step failure.
+ */
+static Status_t capture_copy_and_bless(const struct flash_area *slot0_fa,
+                                       uint32_t backend_size)
 {
-    int result = -EIO;
+    Status_t result = 0;
+    uint32_t slot0_size = (uint32_t)slot0_fa->fa_size;
+
+    if (slot0_size > backend_size) {
+        LOG_ERR("slot0 (%u B) > backend (%u B); refusing capture",
+                (unsigned)slot0_size, (unsigned)backend_size);
+        result = -ENOSPC;
+    } else {
+        Status_t rc = get_state()->backend->erase();
+        if (0 != rc) {
+            result = rc;
+        } else {
+            rc = copy_slot0_to_backend(slot0_size, backend_size, slot0_fa);
+            if (0 == rc) {
+                rc = get_state()->backend->flush();
+            }
+            if (0 == rc) {
+                rc = get_state()->backend->mark_captured(true);
+            }
+            result = rc;
+        }
+    }
+    return result;
+}
+
+/**
+ * @brief Drive the full capture sequence: init, size, open slot0, copy, bless.
+ *
+ * Runs with the maintenance-arena FACTORY claim already held.
+ *
+ * @return 0 on success, negative errno on any step failure.
+ */
+static Status_t capture_sequence(void)
+{
+    Status_t result = 0;
+    Status_t rc = get_state()->backend->init();
+
+    if (0 != rc) {
+        LOG_ERR("Backend init failed: %d", rc);
+        result = rc;
+    } else {
+        uint32_t backend_size = 0U;
+        rc = get_state()->backend->size(&backend_size);
+        if (0 != rc) {
+            result = rc;
+        } else {
+            const struct flash_area *slot0_fa = NULL;
+            rc = slot0_open(&slot0_fa);
+            if (0 != rc) {
+                LOG_ERR("slot0 open failed: %d", rc);
+                result = rc;
+            } else {
+                result = capture_copy_and_bless(slot0_fa, backend_size);
+                flash_area_close(slot0_fa);
+            }
+        }
+    }
+    return result;
+}
+
+static Status_t do_capture(void)
+{
+    Status_t result = -EIO;
 
     if (NULL == get_state()->backend) {
         LOG_ERR("Backend not initialised");
@@ -297,51 +404,8 @@ static int do_capture(void)
         get_state()->capture_in_progress = true;
         set_long_op(true);
 
-        int rc = get_state()->backend->init();
-        if (0 != rc) {
-            LOG_ERR("Backend init failed: %d", rc);
-            result = rc;
-        } else {
-            uint32_t backend_size = 0U;
-            rc = get_state()->backend->size(&backend_size);
-            if (0 != rc) {
-                result = rc;
-            } else {
-                const struct flash_area *slot0_fa = NULL;
-                rc = slot0_open(&slot0_fa);
-                if (0 != rc) {
-                    LOG_ERR("slot0 open failed: %d", rc);
-                    result = rc;
-                } else {
-                    uint32_t slot0_size = (uint32_t)slot0_fa->fa_size;
-                    if (slot0_size > backend_size) {
-                        LOG_ERR("slot0 (%u B) > backend (%u B); refusing capture",
-                                (unsigned)slot0_size, (unsigned)backend_size);
-                        result = -ENOSPC;
-                    } else {
-                        rc = get_state()->backend->erase();
-                        if (0 != rc) {
-                            result = rc;
-                        } else {
-                            /* copy_slot0_to_backend read-back-verifies every
-                             * chunk, so the backend is already proven byte-exact
-                             * before we flush + bless it (no separate
-                             * first/last-page spot-check needed). */
-                            rc = copy_slot0_to_backend(slot0_size, backend_size,
-                                                       slot0_fa);
-                            if (0 == rc) {
-                                rc = get_state()->backend->flush();
-                            }
-                            if (0 == rc) {
-                                rc = get_state()->backend->mark_captured(true);
-                            }
-                            result = rc;
-                        }
-                    }
-                    flash_area_close(slot0_fa);
-                }
-            }
-        }
+        result = capture_sequence();
+
         set_long_op(false);
         get_state()->capture_in_progress = false;
         get_state()->chunk = NULL;
@@ -360,7 +424,7 @@ static void capture_work_handler(struct k_work *work)
         if (get_state()->backend->is_captured()) {
             LOG_INF("Factory image already captured — capture_work is a no-op");
         } else {
-            int rc = do_capture();
+            Status_t rc = do_capture();
             if (0 == rc) {
                 LOG_INF("Factory image captured");
             } else {
@@ -376,7 +440,7 @@ static void force_capture_work_handler(struct k_work *work)
     ARG_UNUSED(work);
 
     if (get_state()->backend != NULL) {
-        int rc = do_capture();
+        Status_t rc = do_capture();
         if (0 == rc) {
             LOG_INF("Factory image re-captured (forced)");
         } else {
@@ -419,7 +483,12 @@ static K_WORK_DEFINE(force_capture_work, force_capture_work_handler);
 #define FACTORY_WORK_PRIORITY    9
 
 K_THREAD_STACK_DEFINE(factory_work_stack, FACTORY_WORK_STACK_SIZE);
-static struct k_work_q factory_work_q;
+
+static struct k_work_q *get_factory_work_q(void)
+{
+    static struct k_work_q factory_work_q;
+    return &factory_work_q;
+}
 
 static bool *get_work_q_started_flag(void)
 {
@@ -434,9 +503,11 @@ static void ensure_work_q_started(void)
         const struct k_work_queue_config cfg = {
             .name = "factory_wq",
             .no_yield = false,
+            .essential = false,
+            .work_timeout_ms = 0U,
         };
-        k_work_queue_init(&factory_work_q);
-        k_work_queue_start(&factory_work_q,
+        k_work_queue_init(get_factory_work_q());
+        k_work_queue_start(get_factory_work_q(),
                            factory_work_stack,
                            K_THREAD_STACK_SIZEOF(factory_work_stack),
                            FACTORY_WORK_PRIORITY,
@@ -459,6 +530,40 @@ static uint32_t rd_le32(const uint8_t *p)
          | ((uint32_t)p[LE32_BYTE3_IDX] << THREE_BYTE_WIDTH);
 }
 
+/**
+ * @brief Parse the unprotected image_tlv_info and compute the total image size.
+ *
+ * @param backend      Active backend (already NULL-checked by the caller).
+ * @param tlv_off      Byte offset of the unprotected TLV area in the backup.
+ * @param backend_size Writable capacity of the backend store (bounds check).
+ * @param out_total    Receives the total image byte length on success.
+ * @return 0 on success, a negative read rc, or -EBADF if the TLV info is
+ *         not well-formed.
+ */
+static Status_t parse_tlv_total(const struct factory_image_backend *backend,
+                                uint32_t tlv_off, uint32_t backend_size,
+                                uint32_t *out_total)
+{
+    Status_t result = 0;
+    uint8_t tlvinfo[IMAGE_TLV_INFO_SIZE] = {0};
+    Status_t rc = backend->read(tlv_off, tlvinfo, sizeof(tlvinfo));
+
+    if (0 != rc) {
+        result = rc;
+    } else if (IMAGE_TLV_INFO_MAGIC != rd_le16(&tlvinfo[0])) {
+        result = -EBADF;
+    } else {
+        uint32_t tlv_tot = rd_le16(&tlvinfo[IMAGE_TLV_INFO_TOT_OFFSET]);
+        uint32_t total = tlv_off + tlv_tot;
+        if ((0U == total) || (total > backend_size)) {
+            result = -EBADF;
+        } else {
+            *out_total = total;
+        }
+    }
+    return result;
+}
+
 /* Compute the exact byte length of the captured factory image (header + payload
  * + protected TLVs + unprotected TLVs) from its MCUBoot header, so the restore
  * copies ONLY the image and leaves the slot1 trailer region erased — exactly how
@@ -466,56 +571,101 @@ static uint32_t rd_le32(const uint8_t *p)
  * confirmed trailer into slot1 and intermittently makes mcuboot decline the swap
  * (RTT: "Swap type: none"). Returns 0 + *out_size on success, or a negative rc /
  * -EBADF if the header or TLV info is not well-formed. */
-static int factory_backup_image_size(uint32_t backend_size, uint32_t *out_size)
+static Status_t factory_backup_image_size(uint32_t backend_size, uint32_t *out_size)
 {
+    Status_t result = 0;
     const struct factory_image_backend *backend = get_state()->backend;
+
     if (NULL == backend) {
         /* Callers guard this, but enforce it locally too. */
-        return -ENODEV;
-    }
-    uint8_t hdr[32] = {0};
-    int rc = backend->read(0U, hdr, sizeof(hdr));
+        result = -ENODEV;
+    } else {
+        uint8_t hdr[32] = {0};
+        Status_t rc = backend->read(0U, hdr, sizeof(hdr));
+        if (0 != rc) {
+            result = rc;
+        } else if (IMAGE_HEADER_MAGIC != rd_le32(&hdr[0])) {
+            result = -EBADF;
+        } else {
+            uint32_t hdr_size = rd_le16(&hdr[IMAGE_HEADER_HDR_SIZE_OFFSET]);
+            uint32_t prot_tlv = rd_le16(&hdr[IMAGE_HEADER_PROT_TLV_OFFSET]);
+            uint32_t img_size = rd_le32(&hdr[IMAGE_HEADER_IMG_SIZE_OFFSET]);
+            uint32_t tlv_off = hdr_size + img_size + prot_tlv;
 
-    if (0 != rc) {
-        return rc;
+            /* The unprotected TLV area starts with an image_tlv_info {magic, tot}. */
+            if ((tlv_off + IMAGE_TLV_INFO_SIZE) > backend_size) {
+                result = -EBADF;
+            } else {
+                uint32_t total = 0U;
+                rc = parse_tlv_total(backend, tlv_off, backend_size, &total);
+                if (0 != rc) {
+                    result = rc;
+                } else {
+                    *out_size = total;
+                }
+            }
+        }
     }
-    if (IMAGE_HEADER_MAGIC != rd_le32(&hdr[0])) {
-        return -EBADF;
-    }
-
-    uint32_t hdr_size = rd_le16(&hdr[IMAGE_HEADER_HDR_SIZE_OFFSET]);
-    uint32_t prot_tlv = rd_le16(&hdr[IMAGE_HEADER_PROT_TLV_OFFSET]);
-    uint32_t img_size = rd_le32(&hdr[IMAGE_HEADER_IMG_SIZE_OFFSET]);
-    uint32_t tlv_off = hdr_size + img_size + prot_tlv;
-
-    /* The unprotected TLV area starts with an image_tlv_info {magic, tot}. */
-    if ((tlv_off + IMAGE_TLV_INFO_SIZE) > backend_size) {
-        return -EBADF;
-    }
-    uint8_t tlvinfo[IMAGE_TLV_INFO_SIZE] = {0};
-    rc = get_state()->backend->read(tlv_off, tlvinfo, sizeof(tlvinfo));
-    if (0 != rc) {
-        return rc;
-    }
-    if (IMAGE_TLV_INFO_MAGIC != rd_le16(&tlvinfo[0])) {
-        return -EBADF;
-    }
-    uint32_t tlv_tot = rd_le16(&tlvinfo[IMAGE_TLV_INFO_TOT_OFFSET]);
-    uint32_t total = tlv_off + tlv_tot;
-
-    if ((total == 0U) || (total > backend_size)) {
-        return -EBADF;
-    }
-    *out_size = total;
-    return 0;
+    return result;
 }
 
-static int copy_backend_to_slot1(void)
+/**
+ * @brief Stream the backup image into slot1 in verified chunks.
+ *
+ * Read the backend, write slot1, then READ SLOT1 BACK and compare. Retry the
+ * whole read/write/verify per chunk on any error OR silent data mismatch. The
+ * shared SPI NOR's fast back-to-back programming can leave a chunk wrong with
+ * the write still returning 0 (or throw a transient -ETIMEDOUT WIP-poll under
+ * bus contention); mcuboot hashes the WHOLE slot1 image, so one unverified byte
+ * silently declines the swap. The read-back is a real re-read of the NOR (no
+ * driver read cache), so it is proof the bytes landed.
+ *
+ * @param slot1_fa  Opened slot1 flash area (already erased).
+ * @param copy_size Exact image byte length to copy.
+ * @return 0 on success, negative errno on a chunk that failed every retry.
+ */
+static Status_t stream_image_to_slot1(const struct flash_area *slot1_fa,
+                                      uint32_t copy_size)
 {
-    int result = 0;
+    Status_t result = 0;
+    uint8_t *chunk = get_chunk_buffer();
+
+    for (uint32_t off = 0U; (0 == result) && (off < copy_size); off += CHUNK_SIZE) {
+        uint32_t this_chunk = (uint32_t)CHUNK_SIZE;
+        if ((copy_size - off) < (uint32_t)CHUNK_SIZE) {
+            this_chunk = copy_size - off;
+        }
+
+        uint8_t attempt = 0U;
+        Status_t rc = 0;
+        do {
+            rc = get_state()->backend->read(off, chunk, this_chunk);
+            if (0 == rc) {
+                rc = flash_area_write(slot1_fa, (off_t)off, chunk, this_chunk);
+            }
+            if (0 == rc) {
+                rc = verify_slot1_readback(slot1_fa, off, chunk, this_chunk);
+            }
+            ++attempt;
+        } while ((0 != rc) && (attempt < COPY_MAX_ATTEMPTS));
+
+        if (0 != rc) {
+            LOG_ERR("slot1 copy @0x%x failed after %d tries: %d",
+                    (unsigned)off, attempt, rc);
+            result = rc;
+        } else {
+            kick_all_heartbeats();
+        }
+    }
+    return result;
+}
+
+static Status_t copy_backend_to_slot1(void)
+{
+    Status_t result = 0;
     const struct factory_image_backend *backend = get_state()->backend;
     const struct flash_area *slot1_fa = NULL;
-    int rc = flash_area_open(PARTITION_ID(slot1_partition), &slot1_fa);
+    Status_t rc = flash_area_open(PARTITION_ID(slot1_partition), &slot1_fa);
 
     if (NULL == backend) {
         /* Callers guard this, but enforce it locally too. */
@@ -530,7 +680,6 @@ static int copy_backend_to_slot1(void)
             result = rc;
         } else {
             uint32_t slot1_size = (uint32_t)slot1_fa->fa_size;
-            uint8_t *chunk = get_chunk_buffer();
 
             /* Copy ONLY the image, not the whole slot: a full-slot copy carries
              * slot0's confirmed MCUBoot trailer into slot1, which intermittently
@@ -548,47 +697,13 @@ static int copy_backend_to_slot1(void)
                 LOG_ERR("factory image (%u B) > slot1 (%u B)",
                         (unsigned)copy_size, (unsigned)slot1_size);
                 result = -ENOSPC;
-            } else if (0 != (rc = flash_area_erase(slot1_fa, 0U, slot1_size))) {
-                LOG_ERR("slot1 erase failed: %d", rc);
-                result = rc;
             } else {
-                for (uint32_t off = 0U; off < copy_size; off += CHUNK_SIZE) {
-                    uint32_t this_chunk = ((copy_size - off) < (uint32_t)CHUNK_SIZE)
-                                        ? (copy_size - off)
-                                        : (uint32_t)CHUNK_SIZE;
-
-                    /* Read the backend, write slot1, then READ SLOT1 BACK and
-                     * compare. Retry the whole read/write/verify per chunk on any
-                     * error OR silent data mismatch. The shared SPI NOR's fast
-                     * back-to-back programming can leave a chunk wrong with the
-                     * write still returning 0 (or throw a transient -ETIMEDOUT
-                     * WIP-poll under bus contention); mcuboot hashes the WHOLE
-                     * slot1 image, so one unverified byte silently declines the
-                     * swap (HW 2026-07: restore ~50% left slot1 corrupt → unit
-                     * stayed on the pre-restore image). The read-back is a real
-                     * re-read of the NOR (no driver read cache), so it is proof
-                     * the bytes landed. */
-                    int attempt = 0;
-                    do {
-                        rc = get_state()->backend->read(off, chunk, this_chunk);
-                        if (0 == rc) {
-                            rc = flash_area_write(slot1_fa, off, chunk, this_chunk);
-                        }
-                        if (0 == rc) {
-                            rc = verify_slot1_readback(slot1_fa, off, chunk, this_chunk);
-                        }
-                        ++attempt;
-                    } while ((0 != rc) && (attempt < COPY_MAX_ATTEMPTS));
-
-                    if (0 != rc) {
-                        LOG_ERR("slot1 copy @0x%x failed after %d tries: %d",
-                                (unsigned)off, attempt, rc);
-                        result = rc;
-                        break;
-                    }
-                    for (uint32_t slot = 0U; slot < (uint32_t)HEARTBEAT_COUNT; ++slot) {
-                        heartbeat_kick((HeartbeatId_t)slot);
-                    }
+                rc = flash_area_erase(slot1_fa, 0U, slot1_size);
+                if (0 != rc) {
+                    LOG_ERR("slot1 erase failed: %d", rc);
+                    result = rc;
+                } else {
+                    result = stream_image_to_slot1(slot1_fa, copy_size);
                 }
             }
         }
@@ -600,15 +715,15 @@ static int copy_backend_to_slot1(void)
 /* Erase slot1's final flash page (where the MCUBoot trailer/boot-magic live) so
  * a following boot_request_upgrade writes to clean flash. The image occupies the
  * low part of the slot; the last page is padding/trailer only. */
-static int erase_slot1_trailer_page(const struct flash_area *slot1_fa)
+static Status_t erase_slot1_trailer_page(const struct flash_area *slot1_fa)
 {
     struct flash_pages_info pinfo;
-    off_t last = slot1_fa->fa_off + (off_t)slot1_fa->fa_size - 1;
-    int rc = flash_get_page_info_by_offs(slot1_fa->fa_dev, last, &pinfo);
+    off_t last = (slot1_fa->fa_off + (off_t)slot1_fa->fa_size) - 1;
+    Status_t rc = flash_get_page_info_by_offs(slot1_fa->fa_dev, last, &pinfo);
 
     if (0 == rc) {
         rc = flash_area_erase(slot1_fa,
-                              (off_t)pinfo.start_offset - slot1_fa->fa_off,
+                              pinfo.start_offset - slot1_fa->fa_off,
                               pinfo.size);
     }
     return rc;
@@ -622,32 +737,74 @@ static int erase_slot1_trailer_page(const struct flash_area *slot1_fa)
  * HW 2026-07-15). It DOES surface the failure cleanly: if staging never verifies
  * TEST the restore is REFUSED (-EIO) rather than rebooting into a silent no-swap.
  * Returns 0 once verified, -EIO after exhausting retries. */
-static int stage_pending_swap(const struct flash_area *slot1_fa)
+static Status_t stage_pending_swap(const struct flash_area *slot1_fa)
 {
-    int rc = -EIO;
+    Status_t result = -EIO;
 
-    for (int i = 0; i < STAGE_SWAP_MAX_ATTEMPTS; ++i) {
+    for (uint8_t i = 0U; (0 != result) && (i < STAGE_SWAP_MAX_ATTEMPTS); ++i) {
         /* Trailer is already erased on entry (image-only copy); re-erase only
          * between retries (a partial magic can't be re-written without erasing). */
-        if (i > 0) {
+        if (i > 0U) {
             (void)erase_slot1_trailer_page(slot1_fa);
         }
-        rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+        Status_t rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
         if ((0 == rc) && (BOOT_SWAP_TYPE_TEST == mcuboot_swap_type())
                       && (BOOT_SWAP_TYPE_TEST == mcuboot_swap_type())) {
-            return 0;
-        }
-        LOG_WRN("pending swap not registered (rc=%d, try %d)", rc, i + 1);
-        for (uint32_t s = 0U; s < (uint32_t)HEARTBEAT_COUNT; ++s) {
-            heartbeat_kick((HeartbeatId_t)s);
+            result = 0;
+        } else {
+            LOG_WRN("pending swap not registered (rc=%d, try %d)", rc, i + 1);
+            kick_all_heartbeats();
         }
     }
-    return -EIO;
+    return result;
 }
 
-int factory_image_restore_to_slot1(void)
+/**
+ * @brief Verify slot1's image-header magic, then stage the pending swap.
+ *
+ * slot1 holds ONLY the image with an erased trailer region, so
+ * boot_request_upgrade writes a clean pending-TEST trailer — no separate
+ * trailer-clear needed.
+ *
+ * @return 0 once the swap is staged and verified, negative errno otherwise.
+ */
+static Status_t verify_and_stage_slot1(void)
 {
-    int result = -EIO;
+    Status_t result = 0;
+    uint8_t magic_buf[4] = {0};
+    const struct flash_area *slot1_fa = NULL;
+    Status_t rc = flash_area_open(PARTITION_ID(slot1_partition), &slot1_fa);
+
+    if (0 != rc) {
+        result = rc;
+    } else {
+        rc = flash_area_read(slot1_fa, 0U, magic_buf, sizeof(magic_buf));
+        uint32_t magic = ((uint32_t)magic_buf[0])
+                       | ((uint32_t)magic_buf[1] << 8U)
+                       | ((uint32_t)magic_buf[2] << 16U)
+                       | ((uint32_t)magic_buf[3] << 24U);
+        if (0 != rc) {
+            result = rc;
+        } else if (IMAGE_HEADER_MAGIC != magic) {
+            LOG_ERR("Restored slot1 has wrong MCUBoot magic 0x%08x",
+                    (unsigned)magic);
+            result = -EBADF;
+        } else {
+            result = stage_pending_swap(slot1_fa);
+            if (0 == result) {
+                LOG_INF("Factory image staged for swap (verified) — rebooting");
+            } else {
+                LOG_ERR("Factory restore could not stage a pending swap");
+            }
+        }
+        flash_area_close(slot1_fa);
+    }
+    return result;
+}
+
+Status_t factory_image_restore_to_slot1(void)
+{
+    Status_t result = -EIO;
 
     if (NULL == get_state()->backend) {
         result = -ENODEV;
@@ -662,41 +819,11 @@ int factory_image_restore_to_slot1(void)
         get_state()->capture_in_progress = true;
         set_long_op(true);
 
-        int rc = copy_backend_to_slot1();
+        Status_t rc = copy_backend_to_slot1();
         if (0 != rc) {
             result = rc;
         } else {
-            /* Verify slot1's image-header magic, then stage the pending swap and
-             * confirm it registered (slot1 holds ONLY the image with an erased
-             * trailer region, so boot_request_upgrade writes a clean pending-TEST
-             * trailer — no separate trailer-clear needed). */
-            uint8_t magic_buf[4] = {0};
-            const struct flash_area *slot1_fa = NULL;
-            rc = flash_area_open(PARTITION_ID(slot1_partition), &slot1_fa);
-            if (0 != rc) {
-                result = rc;
-            } else {
-                rc = flash_area_read(slot1_fa, 0U, magic_buf, sizeof(magic_buf));
-                uint32_t magic = ((uint32_t)magic_buf[0])
-                               | ((uint32_t)magic_buf[1] << 8U)
-                               | ((uint32_t)magic_buf[2] << 16U)
-                               | ((uint32_t)magic_buf[3] << 24U);
-                if (0 != rc) {
-                    result = rc;
-                } else if (IMAGE_HEADER_MAGIC != magic) {
-                    LOG_ERR("Restored slot1 has wrong MCUBoot magic 0x%08x",
-                            (unsigned)magic);
-                    result = -EBADF;
-                } else {
-                    result = stage_pending_swap(slot1_fa);
-                    if (0 == result) {
-                        LOG_INF("Factory image staged for swap (verified) — rebooting");
-                    } else {
-                        LOG_ERR("Factory restore could not stage a pending swap");
-                    }
-                }
-                flash_area_close(slot1_fa);
-            }
+            result = verify_and_stage_slot1();
         }
 
         set_long_op(false);
@@ -712,7 +839,7 @@ int factory_image_restore_to_slot1(void)
     return result;
 }
 
-/* Restore runs on the factory workqueue (prio 10, below the zbus consumers — see
+/* Restore runs on the factory workqueue (prio 9, below the zbus consumers — see
  * FACTORY_WORK_PRIORITY) rather than synchronously on the prio-5 UDS handler
  * thread, so the consensus/PPO2 msg_subscriber consumers can preempt and drain
  * their net_buf pool during the multi-second copy. Pause the flash-log writer for
@@ -725,7 +852,7 @@ static void restore_work_handler(struct k_work *work)
 #ifdef CONFIG_FLASH_LOG
     flash_log_pause();
 #endif
-    int rc = factory_image_restore_to_slot1();
+    Status_t rc = factory_image_restore_to_slot1();
 #ifdef CONFIG_FLASH_LOG
     flash_log_resume();
 #endif
@@ -741,7 +868,7 @@ void factory_image_restore_async(void)
 {
     if (NULL != get_state()->backend) {
         ensure_work_q_started();
-        int rc = k_work_submit_to_queue(&factory_work_q, &restore_work);
+        Status_t rc = k_work_submit_to_queue(get_factory_work_q(), &restore_work);
 
         if (rc < 0) {
             OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
@@ -751,9 +878,9 @@ void factory_image_restore_async(void)
 
 /* ---- Version introspection ---- */
 
-static int factory_image_read_version_field(uint8_t *out_bytes, size_t len)
+static Status_t factory_image_read_ver_field(uint8_t *out_bytes, size_t len)
 {
-    int result = -EIO;
+    Status_t result = -EIO;
 
     if ((NULL == out_bytes) || (NULL == get_state()->backend)) {
         result = -EINVAL;
@@ -761,7 +888,7 @@ static int factory_image_read_version_field(uint8_t *out_bytes, size_t len)
         result = -ENOENT;
     } else {
         uint8_t header[32] = {0};
-        int rc = get_state()->backend->read(0U, header, sizeof(header));
+        Status_t rc = get_state()->backend->read(0U, header, sizeof(header));
         if (0 != rc) {
             result = rc;
         } else {
@@ -782,14 +909,14 @@ static int factory_image_read_version_field(uint8_t *out_bytes, size_t len)
     return result;
 }
 
-int factory_image_get_version(uint8_t out_version[4])
+Status_t factory_image_get_version(uint8_t out_version[4])
 {
-    return factory_image_read_version_field(out_version, VERSION_FIELD_LEN);
+    return factory_image_read_ver_field(out_version, VERSION_FIELD_LEN);
 }
 
-int factory_image_get_sem_ver(uint8_t out_sem_ver[8])
+Status_t factory_image_get_sem_ver(uint8_t out_sem_ver[8])
 {
-    return factory_image_read_version_field(out_sem_ver, SEM_VER_FIELD_LEN);
+    return factory_image_read_ver_field(out_sem_ver, SEM_VER_FIELD_LEN);
 }
 
 /* ---- Public API ---- */
@@ -805,14 +932,13 @@ bool factory_image_is_captured(void)
 
 void factory_image_maybe_capture_async(void)
 {
-    if (NULL != get_state()->backend) {
-        if (!get_state()->backend->is_captured()) {
-            ensure_work_q_started();
-            int rc = k_work_submit_to_queue(&factory_work_q, &capture_work);
+    if ((NULL != get_state()->backend) &&
+        (!get_state()->backend->is_captured())) {
+        ensure_work_q_started();
+        Status_t rc = k_work_submit_to_queue(get_factory_work_q(), &capture_work);
 
-            if (rc < 0) {
-                OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
-            }
+        if (rc < 0) {
+            OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
         }
     }
 }
@@ -821,7 +947,7 @@ void factory_image_force_capture_async(void)
 {
     if (NULL != get_state()->backend) {
         ensure_work_q_started();
-        int rc = k_work_submit_to_queue(&factory_work_q, &force_capture_work);
+        Status_t rc = k_work_submit_to_queue(get_factory_work_q(), &force_capture_work);
 
         if (rc < 0) {
             OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
@@ -835,7 +961,7 @@ void factory_image_init(void)
         get_state()->backend = resolve_backend();
     }
     if (NULL != get_state()->backend) {
-        int rc = get_state()->backend->init();
+        Status_t rc = get_state()->backend->init();
         if (0 != rc) {
             LOG_WRN("Backend init returned %d", rc);
         }
@@ -845,7 +971,7 @@ void factory_image_init(void)
 }
 
 #ifdef CONFIG_ZTEST
-int factory_image_capture_now_for_test(void)
+Status_t factory_image_capture_now_for_test(void)
 {
     return do_capture();
 }

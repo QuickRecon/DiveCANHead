@@ -27,7 +27,7 @@
 #include "errors.h"
 #include "heartbeat.h"
 
-#include <stdio.h>
+#include <zephyr/sys/printk.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -344,7 +344,7 @@ static void o2s_load_cal(struct o2s_cell_state *cell)
 {
     char key[O2S_KEY_BUFFER_LEN] = {0};
 
-    (void)snprintf(key, sizeof(key), "cal/cell%u", cell->cell_number);
+    (void)snprintk(key, sizeof(key), "cal/cell%u", cell->cell_number);
 
     CalCoeff_t coeff = 0.0f;
     Status_t len = settings_runtime_get(key, &coeff, sizeof(coeff));
@@ -354,7 +354,7 @@ static void o2s_load_cal(struct o2s_cell_state *cell)
         cell->cal_coeff = coeff;
         cell->status = CELL_OK;
 
-        Numeric_t frac_milli = (coeff - (int32_t)coeff) * (Numeric_t)MILLI_SCALE;
+        Numeric_t frac_milli = (coeff - (Numeric_t)(int32_t)coeff) * (Numeric_t)MILLI_SCALE;
 
         LOG_INF("O2S cell %u: loaded cal coeff %d.%03d",
                 cell->cell_number,
@@ -465,7 +465,7 @@ static bool o2s_setup(struct o2s_cell_state *cell)
 {
     bool ok = true;
 
-    k_sem_init(&cell->rx_sem, 0, 1);
+    (void)k_sem_init(&cell->rx_sem, 0, 1);
 
     if (false == device_is_ready(cell->uart_dev)) {
         LOG_ERR("UART not ready for O2S cell %u", cell->cell_number);

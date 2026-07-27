@@ -185,7 +185,7 @@ static void status_update_elapsed(void)
 {
     (void)k_mutex_lock(&autotune_mutex, K_FOREVER);
     AutotuneShared_t *s = getShared();
-    s->status.elapsed_s = ((uint32_t)k_uptime_get_32() - s->start_uptime_ms) / MS_PER_SEC;
+    s->status.elapsed_s = (k_uptime_get_32() - s->start_uptime_ms) / MS_PER_SEC;
     (void)k_mutex_unlock(&autotune_mutex);
 }
 
@@ -211,10 +211,10 @@ static AutotuneAbortReason_t check_safety(void)
     AutotuneAbortReason_t reason = AUTOTUNE_ABORT_NONE;
 
     (void)k_mutex_lock(&autotune_mutex, K_FOREVER);
-    AutotuneShared_t *s = getShared();
+    const AutotuneShared_t *s = getShared();
     bool aborted = s->abort_req;
     AutotuneAbortReason_t req_reason = s->abort_reason;
-    uint32_t elapsed_ms = (uint32_t)k_uptime_get_32() - s->start_uptime_ms;
+    uint32_t elapsed_ms = k_uptime_get_32() - s->start_uptime_ms;
     (void)k_mutex_unlock(&autotune_mutex);
 
     if (aborted) {
@@ -394,134 +394,204 @@ static void sanitize_params(AutotuneParams_t *p)
 
 /* ---- Plant experiment ---- */
 
+/** Baseline duty/PPO2 operating point measured by measure_baseline(). Bundled
+ * into a struct (rather than four separate out-params) so measure_plant()
+ * stays within the project's max-parameter-count limit (S107). */
+typedef struct {
+    PIDNumeric_t duty;
+    PIDNumeric_t ppo2;
+    PIDNumeric_t slope;
+    PIDNumeric_t noise;
+    uint16_t pressure_mbar;
+} AutotuneBaseline_t;
+
+/**
+ * @brief Measure a stable baseline duty/PPO2 operating point.
+ *
+ * Samples up to AUTOTUNE_BASELINE_MAX_WINDOWS windows of
+ * AUTOTUNE_BASELINE_SAMPLES consensus reads, updating the running baseline
+ * duty/PPO2/slope/noise estimates (and the status DID) after each window.
+ * Declares the baseline stable once the final window's slope estimate falls
+ * within +/-0.002 bar/s.
+ *
+ * Split out of measure_plant() (S3776/S134/S138: that function's cognitive
+ * complexity, if|for nesting, and line count all exceeded the project
+ * limits) — this windowed-sampling stage is a self-contained unit with no
+ * behavioural coupling to the excitation step that follows it.
+ *
+ * @param out Output: baseline duty/PPO2/slope/noise/pressure estimates.
+ *            Written incrementally after every completed window.
+ * @return AUTOTUNE_ABORT_NONE on a stable baseline, AUTOTUNE_ABORT_BASELINE
+ *         if every window completed but the slope never stabilised, or the
+ *         abort reason from check_safety()/a cell-failure sample.
+ */
+static AutotuneAbortReason_t measure_baseline(AutotuneBaseline_t *out)
+{
+    AutotuneAbortReason_t reason = AUTOTUNE_ABORT_NONE;
+    bool baseline_stable = false;
+    PIDNumeric_t aggregate_y = 0.0f;
+    PIDNumeric_t aggregate_u = 0.0f;
+    PIDNumeric_t first_window_mean = 0.0f;
+
+    for (uint8_t window = 0U;
+         (window < AUTOTUNE_BASELINE_MAX_WINDOWS) &&
+         (AUTOTUNE_ABORT_NONE == reason); ++window) {
+        PIDNumeric_t sum_y = 0.0f;
+        PIDNumeric_t sum_u = 0.0f;
+        PIDNumeric_t first_half_y = 0.0f;
+        PIDNumeric_t second_half_y = 0.0f;
+        PIDNumeric_t sum_y_sq = 0.0f;
+        for (uint16_t i = 0U; (i < AUTOTUNE_BASELINE_SAMPLES) &&
+             (AUTOTUNE_ABORT_NONE == reason); ++i) {
+            reason = check_safety();
+            ConsensusMsg_t consensus = {0};
+            Numeric_t duty = 0.0f;
+            if ((AUTOTUNE_ABORT_NONE == reason) &&
+                ((0 != zbus_chan_read(&chan_consensus, &consensus,
+                          K_MSEC(CHAN_TIMEOUT_MS))) ||
+                 (PPO2_FAIL == consensus.consensus_ppo2))) {
+                reason = AUTOTUNE_ABORT_CELL_FAIL;
+            }
+            if (AUTOTUNE_ABORT_NONE == reason) {
+                (void)zbus_chan_read(&chan_duty_cycle, &duty,
+                            K_MSEC(CHAN_TIMEOUT_MS));
+                uint16_t pressure_mbar = 0U;
+                (void)zbus_chan_read(&chan_atmos_pressure, &pressure_mbar,
+                            K_MSEC(CHAN_TIMEOUT_MS));
+                out->pressure_mbar = pressure_mbar;
+                duty = ppo2_control_effective_duty(duty, pressure_mbar);
+                if (i < (AUTOTUNE_BASELINE_SAMPLES / AUTOTUNE_BASELINE_HALF_DIVISOR)) {
+                    first_half_y +=
+                        (PIDNumeric_t)consensus.precision_consensus;
+                } else {
+                    second_half_y +=
+                        (PIDNumeric_t)consensus.precision_consensus;
+                }
+                sum_y += (PIDNumeric_t)consensus.precision_consensus;
+                sum_y_sq += (PIDNumeric_t)consensus.precision_consensus *
+                    (PIDNumeric_t)consensus.precision_consensus;
+                sum_u += (PIDNumeric_t)duty;
+                (void)k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
+                status_update_elapsed();
+            }
+        }
+        if (AUTOTUNE_ABORT_NONE == reason) {
+            aggregate_y += sum_y;
+            aggregate_u += sum_u;
+            const uint16_t windows_seen = (uint16_t)(window + 1U);
+            PIDNumeric_t samples_seen = (PIDNumeric_t)windows_seen *
+                (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES;
+            out->duty = aggregate_u / samples_seen;
+            out->ppo2 = aggregate_y / samples_seen;
+            PIDNumeric_t window_mean = sum_y /
+                (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES;
+            PIDNumeric_t window_variance =
+                (sum_y_sq / (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES) -
+                (window_mean * window_mean);
+            out->noise = sqrtf(fmaxf(window_variance, 0.0f));
+            if (0U == window) {
+                first_window_mean = window_mean;
+                /* Retain a within-window estimate until a longer baseline
+                 * exists; it is diagnostic only at this point. */
+                const uint16_t half_samples =
+                    AUTOTUNE_BASELINE_SAMPLES / AUTOTUNE_BASELINE_HALF_DIVISOR;
+                PIDNumeric_t half_n = (PIDNumeric_t)half_samples;
+                out->slope =
+                    ((second_half_y / half_n) -
+                     (first_half_y / half_n)) /
+                    (half_n * AUTOTUNE_DT_S);
+            } else {
+                PIDNumeric_t separation_s = (PIDNumeric_t)window *
+                    (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES * AUTOTUNE_DT_S;
+                out->slope =
+                    (window_mean - first_window_mean) / separation_s;
+            }
+            status_set_baseline(out->duty, out->slope, out->pressure_mbar);
+            baseline_stable = ((window + 1U) == AUTOTUNE_BASELINE_MAX_WINDOWS) &&
+                (fabsf(out->slope) <= 0.002f);
+        }
+    }
+    if ((AUTOTUNE_ABORT_NONE == reason) && (!baseline_stable)) {
+        reason = AUTOTUNE_ABORT_BASELINE;
+    }
+
+    return reason;
+}
+
+/**
+ * @brief Apply the sanitised excitation duty step and observe the response.
+ *
+ * Clamps the requested duty_step_pct into [AUTOTUNE_MIN_DUTY_STEP,
+ * AUTOTUNE_MAX_DUTY_STEP], adds it to the baseline duty (capped at 0.95),
+ * commands that duty live, and streams the response into duty_trace/ppo2_trace
+ * via autotune_observe(). Split out of measure_plant() alongside
+ * measure_baseline() for the same complexity/line-count reasons.
+ *
+ * @param duty_step_pct Requested excitation duty step, percent (already
+ *                      range-sanitised by sanitize_params()).
+ * @param duty_trace    Output: per-sample effective duty, length AUTOTUNE_OBSERVE_SAMPLES.
+ * @param ppo2_trace    Output: per-sample consensus PPO2, length AUTOTUNE_OBSERVE_SAMPLES.
+ * @param baseline_duty Baseline duty from measure_baseline(); the step is added to this.
+ * @return the abort reason if the run must stop, else AUTOTUNE_ABORT_NONE.
+ */
+static AutotuneAbortReason_t run_excitation_step(uint8_t duty_step_pct,
+                          PIDNumeric_t *duty_trace,
+                          PIDNumeric_t *ppo2_trace,
+                          PIDNumeric_t baseline_duty)
+{
+    PIDNumeric_t duty_step = (PIDNumeric_t)duty_step_pct / 100.0f;
+
+    if (duty_step < AUTOTUNE_MIN_DUTY_STEP) {
+        duty_step = AUTOTUNE_MIN_DUTY_STEP;
+    } else if (duty_step > AUTOTUNE_MAX_DUTY_STEP) {
+        duty_step = AUTOTUNE_MAX_DUTY_STEP;
+    } else {
+        /* Within range — no clamp required. */
+    }
+    PIDNumeric_t excited_duty = baseline_duty + duty_step;
+    if (excited_duty > 0.95f) {
+        excited_duty = 0.95f;
+    }
+    status_set_phase(AUTOTUNE_STEPPING);
+    ppo2_control_set_autotune_duty(true, (Numeric_t)excited_duty);
+
+    AutotuneAbortReason_t reason = autotune_observe(duty_trace, ppo2_trace,
+                              AUTOTUNE_OBSERVE_SAMPLES,
+                              AUTOTUNE_PULSE_SAMPLES,
+                              baseline_duty);
+
+    ppo2_control_set_autotune_duty(false, 0.0f);
+    return reason;
+}
+
 /**
  * @brief Measure one incremental-duty pulse and recovery.
  *
- * Applies the gains live, settles at the base setpoint, steps to @p after_cb,
- * observes the response, and scores it. On success @p cost_out holds the cost.
+ * Settles at the base setpoint, measures a stable baseline operating point,
+ * then applies the excitation step and observes the response.
  *
+ * @param base_cb       Base setpoint to settle at, centibar.
+ * @param duty_step_pct Requested excitation duty step, percent.
+ * @param duty_trace    Output: per-sample effective duty from the excitation step.
+ * @param ppo2_trace    Output: per-sample consensus PPO2 from the excitation step.
+ * @param baseline_out  Output: baseline duty/PPO2/slope/noise/pressure estimates.
  * @return the abort reason if the run must stop, else AUTOTUNE_ABORT_NONE.
  */
 static AutotuneAbortReason_t measure_plant(PPO2_t base_cb, uint8_t duty_step_pct,
                        PIDNumeric_t *duty_trace,
                        PIDNumeric_t *ppo2_trace,
-                       PIDNumeric_t *baseline_duty,
-                       PIDNumeric_t *baseline_ppo2,
-                       PIDNumeric_t *baseline_slope,
-                       PIDNumeric_t *baseline_noise,
-                       uint16_t *pressure_mbar_out)
+                       AutotuneBaseline_t *baseline_out)
 {
     status_set_phase(AUTOTUNE_SETTLING);
     publish_setpoint(base_cb);
     AutotuneAbortReason_t reason = autotune_wait(AUTOTUNE_SETTLE_MS);
 
     if (AUTOTUNE_ABORT_NONE == reason) {
-        bool baseline_stable = false;
-        PIDNumeric_t aggregate_y = 0.0f;
-        PIDNumeric_t aggregate_u = 0.0f;
-        PIDNumeric_t first_window_mean = 0.0f;
-        for (uint8_t window = 0U;
-             (window < AUTOTUNE_BASELINE_MAX_WINDOWS) &&
-             (AUTOTUNE_ABORT_NONE == reason); ++window) {
-            PIDNumeric_t sum_y = 0.0f;
-            PIDNumeric_t sum_u = 0.0f;
-            PIDNumeric_t first_half_y = 0.0f;
-            PIDNumeric_t second_half_y = 0.0f;
-            PIDNumeric_t sum_y_sq = 0.0f;
-            for (uint16_t i = 0U; (i < AUTOTUNE_BASELINE_SAMPLES) &&
-                 (AUTOTUNE_ABORT_NONE == reason); ++i) {
-                reason = check_safety();
-                ConsensusMsg_t consensus = {0};
-                Numeric_t duty = 0.0f;
-                if ((AUTOTUNE_ABORT_NONE == reason) &&
-                    ((0 != zbus_chan_read(&chan_consensus, &consensus,
-                              K_MSEC(CHAN_TIMEOUT_MS))) ||
-                     (PPO2_FAIL == consensus.consensus_ppo2))) {
-                    reason = AUTOTUNE_ABORT_CELL_FAIL;
-                }
-                if (AUTOTUNE_ABORT_NONE == reason) {
-                    (void)zbus_chan_read(&chan_duty_cycle, &duty,
-                                K_MSEC(CHAN_TIMEOUT_MS));
-                    uint16_t pressure_mbar = 0U;
-                    (void)zbus_chan_read(&chan_atmos_pressure, &pressure_mbar,
-                                K_MSEC(CHAN_TIMEOUT_MS));
-                    *pressure_mbar_out = pressure_mbar;
-                    duty = ppo2_control_effective_duty(duty, pressure_mbar);
-                    if (i < (AUTOTUNE_BASELINE_SAMPLES / AUTOTUNE_BASELINE_HALF_DIVISOR)) {
-                        first_half_y +=
-                            (PIDNumeric_t)consensus.precision_consensus;
-                    } else {
-                        second_half_y +=
-                            (PIDNumeric_t)consensus.precision_consensus;
-                    }
-                    sum_y += (PIDNumeric_t)consensus.precision_consensus;
-                    sum_y_sq += (PIDNumeric_t)consensus.precision_consensus *
-                        (PIDNumeric_t)consensus.precision_consensus;
-                    sum_u += (PIDNumeric_t)duty;
-                    (void)k_msleep((int32_t)AUTOTUNE_SAMPLE_PERIOD_MS);
-                    status_update_elapsed();
-                }
-            }
-            if (AUTOTUNE_ABORT_NONE == reason) {
-                aggregate_y += sum_y;
-                aggregate_u += sum_u;
-                const uint16_t windows_seen = (uint16_t)(window + 1U);
-                PIDNumeric_t samples_seen = (PIDNumeric_t)windows_seen *
-                    (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES;
-                *baseline_duty = aggregate_u / samples_seen;
-                *baseline_ppo2 = aggregate_y / samples_seen;
-                PIDNumeric_t window_mean = sum_y /
-                    (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES;
-                PIDNumeric_t window_variance =
-                    (sum_y_sq / (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES) -
-                    (window_mean * window_mean);
-                *baseline_noise = sqrtf(fmaxf(window_variance, 0.0f));
-                if (0U == window) {
-                    first_window_mean = window_mean;
-                    /* Retain a within-window estimate until a longer baseline
-                     * exists; it is diagnostic only at this point. */
-                    const uint16_t half_samples =
-                        AUTOTUNE_BASELINE_SAMPLES / AUTOTUNE_BASELINE_HALF_DIVISOR;
-                    PIDNumeric_t half_n = (PIDNumeric_t)half_samples;
-                    *baseline_slope =
-                        ((second_half_y / half_n) -
-                         (first_half_y / half_n)) /
-                        (half_n * AUTOTUNE_DT_S);
-                } else {
-                    PIDNumeric_t separation_s = (PIDNumeric_t)window *
-                        (PIDNumeric_t)AUTOTUNE_BASELINE_SAMPLES * AUTOTUNE_DT_S;
-                    *baseline_slope =
-                        (window_mean - first_window_mean) / separation_s;
-                }
-                status_set_baseline(*baseline_duty, *baseline_slope,
-                            *pressure_mbar_out);
-                baseline_stable = ((window + 1U) == AUTOTUNE_BASELINE_MAX_WINDOWS) &&
-                    (fabsf(*baseline_slope) <= 0.002f);
-            }
-        }
-        if ((AUTOTUNE_ABORT_NONE == reason) && (!baseline_stable)) {
-            reason = AUTOTUNE_ABORT_BASELINE;
-        }
+        reason = measure_baseline(baseline_out);
+
         if (AUTOTUNE_ABORT_NONE == reason) {
-            PIDNumeric_t duty_step = (PIDNumeric_t)duty_step_pct / 100.0f;
-            if (duty_step < AUTOTUNE_MIN_DUTY_STEP) {
-                duty_step = AUTOTUNE_MIN_DUTY_STEP;
-            } else if (duty_step > AUTOTUNE_MAX_DUTY_STEP) {
-                duty_step = AUTOTUNE_MAX_DUTY_STEP;
-            } else {
-                /* Within range — no clamp required. */
-            }
-            PIDNumeric_t excited_duty = *baseline_duty + duty_step;
-            if (excited_duty > 0.95f) {
-                excited_duty = 0.95f;
-            }
-            status_set_phase(AUTOTUNE_STEPPING);
-            ppo2_control_set_autotune_duty(true, (Numeric_t)excited_duty);
-            reason = autotune_observe(duty_trace, ppo2_trace,
-                          AUTOTUNE_OBSERVE_SAMPLES,
-                          AUTOTUNE_PULSE_SAMPLES,
-                          *baseline_duty);
-            ppo2_control_set_autotune_duty(false, 0.0f);
+            reason = run_excitation_step(duty_step_pct, duty_trace, ppo2_trace,
+                              baseline_out->duty);
         }
     }
 
@@ -549,19 +619,13 @@ static void run_autotune(void)
     AutotuneAbortReason_t reason = AUTOTUNE_ABORT_NONE;
     AutotuneTrace_t *trace = (AutotuneTrace_t *)
         maint_arena_claim(MAINT_ARENA_OWNER_AUTOTUNE);
-    PIDNumeric_t baseline_duty = 0.0f;
-    PIDNumeric_t baseline_ppo2 = 0.0f;
-    PIDNumeric_t baseline_slope = 0.0f;
-    PIDNumeric_t baseline_noise = 0.0f;
-    uint16_t pressure_mbar = 0U;
+    AutotuneBaseline_t baseline = {0};
     status_set_iteration(0U);
     if (trace == NULL) {
         reason = AUTOTUNE_ABORT_CONDITIONS;
     } else {
         reason = measure_plant(base_cb, params.excitation_duty_pct,
-                       trace->duty, trace->ppo2,
-                       &baseline_duty, &baseline_ppo2,
-                       &baseline_slope, &baseline_noise, &pressure_mbar);
+                       trace->duty, trace->ppo2, &baseline);
     }
 
     AutotunePlantModel_t model = {0};
@@ -572,13 +636,13 @@ static void run_autotune(void)
         /* Remove the measured pre-test drift before extracting incremental
          * plant response. Metabolic demand itself remains in baseline duty. */
         for (uint16_t i = 0U; i < AUTOTUNE_OBSERVE_SAMPLES; ++i) {
-            trace->ppo2[i] -= baseline_slope * (PIDNumeric_t)i * AUTOTUNE_DT_S;
+            trace->ppo2[i] -= baseline.slope * (PIDNumeric_t)i * AUTOTUNE_DT_S;
         }
     }
     if ((AUTOTUNE_ABORT_NONE == reason) &&
         (!autotune_identify_plant(trace->duty, trace->ppo2,
                      AUTOTUNE_OBSERVE_SAMPLES, AUTOTUNE_DT_S,
-                     baseline_duty, baseline_ppo2, baseline_noise, &model))) {
+                     baseline.duty, baseline.ppo2, baseline.noise, &model))) {
         reason = AUTOTUNE_ABORT_IDENTIFY;
     }
     if ((AUTOTUNE_ABORT_NONE == reason) &&
@@ -590,14 +654,14 @@ static void run_autotune(void)
     if (AUTOTUNE_ABORT_NONE == reason) {
         PIDNumeric_t dose = 0.0f;
         for (uint16_t i = 0U; i < AUTOTUNE_OBSERVE_SAMPLES; ++i) {
-            PIDNumeric_t du = trace->duty[i] - baseline_duty;
+            PIDNumeric_t du = trace->duty[i] - baseline.duty;
             if (du > 0.0f) {
                 dose += du * AUTOTUNE_DT_S;
             }
         }
         status_set_iteration(1U);
-        status_set_model(&model, baseline_slope, baseline_noise,
-                 pressure_mbar, dose);
+        status_set_model(&model, baseline.slope, baseline.noise,
+                 baseline.pressure_mbar, dose);
         status_set_best((Numeric_t)tuned_kp, (Numeric_t)tuned_ki,
                 (Numeric_t)tuned_kd, (Numeric_t)model.fit_rmse_bar);
     }
@@ -686,7 +750,7 @@ Status_t ppo2_autotune_start(const AutotuneParams_t *params)
             s->abort_req = false;
             s->abort_reason = AUTOTUNE_ABORT_NONE;
             s->running = true;
-            s->start_uptime_ms = (uint32_t)k_uptime_get_32();
+            s->start_uptime_ms = k_uptime_get_32();
             (void)memset(&s->status, 0, sizeof(s->status));
             s->status.state = AUTOTUNE_SETTLING;
             s->status.iteration_budget = s->params.iteration_budget;

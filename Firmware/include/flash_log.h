@@ -123,7 +123,7 @@ typedef struct {
 #define SOL_FIRE_EVT_FLUSH_END    3U /**< Setpoint-change flush solenoid closed */
 
 typedef struct {
-    uint8_t  kind;             /* SOL_FIRE_EVT_* */
+    uint8_t  kind;             /* one of the SOL_FIRE_EVT constants */
     uint32_t requested_on_us;
     uint32_t off_us;
 } SolenoidFireEvent_t;

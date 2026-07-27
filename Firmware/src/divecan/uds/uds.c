@@ -143,10 +143,9 @@ bool UDS_IsInDive(void)
 {
     bool in_dive = false;
     uint16_t ambient_mbar = 0;
-    if (0 == zbus_chan_read(&chan_atmos_pressure, &ambient_mbar, K_MSEC(UDS_ZBUS_READ_TIMEOUT_MS))) {
-        if (ambient_mbar > DIVE_AMBIENT_PRESSURE_THRESHOLD_MBAR) {
-            in_dive = true;
-        }
+    if ((0 == zbus_chan_read(&chan_atmos_pressure, &ambient_mbar, K_MSEC(UDS_ZBUS_READ_TIMEOUT_MS))) &&
+        (ambient_mbar > DIVE_AMBIENT_PRESSURE_THRESHOLD_MBAR)) {
+        in_dive = true;
     }
     return in_dive;
 }
@@ -570,7 +569,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
         const size_t readDidTableCount = ARRAY_SIZE(readDidTable);
 
         size_t readIdx = 0;
-        while ((readIdx < readDidTableCount) && !dispatched) {
+        while ((readIdx < readDidTableCount) && (!dispatched)) {
             if (readDidTable[readIdx].did == did) {
                 result = readDidTable[readIdx].fn(buf, dataOffset,
                                 maxAvailable, bytesWritten);
@@ -1317,7 +1316,7 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
         UDS_SendResponse(ctx);
         uint32_t flushPolls = 0U;
         bool flushDone = false;
-        while ((flushPolls < FLASH_ERASE_TX_FLUSH_POLLS) && !flushDone) {
+        while ((flushPolls < FLASH_ERASE_TX_FLUSH_POLLS) && (!flushDone)) {
             ISOTP_TxQueue_Poll(k_uptime_get_32());
             if ((!ISOTP_TxQueue_IsBusy()) &&
                 (0U == ISOTP_TxQueue_GetPendingCount())) {
@@ -1382,7 +1381,7 @@ static bool writeNvsEraseDID(UDSContext_t *ctx,
         UDS_SendResponse(ctx);
         uint32_t flushPolls = 0U;
         bool flushDone = false;
-        while ((flushPolls < FLASH_ERASE_TX_FLUSH_POLLS) && !flushDone) {
+        while ((flushPolls < FLASH_ERASE_TX_FLUSH_POLLS) && (!flushDone)) {
             ISOTP_TxQueue_Poll(k_uptime_get_32());
             if ((!ISOTP_TxQueue_IsBusy()) &&
                 (0U == ISOTP_TxQueue_GetPendingCount())) {
@@ -1643,7 +1642,7 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
         bool dispatched = false;
         const size_t writeDidTableCount = ARRAY_SIZE(writeDidTable);
         size_t writeIdx = 0;
-        while ((writeIdx < writeDidTableCount) && !dispatched) {
+        while ((writeIdx < writeDidTableCount) && (!dispatched)) {
             if (writeDidTable[writeIdx].did == did) {
                 (void)writeDidTable[writeIdx].fn(ctx, requestData,
                               requestLength);

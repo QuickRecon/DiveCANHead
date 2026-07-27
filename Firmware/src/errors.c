@@ -67,8 +67,13 @@ static Status_t errors_init(void)
         /* Take a non-volatile snapshot via memcpy. The volatile qualifier
          * on crash_noinit is only for link-time placement in noinit RAM;
          * by the time we read here (first reader after boot) the data has
-         * settled. memcpy avoids the volatile-stripping pointer cast that
-         * triggers M23_090/S859/M23_094. */
+         * settled. memcpy's `const void *src` parameter has no volatile
+         * overload in C, so reading a volatile source through it still
+         * requires dropping the qualifier at the call boundary (the
+         * M23_090/S859 cast below) — but that is the standard, minimal-UB
+         * way to bulk-copy a volatile buffer, safer than aliasing it
+         * through a typed non-volatile pointer. Accepted per-issue on
+         * SonarCloud (see docs/SONARQUBE_ACCEPTED_ISSUES.md). */
         (void)memcpy(&last_crash, (const void *)&crash_noinit,
                      sizeof(last_crash));
         had_crash = true;

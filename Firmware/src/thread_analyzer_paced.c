@@ -45,13 +45,16 @@ LOG_MODULE_REGISTER(thread_analyzer_paced, LOG_LEVEL_INF);
 #define PACED_STACK_SIZE 1024
 #define PACED_PRIORITY    14   /* low — pure observability, never preempts work */
 
+/** Percentage scale factor for stack-usage reporting. */
+static const uint32_t PACED_PERCENT_SCALE = 100U;
+
 static void paced_cb(struct thread_analyzer_info *info)
 {
     size_t stack_free = info->stack_size - info->stack_used;
     uint32_t pct = 0U;
 
     if (info->stack_size > 0U) {
-        pct = (uint32_t)((info->stack_used * 100U) / info->stack_size);
+        pct = (uint32_t)((info->stack_used * PACED_PERCENT_SCALE) / info->stack_size);
     }
 
 #ifdef CONFIG_THREAD_RUNTIME_STATS

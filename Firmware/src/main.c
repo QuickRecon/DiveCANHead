@@ -15,7 +15,7 @@
 
 #include <math.h>
 #include <stdarg.h>
-#include <stdio.h>
+#include <zephyr/sys/printk.h>
 
 #include "calibration.h"
 #include "power_management.h"
@@ -254,7 +254,7 @@ static void preamble_line(const char *fmt, ...)
     va_list ap;
 
     va_start(ap, fmt);
-    int32_t n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    int32_t n = vsnprintk(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
     if (n >= 0) {
@@ -343,28 +343,38 @@ static void emit_startup_preamble(void)
 #else
     preamble_line("Solenoids: none (solenoid driver disabled)");
 #endif
-    const char *o2_sol_flag = "N";
+    const char *o2_sol_flag;
     if (0 != IS_ENABLED(CONFIG_HAS_O2_SOLENOID)) {
         o2_sol_flag = "Y";
+    } else {
+        o2_sol_flag = "N";
     }
-    const char *flush_sol_flag = "N";
+    const char *flush_sol_flag;
     if (0 != IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID)) {
         flush_sol_flag = "Y";
+    } else {
+        flush_sol_flag = "N";
     }
-    const char *digital_cell_flag = "N";
+    const char *digital_cell_flag;
     if (0 != IS_ENABLED(CONFIG_HAS_DIGITAL_CELL)) {
         digital_cell_flag = "Y";
+    } else {
+        digital_cell_flag = "N";
     }
-    const char *analog_cell_flag = "N";
+    const char *analog_cell_flag;
     if (0 != IS_ENABLED(CONFIG_HAS_ANALOG_CELL)) {
         analog_cell_flag = "Y";
+    } else {
+        analog_cell_flag = "N";
     }
     preamble_line("Has flags: o2_sol=%s flush_sol=%s digital_cell=%s analog_cell=%s",
                   o2_sol_flag, flush_sol_flag, digital_cell_flag, analog_cell_flag);
 
-    const char *depth_comp_default_flag = "N";
+    const char *depth_comp_default_flag;
     if (0 != IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT)) {
         depth_comp_default_flag = "Y";
+    } else {
+        depth_comp_default_flag = "N";
     }
     preamble_line("Compile defaults: ppo2=%s cal=%s depth_comp=%s",
                   COMPILE_PPO2_DEFAULT_STR,
@@ -441,7 +451,7 @@ Status_t main(void)
      * this session. Producer hooks (zbus listeners, CAN tap, custom
      * log backend) will start emitting once their init runs. */
     (void)flash_log_init();
-    CrashInfo_t prev_crash;
+    CrashInfo_t prev_crash = {0};
     const CrashInfo_t *prev = NULL;
     if (errors_get_last_crash(&prev_crash)) {
         prev = &prev_crash;

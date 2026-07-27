@@ -407,7 +407,7 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
 
 Status_t runtime_settings_save_field(RuntimeSettingField_t field)
 {
-    RuntimeSettings_t *cached = getCached();
+    const RuntimeSettings_t *cached = getCached();
     Status_t rc = -EINVAL;
 
     /* The live cache is the source of truth; the value being saved was already

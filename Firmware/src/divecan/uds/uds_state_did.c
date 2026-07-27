@@ -207,7 +207,7 @@ static void writeSemVer8(uint8_t *buf, const struct mcuboot_img_sem_ver *v)
     buf[SEMVER_OFF_MAJOR] = v->major;
     buf[SEMVER_OFF_MINOR] = v->minor;
     buf[SEMVER_OFF_REV_LO] = (uint8_t)(v->revision);
-    buf[SEMVER_OFF_REV_HI] = (uint8_t)((uint16_t)(v->revision) >> DIVECAN_BYTE_WIDTH);
+    buf[SEMVER_OFF_REV_HI] = (uint8_t)(v->revision >> DIVECAN_BYTE_WIDTH);
     buf[SEMVER_OFF_BUILD_0] = (uint8_t)(v->build_num);
     buf[SEMVER_OFF_BUILD_1] = (uint8_t)(v->build_num >> DIVECAN_BYTE_WIDTH);
     buf[SEMVER_OFF_BUILD_2] = (uint8_t)(v->build_num >> DIVECAN_TWO_BYTE_WIDTH);
@@ -225,7 +225,7 @@ static void writeSemVer4(uint8_t *buf, const struct mcuboot_img_sem_ver *v)
     buf[SEMVER_OFF_MAJOR] = v->major;
     buf[SEMVER_OFF_MINOR] = v->minor;
     buf[SEMVER_OFF_REV_LO] = (uint8_t)(v->revision);
-    buf[SEMVER_OFF_REV_HI] = (uint8_t)((uint16_t)(v->revision) >> DIVECAN_BYTE_WIDTH);
+    buf[SEMVER_OFF_REV_HI] = (uint8_t)(v->revision >> DIVECAN_BYTE_WIDTH);
 }
 
 /**
@@ -277,7 +277,7 @@ static void fillSlotVersion4(uint8_t area_id, uint8_t *buf)
 static void fillFactoryVersion8(uint8_t *buf)
 {
     uint8_t sem_ver[8] = {0};
-    int rc = factory_image_get_sem_ver(sem_ver);
+    Status_t rc = factory_image_get_sem_ver(sem_ver);
     if (0 == rc) {
         (void)memcpy(buf, sem_ver, OTA_VERSION_LEN);
     } else {
@@ -288,7 +288,7 @@ static void fillFactoryVersion8(uint8_t *buf)
 static void fillFactoryVersion4(uint8_t *buf)
 {
     uint8_t version4[4] = {0};
-    int rc = factory_image_get_version(version4);
+    Status_t rc = factory_image_get_version(version4);
     if (0 == rc) {
         (void)memcpy(buf, version4, OTA_VERSION_SHORT_LEN);
     } else {
@@ -516,10 +516,9 @@ static void buildCellsValidStatus(uint8_t *buf, uint16_t *len)
 {
     ConsensusMsg_t consensus = {0};
     uint8_t valid = 0U;
-    uint8_t i = 0U;
 
     (void)zbus_chan_read(&chan_consensus, &consensus, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
-    for (i = 0U; i < CELL_MAX_COUNT; ++i) {
+    for (uint8_t i = 0U; i < CELL_MAX_COUNT; ++i) {
         if (consensus.include_array[i]) {
             valid |= (1U << i);
         }
@@ -766,9 +765,7 @@ static bool buildErrorHistogramStatus(uint8_t *buf, uint16_t maxLen, uint16_t *l
         size_t written = error_histogram_snapshot(snap, ERROR_HISTOGRAM_COUNT);
 
         if (written > 0U) {
-            size_t i = 0U;
-
-            for (i = 0U; i < ERROR_HISTOGRAM_COUNT; ++i) {
+            for (size_t i = 0U; i < ERROR_HISTOGRAM_COUNT; ++i) {
                 writeUint16(&buf[i * sizeof(uint16_t)], snap[i]);
             }
             *len = (uint16_t)written;

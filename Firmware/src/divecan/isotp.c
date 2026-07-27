@@ -18,6 +18,13 @@
 
 LOG_MODULE_REGISTER(isotp, LOG_LEVEL_INF);
 
+/* Number of RX-only SM states registered in isotp_states (ISOTP_IDLE,
+ * ISOTP_RECEIVING). TRANSMITTING/WAIT_FC are legacy ISOTPState_t members
+ * owned by the centralized TX queue's own state field and are never
+ * registered here. Must be #define per the array-size-declaration carve-out
+ * (static const is not an integer constant expression in C). */
+#define ISOTP_RX_STATE_COUNT 2U
+
 /* Forward declarations of internal functions */
 static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
 static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
@@ -25,7 +32,7 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
 static void SendFlowControl(const ISOTPContext_t *ctx, uint8_t flowStatus, uint8_t blockSize, uint8_t stmin);
 
 /* Forward declaration of the RX state table (defined below the action functions). */
-static const struct smf_state isotp_states[];
+static const struct smf_state isotp_states[ISOTP_RX_STATE_COUNT];
 
 /**
  * @brief Classify a PCI byte into the RX SM event vocabulary.
@@ -129,7 +136,7 @@ static enum smf_state_result isotp_receiving_run(void *obj)
     return SMF_EVENT_HANDLED;
 }
 
-static const struct smf_state isotp_states[] = {
+static const struct smf_state isotp_states[ISOTP_RX_STATE_COUNT] = {
     [ISOTP_IDLE]      = SMF_CREATE_STATE(isotp_idle_entry,      isotp_idle_run,      NULL, NULL, NULL),
     [ISOTP_RECEIVING] = SMF_CREATE_STATE(isotp_receiving_entry, isotp_receiving_run, NULL, NULL, NULL),
     /* TX-side states (TRANSMITTING / WAIT_FC) are not registered here —

@@ -189,8 +189,9 @@ Reports land at:
 * `coverage-report/coverage.xml` — gcovr SonarQube generic-coverage XML,
   ready to upload alongside a SonarCloud scan
 
-The report filters to `src/` and excludes `tests/` and
-`drivers/gpio_sim/` so the percentage reflects application coverage, not
+The report filters to `src/`, `drivers/`, and `include/` and excludes
+`tests/` and `drivers/gpio_sim/` so the percentage reflects application
+coverage (including the ADS1x1x/solenoid drivers and header inlines), not
 test scaffolding.
 
 ## Documentation Maintenance

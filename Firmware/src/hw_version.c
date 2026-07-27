@@ -267,8 +267,9 @@ static Status_t hw_version_init(const struct device *dev)
 
 /* Per-instance device definition glue. The `##` token-pasting and `#define`
  * pattern below is the standard Zephyr DT_DRV_COMPAT idiom — replacing it
- * is not possible. Suppress S960/S968/S958/M23_042/M23_212/S967 for these
- * lines via sonar-project.properties. */
+ * is not possible. S960/S968/M23_042/M23_212/S967 are accepted per-issue on
+ * SonarCloud for these lines (no blanket rule suppression exists in
+ * sonar-project.properties — see docs/SONARQUBE_ACCEPTED_ISSUES.md). */
 #define HW_VERSION_GPIO_SPEC(node, prop, idx) \
     GPIO_DT_SPEC_GET_BY_IDX(node, prop, idx),
 
