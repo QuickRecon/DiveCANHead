@@ -31,69 +31,125 @@
 #include "runtime_settings.h"
 #include "maintenance_arena.h"
 
-/* ---- Stubs for symbols uds.c references but we don't need to exercise ----
+/* ---- Controllable stubs for symbols uds.c references ----
  *
  * uds_state_did.c and uds_settings.c are excluded from the test build because
  * they transitively depend on DT-resolved devices (power, oxygen cells) that
- * don't exist on native_sim. Provide empty stubs so the linker is happy. */
+ * don't exist on native_sim. Small configurable stand-ins let this suite cover
+ * the UDS dispatch/serialization layer without duplicating those modules. */
+
+static struct {
+    bool state_is_did;
+    bool state_read_ok;
+    uint16_t state_did;
+    uint16_t state_len;
+    uint8_t setting_count;
+    bool setting_save_ok;
+    bool setting_set_ok;
+    bool option_label_ok;
+    uint64_t setting_value;
+    ssize_t device_id_rc;
+    int histogram_clear_rc;
+    bool factory_image_captured;
+    int factory_restore_async_calls;
+    int factory_capture_async_calls;
+    int flash_mass_erase_rc;
+} uds_stub;
+
+static const char * const TEST_SETTING_OPTIONS[] = {
+    "Off",
+    "Enabled",
+};
+
+static const SettingDefinition_t TEST_SETTINGS[] = {
+    {
+        .label = "Mode",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .maxValue = 1U,
+        .options = TEST_SETTING_OPTIONS,
+        .optionCount = ARRAY_SIZE(TEST_SETTING_OPTIONS),
+    },
+    {
+        .label = "Gain",
+        .kind = SETTING_KIND_NUMBER,
+        .editable = false,
+        .maxValue = UINT64_C(0x0102030405060708),
+        .options = NULL,
+        .optionCount = 0U,
+    },
+};
 
 bool UDS_StateDID_IsStateDID(uint16_t did)
 {
-    ARG_UNUSED(did);
-    return false;
+    return uds_stub.state_is_did && (did == uds_stub.state_did);
 }
 
 bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *buf, uint16_t maxLen,
                  uint16_t *outLen)
 {
-    ARG_UNUSED(did); ARG_UNUSED(buf); ARG_UNUSED(maxLen);
-    *outLen = 0;
+    ARG_UNUSED(did);
+    if (uds_stub.state_read_ok && (maxLen >= uds_stub.state_len)) {
+        memset(buf, 0xA5, uds_stub.state_len);
+        *outLen = uds_stub.state_len;
+        return true;
+    }
+    *outLen = 0U;
     return false;
 }
 
-uint8_t UDS_GetSettingCount(void) { return 0; }
+uint8_t UDS_GetSettingCount(void) { return uds_stub.setting_count; }
 
 const SettingDefinition_t *UDS_GetSettingInfo(uint8_t idx)
 {
-    ARG_UNUSED(idx);
+    if ((idx < uds_stub.setting_count) && (idx < ARRAY_SIZE(TEST_SETTINGS))) {
+        return &TEST_SETTINGS[idx];
+    }
     return NULL;
 }
 
 uint64_t UDS_GetSettingValue(uint8_t idx)
 {
     ARG_UNUSED(idx);
-    return 0;
+    return uds_stub.setting_value;
 }
 
 const char *UDS_GetSettingOptionLabel(uint8_t setting, uint8_t option)
 {
-    ARG_UNUSED(setting); ARG_UNUSED(option);
+    if (uds_stub.option_label_ok && (0U == setting) &&
+        (option < ARRAY_SIZE(TEST_SETTING_OPTIONS))) {
+        return TEST_SETTING_OPTIONS[option];
+    }
     return NULL;
 }
 
 bool UDS_SaveSettingValue(uint8_t idx, uint64_t value)
 {
-    ARG_UNUSED(idx); ARG_UNUSED(value);
-    return false;
+    ARG_UNUSED(idx);
+    uds_stub.setting_value = value;
+    return uds_stub.setting_save_ok;
 }
 
 bool UDS_SetSettingValue(uint8_t idx, uint64_t value)
 {
-    ARG_UNUSED(idx); ARG_UNUSED(value);
-    return false;
+    ARG_UNUSED(idx);
+    uds_stub.setting_value = value;
+    return uds_stub.setting_set_ok;
 }
 
 void UDS_DecodeSettingLabelDID(uint16_t did, uint8_t *settingIndex,
                    uint8_t *optionIndex)
 {
-    ARG_UNUSED(did);
-    if (settingIndex != NULL) { *settingIndex = 0U; }
-    if (optionIndex != NULL) { *optionIndex = 0U; }
+    uint16_t offset = did - UDS_DID_SETTING_LABEL_BASE;
+    if (settingIndex != NULL) { *settingIndex = (uint8_t)(offset >> 4); }
+    if (optionIndex != NULL) { *optionIndex = (uint8_t)(offset & 0x0FU); }
 }
 
 uint16_t UDS_FormatOptionLabel(const char *label, uint8_t *out, uint16_t width)
 {
-    ARG_UNUSED(label); ARG_UNUSED(out);
+    size_t label_len = strnlen(label, width);
+    memset(out, ' ', width);
+    memcpy(out, label, label_len);
     return width;
 }
 
@@ -106,6 +162,9 @@ static const uint8_t STUB_DEVICE_ID[] = {
 
 ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
 {
+    if (uds_stub.device_id_rc <= 0) {
+        return uds_stub.device_id_rc;
+    }
     size_t n = length;
     if (n > sizeof(STUB_DEVICE_ID)) {
         n = sizeof(STUB_DEVICE_ID);
@@ -114,7 +173,7 @@ ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
     return (ssize_t)n;
 }
 
-int error_histogram_clear(void) { return 0; }
+int error_histogram_clear(void) { return uds_stub.histogram_clear_rc; }
 void error_histogram_pause(void) { }
 void error_histogram_resume(void) { }
 
@@ -140,7 +199,7 @@ bool ISOTP_TxQueue_IsBusy(void) { return false; }
 
 uint8_t ISOTP_TxQueue_GetPendingCount(void) { return 0U; }
 
-int flash_mass_erase_external(void) { return 0; }
+int flash_mass_erase_external(void) { return uds_stub.flash_mass_erase_rc; }
 
 void heartbeat_set_long_op(bool in_progress)
 {
@@ -150,10 +209,10 @@ void heartbeat_set_long_op(bool in_progress)
 /* factory_image_* are referenced by uds.c's OTA write-DID handlers
  * (0xF276 / 0xF277). The uds_ota suite doesn't exercise those write
  * paths — these stubs exist only to satisfy the linker. */
-bool factory_image_is_captured(void) { return false; }
+bool factory_image_is_captured(void) { return uds_stub.factory_image_captured; }
 int  factory_image_restore_to_slot1(void) { return -ENOSYS; }
-void factory_image_restore_async(void) {}
-void factory_image_force_capture_async(void) {}
+void factory_image_restore_async(void) { uds_stub.factory_restore_async_calls++; }
+void factory_image_force_capture_async(void) { uds_stub.factory_capture_async_calls++; }
 
 ZBUS_CHAN_DEFINE(chan_cal_request, CalRequest_t, NULL, NULL,
          ZBUS_OBSERVERS_EMPTY, ZBUS_MSG_INIT(0));
@@ -221,6 +280,7 @@ typedef struct {
     int  boot_request_upgrade_calls;
     int  boot_request_upgrade_arg;
     int  boot_request_upgrade_rc;
+    bool boot_is_img_confirmed;
     int  sys_reboot_calls;
     uint8_t captured_response[UDS_MAX_RESPONSE_LENGTH];
     uint16_t captured_response_len;
@@ -336,6 +396,11 @@ int __wrap_boot_request_upgrade(int permanent)
     return ota_stub.boot_request_upgrade_rc;
 }
 
+bool __wrap_boot_is_img_confirmed(void)
+{
+    return ota_stub.boot_is_img_confirmed;
+}
+
 /* sys_reboot is FUNC_NORETURN in its real prototype, and GCC eliminates any
  * code after the call site at the optimizer level. Returning normally from
  * the wrap lands the CPU on garbage. Instead, longjmp back to a setjmp the
@@ -412,6 +477,31 @@ static void send_ota(uint8_t sid, const uint8_t *body, size_t body_len)
         (void)memcpy(&req[UDS_SID_IDX + 1U], body, copy_len);
     }
     UDS_OTA_Handle(&test_ctx, req, (uint16_t)(copy_len + 2U));
+}
+
+static void send_read_dids(const uint16_t *dids, size_t did_count)
+{
+    uint8_t body[UDS_MAX_REQUEST_LENGTH - 2U] = {0};
+
+    zassert_true((did_count * 2U) <= sizeof(body), "too many DIDs");
+    for (size_t i = 0U; i < did_count; i++) {
+        body[i * 2U] = (uint8_t)(dids[i] >> 8);
+        body[(i * 2U) + 1U] = (uint8_t)dids[i];
+    }
+    send_uds(UDS_SID_READ_DATA_BY_ID, body, did_count * 2U);
+}
+
+static void send_write_did(uint16_t did, const uint8_t *data, size_t data_len)
+{
+    uint8_t body[UDS_MAX_REQUEST_LENGTH - 2U] = {0};
+
+    zassert_true((data_len + 2U) <= sizeof(body), "write too long");
+    body[0] = (uint8_t)(did >> 8);
+    body[1] = (uint8_t)did;
+    if ((NULL != data) && (data_len > 0U)) {
+        memcpy(&body[2], data, data_len);
+    }
+    send_uds(UDS_SID_WRITE_DATA_BY_ID, body, data_len + 2U);
 }
 
 /* Populate slot1 buffer with a minimum valid MCUBoot image:
@@ -498,6 +588,8 @@ static void test_setup(void *fixture)
     ARG_UNUSED(fixture);
     memset(&flash_stub, 0, sizeof(flash_stub));
     memset(&ota_stub, 0, sizeof(ota_stub));
+    memset(&uds_stub, 0, sizeof(uds_stub));
+    uds_stub.device_id_rc = sizeof(STUB_DEVICE_ID);
     /* MCUBoot bank header read returns success by default with a valid
      * v0.0.0+0 image_size large enough to satisfy 0x37 sanity checks. */
     ota_stub.next_bank_header.mcuboot_version = 1;
@@ -509,6 +601,306 @@ static void test_setup(void *fixture)
     /* Fresh UDS context starts in DEFAULT session at surface ambient. */
     UDS_Init(&test_ctx, &test_isotp_ctx);
     set_ambient_pressure_mbar(1013U);
+}
+
+ZTEST_SUITE(uds_core_reads, NULL, NULL, test_setup, NULL, NULL);
+
+ZTEST(uds_core_reads, test_entry_point_guards_and_session_timeout)
+{
+    uint8_t request[] = {0x00U, 0x99U};
+
+    UDS_Init(NULL, &test_isotp_ctx);
+    UDS_ProcessRequest(NULL, request, sizeof(request));
+    UDS_ProcessRequest(&test_ctx, NULL, sizeof(request));
+    UDS_ProcessRequest(&test_ctx, request, 0U);
+    UDS_MaintainSession(NULL);
+    UDS_SendNegativeResponse(NULL, 0x99U, UDS_NRC_SERVICE_NOT_SUPPORTED);
+    UDS_SendResponse(NULL);
+
+    UDSContext_t no_transport = {0};
+    UDS_SendNegativeResponse(&no_transport, 0x99U,
+                 UDS_NRC_SERVICE_NOT_SUPPORTED);
+    UDS_SendResponse(&no_transport);
+    no_transport.isotpContext = &test_isotp_ctx;
+    UDS_SendResponse(&no_transport);
+
+    test_ctx.session = UDS_SESSION_PROGRAMMING;
+    test_ctx.lastActivityMs = k_uptime_get_32() - UDS_S3_TIMEOUT_MS - 1U;
+    UDS_MaintainSession(&test_ctx);
+    zassert_equal(test_ctx.session, UDS_SESSION_DEFAULT);
+}
+
+ZTEST(uds_core_reads, test_exact_identifier_reads)
+{
+    const uint16_t dids[] = {
+        UDS_DID_FIRMWARE_VERSION,
+        UDS_DID_HARDWARE_VERSION,
+        UDS_DID_VARIANT_NAME,
+        UDS_DID_SERIAL_NUMBER,
+        UDS_DID_SETTING_COUNT,
+    };
+
+    send_read_dids(dids, ARRAY_SIZE(dids));
+    zassert_equal(ota_stub.captured_response[0],
+              UDS_SID_READ_DATA_BY_ID + 0x40U);
+    zassert_true(ota_stub.captured_response_len > 1U);
+}
+
+ZTEST(uds_core_reads, test_serial_and_state_read_failures)
+{
+    uint16_t did = UDS_DID_SERIAL_NUMBER;
+
+    uds_stub.device_id_rc = -EIO;
+    send_read_dids(&did, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_OUT_OF_RANGE);
+
+    uds_stub.state_is_did = true;
+    uds_stub.state_did = 0xF200U;
+    uds_stub.state_read_ok = false;
+    did = uds_stub.state_did;
+    send_read_dids(&did, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_OUT_OF_RANGE);
+}
+
+ZTEST(uds_core_reads, test_state_and_setting_serialization)
+{
+    uint16_t did;
+
+    uds_stub.state_is_did = true;
+    uds_stub.state_read_ok = true;
+    uds_stub.state_did = 0xF200U;
+    uds_stub.state_len = 3U;
+    did = uds_stub.state_did;
+    send_read_dids(&did, 1U);
+    zassert_equal(ota_stub.captured_response[0],
+              UDS_SID_READ_DATA_BY_ID + 0x40U);
+
+    uds_stub.setting_count = ARRAY_SIZE(TEST_SETTINGS);
+    uds_stub.setting_value = UINT64_C(0x1122334455667788);
+    uds_stub.option_label_ok = true;
+    const uint16_t setting_dids[] = {
+        UDS_DID_SETTING_INFO_BASE,
+        UDS_DID_SETTING_INFO_BASE + 1U,
+        UDS_DID_SETTING_VALUE_BASE,
+        UDS_DID_SETTING_LABEL_BASE,
+        UDS_DID_SETTING_LABEL_BASE + 1U,
+    };
+    for (size_t i = 0U; i < ARRAY_SIZE(setting_dids); i++) {
+        send_read_dids(&setting_dids[i], 1U);
+        zassert_equal(ota_stub.captured_response[0],
+                  UDS_SID_READ_DATA_BY_ID + 0x40U,
+                  "setting DID 0x%04x failed", setting_dids[i]);
+    }
+
+    uds_stub.option_label_ok = false;
+    did = UDS_DID_SETTING_LABEL_BASE;
+    send_read_dids(&did, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_OUT_OF_RANGE);
+}
+
+ZTEST(uds_core_reads, test_malformed_unknown_and_oversized_reads)
+{
+    uint8_t odd_body[] = {0xF0U};
+
+    send_uds(UDS_SID_READ_DATA_BY_ID, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_INCORRECT_MSG_LEN);
+    send_uds(UDS_SID_READ_DATA_BY_ID, odd_body, sizeof(odd_body));
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_INCORRECT_MSG_LEN);
+
+    uint16_t unknown = 0xFFFFU;
+    send_read_dids(&unknown, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_OUT_OF_RANGE);
+
+    uint16_t many_dids[19];
+    for (size_t i = 0U; i < ARRAY_SIZE(many_dids); i++) {
+        many_dids[i] = UDS_DID_SERIAL_NUMBER;
+    }
+    uds_stub.device_id_rc = sizeof(STUB_DEVICE_ID);
+    send_read_dids(many_dids, ARRAY_SIZE(many_dids));
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_RESPONSE_TOO_LONG);
+}
+
+ZTEST_SUITE(uds_core_writes, NULL, NULL, test_setup, NULL, NULL);
+
+ZTEST(uds_core_writes, test_setting_and_histogram_writes)
+{
+    uint8_t value[8] = {0x01U, 0x02U, 0x03U, 0x04U,
+                0x05U, 0x06U, 0x07U, 0x08U};
+
+    uds_stub.setting_count = ARRAY_SIZE(TEST_SETTINGS);
+    uds_stub.setting_save_ok = true;
+    send_write_did(UDS_DID_SETTING_SAVE_BASE, value, sizeof(value));
+    zassert_equal(ota_stub.captured_response[0],
+              UDS_SID_WRITE_DATA_BY_ID + 0x40U);
+    zassert_equal(uds_stub.setting_value, UINT64_C(0x0102030405060708));
+
+    uds_stub.setting_save_ok = false;
+    send_write_did(UDS_DID_SETTING_SAVE_BASE, value, sizeof(value));
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_OUT_OF_RANGE);
+
+    send_write_did(UDS_DID_SETTING_VALUE_BASE, value, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_INCORRECT_MSG_LEN);
+
+    uds_stub.setting_set_ok = true;
+    send_write_did(UDS_DID_SETTING_VALUE_BASE, value, sizeof(value));
+    zassert_equal(ota_stub.captured_response[0],
+              UDS_SID_WRITE_DATA_BY_ID + 0x40U);
+    uds_stub.setting_set_ok = false;
+    send_write_did(UDS_DID_SETTING_VALUE_BASE, value, sizeof(value));
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_OUT_OF_RANGE);
+
+    uds_stub.histogram_clear_rc = 0;
+    send_write_did(UDS_DID_ERROR_HISTOGRAM_CLEAR, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[0],
+              UDS_SID_WRITE_DATA_BY_ID + 0x40U);
+    uds_stub.histogram_clear_rc = -EIO;
+    send_write_did(UDS_DID_ERROR_HISTOGRAM_CLEAR, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_CONDITIONS_NOT_CORRECT);
+}
+
+ZTEST(uds_core_writes, test_malformed_unknown_and_action_preconditions)
+{
+    const uint16_t action_dids[] = {
+        UDS_DID_OTA_FORCE_REVERT,
+        UDS_DID_OTA_RESTORE_FACTORY,
+        UDS_DID_OTA_FACTORY_CAPTURE,
+        UDS_DID_FACTORY_FLASH_ERASE,
+        UDS_DID_NVS_ERASE,
+    };
+    uint8_t magic = 0x01U;
+
+    send_uds(UDS_SID_WRITE_DATA_BY_ID, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_INCORRECT_MSG_LEN);
+
+    send_write_did(0xFFFFU, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_OUT_OF_RANGE);
+
+    for (size_t i = 0U; i < ARRAY_SIZE(action_dids); i++) {
+        send_write_did(action_dids[i], &magic, 1U);
+        zassert_equal(ota_stub.captured_response[2],
+                  UDS_NRC_SERVICE_NOT_IN_SESSION,
+                  "DID 0x%04x bypassed session gate", action_dids[i]);
+    }
+
+    test_ctx.session = UDS_SESSION_PROGRAMMING;
+    send_write_did(UDS_DID_OTA_FORCE_REVERT, NULL, 0U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_INCORRECT_MSG_LEN);
+    magic = 0U;
+    send_write_did(UDS_DID_OTA_FORCE_REVERT, &magic, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_REQUEST_OUT_OF_RANGE);
+}
+
+ZTEST(uds_core_writes, test_force_revert_failures)
+{
+    uint8_t magic = 0x01U;
+    test_ctx.session = UDS_SESSION_PROGRAMMING;
+
+    ota_stub.boot_read_bank_header_rc = -EBADMSG;
+    send_write_did(UDS_DID_OTA_FORCE_REVERT, &magic, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_CONDITIONS_NOT_CORRECT);
+
+    ota_stub.boot_read_bank_header_rc = 0;
+    ota_stub.boot_request_upgrade_rc = -EIO;
+    send_write_did(UDS_DID_OTA_FORCE_REVERT, &magic, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_GENERAL_PROG_FAIL);
+}
+
+ZTEST(uds_core_writes, test_force_revert_success_reboots)
+{
+    uint8_t magic = 0x01U;
+    test_ctx.session = UDS_SESSION_PROGRAMMING;
+
+    reboot_escape_armed = true;
+    if (0 == setjmp(reboot_escape)) {
+        send_write_did(UDS_DID_OTA_FORCE_REVERT, &magic, 1U);
+        zassert_unreachable("force revert did not reboot");
+    }
+    reboot_escape_armed = false;
+
+    zassert_equal(ota_stub.captured_response[0],
+              UDS_SID_WRITE_DATA_BY_ID + 0x40U);
+    zassert_equal(ota_stub.boot_request_upgrade_calls, 1);
+    zassert_equal(ota_stub.sys_reboot_calls, 1);
+}
+
+ZTEST(uds_core_writes, test_factory_restore_and_capture_commands)
+{
+    uint8_t magic = 0x01U;
+    test_ctx.session = UDS_SESSION_PROGRAMMING;
+
+    uds_stub.factory_image_captured = false;
+    send_write_did(UDS_DID_OTA_RESTORE_FACTORY, &magic, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_CONDITIONS_NOT_CORRECT);
+
+    uds_stub.factory_image_captured = true;
+    send_write_did(UDS_DID_OTA_RESTORE_FACTORY, &magic, 1U);
+    zassert_equal(uds_stub.factory_restore_async_calls, 1);
+    zassert_equal(ota_stub.captured_response[0],
+              UDS_SID_WRITE_DATA_BY_ID + 0x40U);
+
+    ota_stub.boot_is_img_confirmed = false;
+    send_write_did(UDS_DID_OTA_FACTORY_CAPTURE, &magic, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_CONDITIONS_NOT_CORRECT);
+
+    ota_stub.boot_is_img_confirmed = true;
+    send_write_did(UDS_DID_OTA_FACTORY_CAPTURE, &magic, 1U);
+    zassert_equal(uds_stub.factory_capture_async_calls, 1);
+    zassert_equal(ota_stub.captured_response[0],
+              UDS_SID_WRITE_DATA_BY_ID + 0x40U);
+}
+
+ZTEST(uds_core_writes, test_factory_flash_erase_success_and_failure_reboot)
+{
+    uint8_t magic = 0x01U;
+    test_ctx.session = UDS_SESSION_PROGRAMMING;
+
+    for (int pass = 0; pass < 2; pass++) {
+        uds_stub.flash_mass_erase_rc = (0 == pass) ? -EIO : 0;
+        reboot_escape_armed = true;
+        if (0 == setjmp(reboot_escape)) {
+            send_write_did(UDS_DID_FACTORY_FLASH_ERASE, &magic, 1U);
+            zassert_unreachable("factory erase did not reboot");
+        }
+        reboot_escape_armed = false;
+    }
+    zassert_equal(ota_stub.sys_reboot_calls, 2);
+}
+
+ZTEST(uds_core_writes, test_nvs_erase_open_failure_and_success_reboot)
+{
+    uint8_t magic = 0x01U;
+    test_ctx.session = UDS_SESSION_PROGRAMMING;
+
+    for (int pass = 0; pass < 2; pass++) {
+        flash_stub.open_rc = (0 == pass) ? -EIO : 0;
+        reboot_escape_armed = true;
+        if (0 == setjmp(reboot_escape)) {
+            send_write_did(UDS_DID_NVS_ERASE, &magic, 1U);
+            zassert_unreachable("NVS erase did not reboot");
+        }
+        reboot_escape_armed = false;
+    }
+    zassert_equal(ota_stub.sys_reboot_calls, 2);
+    zassert_equal(flash_stub.erase_calls, 1);
 }
 
 ZTEST_SUITE(uds_ota_session, NULL, NULL, test_setup, NULL, NULL);

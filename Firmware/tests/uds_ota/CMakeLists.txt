@@ -14,6 +14,7 @@ add_link_options(
     -Wl,--wrap=flash_img_check
     -Wl,--wrap=boot_read_bank_header
     -Wl,--wrap=boot_request_upgrade
+    -Wl,--wrap=boot_is_img_confirmed
     -Wl,--wrap=sys_reboot
     -Wl,--wrap=ISOTP_Send
 )
