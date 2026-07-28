@@ -79,6 +79,11 @@ versioned or pulled from a registry. The image must provide:
   and compiler support packages;
 - shell tools used by the workflow: bash, find, grep, tee.
 
+On this rig the Zephyr SDK is mounted inside the container at its original host
+path, `/home/aren/zephyr-sdk-1.0.1`, because SDK host tools such as `dtc` embed
+that absolute interpreter path. Keep that path stable or rebuild/patch the SDK
+host tools before changing the container mount point.
+
 The in-container script skips `west packages pip --install` by default because
 the container root filesystem is read-only. Set `run_west_pip_install="1"` in
 `/etc/divecan-hil-runner.conf` only when using a writable throwaway image during
