@@ -63,14 +63,35 @@ void i2c1_bus_unlock(void);
 void i2c1_bus_note_activity(void);
 
 /**
+ * @brief Driver-level callback used to reset and re-arm the shared I2C target.
+ *
+ * The callback runs in thread context with the application bus mutex held and
+ * only after physical-line classification has found no live traffic. It should
+ * use the public I2C target API to reset driver/peripheral state and restore the
+ * target registration.
+ */
+typedef Status_t (*I2c1RearmFn_t)(void);
+
+/**
+ * @brief Install the shared-bus target re-arm callback.
+ *
+ * The Poseidon accessory owner registers this after its I2C target has been
+ * registered successfully. Passing NULL clears the callback.
+ *
+ * @param fn Callback to invoke during recovery, or NULL.
+ */
+void i2c1_bus_set_rearm_fn(I2c1RearmFn_t fn);
+
+/**
  * @brief Recover a wedged i2c1 bus without disturbing live bus traffic.
  *
  * With a Poseidon i2c target registered the STM32 keeps the I2C peripheral
  * enabled between transfers, so a BUSY flag latched by a multimaster collision
  * can survive after the physical lines return idle. If both lines are stably
- * high, recovery only pulses the STM32 PE bit. Nine-clock physical bus clear is
- * reserved for a confirmed SCL-high/SDA-low stuck condition; active/toggling
- * traffic is never bit-banged. Takes i2c1_bus_lock() internally.
+ * high, recovery re-arms the target through the public Zephyr target API.
+ * Nine-clock physical bus clear is reserved for a confirmed SCL-high/SDA-low
+ * stuck condition; active/toggling traffic is never bit-banged. Takes
+ * i2c1_bus_lock() internally.
  *
  * @return 0 on success; -ENODEV if i2c1 is absent from the devicetree (e.g.
  *         native_sim); -EBUSY if the bus remains active or SCL is stuck low;
@@ -79,10 +100,14 @@ void i2c1_bus_note_activity(void);
 Status_t i2c1_bus_recover(void);
 
 /**
- * @brief True if @p rc is a transient i2c1 error worth retrying (arbitration
- * loss / BUSY / bus glitch on the multimaster bus) rather than a hard fault.
+ * @brief True if @p rc is an i2c1 result worth retrying.
+ *
+ * Zephyr's synchronous I2C controller API deliberately exposes some detailed
+ * bus causes (including arbitration loss) as generic -EIO. The policy therefore
+ * retries the documented transport errors and relies on physical-line
+ * classification before recovery instead of inspecting driver-private state.
  */
-bool i2c1_error_is_transient(Status_t rc);
+bool i2c1_error_is_retryable(Status_t rc);
 
 /**
  * @brief Unified multimaster-safe i2c1 transfer: avoid + retry + recover.
@@ -91,12 +116,12 @@ bool i2c1_error_is_transient(Status_t rc);
  * reads, …) handles collisions the same way instead of each re-implementing a
  * subset: up to @p attempts tries of (wait for a quiet bus → run @p xfer),
  * exponential backoff + jitter between tries, and — if the bus is still wedged
- * after them — one classify+recover (PE reset / bus clear) followed by a final
- * try. Serialises against the other STM32 i2c1 masters via the bus mutex and
- * timestamps bus activity on each attempt.
+ * after them — one classify+recover (driver target re-arm / bus clear) followed
+ * by a final try. Serialises against the other STM32 i2c1 masters via the bus
+ * mutex and timestamps bus activity on each attempt.
  *
  * @param xfer  Performs the actual transfer; returns 0 or a negative errno.
- *              Only transient errors (see i2c1_error_is_transient) are retried.
+ *              Only retryable errors (see i2c1_error_is_retryable) are retried.
  * @param ctx   Opaque pointer passed through to @p xfer.
  * @param attempts          Max quiet-wait+xfer tries before recovery (>= 1).
  * @param backoff_base_ms   Backoff = base << (attempt-1) + jitter.

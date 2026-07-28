@@ -362,6 +362,27 @@ static struct i2c_target_config target_cfg = {
 };
 
 /**
+ * Reset the combined controller/target state through Zephyr's public API.
+ *
+ * i2c1_bus_recover() only calls this from thread context, with the application
+ * bus mutex held, after confirming that the physical bus is not active. Removing
+ * the last target makes the STM32 driver disable the peripheral; registering it
+ * again restores the address, callbacks, interrupts, and runtime-PM state.
+ */
+static Status_t target_rearm(void)
+{
+    Status_t rc = i2c_target_unregister(bus, &target_cfg);
+
+    if (rc == 0) {
+        rc = i2c_target_register(bus, &target_cfg);
+    }
+    if (rc != 0) {
+        OP_ERROR_DETAIL(OP_ERR_I2C_BUS, (uint32_t)(-rc));
+    }
+    return rc;
+}
+
+/**
  * Send one Poseidon frame while the caller owns i2c1_bus_lock().
  *
  * Keeping locking at the group level prevents the ADS sampler from inserting a
@@ -501,7 +522,7 @@ static Status_t send_retry_locked(uint8_t addr, uint8_t cmd, uint8_t data)
      * self-clear. Recover (recursive lock — same thread) and try once more so a
      * grouped command sequence isn't dropped by a transient collision. Shares
      * i2c1_bus_recover() with the single-frame i2c1_transact() path. */
-    if ((!sent) && i2c1_error_is_transient(rc) && (i2c1_bus_recover() == 0)) {
+    if ((!sent) && i2c1_error_is_retryable(rc) && (i2c1_bus_recover() == 0)) {
         rc = send_frame_locked(addr, cmd, data);
     }
     return rc;
@@ -724,6 +745,8 @@ static void accessories_thread(void *a, void *b, void *c)
         Status_t rc = i2c_target_register(bus, &target_cfg);
         if (rc != 0) {
             OP_ERROR_DETAIL(OP_ERR_I2C_BUS, (uint32_t)(-rc));
+        } else {
+            i2c1_bus_set_rearm_fn(target_rearm);
         }
     }
     /* Expose the DS2782 pack current to the generic device-current API so the

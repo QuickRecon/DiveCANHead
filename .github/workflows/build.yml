@@ -196,7 +196,7 @@ jobs:
         env:
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sdk_version=$(tr -d '\r\n' < zephyr/SDK_VERSION)
+          sdk_version=$(tr -d '\r\n' < .west-projects/zephyr/SDK_VERSION)
           sdk_dir="$ZEPHYR_SDK_INSTALL_DIR/zephyr-sdk-$sdk_version"
           arm_gcc="$sdk_dir/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
           if [ -x "$arm_gcc" ]; then

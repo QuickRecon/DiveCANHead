@@ -43,6 +43,11 @@ static OpError_t last_error;
 static uint32_t last_error_detail;
 static device_current_provider_fn registered_provider;
 static device_current_trigger_fn registered_trigger;
+static I2c1RearmFn_t registered_rearm;
+static Status_t target_register_result;
+static Status_t target_unregister_result;
+static uint8_t target_register_calls;
+static uint8_t target_unregister_calls;
 
 static int test_i2c_write(const struct device *dev, const uint8_t *buf,
               uint32_t num_bytes, uint16_t addr)
@@ -67,13 +72,24 @@ static int test_i2c_target_register(const struct device *dev,
 {
     ARG_UNUSED(dev);
     ARG_UNUSED(cfg);
-    return 0;
+    ++target_register_calls;
+    return target_register_result;
+}
+
+static int test_i2c_target_unregister(const struct device *dev,
+                      struct i2c_target_config *cfg)
+{
+    ARG_UNUSED(dev);
+    ARG_UNUSED(cfg);
+    ++target_unregister_calls;
+    return target_unregister_result;
 }
 
 /* All Zephyr headers are already guarded above. Replace only the hardware
  * boundary used while compiling the production implementation below. */
 #define i2c_write test_i2c_write
 #define i2c_target_register test_i2c_target_register
+#define i2c_target_unregister test_i2c_target_unregister
 #undef DEVICE_DT_GET
 #define DEVICE_DT_GET(node_id) NULL
 #undef K_THREAD_DEFINE
@@ -81,6 +97,7 @@ static int test_i2c_target_register(const struct device *dev,
 #include "../../../src/poseidon_accessories.c"
 #undef K_THREAD_DEFINE
 #undef DEVICE_DT_GET
+#undef i2c_target_unregister
 #undef i2c_target_register
 #undef i2c_write
 
@@ -106,12 +123,17 @@ void i2c1_bus_note_activity(void)
     ++activity_notes;
 }
 
+void i2c1_bus_set_rearm_fn(I2c1RearmFn_t fn)
+{
+    registered_rearm = fn;
+}
+
 Status_t i2c1_bus_recover(void)
 {
     return recover_result;
 }
 
-bool i2c1_error_is_transient(Status_t rc)
+bool i2c1_error_is_retryable(Status_t rc)
 {
     return (rc == -EBUSY) || (rc == -EAGAIN) ||
            (rc == -ETIMEDOUT) || (rc == -EIO);
@@ -189,6 +211,11 @@ static void poseidon_before(void *fixture)
     last_error_detail = 0U;
     registered_provider = NULL;
     registered_trigger = NULL;
+    registered_rearm = NULL;
+    target_register_result = 0;
+    target_unregister_result = 0;
+    target_register_calls = 0U;
+    target_unregister_calls = 0U;
 }
 
 ZTEST_SUITE(poseidon_accessories, NULL, NULL, poseidon_before, NULL, NULL);
@@ -363,6 +390,20 @@ ZTEST(poseidon_accessories, test_target_callbacks_bound_buffer_and_safe_reads)
     target_error(&target_cfg, I2C_ERROR_ARBITRATION);
     zassert_equal(last_error, OP_ERR_I2C_BUS);
     zassert_equal(last_error_detail, I2C_ERROR_ARBITRATION);
+}
+
+ZTEST(poseidon_accessories, test_target_rearm_uses_public_unregister_register_api)
+{
+    zassert_ok(target_rearm());
+    zassert_equal(target_unregister_calls, 1U);
+    zassert_equal(target_register_calls, 1U);
+
+    target_unregister_result = -EBUSY;
+    zassert_equal(target_rearm(), -EBUSY);
+    zassert_equal(target_unregister_calls, 2U);
+    zassert_equal(target_register_calls, 1U);
+    zassert_equal(last_error, OP_ERR_I2C_BUS);
+    zassert_equal(last_error_detail, EBUSY);
 }
 
 ZTEST(poseidon_accessories, test_send_frame_builds_wire_crc_and_uses_retry_adapter)

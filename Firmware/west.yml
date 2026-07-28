@@ -6,12 +6,17 @@ manifest:
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
-      # Pinned to the revision validated on the bench (v4.4.0-2182) so CI
+      # Pinned to the Zephyr 4.4.1 release revision so CI
       # analyzes exactly what local builds and HIL testing run against.
       # Bump deliberately: update the local checkout, re-run the native +
       # HIL suites, then move this pin to match.
-      revision: b017626ca6e9baaf7e689a9ec7f9035a99f4470a
-      import: true
+      revision: 1f6485eca25431b5ff27ce9a754218c9e559bbbb
+      # Keep west-managed repositories out of the application repository's
+      # visible top-level tree. The prefix applies to Zephyr itself and every
+      # project imported by Zephyr's manifest (modules, MCUboot, tools, etc.).
+      # Changing it requires pristine builds because CMake caches these paths.
+      import:
+        path-prefix: .west-projects
 
   self:
     path: app

@@ -562,56 +562,34 @@ capacity sizing.
   real capacity pressure shows up.
 - Upstream a `uint16_t f_sector_cnt` variant of FCB to Zephyr.
 
-## 13. App-side I2C1 peripheral-enable pulse to clear a latched BUSY
+## 13. App-side I2C1 peripheral-enable pulse — **RESOLVED (2026-07)**
 
-**What changed**: `src/i2c_bus_lock.c` (`i2c1_reset_peripheral()`) writes the
-STM32 I2C1 `CR1.PE` bit directly via `LL_I2C_Disable/Enable` on the peripheral
-base from `DT_REG_ADDR`, behind the back of the Zephyr `i2c_stm32` driver. It
-is called from `i2c1_bus_recover()` on the Poseidon variant after physical-line
-classification, guarded by `CONFIG_SOC_FAMILY_STM32` (compiled out on
-native_sim). The vendored STM32 driver also carries a narrow return-code fix:
-controller arbitration loss (ARLO) returns `-EAGAIN`; NACK and timeout remain
-`-EIO`.
+The earlier recovery path wrote STM32 I2C1 `CR1.PE` directly and carried a
+local Zephyr patch that translated controller ARLO into `-EAGAIN`. Both
+workarounds were removed during the Zephyr 4.4.1 update.
 
-**Why**: On `Poseidon_Aren`, i2c1 is a shared multi-master bus with a
-registered i2c target. While a target is attached, `i2c_stm32_v2.c` deliberately
-skips the between-transfer `LL_I2C_Disable`, so `PE` stays high permanently. The
-STM32 I2Cv2 hardware `BUSY` flag clears only on an observed wire STOP or on
-`PE=0`; a `BUSY` latched by a multimaster collision therefore never self-clears,
-and every subsequent ADS1115 read returns `-EBUSY` forever (observed on hardware
-as `ADS1X1X: error writing register 0x1 (-16)` latching). Bit-bang recovery
-(`i2c_recover_bus`) muxes the pins to GPIO and generates a STOP the peripheral
-cannot see — confirmed insufficient on the bench (recovery logged, reads still
-failed). The Zephyr I2C API exposes no peripheral-reset entry point, and the
-vendored zephyr is a west clone (`revision: main`), so the pulse remains in app
-code rather than maintaining a larger out-of-tree driver recovery API.
+The stable Zephyr I2C controller contract exposes general transfer failures as
+`-EIO`; its STM32 driver's ARLO bit is private state that is cleared before the
+synchronous API returns. The application now follows that contract: bounded
+retry treats the documented transport errors, including `-EIO`, as retryable on
+this known multi-master bus. It does not infer a private hardware cause from the
+errno. Target-mode faults remain observable through the public
+`i2c_target_error_cb_t` callback and the existing error histogram.
 
-**What still provides coverage**: The pulse holds `PE` low for
-`I2C1_PE_RESET_HOLD_US` (2 µs, ≫ the RM-required 3 APB cycles) under `irq_lock`
-so disable→enable is atomic and the target is never deaf for a scheduling
-quantum. `PE=0` resets the I2C state machine but retains `OAR1`/`CR1`
-configuration, so the Poseidon target stays armed without re-registration. The
-caller holds `i2c1_bus_lock()`, and while `PE=0` the peripheral raises no
-interrupt, so there is no race with the target ISR. Recovery first requires one
-of these physical states:
+For a latched BUSY state, `i2c1_bus_recover()` still classifies the physical
+lines first:
 
-- SCL/SDA stable high for 3 ms: pulse PE only; do not alter the wire.
-- SCL high and SDA low continuously for 25 ms: run the standard nine-clock bus
-  clear, then pulse PE.
-- SCL low continuously for 25 ms: pulse PE to release a possible local clock
-  stretch, but do not drive recovery clocks.
+- SCL/SDA stable high for 3 ms: invoke the Poseidon owner's recovery callback,
+  which uses `i2c_target_unregister()` followed by `i2c_target_register()`.
+- SCL high and SDA low continuously for 25 ms: run the standard nine-clock
+  `i2c_recover_bus()`, then re-arm the target through the same public API.
+- SCL low continuously for 25 ms: re-arm the target, but do not drive recovery
+  clocks into a line another device may be holding.
 - Lines still toggling: defer recovery because the bus is active.
 
-This distinction prevents a transient `BUSY` during legitimate external traffic
-from turning into a destructive bit-bang recovery burst.
-
-**Possible alternatives to investigate**:
-- `i2c_target_unregister()` + `i2c_target_register()` toggles `PE` through the
-  driver's sanctioned path (v2 disables the peripheral when the last target is
-  removed), but couples `i2c_bus_lock` to the Poseidon `target_cfg` and briefly
-  drops the target address.
-- Enable the STM32 SMBus bus-idle/timeout (`TIMEOUTR`, `TIDLE`) so hardware
-  auto-clears a stale `BUSY` — not wired by the Zephyr driver in either I2C or
-  SMBus mode, would require poking `TIMEOUTR` directly (same class of bypass),
-  and risks timing out clock-stretching Poseidon devices.
-- Upstream a `recover_bus` that pulses `PE` into the Zephyr `i2c_stm32` driver.
+Removing the last target makes the STM32 driver disable the peripheral; the
+subsequent registration restores its address, callbacks, interrupts, and
+runtime-PM state. The application mutex is held and line classification has
+found no live frame before this brief re-registration window. This retains the
+bench-proven retry/recovery observables without a Zephyr source patch, private
+driver data access, or direct STM32 register writes.

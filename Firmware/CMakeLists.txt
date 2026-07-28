@@ -50,14 +50,11 @@ foreach(module_manifest ${proprietary_module_manifests})
     list(APPEND EXTRA_ZEPHYR_MODULES ${module_dir})
 endforeach()
 
-# Required patches to the west-managed zephyr tree, applied at configure time
-# (idempotent, content-checked). Currently one: the spi_nor 4-byte erase-opcode
-# fix — without it every erase on the W25Q512JV lands at the WRONG address,
-# silently corrupting OTA staging, factory capture, and the flash log. The
-# check is content-based (marker symbol), so a manually patched or forked tree
-# also passes; a tree where the patch is missing AND cannot be applied fails
-# the build loudly rather than emitting corrupting firmware. Runs before
-# find_package so the sysbuild MCUBoot image also compiles the patched source.
+# Required patches to the west-managed Zephyr tree, applied at configure time
+# (idempotent, content-checked). The SPI-NOR fixes prevent wrong-address erases
+# and unbounded WIP polling. A tree where a required patch is missing AND cannot
+# be applied fails the build loudly. This runs before find_package so the
+# sysbuild MCUBoot image also compiles the patched source.
 set(_zephyr_tree "$ENV{ZEPHYR_BASE}")
 if(NOT _zephyr_tree)
     execute_process(COMMAND west topdir
@@ -66,7 +63,18 @@ if(NOT _zephyr_tree)
                     OUTPUT_STRIP_TRAILING_WHITESPACE
                     RESULT_VARIABLE _west_rc ERROR_QUIET)
     if(_west_rc EQUAL 0)
-        set(_zephyr_tree "${_west_topdir}/zephyr")   # zephyr.base in .west/config
+        execute_process(COMMAND west config zephyr.base
+                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                        OUTPUT_VARIABLE _west_zephyr_base
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                        RESULT_VARIABLE _west_base_rc ERROR_QUIET)
+        if(_west_base_rc EQUAL 0)
+            if(IS_ABSOLUTE "${_west_zephyr_base}")
+                set(_zephyr_tree "${_west_zephyr_base}")
+            else()
+                set(_zephyr_tree "${_west_topdir}/${_west_zephyr_base}")
+            endif()
+        endif()
     endif()
 endif()
 if(_zephyr_tree AND EXISTS "${_zephyr_tree}/drivers/flash/spi_nor.c")
@@ -109,10 +117,10 @@ if(_zephyr_tree AND EXISTS "${_zephyr_tree}/drivers/flash/spi_nor.c")
         endif()
         message(STATUS "Applied zephyr spi_nor WIP-poll timeout patch to ${_zephyr_tree}")
     endif()
+
 elseif(NOT BOARD MATCHES "native_sim")
-    message(WARNING "Could not locate the zephyr tree to verify the spi_nor "
-                    "4-byte erase-opcode + WIP-timeout patches — do not ship "
-                    "this build unverified.")
+    message(WARNING "Could not locate the Zephyr tree to verify required "
+                    "SPI-NOR patches — do not ship this build unverified.")
 endif()
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})

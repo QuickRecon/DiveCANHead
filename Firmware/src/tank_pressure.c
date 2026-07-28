@@ -48,7 +48,8 @@ LOG_MODULE_REGISTER(tank_pressure, LOG_LEVEL_INF);
 
 /* On the Poseidon variant the ADS1115 shares i2c1 with the Poseidon accessory
  * masters, so a conversion-trigger write can lose the bus and return -EBUSY
- * (or -EAGAIN on arbitration loss). i2c1_bus_lock() removes the collisions
+ * (the public STM32 driver reports arbitration loss as generic -EIO).
+ * i2c1_bus_lock() removes the collisions
  * against our own masters; these retries ride out the external ones. Tank
  * pressure is slow and display-only, so a few short retries are free.
  *
@@ -141,8 +142,8 @@ static Status_t transducer_read_xfer(void *ctx)
  * helper so the tank sampler collides with the Poseidon accessory masters the
  * same way every other i2c1 caller does. External Poseidon masters can still
  * win the bus, so the helper's bounded quiet-wait + exponential-backoff retries
- * absorb the residual multimaster -EBUSY/-EAGAIN, and its classify+recover step
- * clears a wedged peripheral before a final attempt.
+ * absorb the residual multi-master transport errors, and its classify+recover
+ * step re-arms a wedged controller/target instance before a final attempt.
  *
  * @param t Transducer state (must have been through transducer_init()).
  * @return 0 on success (t->adc_sample_buf holds the raw count), else the last

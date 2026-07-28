@@ -21,6 +21,15 @@ struct xfer_script {
     uint8_t calls;
 };
 
+static uint8_t rearm_calls;
+static Status_t rearm_result;
+
+static Status_t scripted_rearm(void)
+{
+    ++rearm_calls;
+    return rearm_result;
+}
+
 static void set_lines(bool scl_high, bool sda_high)
 {
     zassert_ok(gpio_emul_input_set(TEST_GPIO, SCL_PIN, scl_high ? 1 : 0));
@@ -42,21 +51,24 @@ static Status_t scripted_xfer(void *ctx)
 static void i2c_before(void *fixture)
 {
     ARG_UNUSED(fixture);
+    rearm_calls = 0U;
+    rearm_result = 0;
+    i2c1_bus_set_rearm_fn(NULL);
     set_lines(true, true);
     k_msleep(4);
 }
 
 ZTEST_SUITE(i2c_bus_lock, NULL, NULL, i2c_before, NULL, NULL);
 
-ZTEST(i2c_bus_lock, test_transient_error_classification)
+ZTEST(i2c_bus_lock, test_retryable_error_classification)
 {
-    zassert_true(i2c1_error_is_transient(-EBUSY));
-    zassert_true(i2c1_error_is_transient(-EAGAIN));
-    zassert_true(i2c1_error_is_transient(-ETIMEDOUT));
-    zassert_true(i2c1_error_is_transient(-EIO));
-    zassert_false(i2c1_error_is_transient(0));
-    zassert_false(i2c1_error_is_transient(-EINVAL));
-    zassert_false(i2c1_error_is_transient(-ENODEV));
+    zassert_true(i2c1_error_is_retryable(-EBUSY));
+    zassert_true(i2c1_error_is_retryable(-EAGAIN));
+    zassert_true(i2c1_error_is_retryable(-ETIMEDOUT));
+    zassert_true(i2c1_error_is_retryable(-EIO));
+    zassert_false(i2c1_error_is_retryable(0));
+    zassert_false(i2c1_error_is_retryable(-EINVAL));
+    zassert_false(i2c1_error_is_retryable(-ENODEV));
 }
 
 ZTEST(i2c_bus_lock, test_explicit_lock_and_quiet_guard)
@@ -80,6 +92,18 @@ ZTEST(i2c_bus_lock, test_idle_recovery_succeeds_without_clocking_bus)
 {
     set_lines(true, true);
     zassert_ok(i2c1_bus_recover());
+}
+
+ZTEST(i2c_bus_lock, test_idle_recovery_rearms_target_through_registered_hook)
+{
+    i2c1_bus_set_rearm_fn(scripted_rearm);
+    set_lines(true, true);
+    zassert_ok(i2c1_bus_recover());
+    zassert_equal(rearm_calls, 1U);
+
+    rearm_result = -EIO;
+    zassert_equal(i2c1_bus_recover(), -EIO);
+    zassert_equal(rearm_calls, 2U);
 }
 
 ZTEST(i2c_bus_lock, test_scl_low_recovery_defers_without_bus_clear)
@@ -167,7 +191,7 @@ ZTEST(i2c_bus_lock, test_transaction_success_and_hard_error_stop)
 ZTEST(i2c_bus_lock, test_transaction_retries_with_backoff_and_jitter)
 {
     struct xfer_script script = {
-        .results = {-EAGAIN, -ETIMEDOUT, 0},
+        .results = {-EIO, -ETIMEDOUT, 0},
         .result_count = 3U,
     };
 

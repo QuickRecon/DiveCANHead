@@ -149,8 +149,9 @@
 	/* Recovery pins for i2c_recover_bus(): same PA9/PA10 lines, only ever
 	 * driven (as open-drain GPIO) while CONFIG_I2C_STM32_BUS_RECOVERY is set
 	 * and a recovery is in progress; pinctrl owns them otherwise. Required on
-	 * the Poseidon variant, where the i2c1 target keeps the peripheral enabled
-	 * so a latched BUSY flag can only be cleared by a bit-banged STOP. */
+	 * the Poseidon variant. The public recovery operation is used only after
+	 * line classification confirms SCL-high/SDA-low; an idle-wire driver wedge
+	 * is handled by target unregister/register instead. */
 	scl-gpios = <&gpioa 9 (GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
 	sda-gpios = <&gpioa 10 (GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
 	status = "okay";

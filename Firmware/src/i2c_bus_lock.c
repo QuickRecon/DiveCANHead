@@ -11,21 +11,12 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
-#include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
 
 #include <errno.h>
 
-#if defined(CONFIG_SOC_FAMILY_STM32) && DT_NODE_EXISTS(DT_NODELABEL(i2c1))
-#include <stm32_ll_i2c.h>
-#endif
-
 LOG_MODULE_REGISTER(i2c_bus_lock, LOG_LEVEL_INF);
 
-/* PE must stay low this long for the I2Cv2 state-machine reset to take; the
- * reference manual requires >= 3 APB cycles, 2 us is comfortably above that at
- * any supported PCLK1. */
-#define I2C1_PE_RESET_HOLD_US 2
 /* Poseidon devices emit short frame groups. Requiring a stable idle interval
  * longer than the observed ~1.6 ms inter-frame spacing avoids inserting an ADS
  * transaction into the middle of a group. */
@@ -53,6 +44,13 @@ static atomic_t *getLastBusActivityMs(void)
     static atomic_t last_bus_activity_ms;
 
     return &last_bus_activity_ms;
+}
+
+static I2c1RearmFn_t *getRearmFn(void)
+{
+    static I2c1RearmFn_t rearm_fn;
+
+    return &rearm_fn;
 }
 
 /* Resolve the i2c1 controller at build time where it exists (all real
@@ -217,41 +215,12 @@ static enum i2c1_line_state i2c1_classify_lines(void)
     return result;
 }
 
-#if defined(CONFIG_SOC_FAMILY_STM32) && DT_NODE_EXISTS(DT_NODELABEL(i2c1))
-
-/**
- * @brief Clear a latched STM32 hardware BUSY flag by pulsing peripheral-enable.
- *
- * STM32 I2Cv2 clears BUSY only on a STOP it observes on the wire or on PE=0.
- * While an i2c target is registered the Zephyr driver keeps PE high permanently
- * (it skips the between-transfer LL_I2C_Disable), so a BUSY latched by a
- * multimaster collision never self-clears, and bit-bang recovery — which muxes
- * the pins away from the peripheral — can't reach it. Pulsing PE resets the I2C
- * state machine while retaining the OAR1/CR1 configuration, so the Poseidon
- * target stays armed across the pulse. irq_lock keeps disable+enable atomic so
- * the target is never deaf for a scheduling quantum.
- *
- * Poking the peripheral behind the Zephyr driver is deliberate: the driver
- * exposes no PE-reset, and the vendored zephyr is a west clone we don't patch
- * (see COMPROMISE.md). Caller must hold i2c1_bus_lock().
- */
-static void i2c1_reset_peripheral(void)
+static Status_t i2c1_rearm_target(void)
 {
-    I2C_TypeDef *i2c = (I2C_TypeDef *)DT_REG_ADDR(DT_NODELABEL(i2c1));
-    unsigned int key = irq_lock();
+    I2c1RearmFn_t fn = *getRearmFn();
 
-    LL_I2C_Disable(i2c);
-    k_busy_wait(I2C1_PE_RESET_HOLD_US);
-    LL_I2C_Enable(i2c);
-
-    irq_unlock(key);
+    return (fn != NULL) ? fn() : 0;
 }
-#else
-static void i2c1_reset_peripheral(void)
-{
-    /* No STM32 peripheral to reset (e.g. native_sim). */
-}
-#endif
 
 void i2c1_bus_lock(void)
 {
@@ -281,6 +250,11 @@ void i2c1_bus_note_activity(void)
     (void)atomic_set(getLastBusActivityMs(), (atomic_val_t)k_uptime_get_32());
 }
 
+void i2c1_bus_set_rearm_fn(I2c1RearmFn_t fn)
+{
+    *getRearmFn() = fn;
+}
+
 Status_t i2c1_bus_recover(void)
 {
     Status_t ret = -ENODEV;
@@ -292,22 +266,24 @@ Status_t i2c1_bus_recover(void)
 
         if (state == I2C1_LINES_IDLE) {
             /* The wire is idle, so BUSY exists only in the STM32 state machine.
-             * Do not disturb external devices with unnecessary clock pulses. */
-            LOG_WRN("clearing peripheral BUSY on idle bus");
-            i2c1_reset_peripheral();
-            ret = 0;
+             * Reset and restore the target through the driver's public API;
+             * do not disturb external devices with unnecessary clock pulses. */
+            LOG_WRN("re-arming I2C target on idle bus");
+            ret = i2c1_rearm_target();
         } else if (state == I2C1_LINES_SDA_STUCK) {
             /* NXP UM10204 bus-clear procedure: only clock a bus whose SCL has
              * remained high while SDA has remained low. */
             LOG_ERR("SDA stuck low; attempting physical bus clear");
             ret = i2c_recover_bus(i2c1_dev);
-            i2c1_reset_peripheral();
+            if (ret == 0) {
+                ret = i2c1_rearm_target();
+            }
         } else if (state == I2C1_LINES_SCL_STUCK) {
             /* The STM32 may itself be stretching SCL after a target/controller
-             * race. Release its state machine, but never drive clocks into a
-             * line another device is holding low. */
-            LOG_ERR("SCL stuck low; resetting peripheral without bus clear");
-            i2c1_reset_peripheral();
+             * race. Re-arm it through the driver, but never drive clocks into
+             * a line another device is holding low. */
+            LOG_ERR("SCL stuck low; re-arming target without bus clear");
+            (void)i2c1_rearm_target();
             ret = -EBUSY;
         } else {
             /* Line transitions were still occurring: this is live traffic,
@@ -321,10 +297,11 @@ Status_t i2c1_bus_recover(void)
     return ret;
 }
 
-bool i2c1_error_is_transient(Status_t rc)
+bool i2c1_error_is_retryable(Status_t rc)
 {
-    /* Arbitration loss / BUSY / a glitched transfer on the multimaster bus are
-     * all retryable; a hard error code (e.g. -EINVAL, -ENODEV) is not. */
+    /* The synchronous Zephyr API documents -EIO for general controller
+     * failures, including causes that are transient on a multi-master bus.
+     * Retry the transport-level results; argument/device errors remain hard. */
     return (rc == -EBUSY) || (rc == -EAGAIN) ||
            (rc == -ETIMEDOUT) || (rc == -EIO);
 }
@@ -352,7 +329,7 @@ Status_t i2c1_transact(I2c1XferFn_t xfer, void *ctx, uint8_t attempts,
     else {
         uint8_t a = 0U;
 
-        while ((a < attempts) && i2c1_error_is_transient(ret)) {
+        while ((a < attempts) && i2c1_error_is_retryable(ret)) {
             if (a > 0U) {
                 uint32_t delay = backoff_base_ms << (a - 1U);
                 uint32_t jitter = 0U;
@@ -367,9 +344,9 @@ Status_t i2c1_transact(I2c1XferFn_t xfer, void *ctx, uint8_t attempts,
         }
 
         /* Still wedged after every avoid+retry: classify the lines and recover
-         * (idle -> PE reset; SDA-stuck -> nine-clock bus clear; live traffic left
-         * alone), then make one final attempt rather than surfacing the failure. */
-        if (i2c1_error_is_transient(ret) && (i2c1_bus_recover() == 0)) {
+         * (idle -> target re-arm; SDA-stuck -> nine-clock bus clear; live traffic
+         * left alone), then make one final attempt rather than surfacing failure. */
+        if (i2c1_error_is_retryable(ret) && (i2c1_bus_recover() == 0)) {
             ret = i2c1_try_once(xfer, ctx);
         }
     }
