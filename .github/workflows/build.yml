@@ -28,6 +28,14 @@ jobs:
     timeout-minutes: 90
     env:
       ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+      # Keep the widest-feature variant first: that order also determines
+      # which production command Sonar uses for sources built more than once.
+      FIRMWARE_VARIANTS: >-
+        Poseidon_Aren
+        AP_Aren
+        AP_Paul
+        eCCR_classic
+        Sidewinder_Gabriel
     steps:
       # The repository contains two legacy gitlinks without matching
       # .gitmodules entries. actions/checkout traverses submodules while
@@ -202,15 +210,28 @@ jobs:
           fi
           "$arm_gcc" --version
 
-      # The ARM variant build covers src/ and drivers/ under the shipped
-      # firmware configuration (Poseidon_Aren = most features enabled).
-      - name: Build Poseidon_Aren firmware (sysbuild)
+      # Build every production hardware variant so configuration-specific
+      # Kconfig/devicetree combinations cannot regress unnoticed.
+      - name: Build all firmware variants (sysbuild)
         working-directory: Firmware
         run: |
-          west build -d build -b divecan_jr/stm32l431xx . --sysbuild -p always -- \
-            -DBOARD_ROOT=. \
-            -DEXTRA_CONF_FILE=variants/Poseidon_Aren.conf \
-            -DEXTRA_DTC_OVERLAY_FILE=variants/Poseidon_Aren.overlay
+          read -r -a variants <<< "$FIRMWARE_VARIANTS"
+
+          for variant in "${variants[@]}"; do
+            echo "::group::Lint $variant"
+            bash scripts/lint_variant.sh "variants/${variant}.conf"
+            echo "::endgroup::"
+
+            echo "::group::Build $variant"
+            west build \
+              -d "build-variants/${variant}" \
+              -b divecan_jr/stm32l431xx \
+              . --sysbuild -p always -- \
+              -DBOARD_ROOT=. \
+              -DEXTRA_CONF_FILE="variants/${variant}.conf" \
+              -DEXTRA_DTC_OVERLAY_FILE="variants/${variant}.overlay"
+            echo "::endgroup::"
+          done
 
       - name: Configure virtual CAN for integration tests
         run: |
@@ -282,10 +303,17 @@ jobs:
 
       - name: Merge compilation databases
         run: |
-          # ARM app DB listed first: for src/ files present in several DBs,
-          # keep the first (ARM/variant) entry so production code is analyzed
-          # under the shipped configuration, not a test build. Native DBs then
-          # contribute tests/** and files never compiled for ARM.
+          # Keep Poseidon_Aren first because it enables the widest production
+          # feature set. The remaining production-variant DBs contribute any
+          # translation units absent from Poseidon; native DBs then contribute
+          # tests/** and files never compiled for ARM.
+          read -r -a variants <<< "$FIRMWARE_VARIANTS"
+          arm_compile_dbs=()
+          for variant in "${variants[@]}"; do
+            arm_compile_dbs+=(
+              "Firmware/build-variants/${variant}/Firmware/compile_commands.json"
+            )
+          done
           jq -s '
             [ .[][] ]
             | reduce .[] as $e ({seen: {}, out: []};
@@ -293,7 +321,7 @@ jobs:
                 else {seen: (.seen + {($e.file): true}),
                       out: (.out + [$e])} end)
             | .out
-          ' Firmware/build/Firmware/compile_commands.json \
+          ' "${arm_compile_dbs[@]}" \
             Firmware/build-coverage/*/compile_commands.json \
             > compile_commands.json
           echo "Merged compilation database: $(jq length compile_commands.json) entries"
