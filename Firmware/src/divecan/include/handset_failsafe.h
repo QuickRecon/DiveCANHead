@@ -42,7 +42,7 @@ static inline bool handset_failsafe_should_revert(uint32_t now_ms,
                           uint32_t timeout_ms)
 {
     /* Unsigned subtraction is wrap-safe across the k_uptime_get_32 rollover. */
-    return handset_seen && !fallback_applied &&
+    return handset_seen && (!fallback_applied) &&
            ((now_ms - last_ping_ms) > timeout_ms);
 }
 

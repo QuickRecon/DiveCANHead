@@ -190,8 +190,8 @@ void ppo2_control_get_snapshot(PPO2ControlSnapshot_t *out)
     if (out != NULL) {
         const PIDState_t *state = getPidState();
         out->duty_cycle = *getLatestDutyCycle();
-        out->integral_state = (Numeric_t)state->integralState;
-        out->saturation_count = state->saturationCount;
+        out->integral_state = (Numeric_t)state->integral_state;
+        out->saturation_count = state->saturation_count;
     }
 }
 
@@ -217,9 +217,9 @@ static Numeric_t clamp_pid_gain(Numeric_t gain)
 void ppo2_control_set_gains_live(Numeric_t kp, Numeric_t ki, Numeric_t kd)
 {
     PIDState_t *state = getPidState();
-    state->proportionalGain = (PIDNumeric_t)clamp_pid_gain(kp);
-    state->integralGain = (PIDNumeric_t)clamp_pid_gain(ki);
-    state->derivativeGain = (PIDNumeric_t)clamp_pid_gain(kd);
+    state->proportional_gain = (PIDNumeric_t)clamp_pid_gain(kp);
+    state->integral_gain = (PIDNumeric_t)clamp_pid_gain(ki);
+    state->derivative_gain = (PIDNumeric_t)clamp_pid_gain(kd);
     /* Start the candidate from a clean slate so wind-up from the previous
      * gain set can't bias its step response. */
     pid_state_reset_dynamic(state);
@@ -229,13 +229,13 @@ void ppo2_control_get_gains_live(Numeric_t *kp, Numeric_t *ki, Numeric_t *kd)
 {
     const PIDState_t *state = getPidState();
     if (kp != NULL) {
-        *kp = (Numeric_t)state->proportionalGain;
+        *kp = (Numeric_t)state->proportional_gain;
     }
     if (ki != NULL) {
-        *ki = (Numeric_t)state->integralGain;
+        *ki = (Numeric_t)state->integral_gain;
     }
     if (kd != NULL) {
-        *kd = (Numeric_t)state->derivativeGain;
+        *kd = (Numeric_t)state->derivative_gain;
     }
 }
 
@@ -550,8 +550,8 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
             zbus_pub_checked(&chan_duty_cycle, &pub, K_MSEC(CHAN_OP_TIMEOUT_MS));
 #ifdef CONFIG_FLASH_LOG
             const FlashLogPidSnapshot_t snap = {
-                .integral = state->integralState,
-                .saturation_count = state->saturationCount,
+                .integral = state->integral_state,
+                .saturation_count = state->saturation_count,
                 .duty = duty,
                 .setpoint = setpoint,
             };
@@ -949,13 +949,13 @@ void ppo2_control_init(void)
     RuntimeSettings_t settings = RUNTIME_SETTINGS_DEFAULT;
     (void)runtime_settings_load(&settings);
 
-    *getActiveMode() = settings.ppo2ControlMode;
-    *getDepthCompEnabled() = settings.depthCompensation;
+    *getActiveMode() = settings.ppo2_control_mode;
+    *getDepthCompEnabled() = settings.depth_compensation;
 
     pid_state_init(getPidState(),
-               (PIDNumeric_t)settings.pidKp,
-               (PIDNumeric_t)settings.pidKi,
-               (PIDNumeric_t)settings.pidKd);
+               (PIDNumeric_t)settings.pid_kp,
+               (PIDNumeric_t)settings.pid_ki,
+               (PIDNumeric_t)settings.pid_kd);
 
     *getLatestDutyCycle() = 0.0f;
     *getConsensusFailedLatch() = false;
@@ -966,8 +966,8 @@ void ppo2_control_init(void)
 
     LOG_INF("PPO2 control init: mode=%d depth_comp=%d kp=%.4f ki=%.4f kd=%.4f",
         (int32_t)*getActiveMode(), (int32_t)*getDepthCompEnabled(),
-        (double)settings.pidKp, (double)settings.pidKi,
-        (double)settings.pidKd);
+        (double)settings.pid_kp, (double)settings.pid_ki,
+        (double)settings.pid_kd);
 
     /* Release the control threads now the mode/depth-comp/PID state are loaded;
      * before this they must not read the (still-default OFF) mode and suspend.

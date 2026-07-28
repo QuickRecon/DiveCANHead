@@ -65,7 +65,7 @@ static IsotpRxEvent_e pci_to_event(uint8_t pci)
 /**
  * @brief ISOTP_IDLE entry: stamp public state field and reset RX progress.
  *
- * Preserves rxComplete + rxDataLength when rxComplete is set, so the
+ * Preserves rx_complete + rx_data_length when rx_complete is set, so the
  * caller can read the just-completed message after the SM returns to
  * IDLE (matches the legacy ISOTP_Reset semantic).
  */
@@ -73,19 +73,19 @@ static void isotp_idle_entry(void *obj)
 {
     ISOTPContext_t *ctx = (ISOTPContext_t *)obj;
     ctx->state = ISOTP_IDLE;
-    if (!ctx->rxComplete) {
-        ctx->rxDataLength = 0;
-        /* Don't clear rxBuffer - large and unnecessary if not complete */
+    if (!ctx->rx_complete) {
+        ctx->rx_data_length = 0;
+        /* Don't clear rx_buffer - large and unnecessary if not complete */
     }
-    ctx->rxBytesReceived = 0;
-    ctx->rxSequenceNumber = 0;
-    ctx->rxLastFrameTime = 0;
+    ctx->rx_bytes_received = 0;
+    ctx->rx_sequence_number = 0;
+    ctx->rx_last_frame_time = 0;
 }
 
 /**
  * @brief ISOTP_RECEIVING entry: stamp public state field.
  *
- * rxLastFrameTime is set by HandleFirstFrame after the FC CTS is sent,
+ * rx_last_frame_time is set by HandleFirstFrame after the FC CTS is sent,
  * not here — keeping the timestamp closer to the wire event makes the
  * N_Cr timeout check easier to reason about.
  */
@@ -98,11 +98,11 @@ static void isotp_receiving_entry(void *obj)
 static enum smf_state_result isotp_idle_run(void *obj)
 {
     ISOTPContext_t *ctx = (ISOTPContext_t *)obj;
-    if (ISOTP_RX_EVT_SF == ctx->currentEvent) {
-        (void)HandleSingleFrame(ctx, ctx->currentMessage);
-    } else if (ISOTP_RX_EVT_FF == ctx->currentEvent) {
-        (void)HandleFirstFrame(ctx, ctx->currentMessage);
-    } else if (ISOTP_RX_EVT_CF == ctx->currentEvent) {
+    if (ISOTP_RX_EVT_SF == ctx->current_event) {
+        (void)HandleSingleFrame(ctx, ctx->current_message);
+    } else if (ISOTP_RX_EVT_FF == ctx->current_event) {
+        (void)HandleFirstFrame(ctx, ctx->current_message);
+    } else if (ISOTP_RX_EVT_CF == ctx->current_event) {
         /* CF in IDLE is a peer protocol error: log and ignore. */
         OP_ERROR_DETAIL(OP_ERR_ISOTP_STATE, (uint32_t)ctx->state);
     } else {
@@ -114,20 +114,20 @@ static enum smf_state_result isotp_idle_run(void *obj)
 static enum smf_state_result isotp_receiving_run(void *obj)
 {
     ISOTPContext_t *ctx = (ISOTPContext_t *)obj;
-    if (ISOTP_RX_EVT_CF == ctx->currentEvent) {
-        (void)HandleConsecutiveFrame(ctx, ctx->currentMessage);
-    } else if (ISOTP_RX_EVT_SF == ctx->currentEvent) {
+    if (ISOTP_RX_EVT_CF == ctx->current_event) {
+        (void)HandleConsecutiveFrame(ctx, ctx->current_message);
+    } else if (ISOTP_RX_EVT_SF == ctx->current_event) {
         /* SF mid-reception aborts the multi-frame transfer and
          * accepts the SF as a fresh message — matches legacy
          * behaviour where HandleSingleFrame unconditionally
          * transitioned to IDLE. */
-        (void)HandleSingleFrame(ctx, ctx->currentMessage);
-    } else if (ISOTP_RX_EVT_FF == ctx->currentEvent) {
+        (void)HandleSingleFrame(ctx, ctx->current_message);
+    } else if (ISOTP_RX_EVT_FF == ctx->current_event) {
         /* FF mid-reception aborts the old transfer and starts a new
          * one — legacy HandleFirstFrame did the same by resetting
          * RX progress fields in place. */
-        (void)HandleFirstFrame(ctx, ctx->currentMessage);
-    } else if (ISOTP_RX_EVT_TIMEOUT == ctx->currentEvent) {
+        (void)HandleFirstFrame(ctx, ctx->current_message);
+    } else if (ISOTP_RX_EVT_TIMEOUT == ctx->current_event) {
         OP_ERROR_DETAIL(OP_ERR_ISOTP_TIMEOUT, (uint32_t)ctx->state);
         ISOTP_Reset(ctx);
     } else {
@@ -149,10 +149,10 @@ static const struct smf_state isotp_states[ISOTP_RX_STATE_COUNT] = {
  * @param ctx       Context to initialize; zeroed and then configured (must not be NULL)
  * @param source    Our device type (e.g., DIVECAN_SOLO), placed in CAN ID source field
  * @param target    Remote device type (e.g., DIVECAN_CONTROLLER), placed in CAN ID dest field
- * @param messageId Base CAN message ID for this session (e.g., MENU_ID)
+ * @param message_id Base CAN message ID for this session (e.g., MENU_ID)
  */
 void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source,
-        DiveCANType_t target, uint32_t messageId)
+        DiveCANType_t target, uint32_t message_id)
 {
     if (NULL == ctx) {
         OP_ERROR(OP_ERR_NULL_PTR);
@@ -163,12 +163,12 @@ void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source,
         /* Set addressing */
         ctx->source = source;
         ctx->target = target;
-        ctx->messageId = messageId;
+        ctx->message_id = message_id;
 
         /* Capture the broadcast role once, from the initial target. A
          * context created for the broadcast address is a permanent
          * broadcast sender and must never retarget (see struct doc). */
-        ctx->broadcastTx = (ISOTP_BROADCAST_ADDR == ((uint32_t)target & DIVECAN_BYTE_MASK));
+        ctx->broadcast_tx = (ISOTP_BROADCAST_ADDR == ((uint32_t)target & DIVECAN_BYTE_MASK));
 
         /* Initialise the RX SM. The IDLE entry stamps ctx->state and
          * clears any RX progress. Completion flags remain false. */
@@ -180,8 +180,8 @@ void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source,
  * @brief Reset context to IDLE state
  *
  * Resets state machine and in-progress transfer fields while preserving:
- * - Addressing (source, target, messageId)
- * - Completion flags and completed data (rxComplete, txComplete, rxBuffer, rxDataLength)
+ * - Addressing (source, target, message_id)
+ * - Completion flags and completed data (rx_complete, tx_complete, rx_buffer, rx_data_length)
  *
  * @param ctx Context to reset; NULL is silently ignored (safe to call during cleanup)
  */
@@ -190,20 +190,20 @@ void ISOTP_Reset(ISOTPContext_t *ctx)
     if (NULL == ctx) {
         /* Expected: Reset may be called during cleanup with NULL context */
     } else {
-        /* Reset TX state (txDataPtr points to caller data, don't need to clear).
-         * txComplete is preserved across reset — the centralized TX queue
+        /* Reset TX state (tx_data_ptr points to caller data, don't need to clear).
+         * tx_complete is preserved across reset — the centralized TX queue
          * tracks transmission lifecycle separately. */
-        ctx->txDataLength = 0;
-        ctx->txBytesSent = 0;
-        ctx->txSequenceNumber = 0;
-        ctx->txDataPtr = NULL;
-        ctx->txBlockSize = 0;
-        ctx->txSTmin = 0;
-        ctx->txBlockCounter = 0;
-        ctx->txLastFrameTime = 0;
+        ctx->tx_data_length = 0;
+        ctx->tx_bytes_sent = 0;
+        ctx->tx_sequence_number = 0;
+        ctx->tx_data_ptr = NULL;
+        ctx->tx_block_size = 0;
+        ctx->tx_stmin = 0;
+        ctx->tx_block_counter = 0;
+        ctx->tx_last_frame_time = 0;
 
         /* Hand RX state cleanup to the IDLE entry, which preserves
-         * rxComplete + rxDataLength when rxComplete is set. */
+         * rx_complete + rx_data_length when rx_complete is set. */
         smf_set_state(SMF_CTX(ctx), &isotp_states[ISOTP_IDLE]);
     }
 }
@@ -241,7 +241,7 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
             bool isShearwaterFC = (ISOTP_PCI_FC == pci) && (ISOTP_BROADCAST_ADDR == msgSource);
 
             /* Check if message is from expected peer (or Shearwater FC broadcast).
-             * A context whose ROLE is BROADCAST TX (ctx->broadcastTx, e.g. the
+             * A context whose ROLE is BROADCAST TX (ctx->broadcast_tx, e.g. the
              * fire-and-forget log-push stream) must NOT be retargeted to a
              * unicast sender: doing so moves its multi-frame traffic onto the
              * addressed UDS dialog channel, where a log push stalled across a
@@ -256,7 +256,7 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
              * are stranded on 0xFF and the handset's Bus Devices menu stays dead
              * until the head reboots. */
             if ((msgSource != ctx->target) && (!isShearwaterFC) &&
-                (!ctx->broadcastTx)) {
+                (!ctx->broadcast_tx)) {
                 ctx->target = msgSource; /* Update target to sender */
             }
 
@@ -269,13 +269,13 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
                 if (ISOTP_RX_EVT_NONE == ev) {
                     OP_ERROR_DETAIL(OP_ERR_ISOTP_STATE, pci);
                 } else {
-                    ctx->currentEvent = ev;
-                    ctx->currentMessage = message;
-                    ctx->currentConsumed = false;
+                    ctx->current_event = ev;
+                    ctx->current_message = message;
+                    ctx->current_consumed = false;
                     (void)smf_run_state(SMF_CTX(ctx));
-                    result = ctx->currentConsumed;
-                    ctx->currentMessage = NULL;
-                    ctx->currentEvent = ISOTP_RX_EVT_NONE;
+                    result = ctx->current_consumed;
+                    ctx->current_message = NULL;
+                    ctx->current_event = ISOTP_RX_EVT_NONE;
                 }
             }
         }
@@ -287,9 +287,9 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message)
 /**
  * @brief Handle Single Frame reception
  *
- * Copies up to 7 payload bytes into ctx->rxBuffer and sets rxComplete.
+ * Copies up to 7 payload bytes into ctx->rx_buffer and sets rx_complete.
  *
- * @param ctx     ISO-TP context; rxBuffer and rxDataLength are updated on success
+ * @param ctx     ISO-TP context; rx_buffer and rx_data_length are updated on success
  * @param message Received CAN message; byte 0 PCI encodes payload length (1-7)
  * @return true if message was valid and consumed, false on length error
  */
@@ -309,17 +309,17 @@ static bool HandleSingleFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messa
         OP_ERROR_DETAIL(OP_ERR_ISOTP_OVERFLOW, message->length);
     } else {
         /* Copy data to RX buffer */
-        (void)memcpy(ctx->rxBuffer, &message->data[1], length);
+        (void)memcpy(ctx->rx_buffer, &message->data[1], length);
 
         /* Set received length and completion flag for caller to check */
-        ctx->rxDataLength = length;
-        ctx->rxComplete = true;
+        ctx->rx_data_length = length;
+        ctx->rx_complete = true;
 
         /* Remain in IDLE; if called from RECEIVING.run, transition back.
-         * IDLE.entry preserves rxDataLength when rxComplete is set. */
+         * IDLE.entry preserves rx_data_length when rx_complete is set. */
         smf_set_state(SMF_CTX(ctx), &isotp_states[ISOTP_IDLE]);
 
-        ctx->currentConsumed = true;
+        ctx->current_consumed = true;
         result = true;
     }
 
@@ -351,16 +351,16 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
         OP_ERROR_DETAIL(OP_ERR_ISOTP_OVERFLOW, dataLength);
     } else {
         /* Reset RX state */
-        ctx->rxDataLength = dataLength;
-        ctx->rxBytesReceived = 0;
-        ctx->rxSequenceNumber = ISOTP_FF_SEQ_START; /* Expecting CF with seq=1 (per ISO 15765-2) */
+        ctx->rx_data_length = dataLength;
+        ctx->rx_bytes_received = 0;
+        ctx->rx_sequence_number = ISOTP_FF_SEQ_START; /* Expecting CF with seq=1 (per ISO 15765-2) */
 
         /* Copy first 6 data bytes (bytes 2-7 of CAN frame) */
-        (void)memcpy(ctx->rxBuffer, &message->data[ISOTP_FF_DATA_START], ISOTP_FF_DATA_BYTES);
-        ctx->rxBytesReceived = ISOTP_FF_DATA_BYTES;
+        (void)memcpy(ctx->rx_buffer, &message->data[ISOTP_FF_DATA_START], ISOTP_FF_DATA_BYTES);
+        ctx->rx_bytes_received = ISOTP_FF_DATA_BYTES;
 
         /* Update timestamp */
-        ctx->rxLastFrameTime = k_uptime_get_32();
+        ctx->rx_last_frame_time = k_uptime_get_32();
 
         /* Send Flow Control (CTS, BS=0, STmin=0) */
         SendFlowControl(ctx, ISOTP_FC_CTS, ISOTP_DEFAULT_BLOCK_SIZE, ISOTP_DEFAULT_STMIN);
@@ -369,15 +369,15 @@ static bool HandleFirstFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *messag
         smf_set_state(SMF_CTX(ctx), &isotp_states[ISOTP_RECEIVING]);
     }
 
-    ctx->currentConsumed = true; /* Message consumed even on overflow. */
+    ctx->current_consumed = true; /* Message consumed even on overflow. */
     return true;
 }
 
 /**
  * @brief Handle Consecutive Frame reception
  *
- * Validates sequence number, appends up to 7 payload bytes to rxBuffer, and
- * sets rxComplete when all expected bytes have been received.  Resets context
+ * Validates sequence number, appends up to 7 payload bytes to rx_buffer, and
+ * sets rx_complete when all expected bytes have been received.  Resets context
  * on sequence error.
  *
  * @param ctx     ISO-TP context; must be in ISOTP_RECEIVING state
@@ -392,13 +392,13 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
     uint8_t seqNum = message->data[0] & ISOTP_PCI_LEN_MASK;
 
     /* Validate sequence number */
-    if (seqNum != ctx->rxSequenceNumber) {
+    if (seqNum != ctx->rx_sequence_number) {
         /* Sequence error - abort reception */
-        OP_ERROR_DETAIL(OP_ERR_ISOTP_SEQ, (uint8_t)((ctx->rxSequenceNumber << DIVECAN_HALF_BYTE_WIDTH) | seqNum));
+        OP_ERROR_DETAIL(OP_ERR_ISOTP_SEQ, (uint8_t)((ctx->rx_sequence_number << DIVECAN_HALF_BYTE_WIDTH) | seqNum));
         ISOTP_Reset(ctx);
     } else {
         /* Calculate bytes to copy (7 bytes or remaining) */
-        uint16_t bytesRemaining = ctx->rxDataLength - ctx->rxBytesReceived;
+        uint16_t bytesRemaining = ctx->rx_data_length - ctx->rx_bytes_received;
         uint8_t bytesToCopy = 0;
         if (bytesRemaining > ISOTP_CF_DATA_BYTES) {
             bytesToCopy = ISOTP_CF_DATA_BYTES;
@@ -407,32 +407,32 @@ static bool HandleConsecutiveFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *
         }
 
         /* Copy data */
-        (void)memcpy(&ctx->rxBuffer[ctx->rxBytesReceived], &message->data[ISOTP_CF_DATA_START], bytesToCopy);
-        ctx->rxBytesReceived += bytesToCopy;
+        (void)memcpy(&ctx->rx_buffer[ctx->rx_bytes_received], &message->data[ISOTP_CF_DATA_START], bytesToCopy);
+        ctx->rx_bytes_received += bytesToCopy;
 
         /* Update timestamp */
-        ctx->rxLastFrameTime = k_uptime_get_32();
+        ctx->rx_last_frame_time = k_uptime_get_32();
 
         /* Increment sequence number (wraps at 16) */
-        ctx->rxSequenceNumber = (ctx->rxSequenceNumber + 1U) & ISOTP_SEQ_MASK;
+        ctx->rx_sequence_number = (ctx->rx_sequence_number + 1U) & ISOTP_SEQ_MASK;
 
         /* Check if reception complete */
-        if (ctx->rxBytesReceived >= ctx->rxDataLength) {
+        if (ctx->rx_bytes_received >= ctx->rx_data_length) {
             /* Set completion flag, then return to IDLE. IDLE.entry
-             * preserves rxDataLength because rxComplete is set. */
-            ctx->rxComplete = true;
+             * preserves rx_data_length because rx_complete is set. */
+            ctx->rx_complete = true;
             ISOTP_Reset(ctx);
         }
     }
 
-    ctx->currentConsumed = true; /* Message consumed even on seq error. */
+    ctx->current_consumed = true; /* Message consumed even on seq error. */
     return true;
 }
 
 /**
  * @brief Send a Flow Control frame to the remote sender
  *
- * @param ctx        ISO-TP context providing source, target, and messageId for CAN ID assembly
+ * @param ctx        ISO-TP context providing source, target, and message_id for CAN ID assembly
  * @param flowStatus FC status byte: ISOTP_FC_CTS (0x30), ISOTP_FC_WAIT (0x31), or ISOTP_FC_OVFLW (0x32)
  * @param blockSize  Maximum number of consecutive frames before next FC (0 = unlimited)
  * @param stmin      Minimum separation time between consecutive frames (ms, 0-127)
@@ -442,8 +442,8 @@ static void SendFlowControl(const ISOTPContext_t *ctx, uint8_t flowStatus,
 {
     DiveCANMessage_t fc = {0};
 
-    /* Build CAN ID: messageId | (target << 8) | source */
-    fc.id = ctx->messageId | ((uint32_t)ctx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)ctx->source;
+    /* Build CAN ID: message_id | (target << 8) | source */
+    fc.id = ctx->message_id | ((uint32_t)ctx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)ctx->source;
     fc.length = ISOTP_FC_LENGTH;
     fc.data[ISOTP_FC_STATUS_IDX] = flowStatus;
     fc.data[ISOTP_FC_BS_IDX] = blockSize;
@@ -458,7 +458,7 @@ static void SendFlowControl(const ISOTPContext_t *ctx, uint8_t flowStatus,
  * Uses the centralized TX queue to ensure serialized transmission,
  * preventing interleaving when multiple ISO-TP contexts are active.
  *
- * Note: txComplete is set immediately on successful queue. Callers that need
+ * Note: tx_complete is set immediately on successful queue. Callers that need
  * to wait for actual transmission should check ISOTP_TxQueue_IsBusy() before
  * sending subsequent messages.
  *
@@ -483,11 +483,11 @@ bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length)
          * transfers (target 0xFF, e.g. log-push) are sent fire-and-forget by
          * the queue so they never stall an addressed reply. */
         result = ISOTP_TxQueue_Enqueue(ctx->source, ctx->target,
-                           ctx->messageId, data, length);
+                           ctx->message_id, data, length);
 
         if (result) {
             /* Set completion flag - message is queued and will be sent in order */
-            ctx->txComplete = true;
+            ctx->tx_complete = true;
         }
     }
 
@@ -513,11 +513,11 @@ void ISOTP_Poll(ISOTPContext_t *ctx, uint32_t currentTime)
          * (logging + state reset). The IDLE.run treats TIMEOUT as a
          * no-op so polling an idle context is harmless. */
         if ((ISOTP_RECEIVING == ctx->state) &&
-            ((currentTime - ctx->rxLastFrameTime) > ISOTP_TIMEOUT_N_CR)) {
-            ctx->currentEvent = ISOTP_RX_EVT_TIMEOUT;
-            ctx->currentMessage = NULL;
+            ((currentTime - ctx->rx_last_frame_time) > ISOTP_TIMEOUT_N_CR)) {
+            ctx->current_event = ISOTP_RX_EVT_TIMEOUT;
+            ctx->current_message = NULL;
             (void)smf_run_state(SMF_CTX(ctx));
-            ctx->currentEvent = ISOTP_RX_EVT_NONE;
+            ctx->current_event = ISOTP_RX_EVT_NONE;
         }
     }
 }

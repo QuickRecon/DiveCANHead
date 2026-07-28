@@ -79,11 +79,11 @@ K_MSGQ_DEFINE(can_rx_msgq, sizeof(DiveCANMessage_t), RX_QUEUE_SIZE, 4);
 /* ---- UDS state encapsulation ---- */
 
 typedef struct {
-    ISOTPContext_t isotpContext;
-    UDSContext_t udsContext;
-    bool isotpInitialized;
-    ISOTPContext_t logPushIsoTpContext;
-    bool logPushInitialized;
+    ISOTPContext_t isotp_context;
+    UDSContext_t uds_context;
+    bool isotp_initialized;
+    ISOTPContext_t log_push_isotp_context;
+    bool log_push_initialized;
 } DiveCANUDSState_t;
 
 /**
@@ -160,9 +160,9 @@ uint32_t divecan_rx_get_bus_id_count(void)
  * so no atomics are needed.
  */
 typedef struct {
-    uint32_t lastHandsetPingMs; /**< Uptime (ms) of the last handset (DIVECAN_CONTROLLER) ping */
-    bool handsetSeen;           /**< True once a controller ping has arrived at least once */
-    bool handsetLostApplied;    /**< True once the 0.70 bar fallback setpoint has been published */
+    uint32_t last_handset_ping_ms; /**< Uptime (ms) of the last handset (DIVECAN_CONTROLLER) ping */
+    bool handset_seen;           /**< True once a controller ping has arrived at least once */
+    bool handset_lost_applied;    /**< True once the 0.70 bar fallback setpoint has been published */
 } HandsetFailsafeState_t;
 
 /**
@@ -257,9 +257,9 @@ static void NoteHandsetPing(const DiveCANMessage_t *message)
 {
     if ((uint8_t)(message->id & DIVECAN_TYPE_MASK) == (uint8_t)DIVECAN_CONTROLLER) {
         HandsetFailsafeState_t *hfState = getHandsetFailsafeState();
-        hfState->lastHandsetPingMs = k_uptime_get_32();
-        hfState->handsetSeen = true;
-        hfState->handsetLostApplied = false;
+        hfState->last_handset_ping_ms = k_uptime_get_32();
+        hfState->handset_seen = true;
+        hfState->handset_lost_applied = false;
     }
 }
 
@@ -445,14 +445,14 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
          * contended-lock miss retries next iteration rather than leaving a
          * high setpoint in place. */
         HandsetFailsafeState_t *hfState = getHandsetFailsafeState();
-        if (handset_failsafe_should_revert(now, hfState->lastHandsetPingMs,
-                           hfState->handsetSeen, hfState->handsetLostApplied,
+        if (handset_failsafe_should_revert(now, hfState->last_handset_ping_ms,
+                           hfState->handset_seen, hfState->handset_lost_applied,
                            HANDSET_PING_TIMEOUT_MS)) {
             PPO2_t safe_setpoint = HANDSET_LOST_SETPOINT_CB;
             Status_t rc = zbus_chan_pub(&chan_setpoint, &safe_setpoint,
                         K_MSEC(ZBUS_PUB_TIMEOUT_MS));
             if (0 == rc) {
-                hfState->handsetLostApplied = true;
+                hfState->handset_lost_applied = true;
                 LOG_WRN("Handset ping lost >%u ms; setpoint reverted to 0.70 bar",
                     HANDSET_PING_TIMEOUT_MS);
             } else {
@@ -762,7 +762,7 @@ static void RespSerialNumber(const DiveCANMessage_t *message)
  * @brief Initialize UDS contexts at task startup
  *
  * Initializes TX queue and log push ISO-TP context before message processing
- * begins. The main isotpContext is initialized on first MENU message since it
+ * begins. The main isotp_context is initialized on first MENU message since it
  * needs the target address from the incoming message.
  */
 static void InitializeUDSContexts(void)
@@ -776,8 +776,8 @@ static void InitializeUDSContexts(void)
      * own state (singleton LogPushState_t) gets the context pointer it
      * needs — without that wiring, UDS_LogPush_Poll() no-ops forever
      * and no log message ever leaves the queue. */
-    UDS_LogPush_Init(&udsState->logPushIsoTpContext);
-    udsState->logPushInitialized = true;
+    UDS_LogPush_Init(&udsState->log_push_isotp_context);
+    udsState->log_push_initialized = true;
 }
 
 /**
@@ -789,8 +789,8 @@ static void PollISOTPContexts(uint32_t now)
     DiveCANUDSState_t *udsState = getUDSState();
 
     /* Poll main ISO-TP context */
-    if (udsState->isotpInitialized) {
-        ISOTP_Poll(&udsState->isotpContext, now);
+    if (udsState->isotp_initialized) {
+        ISOTP_Poll(&udsState->isotp_context, now);
     }
 
     /* Poll the log-push ISO-TP context for timeouts here, but DON'T drive a new
@@ -798,8 +798,8 @@ static void PollISOTPContexts(uint32_t now)
      * ProcessISOTPCompletion (after the RX-completed dialog reply is enqueued and
      * pumped) so a passive log push never claims the idle TX window ahead of an
      * active dialog reply for this same iteration. */
-    if (udsState->logPushInitialized) {
-        ISOTP_Poll(&udsState->logPushIsoTpContext, now);
+    if (udsState->log_push_initialized) {
+        ISOTP_Poll(&udsState->log_push_isotp_context, now);
     }
 }
 
@@ -813,21 +813,21 @@ static void ProcessISOTPCompletion(uint32_t now)
 
     /* Check for completed ISO-TP RX transfers BEFORE polling TX queue
      * so that responses are enqueued before we try to send them */
-    if (udsState->isotpInitialized && udsState->isotpContext.rxComplete) {
+    if (udsState->isotp_initialized && udsState->isotp_context.rx_complete) {
         /* A request arrived: an addressed reply is imminent. Re-arm the log-push
          * quiescent window so broadcasts don't interleave with the reply on the
          * handset's ISO-TP reassembly context. */
         UDS_LogPush_NoteDialogActivity(now);
-        UDS_ProcessRequest(&udsState->udsContext,
-                   udsState->isotpContext.rxBuffer,
-                   udsState->isotpContext.rxDataLength);
-        udsState->isotpContext.rxComplete = false;
+        UDS_ProcessRequest(&udsState->uds_context,
+                   udsState->isotp_context.rx_buffer,
+                   udsState->isotp_context.rx_data_length);
+        udsState->isotp_context.rx_complete = false;
     }
 
     /* Check for completed ISO-TP TX transfers */
-    if (udsState->isotpInitialized && udsState->isotpContext.txComplete) {
+    if (udsState->isotp_initialized && udsState->isotp_context.tx_complete) {
         /* Transmission complete - no action required */
-        udsState->isotpContext.txComplete = false;
+        udsState->isotp_context.tx_complete = false;
     }
 
     /* Poll TX queue AFTER processing RX - ensures responses enqueued
@@ -850,7 +850,7 @@ static void ProcessISOTPCompletion(uint32_t now)
      * overwrites oldest) is the accepted trade. Poll() self-suppresses while a
      * large UDS transfer (OTA / log download) owns the bridge — see
      * UDS_LogPush_SetSuspended(). */
-    if (udsState->logPushInitialized) {
+    if (udsState->log_push_initialized) {
         UDS_LogPush_Poll();
     }
 #ifdef CONFIG_FLASH_LOG
@@ -872,21 +872,21 @@ static bool ProcessMenuMessage(const DiveCANMessage_t *message)
 
     /* Initialize ISO-TP + UDS context on first MENU message
      * (needs target address from the incoming message) */
-    if (!udsState->isotpInitialized) {
+    if (!udsState->isotp_initialized) {
         uint8_t targetType = (uint8_t)(message->id & 0xFFU);
         /* Never seed the dialog context with the broadcast address: the BT
          * bridge sources its frames from 0xFF, and a context created with a
-         * 0xFF target latches broadcastTx and would refuse to retarget back
+         * 0xFF target latches broadcast_tx and would refuse to retarget back
          * to the handset (Bus Devices menu goes dead until reboot). Seed a
          * unicast placeholder; ISOTP_ProcessRxFrame below immediately
          * retargets it to the true sender of this same frame. */
         if (ISOTP_BROADCAST_ADDR == targetType) {
             targetType = (uint8_t)DIVECAN_CONTROLLER;
         }
-        ISOTP_Init(&udsState->isotpContext, device_spec.type,
+        ISOTP_Init(&udsState->isotp_context, device_spec.type,
                (DiveCANType_t)targetType, MENU_ID);
-        UDS_Init(&udsState->udsContext, &udsState->isotpContext);
-        udsState->isotpInitialized = true;
+        UDS_Init(&udsState->uds_context, &udsState->isotp_context);
+        udsState->isotp_initialized = true;
     }
 
     /* Check if this is a Flow Control frame for our TX queue.
@@ -896,12 +896,12 @@ static bool ProcessMenuMessage(const DiveCANMessage_t *message)
         consumed = true; /* FC consumed by TX queue */
     }
     /* Try ISO-TP RX processing - returns true if consumed */
-    else if (ISOTP_ProcessRxFrame(&udsState->isotpContext, message)) {
+    else if (ISOTP_ProcessRxFrame(&udsState->isotp_context, message)) {
         consumed = true; /* ISO-TP handled it */
     }
     /* Also check log push ISO-TP for Flow Control frames from bluetooth client */
-    else if (udsState->logPushInitialized &&
-         ISOTP_ProcessRxFrame(&udsState->logPushIsoTpContext, message)) {
+    else if (udsState->log_push_initialized &&
+         ISOTP_ProcessRxFrame(&udsState->log_push_isotp_context, message)) {
         consumed = true; /* Log push ISO-TP handled it (likely FC) */
     } else {
         /* Message not consumed by any ISO-TP context */

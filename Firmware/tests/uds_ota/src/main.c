@@ -66,17 +66,17 @@ static const SettingDefinition_t TEST_SETTINGS[] = {
         .label = "Mode",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = 1U,
+        .max_value = 1U,
         .options = TEST_SETTING_OPTIONS,
-        .optionCount = ARRAY_SIZE(TEST_SETTING_OPTIONS),
+        .option_count = ARRAY_SIZE(TEST_SETTING_OPTIONS),
     },
     {
         .label = "Gain",
         .kind = SETTING_KIND_NUMBER,
         .editable = false,
-        .maxValue = UINT64_C(0x0102030405060708),
+        .max_value = UINT64_C(0x0102030405060708),
         .options = NULL,
-        .optionCount = 0U,
+        .option_count = 0U,
     },
 };
 
@@ -621,11 +621,11 @@ ZTEST(uds_core_reads, test_entry_point_guards_and_session_timeout)
     UDS_SendNegativeResponse(&no_transport, 0x99U,
                  UDS_NRC_SERVICE_NOT_SUPPORTED);
     UDS_SendResponse(&no_transport);
-    no_transport.isotpContext = &test_isotp_ctx;
+    no_transport.isotp_context = &test_isotp_ctx;
     UDS_SendResponse(&no_transport);
 
     test_ctx.session = UDS_SESSION_PROGRAMMING;
-    test_ctx.lastActivityMs = k_uptime_get_32() - UDS_S3_TIMEOUT_MS - 1U;
+    test_ctx.last_activity_ms = k_uptime_get_32() - UDS_S3_TIMEOUT_MS - 1U;
     UDS_MaintainSession(&test_ctx);
     zassert_equal(test_ctx.session, UDS_SESSION_DEFAULT);
 }

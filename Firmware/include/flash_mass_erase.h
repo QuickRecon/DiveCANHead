@@ -1,6 +1,8 @@
 #ifndef FLASH_MASS_ERASE_H
 #define FLASH_MASS_ERASE_H
 
+#include "common.h"
+
 /**
  * @file flash_mass_erase.h
  * @brief Whole-chip erase of the external SPI-NOR.
@@ -21,6 +23,6 @@
  *
  * @return 0 on success, negative errno otherwise.
  */
-int flash_mass_erase_external(void);
+Status_t flash_mass_erase_external(void);
 
 #endif /* FLASH_MASS_ERASE_H */

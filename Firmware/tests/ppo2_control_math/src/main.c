@@ -37,7 +37,7 @@ ZTEST_SUITE(pid_update_suite, NULL, NULL, NULL, NULL, NULL);
 ZTEST(pid_update_suite, test_proportional_term_only)
 {
     PIDState_t state = {0};
-    state.proportionalGain = 2.0;
+    state.proportional_gain = 2.0;
 
     PIDNumeric_t result = pid_update(1.0, 0.5, &state);
     zassert_within(result, 1.0, EPS, "Kp=2, err=0.5 ⇒ 1.0");
@@ -50,9 +50,9 @@ ZTEST(pid_update_suite, test_proportional_term_only)
 ZTEST(pid_update_suite, test_integral_term_accumulates)
 {
     PIDState_t state = {0};
-    state.integralGain = 0.1;
-    state.integralMax = 1.0;
-    state.integralMin = 0.0;
+    state.integral_gain = 0.1;
+    state.integral_max = 1.0;
+    state.integral_min = 0.0;
 
     PIDNumeric_t result = pid_update(1.0, 0.5, &state);
     zassert_within(result, 0.05, EPS, "first iter: 0.1*0.5");
@@ -61,24 +61,24 @@ ZTEST(pid_update_suite, test_integral_term_accumulates)
     zassert_within(result, 0.10, EPS, "second iter accumulates to 0.1");
 }
 
-/** @brief Integrator clamps at integralMax and saturationCount increments. */
+/** @brief Integrator clamps at integral_max and saturation_count increments. */
 ZTEST(pid_update_suite, test_integral_windup_clamp)
 {
     PIDState_t state = {0};
-    state.integralGain = 1.0;
-    state.integralMax = 0.5;
-    state.integralMin = 0.0;
+    state.integral_gain = 1.0;
+    state.integral_max = 0.5;
+    state.integral_min = 0.0;
 
     for (int i = 0; i < 10; i++) {
         (void)pid_update(1.0, 0.0, &state);
     }
-    zassert_within(state.integralState, 0.5, EPS, "windup clamps at max");
-    zassert_true(state.saturationCount > 0, "satCount incremented");
+    zassert_within(state.integral_state, 0.5, EPS, "windup clamps at max");
+    zassert_true(state.saturation_count > 0, "satCount incremented");
 
     /* A large (+1 bar) overshoot crosses the +0.20 bar hard-reset threshold. */
     (void)pid_update(0.0, 1.0, &state);
-    zassert_within(state.integralState, 0.0, EPS, "neg error resets integ");
-    zassert_equal(state.saturationCount, 0, "satCount resets when unsat");
+    zassert_within(state.integral_state, 0.0, EPS, "neg error resets integ");
+    zassert_equal(state.saturation_count, 0, "satCount resets when unsat");
 }
 
 
@@ -86,13 +86,13 @@ ZTEST(pid_update_suite, test_integral_windup_clamp)
 ZTEST(pid_update_suite, test_small_overshoot_unwinds_integral)
 {
     PIDState_t state = {0};
-    state.integralGain = 0.1f;
-    state.integralMax = 1.0f;
-    state.integralMin = 0.0f;
-    state.integralState = 0.30f;
+    state.integral_gain = 0.1f;
+    state.integral_max = 1.0f;
+    state.integral_min = 0.0f;
+    state.integral_state = 0.30f;
 
     (void)pid_update(0.70f, 0.80f, &state);
-    zassert_within(state.integralState, 0.29f, EPS,
+    zassert_within(state.integral_state, 0.29f, EPS,
                "+0.10 bar overshoot should unwind, not reset");
 }
 
@@ -100,13 +100,13 @@ ZTEST(pid_update_suite, test_small_overshoot_unwinds_integral)
 ZTEST(pid_update_suite, test_large_overshoot_resets_integral)
 {
     PIDState_t state = {0};
-    state.integralGain = 0.1f;
-    state.integralMax = 1.0f;
-    state.integralMin = 0.0f;
-    state.integralState = 0.30f;
+    state.integral_gain = 0.1f;
+    state.integral_max = 1.0f;
+    state.integral_min = 0.0f;
+    state.integral_state = 0.30f;
 
     (void)pid_update(0.70f, 0.90f, &state);
-    zassert_within(state.integralState, 0.0f, EPS,
+    zassert_within(state.integral_state, 0.0f, EPS,
                "+0.20 bar overshoot should hard-reset integral");
 }
 
@@ -114,29 +114,29 @@ ZTEST(pid_update_suite, test_large_overshoot_resets_integral)
 ZTEST(pid_update_suite, test_conditional_integration_blocks_saturated_direction)
 {
     PIDState_t state = {0};
-    state.proportionalGain = 2.0f;
-    state.integralGain = 0.1f;
-    state.integralMax = 1.0f;
-    state.integralMin = 0.0f;
+    state.proportional_gain = 2.0f;
+    state.integral_gain = 0.1f;
+    state.integral_max = 1.0f;
+    state.integral_min = 0.0f;
 
     (void)pid_update(1.0f, 0.0f, &state);
-    zassert_within(state.integralState, 0.0f, EPS,
+    zassert_within(state.integral_state, 0.0f, EPS,
                "saturated P output must not accumulate hidden integral");
-    zassert_true(state.saturationCount > 0U);
+    zassert_true(state.saturation_count > 0U);
 }
 
 /** @brief Integral remains active when its update helps leave saturation. */
 ZTEST(pid_update_suite, test_conditional_integration_allows_recovery)
 {
     PIDState_t state = {0};
-    state.proportionalGain = 2.0f;
-    state.integralGain = 0.1f;
-    state.integralMax = 1.0f;
-    state.integralMin = 0.0f;
-    state.integralState = 0.5f;
+    state.proportional_gain = 2.0f;
+    state.integral_gain = 0.1f;
+    state.integral_max = 1.0f;
+    state.integral_min = 0.0f;
+    state.integral_state = 0.5f;
 
     (void)pid_update(0.70f, 0.80f, &state);
-    zassert_within(state.integralState, 0.49f, EPS,
+    zassert_within(state.integral_state, 0.49f, EPS,
                "negative error should unwind a positive integral");
 }
 
@@ -144,24 +144,24 @@ ZTEST(pid_update_suite, test_conditional_integration_allows_recovery)
 ZTEST(pid_update_suite, test_derivative_on_measurement)
 {
     PIDState_t state = {0};
-    state.derivativeGain = 1.0;
-    state.derivativeState = 0.5;
+    state.derivative_gain = 1.0;
+    state.derivative_state = 0.5;
 
     PIDNumeric_t result = pid_update(1.0, 0.7, &state);
     zassert_within(result, -0.2, EPS, "Kd=1, prev=0.5, new=0.7 ⇒ -0.2");
-    zassert_within(state.derivativeState, 0.7, EPS, "deriv state updated");
+    zassert_within(state.derivative_state, 0.7, EPS, "deriv state updated");
 }
 
 /** @brief All terms combine as P + I + D. */
 ZTEST(pid_update_suite, test_all_terms_combine)
 {
     PIDState_t state = {0};
-    state.proportionalGain = 1.0;
-    state.integralGain = 0.1;
-    state.derivativeGain = 0.5;
-    state.derivativeState = 0.5;
-    state.integralMax = 1.0;
-    state.integralMin = 0.0;
+    state.proportional_gain = 1.0;
+    state.integral_gain = 0.1;
+    state.derivative_gain = 0.5;
+    state.derivative_state = 0.5;
+    state.integral_max = 1.0;
+    state.integral_min = 0.0;
 
     /* sp=1.0, m=0.5: P=0.5, I=0.05, D=0 → 0.55 */
     PIDNumeric_t result = pid_update(1.0, 0.5, &state);
@@ -180,7 +180,7 @@ ZTEST(pid_update_suite, test_zero_gains_zero_output)
 ZTEST(pid_update_suite, test_negative_error_negative_output)
 {
     PIDState_t state = {0};
-    state.proportionalGain = 1.0;
+    state.proportional_gain = 1.0;
 
     PIDNumeric_t result = pid_update(0.7, 1.0, &state);
     zassert_true(result < 0.0, "neg error ⇒ neg output");
@@ -190,30 +190,30 @@ ZTEST(pid_update_suite, test_negative_error_negative_output)
 ZTEST(pid_update_suite, test_saturation_count_resets)
 {
     PIDState_t state = {0};
-    state.integralGain = 1.0;
-    state.integralMax = 0.5;
-    state.integralMin = -0.5;
+    state.integral_gain = 1.0;
+    state.integral_max = 0.5;
+    state.integral_min = -0.5;
 
     for (int i = 0; i < 10; i++) {
         (void)pid_update(1.0, 0.0, &state);
     }
-    zassert_true(state.saturationCount > 0, "windup increments satCount");
+    zassert_true(state.saturation_count > 0, "windup increments satCount");
 
     /* Small overshoot unwinds one step and leaves the clamp. */
     (void)pid_update(1.0, 1.1, &state);
-    zassert_equal(state.saturationCount, 0, "satCount resets on un-sat");
-    zassert_within(state.integralState, 0.4f, EPS, "integral unwinds by Ki*error");
+    zassert_equal(state.saturation_count, 0, "satCount resets on un-sat");
+    zassert_within(state.integral_state, 0.4f, EPS, "integral unwinds by Ki*error");
 }
 
 /** @brief Step response visible as combined P + small I + nonzero D. */
 ZTEST(pid_update_suite, test_step_response)
 {
     PIDState_t state = {0};
-    state.proportionalGain = 1.0;
-    state.integralGain = 0.1;
-    state.derivativeGain = 0.2;
-    state.integralMax = 1.0;
-    state.integralMin = -1.0;
+    state.proportional_gain = 1.0;
+    state.integral_gain = 0.1;
+    state.derivative_gain = 0.2;
+    state.integral_max = 1.0;
+    state.integral_min = -1.0;
 
     /* Settle at zero error first */
     (void)pid_update(1.0, 1.0, &state);
@@ -231,11 +231,11 @@ ZTEST(pid_update_suite, test_step_response)
 ZTEST(pid_update_suite, test_setpoint_change)
 {
     PIDState_t state = {0};
-    state.proportionalGain = 1.0;
-    state.integralGain = 0.1;
-    state.derivativeGain = 0.2;
-    state.integralMax = 1.0;
-    state.integralMin = -1.0;
+    state.proportional_gain = 1.0;
+    state.integral_gain = 0.1;
+    state.derivative_gain = 0.2;
+    state.integral_max = 1.0;
+    state.integral_min = -1.0;
 
     (void)pid_update(1.0, 1.0, &state);
 
@@ -250,27 +250,27 @@ ZTEST(pid_update_suite, test_setpoint_change)
 ZTEST(pid_update_suite, test_boundary_conditions)
 {
     PIDState_t state = {0};
-    state.proportionalGain = 1.0;
-    state.integralGain = 0.1;
-    state.derivativeGain = 0.2;
-    state.integralMax = 1.0;
-    state.integralMin = -1.0;
+    state.proportional_gain = 1.0;
+    state.integral_gain = 0.1;
+    state.derivative_gain = 0.2;
+    state.integral_max = 1.0;
+    state.integral_min = -1.0;
 
     PIDNumeric_t result = pid_update(0.0, 0.1, &state);
     zassert_true(result < 0.0, "zero SP, m>0 ⇒ neg output");
 
-    state.integralState = 0.0;
-    state.derivativeState = 0.0;
+    state.integral_state = 0.0;
+    state.derivative_state = 0.0;
     result = pid_update(10.0, 0.1, &state);
     zassert_true(result > 0.0, "large SP ⇒ positive output");
 
-    state.integralState = 0.0;
-    state.derivativeState = 0.0;
+    state.integral_state = 0.0;
+    state.derivative_state = 0.0;
     result = pid_update(0.0, 0.0, &state);
     zassert_within(result, 0.0, EPS, "equal SP and m ⇒ 0");
 
-    state.integralState = 0.0;
-    state.derivativeState = 0.9999;
+    state.integral_state = 0.0;
+    state.derivative_state = 0.9999;
     result = pid_update(1.0, 0.9999, &state);
     zassert_true(fabs(result) < 0.001, "tiny error ⇒ tiny output");
 }
@@ -293,19 +293,19 @@ ZTEST_SUITE(pid_state_suite, NULL, NULL, NULL, NULL, NULL);
 ZTEST(pid_state_suite, test_init_populates_defaults)
 {
     PIDState_t state = {
-        .integralState = 99.0, .derivativeState = 99.0,
-        .saturationCount = 99U,
+        .integral_state = 99.0, .derivative_state = 99.0,
+        .saturation_count = 99U,
     };
     pid_state_init(&state, 1.0, 0.01, 0.0);
 
-    zassert_within(state.proportionalGain, 1.0, EPS, NULL);
-    zassert_within(state.integralGain, 0.01, EPS, NULL);
-    zassert_within(state.derivativeGain, 0.0, EPS, NULL);
-    zassert_within(state.integralMax, 1.0, EPS, NULL);
-    zassert_within(state.integralMin, 0.0, EPS, NULL);
-    zassert_within(state.integralState, 0.0, EPS, "integ cleared");
-    zassert_within(state.derivativeState, 0.0, EPS, "deriv cleared");
-    zassert_equal(state.saturationCount, 0U, "satCount cleared");
+    zassert_within(state.proportional_gain, 1.0, EPS, NULL);
+    zassert_within(state.integral_gain, 0.01, EPS, NULL);
+    zassert_within(state.derivative_gain, 0.0, EPS, NULL);
+    zassert_within(state.integral_max, 1.0, EPS, NULL);
+    zassert_within(state.integral_min, 0.0, EPS, NULL);
+    zassert_within(state.integral_state, 0.0, EPS, "integ cleared");
+    zassert_within(state.derivative_state, 0.0, EPS, "deriv cleared");
+    zassert_equal(state.saturation_count, 0U, "satCount cleared");
 }
 
 /** @brief reset_dynamic clears integrator/derivative/satCount but keeps gains. */
@@ -313,19 +313,19 @@ ZTEST(pid_state_suite, test_reset_dynamic_keeps_gains)
 {
     PIDState_t state = {0};
     pid_state_init(&state, 1.0, 0.01, 0.0);
-    state.integralState = 0.5;
-    state.derivativeState = 0.7;
-    state.saturationCount = 12U;
+    state.integral_state = 0.5;
+    state.derivative_state = 0.7;
+    state.saturation_count = 12U;
 
     pid_state_reset_dynamic(&state);
 
-    zassert_within(state.integralState, 0.0, EPS, NULL);
-    zassert_within(state.derivativeState, 0.0, EPS, NULL);
-    zassert_equal(state.saturationCount, 0U, NULL);
+    zassert_within(state.integral_state, 0.0, EPS, NULL);
+    zassert_within(state.derivative_state, 0.0, EPS, NULL);
+    zassert_equal(state.saturation_count, 0U, NULL);
     /* Gains unchanged */
-    zassert_within(state.proportionalGain, 1.0, EPS, NULL);
-    zassert_within(state.integralGain, 0.01, EPS, NULL);
-    zassert_within(state.derivativeGain, 0.0, EPS, NULL);
+    zassert_within(state.proportional_gain, 1.0, EPS, NULL);
+    zassert_within(state.integral_gain, 0.01, EPS, NULL);
+    zassert_within(state.derivative_gain, 0.0, EPS, NULL);
 }
 
 /* ============================================================================

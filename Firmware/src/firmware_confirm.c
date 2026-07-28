@@ -97,7 +97,7 @@ static atomic_t *get_post_pass_mask_atomic(void)
  */
 static void mark_check_passed(uint32_t bit, PostState_t next_state)
 {
-    (void)atomic_or(get_post_pass_mask_atomic(), BIT(bit));
+    (void)atomic_or(get_post_pass_mask_atomic(), ((atomic_val_t)1 << bit));
     (void)atomic_set(get_post_state_atomic(), (atomic_val_t)next_state);
 }
 

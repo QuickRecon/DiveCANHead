@@ -113,7 +113,7 @@ typedef enum {
  * Contains all state for an ISO-TP session including RX/TX buffers,
  * sequence tracking, flow control parameters, and addressing.
  *
- * @note txDataPtr must remain valid until txComplete is set
+ * @note tx_data_ptr must remain valid until tx_complete is set
  * @note `smf` MUST be the first member so SMF_CTX() downcasts correctly.
  */
 typedef struct {
@@ -121,28 +121,28 @@ typedef struct {
     ISOTPState_t state; /**< Current state machine state */
 
     /* RX state */
-    uint16_t rxDataLength;               /**< Total expected length for multi-frame RX */
-    uint16_t rxBytesReceived;            /**< Bytes received so far */
-    uint8_t rxSequenceNumber;            /**< Expected next CF sequence number (0-15) */
-    uint8_t rxBuffer[ISOTP_MAX_PAYLOAD]; /**< Reassembly buffer */
-    uint32_t rxLastFrameTime;            /**< ms timestamp of last received frame */
-    bool rxComplete;                     /**< RX transfer complete flag (caller must clear) */
+    uint16_t rx_data_length;               /**< Total expected length for multi-frame RX */
+    uint16_t rx_bytes_received;            /**< Bytes received so far */
+    uint8_t rx_sequence_number;            /**< Expected next CF sequence number (0-15) */
+    uint8_t rx_buffer[ISOTP_MAX_PAYLOAD]; /**< Reassembly buffer */
+    uint32_t rx_last_frame_time;            /**< ms timestamp of last received frame */
+    bool rx_complete;                     /**< RX transfer complete flag (caller must clear) */
 
     /* TX state */
-    uint16_t txDataLength;    /**< Total length to send */
-    uint16_t txBytesSent;     /**< Bytes sent so far */
-    uint8_t txSequenceNumber; /**< Next CF sequence to send (0-15) */
-    const uint8_t *txDataPtr; /**< Pointer to caller's data (must stay valid!) */
-    uint8_t txBlockSize;      /**< BS from FC (0 = infinite) */
-    uint8_t txSTmin;          /**< STmin from FC (0-127 ms) */
-    uint8_t txBlockCounter;   /**< Frames sent in current block */
-    uint32_t txLastFrameTime; /**< ms timestamp of last transmitted frame */
-    bool txComplete;          /**< TX transfer complete flag (caller must clear) */
+    uint16_t tx_data_length;    /**< Total length to send */
+    uint16_t tx_bytes_sent;     /**< Bytes sent so far */
+    uint8_t tx_sequence_number; /**< Next CF sequence to send (0-15) */
+    const uint8_t *tx_data_ptr; /**< Pointer to caller's data (must stay valid!) */
+    uint8_t tx_block_size;      /**< BS from FC (0 = infinite) */
+    uint8_t tx_stmin;          /**< STmin from FC (0-127 ms) */
+    uint8_t tx_block_counter;   /**< Frames sent in current block */
+    uint32_t tx_last_frame_time; /**< ms timestamp of last transmitted frame */
+    bool tx_complete;          /**< TX transfer complete flag (caller must clear) */
 
     /* Addressing */
     DiveCANType_t source; /**< Our device type */
     DiveCANType_t target; /**< Remote device type */
-    uint32_t messageId;   /**< Base CAN ID (e.g., MENU_ID = 0xD0A0000) */
+    uint32_t message_id;   /**< Base CAN ID (e.g., MENU_ID = 0xD0A0000) */
 
     /* Role flag, fixed at ISOTP_Init from the initial target. A context
      * created with the broadcast target (ISOTP_BROADCAST_ADDR) is a
@@ -154,7 +154,7 @@ typedef struct {
      * role, not on the live target value, is what stops an incidental 0xFF
      * (BT bridge source) from wedging the dialog target on broadcast and
      * killing the handset's Bus Devices menu until reboot. */
-    bool broadcastTx; /**< true = permanent broadcast sender; never retarget */
+    bool broadcast_tx; /**< true = permanent broadcast sender; never retarget */
 
     /* TX traffic class is derived from the target address: a broadcast target
      * (ISOTP_BROADCAST_ADDR, e.g. the log-push stream) is sent fire-and-forget
@@ -165,9 +165,9 @@ typedef struct {
     /* Per-tick SMF input. ISOTP_ProcessRxFrame / ISOTP_Poll populate
      * these before calling smf_run_state; the state run reads them and
      * dispatches accordingly. */
-    IsotpRxEvent_e currentEvent;
-    const DiveCANMessage_t *currentMessage;
-    bool currentConsumed; /**< Set by handlers; read by ISOTP_ProcessRxFrame */
+    IsotpRxEvent_e current_event;
+    const DiveCANMessage_t *current_message;
+    bool current_consumed; /**< Set by handlers; read by ISOTP_ProcessRxFrame */
 } ISOTPContext_t;
 
 /* Public API */
@@ -181,10 +181,10 @@ typedef struct {
  * @param ctx Context to initialize (must not be NULL)
  * @param source Our device type (e.g., DIVECAN_SOLO)
  * @param target Remote device type (e.g., DIVECAN_CONTROLLER)
- * @param messageId Base CAN message ID (e.g., MENU_ID = 0xD0A0000)
+ * @param message_id Base CAN message ID (e.g., MENU_ID = 0xD0A0000)
  */
 void ISOTP_Init(ISOTPContext_t *ctx, DiveCANType_t source,
-        DiveCANType_t target, uint32_t messageId);
+        DiveCANType_t target, uint32_t message_id);
 
 /**
  * @brief Process received CAN frame
@@ -208,11 +208,11 @@ bool ISOTP_ProcessRxFrame(ISOTPContext_t *ctx, const DiveCANMessage_t *message);
  * preventing interleaving when multiple ISO-TP contexts are active.
  *
  * @param ctx ISO-TP context
- * @param data Data to send (must remain valid until txComplete)
+ * @param data Data to send (must remain valid until tx_complete)
  * @param length Data length (1-256 bytes)
  * @return true if transmission started successfully, false if invalid length
  *
- * @note txComplete is set immediately on successful queue.
+ * @note tx_complete is set immediately on successful queue.
  */
 bool ISOTP_Send(ISOTPContext_t *ctx, const uint8_t *data, uint16_t length);
 

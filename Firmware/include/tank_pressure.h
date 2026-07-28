@@ -15,6 +15,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef CONFIG_ZBUS
+#include <zephyr/zbus/zbus.h>
+#endif
+
 /** @brief Tank pressure in decibar (DiveCAN wire units; 515 = 51.5 bar). */
 typedef uint16_t TankPressure_t;
 
@@ -59,7 +63,6 @@ TankPressure_t tank_pressure_mv_to_decibar(TransducerMv_t millivolts,
                                            TransducerLimitBar_t limit_bar);
 
 #ifdef CONFIG_ZBUS
-#include <zephyr/zbus/zbus.h>
 ZBUS_CHAN_DECLARE(chan_tank_pressure);
 #endif
 

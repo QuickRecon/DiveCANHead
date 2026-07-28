@@ -122,11 +122,11 @@ static const size_t SETTING_LABEL_MAX_LEN = 9U;
  * @brief UDS session context (one per ISO-TP channel).
  */
 typedef struct {
-    uint8_t responseBuffer[UDS_MAX_RESPONSE_LENGTH]; /**< Scratch buffer for building responses */
-    uint16_t responseLength;                         /**< Number of valid bytes in responseBuffer */
-    ISOTPContext_t *isotpContext;                    /**< Underlying ISO-TP transport context */
+    uint8_t response_buffer[UDS_MAX_RESPONSE_LENGTH]; /**< Scratch buffer for building responses */
+    uint16_t response_length;                         /**< Number of valid bytes in response_buffer */
+    ISOTPContext_t *isotp_context;                    /**< Underlying ISO-TP transport context */
     UDS_Session_t session;                           /**< Current diagnostic session (default/programming) */
-    uint32_t lastActivityMs;                         /**< Uptime in ms of last UDS request (for S3 timeout) */
+    uint32_t last_activity_ms;                         /**< Uptime in ms of last UDS request (for S3 timeout) */
 } UDSContext_t;
 
 /**
@@ -144,11 +144,11 @@ void UDS_Init(UDSContext_t *ctx, ISOTPContext_t *isotpCtx);
  * or WriteDataByIdentifier. Sends a negative response on any error.
  *
  * @param ctx           UDS context
- * @param requestData   Raw request bytes (including pad + SID + DID + data)
- * @param requestLength Total length of requestData in bytes
+ * @param request_data   Raw request bytes (including pad + SID + DID + data)
+ * @param request_length Total length of request_data in bytes
  */
-void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
-            uint16_t requestLength);
+void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *request_data,
+            uint16_t request_length);
 
 /**
  * @brief Send a UDS negative response.
@@ -165,7 +165,7 @@ void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID,
  *
  * Expires a stale programming session if the S3 timeout has passed, then
  * forcibly downgrades to default if the unit is in a dive (ambient pressure
- * above DIVE_AMBIENT_PRESSURE_THRESHOLD_MBAR). Finally stamps lastActivityMs
+ * above DIVE_AMBIENT_PRESSURE_THRESHOLD_MBAR). Finally stamps last_activity_ms
  * so the next call can compute elapsed time.
  *
  * Called from UDS_ProcessRequest before the SID dispatch.
@@ -197,10 +197,10 @@ bool UDS_IsInDive(void);
 /**
  * @brief Transmit the assembled response buffer via ISO-TP.
  *
- * Must be called after populating ctx->responseBuffer and setting
- * ctx->responseLength.
+ * Must be called after populating ctx->response_buffer and setting
+ * ctx->response_length.
  *
- * @param ctx UDS context with responseBuffer and responseLength set
+ * @param ctx UDS context with response_buffer and response_length set
  */
 void UDS_SendResponse(UDSContext_t *ctx);
 

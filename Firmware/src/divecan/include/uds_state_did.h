@@ -117,17 +117,17 @@ bool UDS_StateDID_IsStateDID(uint16_t did);
  * @brief Handle a ReadDataByIdentifier request for a state DID.
  *
  * Reads the current value from the appropriate zbus channel or power API
- * and encodes it into responseBuffer.
+ * and encodes it into response_buffer.
  *
  * @param did            UDS data identifier to read
- * @param responseBuffer Buffer to write encoded value into
- * @param maxLength      Maximum bytes the handler may write into responseBuffer
- * @param responseLength Set to the number of bytes written on success
+ * @param response_buffer Buffer to write encoded value into
+ * @param maxLength      Maximum bytes the handler may write into response_buffer
+ * @param response_length Set to the number of bytes written on success
  * @return true on success, false if DID unknown, data unavailable, or the
  *         payload would not fit within @p maxLength bytes
  */
-bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *responseBuffer,
+bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *response_buffer,
                  uint16_t maxLength,
-                 uint16_t *responseLength);
+                 uint16_t *response_length);
 
 #endif /* UDS_STATE_DID_H */

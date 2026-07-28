@@ -58,7 +58,7 @@ size_t error_histogram_snapshot(uint16_t *out, size_t out_count);
  *
  * @return 0 on success, or a negative errno from the underlying NVS write.
  */
-int error_histogram_clear(void);
+Status_t error_histogram_clear(void);
 
 /**
  * @brief Suspend the periodic NVS save.

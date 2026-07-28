@@ -51,15 +51,15 @@ typedef struct {
  * @brief Module state structure (file scope, static allocation)
  *
  * NOTE: Pointers are placed BEFORE the large buffer to prevent corruption
- * if txBuffer overflows. This is defensive ordering.
+ * if tx_buffer overflows. This is defensive ordering.
  */
 typedef struct {
-    ISOTPContext_t *isotpContext;
-    bool txPending;
-    bool inSendLogMessage;  /* Reentrancy guard */
+    ISOTPContext_t *isotp_context;
+    bool tx_pending;
+    bool in_send_log_message;  /* Reentrancy guard */
     bool suspended;         /* Set while a large UDS transfer owns the bridge */
-    uint32_t lastDialogActivityMs; /* k_uptime of last addressed-dialog activity */
-    uint8_t txBuffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE];
+    uint32_t last_dialog_activity_ms; /* k_uptime of last addressed-dialog activity */
+    uint8_t tx_buffer[UDS_LOG_MAX_PAYLOAD + WDBI_HEADER_SIZE];
 } LogPushState_t;
 
 /**
@@ -112,9 +112,9 @@ void UDS_LogPush_Init(ISOTPContext_t *isotpCtx)
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
         LogPushState_t *state = getLogPushState();
-        state->isotpContext = isotpCtx;
-        state->txPending = false;
-        state->inSendLogMessage = false;
+        state->isotp_context = isotpCtx;
+        state->tx_pending = false;
+        state->in_send_log_message = false;
 
         k_msgq_purge(&log_push_msgq);
 
@@ -148,21 +148,21 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
     /* Reentrancy guard: OP_ERROR -> print -> SendLogMessage -> OP_ERROR...
      * Silently drop message if we're already in this function to break the loop.
      * Do NOT call OP_ERROR here as that would defeat the purpose. */
-    if (state->inSendLogMessage) {
+    if (state->in_send_log_message) {
         /* Expected: Reentrancy detected - silently drop to break recursion */
     } else {
-        state->inSendLogMessage = true;
+        state->in_send_log_message = true;
 
         if ((NULL == message) || (0 == length)) {
             OP_ERROR(OP_ERR_NULL_PTR);
         } else {
-            UDSLogQueueItem_t *txBuffer = getTxItemBuffer();
-            (void)memset(txBuffer, 0, sizeof(UDSLogQueueItem_t));
-            txBuffer->length = length;
-            if (txBuffer->length > UDS_LOG_MAX_PAYLOAD) {
-                txBuffer->length = UDS_LOG_MAX_PAYLOAD;
+            UDSLogQueueItem_t *tx_buffer = getTxItemBuffer();
+            (void)memset(tx_buffer, 0, sizeof(UDSLogQueueItem_t));
+            tx_buffer->length = length;
+            if (tx_buffer->length > UDS_LOG_MAX_PAYLOAD) {
+                tx_buffer->length = UDS_LOG_MAX_PAYLOAD;
             }
-            (void)memcpy(txBuffer->data, message, txBuffer->length);
+            (void)memcpy(tx_buffer->data, message, tx_buffer->length);
 
             /* Overwrite-oldest on full queue — this is the documented
              * back-pressure behaviour and MUST NOT emit OP_ERROR /
@@ -181,7 +181,7 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
                 (void)k_msgq_get(&log_push_msgq, getRxItemBuffer(), K_NO_WAIT);
             }
 
-            if (0 == k_msgq_put(&log_push_msgq, txBuffer, K_NO_WAIT)) {
+            if (0 == k_msgq_put(&log_push_msgq, tx_buffer, K_NO_WAIT)) {
                 result = true;
             }
             /* k_msgq_put failure after the just-freed slot would
@@ -189,7 +189,7 @@ bool UDS_LogPush_SendLogMessage(const char *message, uint16_t length)
              * feedback-loop reason. */
         }
 
-        state->inSendLogMessage = false;
+        state->in_send_log_message = false;
     }
 
     return result;
@@ -206,13 +206,13 @@ static bool sendQueuedItem(const UDSLogQueueItem_t *item)
     LogPushState_t *state = getLogPushState();
 
     /* Build WDBI frame: [SID, DID_high, DID_low, data...] */
-    state->txBuffer[WDBI_SID_IDX] = UDS_SID_WRITE_DATA_BY_ID;
-    state->txBuffer[WDBI_DID_HI_IDX] = (uint8_t)(UDS_DID_LOG_MESSAGE >> DIVECAN_BYTE_WIDTH);
-    state->txBuffer[WDBI_DID_LO_IDX] = (uint8_t)(UDS_DID_LOG_MESSAGE & DIVECAN_BYTE_MASK);
-    (void)memcpy(&state->txBuffer[WDBI_HEADER_SIZE], item->data, item->length);
+    state->tx_buffer[WDBI_SID_IDX] = UDS_SID_WRITE_DATA_BY_ID;
+    state->tx_buffer[WDBI_DID_HI_IDX] = (uint8_t)(UDS_DID_LOG_MESSAGE >> DIVECAN_BYTE_WIDTH);
+    state->tx_buffer[WDBI_DID_LO_IDX] = (uint8_t)(UDS_DID_LOG_MESSAGE & DIVECAN_BYTE_MASK);
+    (void)memcpy(&state->tx_buffer[WDBI_HEADER_SIZE], item->data, item->length);
 
-    bool sent = ISOTP_Send(state->isotpContext,
-                   state->txBuffer,
+    bool sent = ISOTP_Send(state->isotp_context,
+                   state->tx_buffer,
                    WDBI_HEADER_SIZE + item->length);
 
     return sent;
@@ -228,13 +228,13 @@ static bool checkTxPending(LogPushState_t *state)
 {
     bool canTransmit = true;
 
-    if (state->txPending) {
-        if (state->isotpContext->txComplete) {
-            state->txPending = false;
-            state->isotpContext->txComplete = false;
-        } else if (ISOTP_IDLE == state->isotpContext->state) {
+    if (state->tx_pending) {
+        if (state->isotp_context->tx_complete) {
+            state->tx_pending = false;
+            state->isotp_context->tx_complete = false;
+        } else if (ISOTP_IDLE == state->isotp_context->state) {
             /* TX failed (timeout or error) - message lost, continue with next */
-            state->txPending = false;
+            state->tx_pending = false;
         } else {
             canTransmit = false;
         }
@@ -252,16 +252,16 @@ static bool checkTxPending(LogPushState_t *state)
  */
 static void trySendNextItem(LogPushState_t *state)
 {
-    if (ISOTP_IDLE != state->isotpContext->state) {
+    if (ISOTP_IDLE != state->isotp_context->state) {
         /* Context busy with other operations */
     } else if (ISOTP_TxQueue_IsBusy() ||
                (ISOTP_TxQueue_GetPendingCount() > 0U)) {
         /* TX queue busy, try again on next poll */
     } else {
-        UDSLogQueueItem_t *rxBuffer = getRxItemBuffer();
-        if ((0 == k_msgq_get(&log_push_msgq, rxBuffer, K_NO_WAIT)) &&
-            sendQueuedItem(rxBuffer)) {
-            state->txPending = true;
+        UDSLogQueueItem_t *rx_buffer = getRxItemBuffer();
+        if ((0 == k_msgq_get(&log_push_msgq, rx_buffer, K_NO_WAIT)) &&
+            sendQueuedItem(rx_buffer)) {
+            state->tx_pending = true;
         }
     }
 }
@@ -279,7 +279,7 @@ void UDS_LogPush_SetSuspended(bool suspended)
 
 void UDS_LogPush_NoteDialogActivity(uint32_t now)
 {
-    getLogPushState()->lastDialogActivityMs = now;
+    getLogPushState()->last_dialog_activity_ms = now;
 }
 
 void UDS_LogPush_Poll(void)
@@ -287,12 +287,12 @@ void UDS_LogPush_Poll(void)
     LogPushState_t *state = getLogPushState();
     uint32_t now = k_uptime_get_32();
 
-    if ((NULL == state->isotpContext) || state->suspended) {
+    if ((NULL == state->isotp_context) || state->suspended) {
         /* Not initialised, or suspended while a large UDS transfer (OTA download
          * or log-download stream) owns the bridge — sending a multi-frame push
          * mid-transfer trips the handset's ISO-TP RX. Items stay queued and flush
          * once the transfer resumes. */
-    } else if ((now - state->lastDialogActivityMs) < LOG_PUSH_QUIESCENT_MS) {
+    } else if ((now - state->last_dialog_activity_ms) < LOG_PUSH_QUIESCENT_MS) {
         /* An addressed UDS dialog is active or has only just drained. Hold the
          * push off until the handset has closed the addressed reassembly
          * context; a broadcast landing too soon merges into it. Items stay

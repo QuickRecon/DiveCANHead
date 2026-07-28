@@ -40,7 +40,7 @@ LOG_MODULE_REGISTER(uds, LOG_LEVEL_INF);
 
 /* Setting info field sizes */
 static const uint16_t SETTING_INFO_BASE_LEN = 3U;   /* null + kind + editable */
-static const uint16_t SETTING_INFO_TEXT_EXTRA = 2U; /* maxValue + optionCount */
+static const uint16_t SETTING_INFO_TEXT_EXTRA = 2U; /* max_value + option_count */
 
 /* Setting info field offsets from label end */
 static const size_t SI_NULL_OFF = 0U;
@@ -98,25 +98,25 @@ static const uint16_t UDS_SESSION_CTRL_REQ_LEN = 2U;
 static const uint16_t UDS_SESSION_CTRL_RESP_LEN = 2U;
 
 /* Forward declarations */
-static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
-static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
-static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
-static void dispatchOtaOrLogDownload(UDSContext_t *ctx, uint8_t sid, const uint8_t *requestData, uint16_t requestLength);
-static void dispatchRoutineControl(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
+static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
+static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
+static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
+static void dispatchOtaOrLogDownload(UDSContext_t *ctx, uint8_t sid, const uint8_t *request_data, uint16_t request_length);
+static void dispatchRoutineControl(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
 static bool readSettingInfoDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
 static bool readSettingValueDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
 static bool readSettingLabelDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
-static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
-static bool writeCalibrationTriggerDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
+static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
+static bool writeCalibrationTriggerDID(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
 #ifdef CONFIG_HAS_O2_SOLENOID
-static bool writeSolenoidOverrideDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
-static bool writeAutotuneControlDID(UDSContext_t *ctx, const uint8_t *requestData, uint16_t requestLength);
-static void buildWriteDidPositiveResponse(UDSContext_t *ctx, const uint8_t *requestData);
+static bool writeSolenoidOverrideDID(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
+static bool writeAutotuneControlDID(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
+static void buildWriteDidPositiveResponse(UDSContext_t *ctx, const uint8_t *request_data);
 #endif
-static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
-static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
+static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, const uint8_t *request_data, uint16_t request_length);
+static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, const uint8_t *request_data, uint16_t request_length);
 #ifdef CONFIG_HAS_DIVEO2_CELL
-static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did, const uint8_t *requestData, uint16_t requestLength);
+static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did, const uint8_t *request_data, uint16_t request_length);
 #endif
 
 /**
@@ -133,9 +133,9 @@ void UDS_Init(UDSContext_t *ctx, ISOTPContext_t *isotpCtx)
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
         (void)memset(ctx, 0, sizeof(UDSContext_t));
-        ctx->isotpContext = isotpCtx;
+        ctx->isotp_context = isotpCtx;
         ctx->session = UDS_SESSION_DEFAULT;
-        ctx->lastActivityMs = k_uptime_get_32();
+        ctx->last_activity_ms = k_uptime_get_32();
     }
 }
 
@@ -161,7 +161,7 @@ void UDS_MaintainSession(UDSContext_t *ctx)
         /* S3 timeout: programming session reverts to default after
          * UDS_S3_TIMEOUT_MS of inactivity. */
         if (UDS_SESSION_PROGRAMMING == ctx->session) {
-            uint32_t elapsed = now - ctx->lastActivityMs;
+            uint32_t elapsed = now - ctx->last_activity_ms;
             if (elapsed > UDS_S3_TIMEOUT_MS) {
                 LOG_INF("S3 timeout: programming session -> default");
                 ctx->session = UDS_SESSION_DEFAULT;
@@ -191,7 +191,7 @@ void UDS_MaintainSession(UDSContext_t *ctx)
             UDS_OTA_Reset();
         }
 
-        ctx->lastActivityMs = now;
+        ctx->last_activity_ms = now;
     }
 }
 
@@ -205,22 +205,22 @@ void UDS_MaintainSession(UDSContext_t *ctx)
  *
  * @param ctx           UDS context
  * @param sid           Service ID being dispatched (0x34/0x36/0x37)
- * @param requestData   Request bytes starting at the SID byte
- * @param requestLength Total byte count of requestData
+ * @param request_data   Request bytes starting at the SID byte
+ * @param request_length Total byte count of request_data
  */
 static void dispatchOtaOrLogDownload(UDSContext_t *ctx, uint8_t sid,
-                                     const uint8_t *requestData,
-                                     uint16_t requestLength)
+                                     const uint8_t *request_data,
+                                     uint16_t request_length)
 {
 #ifdef CONFIG_FLASH_LOG
-    if (UDS_LogDownload_Claims(sid, requestData)) {
-        UDS_LogDownload_Handle(ctx, requestData, requestLength);
+    if (UDS_LogDownload_Claims(sid, request_data)) {
+        UDS_LogDownload_Handle(ctx, request_data, request_length);
     } else {
-        UDS_OTA_Handle(ctx, requestData, requestLength);
+        UDS_OTA_Handle(ctx, request_data, request_length);
     }
 #else
     ARG_UNUSED(sid);
-    UDS_OTA_Handle(ctx, requestData, requestLength);
+    UDS_OTA_Handle(ctx, request_data, request_length);
 #endif
 }
 
@@ -231,12 +231,12 @@ static void dispatchOtaOrLogDownload(UDSContext_t *ctx, uint8_t sid,
  * everything else stays with OTA.
  *
  * @param ctx           UDS context
- * @param requestData   Request bytes starting at the SID byte
- * @param requestLength Total byte count of requestData
+ * @param request_data   Request bytes starting at the SID byte
+ * @param request_length Total byte count of request_data
  */
 static void dispatchRoutineControl(UDSContext_t *ctx,
-                                   const uint8_t *requestData,
-                                   uint16_t requestLength)
+                                   const uint8_t *request_data,
+                                   uint16_t request_length)
 {
 #ifdef CONFIG_FLASH_LOG
     /* RoutineControl RIDs 0xF1xx belong to the log download path; everything
@@ -245,16 +245,16 @@ static void dispatchRoutineControl(UDSContext_t *ctx,
     static const uint16_t LOG_DOWNLOAD_RID_BASE = 0xF100U;
     static const uint16_t LOG_DOWNLOAD_RID_END = 0xF1FFU;
 
-    uint16_t rid = (uint16_t)((uint16_t)requestData[UDS_SID_IDX + 2U] << DIVECAN_BYTE_WIDTH) |
-               (uint16_t)requestData[UDS_SID_IDX + 3U];
-    if ((requestLength >= ROUTINE_CONTROL_MIN_LEN) &&
+    uint16_t rid = (uint16_t)((uint16_t)request_data[UDS_SID_IDX + 2U] << DIVECAN_BYTE_WIDTH) |
+               (uint16_t)request_data[UDS_SID_IDX + 3U];
+    if ((request_length >= ROUTINE_CONTROL_MIN_LEN) &&
         (rid >= LOG_DOWNLOAD_RID_BASE) && (rid <= LOG_DOWNLOAD_RID_END)) {
-        UDS_LogDownload_HandleRoutine(ctx, requestData, requestLength);
+        UDS_LogDownload_HandleRoutine(ctx, request_data, request_length);
     } else {
-        UDS_OTA_Handle(ctx, requestData, requestLength);
+        UDS_OTA_Handle(ctx, request_data, request_length);
     }
 #else
-    UDS_OTA_Handle(ctx, requestData, requestLength);
+    UDS_OTA_Handle(ctx, request_data, request_length);
 #endif
 }
 
@@ -265,39 +265,39 @@ static void dispatchRoutineControl(UDSContext_t *ctx,
  * Sends a negative response for unsupported SIDs.
  *
  * @param ctx           UDS context; must not be NULL
- * @param requestData   Raw request bytes (SID at index UDS_SID_IDX); must not be NULL
- * @param requestLength Number of bytes in requestData; must be > 0
+ * @param request_data   Raw request bytes (SID at index UDS_SID_IDX); must not be NULL
+ * @param request_length Number of bytes in request_data; must be > 0
  */
-void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
-            uint16_t requestLength)
+void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *request_data,
+            uint16_t request_length)
 {
-    if ((NULL == ctx) || (NULL == requestData) || (0U == requestLength)) {
+    if ((NULL == ctx) || (NULL == request_data) || (0U == request_length)) {
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
         UDS_MaintainSession(ctx);
 
-        uint8_t sid = requestData[UDS_SID_IDX];
+        uint8_t sid = request_data[UDS_SID_IDX];
 
         switch (sid) {
         case UDS_SID_DIAG_SESSION_CTRL:
-            HandleDiagnosticSessionControl(ctx, requestData, requestLength);
+            HandleDiagnosticSessionControl(ctx, request_data, request_length);
             break;
 
         case UDS_SID_READ_DATA_BY_ID:
-            HandleReadDataByIdentifier(ctx, requestData, requestLength);
+            HandleReadDataByIdentifier(ctx, request_data, request_length);
             break;
 
         case UDS_SID_WRITE_DATA_BY_ID:
-            HandleWriteDataByIdentifier(ctx, requestData, requestLength);
+            HandleWriteDataByIdentifier(ctx, request_data, request_length);
             break;
 
         case UDS_SID_REQUEST_DOWNLOAD:
         case UDS_SID_TRANSFER_DATA:
         case UDS_SID_REQUEST_TRANSFER_EXIT:
-            dispatchOtaOrLogDownload(ctx, sid, requestData, requestLength);
+            dispatchOtaOrLogDownload(ctx, sid, request_data, request_length);
             break;
         case UDS_SID_ROUTINE_CONTROL:
-            dispatchRoutineControl(ctx, requestData, requestLength);
+            dispatchRoutineControl(ctx, request_data, request_length);
             break;
 
         default:
@@ -318,32 +318,32 @@ void UDS_ProcessRequest(UDSContext_t *ctx, const uint8_t *requestData,
 void UDS_SendNegativeResponse(UDSContext_t *ctx, uint8_t requestedSID,
                   uint8_t nrc)
 {
-    if ((NULL == ctx) || (NULL == ctx->isotpContext)) {
+    if ((NULL == ctx) || (NULL == ctx->isotp_context)) {
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
-        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_NEGATIVE_RESPONSE;
-        ctx->responseBuffer[UDS_SID_IDX] = requestedSID;
-        ctx->responseBuffer[UDS_DID_HI_IDX] = nrc;
-        ctx->responseLength = UDS_NEG_RESP_LEN;
+        ctx->response_buffer[UDS_PAD_IDX] = UDS_SID_NEGATIVE_RESPONSE;
+        ctx->response_buffer[UDS_SID_IDX] = requestedSID;
+        ctx->response_buffer[UDS_DID_HI_IDX] = nrc;
+        ctx->response_length = UDS_NEG_RESP_LEN;
 
-        (void)ISOTP_Send(ctx->isotpContext, ctx->responseBuffer,
-                 ctx->responseLength);
+        (void)ISOTP_Send(ctx->isotp_context, ctx->response_buffer,
+                 ctx->response_length);
     }
 }
 
 /**
- * @brief Transmit the positive response already built in ctx->responseBuffer
+ * @brief Transmit the positive response already built in ctx->response_buffer
  *
- * @param ctx UDS context with responseBuffer and responseLength populated; must not be NULL
+ * @param ctx UDS context with response_buffer and response_length populated; must not be NULL
  */
 void UDS_SendResponse(UDSContext_t *ctx)
 {
-    if ((NULL == ctx) || (NULL == ctx->isotpContext) ||
-        (0U == ctx->responseLength)) {
+    if ((NULL == ctx) || (NULL == ctx->isotp_context) ||
+        (0U == ctx->response_length)) {
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
-        (void)ISOTP_Send(ctx->isotpContext, ctx->responseBuffer,
-                 ctx->responseLength);
+        (void)ISOTP_Send(ctx->isotp_context, ctx->response_buffer,
+                 ctx->response_length);
     }
 }
 
@@ -357,19 +357,19 @@ void UDS_SendResponse(UDSContext_t *ctx)
  * Any other subfunction returns NRC subFunctionNotSupported.
  *
  * @param ctx           UDS context
- * @param requestData   Request bytes starting at the SID byte
- * @param requestLength Total byte count of requestData
+ * @param request_data   Request bytes starting at the SID byte
+ * @param request_length Total byte count of request_data
  */
 static void HandleDiagnosticSessionControl(UDSContext_t *ctx,
-                       const uint8_t *requestData,
-                       uint16_t requestLength)
+                       const uint8_t *request_data,
+                       uint16_t request_length)
 {
-    if (requestLength < UDS_SESSION_CTRL_REQ_LEN) {
+    if (request_length < UDS_SESSION_CTRL_REQ_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_DIAG_SESSION_CTRL,
                      UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        uint8_t subfunction = requestData[UDS_SID_IDX + 1U];
+        uint8_t subfunction = request_data[UDS_SID_IDX + 1U];
         bool ok = false;
 
         if (UDS_SESSION_DEFAULT == subfunction) {
@@ -392,10 +392,10 @@ static void HandleDiagnosticSessionControl(UDSContext_t *ctx,
         }
 
         if (ok) {
-            ctx->responseBuffer[UDS_PAD_IDX] =
+            ctx->response_buffer[UDS_PAD_IDX] =
                 UDS_SID_DIAG_SESSION_CTRL + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[UDS_SID_IDX] = subfunction;
-            ctx->responseLength = UDS_SESSION_CTRL_RESP_LEN;
+            ctx->response_buffer[UDS_SID_IDX] = subfunction;
+            ctx->response_length = UDS_SESSION_CTRL_RESP_LEN;
             UDS_SendResponse(ctx);
         }
     }
@@ -449,7 +449,7 @@ static const char *getVariantName(void)
  *
  * @param ctx            UDS context providing the response buffer
  * @param did            DID to read
- * @param responseOffset Byte offset in ctx->responseBuffer at which to write
+ * @param responseOffset Byte offset in ctx->response_buffer at which to write
  * @param bytesWritten   Out: total bytes written (DID header + payload)
  * @return true if the DID was recognised and data written, false otherwise
  */
@@ -554,7 +554,7 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
                uint16_t responseOffset, uint16_t *bytesWritten)
 {
     bool result = false;
-    uint8_t *buf = &ctx->responseBuffer[responseOffset];
+    uint8_t *buf = &ctx->response_buffer[responseOffset];
     uint16_t maxAvailable = UDS_MAX_RESPONSE_LENGTH - responseOffset;
     *bytesWritten = 0U;
 
@@ -610,31 +610,31 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
  * @brief Handle ReadDataByIdentifier service (SID 0x22)
  *
  * Parses the DID list from the request, calls ReadSingleDID for each, and
- * accumulates results into ctx->responseBuffer before sending.
+ * accumulates results into ctx->response_buffer before sending.
  *
  * @param ctx           UDS context
- * @param requestData   Request bytes starting at the SID byte
- * @param requestLength Total byte count of requestData
+ * @param request_data   Request bytes starting at the SID byte
+ * @param request_length Total byte count of request_data
  */
 static void HandleReadDataByIdentifier(UDSContext_t *ctx,
-                       const uint8_t *requestData,
-                       uint16_t requestLength)
+                       const uint8_t *request_data,
+                       uint16_t request_length)
 {
     /* Short-circuit order matters: the length check must run first so the
-     * modulus check never underflows requestLength - UDS_DID_SIZE. */
-    if ((requestLength < UDS_MIN_REQ_LEN) ||
-        (((requestLength - UDS_DID_SIZE) % UDS_DID_SIZE) != 0U)) {
+     * modulus check never underflows request_length - UDS_DID_SIZE. */
+    if ((request_length < UDS_MIN_REQ_LEN) ||
+        (((request_length - UDS_DID_SIZE) % UDS_DID_SIZE) != 0U)) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->response_buffer[UDS_PAD_IDX] = UDS_SID_READ_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
         uint16_t responseOffset = UDS_SID_IDX;
         bool processingOk = true;
 
         uint16_t requestOffset = UDS_DID_HI_IDX;
-        while (processingOk && ((requestOffset + UDS_DID_SIZE) <= requestLength)) {
-            uint16_t did = (uint16_t)((uint16_t)requestData[requestOffset] << DIVECAN_BYTE_WIDTH) |
-                       (uint16_t)requestData[requestOffset + 1U];
+        while (processingOk && ((requestOffset + UDS_DID_SIZE) <= request_length)) {
+            uint16_t did = (uint16_t)((uint16_t)request_data[requestOffset] << DIVECAN_BYTE_WIDTH) |
+                       (uint16_t)request_data[requestOffset + 1U];
             requestOffset += UDS_DID_SIZE;
 
             uint16_t bytesWritten = 0U;
@@ -653,7 +653,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx,
         }
 
         if (processingOk) {
-            ctx->responseLength = responseOffset;
+            ctx->response_length = responseOffset;
             UDS_SendResponse(ctx);
         }
     }
@@ -665,7 +665,7 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx,
  * @brief Serialise a setting's metadata record into the response buffer
  *
  * Writes the 9-byte label (zero-padded), kind, editable flag, and for
- * SETTING_KIND_TEXT settings the maxValue and optionCount fields.
+ * SETTING_KIND_TEXT settings the max_value and option_count fields.
  *
  * @param did          Setting info DID (UDS_DID_SETTING_INFO_BASE + index)
  * @param buf          Response buffer origin (includes DID header already written)
@@ -706,13 +706,13 @@ static bool readSettingInfoDID(uint16_t did, uint8_t *buf,
                 buf[dataOffset + labelLen + SI_EDIT_OFF] = 0U;
             }
             if (setting->kind == SETTING_KIND_TEXT) {
-                /* SettingInfo wire format reserves 1 byte for maxValue
+                /* SettingInfo wire format reserves 1 byte for max_value
                  * with TEXT settings (option index, always small); cast
                  * keeps the truncation explicit now that the struct
                  * field is u64 to support NUMBER settings with larger
                  * ranges (e.g. PID gains in milliunits). */
-                buf[dataOffset + labelLen + SI_MAX_OFF] = (uint8_t)setting->maxValue;
-                buf[dataOffset + labelLen + SI_COUNT_OFF] = setting->optionCount;
+                buf[dataOffset + labelLen + SI_MAX_OFF] = (uint8_t)setting->max_value;
+                buf[dataOffset + labelLen + SI_COUNT_OFF] = setting->option_count;
                 *bytesWritten = dataOffset + labelLen + SETTING_INFO_BASE_LEN + SETTING_INFO_TEXT_EXTRA;
             } else {
                 *bytesWritten = dataOffset + labelLen + SETTING_INFO_BASE_LEN;
@@ -749,11 +749,11 @@ static bool readSettingValueDID(uint16_t did, uint8_t *buf,
     } else if (maxAvailable < (dataOffset + SETTING_VALUE_RESP_LEN)) {
         OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, index);
     } else {
-        uint64_t maxValue = setting->maxValue;
+        uint64_t max_value = setting->max_value;
         uint64_t currentValue = UDS_GetSettingValue(index);
 
         for (uint8_t i = 0; i < sizeof(uint64_t); ++i) {
-            buf[dataOffset + i] = (uint8_t)(maxValue >> (DIVECAN_SEVEN_BYTE_WIDTH - (i * DIVECAN_BYTE_WIDTH)));
+            buf[dataOffset + i] = (uint8_t)(max_value >> (DIVECAN_SEVEN_BYTE_WIDTH - (i * DIVECAN_BYTE_WIDTH)));
             buf[dataOffset + sizeof(uint64_t) + i] = (uint8_t)(currentValue >> (DIVECAN_SEVEN_BYTE_WIDTH - (i * DIVECAN_BYTE_WIDTH)));
         }
         *bytesWritten = dataOffset + SETTING_VALUE_RESP_LEN;
@@ -819,32 +819,32 @@ static bool readSettingLabelDID(uint16_t did, uint8_t *buf,
  * @brief Handle a WDBI write to the setpoint DID
  *
  * Publishes the new PPO2 setpoint to chan_setpoint and sends a positive response.
- * Sends NRC_INCORRECT_MSG_LEN if requestLength is not UDS_SINGLE_VALUE_LEN.
+ * Sends NRC_INCORRECT_MSG_LEN if request_length is not UDS_SINGLE_VALUE_LEN.
  *
  * @param ctx           UDS context
- * @param requestData   Full request bytes (SID + DID + data)
- * @param requestLength Total byte count of requestData
+ * @param request_data   Full request bytes (SID + DID + data)
+ * @param request_length Total byte count of request_data
  * @return true (always; error path sends NRC and still returns true)
  */
-static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData,
-                 uint16_t requestLength)
+static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *request_data,
+                 uint16_t request_length)
 {
-    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+    if (request_length != UDS_SINGLE_VALUE_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
         /* Clamp to the valid 0.40–1.60 bar range (see runtime_settings.h) so an
          * out-of-range write can never apply an unsafe setpoint. */
-        PPO2_t ppo2 = clamp_setpoint_cb(requestData[UDS_DATA_IDX]);
+        PPO2_t ppo2 = clamp_setpoint_cb(request_data[UDS_DATA_IDX]);
         zbus_pub_checked(&chan_setpoint, &ppo2, K_MSEC(UDS_ZBUS_PUB_TIMEOUT_MS));
         /* Diver-commanded mirror: drives the setpoint-change flush (the
          * handset-loss failsafe publishes only chan_setpoint). */
         zbus_pub_checked(&chan_setpoint_cmd, &ppo2, K_MSEC(UDS_ZBUS_PUB_TIMEOUT_MS));
 
-        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-        ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-        ctx->responseLength = UDS_POS_RESP_HDR;
+        ctx->response_buffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->response_buffer[UDS_SID_IDX] = request_data[UDS_DID_HI_IDX];
+        ctx->response_buffer[UDS_DID_HI_IDX] = request_data[UDS_DID_LO_IDX];
+        ctx->response_length = UDS_POS_RESP_HDR;
         UDS_SendResponse(ctx);
     }
 
@@ -858,19 +858,19 @@ static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *requestData,
  * already running, then publishes a CalRequest_t to chan_cal_request.
  *
  * @param ctx           UDS context
- * @param requestData   Full request bytes; data byte carries FO2 percentage (0–100)
- * @param requestLength Total byte count of requestData
+ * @param request_data   Full request bytes; data byte carries FO2 percentage (0–100)
+ * @param request_length Total byte count of request_data
  * @return true (always; error paths send NRC and still return true)
  */
 static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
-                       const uint8_t *requestData,
-                       uint16_t requestLength)
+                       const uint8_t *request_data,
+                       uint16_t request_length)
 {
-    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+    if (request_length != UDS_SINGLE_VALUE_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        FO2_t fo2 = requestData[UDS_DATA_IDX];
+        FO2_t fo2 = request_data[UDS_DATA_IDX];
 
         if (fo2 > FO2_MAX_PERCENT) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
@@ -893,10 +893,10 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
             };
             zbus_pub_checked(&chan_cal_request, &req, K_MSEC(UDS_ZBUS_PUB_TIMEOUT_MS));
 
-            ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-            ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-            ctx->responseLength = UDS_POS_RESP_HDR;
+            ctx->response_buffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+            ctx->response_buffer[UDS_SID_IDX] = request_data[UDS_DID_HI_IDX];
+            ctx->response_buffer[UDS_DID_HI_IDX] = request_data[UDS_DID_LO_IDX];
+            ctx->response_length = UDS_POS_RESP_HDR;
             UDS_SendResponse(ctx);
         }
     }
@@ -925,10 +925,10 @@ static bool writeCalibrationTriggerDID(UDSContext_t *ctx,
  * @return true (always; error paths send NRC and still return true)
  */
 static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
-                                     const uint8_t *requestData,
-                                     uint16_t requestLength)
+                                     const uint8_t *request_data,
+                                     uint16_t request_length)
 {
-    if (requestLength != SOLENOID_OVERRIDE_LEN) {
+    if (request_length != SOLENOID_OVERRIDE_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
@@ -937,7 +937,7 @@ static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
     } else if (UDS_IsInDive()) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
-    } else if (SOLENOID_OVERRIDE_MAGIC != requestData[UDS_DATA_IDX + 1U]) {
+    } else if (SOLENOID_OVERRIDE_MAGIC != request_data[UDS_DATA_IDX + 1U]) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
     } else if (PPO2CONTROL_OFF != ppo2_control_get_active_mode()) {
@@ -950,7 +950,7 @@ static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
     } else {
-        uint8_t channel = requestData[UDS_DATA_IDX];
+        uint8_t channel = request_data[UDS_DATA_IDX];
         if (channel >= solenoid_channel_count(SOL_DEVICE)) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
@@ -960,7 +960,7 @@ static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
                 OP_ERROR_DETAIL(OP_ERR_SOLENOID_DISABLED, (uint32_t)(-rc));
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
             } else {
-                buildWriteDidPositiveResponse(ctx, requestData);
+                buildWriteDidPositiveResponse(ctx, request_data);
                 UDS_SendResponse(ctx);
             }
         }
@@ -982,26 +982,26 @@ static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
  * @return true (always; error paths send NRC and still return true)
  */
 static bool writeAutotuneControlDID(UDSContext_t *ctx,
-                    const uint8_t *requestData,
-                    uint16_t requestLength)
+                    const uint8_t *request_data,
+                    uint16_t request_length)
 {
-    if (requestLength < AUTOTUNE_ABORT_LEN) {
+    if (request_length < AUTOTUNE_ABORT_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_SERVICE_NOT_IN_SESSION);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_SERVICE_NOT_IN_SESSION);
-    } else if (AUTOTUNE_CTRL_MAGIC != requestData[UDS_DATA_IDX + 1U]) {
+    } else if (AUTOTUNE_CTRL_MAGIC != request_data[UDS_DATA_IDX + 1U]) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
     } else {
-        uint8_t cmd = requestData[UDS_DATA_IDX];
+        uint8_t cmd = request_data[UDS_DATA_IDX];
         if (AUTOTUNE_CMD_ABORT == cmd) {
             ppo2_autotune_request_abort(AUTOTUNE_ABORT_OPERATOR);
-            buildWriteDidPositiveResponse(ctx, requestData);
+            buildWriteDidPositiveResponse(ctx, request_data);
             UDS_SendResponse(ctx);
         } else if (AUTOTUNE_CMD_START == cmd) {
-            if (requestLength != AUTOTUNE_START_LEN) {
+            if (request_length != AUTOTUNE_START_LEN) {
                 OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
             } else if (UDS_IsInDive()) {
@@ -1009,15 +1009,15 @@ static bool writeAutotuneControlDID(UDSContext_t *ctx,
                 UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
             } else {
                 AutotuneParams_t params = {
-                    .base_setpoint_cb = requestData[UDS_DATA_IDX + 2U],
-                    .excitation_duty_pct = requestData[UDS_DATA_IDX + 3U],
+                    .base_setpoint_cb = request_data[UDS_DATA_IDX + 2U],
+                    .excitation_duty_pct = request_data[UDS_DATA_IDX + 3U],
                     .iteration_budget =
-                        (uint16_t)((uint16_t)requestData[UDS_DATA_IDX + 4U] << DIVECAN_BYTE_WIDTH) |
-                        (uint16_t)requestData[UDS_DATA_IDX + 5U],
+                        (uint16_t)((uint16_t)request_data[UDS_DATA_IDX + 4U] << DIVECAN_BYTE_WIDTH) |
+                        (uint16_t)request_data[UDS_DATA_IDX + 5U],
                 };
                 Status_t rc = ppo2_autotune_start(&params);
                 if (0 == rc) {
-                    buildWriteDidPositiveResponse(ctx, requestData);
+                    buildWriteDidPositiveResponse(ctx, request_data);
                     UDS_SendResponse(ctx);
                 } else {
                     /* -EBUSY / -ENODEV (mode not PID) / -EACCES (dive) / -ENOTSUP */
@@ -1043,31 +1043,31 @@ static bool writeAutotuneControlDID(UDSContext_t *ctx,
  *
  * @param ctx           UDS context
  * @param did           Setting save DID (UDS_DID_SETTING_SAVE_BASE + index)
- * @param requestData   Full request bytes
- * @param requestLength Total byte count of requestData
+ * @param request_data   Full request bytes
+ * @param request_length Total byte count of request_data
  * @return true (always; error path sends NRC and still returns true)
  */
 static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did,
-                const uint8_t *requestData,
-                uint16_t requestLength)
+                const uint8_t *request_data,
+                uint16_t request_length)
 {
     uint8_t index = (uint8_t)(did - UDS_DID_SETTING_SAVE_BASE);
 
     /* Extract big-endian u64 value */
     uint64_t value = 0;
-    uint16_t dataLen = requestLength - UDS_MIN_REQ_LEN;
+    uint16_t dataLen = request_length - UDS_MIN_REQ_LEN;
     for (uint16_t i = 0; (i < dataLen) && (i < sizeof(uint64_t)); ++i) {
-        value = (value << DIVECAN_BYTE_WIDTH) | requestData[UDS_DATA_IDX + i];
+        value = (value << DIVECAN_BYTE_WIDTH) | request_data[UDS_DATA_IDX + i];
     }
 
     if (!UDS_SaveSettingValue(index, value)) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
     } else {
-        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-        ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-        ctx->responseLength = UDS_POS_RESP_HDR;
+        ctx->response_buffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->response_buffer[UDS_SID_IDX] = request_data[UDS_DID_HI_IDX];
+        ctx->response_buffer[UDS_DID_HI_IDX] = request_data[UDS_DID_LO_IDX];
+        ctx->response_length = UDS_POS_RESP_HDR;
         UDS_SendResponse(ctx);
     }
 
@@ -1082,15 +1082,15 @@ static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did,
  *
  * @param ctx           UDS context
  * @param did           Setting value DID (UDS_DID_SETTING_VALUE_BASE + index)
- * @param requestData   Full request bytes; must be SETTING_VALUE_WRITE_LEN bytes
- * @param requestLength Total byte count of requestData
+ * @param request_data   Full request bytes; must be SETTING_VALUE_WRITE_LEN bytes
+ * @param request_length Total byte count of request_data
  * @return true (always; error path sends NRC and still returns true)
  */
 static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
-                     const uint8_t *requestData,
-                     uint16_t requestLength)
+                     const uint8_t *request_data,
+                     uint16_t request_length)
 {
-    if (requestLength != SETTING_VALUE_WRITE_LEN) {
+    if (request_length != SETTING_VALUE_WRITE_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
@@ -1098,17 +1098,17 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
 
         uint64_t value = 0;
         for (uint8_t i = 0; i < sizeof(uint64_t); ++i) {
-            value = (value << DIVECAN_BYTE_WIDTH) | requestData[UDS_DATA_IDX + i];
+            value = (value << DIVECAN_BYTE_WIDTH) | request_data[UDS_DATA_IDX + i];
         }
 
         if (!UDS_SetSettingValue(index, value)) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
         } else {
-            ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-            ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-            ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-            ctx->responseLength = UDS_POS_RESP_HDR;
+            ctx->response_buffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+            ctx->response_buffer[UDS_SID_IDX] = request_data[UDS_DID_HI_IDX];
+            ctx->response_buffer[UDS_DID_HI_IDX] = request_data[UDS_DID_LO_IDX];
+            ctx->response_length = UDS_POS_RESP_HDR;
             UDS_SendResponse(ctx);
         }
     }
@@ -1125,28 +1125,28 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
  *
  * @param ctx           UDS context
  * @param did           Cell broadcast DID (UDS_DID_CELL_BASE + cell*range + 0x0D)
- * @param requestData   Full request bytes; one data byte expected
- * @param requestLength Total byte count of requestData
+ * @param request_data   Full request bytes; one data byte expected
+ * @param request_length Total byte count of request_data
  * @return true (always; error path sends NRC and still returns true)
  */
 #ifdef CONFIG_HAS_DIVEO2_CELL
 static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did,
-                                  const uint8_t *requestData,
-                                  uint16_t requestLength)
+                                  const uint8_t *request_data,
+                                  uint16_t request_length)
 {
-    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+    if (request_length != UDS_SINGLE_VALUE_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
         uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
-        bool on = (0U != requestData[UDS_DATA_IDX]);
+        bool on = (0U != request_data[UDS_DATA_IDX]);
 
         diveo2_request_broadcast(cellNum, on);
 
-        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-        ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-        ctx->responseLength = UDS_POS_RESP_HDR;
+        ctx->response_buffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->response_buffer[UDS_SID_IDX] = request_data[UDS_DID_HI_IDX];
+        ctx->response_buffer[UDS_DID_HI_IDX] = request_data[UDS_DID_LO_IDX];
+        ctx->response_length = UDS_POS_RESP_HDR;
         UDS_SendResponse(ctx);
     }
 
@@ -1162,15 +1162,15 @@ static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did,
  * write.  Persistence is performed synchronously by `error_histogram_clear`.
  *
  * @param ctx           UDS context
- * @param requestData   Request bytes
- * @param requestLength Total byte count of requestData
+ * @param request_data   Request bytes
+ * @param request_length Total byte count of request_data
  * @return true (always; error path sends NRC and still returns true)
  */
 static bool writeHistogramClearDID(UDSContext_t *ctx,
-                   const uint8_t *requestData,
-                   uint16_t requestLength)
+                   const uint8_t *request_data,
+                   uint16_t request_length)
 {
-    ARG_UNUSED(requestLength);
+    ARG_UNUSED(request_length);
 
     Status_t rc = error_histogram_clear();
 
@@ -1179,10 +1179,10 @@ static bool writeHistogramClearDID(UDSContext_t *ctx,
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                      UDS_NRC_CONDITIONS_NOT_CORRECT);
     } else {
-        ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-        ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-        ctx->responseLength = UDS_POS_RESP_HDR;
+        ctx->response_buffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+        ctx->response_buffer[UDS_SID_IDX] = request_data[UDS_DID_HI_IDX];
+        ctx->response_buffer[UDS_DID_HI_IDX] = request_data[UDS_DID_LO_IDX];
+        ctx->response_length = UDS_POS_RESP_HDR;
         UDS_SendResponse(ctx);
     }
     return true;
@@ -1196,19 +1196,19 @@ static bool writeHistogramClearDID(UDSContext_t *ctx,
  * the caller should reply with, or 0 if every check passes.
  *
  * @param ctx           UDS context (carries session state)
- * @param requestData   Full request bytes (SID + DID + data)
- * @param requestLength Total byte count of requestData
+ * @param request_data   Full request bytes (SID + DID + data)
+ * @param request_length Total byte count of request_data
  * @return UDS_NRC_* on failure, 0 on success
  */
 static uint8_t checkOtaWritePrecondition(const UDSContext_t *ctx,
-                                         const uint8_t *requestData,
-                                         uint16_t requestLength)
+                                         const uint8_t *request_data,
+                                         uint16_t request_length)
 {
     uint8_t nrc = 0U;
 
-    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+    if (request_length != UDS_SINGLE_VALUE_LEN) {
         nrc = UDS_NRC_INCORRECT_MSG_LEN;
-    } else if (OTA_WRITE_MAGIC != requestData[UDS_DATA_IDX]) {
+    } else if (OTA_WRITE_MAGIC != request_data[UDS_DATA_IDX]) {
         nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
     } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
         nrc = UDS_NRC_SERVICE_NOT_IN_SESSION;
@@ -1221,15 +1221,15 @@ static uint8_t checkOtaWritePrecondition(const UDSContext_t *ctx,
 }
 
 /**
- * @brief Build a standard WDBI positive response in ctx->responseBuffer.
+ * @brief Build a standard WDBI positive response in ctx->response_buffer.
  */
 static void buildWriteDidPositiveResponse(UDSContext_t *ctx,
-                                          const uint8_t *requestData)
+                                          const uint8_t *request_data)
 {
-    ctx->responseBuffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
-    ctx->responseBuffer[UDS_SID_IDX] = requestData[UDS_DID_HI_IDX];
-    ctx->responseBuffer[UDS_DID_HI_IDX] = requestData[UDS_DID_LO_IDX];
-    ctx->responseLength = UDS_POS_RESP_HDR;
+    ctx->response_buffer[UDS_PAD_IDX] = UDS_SID_WRITE_DATA_BY_ID + UDS_RESPONSE_SID_OFFSET;
+    ctx->response_buffer[UDS_SID_IDX] = request_data[UDS_DID_HI_IDX];
+    ctx->response_buffer[UDS_DID_HI_IDX] = request_data[UDS_DID_LO_IDX];
+    ctx->response_length = UDS_POS_RESP_HDR;
 }
 
 /**
@@ -1244,10 +1244,10 @@ static void buildWriteDidPositiveResponse(UDSContext_t *ctx,
  * Refused if slot1 does not present a valid MCUBoot image header.
  */
 static bool writeForceRevertDID(UDSContext_t *ctx,
-                                const uint8_t *requestData,
-                                uint16_t requestLength)
+                                const uint8_t *request_data,
+                                uint16_t request_length)
 {
-    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+    uint8_t nrc = checkOtaWritePrecondition(ctx, request_data, request_length);
 
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
@@ -1275,7 +1275,7 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
                                          UDS_NRC_GENERAL_PROG_FAIL);
             } else {
                 LOG_INF("Force-revert: slot1 re-staged, rebooting");
-                buildWriteDidPositiveResponse(ctx, requestData);
+                buildWriteDidPositiveResponse(ctx, request_data);
                 UDS_SendResponse(ctx);
                 (void)k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
                 sys_reboot(SYS_REBOOT_COLD);
@@ -1296,10 +1296,10 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
  * erase (the bus goes dark during it); the unit reboots when done.
  */
 static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
-                                      const uint8_t *requestData,
-                                      uint16_t requestLength)
+                                      const uint8_t *request_data,
+                                      uint16_t request_length)
 {
-    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+    uint8_t nrc = checkOtaWritePrecondition(ctx, request_data, request_length);
 
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
@@ -1312,7 +1312,7 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
          * we start. Without this the queued ACK is never sent and the tool sees
          * a timeout even though the erase proceeds. After the ACK the bus goes
          * dark; the tool should expect the unit to drop off then reboot. */
-        buildWriteDidPositiveResponse(ctx, requestData);
+        buildWriteDidPositiveResponse(ctx, request_data);
         UDS_SendResponse(ctx);
         uint32_t flushPolls = 0U;
         bool flushDone = false;
@@ -1363,10 +1363,10 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
  * session + magic byte.
  */
 static bool writeNvsEraseDID(UDSContext_t *ctx,
-                             const uint8_t *requestData,
-                             uint16_t requestLength)
+                             const uint8_t *request_data,
+                             uint16_t request_length)
 {
-    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+    uint8_t nrc = checkOtaWritePrecondition(ctx, request_data, request_length);
 
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
@@ -1377,7 +1377,7 @@ static bool writeNvsEraseDID(UDSContext_t *ctx,
          * response is physically on the bus first — same reason as the
          * factory-flash-erase path (the erase + reboot would otherwise drop the
          * queued ACK). */
-        buildWriteDidPositiveResponse(ctx, requestData);
+        buildWriteDidPositiveResponse(ctx, request_data);
         UDS_SendResponse(ctx);
         uint32_t flushPolls = 0U;
         bool flushDone = false;
@@ -1420,10 +1420,10 @@ static bool writeNvsEraseDID(UDSContext_t *ctx,
  * return. Negative return values are surfaced as NRCs.
  */
 static bool writeRestoreFactoryDID(UDSContext_t *ctx,
-                                   const uint8_t *requestData,
-                                   uint16_t requestLength)
+                                   const uint8_t *request_data,
+                                   uint16_t request_length)
 {
-    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+    uint8_t nrc = checkOtaWritePrecondition(ctx, request_data, request_length);
 
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
@@ -1442,7 +1442,7 @@ static bool writeRestoreFactoryDID(UDSContext_t *ctx,
          * (HW-diagnosed 2026-07-17). The workqueue runs it at prio 10 (below the
          * consumers) and pauses the flash-log writer itself; it reboots on success. */
         LOG_INF("Restore-factory: kicking factory_image_restore_async");
-        buildWriteDidPositiveResponse(ctx, requestData);
+        buildWriteDidPositiveResponse(ctx, request_data);
         UDS_SendResponse(ctx);
         (void)k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
         factory_image_restore_async();
@@ -1461,10 +1461,10 @@ static bool writeRestoreFactoryDID(UDSContext_t *ctx,
  * watchdog feeder can keep ticking while the SPI NOR erase runs.
  */
 static bool writeFactoryCaptureDID(UDSContext_t *ctx,
-                                   const uint8_t *requestData,
-                                   uint16_t requestLength)
+                                   const uint8_t *request_data,
+                                   uint16_t request_length)
 {
-    uint8_t nrc = checkOtaWritePrecondition(ctx, requestData, requestLength);
+    uint8_t nrc = checkOtaWritePrecondition(ctx, request_data, request_length);
 
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
@@ -1477,7 +1477,7 @@ static bool writeFactoryCaptureDID(UDSContext_t *ctx,
     } else {
         LOG_INF("Force-capture: kicking factory_image_force_capture_async");
         factory_image_force_capture_async();
-        buildWriteDidPositiveResponse(ctx, requestData);
+        buildWriteDidPositiveResponse(ctx, request_data);
         UDS_SendResponse(ctx);
     }
     return true;
@@ -1494,14 +1494,14 @@ static const uint8_t LOG_ERASE_MAGIC = 0xA5U;
  * holds the SPI bus for hundreds of milliseconds per FCB.
  */
 static bool writeLogEraseDID(UDSContext_t *ctx,
-                 const uint8_t *requestData,
-                 uint16_t requestLength)
+                 const uint8_t *request_data,
+                 uint16_t request_length)
 {
     uint8_t nrc = 0U;
 
-    if (requestLength != (UDS_SINGLE_VALUE_LEN + 1U)) {
+    if (request_length != (UDS_SINGLE_VALUE_LEN + 1U)) {
         nrc = UDS_NRC_INCORRECT_MSG_LEN;
-    } else if (LOG_ERASE_MAGIC != requestData[UDS_DATA_IDX + 1U]) {
+    } else if (LOG_ERASE_MAGIC != request_data[UDS_DATA_IDX + 1U]) {
         nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
     } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
         nrc = UDS_NRC_SERVICE_NOT_IN_SESSION;
@@ -1515,14 +1515,14 @@ static bool writeLogEraseDID(UDSContext_t *ctx,
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
     } else {
-        uint8_t stream_mask = requestData[UDS_DATA_IDX] & 0x03U;
+        uint8_t stream_mask = request_data[UDS_DATA_IDX] & 0x03U;
         Status_t rc = flash_log_erase(stream_mask);
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)rc);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                          UDS_NRC_CONDITIONS_NOT_CORRECT);
         } else {
-            buildWriteDidPositiveResponse(ctx, requestData);
+            buildWriteDidPositiveResponse(ctx, request_data);
             UDS_SendResponse(ctx);
         }
     }
@@ -1536,22 +1536,22 @@ static bool writeLogEraseDID(UDSContext_t *ctx,
  * text FCB. Persisted to NVS.
  */
 static bool writeLogVerbosityDID(UDSContext_t *ctx,
-                 const uint8_t *requestData,
-                 uint16_t requestLength)
+                 const uint8_t *request_data,
+                 uint16_t request_length)
 {
-    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+    if (request_length != UDS_SINGLE_VALUE_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                      UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        Status_t rc = flash_log_set_rtt_level(requestData[UDS_DATA_IDX]);
+        Status_t rc = flash_log_set_rtt_level(request_data[UDS_DATA_IDX]);
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
                     UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                          UDS_NRC_REQUEST_OUT_OF_RANGE);
         } else {
-            buildWriteDidPositiveResponse(ctx, requestData);
+            buildWriteDidPositiveResponse(ctx, request_data);
             UDS_SendResponse(ctx);
         }
     }
@@ -1565,22 +1565,22 @@ static bool writeLogVerbosityDID(UDSContext_t *ctx,
  * TX). Persisted to NVS.
  */
 static bool writeLogCanVerboseDID(UDSContext_t *ctx,
-                  const uint8_t *requestData,
-                  uint16_t requestLength)
+                  const uint8_t *request_data,
+                  uint16_t request_length)
 {
-    if (requestLength != UDS_SINGLE_VALUE_LEN) {
+    if (request_length != UDS_SINGLE_VALUE_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                      UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        Status_t rc = flash_log_set_can_verbose(requestData[UDS_DATA_IDX]);
+        Status_t rc = flash_log_set_can_verbose(request_data[UDS_DATA_IDX]);
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC,
                     UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
                          UDS_NRC_REQUEST_OUT_OF_RANGE);
         } else {
-            buildWriteDidPositiveResponse(ctx, requestData);
+            buildWriteDidPositiveResponse(ctx, request_data);
             UDS_SendResponse(ctx);
         }
     }
@@ -1595,15 +1595,15 @@ static bool writeLogCanVerboseDID(UDSContext_t *ctx,
  * calibration trigger, setting save, setting value, or histogram clear.
  *
  * @param ctx           UDS context
- * @param requestData   Request bytes starting at the SID byte
- * @param requestLength Total byte count of requestData
+ * @param request_data   Request bytes starting at the SID byte
+ * @param request_length Total byte count of request_data
  */
 /* Exact-match write DIDs, dispatched by table walk. Range-addressed writes
  * (cell broadcast, setting save/value blocks) need arithmetic on the DID and
  * stay as explicit checks in HandleWriteDataByIdentifier below. Entries are
  * compiled in/out with the same CONFIG_* gates the handlers carry. */
-typedef bool (*UdsWriteDidFn)(UDSContext_t *ctx, const uint8_t *requestData,
-                  uint16_t requestLength);
+typedef bool (*UdsWriteDidFn)(UDSContext_t *ctx, const uint8_t *request_data,
+                  uint16_t request_length);
 
 static const struct {
     uint16_t did;
@@ -1629,23 +1629,23 @@ static const struct {
 };
 
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
-                    const uint8_t *requestData,
-                    uint16_t requestLength)
+                    const uint8_t *request_data,
+                    uint16_t request_length)
 {
-    if (requestLength < UDS_MIN_REQ_LEN) {
+    if (request_length < UDS_MIN_REQ_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        uint16_t did = (uint16_t)((uint16_t)requestData[UDS_DID_HI_IDX] << DIVECAN_BYTE_WIDTH) |
-                   (uint16_t)requestData[UDS_DID_LO_IDX];
+        uint16_t did = (uint16_t)((uint16_t)request_data[UDS_DID_HI_IDX] << DIVECAN_BYTE_WIDTH) |
+                   (uint16_t)request_data[UDS_DID_LO_IDX];
 
         bool dispatched = false;
         const size_t writeDidTableCount = ARRAY_SIZE(writeDidTable);
         size_t writeIdx = 0;
         while ((writeIdx < writeDidTableCount) && (!dispatched)) {
             if (writeDidTable[writeIdx].did == did) {
-                (void)writeDidTable[writeIdx].fn(ctx, requestData,
-                              requestLength);
+                (void)writeDidTable[writeIdx].fn(ctx, request_data,
+                              request_length);
                 dispatched = true;
             }
             ++writeIdx;
@@ -1659,15 +1659,15 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
                (did < (UDS_DID_CELL_BASE + (CELL_MAX_COUNT * UDS_DID_CELL_RANGE))) &&
                (CELL_DID_BROADCAST ==
                     ((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE))) {
-            (void)writeCellBroadcastDID(ctx, did, requestData, requestLength);
+            (void)writeCellBroadcastDID(ctx, did, request_data, request_length);
         }
 #endif
         else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
                (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))) {
-            (void)writeSettingSaveDID(ctx, did, requestData, requestLength);
+            (void)writeSettingSaveDID(ctx, did, request_data, request_length);
         } else if ((did >= UDS_DID_SETTING_VALUE_BASE) &&
                (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))) {
-            (void)writeSettingValueDID_handler(ctx, did, requestData, requestLength);
+            (void)writeSettingValueDID_handler(ctx, did, request_data, request_length);
         } else {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);

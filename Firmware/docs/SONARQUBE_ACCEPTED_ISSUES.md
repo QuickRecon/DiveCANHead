@@ -86,6 +86,31 @@ violations. Mark **Won't Fix** on SonarCloud once the rule is reviewed.
 
 ---
 
+## 2026-07-28 bulk accept — PR 4 sweep residue
+
+458 issues accepted (Won't Fix) in one pass via the SonarQube MCP
+`change_sonar_issue_status` tool, all `status: accept`, 0 failures. Every
+disposition below was reviewed by prior audit agents plus a final user
+ruling before execution — this entry records the rationale per reason
+code, not a per-issue log. The full key list, file:line, and rule for
+each of the 458 issues lives in SonarCloud issue history / PR 4 (not
+reproduced here — see the SonarCloud UI issue search, filtered to
+`resolution=WONTFIX` with a 2026-07-28 resolution date, for the
+authoritative list).
+
+| Reason code | Count | Rule classes | Rationale |
+|---|---|---|---|
+| APICONTRACT | 199 | c:S813, c:M23_058, c:S995, c:S953, etc. | Fixed function/type signatures mandated by Zephyr, MCUboot, or libc APIs (raw `float`/`int` in framework struct fields and callback prototypes, parameter contracts that cannot be altered without breaking the framework's ABI). |
+| DTMACRO | 100 | c:S968, c:M23_212, c:S960, c:M23_042 | Zephyr devicetree / ZBUS / SMF / LOG macro machinery (`DEVICE_DT_INST_DEFINE`, `DT_INST_FOREACH_PROP_ELEM`, and equivalents) — function-like and token-pasting macros required by the framework's preprocessor-time expansion model; no C-function equivalent exists. |
+| ACCESSOR | 76 | c:M23_233, c:M23_388 | Static-accessor / `K_THREAD_DEFINE` / ISR-state pattern. User ruling: the accessor pattern (file-scope static state exposed via a getter, or state captured by address at compile time for `K_THREAD_DEFINE`) is project convention, not a violation to fix. |
+| DESIGN | 38 | c:S5536, c:S834, c:S5813, c:S6871 | Intentionally-public unused API surface, self-sizing tables, and other structural choices judged correct by design rather than defects — e.g. framework-mandated struct initializers, driver APIs kept public for future/external callers. |
+| STRUCTURAL | 24 | c:S3776, c:S134, c:S1151, c:S1541, c:S1005 | Complexity/nesting/single-return findings in HIL-validated subsystems where extraction was judged riskier than the existing debt — refactor deferred rather than risking regression in hardware-proven code paths. |
+| IDENT31 | 21 | c:S799 | Identifiers exceeding the 31-character portability limit; accepted against modern linker/compiler reality (no 31-char C89 restriction applies to this toolchain), consistent with existing IDENT31-style carve-outs elsewhere in this doc. |
+
+**Total: 458 accepted, 0 failed.**
+
+---
+
 ## Process for future suppressions
 
 1. **Try to fix the code first.** A suppression is the last resort.

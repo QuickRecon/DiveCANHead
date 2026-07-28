@@ -250,10 +250,10 @@ uint16_t UDS_FormatOptionLabel(const char *label, uint8_t *out, uint16_t width)
     return width;
 }
 
-void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *requestData,
-                    uint16_t requestLength)
+void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *request_data,
+                    uint16_t request_length)
 {
-    ARG_UNUSED(ctx); ARG_UNUSED(requestData); ARG_UNUSED(requestLength);
+    ARG_UNUSED(ctx); ARG_UNUSED(request_data); ARG_UNUSED(request_length);
 }
 
 void UDS_OTA_Reset(void) {}
@@ -471,7 +471,7 @@ static void enter_programming_session(void)
 {
     set_ambient_pressure_mbar(1013U);
     test_ctx.session = UDS_SESSION_PROGRAMMING;
-    test_ctx.lastActivityMs = k_uptime_get_32();
+    test_ctx.last_activity_ms = k_uptime_get_32();
 }
 
 /* Build a request to read a DID and dispatch. */
@@ -1276,13 +1276,13 @@ ZTEST(uds_state_did_ota, test_digital_and_analog_cell_dids)
         .ppo2 = 88U,
         .precision_ppo2 = 0.876,
         .status = CELL_DEGRADED,
-        .temperature_dC = -123,
+        .temperature_dc = -123,
         .err_code = 0x10203040U,
         .phase = -456,
         .intensity = 789,
         .ambient_light = -1011,
         .pressure_uhpa = 0x50607080U,
-        .humidity_mRH = -1213,
+        .humidity_mrh = -1213,
     };
     OxygenCellMsg_t analog = {
         .cell_number = 2U,
@@ -1312,10 +1312,10 @@ ZTEST(uds_state_did_ota, test_digital_and_analog_cell_dids)
         CELL_DID_PRESSURE, CELL_DID_HUMIDITY,
     };
     const uint32_t digital_values[] = {
-        (uint32_t)digital.temperature_dC, digital.err_code,
+        (uint32_t)digital.temperature_dc, digital.err_code,
         (uint32_t)digital.phase, (uint32_t)digital.intensity,
         (uint32_t)digital.ambient_light, digital.pressure_uhpa,
-        (uint32_t)digital.humidity_mRH,
+        (uint32_t)digital.humidity_mrh,
     };
     for (size_t i = 0U; i < ARRAY_SIZE(digital_offsets); ++i) {
         read_did(UDS_DID_CELL_BASE + digital_offsets[i]);

@@ -921,7 +921,7 @@ static bool scan_shutdown_abort_window(const struct device *dev)
         /* No action required — caller logs the commit decision. */
     }
 
-    return saw_quiet && !reasserted;
+    return saw_quiet && (!reasserted);
 }
 
 static void shutdown_thread_fn(void *p1, void *p2, void *p3)

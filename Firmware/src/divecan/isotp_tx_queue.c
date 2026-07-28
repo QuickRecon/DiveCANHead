@@ -56,7 +56,7 @@ typedef struct {
     uint16_t length;                    /**< Data length */
     DiveCANType_t source;               /**< Source address */
     DiveCANType_t target;               /**< Target address */
-    uint32_t messageId;                 /**< Base CAN ID */
+    uint32_t message_id;                 /**< Base CAN ID */
 } ISOTPTxRequest_t;
 
 /* ---- TX state machine ---- */
@@ -78,14 +78,14 @@ typedef enum {
 typedef struct {
     struct smf_ctx          smf;
     ISOTPTxRequest_t        current;
-    uint16_t                txBytesSent;
-    uint8_t                 txSequenceNumber;
-    uint8_t                 txBlockSize;
-    uint8_t                 txSTmin;
-    uint8_t                 txBlockCounter;
-    uint32_t                txLastFrameTime;
+    uint16_t                tx_bytes_sent;
+    uint8_t                 tx_sequence_number;
+    uint8_t                 tx_block_size;
+    uint8_t                 tx_stmin;
+    uint8_t                 tx_block_counter;
+    uint32_t                tx_last_frame_time;
     TxEvent_e               event;
-    const DiveCANMessage_t *fcMessage;
+    const DiveCANMessage_t *fc_message;
 } TxSmCtx_t;
 
 static const struct smf_state tx_states[TX_STATE_COUNT];
@@ -130,7 +130,7 @@ static ISOTPTxRequest_t *getTxRequestBuffer(void)
 static void send_single_frame(const ISOTPTxRequest_t *tx)
 {
     DiveCANMessage_t sf = {0};
-    sf.id = tx->messageId | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
+    sf.id = tx->message_id | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
     sf.length = ISOTP_CAN_FRAME_LEN;
     sf.data[DIVECAN_SF_PCI_IDX] = (uint8_t)tx->length + DIVECAN_PAD_BYTE_SIZE;
     sf.data[DIVECAN_SF_PAD_IDX] = 0;
@@ -148,7 +148,7 @@ static void send_first_frame(const ISOTPTxRequest_t *tx)
      * Length field includes the padding byte (tx->length + 1). */
     uint16_t totalLength = tx->length + DIVECAN_PAD_BYTE_SIZE;
     DiveCANMessage_t ff = {0};
-    ff.id = tx->messageId | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
+    ff.id = tx->message_id | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
     ff.length = ISOTP_CAN_FRAME_LEN;
     ff.data[DIVECAN_FF_PCI_HI_IDX] = ISOTP_PCI_FF | ((totalLength >> DIVECAN_BYTE_WIDTH) & ISOTP_PCI_LEN_MASK);
     ff.data[DIVECAN_FF_LEN_LO_IDX] = (uint8_t)(totalLength & DIVECAN_BYTE_MASK);
@@ -169,14 +169,14 @@ static bool send_consecutive_frames(TxSmCtx_t *sm)
     const ISOTPTxRequest_t *tx = &sm->current;
     bool waitingForFC = false;
 
-    while ((sm->txBytesSent < tx->length) && (!waitingForFC)) {
+    while ((sm->tx_bytes_sent < tx->length) && (!waitingForFC)) {
         /* STmin delay handling.
          * k_msleep is a lower bound — the scheduler may overshoot,
          * but STmin is a minimum separation time so overshooting
          * is compliant with ISO 15765-2. */
         uint32_t stminMs = 0;
-        if (sm->txSTmin <= ISOTP_STMIN_MS_MAX) {
-            stminMs = sm->txSTmin;
+        if (sm->tx_stmin <= ISOTP_STMIN_MS_MAX) {
+            stminMs = sm->tx_stmin;
         }
         if (stminMs > 0) {
             (void)k_msleep((int32_t)stminMs);
@@ -184,30 +184,30 @@ static bool send_consecutive_frames(TxSmCtx_t *sm)
 
         /* Build CF */
         DiveCANMessage_t cf = {0};
-        cf.id = tx->messageId | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
+        cf.id = tx->message_id | ((uint32_t)tx->target << DIVECAN_BYTE_WIDTH) | (uint32_t)tx->source;
         cf.length = ISOTP_CAN_FRAME_LEN;
-        cf.data[ISOTP_FC_STATUS_IDX] = ISOTP_PCI_CF | ((sm->txSequenceNumber + 1U) & ISOTP_SEQ_MASK);
+        cf.data[ISOTP_FC_STATUS_IDX] = ISOTP_PCI_CF | ((sm->tx_sequence_number + 1U) & ISOTP_SEQ_MASK);
 
-        uint16_t remaining = tx->length - sm->txBytesSent;
+        uint16_t remaining = tx->length - sm->tx_bytes_sent;
         uint8_t bytesToCopy = 0;
         if (remaining > ISOTP_CF_DATA_BYTES) {
             bytesToCopy = ISOTP_CF_DATA_BYTES;
         } else {
             bytesToCopy = (uint8_t)remaining;
         }
-        (void)memcpy(&cf.data[ISOTP_CF_DATA_START], &tx->data[sm->txBytesSent], bytesToCopy);
+        (void)memcpy(&cf.data[ISOTP_CF_DATA_START], &tx->data[sm->tx_bytes_sent], bytesToCopy);
 
-        sm->txBytesSent += bytesToCopy;
-        sm->txLastFrameTime = k_uptime_get_32();
+        sm->tx_bytes_sent += bytesToCopy;
+        sm->tx_last_frame_time = k_uptime_get_32();
 
         (void)divecan_send_blocking(&cf);
 
-        sm->txSequenceNumber = (sm->txSequenceNumber + 1U) & ISOTP_SEQ_MASK;
+        sm->tx_sequence_number = (sm->tx_sequence_number + 1U) & ISOTP_SEQ_MASK;
 
         /* Block size handling */
-        ++sm->txBlockCounter;
-        if ((sm->txBlockSize != 0) &&
-            (sm->txBlockCounter >= sm->txBlockSize)) {
+        ++sm->tx_block_counter;
+        if ((sm->tx_block_size != 0) &&
+            (sm->tx_block_counter >= sm->tx_block_size)) {
             waitingForFC = true;
         }
     }
@@ -223,12 +223,12 @@ static bool send_consecutive_frames(TxSmCtx_t *sm)
 static void tx_idle_entry(void *obj)
 {
     TxSmCtx_t *sm = (TxSmCtx_t *)obj;
-    sm->txBytesSent = 0;
-    sm->txSequenceNumber = 0;
-    sm->txBlockSize = 0;
-    sm->txSTmin = 0;
-    sm->txBlockCounter = 0;
-    sm->txLastFrameTime = 0;
+    sm->tx_bytes_sent = 0;
+    sm->tx_sequence_number = 0;
+    sm->tx_block_size = 0;
+    sm->tx_stmin = 0;
+    sm->tx_block_counter = 0;
+    sm->tx_last_frame_time = 0;
 }
 
 /**
@@ -246,8 +246,8 @@ static enum smf_state_result tx_idle_run(void *obj)
         (void)memset(reqBuffer, 0, sizeof(ISOTPTxRequest_t));
         if (0 == k_msgq_get(&isotp_tx_msgq, reqBuffer, K_NO_WAIT)) {
             (void)memcpy(&sm->current, reqBuffer, sizeof(ISOTPTxRequest_t));
-            sm->txBytesSent = 0;
-            sm->txSequenceNumber = 0;
+            sm->tx_bytes_sent = 0;
+            sm->tx_sequence_number = 0;
 
             if (sm->current.length <= ISOTP_SF_MAX_WITH_PAD) {
                 /* SF: send and stay IDLE. */
@@ -264,17 +264,17 @@ static enum smf_state_result tx_idle_run(void *obj)
                  * FC-driven dialog class is what keeps UDS replies prompt;
                  * it replaces the prior preemption/purge special-casing. */
                 send_first_frame(&sm->current);
-                sm->txBytesSent = ISOTP_FF_DATA_WITH_PAD;
-                sm->txBlockSize = 0;
-                sm->txSTmin = 0;
-                sm->txBlockCounter = 0;
+                sm->tx_bytes_sent = ISOTP_FF_DATA_WITH_PAD;
+                sm->tx_block_size = 0;
+                sm->tx_stmin = 0;
+                sm->tx_block_counter = 0;
                 (void)send_consecutive_frames(sm);
                 /* Payload exhausted; remain IDLE for the next message. */
             } else {
                 /* Addressed multi-frame: send FF, expect FC. */
                 send_first_frame(&sm->current);
-                sm->txBytesSent = ISOTP_FF_DATA_WITH_PAD;
-                sm->txLastFrameTime = k_uptime_get_32();
+                sm->tx_bytes_sent = ISOTP_FF_DATA_WITH_PAD;
+                sm->tx_last_frame_time = k_uptime_get_32();
                 smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_WAIT_FC]);
             }
         }
@@ -297,10 +297,10 @@ static enum smf_state_result tx_wait_fc_run(void *obj)
     TxSmCtx_t *sm = (TxSmCtx_t *)obj;
 
     if (TX_EVT_FC_CTS == sm->event) {
-        const DiveCANMessage_t *fc = sm->fcMessage;
-        sm->txBlockSize = fc->data[ISOTP_FC_BS_IDX];
-        sm->txSTmin = fc->data[ISOTP_FC_STMIN_IDX];
-        sm->txBlockCounter = 0;
+        const DiveCANMessage_t *fc = sm->fc_message;
+        sm->tx_block_size = fc->data[ISOTP_FC_BS_IDX];
+        sm->tx_stmin = fc->data[ISOTP_FC_STMIN_IDX];
+        sm->tx_block_counter = 0;
         bool payload_complete = send_consecutive_frames(sm);
         if (payload_complete) {
             smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
@@ -314,7 +314,7 @@ static enum smf_state_result tx_wait_fc_run(void *obj)
         smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
     } else if (TX_EVT_TICK == sm->event) {
         uint32_t currentTime = k_uptime_get_32();
-        if ((currentTime - sm->txLastFrameTime) > ISOTP_TIMEOUT_N_BS) {
+        if ((currentTime - sm->tx_last_frame_time) > ISOTP_TIMEOUT_N_BS) {
             smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
         }
     } else {
@@ -347,7 +347,7 @@ void ISOTP_TxQueue_Init(void)
 }
 
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
-                uint32_t messageId, const uint8_t *data,
+                uint32_t message_id, const uint8_t *data,
                 uint16_t length)
 {
     bool result = false;
@@ -369,7 +369,7 @@ bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
         reqBuffer->length = length;
         reqBuffer->source = source;
         reqBuffer->target = target;
-        reqBuffer->messageId = messageId;
+        reqBuffer->message_id = message_id;
 
         /* Non-blocking put */
         Status_t ret = k_msgq_put(&isotp_tx_msgq, reqBuffer, K_NO_WAIT);
@@ -385,7 +385,7 @@ bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
              * self-heals instead of wedging. */
             TxSmCtx_t *sm = getTxSm();
             if ((!tx_sm_is_idle(sm)) &&
-                ((k_uptime_get_32() - sm->txLastFrameTime) > ISOTP_TIMEOUT_N_BS)) {
+                ((k_uptime_get_32() - sm->tx_last_frame_time) > ISOTP_TIMEOUT_N_BS)) {
                 smf_set_state(SMF_CTX(sm), &tx_states[TX_STATE_IDLE]);
                 sm->event = TX_EVT_TICK;
                 (void)smf_run_state(SMF_CTX(sm));
@@ -445,9 +445,9 @@ bool ISOTP_TxQueue_ProcessFC(const DiveCANMessage_t *fc)
 
             if (ev != TX_EVT_NONE) {
                 sm->event = ev;
-                sm->fcMessage = fc;
+                sm->fc_message = fc;
                 (void)smf_run_state(SMF_CTX(sm));
-                sm->fcMessage = NULL;
+                sm->fc_message = NULL;
                 sm->event = TX_EVT_NONE;
                 result = true;
 

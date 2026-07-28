@@ -72,7 +72,7 @@ ZTEST_SUITE(isotp_rx, NULL, isotp_setup, isotp_before, NULL, NULL);
 /** @brief Suite: ISO-TP transmit path — SF/FF/CF generation, FC handling, queue serialization. */
 ZTEST_SUITE(isotp_tx, NULL, isotp_setup, isotp_before, NULL, NULL);
 
-/** @brief A valid 3-byte SF is accepted, rxComplete is set, and bytes are copied to rxBuffer. */
+/** @brief A valid 3-byte SF is accepted, rx_complete is set, and bytes are copied to rx_buffer. */
 ZTEST(isotp_rx, test_sf_basic)
 {
     uint8_t data[] = {0x03, 0xAA, 0xBB, 0xCC};
@@ -81,11 +81,11 @@ ZTEST(isotp_rx, test_sf_basic)
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &msg);
 
     zassert_true(consumed);
-    zassert_true(ctx.rxComplete);
-    zassert_equal(ctx.rxDataLength, 3);
-    zassert_equal(ctx.rxBuffer[0], 0xAA);
-    zassert_equal(ctx.rxBuffer[1], 0xBB);
-    zassert_equal(ctx.rxBuffer[2], 0xCC);
+    zassert_true(ctx.rx_complete);
+    zassert_equal(ctx.rx_data_length, 3);
+    zassert_equal(ctx.rx_buffer[0], 0xAA);
+    zassert_equal(ctx.rx_buffer[1], 0xBB);
+    zassert_equal(ctx.rx_buffer[2], 0xCC);
 }
 
 /** @brief Maximum SF payload (7 bytes — the ISO-TP limit for a CAN SF) is fully received. */
@@ -97,14 +97,14 @@ ZTEST(isotp_rx, test_sf_max_length)
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &msg);
 
     zassert_true(consumed);
-    zassert_true(ctx.rxComplete);
-    zassert_equal(ctx.rxDataLength, 7);
+    zassert_true(ctx.rx_complete);
+    zassert_equal(ctx.rx_data_length, 7);
     for (int i = 0; i < 7; i++) {
-        zassert_equal(ctx.rxBuffer[i], (uint8_t)(i + 1));
+        zassert_equal(ctx.rx_buffer[i], (uint8_t)(i + 1));
     }
 }
 
-/** @brief An SF with a zero length field is rejected (not consumed, rxComplete stays false). */
+/** @brief An SF with a zero length field is rejected (not consumed, rx_complete stays false). */
 ZTEST(isotp_rx, test_sf_zero_length_rejected)
 {
     uint8_t data[] = {0x00, 0xAA};
@@ -113,7 +113,7 @@ ZTEST(isotp_rx, test_sf_zero_length_rejected)
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &msg);
 
     zassert_false(consumed);
-    zassert_false(ctx.rxComplete);
+    zassert_false(ctx.rx_complete);
 }
 
 /** @brief A frame addressed to a different target is silently ignored (not consumed). */
@@ -125,7 +125,7 @@ ZTEST(isotp_rx, test_sf_wrong_target_ignored)
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &msg);
 
     zassert_false(consumed);
-    zassert_false(ctx.rxComplete);
+    zassert_false(ctx.rx_complete);
 }
 
 /** @brief FF followed by one CF reassembles 10 bytes correctly; a FC is sent after the FF. */
@@ -137,7 +137,7 @@ ZTEST(isotp_rx, test_multiframe_reassembly)
 
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &ff);
     zassert_true(consumed);
-    zassert_false(ctx.rxComplete);
+    zassert_false(ctx.rx_complete);
     zassert_equal(ctx.state, ISOTP_RECEIVING);
 
     /* FC should have been sent */
@@ -151,13 +151,13 @@ ZTEST(isotp_rx, test_multiframe_reassembly)
 
     consumed = ISOTP_ProcessRxFrame(&ctx, &cf);
     zassert_true(consumed);
-    zassert_true(ctx.rxComplete);
-    zassert_equal(ctx.rxDataLength, 10);
+    zassert_true(ctx.rx_complete);
+    zassert_equal(ctx.rx_data_length, 10);
 
     for (int i = 0; i < 10; i++) {
-        zassert_equal(ctx.rxBuffer[i], (uint8_t)(i + 1),
+        zassert_equal(ctx.rx_buffer[i], (uint8_t)(i + 1),
                   "byte %d: expected %d got %d", i, i + 1,
-                  ctx.rxBuffer[i]);
+                  ctx.rx_buffer[i]);
     }
 }
 
@@ -170,7 +170,7 @@ ZTEST(isotp_rx, test_ff_overlength_rejected)
 
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &ff);
     zassert_true(consumed); /* FF always consumed even on reject */
-    zassert_false(ctx.rxComplete);
+    zassert_false(ctx.rx_complete);
 
     /* FC OVFLW should have been sent */
     const DiveCANMessage_t *fc = test_get_last_frame();
@@ -192,7 +192,7 @@ ZTEST(isotp_rx, test_cf_wrong_sequence)
 
     bool consumed = ISOTP_ProcessRxFrame(&ctx, &cf);
     zassert_true(consumed);
-    zassert_false(ctx.rxComplete);
+    zassert_false(ctx.rx_complete);
     zassert_equal(ctx.state, ISOTP_IDLE); /* Reset on error */
 }
 
@@ -241,8 +241,8 @@ ZTEST(isotp_rx, test_shearwater_fc_quirk)
  */
 ZTEST(isotp_rx, test_dialog_retargets_off_broadcast)
 {
-    /* ctx is a dialog context (target TGT, broadcastTx == false). */
-    zassert_false(ctx.broadcastTx, "default dialog context must not be broadcast");
+    /* ctx is a dialog context (target TGT, broadcast_tx == false). */
+    zassert_false(ctx.broadcast_tx, "default dialog context must not be broadcast");
 
     /* BT bridge (source 0xFF) sends an SF addressed to us -> retarget to 0xFF. */
     uint8_t data[] = {0x03, 0xAA, 0xBB, 0xCC};
@@ -267,7 +267,7 @@ ZTEST(isotp_rx, test_dialog_retargets_off_broadcast)
 ZTEST(isotp_rx, test_broadcast_context_never_retargets)
 {
     ISOTP_Init(&ctx, SRC, (DiveCANType_t)0xFF, MSG_ID);
-    zassert_true(ctx.broadcastTx, "context created with 0xFF target is broadcast");
+    zassert_true(ctx.broadcast_tx, "context created with 0xFF target is broadcast");
 
     uint8_t data[] = {0x03, 0xAA, 0xBB, 0xCC};
     DiveCANMessage_t hs = make_msg(TGT, SRC, data, 4);
@@ -286,10 +286,10 @@ ZTEST(isotp_rx, test_ncr_timeout)
     zassert_equal(ctx.state, ISOTP_RECEIVING);
 
     /* Poll with time past N_Cr timeout */
-    ISOTP_Poll(&ctx, ctx.rxLastFrameTime + 1001);
+    ISOTP_Poll(&ctx, ctx.rx_last_frame_time + 1001);
 
     zassert_equal(ctx.state, ISOTP_IDLE);
-    zassert_false(ctx.rxComplete);
+    zassert_false(ctx.rx_complete);
 }
 
 /** @brief No timeout while still within the N_Cr 1000 ms window — context stays ISOTP_RECEIVING. */
@@ -300,7 +300,7 @@ ZTEST(isotp_rx, test_ncr_no_timeout_within_window)
     (void)ISOTP_ProcessRxFrame(&ctx, &ff);
 
     /* Poll within timeout window */
-    ISOTP_Poll(&ctx, ctx.rxLastFrameTime + 999);
+    ISOTP_Poll(&ctx, ctx.rx_last_frame_time + 999);
 
     zassert_equal(ctx.state, ISOTP_RECEIVING);
 }
@@ -624,7 +624,7 @@ ZTEST(isotp_rx, test_short_single_frame_is_rejected)
     DiveCANMessage_t short_sf = make_msg(TGT, SRC, payload, sizeof(payload));
 
     zassert_false(ISOTP_ProcessRxFrame(&ctx, &short_sf));
-    zassert_false(ctx.rxComplete);
+    zassert_false(ctx.rx_complete);
 }
 
 ZTEST(isotp_rx, test_zero_length_first_frame_is_rejected_with_overflow)
@@ -634,7 +634,7 @@ ZTEST(isotp_rx, test_zero_length_first_frame_is_rejected_with_overflow)
 
     zassert_true(ISOTP_ProcessRxFrame(&ctx, &ff));
     zassert_equal(ctx.state, ISOTP_IDLE);
-    zassert_false(ctx.rxComplete);
+    zassert_false(ctx.rx_complete);
     zassert_not_null(test_get_last_frame());
     zassert_equal(test_get_last_frame()->data[0], ISOTP_FC_OVFLW);
 }
@@ -650,9 +650,9 @@ ZTEST(isotp_rx, test_single_frame_restarts_an_active_reassembly)
     DiveCANMessage_t sf = make_msg(TGT, SRC, sf_data, sizeof(sf_data));
     zassert_true(ISOTP_ProcessRxFrame(&ctx, &sf));
     zassert_equal(ctx.state, ISOTP_IDLE);
-    zassert_true(ctx.rxComplete);
-    zassert_equal(ctx.rxDataLength, 2U);
-    zassert_equal(ctx.rxBuffer[0], 0xAAU);
+    zassert_true(ctx.rx_complete);
+    zassert_equal(ctx.rx_data_length, 2U);
+    zassert_equal(ctx.rx_buffer[0], 0xAAU);
 }
 
 ZTEST(isotp_rx, test_first_frame_restarts_an_active_reassembly)
@@ -666,8 +666,8 @@ ZTEST(isotp_rx, test_first_frame_restarts_an_active_reassembly)
                             sizeof(replacement_data));
     zassert_true(ISOTP_ProcessRxFrame(&ctx, &replacement));
     zassert_equal(ctx.state, ISOTP_RECEIVING);
-    zassert_equal(ctx.rxDataLength, 10U);
-    zassert_equal(ctx.rxBuffer[0], 9U);
+    zassert_equal(ctx.rx_data_length, 10U);
+    zassert_equal(ctx.rx_buffer[0], 9U);
 }
 
 ZTEST(isotp_tx, test_send_and_enqueue_validate_arguments)

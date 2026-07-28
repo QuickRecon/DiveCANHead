@@ -28,7 +28,7 @@ extern "C" {
  * memory address is the LOG_DOWNLOAD_SENTINEL_ADDR. Keeps OTA and log
  * download mutually exclusive on the wire.
  */
-bool UDS_LogDownload_Claims(uint8_t sid, const uint8_t *requestData);
+bool UDS_LogDownload_Claims(uint8_t sid, const uint8_t *request_data);
 
 /**
  * @brief Dispatch a claimed 0x34/0x36/0x37 request.
@@ -36,8 +36,8 @@ bool UDS_LogDownload_Claims(uint8_t sid, const uint8_t *requestData);
  * Caller has already verified the claim via UDS_LogDownload_Claims().
  */
 void UDS_LogDownload_Handle(UDSContext_t *ctx,
-                const uint8_t *requestData,
-                uint16_t requestLength);
+                const uint8_t *request_data,
+                uint16_t request_length);
 
 /**
  * @brief Dispatch a RoutineControl (0x31) sub-function in the 0xF1xx range.
@@ -47,8 +47,8 @@ void UDS_LogDownload_Handle(UDSContext_t *ctx,
  * LOG_SELECTED.
  */
 void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
-                   const uint8_t *requestData,
-                   uint16_t requestLength);
+                   const uint8_t *request_data,
+                   uint16_t request_length);
 
 /**
  * @brief Fill `buf` with the LOG_SELECTOR_RESULT response payload.

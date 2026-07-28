@@ -98,13 +98,13 @@ typedef struct {
 typedef struct {
     uint8_t  cell_index;
     uint8_t  ppo2;
-    int32_t  temperature_dC;
+    int32_t  temperature_dc;
     uint32_t err_code;
     int32_t  phase;
     int32_t  intensity;
     int32_t  ambient_light;
     uint32_t pressure_uhpa;
-    int32_t  humidity_mRH;
+    int32_t  humidity_mrh;
 } __packed fl_payload_cell_diveo2_t;
 
 /** @brief Payload for FL_TYPE_CELL_RAW_O2S. */

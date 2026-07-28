@@ -3536,6 +3536,7 @@
         await navigator.clipboard.writeText($('atReportText').value);
         $('at-report-message').textContent = 'Tune report copied.';
       } catch (error) {
+        console.warn('Clipboard copy failed:', error);
         $('atReportText').select();
         $('at-report-message').textContent = 'Clipboard unavailable; report selected for manual copy.';
       }

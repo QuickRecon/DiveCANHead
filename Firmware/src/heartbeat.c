@@ -52,7 +52,7 @@ static atomic_val_t *get_last_snapshot(void)
 void heartbeat_register(HeartbeatId_t id)
 {
     if (id < HEARTBEAT_COUNT) {
-        (void)atomic_or(get_registered_mask(), BIT(id));
+        (void)atomic_or(get_registered_mask(), (atomic_val_t)BIT(id));
     }
 }
 

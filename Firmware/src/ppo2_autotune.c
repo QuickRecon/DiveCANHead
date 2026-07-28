@@ -348,9 +348,9 @@ static void stage_gains_volatile(Numeric_t kp, Numeric_t ki, Numeric_t kd)
 {
     RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
     runtime_settings_get(&rs);
-    rs.pidKp = kp;
-    rs.pidKi = ki;
-    rs.pidKd = kd;
+    rs.pid_kp = kp;
+    rs.pid_ki = ki;
+    rs.pid_kd = kd;
     if (0 != runtime_settings_set_volatile(&rs)) {
         OP_ERROR(OP_ERR_CONFIG);
     }

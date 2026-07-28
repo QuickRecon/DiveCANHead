@@ -1173,7 +1173,7 @@ static bool handleDigitalCellDID(uint8_t offset,
 
     switch (offset) {
     case CELL_DID_TEMPERATURE:
-        writeUint32(buf, (uint32_t)cellMsg->temperature_dC);
+        writeUint32(buf, (uint32_t)cellMsg->temperature_dc);
         *len = sizeof(uint32_t);
         break;
     case CELL_DID_ERROR:
@@ -1197,7 +1197,7 @@ static bool handleDigitalCellDID(uint8_t offset,
         *len = sizeof(uint32_t);
         break;
     case CELL_DID_HUMIDITY:
-        writeUint32(buf, (uint32_t)cellMsg->humidity_mRH);
+        writeUint32(buf, (uint32_t)cellMsg->humidity_mrh);
         *len = sizeof(uint32_t);
         break;
     default:
@@ -1306,32 +1306,32 @@ bool UDS_StateDID_IsStateDID(uint16_t did)
  * @brief Read a state DID and serialise the result into the response buffer
  *
  * @param did            DID to read; must satisfy UDS_StateDID_IsStateDID()
- * @param responseBuffer Destination buffer for the serialised value; must not be NULL
- * @param responseLength Out: number of bytes written; set to 0 before dispatch
+ * @param response_buffer Destination buffer for the serialised value; must not be NULL
+ * @param response_length Out: number of bytes written; set to 0 before dispatch
  * @return true if the DID was handled and data written, false on error
  */
-bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *responseBuffer,
+bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *response_buffer,
                  uint16_t maxLength,
-                 uint16_t *responseLength)
+                 uint16_t *response_length)
 {
     bool result = false;
 
-    if ((NULL == responseBuffer) || (NULL == responseLength)) {
+    if ((NULL == response_buffer) || (NULL == response_length)) {
         OP_ERROR(OP_ERR_NULL_PTR);
     } else {
-        *responseLength = 0U;
+        *response_length = 0U;
 
         /* PPO2 Control State DIDs (0xF2xx) */
         if ((did >= UDS_DID_CONTROL_BASE) && (did <= UDS_DID_CONTROL_END)) {
-            result = handleControlStateDID(did, responseBuffer,
-                            maxLength, responseLength);
+            result = handleControlStateDID(did, response_buffer,
+                            maxLength, response_length);
         }
         /* Cell DIDs (0xF4Nx) */
         else if ((did >= UDS_DID_CELL_BASE) &&
              (did < (UDS_DID_CELL_BASE + (CELL_MAX_COUNT * UDS_DID_CELL_RANGE)))) {
             uint8_t cellNum = (uint8_t)((did - UDS_DID_CELL_BASE) / UDS_DID_CELL_RANGE);
             uint8_t offset = (uint8_t)((did - UDS_DID_CELL_BASE) % UDS_DID_CELL_RANGE);
-            result = handleCellDID(cellNum, offset, responseBuffer, responseLength);
+            result = handleCellDID(cellNum, offset, response_buffer, response_length);
         }
         else {
             /* DID not in any known range — result remains false */

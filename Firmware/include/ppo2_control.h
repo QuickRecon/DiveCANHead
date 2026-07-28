@@ -13,7 +13,7 @@
  *  - `ppo2_control_init()` — called once from main after runtime settings
  *    are loaded.  Initialises the file-static PID state from NVS-backed
  *    gains, publishes the initial solenoid status, and decides which
- *    threads to leave running based on `ppo2ControlMode`.
+ *    threads to leave running based on `ppo2_control_mode`.
  *  - `ppo2_control_get_snapshot()` — read-only snapshot of duty / integral
  *    / saturation count for the UDS state-DID handlers.  Safe to call
  *    from any thread; see implementation note on tearing.

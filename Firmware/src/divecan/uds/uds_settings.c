@@ -118,72 +118,72 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .label = "FW Commit",
         .kind = SETTING_KIND_TEXT,
         .editable = false,
-        .maxValue = 1,
+        .max_value = 1,
         .options = fwCommitOptions,
-        .optionCount = 1
+        .option_count = 1
     },
     /* Index 1: PPO2 Control Mode */
     {
         .label = "PPO2 Mode",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = 2,
+        .max_value = 2,
         .options = ppo2ModeOptions,
-        .optionCount = 3
+        .option_count = 3
     },
     /* Index 2: Calibration Mode */
     {
         .label = "Cal Mode",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = 4,
+        .max_value = 4,
         .options = calModeOptions,
-        .optionCount = 5
+        .option_count = 5
     },
     /* Index 3: Depth Compensation */
     {
         .label = "DepthComp",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = 1,
+        .max_value = 1,
         .options = boolOptions,
-        .optionCount = 2
+        .option_count = 2
     },
     /* Index 4: PID Kp (micro-units, 0..100000000 ⇔ 0.0..100.0) */
     {
         .label = "Kp x1M",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .maxValue = PID_GAIN_MAX_WIRE,
+        .max_value = PID_GAIN_MAX_WIRE,
         .options = NULL,
-        .optionCount = 0
+        .option_count = 0
     },
     /* Index 5: PID Ki (micro-units, 0..100000000 ⇔ 0.0..100.0) */
     {
         .label = "Ki x1M",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .maxValue = PID_GAIN_MAX_WIRE,
+        .max_value = PID_GAIN_MAX_WIRE,
         .options = NULL,
-        .optionCount = 0
+        .option_count = 0
     },
     /* Index 6: PID Kd (micro-units, 0..100000000 ⇔ 0.0..100.0) */
     {
         .label = "Kd x1M",
         .kind = SETTING_KIND_NUMBER,
         .editable = true,
-        .maxValue = PID_GAIN_MAX_WIRE,
+        .max_value = PID_GAIN_MAX_WIRE,
         .options = NULL,
-        .optionCount = 0
+        .option_count = 0
     },
     /* Index 7: Battery chemistry (drives low-voltage cutoff threshold) */
     {
         .label = "Battery",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = (uint64_t)BATTERY_TYPE_COUNT - 1U,
+        .max_value = (uint64_t)BATTERY_TYPE_COUNT - 1U,
         .options = batteryTypeOptions,
-        .optionCount = (uint8_t)BATTERY_TYPE_COUNT
+        .option_count = (uint8_t)BATTERY_TYPE_COUNT
     },
     /* Index 8..8+CELL_MAX_COUNT-1: per-cell enforce-broadcast (UART cells).
      * Labels are fixed-width "Cn Bcst"; this block assumes CELL_MAX_COUNT == 3. */
@@ -191,25 +191,25 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .label = "C1 Bcst",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = 1,
+        .max_value = 1,
         .options = boolOptions,
-        .optionCount = 2
+        .option_count = 2
     },
     {
         .label = "C2 Bcst",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = 1,
+        .max_value = 1,
         .options = boolOptions,
-        .optionCount = 2
+        .option_count = 2
     },
     {
         .label = "C3 Bcst",
         .kind = SETTING_KIND_TEXT,
         .editable = true,
-        .maxValue = 1,
+        .max_value = 1,
         .options = boolOptions,
-        .optionCount = 2
+        .option_count = 2
     },
 };
 
@@ -410,7 +410,7 @@ uint64_t UDS_GetSettingValue(uint8_t index)
 
     uint8_t bcstCell = 0U;
     if (setting_is_cell_bcst(storageIndex, &bcstCell)) {
-        if (rs.enforceBroadcast[bcstCell]) {
+        if (rs.enforce_broadcast[bcstCell]) {
             result = 1U;
         }
     } else {
@@ -419,13 +419,13 @@ uint64_t UDS_GetSettingValue(uint8_t index)
             result = 0U;
             break;
         case SETTING_INDEX_PPO2_MODE:
-            result = (uint64_t)rs.ppo2ControlMode;
+            result = (uint64_t)rs.ppo2_control_mode;
             break;
         case SETTING_INDEX_CAL_MODE:
-            result = (uint64_t)rs.calibrationMode;
+            result = (uint64_t)rs.calibration_mode;
             break;
         case SETTING_INDEX_DEPTH_COMP:
-            if (rs.depthCompensation) {
+            if (rs.depth_compensation) {
                 result = 1U;
             }
             break;
@@ -439,16 +439,16 @@ uint64_t UDS_GetSettingValue(uint8_t index)
          * of the last soft-double callers on this FPU-single-only part. Gains
          * are validated >= 0, so round-to-nearest is symmetric-safe. */
         case SETTING_INDEX_PID_KP:
-            result = (uint64_t)lroundf(rs.pidKp * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
+            result = (uint64_t)lroundf(rs.pid_kp * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
             break;
         case SETTING_INDEX_PID_KI:
-            result = (uint64_t)lroundf(rs.pidKi * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
+            result = (uint64_t)lroundf(rs.pid_ki * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
             break;
         case SETTING_INDEX_PID_KD:
-            result = (uint64_t)lroundf(rs.pidKd * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
+            result = (uint64_t)lroundf(rs.pid_kd * (Numeric_t)PID_GAIN_SCALE_TO_WIRE);
             break;
         case SETTING_INDEX_BATTERY_TYPE:
-            result = (uint64_t)rs.batteryType;
+            result = (uint64_t)rs.battery_type;
             break;
         default:
             OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
@@ -463,7 +463,7 @@ uint64_t UDS_GetSettingValue(uint8_t index)
  * @brief Validate and stage a new setting value (does not persist to flash)
  *
  * @param index Zero-based setting index; must be < UDS_GetSettingCount()
- * @param value New value; must be <= the setting's maxValue
+ * @param value New value; must be <= the setting's max_value
  * @return true if the value is valid and was staged, false otherwise
  */
 bool UDS_SetSettingValue(uint8_t index, uint64_t value)
@@ -478,7 +478,7 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
 
         if (!setting->editable) {
             OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, storageIndex);
-        } else if (value > setting->maxValue) {
+        } else if (value > setting->max_value) {
             OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, storageIndex);
         } else {
             /* Start from the LIVE cache so volatile overrides stack (each set
@@ -488,32 +488,32 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
 
             uint8_t bcstCell = 0U;
             if (setting_is_cell_bcst(storageIndex, &bcstCell)) {
-                rs.enforceBroadcast[bcstCell] = (value != 0U);
+                rs.enforce_broadcast[bcstCell] = (value != 0U);
             } else {
             switch (storageIndex) {
             case SETTING_INDEX_PPO2_MODE:
-                rs.ppo2ControlMode = (PPO2ControlMode_t)value;
+                rs.ppo2_control_mode = (PPO2ControlMode_t)value;
                 break;
             case SETTING_INDEX_CAL_MODE:
-                rs.calibrationMode = (CalibrationMode_t)value;
+                rs.calibration_mode = (CalibrationMode_t)value;
                 break;
             case SETTING_INDEX_DEPTH_COMP:
-                rs.depthCompensation = (value != 0U);
+                rs.depth_compensation = (value != 0U);
                 break;
             case SETTING_INDEX_PID_KP:
-                rs.pidKp = (Numeric_t)value /
+                rs.pid_kp = (Numeric_t)value /
                            (Numeric_t)PID_GAIN_SCALE_TO_WIRE;
                 break;
             case SETTING_INDEX_PID_KI:
-                rs.pidKi = (Numeric_t)value /
+                rs.pid_ki = (Numeric_t)value /
                            (Numeric_t)PID_GAIN_SCALE_TO_WIRE;
                 break;
             case SETTING_INDEX_PID_KD:
-                rs.pidKd = (Numeric_t)value /
+                rs.pid_kd = (Numeric_t)value /
                            (Numeric_t)PID_GAIN_SCALE_TO_WIRE;
                 break;
             case SETTING_INDEX_BATTERY_TYPE:
-                rs.batteryType = (BatteryType_t)value;
+                rs.battery_type = (BatteryType_t)value;
                 break;
             default:
                 break;
@@ -543,7 +543,7 @@ static bool setting_index_to_field(uint8_t index, RuntimeSettingField_t *field)
     uint8_t bcstCell = 0U;
 
     if (setting_is_cell_bcst(index, &bcstCell)) {
-        *field = RT_FIELD_BCST; /* the whole enforceBroadcast[] is one key */
+        *field = RT_FIELD_BCST; /* the whole enforce_broadcast[] is one key */
     } else {
         switch (index) {
         case SETTING_INDEX_PPO2_MODE:    *field = RT_FIELD_PPO2;    break;
@@ -569,7 +569,7 @@ static bool setting_index_to_field(uint8_t index, RuntimeSettingField_t *field)
  * save). Raises OP_ERR_FLASH on write failure.
  *
  * @param index Zero-based setting index; must be < UDS_GetSettingCount()
- * @param value New value; must be <= the setting's maxValue
+ * @param value New value; must be <= the setting's max_value
  * @return true if value was validated and persisted successfully, false otherwise
  */
 bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
@@ -600,7 +600,7 @@ bool UDS_SaveSettingValue(uint8_t index, uint64_t value)
  * @brief Return the display label for a specific option of a setting
  *
  * @param settingIndex Zero-based setting index; must be < UDS_GetSettingCount()
- * @param optionIndex  Zero-based option index; must be < setting->optionCount
+ * @param optionIndex  Zero-based option index; must be < setting->option_count
  * @return Pointer to the null-terminated option label, or NULL if indices are invalid
  */
 const char *UDS_GetSettingOptionLabel(uint8_t settingIndex,
@@ -614,7 +614,7 @@ const char *UDS_GetSettingOptionLabel(uint8_t settingIndex,
     } else {
         const SettingDefinition_t *setting = &settings[storage];
 
-        if (optionIndex >= setting->optionCount) {
+        if (optionIndex >= setting->option_count) {
             OP_ERROR_DETAIL(OP_ERR_CONFIG, optionIndex);
         } else {
             result = setting->options[optionIndex];

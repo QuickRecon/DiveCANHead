@@ -404,19 +404,19 @@ void flash_log_enqueue_cell_raw(const OxygenCellMsg_t *cell)
      * analog payload, digital via either DiveO2 or O2S based on which
      * ancillary fields are populated. */
     if (cell != NULL) {
-        if ((cell->phase != 0) || (cell->temperature_dC != 0) ||
-            (cell->pressure_uhpa != 0U) || (cell->humidity_mRH != 0)) {
+        if ((cell->phase != 0) || (cell->temperature_dc != 0) ||
+            (cell->pressure_uhpa != 0U) || (cell->humidity_mrh != 0)) {
             /* DiveO2 */
             fl_payload_cell_diveo2_t p = {
                 .cell_index = cell->cell_number,
                 .ppo2 = cell->ppo2,
-                .temperature_dC = cell->temperature_dC,
+                .temperature_dc = cell->temperature_dc,
                 .err_code = cell->err_code,
                 .phase = cell->phase,
                 .intensity = cell->intensity,
                 .ambient_light = cell->ambient_light,
                 .pressure_uhpa = cell->pressure_uhpa,
-                .humidity_mRH = cell->humidity_mRH,
+                .humidity_mrh = cell->humidity_mrh,
             };
             fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_DIVEO2,
                    &p, sizeof(p));
@@ -520,6 +520,22 @@ void flash_log_enqueue_text(uint8_t level, uint16_t module_id,
  * the larger of the two original buffers. */
 static uint8_t fl_writer_scratch[sizeof(fl_entry_hdr_t) + CONFIG_FLASH_LOG_MAX_ENTRY_BYTES];
 
+/**
+ * @brief Flash-area byte offset of an FCB entry's data, as an off_t.
+ *
+ * FCB_ENTRY_FA_DATA_OFF() expands to a complex integer expression whose
+ * underlying type differs in signedness from off_t; casting that expression
+ * directly trips MISRA 10.3 (c:S851). Casting the individual simple operand
+ * instead keeps the arithmetic in off_t and is behaviour-identical.
+ *
+ * @param loc FCB entry location descriptor.
+ * @return Byte offset of the entry's data within its flash area.
+ */
+static off_t fl_entry_data_off(const struct fcb_entry *loc)
+{
+    return loc->fe_sector->fs_off + (off_t)loc->fe_data_off;
+}
+
 static Status_t fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
                  uint8_t flags, uint64_t ts_us,
                  const void *payload, uint16_t length)
@@ -554,14 +570,14 @@ static Status_t fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
             if ((length > 0U) && (payload != NULL)) {
                 (void)memcpy(&fl_writer_scratch[sizeof(hdr)], payload, length);
             }
-            rc = flash_area_write(fcb_p->fap, (off_t)FCB_ENTRY_FA_DATA_OFF(loc),
+            rc = flash_area_write(fcb_p->fap, fl_entry_data_off(&loc),
                           fl_writer_scratch, total);
         } else {
-            rc = flash_area_write(fcb_p->fap, (off_t)FCB_ENTRY_FA_DATA_OFF(loc),
+            rc = flash_area_write(fcb_p->fap, fl_entry_data_off(&loc),
                           &hdr, sizeof(hdr));
             if ((0 == rc) && (length > 0U) && (payload != NULL)) {
                 rc = flash_area_write(fcb_p->fap,
-                              (off_t)(FCB_ENTRY_FA_DATA_OFF(loc) + sizeof(hdr)),
+                              fl_entry_data_off(&loc) + (off_t)sizeof(hdr),
                               payload, length);
             }
         }
@@ -576,7 +592,7 @@ static Status_t fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
 static void fl_emit_drop_marker_if_any(FlashLogDest_t dest)
 {
     atomic_t *ctr = fl_get_drop_counter(dest);
-    uint8_t *last = fl_get_last_drop_type(dest);
+    const uint8_t *last = fl_get_last_drop_type(dest);
     struct fcb *fcb_p = fl_get_fcb(dest);
 
     if ((ctr != NULL) && (last != NULL) && (fcb_p != NULL)) {
@@ -673,7 +689,7 @@ static uint64_t fl_batch_decode_ts(const uint8_t *p)
  * @param length  Payload length in bytes.
  * @return 0 on success or a negative flash_area_write error code.
  */
-static Status_t fl_write_batch_subrecord(struct fcb *fcb_p, off_t *woff,
+static Status_t fl_write_batch_subrecord(const struct fcb *fcb_p, off_t *woff,
                      uint8_t type, uint64_t ts,
                      const uint8_t *payload, uint16_t length)
 {
@@ -724,7 +740,7 @@ static void fl_write_telemetry_batch(void)
     size_t off = 0U;
     bool truncated = false;
 
-    while (((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) && !truncated) {
+    while (((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) && (!truncated)) {
         const uint8_t *p = &fl_batch_buf[off];
         FlashLogDest_t dest = (FlashLogDest_t)p[0];
         uint8_t type = p[1];
@@ -767,7 +783,7 @@ static void fl_write_telemetry_batch(void)
         return;
     }
 
-    off_t woff = (off_t)FCB_ENTRY_FA_DATA_OFF(loc);
+    off_t woff = fl_entry_data_off(&loc);
     rc = flash_area_write(fcb_p->fap, woff, &bhdr, sizeof(bhdr));
     woff += (off_t)sizeof(bhdr);
 
@@ -775,7 +791,7 @@ static void fl_write_telemetry_batch(void)
      * coalesced into one flash write per sub-record. */
     off = 0U;
     truncated = false;
-    while ((0 == rc) && ((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) && !truncated) {
+    while ((0 == rc) && ((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) && (!truncated)) {
         const uint8_t *p = &fl_batch_buf[off];
         FlashLogDest_t dest = (FlashLogDest_t)p[0];
         uint8_t type = p[1];
@@ -857,7 +873,7 @@ static void fl_batch_flush(void)
          * (slow) text ring keeps per-message granularity. */
         size_t off = 0U;
 
-        while (((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) && !truncated) {
+        while (((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) && (!truncated)) {
             const uint8_t *p = &fl_batch_buf[off];
             FlashLogDest_t dest = (FlashLogDest_t)p[0];
             uint8_t type = p[1];

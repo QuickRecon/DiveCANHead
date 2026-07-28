@@ -28,23 +28,23 @@ void pid_state_init(PIDState_t *state, PIDNumeric_t kp,
             PIDNumeric_t ki, PIDNumeric_t kd)
 {
     if (state != NULL) {
-        state->derivativeState = 0.0;
-        state->integralState = 0.0;
-        state->integralMax = 1.0;
-        state->integralMin = 0.0;
-        state->integralGain = ki;
-        state->proportionalGain = kp;
-        state->derivativeGain = kd;
-        state->saturationCount = 0U;
+        state->derivative_state = 0.0;
+        state->integral_state = 0.0;
+        state->integral_max = 1.0;
+        state->integral_min = 0.0;
+        state->integral_gain = ki;
+        state->proportional_gain = kp;
+        state->derivative_gain = kd;
+        state->saturation_count = 0U;
     }
 }
 
 void pid_state_reset_dynamic(PIDState_t *state)
 {
     if (state != NULL) {
-        state->derivativeState = 0.0;
-        state->integralState = 0.0;
-        state->saturationCount = 0U;
+        state->derivative_state = 0.0;
+        state->integral_state = 0.0;
+        state->saturation_count = 0U;
     }
 }
 
@@ -59,43 +59,43 @@ PIDNumeric_t pid_update(PIDNumeric_t d_setpoint, PIDNumeric_t measurement,
         PIDNumeric_t iTerm = 0;
         PIDNumeric_t dTerm = 0;
         PIDNumeric_t error = d_setpoint - measurement;
-        PIDNumeric_t previousIntegral = state->integralState;
+        PIDNumeric_t previousIntegral = state->integral_state;
         bool hardReset = false;
 
         /* proportional term*/
-        pTerm = state->proportionalGain * error;
+        pTerm = state->proportional_gain * error;
 
         /* integral term*/
-        state->integralState += state->integralGain * error;
+        state->integral_state += state->integral_gain * error;
 
         /* Let ordinary overshoot unwind the accumulated equilibrium duty.
          * A hard reset is retained only for a +0.20 bar PPO2 overshoot. */
         if (error <= -(INTEGRAL_RESET_OVERSHOOT_BAR - PPO2_COMPARE_EPSILON_BAR))
         {
-            state->integralState = 0;
+            state->integral_state = 0;
             hardReset = true;
         }
 
-        if (state->integralState > state->integralMax)
+        if (state->integral_state > state->integral_max)
         {
-            state->integralState = state->integralMax;
-            ++state->saturationCount;
+            state->integral_state = state->integral_max;
+            ++state->saturation_count;
         }
-        else if (state->integralState < state->integralMin)
+        else if (state->integral_state < state->integral_min)
         {
-            state->integralState = state->integralMin;
-            ++state->saturationCount;
+            state->integral_state = state->integral_min;
+            ++state->saturation_count;
         }
         else
         {
-            state->saturationCount = 0; /* We've come out of saturation so reset it */
+            state->saturation_count = 0; /* We've come out of saturation so reset it */
         }
 
-        iTerm = state->integralState;
+        iTerm = state->integral_state;
 
         /* derivative term */
-        dTerm = state->derivativeGain * (state->derivativeState - measurement);
-        state->derivativeState = measurement;
+        dTerm = state->derivative_gain * (state->derivative_state - measurement);
+        state->derivative_state = measurement;
 
         result = pTerm + dTerm + iTerm;
 
@@ -106,10 +106,10 @@ PIDNumeric_t pid_update(PIDNumeric_t d_setpoint, PIDNumeric_t measurement,
         bool drivesHighSaturation = (result > FULL_DUTY) && (error > 0.0f);
         bool drivesLowSaturation = (result < 0.0f) && (error < 0.0f);
         if ((!hardReset) && (drivesHighSaturation || drivesLowSaturation)) {
-            state->integralState = previousIntegral;
-            iTerm = state->integralState;
+            state->integral_state = previousIntegral;
+            iTerm = state->integral_state;
             result = pTerm + dTerm + iTerm;
-            ++state->saturationCount;
+            ++state->saturation_count;
         }
     }
 

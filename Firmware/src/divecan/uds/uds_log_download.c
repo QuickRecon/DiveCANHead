@@ -57,7 +57,7 @@ static const uint8_t  LOG_DOWNLOAD_LEN_FMT_TWO_BYTE = 0x20U;
 
 /* 0x36 request: [pad][SID][seq][data optional]. Min 3 bytes. */
 static const uint16_t LOG_TRANSFER_MIN_REQ_LEN = 3U;
-/* 0x36 response header in responseBuffer: [SID][seq] before the chunk body.
+/* 0x36 response header in response_buffer: [SID][seq] before the chunk body.
  * The ISO-TP TX layer prepends the DiveCAN pad byte; it is NOT stored here. */
 static const size_t   LOG_TRANSFER_RESP_HDR_LEN = 2U;
 
@@ -70,7 +70,7 @@ static const uint8_t  ROUTINE_SUBFUNC_START = 0x01U;
 /* 0x31 RoutineControl request/response framing:
  * request  = [pad][SID][subfunc][RID hi][RID lo] = 5 B minimum;
  * response = [pad][SID+0x40][subfunc][RID hi][RID lo] = 4 B (pad excluded
- * from responseLength — see UDS_PAD_IDX). */
+ * from response_length — see UDS_PAD_IDX). */
 static const uint16_t ROUTINE_CONTROL_MIN_REQ_LEN = 5U;
 static const uint8_t  ROUTINE_CONTROL_RESP_LEN = 4U;
 
@@ -355,7 +355,7 @@ static uint8_t fl_resolve_by_dive_checked(FlashLogDest_t stream, const uint8_t *
 static uint8_t fl_finish_selector(FlashLogDest_t stream, Status_t rc)
 {
     LogDownloadSM_t *sm = fl_sm();
-    uint8_t nrc;
+    uint8_t nrc = 0U;
 
     if (0 == rc) {
         sm->state = LD_SELECTED;
@@ -430,16 +430,16 @@ static uint8_t fl_resolve_selector(uint16_t rid, const uint8_t *data,
 /* ---- 0x31 RoutineControl ---- */
 
 void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
-                   const uint8_t *requestData,
-                   uint16_t requestLength)
+                   const uint8_t *request_data,
+                   uint16_t request_length)
 {
-    if (requestLength < ROUTINE_CONTROL_MIN_REQ_LEN) {
+    if (request_length < ROUTINE_CONTROL_MIN_REQ_LEN) {
         UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
                      UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        uint8_t subfunction = requestData[UDS_SID_IDX + 1U];
-        uint16_t rid = (uint16_t)((uint16_t)((uint16_t)requestData[UDS_SID_IDX + 2U] << BYTE_SHIFT_8) |
-                   (uint16_t)requestData[UDS_SID_IDX + 3U]);
+        uint8_t subfunction = request_data[UDS_SID_IDX + 1U];
+        uint16_t rid = (uint16_t)((uint16_t)((uint16_t)request_data[UDS_SID_IDX + 2U] << BYTE_SHIFT_8) |
+                   (uint16_t)request_data[UDS_SID_IDX + 3U]);
 
         if (ROUTINE_SUBFUNC_START != subfunction) {
             UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
@@ -461,12 +461,12 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
                 /* A fresh selector supersedes any live stream — resume the
                  * writer before re-resolving (the resolve below sets
                  * LD_SELECTED). */
-                const uint8_t *params = &requestData[UDS_SID_IDX + 4U];
+                const uint8_t *params = &request_data[UDS_SID_IDX + 4U];
                 uint16_t params_len = 0U;
 
                 fl_stop_streaming(LD_IDLE);
-                if (requestLength > ROUTINE_CONTROL_MIN_REQ_LEN) {
-                    params_len = (uint16_t)(requestLength - ROUTINE_CONTROL_MIN_REQ_LEN);
+                if (request_length > ROUTINE_CONTROL_MIN_REQ_LEN) {
+                    params_len = (uint16_t)(request_length - ROUTINE_CONTROL_MIN_REQ_LEN);
                 }
                 nrc = fl_resolve_selector(rid, params, params_len);
             } else {
@@ -477,13 +477,13 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
                 OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
                 UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL, nrc);
             } else {
-                ctx->responseBuffer[UDS_PAD_IDX] =
+                ctx->response_buffer[UDS_PAD_IDX] =
                     UDS_SID_ROUTINE_CONTROL + UDS_RESPONSE_SID_OFFSET;
-                ctx->responseBuffer[UDS_SID_IDX] = subfunction;
-                ctx->responseBuffer[UDS_DID_HI_IDX] =
+                ctx->response_buffer[UDS_SID_IDX] = subfunction;
+                ctx->response_buffer[UDS_DID_HI_IDX] =
                     (uint8_t)(rid >> BYTE_SHIFT_8);
-                ctx->responseBuffer[UDS_DID_LO_IDX] = (uint8_t)(rid & BYTE_MASK);
-                ctx->responseLength = ROUTINE_CONTROL_RESP_LEN;
+                ctx->response_buffer[UDS_DID_LO_IDX] = (uint8_t)(rid & BYTE_MASK);
+                ctx->response_length = ROUTINE_CONTROL_RESP_LEN;
                 UDS_SendResponse(ctx);
             }
         }
@@ -492,7 +492,7 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
 
 /* ---- Claim shim ---- */
 
-bool UDS_LogDownload_Claims(uint8_t sid, const uint8_t *requestData)
+bool UDS_LogDownload_Claims(uint8_t sid, const uint8_t *request_data)
 {
     const LogDownloadSM_t *sm = fl_sm();
     bool claims = false;
@@ -500,12 +500,12 @@ bool UDS_LogDownload_Claims(uint8_t sid, const uint8_t *requestData)
     if (sid == UDS_SID_REQUEST_DOWNLOAD) {
         /* Only claim 0x34 if a selection is staged and the address
          * matches our sentinel. */
-        if ((sm->state == LD_STREAMING) && (requestData != NULL)) {
-            /* requestData layout: [pad][SID][dataFmt][addrLenFmt][addr 4][size 4] */
-            uint32_t addr = ((uint32_t)requestData[4]) |
-                    ((uint32_t)requestData[5] << BYTE_SHIFT_8) |
-                    ((uint32_t)requestData[6] << BYTE_SHIFT_16) |
-                    ((uint32_t)requestData[7] << BYTE_SHIFT_24);
+        if ((sm->state == LD_STREAMING) && (request_data != NULL)) {
+            /* request_data layout: [pad][SID][dataFmt][addrLenFmt][addr 4][size 4] */
+            uint32_t addr = ((uint32_t)request_data[4]) |
+                    ((uint32_t)request_data[5] << BYTE_SHIFT_8) |
+                    ((uint32_t)request_data[6] << BYTE_SHIFT_16) |
+                    ((uint32_t)request_data[7] << BYTE_SHIFT_24);
 
             claims = (addr == LOG_DOWNLOAD_SENTINEL_ADDR);
         }
@@ -522,13 +522,13 @@ bool UDS_LogDownload_Claims(uint8_t sid, const uint8_t *requestData)
 /* ---- 0x34 RequestDownload ---- */
 
 static void fl_handle_request_download(UDSContext_t *ctx,
-                       const uint8_t *requestData,
-                       uint16_t requestLength)
+                       const uint8_t *request_data,
+                       uint16_t request_length)
 {
-    if (requestLength != LOG_DOWNLOAD_REQ_LEN) {
+    if (request_length != LOG_DOWNLOAD_REQ_LEN) {
         UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
                      UDS_NRC_INCORRECT_MSG_LEN);
-    } else if (requestData[LOG_DOWNLOAD_ADDR_LEN_FMT_IDX] != LOG_DOWNLOAD_ADDR_LEN_FMT) {
+    } else if (request_data[LOG_DOWNLOAD_ADDR_LEN_FMT_IDX] != LOG_DOWNLOAD_ADDR_LEN_FMT) {
         UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_DOWNLOAD,
                      UDS_NRC_REQUEST_OUT_OF_RANGE);
     } else {
@@ -547,10 +547,10 @@ static void fl_handle_request_download(UDSContext_t *ctx,
          * clients unchanged); nonzero requests below the floor are raised to it
          * (the 16-byte stream header must fit the first chunk with headroom). */
         uint16_t cap = UDS_MAX_RESPONSE_LENGTH - 3U;
-        uint32_t req_max = ((uint32_t)requestData[8]) |
-                   ((uint32_t)requestData[9] << BYTE_SHIFT_8) |
-                   ((uint32_t)requestData[10] << BYTE_SHIFT_16) |
-                   ((uint32_t)requestData[11] << BYTE_SHIFT_24);
+        uint32_t req_max = ((uint32_t)request_data[8]) |
+                   ((uint32_t)request_data[9] << BYTE_SHIFT_8) |
+                   ((uint32_t)request_data[10] << BYTE_SHIFT_16) |
+                   ((uint32_t)request_data[11] << BYTE_SHIFT_24);
 
         if ((req_max != 0U) && (req_max < (uint32_t)cap)) {
             if (req_max < LOG_DOWNLOAD_MIN_BLOCK) {
@@ -565,14 +565,14 @@ static void fl_handle_request_download(UDSContext_t *ctx,
         sm->header_sent = false;
 
         /* 0x34 positive response: [pad][SID+0x40][lengthFmt][maxBlock_hi][maxBlock_lo] */
-        ctx->responseBuffer[UDS_PAD_IDX] =
+        ctx->response_buffer[UDS_PAD_IDX] =
             UDS_SID_REQUEST_DOWNLOAD + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseBuffer[UDS_SID_IDX] = LOG_DOWNLOAD_LEN_FMT_TWO_BYTE;
-        ctx->responseBuffer[UDS_DID_HI_IDX] =
+        ctx->response_buffer[UDS_SID_IDX] = LOG_DOWNLOAD_LEN_FMT_TWO_BYTE;
+        ctx->response_buffer[UDS_DID_HI_IDX] =
             (uint8_t)((sm->max_block_length >> BYTE_SHIFT_8) & BYTE_MASK);
-        ctx->responseBuffer[UDS_DID_LO_IDX] =
+        ctx->response_buffer[UDS_DID_LO_IDX] =
             (uint8_t)(sm->max_block_length & BYTE_MASK);
-        ctx->responseLength = LOG_DOWNLOAD_RESP_LEN;
+        ctx->response_length = LOG_DOWNLOAD_RESP_LEN;
         UDS_SendResponse(ctx);
     }
 }
@@ -694,16 +694,16 @@ static bool fl_fill_chunk_body(FlashLogReader_t *reader, uint8_t *out,
 }
 
 static void fl_handle_transfer_data(UDSContext_t *ctx,
-                    const uint8_t *requestData,
-                    uint16_t requestLength)
+                    const uint8_t *request_data,
+                    uint16_t request_length)
 {
     LogDownloadSM_t *sm = fl_sm();
 
-    if (requestLength < LOG_TRANSFER_MIN_REQ_LEN) {
+    if (request_length < LOG_TRANSFER_MIN_REQ_LEN) {
         UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
                      UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        uint8_t seq = requestData[UDS_SID_IDX + 1U];
+        uint8_t seq = request_data[UDS_SID_IDX + 1U];
 
         if (seq != sm->next_seq) {
             UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
@@ -711,11 +711,11 @@ static void fl_handle_transfer_data(UDSContext_t *ctx,
         } else {
             /* Build the chunk body immediately after the [SID][seq] response
              * header. The DiveCAN pad byte is prepended by the ISO-TP TX
-             * layer, not stored in responseBuffer, so the body starts at
+             * layer, not stored in response_buffer, so the body starts at
              * index 2 — writing it at index 3 would leave a stale byte at
-             * index 2 and truncate the final body byte (responseLength
+             * index 2 and truncate the final body byte (response_length
              * counts from index 0), corrupting one byte per chunk. */
-            uint8_t *out = &ctx->responseBuffer[LOG_TRANSFER_RESP_HDR_LEN];
+            uint8_t *out = &ctx->response_buffer[LOG_TRANSFER_RESP_HDR_LEN];
             size_t cap = (size_t)sm->max_block_length;
             size_t used = 0U;
             bool fail = false;
@@ -732,10 +732,10 @@ static void fl_handle_transfer_data(UDSContext_t *ctx,
                 UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
                              UDS_NRC_GENERAL_PROG_FAIL);
             } else {
-                ctx->responseBuffer[UDS_PAD_IDX] =
+                ctx->response_buffer[UDS_PAD_IDX] =
                     UDS_SID_TRANSFER_DATA + UDS_RESPONSE_SID_OFFSET;
-                ctx->responseBuffer[UDS_SID_IDX] = seq;
-                ctx->responseLength = (uint16_t)(LOG_TRANSFER_RESP_HDR_LEN + used);
+                ctx->response_buffer[UDS_SID_IDX] = seq;
+                ctx->response_length = (uint16_t)(LOG_TRANSFER_RESP_HDR_LEN + used);
                 UDS_SendResponse(ctx);
 
                 sm->next_seq += 1U;
@@ -750,12 +750,12 @@ static void fl_handle_transfer_data(UDSContext_t *ctx,
 /* ---- 0x37 RequestTransferExit ---- */
 
 static void fl_handle_transfer_exit(UDSContext_t *ctx,
-                    const uint8_t *requestData,
-                    uint16_t requestLength)
+                    const uint8_t *request_data,
+                    uint16_t request_length)
 {
-    ARG_UNUSED(requestData);
+    ARG_UNUSED(request_data);
 
-    if (requestLength < LOG_EXIT_MIN_REQ_LEN) {
+    if (request_length < LOG_EXIT_MIN_REQ_LEN) {
         UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_TRANSFER_EXIT,
                      UDS_NRC_INCORRECT_MSG_LEN);
     } else {
@@ -765,9 +765,9 @@ static void fl_handle_transfer_exit(UDSContext_t *ctx,
         sm->header_sent = false;
         sm->next_seq = 0U;
 
-        ctx->responseBuffer[UDS_PAD_IDX] =
+        ctx->response_buffer[UDS_PAD_IDX] =
             UDS_SID_REQUEST_TRANSFER_EXIT + UDS_RESPONSE_SID_OFFSET;
-        ctx->responseLength = 1U;
+        ctx->response_length = 1U;
         UDS_SendResponse(ctx);
     }
 }
@@ -794,20 +794,20 @@ void UDS_LogDownload_Poll(void)
 /* ---- Top-level dispatch ---- */
 
 void UDS_LogDownload_Handle(UDSContext_t *ctx,
-                const uint8_t *requestData,
-                uint16_t requestLength)
+                const uint8_t *request_data,
+                uint16_t request_length)
 {
-    uint8_t sid = requestData[UDS_SID_IDX];
+    uint8_t sid = request_data[UDS_SID_IDX];
 
     switch (sid) {
     case UDS_SID_REQUEST_DOWNLOAD:
-        fl_handle_request_download(ctx, requestData, requestLength);
+        fl_handle_request_download(ctx, request_data, request_length);
         break;
     case UDS_SID_TRANSFER_DATA:
-        fl_handle_transfer_data(ctx, requestData, requestLength);
+        fl_handle_transfer_data(ctx, request_data, request_length);
         break;
     case UDS_SID_REQUEST_TRANSFER_EXIT:
-        fl_handle_transfer_exit(ctx, requestData, requestLength);
+        fl_handle_transfer_exit(ctx, request_data, request_length);
         break;
     default:
         UDS_SendNegativeResponse(ctx, sid, UDS_NRC_SERVICE_NOT_SUPPORTED);

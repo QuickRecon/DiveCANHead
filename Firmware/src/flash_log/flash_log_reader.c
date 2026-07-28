@@ -156,6 +156,22 @@ static size_t fl_sector_index(const struct fcb *fcb_p,
 }
 
 /**
+ * @brief Flash-area byte offset of an FCB entry's data, as an off_t.
+ *
+ * FCB_ENTRY_FA_DATA_OFF() expands to a complex integer expression whose
+ * underlying type differs in signedness from off_t; casting that expression
+ * directly trips MISRA 10.3 (c:S851). Casting the individual simple operand
+ * instead keeps the arithmetic in off_t and is behaviour-identical.
+ *
+ * @param loc FCB entry location descriptor.
+ * @return Byte offset of the entry's data within its flash area.
+ */
+static off_t fl_entry_data_off(const struct fcb_entry *loc)
+{
+    return loc->fe_sector->fs_off + (off_t)loc->fe_data_off;
+}
+
+/**
  * @brief Read a marker payload and fold it into its sector's index row.
  *
  * Extracted from the walk callback so the per-entry classification stays
@@ -211,7 +227,7 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
     }
 
     rc = flash_area_read(loc_ctx->fap,
-                 (off_t)FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc),
+                 fl_entry_data_off(&loc_ctx->loc),
                  &hdr, sizeof(hdr));
 
     /* Skip unreadable / non-marker entries — don't fail the whole walk. */
@@ -224,7 +240,7 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
         if (s_idx < (size_t)ctx->fcb_p->f_sector_cnt) {
             FlashLogIndexEntry_t *e = &ctx->index[s_idx];
             off_t payload_off =
-                (off_t)(FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc) + sizeof(hdr));
+                fl_entry_data_off(&loc_ctx->loc) + (off_t)sizeof(hdr);
 
             fl_index_apply_marker(e, loc_ctx->fap, payload_off, hdr.type);
         }
@@ -312,11 +328,11 @@ static int fl_marker_scan_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
     }
 
     rc = flash_area_read(loc_ctx->fap,
-                 (off_t)FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc),
+                 fl_entry_data_off(&loc_ctx->loc),
                  &hdr, sizeof(hdr));
     if ((0 == rc) && (hdr.type == ctx->marker_type)) {
         off_t payload_off =
-            (off_t)(FCB_ENTRY_FA_DATA_OFF(loc_ctx->loc) + sizeof(hdr));
+            fl_entry_data_off(&loc_ctx->loc) + (off_t)sizeof(hdr);
         uint32_t entry_id = 0U;
         bool have_id = false;
 
@@ -813,8 +829,8 @@ Status_t flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_siz
 
                 if (n > 0U) {
                     read_rc = flash_area_read(fcb_p->fap,
-                                 (off_t)(FCB_ENTRY_FA_DATA_OFF(r->cursor) +
-                                         r->emit_off),
+                                 fl_entry_data_off(&r->cursor) +
+                                     (off_t)r->emit_off,
                                  buf, n);
                 }
 

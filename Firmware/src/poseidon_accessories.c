@@ -352,9 +352,10 @@ static const struct i2c_target_callbacks target_cb = {
     .error = target_error,
 };
 /* .node is private, driver-owned state (see struct i2c_target_config doc
- * comment: "Private, do not modify") — deliberately left to its zero
- * default rather than touched here. */
+ * comment: "Private, do not modify") — explicitly zero-initialised to its
+ * documented default to satisfy S6871 without altering behaviour. */
 static struct i2c_target_config target_cfg = {
+    .node = {0},
     .flags = 0U,
     .address = DISPLAY_ADDR,
     .callbacks = &target_cb,

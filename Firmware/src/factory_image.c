@@ -195,7 +195,7 @@ static Status_t verify_slot1_readback(const struct flash_area *fa, uint32_t off,
         if ((len - v) < VERIFY_BUF_SIZE) {
             step = len - v;
         }
-        Status_t rc = flash_area_read(fa, (off_t)(off + v), verify_buf, step);
+        Status_t rc = flash_area_read(fa, (off_t)off + (off_t)v, verify_buf, step);
         if (0 != rc) {
             result = rc;
         } else if (0 != memcmp(expected + v, verify_buf, step)) {
@@ -729,7 +729,7 @@ static Status_t copy_backend_to_slot1(void)
  * low part of the slot; the last page is padding/trailer only. */
 static Status_t erase_slot1_trailer_page(const struct flash_area *slot1_fa)
 {
-    struct flash_pages_info pinfo;
+    struct flash_pages_info pinfo = {0};
     off_t last = (slot1_fa->fa_off + (off_t)slot1_fa->fa_size) - 1;
     Status_t rc = flash_get_page_info_by_offs(slot1_fa->fa_dev, last, &pinfo);
 

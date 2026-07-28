@@ -110,31 +110,31 @@ ZTEST(runtime_settings_logic, test_validation_rejects_each_corrupt_field)
 {
     RuntimeSettings_t candidate = RUNTIME_SETTINGS_DEFAULT;
 
-    candidate.ppo2ControlMode = (PPO2ControlMode_t)UINT8_MAX;
+    candidate.ppo2_control_mode = (PPO2ControlMode_t)UINT8_MAX;
     zassert_false(runtime_settings_validate(&candidate), "invalid PPO2 mode");
 
     candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
-    candidate.calibrationMode = (CalibrationMode_t)UINT8_MAX;
+    candidate.calibration_mode = (CalibrationMode_t)UINT8_MAX;
     zassert_false(runtime_settings_validate(&candidate), "invalid calibration mode");
 
     candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
-    candidate.pidKp = NAN;
+    candidate.pid_kp = NAN;
     zassert_false(runtime_settings_validate(&candidate), "NaN Kp");
 
     candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
-    candidate.pidKi = -1.0f;
+    candidate.pid_ki = -1.0f;
     zassert_false(runtime_settings_validate(&candidate), "negative Ki");
 
     candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
-    candidate.pidKd = PID_GAIN_MAX + 1.0f;
+    candidate.pid_kd = PID_GAIN_MAX + 1.0f;
     zassert_false(runtime_settings_validate(&candidate), "oversized Kd");
 
     candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
-    candidate.batteryType = BATTERY_TYPE_COUNT;
+    candidate.battery_type = BATTERY_TYPE_COUNT;
     zassert_false(runtime_settings_validate(&candidate), "invalid battery type");
 
     candidate = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
-    candidate.depthCompensation = true;
+    candidate.depth_compensation = true;
     zassert_false(runtime_settings_validate(&candidate),
               "depth compensation requires an O2 solenoid");
 }
@@ -145,8 +145,8 @@ ZTEST(runtime_settings_logic, test_load_backend_failures_return_safe_defaults)
 
     stub.init_rc = -EIO;
     zassert_equal(runtime_settings_load(&loaded), -EIO);
-    zassert_equal(loaded.ppo2ControlMode, PPO2CONTROL_OFF);
-    zassert_equal(loaded.calibrationMode, CAL_ANALOG_ABSOLUTE);
+    zassert_equal(loaded.ppo2_control_mode, PPO2CONTROL_OFF);
+    zassert_equal(loaded.calibration_mode, CAL_ANALOG_ABSOLUTE);
 
     stub.init_rc = 0;
     stub.load_rc = -EIO;
@@ -178,14 +178,14 @@ ZTEST(runtime_settings_logic, test_runtime_handlers_load_all_fields)
     zassert_ok(settings_runtime_set("rt/bcst", broadcast, sizeof(broadcast)));
 
     runtime_settings_get(&loaded);
-    zassert_equal(loaded.calibrationMode, CAL_TOTAL_ABSOLUTE);
-    zassert_within(loaded.pidKp, kp, 0.000001f);
-    zassert_within(loaded.pidKi, ki, 0.000001f);
-    zassert_within(loaded.pidKd, kd, 0.000001f);
-    zassert_equal(loaded.batteryType, BATTERY_TYPE_LI3S);
-    zassert_true(loaded.enforceBroadcast[0]);
-    zassert_false(loaded.enforceBroadcast[1]);
-    zassert_true(loaded.enforceBroadcast[2]);
+    zassert_equal(loaded.calibration_mode, CAL_TOTAL_ABSOLUTE);
+    zassert_within(loaded.pid_kp, kp, 0.000001f);
+    zassert_within(loaded.pid_ki, ki, 0.000001f);
+    zassert_within(loaded.pid_kd, kd, 0.000001f);
+    zassert_equal(loaded.battery_type, BATTERY_TYPE_LI3S);
+    zassert_true(loaded.enforce_broadcast[0]);
+    zassert_false(loaded.enforce_broadcast[1]);
+    zassert_true(loaded.enforce_broadcast[2]);
 
     zassert_equal(settings_runtime_set("rt/unknown", &mode, sizeof(mode)),
               -ENOENT);
@@ -216,8 +216,8 @@ ZTEST(runtime_settings_logic, test_runtime_handlers_ignore_bad_data)
 ZTEST(runtime_settings_logic, test_full_save_success_and_failure_paths)
 {
     RuntimeSettings_t candidate = RUNTIME_SETTINGS_DEFAULT;
-    candidate.calibrationMode = CAL_TOTAL_ABSOLUTE;
-    candidate.batteryType = BATTERY_TYPE_LI3S;
+    candidate.calibration_mode = CAL_TOTAL_ABSOLUTE;
+    candidate.battery_type = BATTERY_TYPE_LI3S;
 
     zassert_ok(runtime_settings_save(&candidate));
     zassert_equal(stub.save_calls, 8, "full save writes all eight keys");
@@ -229,7 +229,7 @@ ZTEST(runtime_settings_logic, test_full_save_success_and_failure_paths)
     zassert_equal(stub.save_calls, 8,
               "the aggregate save records the first error after all writes");
 
-    candidate.ppo2ControlMode = (PPO2ControlMode_t)UINT8_MAX;
+    candidate.ppo2_control_mode = (PPO2ControlMode_t)UINT8_MAX;
     zassert_equal(runtime_settings_save(&candidate), -EINVAL);
 }
 

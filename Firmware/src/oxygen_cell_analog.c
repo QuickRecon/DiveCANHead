@@ -130,13 +130,13 @@ static void analog_publish(struct analog_cell_state *cell)
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
         .raw_sample = (int32_t)cell->last_counts,
-        .temperature_dC = 0,
+        .temperature_dc = 0,
         .err_code = 0U,
         .phase = 0,
         .intensity = 0,
         .ambient_light = 0,
         .pressure_uhpa = 0U,
-        .humidity_mRH = 0,
+        .humidity_mrh = 0,
     };
 
     zbus_pub_checked(cell->out_chan, &msg, K_MSEC(ZBUS_PUB_TIMEOUT_MS));
@@ -246,13 +246,13 @@ static void analog_cell_thread(void *p1, void *p2, void *p3)
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
         .raw_sample = 0,
-        .temperature_dC = 0,
+        .temperature_dc = 0,
         .err_code = 0U,
         .phase = 0,
         .intensity = 0,
         .ambient_light = 0,
         .pressure_uhpa = 0U,
-        .humidity_mRH = 0,
+        .humidity_mrh = 0,
     };
     zbus_pub_checked(cell->out_chan, &init_msg, K_MSEC(ZBUS_PUB_TIMEOUT_MS));
 

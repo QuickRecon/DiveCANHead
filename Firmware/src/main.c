@@ -343,38 +343,28 @@ static void emit_startup_preamble(void)
 #else
     preamble_line("Solenoids: none (solenoid driver disabled)");
 #endif
-    const char *o2_sol_flag;
+    const char *o2_sol_flag = "N";
     if (0 != IS_ENABLED(CONFIG_HAS_O2_SOLENOID)) {
         o2_sol_flag = "Y";
-    } else {
-        o2_sol_flag = "N";
     }
-    const char *flush_sol_flag;
+    const char *flush_sol_flag = "N";
     if (0 != IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID)) {
         flush_sol_flag = "Y";
-    } else {
-        flush_sol_flag = "N";
     }
-    const char *digital_cell_flag;
+    const char *digital_cell_flag = "N";
     if (0 != IS_ENABLED(CONFIG_HAS_DIGITAL_CELL)) {
         digital_cell_flag = "Y";
-    } else {
-        digital_cell_flag = "N";
     }
-    const char *analog_cell_flag;
+    const char *analog_cell_flag = "N";
     if (0 != IS_ENABLED(CONFIG_HAS_ANALOG_CELL)) {
         analog_cell_flag = "Y";
-    } else {
-        analog_cell_flag = "N";
     }
     preamble_line("Has flags: o2_sol=%s flush_sol=%s digital_cell=%s analog_cell=%s",
                   o2_sol_flag, flush_sol_flag, digital_cell_flag, analog_cell_flag);
 
-    const char *depth_comp_default_flag;
+    const char *depth_comp_default_flag = "N";
     if (0 != IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT)) {
         depth_comp_default_flag = "Y";
-    } else {
-        depth_comp_default_flag = "N";
     }
     preamble_line("Compile defaults: ppo2=%s cal=%s depth_comp=%s",
                   COMPILE_PPO2_DEFAULT_STR,
@@ -388,18 +378,18 @@ static void emit_startup_preamble(void)
     RuntimeSettings_t rt = {0};
     (void)runtime_settings_load(&rt);
     preamble_line("Runtime config:");
-    preamble_line("  PPO2 mode: %s", ppo2_mode_name(rt.ppo2ControlMode));
-    preamble_line("  Cal mode: %s", cal_mode_name(rt.calibrationMode));
+    preamble_line("  PPO2 mode: %s", ppo2_mode_name(rt.ppo2_control_mode));
+    preamble_line("  Cal mode: %s", cal_mode_name(rt.calibration_mode));
     const char *depth_comp_flag = "N";
-    if (rt.depthCompensation) {
+    if (rt.depth_compensation) {
         depth_comp_flag = "Y";
     }
     preamble_line("  Depth comp: %s", depth_comp_flag);
     preamble_line("  PID gains x1000: Kp=%d Ki=%d Kd=%d",
-                  (int32_t)lroundf(rt.pidKp * PID_GAIN_DISPLAY_SCALE),
-                  (int32_t)lroundf(rt.pidKi * PID_GAIN_DISPLAY_SCALE),
-                  (int32_t)lroundf(rt.pidKd * PID_GAIN_DISPLAY_SCALE));
-    preamble_line("  Battery type: %s", battery_type_name(rt.batteryType));
+                  (int32_t)lroundf(rt.pid_kp * PID_GAIN_DISPLAY_SCALE),
+                  (int32_t)lroundf(rt.pid_ki * PID_GAIN_DISPLAY_SCALE),
+                  (int32_t)lroundf(rt.pid_kd * PID_GAIN_DISPLAY_SCALE));
+    preamble_line("  Battery type: %s", battery_type_name(rt.battery_type));
 
 #ifdef CONFIG_FLASH_LOG
     FlashLogStats_t stats = {0};

@@ -25,14 +25,14 @@
  * @brief Dispatch an inbound OTA service request (SIDs 0x34/0x36/0x37/0x31).
  *
  * Called from UDS_ProcessRequest's SID switch. Internally routes to the
- * per-SID handler based on requestData[UDS_SID_IDX].
+ * per-SID handler based on request_data[UDS_SID_IDX].
  *
  * @param ctx           UDS context (carries session state)
- * @param requestData   Request bytes starting at the SID byte
- * @param requestLength Total byte count of requestData
+ * @param request_data   Request bytes starting at the SID byte
+ * @param request_length Total byte count of request_data
  */
-void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *requestData,
-            uint16_t requestLength);
+void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *request_data,
+            uint16_t request_length);
 
 /**
  * @brief Reset the OTA pipeline to idle state.

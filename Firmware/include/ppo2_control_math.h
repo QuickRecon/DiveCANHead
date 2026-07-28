@@ -34,14 +34,14 @@ typedef float PIDNumeric_t;
 
 /** @brief PID controller state — mirrors the legacy STM32 PIDState_t layout. */
 typedef struct {
-    PIDNumeric_t derivativeState;    /**< Previous measurement, for D-on-measurement */
-    PIDNumeric_t integralState;      /**< Accumulated Ki * error */
-    PIDNumeric_t integralMax;        /**< Upper bound on integralState (default 1.0) */
-    PIDNumeric_t integralMin;        /**< Lower bound on integralState (default 0.0) */
-    PIDNumeric_t integralGain;       /**< Ki */
-    PIDNumeric_t proportionalGain;   /**< Kp */
-    PIDNumeric_t derivativeGain;     /**< Kd */
-    uint16_t saturationCount;        /**< Cycles spent at integral limit */
+    PIDNumeric_t derivative_state;    /**< Previous measurement, for D-on-measurement */
+    PIDNumeric_t integral_state;      /**< Accumulated Ki * error */
+    PIDNumeric_t integral_max;        /**< Upper bound on integral_state (default 1.0) */
+    PIDNumeric_t integral_min;        /**< Lower bound on integral_state (default 0.0) */
+    PIDNumeric_t integral_gain;       /**< Ki */
+    PIDNumeric_t proportional_gain;   /**< Kp */
+    PIDNumeric_t derivative_gain;     /**< Kd */
+    uint16_t saturation_count;        /**< Cycles spent at integral limit */
 } PIDState_t;
 
 /** @brief Output of pid_compute_fire_timing — what the fire-thread should do. */
@@ -92,7 +92,7 @@ void pid_state_reset_dynamic(PIDState_t *state);
  * +0.20 bar above setpoint, and conditionally rejects updates that would drive
  * saturated output farther out of range. Derivative is taken on measurement, not
  * on the error, to suppress kicks on setpoint step changes.  Saturation
- * count tracks consecutive cycles spent at integralMax/integralMin and
+ * count tracks consecutive cycles spent at integral_max/integral_min and
  * resets when the integrator leaves the limit.
  *
  * @param d_setpoint Desired PPO2 in bar

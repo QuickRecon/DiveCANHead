@@ -34,7 +34,7 @@ void ISOTP_TxQueue_Init(void);
  *
  * @param source Source device type (e.g., DIVECAN_SOLO)
  * @param target Target device type (e.g., DIVECAN_CONTROLLER)
- * @param messageId Base CAN message ID (e.g., MENU_ID)
+ * @param message_id Base CAN message ID (e.g., MENU_ID)
  * @param data Data to transmit
  * @param length Data length (1-256 bytes)
  * @return true if enqueued successfully, false if queue full or invalid params
@@ -44,7 +44,7 @@ void ISOTP_TxQueue_Init(void);
  *       waiting for Flow Control — so it never stalls an addressed reply.
  */
 bool ISOTP_TxQueue_Enqueue(DiveCANType_t source, DiveCANType_t target,
-                uint32_t messageId, const uint8_t *data,
+                uint32_t message_id, const uint8_t *data,
                 uint16_t length);
 
 /**

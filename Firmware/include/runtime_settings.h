@@ -87,7 +87,7 @@ static inline PPO2_t clamp_setpoint_cb(PPO2_t setpoint_cb)
  * The enum values themselves live in `oxygen_cell_types.h` as `CalMethod_t`
  * (the wire-format type carried in CalRequest_t).  CalibrationMode_t here
  * is a thin alias so the runtime-settings API still reads naturally
- * (`settings.calibrationMode`) while the four enumerator names
+ * (`settings.calibration_mode`) while the four enumerator names
  * (CAL_DIGITAL_REFERENCE, …) have a single source of truth.  Without this
  * alias, including both headers in the same TU was a duplicate-enumerator
  * compile error. */
@@ -196,25 +196,25 @@ typedef enum {
 
 /** @brief All user-configurable runtime settings, stored in NVS. */
 typedef struct {
-    PPO2ControlMode_t ppo2ControlMode; /**< Active PPO2 control algorithm */
-    CalibrationMode_t calibrationMode; /**< Active calibration method */
-    bool depthCompensation;            /**< Enable depth-pressure compensation for setpoint */
-    Numeric_t pidKp;                   /**< PID proportional gain (HAS_O2_SOLENOID variants) */
-    Numeric_t pidKi;                   /**< PID integral gain (HAS_O2_SOLENOID variants) */
-    Numeric_t pidKd;                   /**< PID derivative gain (HAS_O2_SOLENOID variants) */
-    BatteryType_t batteryType;         /**< Battery chemistry, drives low-battery threshold */
-    bool enforceBroadcast[CELL_MAX_COUNT]; /**< Per-cell: force the UART cell into broadcast at boot */
+    PPO2ControlMode_t ppo2_control_mode; /**< Active PPO2 control algorithm */
+    CalibrationMode_t calibration_mode; /**< Active calibration method */
+    bool depth_compensation;            /**< Enable depth-pressure compensation for setpoint */
+    Numeric_t pid_kp;                   /**< PID proportional gain (HAS_O2_SOLENOID variants) */
+    Numeric_t pid_ki;                   /**< PID integral gain (HAS_O2_SOLENOID variants) */
+    Numeric_t pid_kd;                   /**< PID derivative gain (HAS_O2_SOLENOID variants) */
+    BatteryType_t battery_type;         /**< Battery chemistry, drives low-battery threshold */
+    bool enforce_broadcast[CELL_MAX_COUNT]; /**< Per-cell: force the UART cell into broadcast at boot */
 } RuntimeSettings_t;
 
 #define RUNTIME_SETTINGS_DEFAULT {                                       \
-    .ppo2ControlMode = PPO2_CONTROL_MODE_DEFAULT,                    \
-    .calibrationMode = CAL_MODE_DEFAULT,                             \
-    .depthCompensation = IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT), \
-    .pidKp = PID_DEFAULT_KP,                                         \
-    .pidKi = PID_DEFAULT_KI,                                         \
-    .pidKd = PID_DEFAULT_KD,                                         \
-    .batteryType = BATTERY_TYPE_DEFAULT,                             \
-    .enforceBroadcast = {0},                                        \
+    .ppo2_control_mode = PPO2_CONTROL_MODE_DEFAULT,                    \
+    .calibration_mode = CAL_MODE_DEFAULT,                             \
+    .depth_compensation = IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT), \
+    .pid_kp = PID_DEFAULT_KP,                                         \
+    .pid_ki = PID_DEFAULT_KI,                                         \
+    .pid_kd = PID_DEFAULT_KD,                                         \
+    .battery_type = BATTERY_TYPE_DEFAULT,                             \
+    .enforce_broadcast = {0},                                        \
 }
 
 /* ---- Validation ---- */
@@ -239,14 +239,14 @@ Status_t runtime_settings_save(const RuntimeSettings_t *settings);
 
 /** @brief Identifies a single persistable runtime setting (one NVS key). */
 typedef enum {
-    RT_FIELD_PPO2 = 0,  /**< ppo2ControlMode -> "rt/ppo2" */
-    RT_FIELD_CAL,       /**< calibrationMode -> "rt/cal"  */
-    RT_FIELD_DEPTH,     /**< depthCompensation -> "rt/depth" */
-    RT_FIELD_KP,        /**< pidKp -> "rt/kp" */
-    RT_FIELD_KI,        /**< pidKi -> "rt/ki" */
-    RT_FIELD_KD,        /**< pidKd -> "rt/kd" */
-    RT_FIELD_BATTERY,   /**< batteryType -> "rt/bat" */
-    RT_FIELD_BCST,      /**< enforceBroadcast[] -> "rt/bcst" (whole array, one key) */
+    RT_FIELD_PPO2 = 0,  /**< ppo2_control_mode -> "rt/ppo2" */
+    RT_FIELD_CAL,       /**< calibration_mode -> "rt/cal"  */
+    RT_FIELD_DEPTH,     /**< depth_compensation -> "rt/depth" */
+    RT_FIELD_KP,        /**< pid_kp -> "rt/kp" */
+    RT_FIELD_KI,        /**< pid_ki -> "rt/ki" */
+    RT_FIELD_KD,        /**< pid_kd -> "rt/kd" */
+    RT_FIELD_BATTERY,   /**< battery_type -> "rt/bat" */
+    RT_FIELD_BCST,      /**< enforce_broadcast[] -> "rt/bcst" (whole array, one key) */
 } RuntimeSettingField_t;
 
 /**

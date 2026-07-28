@@ -769,13 +769,13 @@ static void diveo2_broadcast(struct diveo2_cell_state *cell)
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
         .raw_sample = cell->cell_sample,
-        .temperature_dC = cell->temperature,
+        .temperature_dc = cell->temperature,
         .err_code = cell->err_code,
         .phase = cell->phase,
         .intensity = cell->intensity,
         .ambient_light = cell->ambient_light,
         .pressure_uhpa = (uint32_t)cell->pressure,
-        .humidity_mRH = cell->humidity,
+        .humidity_mrh = cell->humidity,
     };
 
     zbus_pub_checked(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
@@ -1127,7 +1127,7 @@ static void diveo2_detect_step(struct diveo2_cell_state *cell)
         RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
         runtime_settings_get(&rs);
         bool enforce = (cell->cell_number < CELL_MAX_COUNT) &&
-                       rs.enforceBroadcast[cell->cell_number];
+                       rs.enforce_broadcast[cell->cell_number];
         /* Query-then-write: detection has JUST measured the real state into
          * cell->mode (the passive phase 0 catches a cell that booted already
          * streaming; the active phases prove it answers polls = not streaming).
@@ -1209,13 +1209,13 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
             .status = cell->status,
             .timestamp_ticks = k_uptime_ticks(),
             .raw_sample = 0,
-            .temperature_dC = 0,
+            .temperature_dc = 0,
             .err_code = 0U,
             .phase = 0,
             .intensity = 0,
             .ambient_light = 0,
             .pressure_uhpa = 0U,
-            .humidity_mRH = 0,
+            .humidity_mrh = 0,
         };
         zbus_pub_checked(cell->out_chan, &init_msg, ZBUS_PUB_TIMEOUT_MS);
 
@@ -1358,7 +1358,7 @@ static struct diveo2_cell_state diveo2_cell_1 = {
     .humidity = 0,
     .last_ppo2_ticks = 0,
     .last_message = {0},
-    .rx_buf = {{0}},
+    .rx_buf = {{0}, {0}},
     .rx_active = 0U,
     .rx_line = {0},
     .rx_line_len = 0U,
@@ -1393,7 +1393,7 @@ static struct diveo2_cell_state diveo2_cell_2 = {
     .humidity = 0,
     .last_ppo2_ticks = 0,
     .last_message = {0},
-    .rx_buf = {{0}},
+    .rx_buf = {{0}, {0}},
     .rx_active = 0U,
     .rx_line = {0},
     .rx_line_len = 0U,
