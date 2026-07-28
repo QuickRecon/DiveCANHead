@@ -200,6 +200,22 @@ static const char *cal_mode_name(CalibrationMode_t m)
     return s;
 }
 
+/**
+ * @brief Map a boolean feature flag to its preamble "Y"/"N" string.
+ *
+ * @param enabled Compile-time feature state (IS_ENABLED(...) result).
+ * @return "Y" when enabled, "N" otherwise.
+ */
+static const char *flag_str(bool enabled)
+{
+    const char *result = "N";
+
+    if (enabled) {
+        result = "Y";
+    }
+    return result;
+}
+
 static const char *battery_type_name(BatteryType_t t)
 {
     const char *s = "?";
@@ -343,29 +359,15 @@ static void emit_startup_preamble(void)
 #else
     preamble_line("Solenoids: none (solenoid driver disabled)");
 #endif
-    const char *o2_sol_flag = "N";
-    if (0 != IS_ENABLED(CONFIG_HAS_O2_SOLENOID)) {
-        o2_sol_flag = "Y";
-    }
-    const char *flush_sol_flag = "N";
-    if (0 != IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID)) {
-        flush_sol_flag = "Y";
-    }
-    const char *digital_cell_flag = "N";
-    if (0 != IS_ENABLED(CONFIG_HAS_DIGITAL_CELL)) {
-        digital_cell_flag = "Y";
-    }
-    const char *analog_cell_flag = "N";
-    if (0 != IS_ENABLED(CONFIG_HAS_ANALOG_CELL)) {
-        analog_cell_flag = "Y";
-    }
+    const char *o2_sol_flag = flag_str(0 != IS_ENABLED(CONFIG_HAS_O2_SOLENOID));
+    const char *flush_sol_flag = flag_str(0 != IS_ENABLED(CONFIG_HAS_FLUSH_SOLENOID));
+    const char *digital_cell_flag = flag_str(0 != IS_ENABLED(CONFIG_HAS_DIGITAL_CELL));
+    const char *analog_cell_flag = flag_str(0 != IS_ENABLED(CONFIG_HAS_ANALOG_CELL));
     preamble_line("Has flags: o2_sol=%s flush_sol=%s digital_cell=%s analog_cell=%s",
                   o2_sol_flag, flush_sol_flag, digital_cell_flag, analog_cell_flag);
 
-    const char *depth_comp_default_flag = "N";
-    if (0 != IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT)) {
-        depth_comp_default_flag = "Y";
-    }
+    const char *depth_comp_default_flag =
+        flag_str(0 != IS_ENABLED(CONFIG_DEPTH_COMPENSATION_DEFAULT));
     preamble_line("Compile defaults: ppo2=%s cal=%s depth_comp=%s",
                   COMPILE_PPO2_DEFAULT_STR,
                   COMPILE_CAL_DEFAULT_STR,
