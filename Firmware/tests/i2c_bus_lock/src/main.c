@@ -21,15 +21,6 @@ struct xfer_script {
     uint8_t calls;
 };
 
-static uint8_t rearm_calls;
-static Status_t rearm_result;
-
-static Status_t scripted_rearm(void)
-{
-    ++rearm_calls;
-    return rearm_result;
-}
-
 static void set_lines(bool scl_high, bool sda_high)
 {
     zassert_ok(gpio_emul_input_set(TEST_GPIO, SCL_PIN, scl_high ? 1 : 0));
@@ -51,9 +42,6 @@ static Status_t scripted_xfer(void *ctx)
 static void i2c_before(void *fixture)
 {
     ARG_UNUSED(fixture);
-    rearm_calls = 0U;
-    rearm_result = 0;
-    i2c1_bus_set_rearm_fn(NULL);
     set_lines(true, true);
     k_msleep(4);
 }
@@ -92,18 +80,6 @@ ZTEST(i2c_bus_lock, test_idle_recovery_succeeds_without_clocking_bus)
 {
     set_lines(true, true);
     zassert_ok(i2c1_bus_recover());
-}
-
-ZTEST(i2c_bus_lock, test_idle_recovery_rearms_target_through_registered_hook)
-{
-    i2c1_bus_set_rearm_fn(scripted_rearm);
-    set_lines(true, true);
-    zassert_ok(i2c1_bus_recover());
-    zassert_equal(rearm_calls, 1U);
-
-    rearm_result = -EIO;
-    zassert_equal(i2c1_bus_recover(), -EIO);
-    zassert_equal(rearm_calls, 2U);
 }
 
 ZTEST(i2c_bus_lock, test_scl_low_recovery_defers_without_bus_clear)

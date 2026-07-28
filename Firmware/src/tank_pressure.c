@@ -143,7 +143,8 @@ static Status_t transducer_read_xfer(void *ctx)
  * same way every other i2c1 caller does. External Poseidon masters can still
  * win the bus, so the helper's bounded quiet-wait + exponential-backoff retries
  * absorb the residual multi-master transport errors, and its classify+recover
- * step re-arms a wedged controller/target instance before a final attempt.
+ * step resets a wedged peripheral without unregistering the target before a
+ * final attempt.
  *
  * @param t Transducer state (must have been through transducer_init()).
  * @return 0 on success (t->adc_sample_buf holds the raw count), else the last

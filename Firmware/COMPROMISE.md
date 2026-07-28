@@ -562,34 +562,58 @@ capacity sizing.
   real capacity pressure shows up.
 - Upstream a `uint16_t f_sector_cnt` variant of FCB to Zephyr.
 
-## 13. App-side I2C1 peripheral-enable pulse — **RESOLVED (2026-07)**
+## 13. App-side I2C1 peripheral-enable pulse and Zephyr race backport
 
-The earlier recovery path wrote STM32 I2C1 `CR1.PE` directly and carried a
-local Zephyr patch that translated controller ARLO into `-EAGAIN`. Both
-workarounds were removed during the Zephyr 4.4.1 update.
+**What changed**: The direct STM32 I2C1 `CR1.PE` recovery pulse has been
+reinstated, and the firmware owns
+`patches/zephyr-i2c-stm32-controller-target-race.patch` while remaining pinned
+to the documented Zephyr 4.4.1 release. The patch is a minimal backport of the
+upstream controller/target race series (`dd9b1122e10`, `879678acbb9`, and
+`a1609f6a45a`) plus the later `CONFIG_I2C_TARGET` guard for its bus-idle helper.
+CMake applies it idempotently and refuses a non-native build if the expected
+driver cannot accept the patch.
 
-The stable Zephyr I2C controller contract exposes general transfer failures as
-`-EIO`; its STM32 driver's ARLO bit is private state that is cleared before the
-synchronous API returns. The application now follows that contract: bounded
-retry treats the documented transport errors, including `-EIO`, as retryable on
-this known multi-master bus. It does not infer a private hardware cause from the
-errno. Target-mode faults remain observable through the public
-`i2c_target_error_cb_t` callback and the existing error histogram.
+**Why**: HIL disproved the public unregister/register replacement. An external
+Poseidon controller addressed the DUT during the interval after
+`i2c_target_unregister()` had cleared `data->target_cfg`; the STM32 ISR then
+entered `i2c_stm32_target_event()` and hit its `target_cfg != NULL` assertion.
+The same run produced this panic three times, including during the
+device-current and PPO2 boundary tests. Target registration must therefore
+remain continuous.
 
-For a latched BUSY state, `i2c1_bus_recover()` still classifies the physical
-lines first:
+Zephyr 4.4.1 also predates the upstream handling for an own-address match that
+arrives while the peripheral is starting a controller transfer. The owned
+backport aborts the pending controller request and hands the event to the
+registered target. It deliberately retains Zephyr's public return-code
+contract: ARLO and several other transfer failures remain `-EIO`, which the
+application treats as retryable on this known multi-controller bus.
 
-- SCL/SDA stable high for 3 ms: invoke the Poseidon owner's recovery callback,
-  which uses `i2c_target_unregister()` followed by `i2c_target_register()`.
+After bounded retry, `i2c1_bus_recover()` classifies the physical lines:
+
+- SCL/SDA stable high for 3 ms: atomically pulse `CR1.PE`.
 - SCL high and SDA low continuously for 25 ms: run the standard nine-clock
-  `i2c_recover_bus()`, then re-arm the target through the same public API.
-- SCL low continuously for 25 ms: re-arm the target, but do not drive recovery
+  `i2c_recover_bus()`, then pulse `CR1.PE`.
+- SCL low continuously for 25 ms: pulse `CR1.PE`, but do not drive recovery
   clocks into a line another device may be holding.
 - Lines still toggling: defer recovery because the bus is active.
 
-Removing the last target makes the STM32 driver disable the peripheral; the
-subsequent registration restores its address, callbacks, interrupts, and
-runtime-PM state. The application mutex is held and line classification has
-found no live frame before this brief re-registration window. This retains the
-bench-proven retry/recovery observables without a Zephyr source patch, private
-driver data access, or direct STM32 register writes.
+The PE pulse is a deliberate abstraction leak: Zephyr 4.4.1 has no public
+operation that resets the peripheral state machine while retaining the target.
+`irq_lock()` keeps the two-microsecond disable/enable sequence atomic, and the
+STM32 I2Cv2 peripheral retains its OAR and target interrupt configuration while
+PE is clear.
+
+**What still provides coverage**: native tests exercise line classification,
+bus-clear selection, retry policy, and the idle recovery result. The patch is
+checked against a pristine 4.4.1 source tree and compiled by the Poseidon
+sysbuild. HIL directly exercises the remaining hardware-only observables:
+simultaneous controller/target traffic, target availability through recovery,
+ADS1115 reads, and device-current replies.
+
+**Possible alternatives to investigate**:
+
+- Upgrade to a future documented Zephyr release containing the complete
+  upstream race series, then retire the owned backport after equivalent HIL.
+- Propose a public STM32 driver recovery operation that resets PE without
+  removing target registration; the application-side register access can then
+  be retired.

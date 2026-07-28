@@ -1,0 +1,2 @@
+# Unified diffs intentionally contain context markers and upstream tab indents.
+patches/*.patch -whitespace

@@ -51,10 +51,12 @@ foreach(module_manifest ${proprietary_module_manifests})
 endforeach()
 
 # Required patches to the west-managed Zephyr tree, applied at configure time
-# (idempotent, content-checked). The SPI-NOR fixes prevent wrong-address erases
-# and unbounded WIP polling. A tree where a required patch is missing AND cannot
-# be applied fails the build loudly. This runs before find_package so the
-# sysbuild MCUBoot image also compiles the patched source.
+# (idempotent, content-checked). The I2C patch backports the upstream STM32
+# combined controller/target race handling to the pinned 4.4.1 release. The
+# SPI-NOR fixes prevent wrong-address erases and unbounded WIP polling. A tree
+# where a required patch is missing AND cannot be applied fails the build
+# loudly. This runs before find_package so the sysbuild MCUBoot image also
+# compiles the patched source.
 set(_zephyr_tree "$ENV{ZEPHYR_BASE}")
 if(NOT _zephyr_tree)
     execute_process(COMMAND west topdir
@@ -77,6 +79,34 @@ if(NOT _zephyr_tree)
         endif()
     endif()
 endif()
+if(_zephyr_tree AND EXISTS "${_zephyr_tree}/drivers/i2c/i2c_stm32_v2.c")
+    file(READ "${_zephyr_tree}/drivers/i2c/i2c_stm32_v2.c" _i2c_stm32_src)
+    string(FIND "${_i2c_stm32_src}"
+           "i2c_stm32_target_preempt_controller_event" _i2c_race_marker)
+    if(_i2c_race_marker EQUAL -1)
+        set(_i2c_race_patch
+            ${CMAKE_CURRENT_SOURCE_DIR}/patches/zephyr-i2c-stm32-controller-target-race.patch)
+        execute_process(COMMAND git -C "${_zephyr_tree}" apply "${_i2c_race_patch}"
+                        RESULT_VARIABLE _i2c_patch_rc
+                        ERROR_VARIABLE _i2c_patch_err)
+        if(NOT _i2c_patch_rc EQUAL 0)
+            message(FATAL_ERROR
+                "Zephyr STM32 I2C controller/target race patch is NOT applied "
+                "and auto-apply failed (${_i2c_patch_err}). Building without "
+                "it can route an own-address match through controller handling "
+                "and panic in i2c_stm32_target_event(). Apply "
+                "${_i2c_race_patch} to ${_zephyr_tree} (rebase it if the "
+                "Zephyr revision changed).")
+        endif()
+        message(STATUS
+            "Applied Zephyr STM32 I2C controller/target race patch to ${_zephyr_tree}")
+    endif()
+elseif(NOT BOARD MATCHES "native_sim")
+    message(WARNING "Could not locate the Zephyr STM32 I2C driver to verify "
+                    "the required controller/target race patch — do not ship "
+                    "this build unverified.")
+endif()
+
 if(_zephyr_tree AND EXISTS "${_zephyr_tree}/drivers/flash/spi_nor.c")
     file(READ "${_zephyr_tree}/drivers/flash/spi_nor.c" _spi_nor_src)
     string(FIND "${_spi_nor_src}" "spi_nor_erase_opcode_4b" _patch_marker)
