@@ -1,0 +1,481 @@
+/dts-v1/;
+#include <st/l4/stm32l431Xc.dtsi>
+#include <st/l4/stm32l431r(b-c)tx-pinctrl.dtsi>
+#include <zephyr/dt-bindings/adc/adc.h>
+
+/ {
+	model = "QuickRecon DiveCAN Jr";
+	compatible = "quickrecon,divecan-jr";
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,canbus = &can1;
+	};
+
+	aliases {
+		led0 = &led_0;
+		led1 = &led_5;
+		watchdog0 = &iwdg;
+		/* MCUBoot uses this LED during boot/swap operations
+		 * (CONFIG_MCUBOOT_INDICATION_LED). Once MCUBoot jumps
+		 * into the app, the heartbeat thread takes the LED back
+		 * via the led0 alias. */
+		mcuboot-led0 = &led_0;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		led_0: led_0 {
+			gpios = <&gpiob 0 GPIO_ACTIVE_HIGH>;
+		};
+		led_5: led_5 {
+			gpios = <&gpiob 12 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	/* Hardware version detection — halts with blink code on mismatch.
+	 * JR2: all three pins wired to ground → expected [0, 0, 0] */
+	hw_version: hw-version {
+		compatible = "quickrecon,hw-version";
+		detect-gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>,
+			       <&gpioc 9 GPIO_ACTIVE_HIGH>,
+			       <&gpioc 10 GPIO_ACTIVE_HIGH>;
+		expected-pattern = <0 0 0>;
+		error-led-gpios = <&gpiob 0 GPIO_ACTIVE_HIGH>;
+	};
+
+	solenoids: solenoids {
+		compatible = "quickrecon,solenoid-driver";
+		gpios = <&gpiob 4 GPIO_ACTIVE_HIGH>,
+			<&gpioc 11 GPIO_ACTIVE_HIGH>,
+			<&gpiob 5 GPIO_ACTIVE_HIGH>,
+			<&gpioa 7 GPIO_ACTIVE_HIGH>;
+		counter = <&sol_timer>;
+		/* 5.5 s deadman — safety bound on solenoid on-time if the
+		 * fire-thread stalls. Sized to comfortably exceed the PPO2
+		 * PID controller's 4.9 s per-cycle on-time (PPO2Control.c
+		 * legacy SOLENOID_MAX_FIRE_MS). See COMPROMISE.md. */
+		max-on-time-us = <5500000>;
+	};
+
+	/* ---- Power subsystem ----
+	 * Jr: single battery source, VBUS on/off only.
+	 * battery_en (PA1) controls the VBUS regulator.
+	 * Battery voltage sensed on ADC1 channel 4 (PC3) through 7.25x divider.
+	 * VCC monitored via internal VBAT sensor (shared regulator with VBUS).
+	 */
+	vbus_reg: vbus-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vbus";
+		enable-gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>;
+		regulator-boot-on;
+		startup-delay-us = <5000>;
+	};
+
+	power: power-subsystem {
+		compatible = "quickrecon,power-subsystem";
+		vbus-supply = <&vbus_reg>;
+		battery-sense-io-channels = <&adc1 4>;
+		battery-divider-ratio = <7250>;
+		/* On Jr, VCC == VBUS (shared regulator). Read it via the
+		 * STM32 internal VBAT sensor, which owns ADC channel 18 and
+		 * applies the chip's internal 1/3 divider. */
+		vcc-sense = <&vbat>;
+		can-enable-gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
+		can-shutdown-gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;
+		/* CAN transceiver silent/Rs line. Driven low (normal mode) at
+		 * init; asserted high (silent) going into shutdown. Owned as an
+		 * output — not a passive input — so a warm start reliably clears
+		 * silent mode. See power_management.c. */
+		can-silent-gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+/* ---- Clock tree ----
+ * Matches Rev2 for low power: HSE=8MHz, PLL N=12 R=8 → 12MHz SYSCLK
+ * PLL Q=4 → 24MHz for CLK48 (RNG clock source)
+ */
+&clk_hse {
+	clock-frequency = <DT_FREQ_M(8)>;
+	status = "okay";
+};
+
+
+&pll {
+	div-m = <1>;
+	mul-n = <12>;
+	div-q = <4>;
+	div-r = <8>;
+	clocks = <&clk_hse>;
+	status = "okay";
+};
+
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(12)>;
+	ahb-prescaler = <1>;
+	apb1-prescaler = <1>;
+	apb2-prescaler = <1>;
+};
+
+/* ---- CAN bus — DiveCAN @ 125 kbit/s ----
+ * Jr at 80 MHz: prescaler and segments are derived from the Zephyr bitrate and
+ * sample-point properties below.
+ */
+&can1 {
+	pinctrl-0 = <&can1_rx_pb8 &can1_tx_pb9>;
+	pinctrl-names = "default";
+	bitrate = <125000>;	/* DiveCAN bus is 125 kbit/s (was erroneously 250000) */
+	sample-point = <875>;
+	status = "okay";
+};
+
+/* ---- I2C1 — ADS1115 external ADCs ----
+ * Two devices: 0x48 (cells 1+2), 0x49 (cell 3 + aux)
+ * PA9 = SCL, PA10 = SDA
+ *
+ * Analog cell -> ADC channel distribution lives here in DT (consumed by
+ * src/oxygen_cell_analog.c via the zephyr,user io-channels list below), NOT in
+ * C. Each channel@N is a logical channel_id; zephyr,input-positive/negative
+ * select the physical ADS1115 differential AIN pair. Galvanic cells are ~60 mV
+ * full scale, so use the ±0.256 V PGA range (ADC_GAIN_8).
+ */
+&i2c1 {
+	pinctrl-0 = <&i2c1_scl_pa9 &i2c1_sda_pa10>;
+	pinctrl-names = "default";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	/* Recovery pins for i2c_recover_bus(): same PA9/PA10 lines, only ever
+	 * driven (as open-drain GPIO) while CONFIG_I2C_STM32_BUS_RECOVERY is set
+	 * and a recovery is in progress; pinctrl owns them otherwise. Required on
+	 * the Poseidon variant, where the i2c1 target keeps the peripheral enabled
+	 * so a latched BUSY flag can only be cleared by a bit-banged STOP. */
+	scl-gpios = <&gpioa 9 (GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
+	sda-gpios = <&gpioa 10 (GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
+	status = "okay";
+
+	adc_ext1: ads1115@48 {
+		compatible = "ti,ads1115";
+		reg = <0x48>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#io-channel-cells = <1>;
+		/* ALRT_ADC1 -> PA11 is wired for a conversion-ready IRQ, but the data-ready
+		 * interrupt path is NOT yet enabled: with no external pull-up on the open-drain
+		 * ALERT/RDY, the weak (~40k) STM32 internal pull-up couldn't reconstruct the
+		 * brief (~8us) RDY pulse, so reads stalled (all cells -> 0). Needs scope bring-up
+		 * (real pull-up and/or latching comparator + clear-on-read) before re-enabling:
+		 *   alert-rdy-gpios = <&gpioa 11 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		 * Until then the driver uses its OS-bit polling path (works). 32 SPS + the
+		 * discard-after-mux-change handle the settling. */
+
+		channel@0 {		/* Cell 1: AIN0-AIN1 differential */
+			reg = <0>;
+			zephyr,gain = "ADC_GAIN_8";
+			zephyr,reference = "ADC_REF_INTERNAL";
+			zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 2)>;	/* 32 SPS (~31ms): longer settle for the high-Z (~10k) cell inputs */
+			zephyr,resolution = <16>;
+			zephyr,differential;
+			zephyr,input-positive = <0>;
+			zephyr,input-negative = <1>;
+		};
+
+		channel@1 {		/* Cell 2: AIN2-AIN3 differential */
+			reg = <1>;
+			zephyr,gain = "ADC_GAIN_8";
+			zephyr,reference = "ADC_REF_INTERNAL";
+			zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 2)>;	/* 32 SPS (~31ms): longer settle for the high-Z (~10k) cell inputs */
+			zephyr,resolution = <16>;
+			zephyr,differential;
+			zephyr,input-positive = <2>;
+			zephyr,input-negative = <3>;
+		};
+	};
+
+	adc_ext2: ads1115@49 {
+		compatible = "ti,ads1115";
+		reg = <0x49>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#io-channel-cells = <1>;
+		/* ALRT_ADC2 -> PA12 wired for conversion-ready IRQ; NOT enabled yet (see @48 —
+		 * needs pull-up/scope bring-up). Polling path in use.
+		 *   alert-rdy-gpios = <&gpioa 12 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; */
+
+		channel@0 {		/* Cell 3: AIN0-AIN1 differential */
+			reg = <0>;
+			zephyr,gain = "ADC_GAIN_8";
+			zephyr,reference = "ADC_REF_INTERNAL";
+			zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_TICKS, 2)>;	/* 32 SPS (~31ms): longer settle for the high-Z (~10k) cell inputs */
+			zephyr,resolution = <16>;
+			zephyr,differential;
+			zephyr,input-positive = <0>;
+			zephyr,input-negative = <1>;
+		};
+	};
+};
+
+/* Analog cell -> ADC channel map, in DiveCAN cell order (cell 1, 2, 3).
+ * oxygen_cell_analog.c pulls each cell's ADC spec with
+ * ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), cell_index). Redistributing
+ * cells across chips/pairs is a one-line edit here — no C changes. */
+/ {
+	zephyr,user {
+		io-channels = <&adc_ext1 0>, <&adc_ext1 1>, <&adc_ext2 0>;
+	};
+};
+
+/* ---- UARTs — Oxygen sensor cells ----
+ * All 19200 baud, 8N1.
+ * DMA channels assigned from RM0394 Table 41 (STM32L431 DMA request mapping):
+ *   USART1: DMA1 Ch5 (RX, req 2), DMA1 Ch4 (TX, req 2)
+ *   USART2: DMA1 Ch6 (RX, req 2), DMA1 Ch7 (TX, req 2)
+ *   USART3: DMA1 Ch3 (RX, req 2), DMA1 Ch2 (TX, req 2)
+ *
+ * USART2 and USART3 have TX/RX swap enabled in Rev2 .ioc
+ * (ADVFEATURE_SWAP_ENABLE). For Jr, check if swap is still
+ * needed — if so, use the swapped pinctrl variants.
+ */
+
+/* Cell 1: PB6 (TX), PB7 (RX) — no swap */
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
+	pinctrl-names = "default";
+	current-speed = <19200>;
+	dmas = <&dma1 5 2 (STM32_DMA_PERIPH_TO_MEMORY | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>,
+	       <&dma1 4 2 (STM32_DMA_MEMORY_TO_PERIPH | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>;
+	dma-names = "rx", "tx";
+	status = "okay";
+};
+
+/* Cell 2: PA2 (TX), PA3 (RX). JR+ Rev2 wires USART2 with TX/RX swapped
+ * (ADVFEATURE_SWAP_ENABLE in the Rev2 .ioc); verified empirically on the rig
+ * 2026-06-23 — cell2 only polls its CellSim with the swap applied. */
+&usart2 {
+	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+	pinctrl-names = "default";
+	current-speed = <19200>;
+	tx-rx-swap;
+	dmas = <&dma1 6 2 (STM32_DMA_PERIPH_TO_MEMORY | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>,
+	       <&dma1 7 2 (STM32_DMA_MEMORY_TO_PERIPH | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>;
+	dma-names = "rx", "tx";
+	status = "okay";
+};
+
+/* Cell 3: PC4 (TX), PC5 (RX). JR+ Rev2 wires USART3 with TX/RX swapped too
+ * (USART1 is NOT swapped). See the usart2 note above. */
+&usart3 {
+	pinctrl-0 = <&usart3_tx_pc4 &usart3_rx_pc5>;
+	pinctrl-names = "default";
+	current-speed = <19200>;
+	tx-rx-swap;
+	dmas = <&dma1 3 2 (STM32_DMA_PERIPH_TO_MEMORY | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>,
+	       <&dma1 2 2 (STM32_DMA_MEMORY_TO_PERIPH | STM32_DMA_MEM_INC |
+			    STM32_DMA_PERIPH_8BITS | STM32_DMA_MEM_8BITS)>;
+	dma-names = "rx", "tx";
+	status = "okay";
+};
+
+/* ---- SPI2 — Winbond W25Q512JV external flash ----
+ * PB13 = SCK, PB14 = MISO, PB15 = MOSI, PB11 = CS
+ */
+&spi2 {
+	pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pb14 &spi2_mosi_pb15>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpiob 11 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	spi_flash: w25q512@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <6000000>;
+		jedec-id = [ef 40 20];
+		/* W25Q512JV: 512 Mbit = 64 MB. Note: schematic and
+		 * ARCHITECTURE.md historically misstated this as GD25Q128
+		 * (16 MB). DTS is authoritative — confirmed by physical
+		 * hardware inspection. */
+		size = <DT_SIZE_M(64)>;
+		/* This 64 MB part needs 4-byte addressing to reach anything above
+		 * 16 MB (the storage_partition/NVS lives at 0x3ff8000 ≈ 64 MB).
+		 * Use dedicated 4-byte-address opcodes (0x13/0x12/0x21/0xDC) for
+		 * accesses > 16 MB. NOTE: with CONFIG_SPI_NOR_SFDP_RUNTIME the
+		 * `enter-4byte-addr` DT property is compiled out and ignored, and
+		 * the chip otherwise stays in 3-byte mode — so reads above 16 MB
+		 * silently WRAP into the low 16 MB and writes/erases hang in the
+		 * driver's no-timeout WIP poll. `use-4b-addr-opcodes` is honored
+		 * under SFDP_RUNTIME and survives the MCUboot→app handoff (no
+		 * volatile mode bit to lose). This is the fix for the broken
+		 * settings/cal NVS persistence (HIT_LIST #5 / settings-persist). */
+		use-4b-addr-opcodes;
+		has-dpd;
+		t-enter-dpd = <3000>;
+		t-exit-dpd = <30000>;
+	};
+};
+
+/* ---- DMA1 — UART async transfers for digital O2 cells ---- */
+&dma1 {
+	status = "okay";
+};
+
+/* ---- TIM7 — solenoid deadman timer ----
+ * One-shot hardware counter. When the alarm fires (ISR),
+ * all solenoid GPIOs are forced low regardless of app state.
+ *
+ * Prescaler tuning (PSC=7999 → divider=8000 → 100 µs/tick) gives a
+ * 16-bit max one-shot of 65535 × 100 µs = 6.55 s. The driver clamp
+ * `max-on-time-us` is set to 5.5 s — safely under the physical
+ * counter range while comfortably above the PID controller's 4.9 s
+ * legacy maximum on-time per cycle. The deadman remains a
+ * kernel-stall safety net rather than an active control element.
+ * See COMPROMISE.md for the rationale (entry "TIM7 prescaler
+ * widened for PPO2 controller").
+ */
+&timers7 {
+	st,prescaler = <7999>;
+	status = "okay";
+
+	sol_timer: counter {
+		status = "okay";
+	};
+};
+
+/* ---- Internal ADC — voltage monitoring ----
+ * PA0 = IN5 (VBUS_V), PC2 = IN3 (CAN_V), PC3 = IN4 (BATT_V)
+ * Plus internal VREFINT and VBAT channels.
+ */
+&adc1 {
+	pinctrl-0 = <&adc1_in5_pa0 &adc1_in3_pc2 &adc1_in4_pc3>;
+	pinctrl-names = "default";
+	st,adc-clock-source = "SYNC";
+	st,adc-prescaler = <4>;
+	status = "okay";
+};
+
+/* ---- VBAT sensor — VCC monitoring via STM32 internal 1/3 divider ----
+ * On Jr, VBUS and VCC share a regulator so this also reflects VBUS voltage.
+ */
+&vbat {
+	status = "okay";
+};
+
+/* ---- RNG — needed for stack canaries seed ----
+ * Clocked from PLL Q (24MHz) via the CLK48 mux, matching the Rev2 config. */
+&rng {
+	clocks = <&rcc STM32_SRC_PLL_Q CLK48_SEL(2)>;
+	status = "okay";
+};
+
+/* ---- Watchdog ----
+ * Fed by src/watchdog_feeder.c, which only kicks IWDG when every
+ * registered safety-critical thread (heartbeat.h) has advanced since
+ * the last check.
+ */
+&iwdg {
+	status = "okay";
+};
+
+/* ---- Flash partitions ----
+ * Internal 256 KB: MCUBoot bootloader (36 KB) + slot0 (220 KB).
+ *   NVS storage lives at the top of the external NOR.
+ *
+ * External 64 MB (W25Q512JV): slot1 (220 KB) + scratch (64 KB) +
+ *   factory image backup (220 KB) + flash log (48 MB telemetry +
+ *   8 MB text) + NVS storage (32 KB at top).
+ *
+ * Labels are MCUBoot-conformant: mcuboot, image-0, image-1,
+ * image-scratch enable the bootloader's swap-area discovery. The
+ * "storage" label is what Zephyr's settings/NVS subsystem looks up
+ * by default.
+ * The sysbuild MCUBoot overlay disables application-only peripherals so
+ * the bootloader fits the 36 KB partition with limited growth margin.
+ */
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* MCUBoot at 36 KB. Measured ~32 KB (87 % utilised) after
+		 * the sysbuild/mcuboot.overlay disables the unused
+		 * application peripherals. The ~5 KB headroom (~14 %)
+		 * absorbs minor MCUBoot growth from future Zephyr/MCUBoot
+		 * upgrades — narrow margin, watch the build-size report
+		 * after any sysbuild upgrade. */
+		boot_partition: partition@0 {
+			label = "mcuboot";
+			reg = <0x00000000 DT_SIZE_K(36)>;
+			read-only;
+		};
+		slot0_partition: partition@9000 {
+			label = "image-0";
+			reg = <0x00009000 DT_SIZE_K(220)>;
+		};
+	};
+};
+
+&spi_flash {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		slot1_partition: partition@0 {
+			label = "image-1";
+			reg = <0x00000000 DT_SIZE_K(220)>;
+		};
+		scratch_partition: partition@37000 {
+			label = "image-scratch";
+			reg = <0x00037000 DT_SIZE_K(64)>;
+		};
+		factory_partition: partition@47000 {
+			label = "factory-image";
+			reg = <0x00047000 DT_SIZE_K(220)>;
+		};
+		/* Flash log — split into two parallel FCB instances.
+		 *
+		 * Each FCB caps at 255 sectors (uint8_t f_sector_cnt) and
+		 * needs an in-RAM 8-byte descriptor per sector. To unlock
+		 * the full chip without blowing the STM32L431's 64 KiB SRAM
+		 * budget we use 256 KiB logical sectors (the SPI NOR driver
+		 * decomposes each into 4× 64 KiB block erases on rotate)
+		 * rather than more, smaller descriptors:
+		 *   - telemetry: 192 × 256 KiB = 48 MB (192 × 8 B = 1536 B)
+		 *   - text:       32 × 256 KiB =  8 MB ( 32 × 8 B =  256 B)
+		 * 1.75 KiB of descriptors across both. At the measured
+		 * ~168 KiB/min telemetry rate, 48 MB ≈ 4.9 h of continuous
+		 * high-rate logging before the ring wraps.
+		 *
+		 * Markers (BOOT/DIVE_START/DIVE_END) are mirrored across
+		 * both so each stream can be partitioned by boot or dive
+		 * independently for UDS bulk download.
+		 *
+		 * ~7.5 MB between log_text_partition and storage_partition
+		 * stays unallocated (future custom log layer or hardware
+		 * revision can claim it). See docs/FLASH_LOG.md.
+		 *
+		 * Each FCB sector is now 256 KiB, so partitions must start
+		 * on a 256 KiB boundary. factory_partition ends at 0x7E000;
+		 * the next 256 KiB-aligned address is 0x80000. The 8 KiB
+		 * between 0x7E000 and 0x80000 stays unallocated.
+		 */
+		log_telemetry_partition: partition@80000 {
+			label = "log-telemetry";
+			reg = <0x00080000 DT_SIZE_M(48)>;
+		};
+		log_text_partition: partition@3080000 {
+			label = "log-text";
+			reg = <0x03080000 DT_SIZE_M(8)>;
+		};
+		storage_partition: partition@3ff8000 {
+			label = "storage";
+			reg = <0x03ff8000 DT_SIZE_K(32)>;
+		};
+	};
+};

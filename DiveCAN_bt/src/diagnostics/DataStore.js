@@ -9,7 +9,9 @@
 
 import {
   CELL_TYPE_NONE,
-  STATE_DIDS
+  STATE_DIDS,
+  EXTRA_READ_DIDS,
+  parseExtraDIDValue
 } from '../uds/constants.js';
 
 export class DataStore {
@@ -27,6 +29,16 @@ export class DataStore {
     this.udsClient = options.udsClient ?? null;
     this.pollInterval = options.pollInterval ?? 200;
 
+    // Log-drain gating (see waitForLogQuiescence). The head streams buffered
+    // log lines as broadcast ISO-TP pushes; kicking off the DID-fetch burst
+    // while that backlog is still draining interleaves two CF streams into the
+    // Petrel handset's single per-source reassembly context ("RX Wrong Seq in
+    // CF" → "TO SLIP TX" crash). We hold the initial fetch until the push
+    // stream goes quiet.
+    this.logDrainQuietMs = options.logDrainQuietMs ?? 300;
+    this.logDrainMaxMs = options.logDrainMaxMs ?? 4000;
+    this._lastLogActivityMs = 0;
+
     this.series = new Map();
 
     // DID-based state
@@ -35,6 +47,15 @@ export class DataStore {
     this.pollTimer = null;
     this.cellTypes = [0, 0, 0];          // Cached cell types
     this.isPolling = false;
+    this._pollInFlight = false;          // Guard against overlapping poll cycles
+
+    // Stamp the arrival of any head-initiated push so waitForLogQuiescence can
+    // tell when the backlog has drained. Both event names carry pushed traffic.
+    if (this.udsClient && typeof this.udsClient.on === 'function') {
+      const stamp = () => { this._lastLogActivityMs = Date.now(); };
+      this.udsClient.on('logMessage', stamp);
+      this.udsClient.on('unsolicitedMessage', stamp);
+    }
   }
 
   /**
@@ -142,6 +163,11 @@ export class DataStore {
       throw new Error('UDSClient required for pull mode');
     }
 
+    // Let the head flush any buffered log backlog before we start the fetch
+    // burst, so broadcast log pushes don't interleave with our multi-frame
+    // responses and clobber the handset's ISO-TP reassembly.
+    await this.waitForLogQuiescence();
+
     // Fetch all DIDs once
     const state = await this.fetchAllDIDs(progressCallback);
 
@@ -149,6 +175,35 @@ export class DataStore {
     this.startPolling();
 
     return state;
+  }
+
+  /**
+   * Resolve once no head-initiated push (log message / unsolicited DID) has
+   * been seen for `quietMs`, or after `maxMs` as a hard cap. Used to drain the
+   * connect-time log backlog before the initial DID fetch.
+   *
+   * @param {number} [quietMs] - Required idle gap; defaults to logDrainQuietMs.
+   * @param {number} [maxMs] - Absolute cap on how long to wait; defaults to logDrainMaxMs.
+   * @returns {Promise<void>}
+   */
+  async waitForLogQuiescence(quietMs = this.logDrainQuietMs, maxMs = this.logDrainMaxMs) {
+    const start = Date.now();
+    // No push seen yet: still grant a brief grace window, because a backlog may
+    // be in flight but not yet delivered. Seed the clock so the first idle
+    // check measures from now rather than returning instantly.
+    if (this._lastLogActivityMs === 0) {
+      this._lastLogActivityMs = start;
+    }
+    let elapsed = 0;
+    while (elapsed < maxMs) {
+      const sinceLast = Date.now() - this._lastLogActivityMs;
+      if (sinceLast >= quietMs) {
+        return;
+      }
+      const wait = Math.min(quietMs - sinceLast, 100);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      elapsed = Date.now() - start;
+    }
   }
 
   /**
@@ -161,13 +216,20 @@ export class DataStore {
       throw new Error('UDSClient required for fetchAllDIDs');
     }
 
-    // First fetch cell type DIDs to determine what type each cell is
+    // First fetch cell type DIDs to determine what type each cell is.
+    // Tolerate a failure here (slow/desynced head) so connect still succeeds —
+    // fall back to DiveO2 (type 0) so the rest of the fetch can proceed.
     const typeDIDs = [
       STATE_DIDS.CELL0_TYPE.did,
       STATE_DIDS.CELL1_TYPE.did,
       STATE_DIDS.CELL2_TYPE.did
     ];
-    const typeResult = await this.udsClient.readDIDsParsed(typeDIDs);
+    let typeResult = {};
+    try {
+      typeResult = await this.udsClient.readDIDsParsed(typeDIDs);
+    } catch (error) {
+      console.warn('Cell-type read failed; defaulting cell types to 0:', error.message);
+    }
     this.cellTypes = [
       typeResult.CELL0_TYPE ?? 0,
       typeResult.CELL1_TYPE ?? 0,
@@ -268,10 +330,19 @@ export class DataStore {
     this.pollTimer = setInterval(async () => {
       if (!this.isPolling) return;
 
+      // A poll cycle issues several sequential ISO-TP round-trips and can take
+      // longer than the interval. Skip this tick if the previous cycle is still
+      // running so cycles don't stack up and flood the (now serialized) request
+      // queue — that starves user-driven reads/writes and drifts timestamps.
+      if (this._pollInFlight) return;
+      this._pollInFlight = true;
+
       try {
         await this._pollSubscribedDIDs();
       } catch (error) {
         console.error('Poll error:', error);
+      } finally {
+        this._pollInFlight = false;
       }
     }, interval);
   }
@@ -318,6 +389,41 @@ export class DataStore {
   }
 
   /**
+   * Collect subscribed extra (non-STATE) DIDs that must be read individually.
+   * @private
+   * @returns {Array<{key: string, info: Object}>}
+   */
+  _collectSubscribedExtraDIDs() {
+    const extras = [];
+    for (const didKey of this.subscriptions.keys()) {
+      const info = EXTRA_READ_DIDS[didKey];
+      if (info) {
+        extras.push({ key: didKey, info });
+      }
+    }
+    return extras;
+  }
+
+  /**
+   * Read subscribed extra DIDs one at a time (variable-length / struct payloads
+   * can't be bundled). Each read is isolated so one NRC (e.g. a build-specific
+   * DID that's absent) doesn't abort the rest.
+   * @private
+   */
+  async _pollSubscribedExtraDIDs(timestamp) {
+    for (const { key, info } of this._collectSubscribedExtraDIDs()) {
+      try {
+        const data = await this.udsClient.readDataByIdentifier(info.did);
+        const value = parseExtraDIDValue(info, data);
+        this._updateDIDValues({ [key]: value }, timestamp);
+      } catch (error) {
+        // Per-DID failure (unknown/absent DID, NRC) — leave value unchanged.
+        console.warn(`Failed to poll extra DID ${key} (0x${info.did.toString(16)})`, error);
+      }
+    }
+  }
+
+  /**
    * Update DID values from poll result
    * @private
    */
@@ -344,22 +450,21 @@ export class DataStore {
       return;
     }
 
+    const timestamp = Date.now() / 1000;
     const didsToRead = this._collectSubscribedDIDs();
-    if (didsToRead.length === 0) {
-      return;
-    }
 
-    // Read DIDs (chunked to fit BLE MTU)
+    // Bundled scalar STATE_DIDs (chunked to fit BLE MTU)
     // Request: 1 (SID) + N*2 (DID bytes) + ~5 bytes protocol overhead must fit in 20-byte MTU
     // Max safe: (20 - 5 - 1) / 2 = 7 DIDs, use 4 to be conservative
     const DIDS_PER_REQUEST = 4;
-    const timestamp = Date.now() / 1000;
-
     for (let i = 0; i < didsToRead.length; i += DIDS_PER_REQUEST) {
       const chunk = didsToRead.slice(i, i + DIDS_PER_REQUEST);
       const result = await this.udsClient.readDIDsParsed(chunk);
       this._updateDIDValues(result, timestamp);
     }
+
+    // Extra (variable-length / struct) DIDs, read individually.
+    await this._pollSubscribedExtraDIDs(timestamp);
   }
 
   /**

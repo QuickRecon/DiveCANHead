@@ -1,0 +1,10 @@
+/build*
+tests/*/build
+twister-*/
+tests/integration/harness/control-response-data
+/coverage-report/
+
+# Proprietary out-of-tree modules — closed-source, populated by manual clone.
+# Everything under proprietary/ is ignored except the tracked pointer doc.
+/proprietary/*
+!/proprietary/README.md

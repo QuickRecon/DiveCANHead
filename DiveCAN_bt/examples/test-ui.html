@@ -269,15 +269,15 @@
     <h2>Quick Actions</h2>
     <div class="button-group">
       <button id="readSerial" disabled>Read Serial Number</button>
-      <button id="readModel" disabled>Read Model</button>
+      <button id="readFirmware" disabled>Read Firmware Version</button>
     </div>
   </div>
 
-  <!-- Bus Enumeration -->
+  <!-- Device Identity -->
   <div class="section">
-    <h2>Bus Devices</h2>
+    <h2>Device Identity</h2>
     <div class="button-group">
-      <button id="enumDevices" disabled>Enumerate Devices</button>
+      <button id="readIdentity" disabled>Read Identity</button>
     </div>
     <div id="deviceList" style="margin-top: 10px; font-family: monospace; font-size: 14px;"></div>
   </div>
@@ -286,7 +286,7 @@
   <div class="section">
     <h2>Target Device</h2>
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-      <select id="targetSelect" disabled style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px; border-radius: 4px; font-size: 14px;">
+      <select id="targetSelect" disabled aria-label="Target device" style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px; border-radius: 4px; font-size: 14px;">
         <option value="128">Controller (0x80)</option>
         <option value="4">SOLO (0x04)</option>
         <option value="2">HUD (0x02)</option>
@@ -365,8 +365,8 @@
       connectionStatus: document.getElementById('connectionStatus'),
       deviceInfo: document.getElementById('deviceInfo'),
       readSerial: document.getElementById('readSerial'),
-      readModel: document.getElementById('readModel'),
-      enumDevices: document.getElementById('enumDevices'),
+      readFirmware: document.getElementById('readFirmware'),
+      readIdentity: document.getElementById('readIdentity'),
       deviceList: document.getElementById('deviceList'),
       targetSelect: document.getElementById('targetSelect'),
       currentTarget: document.getElementById('currentTarget'),
@@ -407,8 +407,8 @@
       elements.scanButton.disabled = connected;
       elements.disconnectButton.disabled = !connected;
       elements.readSerial.disabled = !connected;
-      elements.readModel.disabled = !connected;
-      elements.enumDevices.disabled = !connected;
+      elements.readFirmware.disabled = !connected;
+      elements.readIdentity.disabled = !connected;
       elements.targetSelect.disabled = !connected;
       elements.enumSettings.disabled = !connected;
       elements.didInput.disabled = !connected;
@@ -510,12 +510,13 @@
           elements.logMessages.scrollTop = elements.logMessages.scrollHeight;
         });
 
-        // Event message listener
-        stack.on('eventMessage', (message) => {
+        // Unsolicited (pushed) non-log WDBI messages from the head
+        stack.on('unsolicitedMessage', ({ did, payload }) => {
           const timestamp = new Date().toLocaleTimeString();
           const entry = document.createElement('div');
           entry.className = 'log-entry rx';
-          entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+          const hex = Array.from(payload).map(b => b.toString(16).padStart(2, '0')).join(' ');
+          entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> DID 0x${did.toString(16).padStart(4, '0')}: ${hex}`;
           elements.eventMessages.appendChild(entry);
           elements.eventMessages.scrollTop = elements.eventMessages.scrollHeight;
         });
@@ -552,43 +553,36 @@
       }
     });
 
-    elements.readModel.addEventListener('click', async () => {
+    elements.readFirmware.addEventListener('click', async () => {
       try {
-        log('Reading model...', 'info');
-        const model = await stack.readModel();
-        log(`Model: ${model}`, 'info');
-        displayResponse(`Model: ${model}`, 'Success');
+        log('Reading firmware version...', 'info');
+        const version = await stack.readFirmwareVersion();
+        log(`Firmware: ${version}`, 'info');
+        displayResponse(`Firmware: ${version}`, 'Success');
       } catch (error) {
         log(`Read failed: ${error.message}`, 'error');
         displayResponse(error.message, 'Error');
       }
     });
 
-    // Bus enumeration
-    elements.enumDevices.addEventListener('click', async () => {
+    // Device identity (firmware / variant / hardware / serial)
+    elements.readIdentity.addEventListener('click', async () => {
       try {
-        log('Enumerating bus devices...', 'info');
-        const deviceIds = await stack.enumerateBusDevices();
-        log(`Found ${deviceIds.length} device(s): ${deviceIds.map(id => '0x' + id.toString(16).padStart(2, '0')).join(', ')}`, 'info');
-
-        // Get names for each device
-        let deviceListHtml = '';
-        for (const id of deviceIds) {
-          try {
-            const name = await stack.getDeviceName(id);
-            deviceListHtml += `<div>0x${id.toString(16).padStart(2, '0')} - ${name}</div>`;
-            log(`Device 0x${id.toString(16).padStart(2, '0')}: ${name}`, 'info');
-          } catch (e) {
-            deviceListHtml += `<div>0x${id.toString(16).padStart(2, '0')} - (unknown)</div>`;
-            log(`Device 0x${id.toString(16).padStart(2, '0')}: failed to get name - ${e.message}`, 'error');
-          }
-        }
-        elements.deviceList.innerHTML = deviceListHtml || 'No devices found';
-        displayResponse(`Found ${deviceIds.length} device(s)`, 'Success');
+        log('Reading device identity...', 'info');
+        const [fw, variant, hw, serial] = await Promise.all([
+          stack.readFirmwareVersion().catch(() => '?'),
+          stack.readVariantName().catch(() => '?'),
+          stack.readHardwareVersion().catch(() => '?'),
+          stack.uds.readSerialNumber().catch(() => '?')
+        ]);
+        elements.deviceList.innerHTML =
+          `<div>Firmware: ${fw}</div><div>Variant: ${variant}</div>` +
+          `<div>Hardware: ${hw}</div><div>Serial: ${serial}</div>`;
+        displayResponse('Identity read', 'Success');
       } catch (error) {
-        log(`Enumeration failed: ${error.message}`, 'error');
+        log(`Identity read failed: ${error.message}`, 'error');
         displayResponse(error.message, 'Error');
-        elements.deviceList.textContent = 'Enumeration failed';
+        elements.deviceList.textContent = 'Identity read failed';
       }
     });
 

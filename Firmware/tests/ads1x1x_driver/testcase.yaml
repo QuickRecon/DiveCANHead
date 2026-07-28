@@ -1,0 +1,4 @@
+tests:
+  drivers.adc.ads1x1x.multichannel:
+    platform_allow: native_sim
+    tags: adc ads1x1x drivers

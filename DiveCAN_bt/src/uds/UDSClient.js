@@ -6,6 +6,7 @@
 import { ByteUtils } from '../utils/ByteUtils.js';
 import { UDSError } from '../errors/ProtocolErrors.js';
 import { Logger } from '../utils/Logger.js';
+import { decodeErrorHistogram } from '../errors/ErrorHistogram.js';
 import * as constants from './constants.js';
 
 /**
@@ -62,6 +63,18 @@ export class UDSClient extends EventEmitter {
     this.pendingReject = null;
     this.pendingTimer = null;
 
+    // Serialization queue. Concurrent callers (background DID polling +
+    // user-driven settings reads / manual solenoid fire) take turns on the
+    // single ISO-TP context instead of colliding. Overlapping sends clobber
+    // each other's frames on the wire and corrupt the pending-request slot,
+    // which surfaced as spurious "Request already pending" throws and
+    // intermittent bus errors. When idle, a request is dispatched synchronously
+    // (the timeout timer is armed in the same tick) so timing semantics match a
+    // direct send; only when a request is already in flight does the next one
+    // wait its turn.
+    this._requestQueue = [];
+    this._requestBusy = false;
+
     // Inter-request delay (ms) - allows Petrel ISO-TP layer to settle
     this.requestDelay = options.requestDelay ?? 0;
     this.lastRequestTime = 0;
@@ -86,8 +99,54 @@ export class UDSClient extends EventEmitter {
    * @returns {Promise<Uint8Array>} Response data
    * @private
    */
-  async _sendRequest(request, timeout = 5000) {
+  _sendRequest(request, timeout = 5000) {
+    // Enqueue and pump. Callers are serialized rather than rejected: a
+    // background poll and a user action can be issued at the same time and
+    // simply take turns on the single ISO-TP context.
+    return new Promise((resolve, reject) => {
+      this._requestQueue.push({ request, timeout, resolve, reject });
+      this._pumpRequestQueue();
+    });
+  }
+
+  /**
+   * Dispatch the next queued request if none is in flight. Runs the dispatch
+   * synchronously when idle so the timeout timer is armed in the same tick as
+   * the caller; the queue is advanced (regardless of resolve/reject) once the
+   * in-flight exchange settles, so one failed request never wedges the queue.
+   * @private
+   */
+  _pumpRequestQueue() {
+    if (this._requestBusy) {
+      return;
+    }
+    const job = this._requestQueue.shift();
+    if (!job) {
+      return;
+    }
+    this._requestBusy = true;
+    this._dispatchRequest(job.request, job.timeout).then(job.resolve, job.reject).then(
+      () => {
+        this._requestBusy = false;
+        this._pumpRequestQueue();
+      },
+      () => {
+        this._requestBusy = false;
+        this._pumpRequestQueue();
+      }
+    );
+  }
+
+  /**
+   * Perform a single UDS request/response exchange. Assumes the caller has
+   * serialized access via the request queue so only one exchange is ever in
+   * flight.
+   * @private
+   */
+  async _dispatchRequest(request, timeout) {
     if (this.pendingRequest) {
+      // Should be unreachable now that _sendRequest serializes access; treated
+      // as an assertion against a future serialization regression.
       throw new UDSError('Request already pending', 0);
     }
 
@@ -161,6 +220,21 @@ export class UDSClient extends EventEmitter {
 
     // Positive response
     this._handlePositiveResponse(data, sid);
+  }
+
+  /**
+   * Process a message from a receive-only side channel such as the CANable
+   * 0xFF log context. Only unsolicited WDBI pushes are accepted here, so a
+   * broadcast can never satisfy or reject an addressed dialog request.
+   */
+  processUnsolicited(data) {
+    const bytes = ByteUtils.toUint8Array(data);
+    if (bytes[0] !== constants.SID_WRITE_DATA_BY_ID) {
+      this.logger.warn('Ignoring non-WDBI message on unsolicited channel');
+      return false;
+    }
+    this._handleUnsolicitedWDBI(bytes);
+    return true;
   }
 
   /**
@@ -286,42 +360,143 @@ export class UDSClient extends EventEmitter {
     this.logger.info(`Wrote ${dataArray.length} bytes to DID 0x${did.toString(16).padStart(4, '0')}`);
   }
 
+  // ============================================================
+  // Error histogram (DID 0xF260 read, 0xF261 clear)
+  // ============================================================
+
   /**
-   * High-level: Read serial number
-   * @returns {Promise<string>} Serial number string
+   * Read and decode the per-code error histogram (DID 0xF260).
+   * @returns {Promise<Array<{index:number, name:string, category:string,
+   *   description:string, count:number}>>} One entry per error code, enum order.
+   */
+  async readErrorHistogram() {
+    const data = await this.readDataByIdentifier(constants.DID_ERROR_HISTOGRAM);
+    return decodeErrorHistogram(data);
+  }
+
+  /**
+   * Clear all error-histogram counters and persist the reset to NVS
+   * (DID 0xF261 accepts any byte payload).
+   * @returns {Promise<void>}
+   */
+  async clearErrorHistogram() {
+    await this.writeDataByIdentifier(constants.DID_ERROR_HISTOGRAM_CLEAR, [0x01]);
+    this.logger.info('Cleared error histogram');
+  }
+
+  // ============================================================
+  // Generic UDS services (session / routine / transfer)
+  // ============================================================
+
+  /**
+   * Diagnostic Session Control (Service 0x10).
+   * @param {number} session - UDS_SESSION_DEFAULT | UDS_SESSION_PROGRAMMING
+   * @param {number} timeout - Timeout in ms (programming entry can be slow)
+   * @returns {Promise<Uint8Array>} Positive response [0x50, session, ...]
+   */
+  async enterSession(session, timeout = 8000) {
+    const request = [constants.SID_SESSION_CONTROL, session];
+    return await this._sendRequest(request, timeout);
+  }
+
+  /**
+   * RoutineControl - Start Routine (Service 0x31 0x01).
+   * @param {number} routineId - 16-bit routine identifier
+   * @param {Array|Uint8Array} params - Routine parameters
+   * @param {number} timeout - Timeout in ms
+   * @returns {Promise<Uint8Array>} Positive response [0x71, 0x01, rid_hi, rid_lo, ...]
+   */
+  async routineControl(routineId, params = [], timeout = 10000) {
+    const ridBytes = ByteUtils.uint16ToBE(routineId);
+    const request = ByteUtils.concat(
+      [constants.SID_ROUTINE_CONTROL, 0x01, ridBytes[0], ridBytes[1]],
+      ByteUtils.toUint8Array(params.length ? params : [])
+    );
+    return await this._sendRequest(request, timeout);
+  }
+
+  /**
+   * RequestDownload (Service 0x34).
+   * @param {number} address - Memory address (LE in the addr field)
+   * @param {number} size - Transfer size / negotiated block hint
+   * @param {Object} [options]
+   * @param {'BE'|'LE'} [options.sizeEndian='BE'] - Endianness of the SIZE field.
+   *   OTA uses big-endian; log download uses little-endian.
+   * @param {number} [timeout=30000] - Timeout in ms (slot1 erase is slow)
+   * @returns {Promise<number>} Negotiated max block from the 0x74 response
+   */
+  async requestDownload(address, size, options = {}, timeout = 30000) {
+    const sizeEndian = options.sizeEndian || 'BE';
+    const addrBytes = ByteUtils.uint32ToLE(address);
+    const sizeBytes = sizeEndian === 'LE'
+      ? ByteUtils.uint32ToLE(size)
+      : ByteUtils.uint32ToBE(size);
+    const request = ByteUtils.concat(
+      [constants.SID_REQUEST_DOWNLOAD, constants.OTA_DATA_FMT, constants.OTA_ADDR_LEN_FMT],
+      addrBytes,
+      sizeBytes
+    );
+    const response = await this._sendRequest(request, timeout);
+    // Response: [0x74, lengthFormat, maxBlock_hi, maxBlock_lo]
+    if (response.length < 4) {
+      throw new UDSError('Malformed RequestDownload response', constants.SID_REQUEST_DOWNLOAD);
+    }
+    return (response[2] << 8) | response[3];
+  }
+
+  /**
+   * TransferData (Service 0x36).
+   * @param {number} seq - Block sequence counter
+   * @param {Array|Uint8Array} data - Block payload (empty for log pull)
+   * @param {number} timeout - Timeout in ms
+   * @returns {Promise<Uint8Array>} Positive response [0x76, seq, ...body]
+   */
+  async transferData(seq, data = [], timeout = 15000) {
+    const request = ByteUtils.concat(
+      [constants.SID_TRANSFER_DATA, seq & 0xFF],
+      ByteUtils.toUint8Array(data.length ? data : [])
+    );
+    return await this._sendRequest(request, timeout);
+  }
+
+  /**
+   * RequestTransferExit (Service 0x37).
+   * @param {number} timeout - Timeout in ms
+   * @returns {Promise<Uint8Array>} Positive response [0x77]
+   */
+  async requestTransferExit(timeout = 10000) {
+    return await this._sendRequest([constants.SID_REQUEST_TRANSFER_EXIT], timeout);
+  }
+
+  // ============================================================
+  // High-level device identification
+  // ============================================================
+
+  /**
+   * High-level: Read firmware version (git-describe ASCII)
+   * @returns {Promise<string>}
+   */
+  async readFirmwareVersion() {
+    const data = await this.readDataByIdentifier(constants.DID_FIRMWARE_VERSION);
+    return ByteUtils.trimTrailing(new TextDecoder().decode(data), '\0');
+  }
+
+  /**
+   * High-level: Read build variant name (ASCII)
+   * @returns {Promise<string>}
+   */
+  async readVariantName() {
+    const data = await this.readDataByIdentifier(constants.DID_VARIANT_NAME);
+    return ByteUtils.trimTrailing(new TextDecoder().decode(data), '\0');
+  }
+
+  /**
+   * High-level: Read serial number (raw MCU UID, returned as hex string)
+   * @returns {Promise<string>}
    */
   async readSerialNumber() {
     const data = await this.readDataByIdentifier(constants.DID_SERIAL_NUMBER);
-    return new TextDecoder().decode(data);
-  }
-
-  /**
-   * High-level: Read model name
-   * @returns {Promise<string>} Model name string
-   */
-  async readModel() {
-    const data = await this.readDataByIdentifier(constants.DID_MODEL);
-    return new TextDecoder().decode(data);
-  }
-
-  /**
-   * High-level: Enumerate devices on the DiveCAN bus
-   * @returns {Promise<Array<number>>} Array of device IDs on the bus
-   */
-  async enumerateBusDevices() {
-    const data = await this.readDataByIdentifier(constants.DID_BUS_DEVICES);
-    return Array.from(data);
-  }
-
-  /**
-   * High-level: Get device name by ID
-   * @param {number} deviceId - Device ID (e.g., 0x01 for NERD, 0x04 for SOLO)
-   * @returns {Promise<string>} Device name
-   */
-  async getDeviceName(deviceId) {
-    const did = constants.DID_DEVICE_NAME_BASE + deviceId;
-    const data = await this.readDataByIdentifier(did);
-    return new TextDecoder().decode(data);
+    return ByteUtils.toHexString(data, '');
   }
 
   /**
@@ -347,21 +522,32 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
-   * Get setting metadata
+   * Get setting metadata.
+   *
+   * Firmware wire layout (fixed offsets, uds_settings.c readSettingInfoDID):
+   *   label[9 padded] + separator(1) + kind(1) + editable(1)
+   *   for TEXT settings only: + maxValue(1) + optionCount(1)
+   *
    * @param {number} index - Setting index (0-based)
-   * @returns {Promise<{label: string, kind: number, editable: boolean}>}
+   * @returns {Promise<{label: string, kind: number, editable: boolean, optionCount: number}>}
    */
   async getSettingInfo(index) {
     const did = constants.DID_SETTING_INFO_BASE + index;
     const data = await this.readDataByIdentifier(did);
 
-    // Parse response: [label(N), 0x00, kind(1), editable(1)]
-    const nullIndex = data.indexOf(0);
-    const label = new TextDecoder().decode(data.slice(0, nullIndex));
-    const kind = data[nullIndex + 1];
-    const editable = data[nullIndex + 2] === 1;
+    const L = constants.SETTING_LABEL_LEN;
+    // Label is a fixed-width padded field (trim trailing NUL/space padding).
+    const label = ByteUtils.trimTrailing(new TextDecoder().decode(data.slice(0, L)), '\0 ');
+    const kind = data[L + 1];
+    const editable = data[L + 2] === 1;
 
-    return { label, kind, editable };
+    let optionCount = 0;
+    if (kind === constants.SETTING_KIND_TEXT && data.length >= L + 5) {
+      // data[L+3] = maxValue, data[L+4] = optionCount
+      optionCount = data[L + 4];
+    }
+
+    return { label, kind, editable, optionCount };
   }
 
   /**
@@ -387,9 +573,11 @@ export class UDSClient extends EventEmitter {
    * @returns {Promise<string>} Option label
    */
   async getSettingOptionLabel(settingIndex, optionIndex) {
-    const did = constants.DID_SETTING_LABEL_BASE + settingIndex + (optionIndex << 4);
+    // Firmware DID decode: HIGH nibble = setting index, LOW nibble = option index.
+    const did = constants.DID_SETTING_LABEL_BASE + (settingIndex << 4) + optionIndex;
     const data = await this.readDataByIdentifier(did);
-    return new TextDecoder().decode(data);
+    // 9-byte space-padded, no NUL terminator.
+    return ByteUtils.trimTrailing(new TextDecoder().decode(data), '\0 ');
   }
 
   /**
@@ -435,6 +623,7 @@ export class UDSClient extends EventEmitter {
         label: info.label,
         kind: info.kind,
         editable: info.editable,
+        optionCount: info.optionCount,
         maxValue: value.maxValue,
         currentValue: value.currentValue
       });
@@ -472,6 +661,120 @@ export class UDSClient extends EventEmitter {
     }
     await this.writeDataByIdentifier(constants.DID_CALIBRATION_TRIGGER, [Math.round(fO2)]);
     this.logger.info(`Triggered calibration with fO2=${fO2}%`);
+  }
+
+  /**
+   * HIL raw solenoid fire (DID 0xF242). Fires the given channel for a fixed
+   * ~1.5 s. Requires a programming session, surface (not in dive), and PPO2
+   * mode OFF — the firmware returns an NRC otherwise.
+   * @param {number} channel - Solenoid channel (0-based)
+   * @returns {Promise<void>}
+   */
+  async writeSolenoidOverride(channel = 0) {
+    await this.writeDataByIdentifier(
+      constants.DID_SOLENOID_OVERRIDE,
+      [channel & 0xFF, constants.SOLENOID_OVERRIDE_MAGIC]
+    );
+    this.logger.info(`Solenoid override fired on channel ${channel}`);
+  }
+
+  // ============================================================
+  // PID Autotune Methods (DID 0xF243 control, 0xF213 status)
+  // ============================================================
+
+  /**
+   * Start an on-device PID autotune run (DID 0xF243, write-only).
+   * Requires a programming session; the firmware also refuses (NRC 0x22) while
+   * diving or when the PPO2 control mode is not PID.
+   * @param {Object} params
+   * @param {number} params.baseCb - Base setpoint in centibar (e.g. 70 = 0.70 bar)
+   * @param {number} params.excitationDutyPct - Incremental duty pulse (5..30 percent)
+   * @returns {Promise<void>}
+   */
+  async autotuneStart({ baseCb, excitationDutyPct }) {
+    const data = [
+      constants.AUTOTUNE_CMD_START,
+      constants.AUTOTUNE_MAGIC,
+      baseCb & 0xFF,
+      excitationDutyPct & 0xFF,
+      0x00,
+      0x01
+    ];
+    await this.writeDataByIdentifier(constants.DID_AUTOTUNE_CONTROL, data);
+    this.logger.info(`Autotune START base=${baseCb}cb dutyStep=${excitationDutyPct}%`);
+  }
+
+  /**
+   * Abort an in-progress autotune run (DID 0xF243, write-only).
+   * @returns {Promise<void>}
+   */
+  async autotuneAbort() {
+    await this.writeDataByIdentifier(
+      constants.DID_AUTOTUNE_CONTROL,
+      [constants.AUTOTUNE_CMD_ABORT, constants.AUTOTUNE_MAGIC]
+    );
+    this.logger.info('Autotune ABORT');
+  }
+
+  /**
+   * Read autotune status (DID 0xF213). Parses the compact 66-byte LE struct.
+   *
+   * Wire layout (offsets into the returned data bytes):
+   *   [0]  state (u8) [1] abort_reason (u8) [2] iteration (u16) [4] budget (u16)
+   *   [6] best_kp (f32) [10] best_ki (f32) [14] best_kd (f32)
+   *   [18] response-tail noise (f32) [22] elapsed_s (u32)
+   *   [26] plant_gain [30] dead_time_s [34] recovery_s [38] tail_noise
+   *   [42] mixing_excursion [46] baseline_duty [50] baseline_slope
+   *   [54] ambient_pressure [58] delivered_dose [62] baseline_noise
+   *
+   * @returns {Promise<{state:number, stateName:string, abortReason:number,
+   *   abortReasonName:string, iteration:number, budget:number,
+   *   cand:{kp:number, ki:number, kd:number}, best:{kp:number, ki:number, kd:number},
+   *   bestCost:number, elapsedS:number}>}
+   */
+  async readAutotuneStatus() {
+    const data = await this.readDataByIdentifier(constants.DID_AUTOTUNE_STATUS);
+    if (data.byteLength < 66) {
+      throw new UDSError(`Autotune status too short (${data.byteLength} bytes)`,
+        constants.SID_READ_DATA_BY_ID);
+    }
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+    const state = data[0];
+    const abortReason = data[1];
+
+    return {
+      state,
+      stateName: constants.AUTOTUNE_STATE_NAMES[state] ?? `Unknown(${state})`,
+      abortReason,
+      abortReasonName: constants.AUTOTUNE_ABORT_NAMES[abortReason] ?? `Unknown(${abortReason})`,
+      iteration: view.getUint16(2, true),
+      budget: view.getUint16(4, true),
+      cand: {
+        kp: 0,
+        ki: 0,
+        kd: 0
+      },
+      best: {
+        kp: view.getFloat32(6, true),
+        ki: view.getFloat32(10, true),
+        kd: view.getFloat32(14, true)
+      },
+      bestCost: view.getFloat32(18, true),
+      elapsedS: view.getUint32(22, true),
+      model: {
+        gain: view.getFloat32(26, true),
+        deadTimeS: view.getFloat32(30, true),
+        timeConstantS: view.getFloat32(34, true),
+        fitRmseBar: view.getFloat32(38, true),
+        mixingExcursionBar: view.getFloat32(42, true),
+        baselineDuty: view.getFloat32(46, true),
+        baselineSlopeBarS: view.getFloat32(50, true),
+        ambientPressureBar: view.getFloat32(54, true),
+        deliveredDoseDutyS: view.getFloat32(58, true),
+        baselineNoiseBar: view.getFloat32(62, true)
+      }
+    };
   }
 
   // ============================================================
@@ -562,10 +865,25 @@ export class UDSClient extends EventEmitter {
         return view.getInt16(0, true);
       case 'uint16':
         return view.getUint16(0, true);
+      case 'tank_pressure': {
+        // Firmware publishes the transducer's native decibar value. Preserve
+        // the 0.1 bar precision while mapping its wire failure sentinel to NaN
+        // so unavailable/bad readings are not plotted as 6553.5 bar.
+        const decibar = view.getUint16(0, true);
+        return decibar === 0xFFFF ? Number.NaN : decibar / 10;
+      }
       case 'uint8':
         return data[0];
       case 'bool':
         return data[0] !== 0;
+      case 'device_current': {
+        // 0xF237 packed struct: decode with the shared helper, then surface the
+        // numeric draw in mA so it flows through the plot/time-series path. An
+        // unavailable reading (no provider / no sample yet) becomes NaN, which
+        // the store skips for plotting and the power page renders as "--".
+        const decoded = constants.decodeDeviceCurrent(data);
+        return decoded?.valid ? decoded.currentMa : Number.NaN;
+      }
       default:
         return data;
     }
@@ -617,23 +935,51 @@ export class UDSClient extends EventEmitter {
    * @param {Function} progressCallback - Optional callback (current, total) => void
    * @returns {Promise<Object>} Complete state object
    */
-  async fetchAllState(cellTypes, progressCallback = null) {
-    // Collect all DIDs to read
+  /**
+   * Collect every DID to fetch for a full state read: control state plus
+   * every cell DID valid for that cell's configured type.
+   * @private
+   */
+  _collectAllStateDIDs(cellTypes) {
     const allDIDs = [];
 
-    // Add control state DIDs
     const controlDIDs = constants.getControlStateDIDs();
     for (const info of Object.values(controlDIDs)) {
       allDIDs.push(info.did);
     }
 
-    // Add cell DIDs (filtered by type)
     for (let cellNum = 0; cellNum < 3; cellNum++) {
       const validDIDs = constants.getValidCellDIDs(cellNum, cellTypes[cellNum]);
       for (const info of Object.values(validDIDs)) {
         allDIDs.push(info.did);
       }
     }
+
+    return allDIDs;
+  }
+
+  /**
+   * Read one chunk of DIDs into `result`. If the chunk read fails (a DID in
+   * it is unsupported on this variant, or the head is slow/desynced), retry
+   * each DID individually so a single failure doesn't blank the whole fetch.
+   * @private
+   */
+  async _fetchChunkWithFallback(chunk, result) {
+    try {
+      Object.assign(result, await this.readDIDsParsed(chunk));
+    } catch (error) {
+      for (const did of chunk) {
+        try {
+          Object.assign(result, await this.readDIDsParsed([did]));
+        } catch (didError) {
+          // Skip this DID for this cycle.
+        }
+      }
+    }
+  }
+
+  async fetchAllState(cellTypes, progressCallback = null) {
+    const allDIDs = this._collectAllStateDIDs(cellTypes);
 
     // Split into chunks to fit within BLE MTU constraints
     // Request format: 1 (SID) + N*2 (DID bytes) must fit in ~20 byte MTU
@@ -649,8 +995,7 @@ export class UDSClient extends EventEmitter {
       }
 
       const chunk = allDIDs.slice(i, i + DIDS_PER_REQUEST);
-      const chunkResult = await this.readDIDsParsed(chunk);
-      Object.assign(result, chunkResult);
+      await this._fetchChunkWithFallback(chunk, result);
     }
 
     // Add cell types to result

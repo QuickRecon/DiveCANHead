@@ -1,0 +1,27 @@
+/ {
+	/* Stub power node — exists only so DT_NODELABEL(power) resolves to a
+	 * real DT ordinal, which lets POWER_DEVICE = DEVICE_DT_GET(NODELABEL(power))
+	 * expand to a syntactically-valid C identifier (`__device_dts_ord_<N>`).
+	 *
+	 * The cell modules that the parsers test pulls in (oxygen_cell_diveo2.c,
+	 * oxygen_cell_o2s.c) reference POWER_DEVICE inside their thread bodies.
+	 * Without this overlay, DT_NODELABEL(power) expands to garbage that
+	 * fails C tokenisation. With it, the symbol is undefined but the linker
+	 * eliminates the never-started thread function, so the unresolved
+	 * reference is dead-code-stripped.
+	 *
+	 * The compatible string is intentionally one we don't ship a binding
+	 * for — keeps the production power_management.c driver from binding to
+	 * this stub. Zephyr just warns "unknown compatible" in the DT pass and
+	 * moves on, which is exactly what we want.
+	 *
+	 * If a future parsers test ever needs to call the cell-thread bodies,
+	 * this stub will need to grow into a real device with a stub driver
+	 * that provides power_get_vbus_voltage(); see git history for an
+	 * earlier attempt at that approach.
+	 */
+	power: stub-power {
+		compatible = "test,parsers-stub-power";
+		status = "okay";
+	};
+};

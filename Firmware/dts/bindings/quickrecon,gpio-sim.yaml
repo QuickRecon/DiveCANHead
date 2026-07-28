@@ -1,0 +1,40 @@
+description: |
+  GPIO emulator with external drive simulation.
+
+  Behaves identically to zephyr,gpio-emul except that pins marked as
+  "externally driven" (via gpio_sim_drive()) preserve their value when
+  the pin is reconfigured with GPIO_PULL_UP or GPIO_PULL_DOWN. This
+  models real hardware where an external low-impedance connection
+  (wired to ground or VCC) overcomes internal pull resistors.
+
+compatible: "quickrecon,gpio-sim"
+
+include: [gpio-controller.yaml, base.yaml]
+
+properties:
+  "#gpio-cells":
+    const: 2
+
+  ngpios:
+    type: int
+    description: Number of GPIOs
+
+  rising-edge:
+    type: boolean
+    description: Rising edge interrupt support
+
+  falling-edge:
+    type: boolean
+    description: Falling edge interrupt support
+
+  high-level:
+    type: boolean
+    description: High level interrupt support
+
+  low-level:
+    type: boolean
+    description: Low level interrupt support
+
+gpio-cells:
+  - pin
+  - flags

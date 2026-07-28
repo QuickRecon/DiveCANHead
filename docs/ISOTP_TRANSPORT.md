@@ -102,6 +102,25 @@ void ISOTP_TxQueue_Poll(uint32_t currentTime);
 bool ISOTP_TxQueue_IsBusy(void);
 ```
 
+### Log-push quiescent gate
+
+The queue serializes frames *in time*, but broadcast log pushes (target `0xFF`)
+are sent fire-and-forget and share the handset's single **per-source** ISO-TP
+reassembly context with addressed UDS replies. If a broadcast push starts before
+the handset has closed the just-completed addressed reply, the two Consecutive-
+Frame streams merge into one context — the bridge reports **"RX Wrong Seq in
+CF"** and then **"TO SLIP TX"** and crashes. This bites during the connect-time
+DID-fetch burst, where addressed multi-frame replies stream back-to-back.
+
+`UDS_LogPush_Poll()` therefore holds pushes off until an addressed dialog has
+been quiet for `LOG_PUSH_QUIESCENT_MS` (75 ms). `divecan_rx.c` re-arms the window
+via `UDS_LogPush_NoteDialogActivity(now)` whenever a request completes (RX) or an
+addressed reply is mid-flight (`ISOTP_TxQueue_IsBusy()`), so the countdown starts
+only when the reply fully drains. This generalises `UDS_LogPush_SetSuspended()`
+(which brackets only the large OTA / log-download transfers) to ordinary UDS
+dialog. The client mirrors this with `DataStore.waitForLogQuiescence()`, which
+drains the backlog *before* the fetch burst — see `docs/DIVECAN_BT.md`.
+
 ## Addressing
 
 CAN ID format for ISO-TP frames:
@@ -139,14 +158,42 @@ The Shearwater dive computer has some non-standard behavior:
 bool isShearwaterFC = (pci == ISOTP_PCI_FC) && (msgSource == 0xFF);
 ```
 
+## Dynamic Retargeting
+
+A dialog context (e.g. the shared `MENU_ID` UDS context, source `DIVECAN_SOLO`)
+rewrites its `target` to the source of each inbound frame, so replies always go
+back to whoever just asked. Both the handset (Bus Devices menu) and the
+Bluetooth bridge client talk to the head on `MENU_ID` through this one context;
+retargeting is what lets a single context serve both.
+
+The BT bridge sources **every** frame from `0xFF` (`BT_CLIENT_ADDRESS`), so a BT
+request legitimately drives `target` to `0xFF`. The retarget lock that keeps the
+permanent broadcast sender (log-push) from being pulled onto a unicast peer is
+therefore keyed on an **immutable role flag** (`broadcastTx`, fixed at
+`ISOTP_Init` from the initial target), **not** on the live `target` value. If it
+were keyed on `target == 0xFF`, a dialog context that transiently picked up
+`0xFF` from the BT bridge could never retarget back to the handset — stranding
+menu replies on `0xFF` and killing the handset's Bus Devices menu until the head
+rebooted. `ProcessMenuMessage` also refuses to *initialise* the dialog context
+with a `0xFF` target for the same reason (it substitutes a unicast placeholder,
+which the first RX frame then corrects).
+
+```c
+// isotp.c ISOTP_ProcessRxFrame — retarget unless this is a broadcast-role context
+if ((msgSource != ctx->target) && (!isShearwaterFC) && (!ctx->broadcastTx)) {
+    ctx->target = msgSource;   // follow the sender
+}
+```
+
 ## ISOTPContext_t Structure
 
 ```c
 typedef struct {
     // Addressing
     DiveCANType_t source;
-    DiveCANType_t target;
+    DiveCANType_t target;      // follows the sender (see Dynamic Retargeting)
     uint32_t messageId;
+    bool broadcastTx;          // role fixed at init; true = never retarget
 
     // State machine
     ISOTPState_t state;

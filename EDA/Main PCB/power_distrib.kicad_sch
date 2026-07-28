@@ -4921,7 +4921,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C382300.pdf"
+		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C181087.pdf"
 			(at 43.18 92.71 0)
 			(effects
 				(font
@@ -4939,7 +4939,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "C382300"
+		(property "MPN" "C181087"
 			(at 43.18 92.71 90)
 			(effects
 				(font
@@ -6181,7 +6181,7 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C382300.pdf"
+		(property "Datasheet" "https://datasheet.lcsc.com/lcsc/1912111437_KEXIN-SI2302_C181087.pdf"
 			(at 41.91 147.32 0)
 			(effects
 				(font
@@ -6199,7 +6199,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "C382300"
+		(property "MPN" "C181087"
 			(at 41.91 147.32 90)
 			(effects
 				(font

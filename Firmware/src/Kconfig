@@ -1,0 +1,470 @@
+menu "Product Topology"
+
+# ---- Oxygen Cells ----
+
+config CELL_COUNT
+	int "Number of oxygen cells"
+	default 3
+	range 1 3
+	help
+	  Number of oxygen sensor slots populated on this unit.
+
+choice CELL_1_TYPE
+	prompt "Cell 1 type"
+	default CELL_1_TYPE_ANALOG
+
+config CELL_1_TYPE_ANALOG
+	bool "Analog galvanic"
+
+config CELL_1_TYPE_DIVEO2
+	bool "DiveO2 digital"
+
+config CELL_1_TYPE_O2S
+	bool "Oxygen Scientific digital"
+
+endchoice
+
+choice CELL_2_TYPE
+	prompt "Cell 2 type"
+	default CELL_2_TYPE_ANALOG
+	depends on CELL_COUNT >= 2
+
+config CELL_2_TYPE_ANALOG
+	bool "Analog galvanic"
+
+config CELL_2_TYPE_DIVEO2
+	bool "DiveO2 digital"
+
+config CELL_2_TYPE_O2S
+	bool "Oxygen Scientific digital"
+
+endchoice
+
+choice CELL_3_TYPE
+	prompt "Cell 3 type"
+	default CELL_3_TYPE_ANALOG
+	depends on CELL_COUNT >= 3
+
+config CELL_3_TYPE_ANALOG
+	bool "Analog galvanic"
+
+config CELL_3_TYPE_DIVEO2
+	bool "DiveO2 digital"
+
+config CELL_3_TYPE_O2S
+	bool "Oxygen Scientific digital"
+
+endchoice
+
+# ---- Derived cell capabilities ----
+
+config HAS_DIGITAL_CELL
+	bool
+	default y if CELL_1_TYPE_DIVEO2 || CELL_1_TYPE_O2S || \
+	             CELL_2_TYPE_DIVEO2 || CELL_2_TYPE_O2S || \
+	             CELL_3_TYPE_DIVEO2 || CELL_3_TYPE_O2S
+
+config HAS_ANALOG_CELL
+	bool
+	default y if CELL_1_TYPE_ANALOG || CELL_2_TYPE_ANALOG || CELL_3_TYPE_ANALOG
+
+config HAS_DIVEO2_CELL
+	bool
+	default y if CELL_1_TYPE_DIVEO2 || CELL_2_TYPE_DIVEO2 || CELL_3_TYPE_DIVEO2
+
+config HAS_O2S_CELL
+	bool
+	default y if CELL_1_TYPE_O2S || CELL_2_TYPE_O2S || CELL_3_TYPE_O2S
+
+# ---- Power Architecture ----
+
+choice POWER_MODE
+	prompt "Power source mode"
+	default POWER_MODE_BATTERY
+
+config POWER_MODE_BATTERY
+	bool "Battery only"
+
+config POWER_MODE_BATTERY_THEN_CAN
+	bool "Battery with CAN fallback"
+
+config POWER_MODE_CAN
+	bool "CAN bus power only"
+
+endchoice
+
+choice BATTERY_CHEMISTRY
+	prompt "Battery chemistry / voltage threshold"
+	default BATTERY_CHEMISTRY_LI2S
+	depends on !POWER_MODE_CAN
+
+config BATTERY_CHEMISTRY_9V
+	bool "9V alkaline"
+
+config BATTERY_CHEMISTRY_LI1S
+	bool "1S lithium (3.7V)"
+
+config BATTERY_CHEMISTRY_LI2S
+	bool "2S lithium (7.4V)"
+
+config BATTERY_CHEMISTRY_LI3S
+	bool "3S lithium (11.1V)"
+
+endchoice
+
+endmenu # Product Topology
+
+config ALARM
+	bool "Generic alarm-state pathway"
+	default n
+	help
+	  Enable the generic alarm-state channel. Select this from each alert
+	  consumer so alarm producers remain independent of output hardware.
+
+config POSEIDON_ACCESSORIES
+	bool "Poseidon HUD and battery I2C accessories"
+	default n
+	select ALARM
+	select I2C_TARGET
+	help
+	  Enable the Poseidon HUD/Battery protocol and receive fuel percentage
+	  broadcasts at the Display address.
+
+config POSEIDON_DS2782_SHUNT_UOHM
+	int "Poseidon battery DS2782 sense-resistor value (micro-ohms)"
+	depends on POSEIDON_ACCESSORIES
+	default 40000
+	range 1 100000000
+	help
+	  Sense resistor across which the battery's DS2782 measures current, used
+	  to convert the CMD 0x06 current counts (1.5625 uV/LSB across the shunt)
+	  into microamps for the generic device-current API.
+	  40 mOhm gives the Poseidon battery's measured 39.0625 uA/count
+	  (1.5625 uV / 0.040 Ohm).
+
+# ---- Solenoid Role Mapping ----
+
+menu "Solenoid Role Mapping"
+	depends on SOLENOID
+
+config SOL_O2_INJECT_CHANNEL
+	int "O2 injection solenoid channel"
+	default 0
+	range 0 3
+	help
+	  Primary oxygen solenoid, driven by the PID control loop.
+
+config SOL_O2_FLUSH_CHANNEL
+	int "O2 calibration flush solenoid channel (-1 = not present)"
+	default -1
+	range -1 3
+	help
+	  Oxygen flush solenoid for automated calibration.
+	  Set to -1 if this system has no dedicated O2 flush solenoid.
+
+config SOL_DIL_FLUSH_CHANNEL
+	int "Diluent calibration flush solenoid channel (-1 = not present)"
+	default -1
+	range -1 3
+	help
+	  Diluent flush solenoid for automated calibration.
+	  Set to -1 if this system has no dedicated diluent flush solenoid.
+
+config SOL_O2_INJECT_2_CHANNEL
+	int "Secondary O2 injection solenoid channel (-1 = not present)"
+	default -1
+	range -1 3
+	help
+	  Second oxygen injection solenoid for dual-inject systems.
+	  Set to -1 for single-solenoid systems.
+
+config SOL_FLUSH_TIME
+	int "Setpoint-change flush on-time (milliseconds, 0 = disabled)"
+	default 0
+	range 0 5500
+	help
+	  When nonzero, the solenoid fire thread fires a flush solenoid at the
+	  start of the first fire cycle after a diver-commanded setpoint change:
+	  the O2 flush solenoid on an increase, the diluent flush solenoid on a
+	  decrease. Directions whose flush solenoid is absent on this variant
+	  (channel = -1) are skipped. The handset-loss failsafe setpoint revert
+	  does not trigger a flush. Must not exceed the solenoid deadman
+	  max-on-time-us DTS property (enforced by a BUILD_ASSERT in
+	  ppo2_control.c). 0 disables the feature.
+
+config HAS_O2_SOLENOID
+	bool
+	default y if SOL_O2_INJECT_CHANNEL >= 0
+
+config HAS_FLUSH_SOLENOID
+	bool
+	default y if SOL_O2_FLUSH_CHANNEL >= 0
+
+config HAS_DIL_FLUSH_SOLENOID
+	bool
+	default y if SOL_DIL_FLUSH_CHANNEL >= 0
+
+endmenu # Solenoid Role Mapping
+
+# ---- Tank Pressure Transducers ----
+
+menu "Tank Pressure Transducers"
+
+config O2_TRANSDUCER_CHANNEL
+	int "O2 tank pressure transducer ADC channel (-1 = not present)"
+	default -1
+	range -1 2
+	help
+	  Index into the zephyr,user io-channels list (the analog-cell ADC
+	  channel map in the board DTS) that the O2 HP transducer's analog
+	  output is wired to. The variant overlay must re-enable the ADS1115
+	  that owns the channel and set a PGA gain wide enough for the
+	  transducer's full output swing — the cell default of ADC_GAIN_8
+	  (+/-0.256 V) clips a 1.8 V transducer; use ADC_GAIN_1 (+/-2.048 V).
+	  Set to -1 if this system has no O2 pressure transducer.
+
+config O2_TRANSDUCER_MIN
+	int "O2 transducer output at 0 bar (millivolts)"
+	depends on O2_TRANSDUCER_CHANNEL >= 0
+	default 300
+	range 0 6144
+	help
+	  Transducer output voltage corresponding to 0 bar gauge pressure.
+	  Readings below this are reported as the DiveCAN error value
+	  (0xFFFF) — an open circuit or failed sensor reads near 0 mV.
+
+config O2_TRANSDUCER_MAX
+	int "O2 transducer output at full-scale pressure (millivolts)"
+	depends on O2_TRANSDUCER_CHANNEL >= 0
+	default 1800
+	range 0 6144
+	help
+	  Transducer output voltage corresponding to O2_TRANSDUCER_LIMIT.
+	  Readings above this are reported as the DiveCAN error value
+	  (0xFFFF) — a shorted sensor reads near supply voltage.
+
+config O2_TRANSDUCER_LIMIT
+	int "O2 transducer full-scale pressure (bar)"
+	depends on O2_TRANSDUCER_CHANNEL >= 0
+	default 300
+	range 1 6000
+	help
+	  Gauge pressure at O2_TRANSDUCER_MAX. The 0 bar .. LIMIT range is
+	  mapped linearly across MIN .. MAX millivolts.
+
+config DIL_TRANSDUCER_CHANNEL
+	int "Diluent tank pressure transducer ADC channel (-1 = not present)"
+	default -1
+	range -1 2
+	help
+	  Index into the zephyr,user io-channels list for the diluent HP
+	  transducer. See O2_TRANSDUCER_CHANNEL for the DT gain requirement.
+	  Set to -1 if this system has no diluent pressure transducer.
+
+config DIL_TRANSDUCER_MIN
+	int "Diluent transducer output at 0 bar (millivolts)"
+	depends on DIL_TRANSDUCER_CHANNEL >= 0
+	default 300
+	range 0 6144
+	help
+	  Transducer output voltage corresponding to 0 bar gauge pressure.
+	  Readings below this are reported as the DiveCAN error value.
+
+config DIL_TRANSDUCER_MAX
+	int "Diluent transducer output at full-scale pressure (millivolts)"
+	depends on DIL_TRANSDUCER_CHANNEL >= 0
+	default 1800
+	range 0 6144
+	help
+	  Transducer output voltage corresponding to DIL_TRANSDUCER_LIMIT.
+	  Readings above this are reported as the DiveCAN error value.
+
+config DIL_TRANSDUCER_LIMIT
+	int "Diluent transducer full-scale pressure (bar)"
+	depends on DIL_TRANSDUCER_CHANNEL >= 0
+	default 300
+	range 1 6000
+	help
+	  Gauge pressure at DIL_TRANSDUCER_MAX. The 0 bar .. LIMIT range is
+	  mapped linearly across MIN .. MAX millivolts.
+
+config HAS_PRESSURE_TRANSDUCER
+	bool
+	default y if O2_TRANSDUCER_CHANNEL >= 0 || DIL_TRANSDUCER_CHANNEL >= 0
+
+endmenu # Tank Pressure Transducers
+
+# ---- Runtime Setting Constraints ----
+# These define which runtime options are compiled in and
+# what their defaults are. The actual values live in NVS
+# and are changeable via UDS.
+
+menu "Runtime Setting Defaults"
+
+choice PPO2_CONTROL_DEFAULT
+	prompt "Default PPO2 control mode"
+	default PPO2_CONTROL_DEFAULT_OFF if !HAS_O2_SOLENOID
+	default PPO2_CONTROL_DEFAULT_MK15
+
+config PPO2_CONTROL_DEFAULT_OFF
+	bool "Off (no solenoid control)"
+
+config PPO2_CONTROL_DEFAULT_PID
+	bool "PID control"
+	depends on HAS_O2_SOLENOID
+
+config PPO2_CONTROL_DEFAULT_MK15
+	bool "MK15 OEM style (1.5s on / 6s off)"
+	depends on HAS_O2_SOLENOID
+
+endchoice
+
+choice CAL_MODE_DEFAULT
+	prompt "Default calibration method"
+	default CAL_MODE_DEFAULT_FLUSH if HAS_FLUSH_SOLENOID
+	default CAL_MODE_DEFAULT_ABSOLUTE
+
+config CAL_MODE_DEFAULT_DIGITAL_REF
+	bool "Digital reference (cal analog against digital)"
+	depends on HAS_DIGITAL_CELL
+
+config CAL_MODE_DEFAULT_ABSOLUTE
+	bool "Absolute air calibration"
+
+config CAL_MODE_DEFAULT_TOTAL_ABSOLUTE
+	bool "Total absolute (rich gas)"
+
+config CAL_MODE_DEFAULT_FLUSH
+	bool "Solenoid flush calibration"
+	depends on HAS_FLUSH_SOLENOID || HAS_O2_SOLENOID
+	help
+	  Flushes the loop with oxygen before a total-absolute cal. Uses the
+	  dedicated O2 flush solenoid when present, otherwise falls back to
+	  the O2 inject solenoid (see cal_solenoid_flush() in calibration.c).
+	  Single-solenoid heads (e.g. AP-style) therefore support flush cal
+	  via the inject solenoid alone — hence HAS_O2_SOLENOID is sufficient.
+
+config CAL_MODE_DEFAULT_CHECK
+	bool "Sensor check (O2 + diluent flush, no recalibration)"
+	depends on HAS_FLUSH_SOLENOID && HAS_DIL_FLUSH_SOLENOID
+	help
+	  Makes the diver-triggered calibration a pre-dive SENSOR CHECK instead
+	  of a recalibration: fires the O2 flush then the diluent flush (~10 s
+	  each) so the cells swing high then low, and always reports success
+	  without altering any cell coefficients (see cal_check() in
+	  calibration.c). Intended for all-digital heads (e.g. Poseidon: 2x
+	  DiveO2) where the cells self-report PPO2 and there is no analog
+	  coefficient to compute, so a "calibration" is best spent verifying
+	  the cells respond. Requires both an O2 flush and a diluent flush
+	  solenoid.
+
+endchoice
+
+config DEPTH_COMPENSATION_DEFAULT
+	bool "Enable PPO2 depth compensation by default"
+	default n
+	depends on HAS_O2_SOLENOID
+	help
+	  Adjusts PID duty cycle based on ambient pressure.
+	  Only meaningful when a control solenoid is present.
+
+endmenu # Runtime Setting Defaults
+
+# ---- Handset menu order (per-variant) ----
+
+menu "Handset Menu"
+
+# The handset renders only the first ~5 settings it enumerates over UDS. These
+# ints name, per variant, which settings (by STORAGE index into settings[] in
+# uds_settings.c) fill those leading slots and in what order. Settings not named
+# here are appended after them in natural order, so they stay reachable over UDS
+# (web UI / rig) — this REORDERS the wire list, it never hides settings.
+#
+# The storage-index legend is the authoritative BUILD_ASSERT block in
+# uds_settings.c (kept in lockstep via those asserts):
+#   0 FW Commit   1 PPO2 Mode   2 Cal Mode    3 DepthComp
+#   4 PID Kp      5 PID Ki      6 PID Kd      7 Battery
+#   8 C1 Bcst     9 C2 Bcst    10 C3 Bcst
+#
+# -1 leaves a slot empty. A slot naming a setting absent from this build is
+# silently skipped. Defaults reproduce the historical order (0,1,2,3,4), so
+# production variants are unchanged unless they override these.
+
+config MENU_ORDER_1
+	int "Handset menu slot 1 -> setting storage index (-1 = empty)"
+	default 0
+	range -1 15
+
+config MENU_ORDER_2
+	int "Handset menu slot 2 -> setting storage index (-1 = empty)"
+	default 1
+	range -1 15
+
+config MENU_ORDER_3
+	int "Handset menu slot 3 -> setting storage index (-1 = empty)"
+	default 2
+	range -1 15
+
+config MENU_ORDER_4
+	int "Handset menu slot 4 -> setting storage index (-1 = empty)"
+	default 3
+	range -1 15
+
+config MENU_ORDER_5
+	int "Handset menu slot 5 -> setting storage index (-1 = empty)"
+	default 4
+	range -1 15
+
+endmenu # Handset Menu
+
+menu "Safety"
+
+config DIVECAN_WATCHDOG
+	bool "Enable IWDG feeder thread"
+	default y
+	depends on WATCHDOG
+	help
+	  Compiles in src/watchdog_feeder.c, which arms the SoC watchdog
+	  and only feeds it when every safety-critical thread (registered
+	  via heartbeat.h) has advanced since the last check.
+	  Disable for native_sim test builds where IWDG hardware is absent.
+
+rsource "Kconfig.firmware_confirm"
+rsource "Kconfig.factory_image"
+
+config DIVECAN_OPTION_BYTES_CHECK
+	bool "Validate STM32 option bytes at boot and rewrite if wrong"
+	default y
+	depends on SOC_FAMILY_STM32
+	select USE_STM32_HAL_FLASH
+	select USE_STM32_HAL_FLASH_EX
+	help
+	  Ports the option-byte policy from the legacy STM32 FreeRTOS
+	  firmware (Hardware/flash.c). At PRE_KERNEL_2 the SYS_INIT
+	  reads the current FLASH_OPTR, builds the desired USERConfig,
+	  and if they differ writes the desired config + launches OB
+	  reload (which resets the chip). The desired config enforces
+	  boot-from-flash regardless of the physical BOOT0 pin, hardware
+	  IWDG auto-start, and BOR level 4 — the same safety policy the
+	  original firmware applied. See option_bytes.c for the
+	  per-field rationale.
+
+config DIVECAN_HAL_PWR_EX
+	bool "Pull in STM32 HAL PWR (+ Extended) driver for SHUTDOWN-mode entry"
+	default y
+	depends on SOC_FAMILY_STM32
+	select USE_STM32_HAL_PWR
+	select USE_STM32_HAL_PWR_EX
+	select PM_DEVICE
+	help
+	  power_shutdown() calls HAL_PWR_EnableWakeUpPin() +
+	  HAL_PWREx_EnterSHUTDOWNMode() (and the associated pull-up /
+	  pull-down configurators) directly because Zephyr's STM32 PM
+	  layer doesn't expose SHUTDOWN. This option pulls in both HAL TUs.
+
+endmenu # Safety
+
+rsource "Kconfig.flash_log"
+
+rsource "../tests/integration/Kconfig"
+rsource "../drivers/gpio_sim/Kconfig"

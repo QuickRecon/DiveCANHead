@@ -129,7 +129,7 @@ describe('DiveCANFramer', () => {
 
       expect(result.source).toBe(0x80);
       expect(result.target).toBe(0xFF);
-      expect(result.length).toBe(4);
+      expect(result).toHaveLength(4);
       expect(Array.from(result.payload)).toEqual([0x62, 0xF2, 0x00]);
     });
 
@@ -139,33 +139,22 @@ describe('DiveCANFramer', () => {
       expect(() => framer.parse(null)).toThrow();
     });
 
-    it('strips Petrel bridge header [0x01, 0x00]', () => {
+    it('does NOT strip a bridge-header-like prefix (handled per-notification in BLE layer)', () => {
+      // The bridge header is stripped once per notification in
+      // BLEConnection._handleData. By the time a reassembled datagram reaches
+      // the framer it is clean, so the framer must treat these bytes as the
+      // real source/target — stripping again would eat two payload bytes.
       const datagram = new Uint8Array([
-        0x01, 0x00,  // Bridge header (outbound)
-        0x80, 0xFF,  // source, target
+        0x01, 0x00,  // real source/target here, NOT a header to strip
         0x03, 0x00,  // length
         0x62, 0xF2   // payload
       ]);
 
       const result = framer.parse(datagram);
 
-      expect(result.source).toBe(0x80);
-      expect(result.target).toBe(0xFF);
+      expect(result.source).toBe(0x01);
+      expect(result.target).toBe(0x00);
       expect(Array.from(result.payload)).toEqual([0x62, 0xF2]);
-    });
-
-    it('strips Petrel bridge header [0x02, 0x00]', () => {
-      const datagram = new Uint8Array([
-        0x02, 0x00,  // Bridge header (inbound)
-        0x80, 0xFF,  // source, target
-        0x03, 0x00,  // length
-        0x62, 0xF2   // payload
-      ]);
-
-      const result = framer.parse(datagram);
-
-      expect(result.source).toBe(0x80);
-      expect(result.target).toBe(0xFF);
     });
 
     it('does not strip non-bridge header', () => {
@@ -202,7 +191,7 @@ describe('DiveCANFramer', () => {
 
       const result = framer.parse(datagram);
       // Should use actual payload length
-      expect(result.payload.length).toBe(3);
+      expect(result.payload).toHaveLength(3);
     });
   });
 

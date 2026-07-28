@@ -1,0 +1,6 @@
+mainmenu "factory_image test"
+
+# Only need the factory-image Kconfig fragment, not the whole product-topology menu.
+rsource "../../src/Kconfig.factory_image"
+
+source "Kconfig.zephyr"

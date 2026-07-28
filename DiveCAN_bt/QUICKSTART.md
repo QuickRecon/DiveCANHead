@@ -179,38 +179,44 @@ for (let i = 0; i < count; i++) {
 }
 ```
 
-### Write Configuration
+### Change a Setting
 
 ```javascript
-// Must be in extended or programming session
-await stack.uds.startSession(0x03);
-
-// Write new config
-const newConfig = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
-await stack.writeConfiguration(newConfig);
-
-// Verify
-const readBack = await stack.readConfiguration();
-console.log('Verified:', readBack);
+// Enumerate, then persist a new value (0x9130 volatile / 0x9350 persisted)
+const settings = await stack.uds.enumerateSettings();
+await stack.uds.saveSetting(1, 1n); // e.g. PPO2 Mode = PID
 ```
 
-### Upload Firmware
+### Update Firmware (OTA)
 
 ```javascript
-// Switch to programming session
-await stack.uds.startSession(0x02);
+import { parseMcubootImage } from '@divecan/protocol';
 
-// Upload memory region
-const memory = await stack.uploadMemory(
-  0xC2000080,  // Address
-  4096,        // Length
-  (current, total) => {
-    console.log(`Progress: ${Math.round(current/total*100)}%`);
-  }
-);
+const img = parseMcubootImage(fileBytes);
+if (!img.valid) throw new Error(img.reason);
 
-// Save to file or process
-console.log('Uploaded:', memory);
+await stack.ota.enterProgrammingSession();        // surface only
+await stack.ota.stageImage(fileBytes, {
+  onProgress: (done, total) => console.log(`${Math.round(done/total*100)}%`)
+});
+await stack.ota.activate();                        // validates SHA-256, swaps, reboots
+
+// After reconnecting, confirm the swap (else it auto-reverts)
+const status = await stack.ota.readMcubootStatus();
+console.log('Confirmed:', status.confirmed);
+```
+
+### Download a Flash Log
+
+```javascript
+import { parseLogStream, decodeRecord } from '@divecan/protocol';
+
+const { raw } = await stack.logs.downloadLog({
+  stream: 0,                               // telemetry
+  selector: (d) => d.selectLatestBoot(0)
+});
+const records = parseLogStream(raw).map(r => ({ ...r, decoded: decodeRecord(r) }));
+console.log(`${records.length} records`);
 ```
 
 ## Support

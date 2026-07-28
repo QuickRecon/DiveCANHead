@@ -62,6 +62,52 @@ export function buildWDBIResponse(did) {
   ]);
 }
 
+/**
+ * Build a DiagnosticSessionControl positive response (0x50).
+ * @param {number} session - Session sub-function
+ * @returns {Uint8Array}
+ */
+export function buildSessionResponse(session) {
+  return new Uint8Array([0x50, session]);
+}
+
+/**
+ * Build a RoutineControl positive response (0x71).
+ * @param {number} rid - Routine identifier
+ * @param {Array|Uint8Array} params - Optional trailing params
+ * @returns {Uint8Array}
+ */
+export function buildRoutineResponse(rid, params = []) {
+  return new Uint8Array([0x71, 0x01, (rid >> 8) & 0xFF, rid & 0xFF, ...params]);
+}
+
+/**
+ * Build a RequestDownload positive response (0x74).
+ * @param {number} maxBlock - Negotiated max block
+ * @returns {Uint8Array}
+ */
+export function buildRequestDownloadResponse(maxBlock) {
+  return new Uint8Array([0x74, 0x20, (maxBlock >> 8) & 0xFF, maxBlock & 0xFF]);
+}
+
+/**
+ * Build a TransferData positive response (0x76).
+ * @param {number} seq - Echoed sequence counter
+ * @param {Array|Uint8Array} body - Optional payload (log-download chunk)
+ * @returns {Uint8Array}
+ */
+export function buildTransferResponse(seq, body = []) {
+  return new Uint8Array([0x76, seq & 0xFF, ...body]);
+}
+
+/**
+ * Build a RequestTransferExit positive response (0x77).
+ * @returns {Uint8Array}
+ */
+export function buildTransferExitResponse() {
+  return new Uint8Array([0x77]);
+}
+
 // Pre-built test responses
 export const RESPONSES = {
   // ReadDataByIdentifier positive responses
@@ -84,11 +130,11 @@ export const RESPONSES = {
     // DID 0xF402 - Cell 0 Included (bool = true)
     CELL0_INCLUDED: buildRDBIResponse(0xF402, [0x01]),
 
-    // DID 0x8010 - Serial Number (string)
-    SERIAL_NUMBER: buildRDBIResponse(0x8010, new TextEncoder().encode('SN12345678')),
+    // DID 0xF000 - Firmware version (git-describe string)
+    FIRMWARE_VERSION: buildRDBIResponse(0xF000, new TextEncoder().encode('v1.2.3-4')),
 
-    // DID 0x8011 - Model (string)
-    MODEL: buildRDBIResponse(0x8011, new TextEncoder().encode('DiveCANHead'))
+    // DID 0xF003 - Serial Number (raw UID bytes)
+    SERIAL_NUMBER: buildRDBIResponse(0xF003, [0xDE, 0xAD, 0xBE, 0xEF])
   },
 
   // Negative responses

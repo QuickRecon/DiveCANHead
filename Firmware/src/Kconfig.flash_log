@@ -1,0 +1,142 @@
+menu "Flash Log"
+
+config FLASH_LOG
+	bool "Flash-backed structured log"
+	default n
+	depends on FLASH_MAP
+	select FCB
+	select FCB_ALLOW_FIXED_ENDMARKER
+	help
+	  Persistent dive log captured to two parallel FCB instances on
+	  external SPI NOR. Telemetry FCB holds structured records
+	  (consensus, cell raw, PID, solenoid, errors, dive/boot
+	  markers). Text FCB holds RTT capture of LOG_x messages plus
+	  mirrored markers. Retrievable in bulk over UDS. See
+	  docs/FLASH_LOG.md.
+
+	  Enabled explicitly in the firmware prj.conf — left default-off
+	  so unit tests without FLASH_MAP don't fail at the FCB select.
+
+if FLASH_LOG
+
+config FLASH_LOG_SECTOR_SIZE
+	int "Logical FCB sector size in bytes"
+	default 262144
+	range 4096 1048576
+	help
+	  Size of each logical FCB sector. Production uses 256 KiB sectors
+	  so the two FCB descriptor arrays can address most of the 64 MiB
+	  external NOR within FCB's 255-sector limit. Native-simulator tests
+	  override this together with the sector counts and matching fixed
+	  partitions.
+
+config FLASH_LOG_TELEMETRY_SECTOR_COUNT
+	int "Telemetry FCB logical sector count"
+	default 192
+	range 2 255
+	help
+	  Number of logical sectors in the telemetry FCB. The corresponding
+	  fixed partition must be at least this value multiplied by
+	  FLASH_LOG_SECTOR_SIZE.
+
+config FLASH_LOG_TEXT_SECTOR_COUNT
+	int "Text FCB logical sector count"
+	default 32
+	range 2 255
+	help
+	  Number of logical sectors in the text FCB. The corresponding fixed
+	  partition must be at least this value multiplied by
+	  FLASH_LOG_SECTOR_SIZE.
+
+config FLASH_LOG_QUEUE_DEPTH
+	int "log_writer ingest queue depth (slots)"
+	default 8
+	help
+	  Number of pending entries the unified ingest queue can hold
+	  before producers start dropping. Sized to absorb a single
+	  64 KiB block erase (~150-400 ms on W25Q) at peak ingest of
+	  ~400 B/s. STM32L431 has 64 KiB SRAM total; depth × slot-size
+	  is the dominant RAM cost of this subsystem.
+
+config FLASH_LOG_MAX_ENTRY_BYTES
+	int "Max bytes per log entry (slot size in RAM)"
+	default 96
+	help
+	  Cap on a single ingest slot. Each slot carries a 12-byte
+	  internal header (dest, type, length, ts_us) and up to
+	  (this - 12) bytes of payload. LOG_TEXT messages longer than
+	  the payload budget are truncated.
+
+config FLASH_LOG_WRITER_STACK
+	int "log_writer thread stack size"
+	default 1024
+	help
+	  Stack for fl_writer_thread (the only thread on the FCB write path).
+	  The effective value is pinned in prj.conf; see the comment there for the
+	  high-water history and the still-open fcb_rotate() worst-case measurement.
+
+config FLASH_LOG_WRITER_PRIORITY
+	int "log_writer thread priority"
+	default 9
+	help
+	  Strictly below safety-critical threads (divecan_rx=5,
+	  consensus=5, PID=6) and above the Zephyr log processing
+	  thread (3). The writer can block on a flash erase without
+	  delaying any control path.
+
+config FLASH_LOG_CAPTURE_RTT
+	bool "Capture LOG_x calls into the text FCB"
+	default y
+	depends on LOG
+
+config FLASH_LOG_DEFAULT_RTT_LEVEL
+	int "Default minimum log level captured to flash (1=ERR..4=DBG)"
+	default 2
+	range 1 4
+	depends on FLASH_LOG_CAPTURE_RTT
+	help
+	  Runtime-overridable via UDS DID 0xF283 (LOG_VERBOSITY).
+	  Default 2 = LOG_LEVEL_WRN.
+
+config FLASH_LOG_CAN_VERBOSE_DEFAULT
+	hex "Default LOG_CAN_VERBOSE bitmask"
+	default 0x00
+	range 0x00 0x03
+	help
+	  Bit 0 = capture CAN RX into telemetry FCB.
+	  Bit 1 = capture CAN TX into telemetry FCB.
+	  Default 0 — both off. Runtime-overridable via UDS DID 0xF284.
+	  Default-off rationale: semantic protocol events become
+	  structured telemetry entries already, and anything genuinely
+	  unhandled produces a LOG_WRN that lands in the text FCB.
+
+config LOG_PUSH_FORCE_INF_MODULES
+	string "Log modules force-pushed at INF over CAN"
+	default ""
+	help
+	  Space-separated list of LOG_MODULE_REGISTER names whose messages the
+	  CAN log-push backend forwards up to LOG_LEVEL_INF regardless of the
+	  global runtime verbosity (FLASH_LOG_DEFAULT_RTT_LEVEL / DID 0xF283).
+
+	  Compile-time per-module elevation so a single noisy subsystem's INF
+	  telemetry (e.g. "poseidon_accessories" current readings) reaches the BT
+	  diagnostics without globally raising verbosity — which would flood the
+	  CAN stream with every module's INF output. Resolved to source IDs once
+	  at first use; the only runtime state is a small fixed ID array (see
+	  LOG_PUSH_FORCE_INF_MAX), so there is no NVS/DID configuration surface.
+
+	  Only affects the CAN push backend, not the flash-log text FCB.
+
+config LOG_PUSH_FORCE_INF_MAX
+	int "Max modules in LOG_PUSH_FORCE_INF_MODULES"
+	default 4
+	range 1 16
+	help
+	  Fixed capacity of the resolved force-list. Names beyond this count in
+	  LOG_PUSH_FORCE_INF_MODULES are ignored. Sized for the handful of
+	  subsystems a bench build elevates at once; keep small to bound the
+	  static ID array.
+
+endif # FLASH_LOG
+
+endmenu

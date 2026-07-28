@@ -1,0 +1,26 @@
+=== Final SonarQube sweep after PPO2 controller round ===
+=== Date: 2026-05-12 ===
+
+ppo2_control_math.c: 0 SonarQube findings (clean)
+  - 3 cSpell warnings on "Qube" (vendor name, informational)
+
+ppo2_control.c: 0 SonarQube findings (clean)
+  - 1 cSpell warning on "Qube"
+  - 1 C/C++ extension hint about LOG_MODULE_REGISTER (false positive - macro)
+
+Pre-existing issues in unrelated files (NOT introduced by this round):
+  divecan_send.c: 1× M23_388, 1× S813
+  divecan_rx.c: 1× S995, 1× S1541, 1× S1005, 1× S138, 1× S851
+  prj.conf: 1× warning, 5× hints (Kconfig)
+  dev_full.conf: 2× value-is-default hints
+
+Issues introduced and fixed during this round:
+  ppo2_control_math.c:
+    - S134 (nested >3): refactored via apply_depth_compensation helper
+    - S851 ×2 (float→non-float cast): replaced with lround() inside duty_to_microseconds
+  ppo2_control.c:
+    - M23_388 ×5 (mutable globals): wrapped in static accessor functions
+    - S868 (complex operand parens): added parens around (timing.depth_comp_skipped) && (!*depth_skip_latch)
+    - S813 ×2 (raw int): replaced with Status_t typedef
+    - S845 ×3 (signedness): explicit (int32_t) casts on k_usleep/k_msleep arguments
+    - M23_321 (uninit at decl): added = RUNTIME_SETTINGS_DEFAULT

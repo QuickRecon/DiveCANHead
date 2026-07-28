@@ -1,0 +1,6 @@
+if(CONFIG_SOLENOID)
+  target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/solenoid.c)
+  if(CONFIG_SOLENOID_CURRENT_CHECK)
+    target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/solenoid_current.c)
+  endif()
+endif()

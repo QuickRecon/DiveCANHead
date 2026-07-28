@@ -1,0 +1,2 @@
+config BOARD_DIVECAN_JR
+	select SOC_STM32L431XX

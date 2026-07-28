@@ -1,0 +1,653 @@
+# 52 TUs analysed, manual overrides: /home/aren/Nextcloud/Clients/Internal/CCR_Electronics/DiveCANHeadRev2/Firmware/scripts/wcs_manual.msu
+Translation Unit                                                        Function Name                                     Stack  Unresolved Dependencies
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_executing_entry                       unbounded:728  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_apply_broadcast                    unbounded:688  (__stack_chk_fail ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_wait_frame                         unbounded:672  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_total_absolute.isra                   unbounded:632  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         calibrate_cell                            unbounded:608  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/consensus_subscriber.c                consensus_thread_fn                       unbounded:592  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       autotune_thread_fn                        unbounded:560  (__aeabi_fcmpun ,__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_state_did.c           UDS_StateDID_HandleRead                   unbounded:552  (__stack_chk_fail ,fcb_free_sector_cnt ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock ,z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        solenoid_fire_thread_fn                   unbounded:544  (__stack_chk_fail ,lroundf)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        ppo2_control_init                         unbounded:504  (__aeabi_fcmpun ,__stack_chk_fail ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 fl_writer_thread                          unbounded:464  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_rx.c                  divecan_rx_thread                         unbounded:456  (__stack_chk_fail ,z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_rx.c                  divecan_rx_thread.part.0                  unbounded:448  (__stack_chk_fail ,z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/src/main.c                                preamble_line                             unbounded:416  (__stack_chk_fail ,log_source_id_get)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        ppo2_pid_thread_fn                        unbounded:408  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_state_did.c           handleControlStateDID.constprop           unbounded:392  (__stack_chk_fail ,fcb_free_sector_cnt ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock ,z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_backend.c         fl_process                                unbounded:368  (__stack_chk_fail ,log_msg_get_source_id ,log_output_msg_process ,log_source_id_get)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_parse_detailed_response            unbounded:344  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/option_bytes.c                        option_bytes_assert                       unbounded:344  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_parse_detailed_response.part.0     unbounded:336  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    consensus_calculate                       unbounded:328  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/hw_version.c                          hw_version_init                           unbounded:328  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 fl_batch_flush                            unbounded:328  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_text                    unbounded:320  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    runtime_settings_load                     unbounded:312  (__aeabi_fcmpun ,__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_awaiting_activate_run                 unbounded:312  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        inject_solenoid_off                       unbounded:304  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_cal_done_cb                        unbounded:304  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               solenoid_off                              unbounded:296  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_parse_simple_response              unbounded:296  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_load_cal                           unbounded:296  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_set_cell_broadcast                 unbounded:288  (__stack_chk_fail ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_ppo2_tx.c             divecan_ppo2_tx_thread                    unbounded:288  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_download.c        UDS_LogDownload_HandleRoutine             unbounded:264  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    battery_monitor_thread                    unbounded:264  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              tx_idle_run                               unbounded:264  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_record_boot_marker              unbounded:256  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/thread_analyzer_paced.c               paced_cb                                  unbounded:256  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_rx.c                  can_rx_callback                           unbounded:256  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeAutotuneControlDID                   unbounded:256  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_listeners.c       cell_listener_cb                          unbounded:256  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_cell_raw                unbounded:248  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/errors.c                              errors_init                               unbounded:248  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_listeners.c       consensus_listener_cb                     unbounded:248  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_restoring_on_fail_entry               unbounded:240  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/errors.c                              errors_init.part.0                        unbounded:240  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_rx.c                  cal_response_cb                           unbounded:240  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_rx.c                  RespPing.part.0                           unbounded:240  (__stack_chk_fail ,z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              tx_wait_fc_run                            unbounded:240  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeAutotuneControlDID.part.0            unbounded:240  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         flash_backend_mark_captured               unbounded:232  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       isotp_receiving_run                       unbounded:232  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_downloading_run                       unbounded:232  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          flash_log_reader_resolve_boot_id          unbounded:224  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          flash_log_reader_resolve_dive_id          unbounded:224  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_consensus               unbounded:224  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/drivers/ads1x1x/adc_ads1x1x_local.c       ads1x1x_init                              unbounded:224  (__stack_chk_fail ,z_impl_k_sem_give ,z_impl_k_sem_init ,z_impl_k_thread_create ,z_impl_k_thread_name_set)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_backing_up_entry                      unbounded:224  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_thread_fn                             unbounded:224  (__stack_chk_fail ,zbus_sub_wait_msg)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_listeners.c       dive_state_listener_cb                    unbounded:224  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       ppo2_autotune_start                       unbounded:216  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_can_rx_isr              unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_can_tx                  unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_solenoid_current        unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_dive_marker             unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         flash_backend_init                        unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         flash_backend_read                        unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         flash_backend_write                       unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              send_consecutive_frames.constprop         unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       isotp_idle_run                            unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_idle_run                              unbounded:216  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeHistogramClearDID                    unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeCalibrationTriggerDID                unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_listeners.c       error_listener_cb                         unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_listeners.c       solenoid_fire_listener_cb                 unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 fl_emit_drop_marker_if_any                unbounded:216  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txName                                    unbounded:208  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txStatus                                  unbounded:208  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_pid_snapshot            unbounded:208  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_solenoid_fire           unbounded:208  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_enqueue_error                   unbounded:208  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_save_coefficient                      unbounded:208  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                target_stop                               unbounded:208  (__stack_chk_fail ,crc8 ,z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         flash_backend_init.part.0                 unbounded:208  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       HandleFirstFrame.isra                     unbounded:208  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeForceRevertDID                       unbounded:208  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txID                                      unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txPPO2                                    unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txMillivolts                              unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txCellState                               unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txTankPressure                            unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txCalResponse                             unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_load_coefficient                      unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeSolenoidOverrideDID                  unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeCalibrationTriggerDID.part.0         unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeSetpointDID                          unbounded:200  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     error_histogram_clear                     unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txStartDevice                             unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txSetpoint                                unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txOBOEStat                                unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_tx.c                  txCalAck                                  unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_download.c        UDS_LogDownload_Handle                    unbounded:192  (__stack_chk_fail ,fcb_getnext)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            UDS_SaveSettingValue                      unbounded:192  (__aeabi_fcmpun ,__aeabi_ul2f ,__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          flash_log_reader_resolve_latest_boot      unbounded:192  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          flash_log_reader_resolve_latest_dive      unbounded:192  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     save_work_handler                         unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              send_first_frame                          unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push_backend.c    upb_process                               unbounded:192  (__stack_chk_fail ,log_msg_get_source_id ,log_output_msg_process ,log_source_id_get)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeLogCanVerboseDID                     unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeLogVerbosityDID                      unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeNvsEraseDID                          unbounded:192  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          flash_log_reader_index_summary            unbounded:184  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeLogEraseDID                          unbounded:184  (__stack_chk_fail ,fcb_is_empty)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeFactoryFlashEraseDID                 unbounded:184  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeFactoryCaptureDID                    unbounded:184  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeRestoreFactoryDID                    unbounded:184  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeSolenoidOverrideDID.part.0           unbounded:184  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeSetpointDID.part.0                   unbounded:184  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 fl_enqueue                                unbounded:184  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune_math.c                  autotune_cost                             unbounded:176  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/tank_pressure.c                       tank_pressure_thread                      unbounded:176  (__stack_chk_fail ,sys_clock_cycle_get_32)
+./Firmware/CMakeFiles/app.dir/src/watchdog_feeder.c                     watchdog_feeder_thread                    unbounded:176  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_downloading_run.part.0                unbounded:176  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 reject_sequence_error                     unbounded:176  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     readSerialNumberDID                       unbounded:176  (__stack_chk_fail ,z_impl_hwinfo_get_device_id)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeLogCanVerboseDID.part.0              unbounded:176  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeLogVerbosityDID.part.0               unbounded:176  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            UDS_SetSettingValue                       unbounded:168  (__aeabi_fcmpun ,__aeabi_ul2f ,__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push.c            UDS_LogPush_Poll                          unbounded:168  (__stack_chk_fail)
+#MANUAL                                                                 __snprintf_chk                                      168  
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                poseidon_current_provider                 unbounded:168  (z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 fl_write_entry_to_fcb.isra                unbounded:168  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     writeHistogramClearDID.part.0             unbounded:164  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                poseidon_gauge_status                     unbounded:160  (z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/src/heartbeat.c                           heartbeat_check_all_alive                           160  
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    runtime_settings_save                     unbounded:160  (__aeabi_fcmpun ,__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_send.c                divecan_send                              unbounded:160  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_send.c                divecan_send_blocking                     unbounded:160  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            UDS_GetSettingValue                       unbounded:160  (__stack_chk_fail ,lroundf)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     UDS_SendNegativeResponse                  unbounded:160  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     UDS_SendResponse                          unbounded:160  (__stack_chk_fail)
+#MANUAL                                                                 snprintf                                            160  
+#MANUAL                                                                 __vsprintf_chk                                      160  
+#MANUAL                                                                 sprintf                                             160  
+#MANUAL                                                                 printf                                              160  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          fl_index_claim                            unbounded:160  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_failed_entry                          unbounded:156  (__stack_chk_fail ,smf_set_terminate)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    shutdown_thread_fn                        unbounded:156  (HAL_PWREx_DisableInternalWakeUpLine ,HAL_PWREx_EnableGPIOPullDown ,HAL_PWREx_EnableGPIOPullUp ,HAL_PWREx_EnablePullUpPullDownConfig ,HAL_PWREx_EnterSHUTDOWNMode ,HAL_PWR_EnableWakeUpPin ,__stack_chk_fail ,pm_device_action_run ,regulator_disable ,sys_clock_cycle_get_32 ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock ,zbus_sub_wait_msg)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    analog_cal_coefficient                    unbounded:152  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    diveo2_cal_coefficient                    unbounded:152  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                poseidon_gauge_voltage_byte               unbounded:152  (z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       ISOTP_Send                                unbounded:152  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/drivers/ads1x1x/adc_ads1x1x_local.c       ads1x1x_channel_setup                               152  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       publish_setpoint                          unbounded:152  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_done_entry                            unbounded:152  (__stack_chk_fail ,smf_set_terminate)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        publish_solenoid_status                   unbounded:152  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                record_current_counts                     unbounded:152  (z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid)
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               solenoid_all_off                          unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    cal_compute_target_ppo2                   unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    o2s_cal_coefficient                       unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_parse_error_code                   unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_request_broadcast                  unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/errors.c                              k_sys_fatal_error_handler                 unbounded:144  (k_thread_name_get)
+./Firmware/CMakeFiles/app.dir/src/maintenance_arena.c                   maint_arena_claim                         unbounded:144  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              ISOTP_TxQueue_ProcessFC                   unbounded:144  (__stack_chk_fail)
+#MANUAL                                                                 vsnprintf                                           144  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_cells_run                            unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_failed_solenoid_entry                unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_failed_no_handset_entry              unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_failed_no_ppo2_tx_entry              unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_failed_consensus_entry               unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_failed_cell_entry                    unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_failed_timeout_entry                 unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       HandleSingleFrame.isra                    unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          fl_index_walk_cb                          unbounded:144  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       force_capture_work_handler                unbounded:140  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       factory_image_force_capture_async         unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/errors.c                              zbus_pub_checked                          unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    firmware_confirm_init                     unbounded:136  (z_impl_k_wakeup)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       ISOTP_ProcessRxFrame                      unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            UDS_GetSettingInfo                        unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            UDS_GetSettingOptionLabel                 unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push.c            UDS_LogPush_Init                          unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       get_chunk_buffer                                    136  
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       capture_work_handler.part.0               unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       force_capture_work_handler.part.0         unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     error_observer_cb                                   136  
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_validating_request_entry              unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        k_current_get                                       136  
+./Firmware/CMakeFiles/app.dir/src/consensus_subscriber.c                read_cell_or_fail                         unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_confirmed_entry                      unbounded:136  (__stack_chk_fail ,boot_write_img_confirmed ,smf_set_terminate)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    abort_and_reboot                          unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_send.c                tx_done_callback                          unbounded:136  (__stack_chk_fail ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       isotp_idle_run.part.0                     unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_listeners.c       zbus_chan_const_msg                                 136  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          fl_marker_scan_cb                         unbounded:136  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              ISOTP_TxQueue_Enqueue                     unbounded:128  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_init                            unbounded:128  (__stack_chk_fail ,fcb_init)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_erase                           unbounded:128  (__stack_chk_fail ,fcb_is_empty)
+#MANUAL                                                                 strtod                                              128  
+#MANUAL                                                                 assert_print                                        128  
+#MANUAL                                                                 assert_post_action                                  128  
+#MANUAL                                                                 flash_img_init_id                                   128  
+#MANUAL                                                                 flash_img_check                                     128  
+#MANUAL                                                                 flash_img_buffered_write                            128  
+./Firmware/CMakeFiles/app.dir/drivers/ads1x1x/adc_ads1x1x_local.c       ads1x1x_read                              unbounded:128  (__stack_chk_fail ,z_impl_k_sem_give ,z_impl_k_timer_start)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    z_log_msg_simple_create_2.constprop                 128  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  z_log_msg_simple_create_2.constprop                 128  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 z_log_msg_simple_create_2.constprop                 128  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     z_log_msg_simple_create_2.constprop                 128  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    cell_is_alive                             unbounded:128  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          fl_ensure_index                           unbounded:128  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    runtime_settings_save_field               unbounded:120  (__aeabi_fcmpun ,__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       ISOTP_Init                                unbounded:120  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push.c            UDS_LogPush_SendLogMessage                unbounded:120  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 UDS_OTA_Handle                            unbounded:120  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     UDS_MaintainSession                       unbounded:120  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_settings_get                          unbounded:120  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         flash_backend_erase                       unbounded:120  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_state_did.c           fillSlotVersion4                          unbounded:120  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_state_did.c           fillSlotVersion8                          unbounded:120  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_send_command                       unbounded:116  (__stack_chk_fail ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     error_histogram_init                      unbounded:112  (z_impl_k_timer_start)
+./Firmware/CMakeFiles/app.dir/src/errors.c                              must_succeed_failed                                 112  
+./Firmware/CMakeFiles/app.dir/src/errors.c                              fatal_op_error                                      112  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       ISOTP_Poll                                unbounded:112  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_download.c        UDS_LogDownload_Poll                                112  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     UDS_Init                                  unbounded:112  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_set_rtt_level                   unbounded:112  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_set_can_verbose                 unbounded:112  (__stack_chk_fail)
+#MANUAL                                                                 z_impl_z_log_msg_simple_create_2                    112  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_consensus_run                        unbounded:112  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_thread_entry                         unbounded:112  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 fl_fcb_clear_fed                          unbounded:112  (__stack_chk_fail ,fcb_is_empty)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_wait_frame.part.0                  unbounded:108  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          flash_log_reader_resolve_all                        104  
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_parse_cell_key                        unbounded:104  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_parse_i32                          unbounded:104  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     UDS_SendNegativeResponse.part.0           unbounded:104  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 fl_mount_fcb.isra                         unbounded:104  (__stack_chk_fail ,fcb_init)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_shutdown                            unbounded:100  (HAL_PWREx_DisableInternalWakeUpLine ,HAL_PWREx_EnableGPIOPullDown ,HAL_PWREx_EnableGPIOPullUp ,HAL_PWREx_EnablePullUpPullDownConfig ,HAL_PWREx_EnterSHUTDOWNMode ,HAL_PWR_EnableWakeUpPin ,pm_device_action_run ,regulator_disable)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       z_log_msg_simple_create_1                           100  
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         z_log_msg_simple_create_1                           100  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  z_log_msg_simple_create_1                           100  
+#MANUAL                                                                 strtof                                               96  
+#MANUAL                                                                 pow                                                  96  
+#MANUAL                                                                 k_thread_create                                      96  
+#MANUAL                                                                 log_printf                                           96  
+#MANUAL                                                                 printk                                               96  
+#MANUAL                                                                 z_impl_z_log_msg_static_create                       96  
+#MANUAL                                                                 z_impl_z_log_msg_simple_create_1                     96  
+#MANUAL                                                                 fcb_append                                           96  
+#MANUAL                                                                 fcb_rotate                                           96  
+#MANUAL                                                                 boot_request_upgrade                                 96  
+#MANUAL                                                                 can_add_rx_filter                                    96  
+#MANUAL                                                                 HAL_FLASHEx_OBGetConfig                              96  
+#MANUAL                                                                 settings_save_one                                    96  
+#MANUAL                                                                 settings_runtime_get                                 96  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       check_safety                               unbounded:96  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/errors.c                              op_error_publish                           unbounded:88  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_state_did.c           readBankSemVer                             unbounded:88  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       z_log_msg_simple_create_0                            84  
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    z_log_msg_simple_create_0                            84  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     z_log_msg_simple_create_0                            84  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control_math.c                   pid_compute_fire_timing                    unbounded:80  (lroundf)
+./Firmware/CMakeFiles/app.dir/src/alarm.c                               alarm_update                               unbounded:80  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          flash_log_reader_next                      unbounded:80  (fcb_getnext)
+#MANUAL                                                                 strtol                                               80  
+#MANUAL                                                                 strtoul                                              80  
+#MANUAL                                                                 z_impl_z_log_msg_simple_create_0                     80  
+#MANUAL                                                                 fcb_walk                                             80  
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       ensure_work_q_started.part.0               unbounded:80  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     checkOtaWritePrecondition                  unbounded:80  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/i2c_bus_lock.c                        i2c1_bus_lock_quiet                        unbounded:72  (__stack_chk_fail ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune_math.c                  autotune_opt_report                                  72  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     UDS_IsInDive                               unbounded:72  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_solenoid_run                          unbounded:72  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    runtime_settings_set_volatile              unbounded:64  (__aeabi_fcmpun)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune_math.c                  autotune_cost_begin                                  64  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune_math.c                  autotune_cost_finish                                 64  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              ISOTP_TxQueue_Poll                                   64  
+#MANUAL                                                                 exp                                                  64  
+#MANUAL                                                                 log                                                  64  
+#MANUAL                                                                 zbus_chan_pub                                        64  
+#MANUAL                                                                 log_msg_create                                       64  
+#MANUAL                                                                 flash_area_write                                     64  
+#MANUAL                                                                 flash_area_erase                                     64  
+#MANUAL                                                                 z_impl_can_send                                      64  
+#MANUAL                                                                 settings_load_subtree                                64  
+#MANUAL                                                                 settings_subsys_init                                 64  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        read_setpoint_or_default                   unbounded:64  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        read_cmd_setpoint                          unbounded:64  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_send.c                msg_to_frame                               unbounded:64  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control_math.c                   pid_update                                           56  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune_math.c                  autotune_cost_sample                                 56  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune_math.c                  autotune_opt_init                                    56  
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         flash_backend_size                         unbounded:56  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        wait_for_ppo2_init                                   52  
+./Firmware/CMakeFiles/app.dir/src/power_math.c                          adc_millivolts_to_voltage                            48  
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    runtime_settings_validate                  unbounded:48  (__aeabi_fcmpun)
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              ISOTP_TxQueue_Init                                   48  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              ISOTP_TxQueue_IsBusy                                 48  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 UDS_OTA_Reset                                        48  
+#MANUAL                                                                 strtok_r                                             48  
+#MANUAL                                                                 puts                                                 48  
+#MANUAL                                                                 fputs                                                48  
+#MANUAL                                                                 sin                                                  48  
+#MANUAL                                                                 cos                                                  48  
+#MANUAL                                                                 __assert_func                                        48  
+#MANUAL                                                                 k_msgq_put                                           48  
+#MANUAL                                                                 k_msgq_get                                           48  
+#MANUAL                                                                 z_impl_k_msgq_put                                    48  
+#MANUAL                                                                 z_impl_k_msgq_get                                    48  
+#MANUAL                                                                 k_sem_take                                           48  
+#MANUAL                                                                 z_impl_k_sem_take                                    48  
+#MANUAL                                                                 k_work_submit_to_queue                               48  
+#MANUAL                                                                 k_work_queue_init                                    48  
+#MANUAL                                                                 k_work_queue_start                                   48  
+#MANUAL                                                                 zbus_chan_read                                       48  
+#MANUAL                                                                 zbus_chan_claim                                      48  
+#MANUAL                                                                 fcb_append_finish                                    48  
+#MANUAL                                                                 flash_area_read                                      48  
+#MANUAL                                                                 boot_read_bank_header                                48  
+#MANUAL                                                                 adc_gain_invert_64                                   48  
+#MANUAL                                                                 smf_run_state                                        48  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        pid_sleep_kicking_us                                 48  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune_math.c                  propose_candidate                                    48  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_handset_run                                     48  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_ppo2_tx_run                                     48  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            menu_to_storage                                      48  
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                poseidon_accessories_shutdown              unbounded:44  (__stack_chk_fail ,sys_clock_cycle_get_32 ,z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        mk15_sleep_kicking                                   44  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    analog_calculate_ppo2                                40  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control_math.c                   pid_depth_comp_coeff                                 40  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        ppo2_control_set_gains_live                          40  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_prepare_message_buffer                        40  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_format_tx_command                             40  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            UDS_FormatOptionLabel                                40  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_index.c           flash_log_index_summarize                            40  
+#MANUAL                                                                 __aeabi_ddiv                                         40  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              getTxSm                                              40  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push_backend.c    upb_data_out                                         40  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 getOtaSm                                             40  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_activating_entry                                 40  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     readVariantNameDID                                   40  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     readFirmwareVersionDID                               40  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_backend.c         fl_data_out                                          40  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 fl_batch_append                                      40  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       ISOTP_Reset                                          36  
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_validating_request_entry.part.0                  36  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_solenoid_entry                                  36  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_handset_entry                                   36  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_ppo2_tx_entry                                   36  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_consensus_entry                                 36  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    post_cells_entry                                     36  
+./Firmware/CMakeFiles/app.dir/src/tank_pressure_math.c                  tank_pressure_mv_to_decibar                          32  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    ppo2_centibar_to_wire                                32  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    analog_counts_to_mv                                  32  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_download.c        UDS_LogDownload_FillSelectorResult                   32  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            UDS_ComputeMenuOrder                                 32  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_stats                            unbounded:32  (fcb_free_sector_cnt)
+#MANUAL                                                                 strstr                                               32  
+#MANUAL                                                                 __aeabi_dadd                                         32  
+#MANUAL                                                                 __aeabi_dsub                                         32  
+#MANUAL                                                                 __aeabi_dmul                                         32  
+#MANUAL                                                                 __aeabi_fdiv                                         32  
+#MANUAL                                                                 _reclaim_reent                                       32  
+#MANUAL                                                                 k_thread_suspend                                     32  
+#MANUAL                                                                 z_impl_k_thread_suspend                              32  
+#MANUAL                                                                 flash_area_open                                      32  
+#MANUAL                                                                 boot_is_img_confirmed                                32  
+#MANUAL                                                                 boot_fetch_active_slot                               32  
+#MANUAL                                                                 mcuboot_swap_type                                    32  
+#MANUAL                                                                 smf_set_state                                        32  
+#MANUAL                                                                 smf_set_initial                                      32  
+#MANUAL                                                                 sys_reboot                                           32  
+#MANUAL                                                                 z_impl_hwinfo_get_reset_cause                        32  
+./Firmware/CMakeFiles/app.dir/src/i2c_bus_lock.c                        i2c1_reset_peripheral                                32  
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    suspend_uart_if_ready                      unbounded:32  (pm_device_action_run)
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    pid_gain_valid                             unbounded:32  (__aeabi_fcmpun)
+./Firmware/CMakeFiles/app.dir/src/thread_analyzer_paced.c               paced_thread                               unbounded:32  (thread_analyzer_run)
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    overall_deadline_exceeded                            32  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    enter_waiting_state                                  32  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     readSettingCountDID                                  32  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          fl_range_clear                                       32  
+./Firmware/CMakeFiles/app.dir/drivers/ads1x1x/adc_ads1x1x_local.c       adc_context_on_timer_expired               unbounded:28  (__stack_chk_fail ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/tank_pressure.c                       k_msleep.isra                                        28  
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         k_msleep.isra                                        28  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        k_msleep.isra                                        28  
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                k_msleep.isra                                        28  
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    k_msleep.isra                                        28  
+./Firmware/CMakeFiles/app.dir/src/hw_version.c                          k_msleep.isra                                        28  
+./Firmware/CMakeFiles/app.dir/src/main.c                                k_msleep.isra                                        28  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     k_msleep.isra                                        28  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_rx_sync                                       28  
+./Firmware/CMakeFiles/app.dir/src/watchdog_feeder.c                     watchdog_kick                              unbounded:24  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/i2c_bus_lock.c                        i2c1_bus_note_activity                               24  
+#MANUAL                                                                 memmove                                              24  
+#MANUAL                                                                 strlcpy                                              24  
+#MANUAL                                                                 strncat                                              24  
+#MANUAL                                                                 __aeabi_fadd                                         24  
+#MANUAL                                                                 __aeabi_fsub                                         24  
+#MANUAL                                                                 __aeabi_fmul                                         24  
+#MANUAL                                                                 round                                                24  
+#MANUAL                                                                 sqrt                                                 24  
+#MANUAL                                                                 __memcpy_chk                                         24  
+#MANUAL                                                                 __strncpy_chk                                        24  
+#MANUAL                                                                 __strcpy_chk                                         24  
+#MANUAL                                                                 k_msgq_purge                                         24  
+#MANUAL                                                                 z_impl_k_msgq_purge                                  24  
+#MANUAL                                                                 k_msleep                                             24  
+#MANUAL                                                                 k_sleep                                              24  
+#MANUAL                                                                 k_usleep                                             24  
+#MANUAL                                                                 z_impl_k_sleep                                       24  
+#MANUAL                                                                 z_impl_k_usleep                                      24  
+#MANUAL                                                                 k_sem_reset                                          24  
+#MANUAL                                                                 z_impl_k_sem_reset                                   24  
+#MANUAL                                                                 lround                                               24  
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               deadman_top_cb                                       24  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       status_update_elapsed                      unbounded:24  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/i2c_bus_lock.c                        i2c1_get_lines                             unbounded:24  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_header_is                                     24  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_download.c        fl_stop_streaming.constprop                          24  
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               solenoid_current_poll                                20  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       ppo2_autotune_request_abort                unbounded:20  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       ppo2_autotune_get_status                   unbounded:20  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       ppo2_autotune_is_active                    unbounded:20  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     error_histogram_snapshot                             20  
+./Firmware/CMakeFiles/app.dir/src/heartbeat.c                           heartbeat_reset_for_test                             20  
+./Firmware/CMakeFiles/app.dir/src/errors.c                              errors_get_last_crash                                20  
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_ppo2_math.c           divecan_set_failed_cells                             20  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          flash_log_reader_open                                20  
+./Firmware/CMakeFiles/app.dir/drivers/ads1x1x/adc_ads1x1x_local.c       adc_context_start_sampling                 unbounded:20  (__stack_chk_fail ,z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       status_set_phase                           unbounded:20  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       status_finish                              unbounded:20  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_downloading_exit                                 20  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_downloading_entry                                20  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_idle_entry                             unbounded:20  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_state_did.c           writeInvalidVersion                                  20  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          fl_index_unclaim                           unbounded:20  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               solenoid_current_aggregate                           16  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control_math.c                   pid_state_init                                       16  
+./Firmware/CMakeFiles/app.dir/src/power_math.c                          power_get_low_battery_threshold                      16  
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_vbus_enable                          unbounded:16  (regulator_enable)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_vbus_disable                         unbounded:16  (regulator_disable)
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    runtime_settings_get                                 16  
+./Firmware/CMakeFiles/app.dir/src/maintenance_arena.c                   maint_arena_release                        unbounded:16  (z_impl_k_mutex_lock ,z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          flash_log_reader_invalidate_index                    16  
+#MANUAL                                                                 memcpy                                               16  
+#MANUAL                                                                 memset                                               16  
+#MANUAL                                                                 memcmp                                               16  
+#MANUAL                                                                 strcmp                                               16  
+#MANUAL                                                                 strncmp                                              16  
+#MANUAL                                                                 strcpy                                               16  
+#MANUAL                                                                 strncpy                                              16  
+#MANUAL                                                                 strcat                                               16  
+#MANUAL                                                                 strchr                                               16  
+#MANUAL                                                                 strrchr                                              16  
+#MANUAL                                                                 strcspn                                              16  
+#MANUAL                                                                 __aeabi_uldivmod                                     16  
+#MANUAL                                                                 __aeabi_ldivmod                                      16  
+#MANUAL                                                                 __aeabi_uidivmod                                     16  
+#MANUAL                                                                 __aeabi_idivmod                                      16  
+#MANUAL                                                                 __aeabi_dcmpgt                                       16  
+#MANUAL                                                                 __aeabi_dcmplt                                       16  
+#MANUAL                                                                 __aeabi_dcmpge                                       16  
+#MANUAL                                                                 __aeabi_dcmpeq                                       16  
+#MANUAL                                                                 __aeabi_dcmple                                       16  
+#MANUAL                                                                 __aeabi_f2d                                          16  
+#MANUAL                                                                 __aeabi_d2f                                          16  
+#MANUAL                                                                 __aeabi_i2d                                          16  
+#MANUAL                                                                 __aeabi_ui2d                                         16  
+#MANUAL                                                                 __aeabi_d2iz                                         16  
+#MANUAL                                                                 __aeabi_d2uiz                                        16  
+#MANUAL                                                                 __aeabi_fcmpgt                                       16  
+#MANUAL                                                                 __aeabi_fcmplt                                       16  
+#MANUAL                                                                 __aeabi_f2iz                                         16  
+#MANUAL                                                                 __aeabi_f2uiz                                        16  
+#MANUAL                                                                 __aeabi_memcpy                                       16  
+#MANUAL                                                                 __aeabi_memset                                       16  
+#MANUAL                                                                 roundf                                               16  
+#MANUAL                                                                 floor                                                16  
+#MANUAL                                                                 floorf                                               16  
+#MANUAL                                                                 ceil                                                 16  
+#MANUAL                                                                 ceilf                                                16  
+#MANUAL                                                                 sqrtf                                                16  
+#MANUAL                                                                 k_busy_wait                                          16  
+#MANUAL                                                                 z_impl_k_busy_wait                                   16  
+#MANUAL                                                                 k_uptime_get                                         16  
+#MANUAL                                                                 z_impl_device_is_ready                               16  
+#MANUAL                                                                 zbus_chan_finish                                     16  
+#MANUAL                                                                 flash_area_close                                     16  
+#MANUAL                                                                 __aeabi_d2ulz                                        16  
+#MANUAL                                                                 __aeabi_dcmpun                                       16  
+#MANUAL                                                                 __aeabi_fcmpge                                       16  
+#MANUAL                                                                 __aeabi_fcmple                                       16  
+#MANUAL                                                                 __aeabi_ui2f                                         16  
+#MANUAL                                                                 __aeabi_ul2d                                         16  
+#MANUAL                                                                 __aeabi_i2f                                          16  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       k_uptime_get_32                                      16  
+./Firmware/CMakeFiles/app.dir/src/i2c_bus_lock.c                        k_uptime_get_32                                      16  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              k_uptime_get_32                                      16  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_download.c        k_uptime_get_32                                      16  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     k_uptime_get_32                                      16  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        inject_solenoid_fire                       unbounded:16  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                k_uptime_get                                         16  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    k_uptime_get                                         16  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 k_uptime_get                                         16  
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                poseidon_crc8                              unbounded:16  (crc8)
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     error_histogram_pause                                12  
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     error_histogram_resume                               12  
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     snapshot_to_u16                                      12  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    mark_check_passed                                    12  
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               solenoid_channel_count                                8  
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid_current.c       solenoid_current_classify                             8  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_math.c                    consensus_confidence                                  8  
+./Firmware/CMakeFiles/app.dir/src/device_current.c                      device_current_register                               8  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control_math.c                   pid_state_reset_dynamic                               8  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control_math.c                   setpoint_flush_direction                              8  
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       factory_image_get_backend                             8  
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         calibration_is_running                                8  
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         calibration_try_acquire                               8  
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         calibration_release                                   8  
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         calibration_init                                      8  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        ppo2_control_get_active_mode                          8  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        ppo2_control_get_snapshot                             8  
+./Firmware/CMakeFiles/app.dir/src/ppo2_control.c                        ppo2_control_get_gains_live                           8  
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_detect_protocol                                8  
+./Firmware/CMakeFiles/app.dir/src/alarm.c                               alarm_ppo2_reasons                                    8  
+./Firmware/CMakeFiles/app.dir/src/heartbeat.c                           heartbeat_register                                    8  
+./Firmware/CMakeFiles/app.dir/src/heartbeat.c                           heartbeat_kick                                        8  
+./Firmware/CMakeFiles/app.dir/src/heartbeat.c                           heartbeat_set_long_op                                 8  
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_get_can_voltage                                 8  
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    runtime_settings_get_battery_type                     8  
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    runtime_settings_get_calibration_mode                 8  
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune_math.c                  autotune_default_weights                              8  
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         factory_image_get_flash_backend                       8  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    firmware_confirm_get_state                            8  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    firmware_confirm_get_pass_mask                        8  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    firmware_confirm_decide                               8  
+./Firmware/CMakeFiles/app.dir/src/maintenance_arena.c                   maint_arena_generation                                8  
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_send.c                divecan_send_get_tx_count                             8  
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_rx.c                  divecan_rx_get_bus_init_count                         8  
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_rx.c                  divecan_rx_get_bus_id_count                           8  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              ISOTP_TxQueue_GetPendingCount                         8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_download.c        UDS_LogDownload_Claims                                8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            UDS_DecodeSettingLabelDID                             8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_settings.c            UDS_GetSettingCount                                   8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push.c            UDS_LogPush_SetSuspended                              8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_state_did.c           UDS_StateDID_IsStateDID                               8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_internal_sector_count                       8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_internal_get_fcb                            8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_internal_index_epoch                        8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_pause                                       8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_resume                                      8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_get_rtt_level                               8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_get_can_verbose                             8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 flash_log_get_boot_id                                 8  
+#MANUAL                                                                 strlen                                                8  
+#MANUAL                                                                 strnlen                                               8  
+#MANUAL                                                                 __aeabi_uidiv                                         8  
+#MANUAL                                                                 __aeabi_idiv                                          8  
+#MANUAL                                                                 fabs                                                  8  
+#MANUAL                                                                 fabsf                                                 8  
+#MANUAL                                                                 k_uptime_ticks                                        8  
+#MANUAL                                                                 z_impl_k_uptime_ticks                                 8  
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     atomic_set.isra                                       8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          atomic_set.isra                                       8  
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                target_write_requested                                8  
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                target_write_received                                 8  
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         flash_backend_flush                                   8  
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         flash_backend_is_captured                             8  
+./Firmware/CMakeFiles/app.dir/src/firmware_confirm.c                    atomic_set.constprop.isra                             8  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp_tx_queue.c              tx_idle_entry                                         8  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       isotp_idle_entry                                      8  
+./Firmware/CMakeFiles/app.dir/src/divecan/isotp.c                       isotp_receiving_entry                                 8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_download.c        fl_pack_selector_result.constprop                     8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push_backend.c    upb_init                                              8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push_backend.c    upb_panic                                             8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push_backend.c    upb_dropped                                           8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_log_push_backend.c    upb_format_set                                        8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     readHardwareVersionDID                                8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_state_did.c           writeUint32                                           8  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_state_did.c           writeFloat32                                          8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_backend.c         fl_init                                               8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_backend.c         fl_panic                                              8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_backend.c         fl_dropped                                            8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_backend.c         fl_format_set                                         8  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log_reader.c          fl_index_for                                          8  
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       factory_image_get_version                   unbounded:4  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       factory_image_get_sem_ver                   unbounded:4  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/i2c_bus_lock.c                        i2c1_bus_lock                               unbounded:4  (z_impl_k_mutex_lock)
+./Firmware/CMakeFiles/app.dir/src/i2c_bus_lock.c                        i2c1_bus_unlock                             unbounded:4  (z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_vbus_is_enabled                       unbounded:4  (regulator_is_enabled)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_get_vbus_voltage                      unbounded:4  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_get_vcc_voltage                       unbounded:4  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/drivers/ads1x1x/adc_ads1x1x_local.c       k_sem_give                                  unbounded:4  (z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       k_mutex_lock.constprop.isra                 unbounded:4  (z_impl_k_mutex_lock)
+./Firmware/CMakeFiles/app.dir/src/ppo2_autotune.c                       k_mutex_unlock.constprop.isra               unbounded:4  (z_impl_k_mutex_unlock)
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     save_timer_expiry                           unbounded:4  (k_work_schedule)
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_awaiting_activate_run.part.0                      0  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds_ota.c                 ota_idle_run.part.0                                   0  
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               solenoid_fire                                 unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/flash_mass_erase.c                    flash_mass_erase_external                     unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/device_current.c                      device_current_read                           unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       factory_image_restore_to_slot1                unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       factory_image_is_captured                     unbounded  
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       factory_image_maybe_capture_async             unbounded  
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       factory_image_init                            unbounded  
+./Firmware/CMakeFiles/app.dir/src/i2c_bus_lock.c                        i2c1_bus_recover                              unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_get_battery_voltage                     unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_is_can_active                           unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/main.c                                main                                          unbounded  (__stack_chk_fail ,lroundf)
+./Firmware/CMakeFiles/app.dir/src/divecan/divecan_send.c                divecan_tx_init                               unbounded  
+./Firmware/CMakeFiles/app.dir/src/divecan/uds/uds.c                     UDS_ProcessRequest                            unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/drivers/ads1x1x/adc_ads1x1x_local.c       ads1x1x_acquisition_thread                    unbounded  (z_impl_k_timer_stop)
+./Firmware/CMakeFiles/app.dir/drivers/ads1x1x/adc_ads1x1x_local.c       ads1x1x_read_reg.isra                         unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/drivers/ads1x1x/adc_ads1x1x_local.c       ads1x1x_start_conversion                      unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               gpio_pin_set_dt                               unbounded  
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               counter_stop.isra                             unbounded  
+./Firmware/CMakeFiles/app.dir/drivers/solenoid/solenoid.c               solenoid_init                                 unbounded  
+./Firmware/CMakeFiles/app.dir/src/tank_pressure.c                       transducer_init                               unbounded  
+./Firmware/CMakeFiles/app.dir/src/tank_pressure.c                       transducer_sample                             unbounded  (__stack_chk_fail ,sys_clock_cycle_get_32)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       verify_first_and_last_page                    unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       factory_image_read_version_field              unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       do_capture                                    unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image.c                       capture_work_handler                          unbounded  
+./Firmware/CMakeFiles/app.dir/src/error_histogram.c                     hist_settings_set                             unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/watchdog_feeder.c                     wdt_feed.constprop                            unbounded  
+./Firmware/CMakeFiles/app.dir/src/watchdog_feeder.c                     wdt_channel_id_get_or_init.constprop          unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/calibration.c                         cal_settings_set                              unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/i2c_bus_lock.c                        gpio_pin_get                                  unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/hw_version.c                          gpio_pin_get                                  unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_uart_callback                          unbounded  (z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_send_command.part.0                    unbounded  (z_impl_k_sem_give)
+./Firmware/CMakeFiles/app.dir/src/oxygen_cell_diveo2.c                  diveo2_cell_thread                            unbounded  (__stack_chk_fail ,z_impl_k_sem_init)
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                send_retry_locked                             unbounded  (__stack_chk_fail ,sys_clock_cycle_get_32)
+./Firmware/CMakeFiles/app.dir/src/poseidon_accessories.c                accessories_thread                            unbounded  (z_spin_lock_set_owner ,z_spin_lock_valid ,z_spin_unlock_valid ,zbus_sub_wait_msg)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    gpio_pin_configure_dt                         unbounded  
+./Firmware/CMakeFiles/app.dir/src/hw_version.c                          gpio_pin_configure_dt                         unbounded  
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    set_gpio_checked                              unbounded  
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    sample_vcc_voltage                            unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/power_management.c                    power_init                                    unbounded  (HAL_PWREx_DisableGPIOPullUp ,HAL_PWREx_DisablePullUpPullDownConfig ,__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    load_pid_gain                                 unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/runtime_settings.c                    settings_set                                  unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/factory_image_backend_flash.c         factory_flag_settings_set                     unbounded  (__stack_chk_fail)
+./Firmware/CMakeFiles/app.dir/src/hw_version.c                          gpio_pin_set.isra                             unbounded  
+./Firmware/CMakeFiles/app.dir/src/main.c                                gpio_pin_set.isra                             unbounded  
+./Firmware/CMakeFiles/app.dir/src/main.c                                z_impl_gpio_pin_configure                     unbounded  
+./Firmware/CMakeFiles/app.dir/src/flash_log/flash_log.c                 fl_settings_set                               unbounded  (__stack_chk_fail)

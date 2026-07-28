@@ -1,0 +1,41 @@
+description: |
+  QuickRecon hardware version detection.
+
+  Reads version detection pins at boot and compares against the expected
+  pattern. If the pattern doesn't match, the system halts with a blink
+  code on the LED to indicate a firmware/hardware mismatch.
+
+  Each pin is read twice to distinguish three states:
+    0 = wired to ground (reads LOW with both pull-up and pull-down)
+    1 = wired to VCC / externally pulled up (reads HIGH with both)
+    2 = floating / high-impedance (reads HIGH with pull-up, LOW with pull-down)
+
+  Version table:
+    Rev2.2: ver_det = [Z, Z, Z] → expected-pattern = [2, 2, 2]
+    Rev2.3: ver_det = [0, Z, Z] → expected-pattern = [0, 2, 2]
+    Rev2.4: ver_det = [0, Z, Z] → expected-pattern = [0, 2, 2]
+    Jr:     ver_det = [0, 0, Z] → expected-pattern = [0, 0, 2]
+    Jr2:    ver_det = [0, 0, 0] → expected-pattern = [0, 0, 0]
+
+compatible: "quickrecon,hw-version"
+
+properties:
+  detect-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      Version detection GPIO pins, ordered [ver_det_1, ver_det_2, ver_det_3].
+
+  expected-pattern:
+    type: array
+    required: true
+    description: |
+      Expected pin state for each detection pin:
+        0 = wired to ground
+        1 = wired to VCC / externally pulled high
+        2 = floating (high impedance)
+
+  error-led-gpios:
+    type: phandle-array
+    description: |
+      LED to blink if version mismatch is detected.

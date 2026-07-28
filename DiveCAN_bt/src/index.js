@@ -5,6 +5,9 @@
 
 // Main classes
 export { DiveCANProtocolStack } from './DiveCANProtocolStack.js';
+export { CanableProtocolStack } from './CanableProtocolStack.js';
+export { CanableConnection } from './can/CanableConnection.js';
+export { IsoTpCanTransport } from './transport/IsoTpCanTransport.js';
 export { DeviceManager } from './DeviceManager.js';
 
 // Individual layers (for advanced usage)
@@ -13,6 +16,23 @@ export { SLIPCodec } from './slip/SLIPCodec.js';
 export { DiveCANFramer } from './divecan/DiveCANFramer.js';
 export { DirectTransport } from './transport/DirectTransport.js';
 export { UDSClient } from './uds/UDSClient.js';
+
+// Firmware update (OTA) + flash-log download
+export { OTAManager, OTA_TIMEOUTS } from './firmware/OTAManager.js';
+export { parseMcubootImage, formatVersion } from './firmware/McubootImage.js';
+export {
+  decodeMcubootStatus, decodePostStatus, decodeSemVer8, decodeVer4,
+  SWAP_TYPE_NAMES, POST_PASS_BITS, POST_STATE_NAMES
+} from './firmware/McubootStatus.js';
+export {
+  OP_ERRORS, OP_ERROR_COUNT, decodeErrorHistogram, summarizeErrorHistogram
+} from './errors/ErrorHistogram.js';
+export { LogDownloader, LOG_TIMEOUTS } from './logs/LogDownloader.js';
+export {
+  parseLogStream, parseDclgHeader, decodeRecord, makeRecordCounter,
+  decodeBootMarker, decodeDiveMarker, decodeCanFrame, decodeLogText, decodeConsensus
+} from './logs/LogParser.js';
+export { toJSON as logToJSON, toCSV as logToCSV, toRawBin as logToRawBin, triggerDownload } from './logs/LogExport.js';
 
 // Utilities
 export { ByteUtils } from './utils/ByteUtils.js';

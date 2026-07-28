@@ -1,0 +1,124 @@
+name: HIL Full Qualification
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Firmware variant to build and qualify
+        required: true
+        default: Poseidon_Aren
+        type: choice
+        options:
+          - Poseidon_Aren
+          - AP_Aren
+          - eCCR_classic
+          - Sidewinder_Gabriel
+
+permissions:
+  contents: read
+
+concurrency:
+  group: divecan-hil-bench
+  cancel-in-progress: false
+
+jobs:
+  hil-full:
+    name: Build, flash, and run full HIL
+    runs-on: [self-hosted, divecan-hil]
+    timeout-minutes: 180
+    env:
+      HIL_HOST_ZEPHYR_SDK: ${{ vars.DIVECAN_HIL_ZEPHYR_SDK || '/home/aren/zephyr-sdk-1.0.1' }}
+      HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig/tools/run_hil_host_container.sh' }}
+      HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '0' }}
+      HIL_VARIANT: ${{ inputs.variant || 'Poseidon_Aren' }}
+      HIL_BUILD_DIR: build-hil
+      HIL_HOST_TEST_RIG_DIR: ${{ vars.DIVECAN_HIL_TEST_RIG_DIR || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig' }}
+      HIL_HOST_CELLSIM_TOOLS_DIR: ${{ vars.DIVECAN_HIL_CELLSIM_TOOLS_DIR || '/home/aren/Nextcloud/Clients/Internal/CellSimulator/Firmware/tools' }}
+      HIL_HOST_RIDEN_PSU_DIR: ${{ vars.DIVECAN_HIL_RIDEN_PSU_DIR || '/home/aren/Nextcloud/AI/Claude Skills/riden-psu/scripts' }}
+
+    steps:
+      # Keep this workflow on pull_request, not pull_request_target. Repository
+      # Actions settings gate external fork PRs before this self-hosted job runs.
+      #
+      # The repository contains legacy gitlinks without matching .gitmodules
+      # entries. actions/checkout traverses submodules while removing temporary
+      # credentials and can fail before the job starts, so mirror the existing
+      # CI workflow's plain git checkout.
+      - name: Checkout firmware under test
+        env:
+          CI_REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+          CI_EVENT_REF: ${{ github.ref }}
+          CI_EVENT_SHA: ${{ github.sha }}
+          CI_RUN_REF: refs/remotes/ci-hil/${{ github.run_id }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [ ! -d .git ]; then
+            git init .
+          fi
+          if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "$CI_REPOSITORY_URL"
+          else
+            git remote add origin "$CI_REPOSITORY_URL"
+          fi
+          git fetch --force --prune --no-recurse-submodules origin \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/tags/*:refs/tags/*' \
+            "+${CI_EVENT_REF}:${CI_RUN_REF}"
+          git checkout --force "$CI_EVENT_SHA"
+          git clean -ffdx
+
+      - name: Validate runner and trusted harness
+        run: |
+          test -x "$HIL_HOST_CONTAINER_RUNNER"
+          mkdir -p "$RUNNER_TEMP/divecan-hil"
+          if [ "$HIL_HOST_CONTAINER_RUNNER_USE_SUDO" = "1" ]; then
+            sudo "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" \
+              --preflight
+          else
+            "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" \
+              --preflight
+          fi
+
+      - name: Build, flash, and run HIL inside Docker
+        run: |
+          mkdir -p "$RUNNER_TEMP/divecan-hil"
+          log="$RUNNER_TEMP/divecan-hil/hil-full.log"
+
+          set +e
+          if [ "$HIL_HOST_CONTAINER_RUNNER_USE_SUDO" = "1" ]; then
+            sudo "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$log"
+          else
+            "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$log"
+          fi
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ -s "$RUNNER_TEMP/divecan-hil/summary.md" ]; then
+            cat "$RUNNER_TEMP/divecan-hil/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "HIL pytest status: $status" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Archive HIL log
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: hil-full-${{ github.run_id }}
+          path: ${{ runner.temp }}/divecan-hil/
+          retention-days: 14

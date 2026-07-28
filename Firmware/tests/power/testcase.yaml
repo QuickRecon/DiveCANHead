@@ -1,0 +1,4 @@
+tests:
+  power.voltage_math:
+    platform_allow: native_sim
+    tags: power voltage

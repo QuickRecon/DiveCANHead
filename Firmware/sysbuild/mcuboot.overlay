@@ -1,0 +1,75 @@
+/*
+ * Device-tree overlay for the MCUBoot child image.
+ *
+ * MCUBoot inherits the application's full board DTS, so every node
+ * marked `status = "okay"` causes Zephyr's device model to allocate
+ * driver code+data for it in the bootloader image. The bootloader
+ * doesn't talk CAN, doesn't read oxygen cells, doesn't drive
+ * solenoids, doesn't need an ADC; it only needs to read/write
+ * internal flash and the external SPI NOR to do its swap dance.
+ *
+ * Without this overlay MCUBoot drags in ~18 KB of application-layer
+ * peripheral drivers (uart_stm32, adc_ads1x1x, can_stm32_bxcan,
+ * adc_stm32, dma_stm32, counter_stm32_timer). Disabling them lets
+ * MCUBoot fit in about 32 KB instead of ~56 KB, which lets the current
+ * partition map use 36 KB for MCUBoot and 220 KB for slot0. The board DTS is
+ * authoritative for exact boundaries.
+ *
+ * What MCUBoot actually needs to keep:
+ *   - spi2 + spi_flash (W25Q on SPI2 — slot1/scratch/factory live there)
+ *   - iwdg (watchdog must keep being fed)
+ *   - rcc/clock controller (implicit; can't disable)
+ *   - gpio banks for spi CS pin and any wake/reset signals
+ *
+ * What gets disabled below:
+ *   - can1            no bootloader CAN bus
+ *   - usart1/2/3      no bootloader UART
+ *   - i2c1            cell ADCs are app-only
+ *   - adc1 (internal) battery monitoring is app-only
+ *   - adc_ext1/2      external cell ADCs
+ *   - dma1            only used by usart async — gone with usarts
+ *   - timers7/sol_timer   solenoid deadman is app-only
+ *   - vbat (sensor)   power monitoring is app-only
+ *   - rng             stack-canary seed is app-only (NCS commented out anyway)
+ *   - solenoid_driver app-only
+ *   - power           app-only
+ *   - hw_version      app-only
+ *
+ * If you add a peripheral the bootloader needs (e.g. a recovery UART),
+ * remove its disable here and update the partition sizing in the board
+ * DTS.
+ */
+
+/*
+ * Override the board's chosen code-partition. The board DTS points
+ * zephyr,code-partition at slot0_partition (correct for the app);
+ * MCUBoot needs to link itself into boot_partition or it ends up at
+ * the wrong flash offset and the chip HardFaults on reset.
+ *
+ * Discovered by reading MCUBoot's resolved .config and seeing
+ * CONFIG_FLASH_LOAD_OFFSET = slot0's offset, then confirming via
+ * objdump that .text was at slot0's address — chip then hit
+ * 0xfffffffe HardFault because there was nothing at 0x08000000.
+ */
+/ {
+    chosen {
+        zephyr,code-partition = &boot_partition;
+    };
+};
+
+&can1            { status = "disabled"; };
+&usart1          { status = "disabled"; };
+&usart2          { status = "disabled"; };
+&usart3          { status = "disabled"; };
+&i2c1            { status = "disabled"; };
+&adc1            { status = "disabled"; };
+&adc_ext1        { status = "disabled"; };
+&adc_ext2        { status = "disabled"; };
+&dma1            { status = "disabled"; };
+&timers7         { status = "disabled"; };
+&sol_timer       { status = "disabled"; };  /* child node of timers7 — needs explicit disable, parent's status doesn't cascade through gen_isr_tables */
+&vbat            { status = "disabled"; };
+&rng             { status = "disabled"; };
+&hw_version      { status = "disabled"; };
+&solenoids       { status = "disabled"; };
+&power           { status = "disabled"; };

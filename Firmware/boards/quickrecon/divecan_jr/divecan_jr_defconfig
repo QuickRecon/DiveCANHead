@@ -1,0 +1,69 @@
+# MPU and stack protection
+CONFIG_ARM_MPU=y
+CONFIG_HW_STACK_PROTECTION=y
+
+# GPIO
+CONFIG_GPIO=y
+
+# Console via RTT (no UART consumed)
+CONFIG_CONSOLE=y
+CONFIG_USE_SEGGER_RTT=y
+CONFIG_RTT_CONSOLE=y
+
+# CAN
+CONFIG_CAN=y
+
+# I2C
+CONFIG_I2C=y
+
+# UART (sensor cells — DMA-backed async API for receive-to-idle)
+CONFIG_SERIAL=y
+CONFIG_UART_ASYNC_API=y
+CONFIG_DMA=y
+
+# SPI (external flash)
+CONFIG_SPI=y
+
+# External ADC (ADS1115)
+CONFIG_ADC=y
+CONFIG_ADC_ADS1X1X=y
+
+# Internal VBAT sensor — used as the VCC rail voltage source on Jr
+# (VCC == VBUS physically; both share the regulator). The vbat driver
+# applies the chip's internal 1/3 divider and reports VDD via the
+# sensor API.
+CONFIG_SENSOR=y
+CONFIG_STM32_VBAT=y
+
+# External flash
+CONFIG_FLASH=y
+CONFIG_SPI_NOR=y
+CONFIG_SPI_NOR_SFDP_RUNTIME=y
+
+# Counter (solenoid deadman timer)
+CONFIG_COUNTER=y
+
+# Regulator (VBUS power rail control)
+# Init priority 45: after GPIO (40), before I2C/SPI/UART (50) so that
+# VBUS is powered before any bus drivers try to talk to peripherals.
+CONFIG_REGULATOR=y
+CONFIG_REGULATOR_FIXED_INIT_PRIORITY=45
+
+# Watchdog
+CONFIG_WATCHDOG=y
+
+# Power management — needed by power_management.c::power_shutdown() to
+# suspend the cell UARTs before entering STM32 SHUTDOWN.
+CONFIG_PM_DEVICE=y
+
+# Note: CONFIG_USE_STM32_HAL_PWR_EX is selected from src/Kconfig
+# (DIVECAN_HAL_PWR_EX) because the upstream symbol has no prompt and
+# only stm32wbax SoCs select it by default.
+
+# Settings subsystem (NVS-backed runtime config)
+CONFIG_NVS=y
+CONFIG_SETTINGS=y
+CONFIG_SETTINGS_NVS=y
+CONFIG_SETTINGS_RUNTIME=y
+CONFIG_FLASH_MAP=y
+CONFIG_FLASH_PAGE_LAYOUT=y

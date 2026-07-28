@@ -1,0 +1,515 @@
+/**
+ * @file runtime_settings.c
+ * @brief Persistent runtime settings — load/save via Zephyr settings subsystem
+ *
+ * Stores PPO2 control mode, calibration mode, depth compensation flag, and
+ * PID gains in the "rt" settings subtree (NVS/FCB backend).
+ * Build-time sanity checks ensure exactly one cell type and one power mode
+ * are selected per Kconfig.  Invalid stored values are replaced with defaults
+ * rather than causing a boot failure.
+ */
+
+#include "runtime_settings.h"
+#include "common.h"
+#include <zephyr/settings/settings.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
+#include <string.h>
+#include <math.h>
+
+LOG_MODULE_REGISTER(runtime_settings, LOG_LEVEL_INF);
+
+/* ---- Topology static asserts ---- */
+
+BUILD_ASSERT(IS_ENABLED(CONFIG_CELL_1_TYPE_ANALOG) +
+         IS_ENABLED(CONFIG_CELL_1_TYPE_DIVEO2) +
+         IS_ENABLED(CONFIG_CELL_1_TYPE_O2S) == 1,
+         "Exactly one type must be selected for cell 1");
+
+#if CONFIG_CELL_COUNT >= 2
+BUILD_ASSERT(IS_ENABLED(CONFIG_CELL_2_TYPE_ANALOG) +
+         IS_ENABLED(CONFIG_CELL_2_TYPE_DIVEO2) +
+         IS_ENABLED(CONFIG_CELL_2_TYPE_O2S) == 1,
+         "Exactly one type must be selected for cell 2");
+#endif
+
+#if CONFIG_CELL_COUNT >= 3
+BUILD_ASSERT(IS_ENABLED(CONFIG_CELL_3_TYPE_ANALOG) +
+         IS_ENABLED(CONFIG_CELL_3_TYPE_DIVEO2) +
+         IS_ENABLED(CONFIG_CELL_3_TYPE_O2S) == 1,
+         "Exactly one type must be selected for cell 3");
+#endif
+
+BUILD_ASSERT(IS_ENABLED(CONFIG_POWER_MODE_BATTERY) +
+         IS_ENABLED(CONFIG_POWER_MODE_BATTERY_THEN_CAN) +
+         IS_ENABLED(CONFIG_POWER_MODE_CAN) == 1,
+         "Exactly one power mode must be selected");
+
+#define SETTINGS_SUBTREE "rt"
+
+/**
+ * @brief Return a pointer to the module-local cached settings struct
+ *
+ * @return Pointer to the single static RuntimeSettings_t instance
+ */
+static RuntimeSettings_t *getCached(void)
+{
+    static RuntimeSettings_t cached = RUNTIME_SETTINGS_DEFAULT;
+    return &cached;
+}
+
+/**
+ * @brief Check whether a PPO2ControlMode_t value is in the allowed set
+ *
+ * @param val Candidate mode value
+ * @return true if val is a recognised PPO2 control mode
+ */
+static bool ppo2_mode_valid(PPO2ControlMode_t val)
+{
+    bool found = false;
+    size_t count = ARRAY_SIZE(valid_ppo2_control_modes);
+
+    for (size_t i = 0; i < count; ++i) {
+        if (valid_ppo2_control_modes[i] == val) {
+            found = true;
+        }
+    }
+    return found;
+}
+
+/**
+ * @brief Check whether a CalibrationMode_t value is in the allowed set
+ *
+ * @param val Candidate mode value
+ * @return true if val is a recognised calibration mode
+ */
+static bool cal_mode_valid(CalibrationMode_t val)
+{
+    bool found = false;
+    size_t count = ARRAY_SIZE(valid_cal_modes);
+
+    for (size_t i = 0; i < count; ++i) {
+        if (valid_cal_modes[i] == val) {
+            found = true;
+        }
+    }
+    return found;
+}
+
+/**
+ * @brief Check whether a BatteryType_t value is in the allowed set
+ *
+ * @param val Candidate battery chemistry value
+ * @return true if val is a recognised BatteryType_t
+ */
+static bool battery_type_valid(BatteryType_t val)
+{
+    /* Lower bound omitted: BatteryType_t is unsigned and BATTERY_TYPE_9V==0,
+     * so `val >= BATTERY_TYPE_9V` is always true (compiler -Wtype-limits). */
+    return val < BATTERY_TYPE_COUNT;
+}
+
+/**
+ * @brief Check whether a candidate PID gain is finite and within bounds
+ *
+ * Used by both NVS-load validation and UDS-write validation. Bounds are
+ * deliberately loose — production tuned values live well below PID_GAIN_MAX,
+ * but the upper bound catches obvious corruption (NaN, Inf, runaway values).
+ *
+ * @param g Candidate gain value
+ * @return true if g is finite and within [PID_GAIN_MIN, PID_GAIN_MAX]
+ */
+static bool pid_gain_valid(Numeric_t g)
+{
+    /* isfinite() is type-generic — classifying g at its native float width
+     * avoids the (double) promotion that used to drag the soft-double
+     * compare helpers (and with them the whole libgcc double add/sub
+     * object, ~1.3 KB) into this otherwise double-free image. */
+    return isfinite(g) && (g >= PID_GAIN_MIN) && (g <= PID_GAIN_MAX);
+}
+
+/**
+ * @brief Validate a RuntimeSettings_t struct for internal consistency
+ *
+ * Checks that all enum fields are in-range, that feature flags are
+ * consistent with the build configuration (e.g. depth compensation requires
+ * CONFIG_HAS_O2_SOLENOID), and that PID gains are finite and bounded.
+ *
+ * @param s Settings struct to validate; must not be NULL
+ * @return true if all fields are valid
+ */
+bool runtime_settings_validate(const RuntimeSettings_t *s)
+{
+    bool result = true;
+
+    if (!ppo2_mode_valid(s->ppo2_control_mode)) {
+        result = false;
+    }
+    else if (!cal_mode_valid(s->calibration_mode)) {
+        result = false;
+    }
+    else if ((!pid_gain_valid(s->pid_kp)) ||
+         (!pid_gain_valid(s->pid_ki)) ||
+         (!pid_gain_valid(s->pid_kd))) {
+        result = false;
+    }
+    else if (!battery_type_valid(s->battery_type)) {
+        result = false;
+    }
+    else
+    {
+#ifndef CONFIG_HAS_O2_SOLENOID
+        if (s->depth_compensation) {
+            result = false;
+        }
+        else
+        {
+            /* No action required */
+        }
+#endif
+    }
+
+    return result;
+}
+
+/* Per-field loaders: each reads its expected wire type from the settings
+ * backend and updates the in-memory cache iff the byte count matches and
+ * the value passes its validator. Read errors leave the cache unchanged
+ * (the existing default or previously-loaded value persists). */
+
+static void load_ppo2(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    uint8_t val = 0U;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if ((sizeof(val) == (size_t)got) &&
+        ppo2_mode_valid((PPO2ControlMode_t)val)) {
+        cached->ppo2_control_mode = (PPO2ControlMode_t)val;
+    }
+}
+
+static void load_cal(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    uint8_t val = 0U;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if ((sizeof(val) == (size_t)got) &&
+        cal_mode_valid((CalibrationMode_t)val)) {
+        cached->calibration_mode = (CalibrationMode_t)val;
+    }
+}
+
+static void load_depth(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    bool val = false;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if (sizeof(val) == (size_t)got) {
+        cached->depth_compensation = val;
+    }
+}
+
+static void load_pid_gain(settings_read_cb cb, void *arg, Numeric_t *dest)
+{
+    Numeric_t val = 0.0f;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if ((sizeof(val) == (size_t)got) && pid_gain_valid(val)) {
+        *dest = val;
+    }
+}
+
+static void load_battery(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    uint8_t val = 0U;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if ((sizeof(val) == (size_t)got) &&
+        battery_type_valid((BatteryType_t)val)) {
+        cached->battery_type = (BatteryType_t)val;
+    }
+}
+
+static void load_bcst(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    bool vals[CELL_MAX_COUNT] = {0};
+    ssize_t got = cb(arg, vals, sizeof(vals));
+    if (sizeof(vals) == (size_t)got) {
+        for (size_t i = 0; i < CELL_MAX_COUNT; ++i) {
+            cached->enforce_broadcast[i] = vals[i];
+        }
+    }
+}
+
+/**
+ * @brief Zephyr settings handler callback — deserialise one key into the cache
+ *
+ * Called by the settings subsystem for each "rt/<key>" entry found in storage.
+ * Unrecognised keys return -ENOENT; read errors are silently discarded and the
+ * existing cached value is preserved.
+ *
+ * @param name    Key name relative to the "rt" subtree (e.g. "ppo2", "cal")
+ * @param len     Byte length hint from the settings backend (unused)
+ * @param read_cb Backend-provided callback to read the raw value bytes
+ * @param cb_arg  Opaque argument to pass back to read_cb
+ * @return 0 on success, -ENOENT for unknown keys
+ */
+static Status_t settings_set(const char *name, size_t len,
+            settings_read_cb read_cb, void *cb_arg)
+{
+    Status_t rc = 0;
+    RuntimeSettings_t *cached = getCached();
+    (void)len;
+
+    if (0 == strcmp(name, "ppo2")) {
+        load_ppo2(read_cb, cb_arg, cached);
+    }
+    else if (0 == strcmp(name, "cal")) {
+        load_cal(read_cb, cb_arg, cached);
+    }
+    else if (0 == strcmp(name, "depth")) {
+        load_depth(read_cb, cb_arg, cached);
+    }
+    else if (0 == strcmp(name, "kp")) {
+        load_pid_gain(read_cb, cb_arg, &cached->pid_kp);
+    }
+    else if (0 == strcmp(name, "ki")) {
+        load_pid_gain(read_cb, cb_arg, &cached->pid_ki);
+    }
+    else if (0 == strcmp(name, "kd")) {
+        load_pid_gain(read_cb, cb_arg, &cached->pid_kd);
+    }
+    else if (0 == strcmp(name, "bat")) {
+        load_battery(read_cb, cb_arg, cached);
+    }
+    else if (0 == strcmp(name, "bcst")) {
+        load_bcst(read_cb, cb_arg, cached);
+    }
+    else
+    {
+        rc = -ENOENT;
+    }
+
+    return rc;
+}
+
+SETTINGS_STATIC_HANDLER_DEFINE(runtime, SETTINGS_SUBTREE, NULL,
+                   settings_set, NULL, NULL);
+
+/**
+ * @brief Load runtime settings from flash, falling back to defaults on error
+ *
+ * Initialises the settings subsystem, loads the "rt" subtree, and validates
+ * the result.  If loading or validation fails the defaults are written into
+ * *out and a warning is logged; the function still returns 0 so that the
+ * caller can continue with safe defaults.
+ *
+ * @param out Destination struct; populated with the loaded (or default) settings
+ * @return 0 on success or when defaults are used, negative errno if the
+ *         settings subsystem itself could not be initialised
+ */
+Status_t runtime_settings_load(RuntimeSettings_t *out)
+{
+    RuntimeSettings_t *cached = getCached();
+    Status_t rc = 0;
+
+    *cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+
+    rc = settings_subsys_init();
+    if (0 != rc) {
+        LOG_ERR("settings init failed: %d", rc);
+        *out = *cached;
+    }
+    else
+    {
+        rc = settings_load_subtree(SETTINGS_SUBTREE);
+        if (0 != rc) {
+            LOG_WRN("settings load failed: %d, using defaults", rc);
+        }
+
+        if (!runtime_settings_validate(cached)) {
+            LOG_WRN("stored settings invalid, reverting to defaults");
+            *cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+        }
+
+        *out = *cached;
+        LOG_INF("ppo2=%d cal=%d depth=%d kp=%.4f ki=%.4f kd=%.4f bat=%d",
+            cached->ppo2_control_mode, cached->calibration_mode,
+            cached->depth_compensation,
+            (double)cached->pid_kp, (double)cached->pid_ki,
+            (double)cached->pid_kd,
+            cached->battery_type);
+        rc = 0;
+    }
+
+    return rc;
+}
+
+/**
+ * @brief Persist runtime settings to flash and update the in-memory cache
+ *
+ * Validates the new settings before writing.  Each field is saved individually;
+ * the cache is updated only when all four writes succeed.  The first failing
+ * write's error code is returned.
+ *
+ * @param s Settings to persist; must not be NULL and must pass validation
+ * @return 0 on success, -EINVAL if validation fails, or a negative errno from
+ *         the settings backend
+ */
+Status_t runtime_settings_save(const RuntimeSettings_t *s)
+{
+    Status_t rc = 0;
+
+    if (!runtime_settings_validate(s)) {
+        rc = -EINVAL;
+    }
+    else
+    {
+        uint8_t ppo2_val = (uint8_t)s->ppo2_control_mode;
+        uint8_t cal_val = (uint8_t)s->calibration_mode;
+        uint8_t bat_val = (uint8_t)s->battery_type;
+
+        enum { SAVE_FIELD_COUNT = 8 };
+        const Status_t rc_codes[SAVE_FIELD_COUNT] = {
+            settings_save_one(SETTINGS_SUBTREE "/ppo2",
+                      &ppo2_val, sizeof(ppo2_val)),
+            settings_save_one(SETTINGS_SUBTREE "/cal",
+                      &cal_val, sizeof(cal_val)),
+            settings_save_one(SETTINGS_SUBTREE "/depth",
+                      &s->depth_compensation,
+                      sizeof(s->depth_compensation)),
+            settings_save_one(SETTINGS_SUBTREE "/kp",
+                      &s->pid_kp, sizeof(s->pid_kp)),
+            settings_save_one(SETTINGS_SUBTREE "/ki",
+                      &s->pid_ki, sizeof(s->pid_ki)),
+            settings_save_one(SETTINGS_SUBTREE "/kd",
+                      &s->pid_kd, sizeof(s->pid_kd)),
+            settings_save_one(SETTINGS_SUBTREE "/bat",
+                      &bat_val, sizeof(bat_val)),
+            settings_save_one(SETTINGS_SUBTREE "/bcst",
+                      s->enforce_broadcast,
+                      sizeof(s->enforce_broadcast)),
+        };
+
+        Status_t first_err = 0;
+        size_t rc_codes_count = ARRAY_SIZE(rc_codes);
+        for (size_t i = 0; i < rc_codes_count; ++i) {
+            if ((0 == first_err) && (0 != rc_codes[i])) {
+                first_err = rc_codes[i];
+            }
+        }
+
+        if (0 == first_err) {
+            *getCached() = *s;
+        }
+        else {
+            rc = first_err;
+        }
+    }
+
+    return rc;
+}
+
+Status_t runtime_settings_save_field(RuntimeSettingField_t field)
+{
+    const RuntimeSettings_t *cached = getCached();
+    Status_t rc = -EINVAL;
+
+    /* The live cache is the source of truth; the value being saved was already
+     * applied + validated via runtime_settings_set_volatile(). Re-validate the
+     * whole struct as a cheap guard, but persist ONLY the one key — no NVS
+     * reload, so other fields' volatile edits remain live and unpersisted. */
+    if (runtime_settings_validate(cached)) {
+        switch (field) {
+        case RT_FIELD_PPO2: {
+            uint8_t v = (uint8_t)cached->ppo2_control_mode;
+            rc = settings_save_one(SETTINGS_SUBTREE "/ppo2", &v, sizeof(v));
+            break;
+        }
+        case RT_FIELD_CAL: {
+            uint8_t v = (uint8_t)cached->calibration_mode;
+            rc = settings_save_one(SETTINGS_SUBTREE "/cal", &v, sizeof(v));
+            break;
+        }
+        case RT_FIELD_DEPTH:
+            rc = settings_save_one(SETTINGS_SUBTREE "/depth",
+                           &cached->depth_compensation,
+                           sizeof(cached->depth_compensation));
+            break;
+        case RT_FIELD_KP:
+            rc = settings_save_one(SETTINGS_SUBTREE "/kp",
+                           &cached->pid_kp, sizeof(cached->pid_kp));
+            break;
+        case RT_FIELD_KI:
+            rc = settings_save_one(SETTINGS_SUBTREE "/ki",
+                           &cached->pid_ki, sizeof(cached->pid_ki));
+            break;
+        case RT_FIELD_KD:
+            rc = settings_save_one(SETTINGS_SUBTREE "/kd",
+                           &cached->pid_kd, sizeof(cached->pid_kd));
+            break;
+        case RT_FIELD_BATTERY: {
+            uint8_t v = (uint8_t)cached->battery_type;
+            rc = settings_save_one(SETTINGS_SUBTREE "/bat", &v, sizeof(v));
+            break;
+        }
+        case RT_FIELD_BCST:
+            rc = settings_save_one(SETTINGS_SUBTREE "/bcst",
+                           cached->enforce_broadcast,
+                           sizeof(cached->enforce_broadcast));
+            break;
+        default:
+            rc = -EINVAL;
+            break;
+        }
+    }
+
+    return rc;
+}
+
+Status_t runtime_settings_set_volatile(const RuntimeSettings_t *s)
+{
+    Status_t rc = 0;
+
+    if (!runtime_settings_validate(s)) {
+        rc = -EINVAL;
+    }
+    else {
+        /* Apply to the in-memory cache only — live config changes immediately
+         * (e.g. the calibrate path reads getCached()->calibration_mode) but is
+         * NOT persisted to NVS. Mirrors runtime_settings_save()'s cache update
+         * minus the settings_save_one writes. */
+        *getCached() = *s;
+    }
+
+    return rc;
+}
+
+void runtime_settings_get(RuntimeSettings_t *out)
+{
+    *out = *getCached();
+}
+
+/**
+ * @brief Return the currently-cached battery chemistry.
+ *
+ * Reads only from the in-memory cache; no NVS or settings-subsystem access.
+ * Polled by battery_monitor_thread so the threshold tracks runtime UDS edits
+ * within one sample interval.
+ *
+ * @return Cached BatteryType_t value.
+ */
+BatteryType_t runtime_settings_get_battery_type(void)
+{
+    return getCached()->battery_type;
+}
+
+/**
+ * @brief Return the currently-cached calibration method (Cal Mode setting).
+ *
+ * Reads from the in-memory cache. The DiveCAN/UDS calibrate entry points use
+ * this to pick the CalMethod_t for a CalRequest_t, so the user's Cal Mode
+ * setting (Dig Ref / Absolute / Total Absolute / Solenoid Flush) is honored
+ * instead of a hardcoded method.
+ *
+ * @return Cached calibration mode (CalibrationMode_t is a typedef of CalMethod_t).
+ */
+CalibrationMode_t runtime_settings_get_calibration_mode(void)
+{
+    return getCached()->calibration_mode;
+}

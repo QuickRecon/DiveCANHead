@@ -1,0 +1,17 @@
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      # Pinned to the revision validated on the bench (v4.4.0-2182) so CI
+      # analyzes exactly what local builds and HIL testing run against.
+      # Bump deliberately: update the local checkout, re-run the native +
+      # HIL suites, then move this pin to match.
+      revision: b017626ca6e9baaf7e689a9ec7f9035a99f4470a
+      import: true
+
+  self:
+    path: app

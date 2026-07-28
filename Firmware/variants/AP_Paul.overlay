@@ -1,0 +1,30 @@
+/*
+ * Device-tree overlay for the "AP_Paul" variant.
+ *
+ * Cell mix: 3x analog galvanic cells (same topology as eCCR_classic).
+ *
+ *   Cell 1 = analog  → ADS1115 @ 0x48 (adc_ext1) channel 0
+ *   Cell 2 = analog  → ADS1115 @ 0x48 (adc_ext1) channel 1
+ *   Cell 3 = analog  → ADS1115 @ 0x49 (adc_ext2) channel 0
+ *
+ * No digital cells, so none of the USARTs are spoken to. Disabling the
+ * unused nodes elides each driver's DEVICE_DT_INST_DEFINE, reclaiming
+ * ~354 B of driver data per USART that would otherwise be allocated at
+ * link time.
+ *
+ * If a cell becomes digital, re-enable the matching USART here or the
+ * build will fail with a missing DT-node reference from the cell driver.
+ */
+
+/* No digital cells — all three oxygen-sensor USARTs are unused. */
+&usart1 {
+    status = "disabled";
+};
+
+&usart2 {
+    status = "disabled";
+};
+
+&usart3 {
+    status = "disabled";
+};

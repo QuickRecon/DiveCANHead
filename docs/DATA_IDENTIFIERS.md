@@ -1,257 +1,446 @@
 # Data Identifiers (DIDs)
 
-This document provides a complete reference for all Data Identifiers (DIDs) used in the UDS implementation.
+Complete reference for all Data Identifiers (DIDs) used in the UDS
+implementation of the **Zephyr firmware** (`Firmware/`). For the service
+model (sessions, NRCs, transfer/routine control) see
+[UDS_PROTOCOL.md](UDS_PROTOCOL.md); for the transport layer see
+[ISOTP_TRANSPORT.md](ISOTP_TRANSPORT.md).
 
-## DID Ranges
+> **Scope note:** This document supersedes the original STM32/FreeRTOS DID
+> list. DIDs/ranges that did not exist in the legacy firmware (crash info,
+> error histogram, OTA/MCUboot, flash-log management, and the `0xF1xx`
+> RoutineControl IDs) are documented here. The legacy "Configuration DID"
+> at `0xF100` no longer exists — configuration is exposed entirely through
+> the settings system (`0x9xxx`).
 
-| Range | Purpose |
-|-------|---------|
-| 0x8xxx | Common DIDs (bus enumeration, device info) |
-| 0x9xxx | Settings system DIDs |
-| 0xAxxx | Log/event streaming DIDs |
-| 0xF0xx | Device identification DIDs |
-| 0xF1xx | Configuration DIDs |
-| 0xF2xx | PPO2 control state DIDs |
-| 0xF23x | Power monitoring DIDs |
-| 0xF24x | Control DIDs (setpoint, calibration) |
-| 0xF4Nx | Per-cell data DIDs (N = cell number) |
+## DID / Identifier Ranges
+
+| Range | Service | Purpose |
+|-------|---------|---------|
+| 0x9xxx | 0x22 / 0x2E | Settings system (count, info, value, label, save) |
+| 0xA100 | push | Log message stream (Head → BT client, async push) |
+| 0xF000–0xF001 | 0x22 | Device identification (firmware/hardware version) |
+| 0xF1xx | 0x31 | **RoutineControl** RIDs for flash-log download (not DIDs) |
+| 0xF20x–0xF22x | 0x22 | PPO2 control state (consensus, setpoint, PID, uptime) |
+| 0xF23x | 0x22 | Power monitoring (rail voltages, sources) |
+| 0xF24x | 0x2E | Control writes (setpoint, calibration trigger, autotune control) |
+| 0xF25x | 0x22 | Crash-info (from `errors_get_last_crash()`) |
+| 0xF26x | 0x22 / 0x2E | Error histogram (read + clear) |
+| 0xF27x | 0x22 / 0x2E | OTA / MCUboot status + action DIDs |
+| 0xF28x | 0x22 / 0x2E | Flash-log management (stats, erase, verbosity) |
+| 0xF4Nx | 0x22 | Per-cell data (N = cell number 0–2) |
 
 ## Source Files
 
-- `STM32/Core/Src/DiveCAN/uds/uds_state_did.h` - State DID definitions
-- `STM32/Core/Src/DiveCAN/uds/uds_settings.c` - Settings implementation
-- `DiveCAN_bt/src/uds/constants.js` - JavaScript client DID definitions
+- `Firmware/src/divecan/include/uds.h` — service IDs, NRCs, session model, device-ID DIDs
+- `Firmware/src/divecan/include/uds_state_did.h` — state/cell/crash/OTA/log DID definitions
+- `Firmware/src/divecan/include/uds_settings.h` — settings DID bases
+- `Firmware/src/divecan/uds/uds.c` — read/write dispatch, write-DID handlers
+- `Firmware/src/divecan/uds/uds_state_did.c` — state + per-cell read handlers
+- `Firmware/src/divecan/uds/uds_settings.c` — settings implementation
+- `Firmware/src/divecan/uds/uds_log_download.c` — `0xF1xx` RoutineControl + log transfer
+- `Firmware/src/divecan/uds/uds_ota.c` — OTA TransferData path
+- `DiveCAN_bt/src/uds/constants.js` — JavaScript client DID definitions
 
 ## Device Identification DIDs (0xF0xx)
 
 | DID | Size | Type | Description | R/W |
 |-----|------|------|-------------|-----|
-| 0xF000 | Variable | string | Firmware commit hash | R |
-| 0xF001 | 1 | uint8 | Hardware version | R |
-
-## Configuration DIDs (0xF1xx)
-
-| DID | Size | Type | Description | R/W |
-|-----|------|------|-------------|-----|
-| 0xF100 | 4 | uint32 | Configuration bitfield | R/W |
+| 0xF000 | ≤10 | string | Firmware commit hash (git-describe, `"dev"` out-of-tree) | R |
+| 0xF001 | 1 | uint8 | Hardware version (currently always 0; enforced at boot by the `hw_version` DT driver, not exposed at runtime) | R |
 
 ## PPO2 Control State DIDs (0xF2xx)
 
-| DID | Size | Type | Description | R |
-|-----|------|------|-------------|---|
-| 0xF200 | 4 | float32 | Consensus PPO2 (bar) | R |
-| 0xF202 | 4 | float32 | Current setpoint (bar) | R |
-| 0xF203 | 1 | uint8 | Cells valid bitfield (bits 0-2) | R |
-| 0xF210 | 4 | float32 | Solenoid duty cycle (0.0-1.0) | R |
+| DID | Size | Type | Description | R/W |
+|-----|------|------|-------------|-----|
+| 0xF200 | 4 | float32 | Consensus (voted) PPO2 in bar | R |
+| 0xF202 | 4 | float32 | Current setpoint in bar (centibar/100) | R |
+| 0xF203 | 1 | uint8 | Cells-valid bitfield (bits 0–2 = cells in voting) | R |
+| 0xF210 | 4 | float32 | Solenoid duty cycle (0.0–1.0) | R |
 | 0xF211 | 4 | float32 | PID integral accumulator | R |
 | 0xF212 | 2 | uint16 | PID saturation event counter | R |
+| 0xF213 | 38 | struct | PID autotune status (see below) | R |
 | 0xF220 | 4 | uint32 | Uptime in seconds | R |
+
+### PID Autotune Status (0xF213)
+
+Live snapshot of the on-device PID autotune routine (see
+[UDS_PROTOCOL.md](UDS_PROTOCOL.md) → *PID Autotune* and
+`Firmware/src/ppo2_autotune.c`). Readable on **all variants** — where there is
+no O2 solenoid it always reports `IDLE`. 38 bytes, **little-endian**:
+
+| Offset | Size | Type | Field | Notes |
+|--------|------|------|-------|-------|
+| 0 | 1 | uint8 | state | 0=IDLE, 1=SETTLING, 2=STEPPING, 3=DONE, 4=ABORTED |
+| 1 | 1 | uint8 | abort_reason | 0=NONE, 1=OPERATOR, 2=DIVE, 3=CELL_FAIL, 4=TIMEOUT, 5=CONDITIONS |
+| 2 | 2 | uint16 | iteration | Candidate gain sets evaluated so far |
+| 4 | 2 | uint16 | iteration_budget | Configured evaluation budget |
+| 6 | 4 | float32 | cand_kp | Candidate Kp under evaluation |
+| 10 | 4 | float32 | cand_ki | Candidate Ki under evaluation |
+| 14 | 4 | float32 | cand_kd | Candidate Kd under evaluation |
+| 18 | 4 | float32 | best_kp | Best Kp found so far |
+| 22 | 4 | float32 | best_ki | Best Ki found so far |
+| 26 | 4 | float32 | best_kd | Best Kd found so far |
+| 30 | 4 | float32 | best_cost | Cost at the best gain set |
+| 34 | 4 | uint32 | elapsed_s | Seconds since the run started |
 
 ## Power Monitoring DIDs (0xF23x)
 
-| DID | Size | Type | Description | Unit | R |
-|-----|------|------|-------------|------|---|
+| DID | Size | Type | Description | Unit | R/W |
+|-----|------|------|-------------|------|-----|
 | 0xF230 | 4 | float32 | VBus rail voltage | V | R |
 | 0xF231 | 4 | float32 | VCC rail voltage | V | R |
 | 0xF232 | 4 | float32 | Battery voltage | V | R |
 | 0xF233 | 4 | float32 | CAN bus voltage | V | R |
 | 0xF234 | 4 | float32 | Low-voltage threshold | V | R |
-| 0xF235 | 1 | uint8 | Power sources (VCC: bits 0-1, VBUS: bits 2-3) | - | R |
+| 0xF235 | 1 | uint8 | Power sources bitfield (Jr reports 0 — single battery source, no mux) | - | R |
+| 0xF236 | 4 | struct | Poseidon battery fuel gauge (percent, flags, age_s LE); Poseidon builds only | - | R |
+| 0xF237 | 8 | struct | Whole-device instantaneous current draw (see below) | - | R |
+
+### Device Current (0xF237)
+
+Whole-device instantaneous current draw from the generic current-provider API
+(`Firmware/include/device_current.h`). On the Poseidon variant the provider is
+the battery's DS2782 fuel gauge; other variants may register an ADC-backed shunt
+provider. Always returns a fixed 8-byte payload with an explicit validity flag
+(mirroring the gauge at 0xF236), so a batched read never fails on a variant with
+no provider. 8 bytes, **little-endian**:
+
+| Offset | Size | Type | Field | Notes |
+|--------|------|------|-------|-------|
+| 0 | 4 | int32 | current_ua | Instantaneous draw in µA (positive = draw) |
+| 4 | 2 | uint16 | age_s | Seconds since the sample was taken (clamped) |
+| 6 | 1 | uint8 | valid | 1 = provider returned a sample; 0 = no provider / no sample yet |
+| 7 | 1 | uint8 | reserved | 0 |
+
+The BT client decodes this via `decodeDeviceCurrent()` and surfaces the draw in
+mA on the Power Status page (rendered `--` when `valid` is 0).
 
 ## Control DIDs (0xF24x)
 
-These DIDs allow writing control values to the device. They are write-only (Service 0x2E).
+Write-only via Service 0x2E (WriteDataByIdentifier).
 
-| DID | Size | Type | Description | W |
-|-----|------|------|-------------|---|
-| 0xF240 | 1 | uint8 | Setpoint (0-255 = 0.00-2.55 bar) | W |
-| 0xF241 | 1 | uint8 | Calibration trigger (fO2 0-100%) | W |
+| DID | Size | Type | Description | R/W |
+|-----|------|------|-------------|-----|
+| 0xF240 | 1 | uint8 | Setpoint (0–255 = 0.00–2.55 bar, centibar) | W |
+| 0xF241 | 1 | uint8 | Calibration trigger (fO2 0–100 %) | W |
+| 0xF243 | 2 or 6 | command | PID autotune control (START/ABORT — see below) | W |
 
 ### Setpoint Write (0xF240)
 
-Write a new setpoint value. The value is in centibar (0-255 maps to 0.00-2.55 bar).
+Publishes a new setpoint to `chan_setpoint`. Value is centibar (0–255 maps
+to 0.00–2.55 bar).
 
-**Note:** This only updates the internal setpoint state. Shearwater dive computers do not respect setpoint broadcasts from the head, so the dive computer will not see the change. Useful for testing the solenoid control loop.
+**Note:** This only updates the internal setpoint state. Shearwater dive
+computers do not respect setpoint broadcasts from the head, so the dive
+computer will not see the change. Useful for testing the solenoid control
+loop.
 
-**Request:**
 ```
-[0x2E] [0xF2] [0x40] [value]
+Request:  [0x2E] [0xF2] [0x40] [value]
+Response: [0x6E] [0xF2] [0x40]
+NRCs:     0x13 (incorrect length)
 ```
-
-**Response:**
-```
-[0x6E] [0xF2] [0x40]  // Positive response
-```
-
-**NRCs:**
-- 0x13 (INCORRECT_MESSAGE_LENGTH) - Wrong data length
 
 ### Calibration Trigger (0xF241)
 
-Trigger oxygen cell calibration with specified fO2 percentage. Uses current atmospheric pressure from device. Calibration runs asynchronously (4-5 seconds).
+Triggers oxygen-cell calibration with the specified fO2. The calibration
+**method honours the runtime "Cal Mode" setting** (it is not hardcoded);
+current ambient pressure is read from `chan_atmos_pressure`. Runs
+asynchronously.
 
-**Request:**
 ```
-[0x2E] [0xF2] [0x41] [fO2]  // fO2: 0-100 (percentage)
-```
-
-**Response:**
-```
-[0x6E] [0xF2] [0x41]  // Positive response (calibration started)
+Request:  [0x2E] [0xF2] [0x41] [fO2]   ; fO2 = 0–100
+Response: [0x6E] [0xF2] [0x41]         ; calibration started
+NRCs:     0x13 (incorrect length)
+          0x31 (fO2 > 100)
+          0x22 (calibration already in progress)
 ```
 
-**NRCs:**
-- 0x13 (INCORRECT_MESSAGE_LENGTH) - Wrong data length
-- 0x31 (REQUEST_OUT_OF_RANGE) - fO2 > 100
-- 0x22 (CONDITIONS_NOT_CORRECT) - Calibration already in progress
+Common fO2 values: 21 = Air, 100 = Pure O2.
 
-**Common fO2 Values:**
-- 21 = Air
-- 100 = Pure O2
+When "Cal Mode" is set to **Check** (value 4), this trigger performs a pre-dive
+sensor check instead of a calibration: a 10 s O2 flush followed by a 10 s
+diluent flush (no coefficients are written), and it always reports success. The
+supplied fO2 is ignored. Check mode is only selectable on variants with both an
+O2 flush and a diluent flush solenoid (currently `Poseidon_Aren`).
+
+### PID Autotune Control (0xF243)
+
+Starts or aborts the on-device PID autotune routine
+(`Firmware/src/ppo2_autotune.c`). The routine perturbs the control loop with
+setpoint steps, scores the closed-loop response, and searches for the best
+Kp/Ki/Kd by bounded coordinate descent. It runs **autonomously on-device** in
+its own thread, so the supervising client does not need to stay connected. The
+supervised status is readable at `0xF213`. All data bytes are the payload
+**after** the DID (`0x2E F2 43 …`); the first data byte is the command and the
+second is a fixed magic `0xA7` guard.
+
+**START** — command `0x01`, 6 data bytes:
+
+```
+Request:  [0x2E] [0xF2] [0x43] [0x01] [0xA7] [base_cb] [step_cb] [budget_hi] [budget_lo]
+Response: [0x6E] [0xF2] [0x43]
+```
+
+- `base_cb` — base setpoint to step from, centibar (uint8)
+- `step_cb` — step magnitude above base, centibar (uint8)
+- `budget` — iteration budget, **uint16 big-endian** (`budget_hi`, `budget_lo`)
+
+Parameters are sanitised in firmware: `base` is clamped to a normal operating
+point (0.40–1.60 bar; the 0.19 bar hypoxic special-case is rejected → default
+70 cb), `step` defaults to 30 cb when 0 and is reduced so that `base + step ≤
+160 cb`, and `budget` defaults to 24 and is capped at 200. The setpoint is
+perturbed via `chan_setpoint` **only** (never `chan_setpoint_cmd`), so the
+setpoint-change flush solenoid is not triggered.
+
+**ABORT** — command `0x02`, 2 data bytes:
+
+```
+Request:  [0x2E] [0xF2] [0x43] [0x02] [0xA7]
+Response: [0x6E] [0xF2] [0x43]
+```
+
+Any abort restores the pre-tune gains. On success (`state = DONE`) the winning
+gains are applied live and **staged into the volatile settings cache** (indices
+4/5/6, "PID Kp/Ki/Kd x1k") — **not** auto-persisted; the operator reviews them
+and persists via the settings-save DID (`0x9350 + N`).
+
+**Gating / NRCs:**
+
+| Condition | NRC |
+|-----------|-----|
+| Not in a programming session | 0x7F (serviceNotInSession) |
+| Wrong magic (≠ 0xA7) | 0x31 (requestOutOfRange) |
+| START while diving, or `ppo2_autotune_start()` rejects (mode not PID / already running / no solenoid) | 0x22 (conditionsNotCorrect) |
+| Wrong request length | 0x13 (incorrectMessageLength) |
+
+Positive response echoes the DID (`0x6E F2 43`).
+
+## Crash-Info DIDs (0xF25x)
+
+Read-only. Populated from `errors_get_last_crash()` snapshot captured on the
+previous boot. PC/LR/CFSR are only meaningful when the previous boot ended
+in a CPU exception; the stock Zephyr halt path does not always populate them
+(see `Firmware/CLAUDE.md` → fatal-error notes).
+
+| DID | Size | Type | Description | R/W |
+|-----|------|------|-------------|-----|
+| 0xF250 | 1 | uint8 | Crash valid (1 = last boot was a crash) | R |
+| 0xF251 | 4 | uint32 | Crash reason (`K_ERR_*` / `FatalOpError_t`) | R |
+| 0xF252 | 4 | uint32 | Program counter at fault | R |
+| 0xF253 | 4 | uint32 | Link register at fault | R |
+| 0xF254 | 4 | uint32 | Cortex-M Configurable Fault Status Register (CFSR) | R |
+
+## Error-Histogram DIDs (0xF26x)
+
+| DID | Size | Type | Description | R/W |
+|-----|------|------|-------------|-----|
+| 0xF260 | 2 × OP_ERR_MAX | uint16[] | Per-error-code occurrence counts (saturating), from `error_histogram_snapshot()` | R |
+| 0xF261 | any | command | Write any payload to clear all counters and persist to NVS | W |
+
+## OTA / MCUboot DIDs (0xF27x)
+
+Status DIDs (read) are populated from `boot_*`, `firmware_confirm_*`, and
+`factory_image_*`. **Action DIDs (write)** share a common precondition:
+`requestLength == 5`, data byte equals the magic `0x01`, the session is
+**PROGRAMMING** (SID 0x10 sub-func 0x02), and the unit is **not in a dive**
+(ambient pressure ≤ 1200 mbar). Failing any of these returns the
+corresponding NRC (`0x13`, `0x31`, `0x7F`, `0x22`).
+
+| DID | Size | Type | Description | R/W |
+|-----|------|------|-------------|-----|
+| 0xF270 | 16 | struct | MCUboot status: swap_type, confirmed, slot, factory flag, slot0/slot1/factory versions (4 B each, major/minor/rev_lo/rev_hi) | R |
+| 0xF271 | 4 | struct | POST status: `PostState_t`, pass-mask (low 8 bits), 2 reserved | R |
+| 0xF272 | 8 | sem_ver | Slot0 (running) version (major/minor/rev16/build32) | R |
+| 0xF273 | 8 | sem_ver | Slot1 (pending) version; all 0xFF if no valid header | R |
+| 0xF274 | 8 | sem_ver | Factory-backup version; all 0xFF if not captured | R |
+| 0xF275 | 1 | magic 0x01 | Force-revert: re-stage slot1 (1-step rollback) + reboot. Refused if slot1 has no valid image header | W |
+| 0xF276 | 1 | magic 0x01 | Restore factory: copy factory backup into slot1 + reboot. Refused if no factory image captured | W |
+| 0xF277 | 1 | magic 0x01 | Factory capture: force re-capture of slot0 into factory backup. Refused if slot0 not confirmed | W |
+| 0xF278 | 1 | magic 0x01 | Factory flash erase: chip-erase external NOR (slot1/scratch/factory/log/NVS) + reboot. ACK sent before the multi-minute erase | W |
+| 0xF279 | 1 | magic 0x01 | NVS erase: erase only the NVS/settings partition (cal lives here, so it clears too) + reboot; keeps flash log + OTA slot1/factory | W |
+
+## Flash-Log Management DIDs (0xF28x)
+
+See `Firmware/src/flash_log/` and `uds_log_download.c` for the FCB/stream model.
+
+| DID | Size | Type | Description | R/W |
+|-----|------|------|-------------|-----|
+| 0xF280 | 48 | struct | `FlashLogStats_t` per-FCB breakdown | R |
+| 0xF281 | 20 | struct | Live selection: stream/start/end/count/bytes/status | R |
+| 0xF282 | 2 | u8 + magic 0xA5 | Erase: `stream_mask` byte + magic `0xA5`. Gated to PROGRAMMING session + not-in-dive | W |
+| 0xF283 | 1 | uint8 | Text-FCB min level (1=ERR .. 4=DBG), persisted to NVS | R/W |
+| 0xF284 | 1 | uint8 | CAN-capture bitmask (bit0=RX, bit1=TX), persisted to NVS | R/W |
 
 ## Per-Cell DIDs (0xF4Nx)
 
-Cell DIDs are organized with 16 addresses per cell:
-- Cell 0: 0xF400 - 0xF40F
-- Cell 1: 0xF410 - 0xF41F
-- Cell 2: 0xF420 - 0xF42F
+16 addresses per cell:
 
-### Common Cell DIDs (all cell types)
+- Cell 0: 0xF400 – 0xF40F
+- Cell 1: 0xF410 – 0xF41F
+- Cell 2: 0xF420 – 0xF42F
+
+Offsets above `0x0C` return NRC. Type-specific offsets return NRC for cell
+kinds that don't implement them. **O2S cells support only the universal
+offsets (0x00–0x03).** DiveO2-only ancillary fields (0x06–0x0C) return the
+published value (zero for non-DiveO2 cells, which don't measure them).
+
+### Universal Cell DIDs (all cell types — offsets 0x00–0x03)
 
 | Offset | DID (Cell 0) | Size | Type | Description |
 |--------|--------------|------|------|-------------|
 | 0x00 | 0xF400 | 4 | float32 | Cell PPO2 (bar) |
-| 0x01 | 0xF401 | 1 | uint8 | Cell type enum |
-| 0x02 | 0xF402 | 1 | bool | Included in voting |
+| 0x01 | 0xF401 | 1 | uint8 | Cell type enum (0=DiveO2, 1=Analog, 2=O2S) |
+| 0x02 | 0xF402 | 1 | uint8 | Included in voting (0/1) |
 | 0x03 | 0xF403 | 1 | uint8 | Cell status enum |
 
-### Analog Cell DIDs (CELL_ANALOG = 1)
+### Analog Cell DIDs (type = 1)
 
 | Offset | DID (Cell 0) | Size | Type | Description |
 |--------|--------------|------|------|-------------|
-| 0x04 | 0xF404 | 2 | int16 | Raw ADC value |
+| 0x04 | 0xF404 | 2 | int16 | Raw ADC value (ADS1115 15-bit signed) |
 | 0x05 | 0xF405 | 2 | uint16 | Millivolts |
 
-### DiveO2 Cell DIDs (CELL_DIVEO2 = 0)
+### DiveO2 Cell DIDs (type = 0)
 
 | Offset | DID (Cell 0) | Size | Type | Description |
 |--------|--------------|------|------|-------------|
-| 0x06 | 0xF406 | 4 | int32 | Temperature (millicelsius) |
-| 0x07 | 0xF407 | 4 | int32 | Error code |
-| 0x08 | 0xF408 | 4 | int32 | Phase value |
-| 0x09 | 0xF409 | 4 | int32 | Intensity |
-| 0x0A | 0xF40A | 4 | int32 | Ambient light |
-| 0x0B | 0xF40B | 4 | int32 | Pressure (microbar) |
-| 0x0C | 0xF40C | 4 | int32 | Humidity (milli-RH) |
+| 0x06 | 0xF406 | 4 | uint32 | Temperature (deci-°C) |
+| 0x07 | 0xF407 | 4 | uint32 | Raw error word |
+| 0x08 | 0xF408 | 4 | uint32 | Phase value |
+| 0x09 | 0xF409 | 4 | uint32 | Intensity |
+| 0x0A | 0xF40A | 4 | uint32 | Ambient light |
+| 0x0B | 0xF40B | 4 | uint32 | Pressure (µhPa) |
+| 0x0C | 0xF40C | 4 | uint32 | Humidity (milli-RH) |
 
-### Cell Type Enum
+### Cell Type Enum (wire byte for offset 0x01)
 
 ```c
-typedef enum {
-    CELL_DIVEO2 = 0,  // Solid-state digital cell
-    CELL_ANALOG = 1,  // Galvanic analog cell
-    CELL_O2S = 2      // Oxygen Scientific digital cell
-} CellType_t;
+0 = DiveO2  (solid-state digital cell)
+1 = Analog  (galvanic analog cell)
+2 = O2S     (Oxygen Scientific digital cell)
 ```
 
-### Cell Status Enum
+### Cell Status Enum (offset 0x03)
 
 ```c
 typedef enum {
-    CELL_OK = 0,
-    CELL_DEGRADED = 1,
-    CELL_FAIL = 2,
-    CELL_NEED_CAL = 3
+    CELL_OK = 0,       // valid, within expected range
+    CELL_DEGRADED = 1, // valid but degrading
+    CELL_FAIL = 2,     // unrecoverable error
+    CELL_NEED_CAL = 3, // requires calibration before trust
 } CellStatus_t;
 ```
 
 ## Settings System DIDs (0x9xxx)
 
-### Settings Metadata
+Settings are enumerated dynamically — counts and indices come from
+`UDS_GetSettingCount()`. See [CONFIGURATION_SYSTEM.md](CONFIGURATION_SYSTEM.md).
 
 | DID | Size | Type | Description | R/W |
 |-----|------|------|-------------|-----|
 | 0x9100 | 1 | uint8 | Setting count | R |
-| 0x9110+N | Variable | struct | Setting info (index N) | R |
-| 0x9130+N | 16 | struct | Setting value (index N) | R/W |
-| 0x9150+X | Variable | string | Option label | R |
-| 0x9350+N | Variable | uint64 | Setting save (persisted) | W |
+| 0x9110 + N | variable | struct | Setting info (index N) | R |
+| 0x9130 + N | 16 | struct | Setting value (index N) — volatile write | R/W |
+| 0x9150 + X | variable | string | Option label (X encodes setting + option index) | R |
+| 0x9350 + N | up to 8 | uint64 BE | Setting save (write persists to NVS) | W |
 
-### Setting Info Response Format (0x9110+N)
+Label DID range ends at `0x9200` (`UDS_DID_SETTING_LABEL_END`).
+
+### Setting Info Response (0x9110 + N)
 
 ```
 [label (9 bytes, null-padded)] [null] [kind] [editable] [maxValue?] [optionCount?]
 ```
 
-- `label`: 9 bytes, null-terminated
-- `kind`: 0=NUMBER, 1=TEXT
-- `editable`: 0=read-only, 1=writable
-- For TEXT type: `maxValue` and `optionCount` follow
+- `label`: 9 bytes, null-padded
+- `kind`: 0 = NUMBER, 1 = TEXT
+- `editable`: 0 = read-only, 1 = writable
+- For TEXT settings only: `maxValue` (1 byte) and `optionCount` follow
 
-### Setting Value Response Format (0x9130+N)
+### Setting Value Response (0x9130 + N)
 
 ```
 [maxValue (8 bytes BE)] [currentValue (8 bytes BE)]
 ```
 
-### Setting Label DID Calculation (0x9150+X)
+A **write** to `0x9130 + N` stages the value in RAM (volatile, 8-byte BE
+payload). A write to `0x9350 + N` persists it to NVS.
+
+### Setting Label DID Calculation (0x9150 + X)
 
 ```
 DID = 0x9150 + (optionIndex << 4) + settingIndex
 ```
 
-## Log Streaming DIDs (0xAxxx)
+### Setting index map
 
-Log streaming is always enabled. Messages are pushed to the bluetooth client automatically.
+Indices are assigned in `uds_settings.c`. The base set is fixed; the per-cell
+broadcast block and the LF-ID setting are variant-dependent:
 
-| DID | Size | Type | Description | R/W |
-|-----|------|------|-------------|-----|
-| 0xA100 | Variable | string | Log message (Head -> bluetooth client push) | - |
+| Index | Setting | Notes |
+|-------|---------|-------|
+| 0 | FW Commit | read-only |
+| 1 | PPO2 Mode | enum |
+| 2 | Cal Mode | enum |
+| 3 | Depth Comp | bool |
+| 4–6 | PID Kp/Ki/Kd | ×1000 milliunits |
+| 7 | Battery | enum |
+| 8 .. 8+CELL_MAX_COUNT-1 | Cn Bcst | per-cell enforce-broadcast |
+| 8+CELL_MAX_COUNT | **LF TX ID** | only when `CONFIG_WANT_LF_TX`; NUMBER, 0..4095 |
 
-## BinaryStateVector_t Structure
+With the default `CELL_MAX_COUNT = 3`, the LF TX ID is index 11 → value DID
+`0x913B`, persist DID `0x935B`, info DID `0x911B`. It is the per-unit 12-bit LF
+transmitter ID (used for deconfliction), provisioned per unit and persisted to
+NVS like any other setting.
 
-For reference, the complete state structure that backs the DIDs:
+## Log Streaming DID (0xA100)
 
-```c
-typedef struct __attribute__((packed)) {
-    /* 4-byte aligned fields */
-    uint32_t config;           // Configuration_t bitfield
-    float consensus_ppo2;      // Voted PPO2
-    float setpoint;            // Current setpoint
-    float duty_cycle;          // Solenoid duty (0.0-1.0)
-    float integral_state;      // PID integral
-    float cell_ppo2[3];        // Per-cell PPO2
-    uint32_t cell_detail[3][7]; // Per-cell details (type-dependent)
+Log streaming is always enabled. Messages are pushed to the Bluetooth client
+automatically (Head → client), not polled.
 
-    /* 2-byte aligned fields */
-    uint16_t timestamp_sec;    // Seconds since boot
-    uint16_t saturation_count; // PID saturation counter
+| DID | Size | Type | Description |
+|-----|------|------|-------------|
+| 0xA100 | variable | string | Log message push |
 
-    /* 1-byte fields */
-    uint8_t version;           // Protocol version
-    uint8_t cellsValid;        // Voting bitfield
-    uint8_t cell_status[3];    // Per-cell status
-} BinaryStateVector_t;
+## RoutineControl IDs (0xF1xx) — Flash-Log Download
 
-_Static_assert(sizeof(BinaryStateVector_t) == 125, "Size must be 125 bytes");
-```
+These are **Routine Identifiers** used with Service 0x31 (RoutineControl),
+not ReadDataByIdentifier DIDs. They select a log range, after which the
+bulk transfer runs over Service 0x34/0x36/0x37 (RequestDownload /
+TransferData / RequestTransferExit). RIDs in `0xF100–0xF1FF` route to the
+log-download handler; all other `0x31`/transfer traffic routes to OTA.
+
+| RID | Routine | Description |
+|-----|---------|-------------|
+| 0xF100 | Select by range | Select log entries within an explicit range |
+| 0xF101 | Select by boot | Select entries for a given boot session |
+| 0xF102 | Select by dive | Select entries for a given dive |
+| 0xF103 | Select latest boot | Select the most recent boot session |
+| 0xF104 | Select latest dive | Select the most recent dive |
+| 0xF105 | Begin stream | Begin streaming the selected range |
+
+See [ISOTP_TRANSPORT.md](ISOTP_TRANSPORT.md) and `uds_log_download.c` for the
+selector → stream state machine.
 
 ## Multi-DID Read
 
 Service 0x22 supports reading multiple DIDs in a single request:
 
-**Request:**
 ```
-[0x22] [DID1_hi] [DID1_lo] [DID2_hi] [DID2_lo] ...
-```
-
-**Response:**
-```
-[0x62] [DID1_hi] [DID1_lo] [data1...] [DID2_hi] [DID2_lo] [data2...] ...
+Request:  [0x22] [DID1_hi] [DID1_lo] [DID2_hi] [DID2_lo] ...
+Response: [0x62] [DID1_hi] [DID1_lo] [data1...] [DID2_hi] [DID2_lo] [data2...] ...
 ```
 
-Example reading consensus PPO2 and setpoint:
+Each DID's response is `[DID_hi] [DID_lo] [payload]`. The accumulated
+response is bounded by `UDS_MAX_RESPONSE_LENGTH` (256 B); overflow returns
+NRC 0x14 (responseTooLong). An unknown DID anywhere in the list returns NRC
+0x31 (requestOutOfRange) and aborts the whole request.
+
+Example — consensus PPO2 + setpoint:
+
 ```
 Request:  22 F2 00 F2 02
-Response: 62 F2 00 [4 bytes float] F2 02 [4 bytes float]
+Response: 62 F2 00 [4-byte float] F2 02 [4-byte float]
 ```

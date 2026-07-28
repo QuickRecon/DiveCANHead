@@ -1,0 +1,4 @@
+tests:
+  oxygen_cell.consensus:
+    platform_allow: native_sim
+    tags: oxygen_cell consensus

@@ -1,0 +1,5 @@
+mainmenu "zbus integration test"
+
+rsource "../../src/Kconfig"
+
+source "Kconfig.zephyr"

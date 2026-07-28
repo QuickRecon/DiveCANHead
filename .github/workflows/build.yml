@@ -1,0 +1,351 @@
+name: Build + SonarCloud Analysis
+
+# CI-based SonarCloud scan with a real compilation database, replacing
+# Automatic Analysis (which parses C without macro resolution and produces
+# thousands of false positives on Zephyr macros: ZTEST, zassert_*, LOG_*).
+# Requires: SONAR_TOKEN repo secret; Automatic Analysis switched OFF in the
+# SonarCloud UI (Administration -> Analysis Method) once this workflow is green.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Keep each revision isolated so multiple self-hosted runners can validate
+  # successive PR updates concurrently.
+  group: sonar-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    name: Build firmware + tests, scan
+    runs-on: [self-hosted, docker]
+    timeout-minutes: 90
+    env:
+      ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+      # Keep the widest-feature variant first: that order also determines
+      # which production command Sonar uses for sources built more than once.
+      FIRMWARE_VARIANTS: >-
+        Poseidon_Aren
+        AP_Aren
+        AP_Paul
+        eCCR_classic
+        Sidewinder_Gabriel
+    steps:
+      # The repository contains two legacy gitlinks without matching
+      # .gitmodules entries. actions/checkout traverses submodules while
+      # removing its temporary credentials and fails before the job can start.
+      # This public, read-only checkout fetches full history without installing
+      # credentials or invoking any submodule commands.
+      - name: Checkout (full history for new-code detection and blame)
+        env:
+          CI_REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+          CI_EVENT_REF: ${{ github.ref }}
+          CI_EVENT_SHA: ${{ github.sha }}
+          CI_RUN_REF: refs/remotes/ci/${{ github.run_id }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [ ! -d .git ]; then
+            git init .
+          fi
+          if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "$CI_REPOSITORY_URL"
+          else
+            git remote add origin "$CI_REPOSITORY_URL"
+          fi
+          git fetch --force --prune --no-recurse-submodules origin \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/tags/*:refs/tags/*' \
+            "+${CI_EVENT_REF}:${CI_RUN_REF}"
+          git checkout --force "$CI_EVENT_SHA"
+          git clean -ffdx
+
+      - name: Install host packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates curl gnupg \
+            gcc-multilib g++-multilib ninja-build device-tree-compiler \
+            ccache jq iproute2 kmod
+          . /etc/os-release
+          llvm_codename="${VERSION_CODENAME:?missing Ubuntu version codename}"
+          sudo install -d -m 0755 /etc/apt/keyrings
+          llvm_key="$RUNNER_TEMP/apt.llvm.org.asc"
+          curl --fail --show-error --silent --location \
+            --proto '=https' --proto-redir '=https' \
+            --output "$llvm_key" \
+            https://apt.llvm.org/llvm-snapshot.gpg.key
+          llvm_key_fingerprint=$(
+            gpg --show-keys --with-colons "$llvm_key" |
+              awk -F: '$1 == "fpr" { print $10; exit }'
+          )
+          test "$llvm_key_fingerprint" = \
+            6084F3CF814B57C1CF12EFD515CF4D18AF4F7421
+          sudo gpg --dearmor --yes \
+            --output /etc/apt/keyrings/apt.llvm.org.gpg "$llvm_key"
+          echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/${llvm_codename}/ llvm-toolchain-${llvm_codename}-22 main" |
+            sudo tee /etc/apt/sources.list.d/apt.llvm.org.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang-22 llvm-22 lld-22 libclang-rt-22-dev
+          test "$(clang-22 --version | sed -n '1s/.*version \([0-9.]*\).*/\1/p')" = 22.1.8
+          clang-22 --version
+          test "$(clang-22 -print-target-triple)" = x86_64-pc-linux-gnu
+          echo "LLVM_TOOLCHAIN_PATH=/usr/lib/llvm-22" >> "$GITHUB_ENV"
+          echo "GCOV_EXECUTABLE=/usr/lib/llvm-22/bin/llvm-cov gcov" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12.10'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24.13.1'
+          package-manager-cache: false
+
+      # This runner's tool cache is a persistent host volume. Keep the large
+      # west module graph, pip downloads, and SDK there directly instead of
+      # compressing and transferring multi-gigabyte GitHub cache archives.
+      - name: Prepare persistent runner storage
+        env:
+          WEST_MANIFEST_HASH: ${{ hashFiles('Firmware/west.yml') }}
+        run: |
+          project_cache="$RUNNER_TOOL_CACHE/DiveCANHead"
+          west_cache="$project_cache/west-$WEST_MANIFEST_HASH"
+          mkdir -p \
+            "$project_cache/npm" "$project_cache/pip" \
+            "$project_cache/sdk" "$west_cache"
+          echo "NPM_CONFIG_CACHE=$project_cache/npm" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$project_cache/pip" >> "$GITHUB_ENV"
+          echo "ZEPHYR_SDK_INSTALL_DIR=$project_cache/sdk" >> "$GITHUB_ENV"
+          for path in zephyr modules bootloader tools; do
+            target="$west_cache/$path"
+            mkdir -p "$target"
+            ln -s "$target" "$path"
+          done
+
+      - name: Run DiveCAN_bt tests and collect coverage
+        id: divecan_bt_results
+        working-directory: DiveCAN_bt
+        run: |
+          npm_status=0
+          npm ci --ignore-scripts --no-audit --no-fund || npm_status=$?
+          if (( npm_status == 0 )); then
+            npm run test:coverage -- --reporter=dot --silent ||
+              npm_status=$?
+          fi
+
+          coverage_status=0
+          if [ -s coverage/lcov.info ]; then
+            # Vitest writes paths relative to DiveCAN_bt; Sonar scans from the
+            # repository root, so make that prefix explicit in every record.
+            sed -i 's|^SF:src/|SF:DiveCAN_bt/src/|' coverage/lcov.info
+            if ! grep -q '^SF:DiveCAN_bt/src/' coverage/lcov.info; then
+              coverage_status=1
+              echo "::error title=DiveCAN_bt coverage::LCOV contains no DiveCAN_bt source records."
+            elif grep '^SF:' coverage/lcov.info |
+                grep -qv '^SF:DiveCAN_bt/src/'; then
+              coverage_status=1
+              echo "::error title=DiveCAN_bt coverage::LCOV contains a source path outside DiveCAN_bt/src."
+            fi
+          else
+            coverage_status=1
+            echo "::error title=DiveCAN_bt coverage::Vitest did not produce coverage/lcov.info."
+          fi
+
+          tests_failed=false
+          if (( npm_status != 0 || coverage_status != 0 )); then
+            tests_failed=true
+            echo "::warning title=DiveCAN_bt test failure::npm status $npm_status; coverage status $coverage_status. Firmware coverage and SonarCloud will continue before the job fails."
+          fi
+          echo "failed=$tests_failed" >> "$GITHUB_OUTPUT"
+          {
+            echo "### DiveCAN_bt test execution"
+            echo
+            echo "- Vitest/npm status: $npm_status"
+            echo "- LCOV validation status: $coverage_status"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # `west packages pip --install` refuses to run outside a virtualenv, so
+      # all Python tooling lives in one; putting its bin dir on GITHUB_PATH
+      # makes every later step (west build, native_test.py) use it too.
+      - name: Create Python virtualenv
+        run: |
+          python3 -m venv "$HOME/zephyr-venv"
+          echo "$HOME/zephyr-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize west workspace
+        run: |
+          # The lock pins and hashes the complete transitive graph. docopt
+          # 0.6.2 has no wheel, so it is the sole source-package exception.
+          pip install --require-hashes \
+            --only-binary=:all: --no-binary=docopt \
+            -r Firmware/tests/integration/harness/requirements-ci.lock
+          west init -l Firmware
+          west update --narrow -o=--depth=1
+          west packages pip --install
+
+      - name: Install Zephyr SDK toolchains
+        env:
+          GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sdk_version=$(tr -d '\r\n' < zephyr/SDK_VERSION)
+          sdk_dir="$ZEPHYR_SDK_INSTALL_DIR/zephyr-sdk-$sdk_version"
+          arm_gcc="$sdk_dir/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+          if [ -x "$arm_gcc" ]; then
+            echo "Using persistent Zephyr SDK $sdk_version at $sdk_dir"
+          else
+            west sdk install \
+              --personal-access-token "$GH_API_TOKEN" \
+              --install-base "$ZEPHYR_SDK_INSTALL_DIR" \
+              --no-hosttools \
+              -t arm-zephyr-eabi
+          fi
+          "$arm_gcc" --version
+
+      # Build every production hardware variant so configuration-specific
+      # Kconfig/devicetree combinations cannot regress unnoticed.
+      - name: Build all firmware variants (sysbuild)
+        working-directory: Firmware
+        run: |
+          read -r -a variants <<< "$FIRMWARE_VARIANTS"
+
+          for variant in "${variants[@]}"; do
+            echo "::group::Lint $variant"
+            bash scripts/lint_variant.sh "variants/${variant}.conf"
+            echo "::endgroup::"
+
+            echo "::group::Build $variant"
+            west build \
+              -d "build-variants/${variant}" \
+              -b divecan_jr/stm32l431xx \
+              . --sysbuild -p always -- \
+              -DBOARD_ROOT=. \
+              -DEXTRA_CONF_FILE="variants/${variant}.conf" \
+              -DEXTRA_DTC_OVERLAY_FILE="variants/${variant}.overlay"
+            echo "::endgroup::"
+          done
+
+      - name: Configure virtual CAN for integration tests
+        run: |
+          if ! ip link show vcan0 >/dev/null 2>&1; then
+            sudo modprobe vcan || true
+            sudo ip link add dev vcan0 type vcan
+          fi
+          sudo ip link set dev vcan0 up
+          ip -details link show vcan0
+
+      # Each ztest owns a separate build directory, so the coverage builds and
+      # executions are safe to parallelise. Fan independent test projects out
+      # across every host CPU; keep each nested Ninja build serial so the two
+      # levels of parallelism do not multiply beyond the runner CPU budget.
+      - name: Build coverage-instrumented native tests
+        working-directory: Firmware
+        env:
+          # native_sim otherwise silently switches to the image's host GCC.
+          # Use the explicitly installed LLVM 22 toolchain so runner image
+          # upgrades cannot change the compiler underneath coverage builds.
+          ZEPHYR_TOOLCHAIN_VARIANT: host/llvm
+        run: |
+          python3 scripts/coverage.py clean
+          mapfile -t native_tests < <(python3 scripts/native_test.py list)
+          host_cpus=$(nproc)
+          native_jobs=$host_cpus
+          export CMAKE_BUILD_PARALLEL_LEVEL=1
+          printf '%s\0' "${native_tests[@]}" |
+            xargs -0 -r -n 1 -P "$native_jobs" \
+              python3 scripts/native_test.py build --coverage
+          CMAKE_BUILD_PARALLEL_LEVEL="$host_cpus" \
+            python3 scripts/coverage.py build-integration
+
+      - name: Run native tests and collect coverage
+        id: test_results
+        working-directory: Firmware
+        env:
+          ZEPHYR_TOOLCHAIN_VARIANT: host/llvm
+        run: |
+          mapfile -t native_tests < <(python3 scripts/native_test.py list)
+          host_cpus=$(nproc)
+          native_jobs=$host_cpus
+          native_status=0
+          printf '%s\0' "${native_tests[@]}" |
+            xargs -0 -r -n 1 -P "$native_jobs" \
+              python3 scripts/native_test.py run --coverage ||
+            native_status=$?
+          pytest_status=0
+          python3 scripts/coverage.py run-pytest || pytest_status=$?
+
+          # Failed test processes still emit coverage. Generate and validate
+          # the report now, then preserve the failures as a final job gate so
+          # artifact upload and SonarCloud are not starved of the report.
+          python3 scripts/coverage.py report
+          test -s coverage-report/coverage.xml
+          grep -q '<file path="Firmware/src/' coverage-report/coverage.xml
+          tests_failed=false
+          if (( native_status != 0 || pytest_status != 0 )); then
+            tests_failed=true
+            echo "::warning title=Test failures::Native status $native_status; integration status $pytest_status. Coverage and analysis will continue before the job fails."
+          fi
+          echo "failed=$tests_failed" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Test execution"
+            echo
+            echo "- Native test status: $native_status"
+            echo "- Integration pytest status: $pytest_status"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Merge compilation databases
+        run: |
+          # Keep Poseidon_Aren first because it enables the widest production
+          # feature set. The remaining production-variant DBs contribute any
+          # translation units absent from Poseidon; native DBs then contribute
+          # tests/** and files never compiled for ARM.
+          read -r -a variants <<< "$FIRMWARE_VARIANTS"
+          arm_compile_dbs=()
+          for variant in "${variants[@]}"; do
+            arm_compile_dbs+=(
+              "Firmware/build-variants/${variant}/Firmware/compile_commands.json"
+            )
+          done
+          jq -s '
+            [ .[][] ]
+            | reduce .[] as $e ({seen: {}, out: []};
+                if .seen[$e.file] then .
+                else {seen: (.seen + {($e.file): true}),
+                      out: (.out + [$e])} end)
+            | .out
+          ' "${arm_compile_dbs[@]}" \
+            Firmware/build-coverage/*/compile_commands.json \
+            > compile_commands.json
+          echo "Merged compilation database: $(jq length compile_commands.json) entries"
+
+      - name: Archive coverage report
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: coverage-${{ github.run_id }}
+          path: |
+            Firmware/coverage-report/
+            DiveCAN_bt/coverage/
+          retention-days: 14
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+
+      - name: Enforce test results
+        if: >-
+          always() &&
+          (steps.test_results.outputs.failed == 'true' ||
+           steps.divecan_bt_results.outputs.failed == 'true')
+        run: |
+          echo "::error title=Test failures::One or more firmware, integration, or DiveCAN_bt tests failed; see the test steps for details."
+          exit 1

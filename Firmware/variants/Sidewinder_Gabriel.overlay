@@ -1,0 +1,27 @@
+/*
+ * Device-tree overlay for the "Sidewinder_Gabriel" variant.
+ *
+ * Cell mix: 3x DiveO2 digital cells.
+ *
+ *   Cell 1 = DiveO2  → USART1
+ *   Cell 2 = DiveO2  → USART2
+ *   Cell 3 = DiveO2  → USART3
+ *
+ * No analog cells, so neither ADS1115 is spoken to. Disabling the
+ * unused nodes elides each driver's DEVICE_DT_INST_DEFINE, reclaiming
+ * ~1,472 B of driver data per ADS1115 instance that would otherwise be
+ * allocated at link time. See dev_full.overlay for the full rationale.
+ *
+ * If the cell mix changes (e.g. a cell becomes analog), update this
+ * overlay to re-enable the matching ADS1115 or the build will fail with
+ * a missing DT-node reference from the cell driver.
+ */
+
+/* No analog cells — both ADS1115 ADCs are unused. */
+&adc_ext1 {
+    status = "disabled";
+};
+
+&adc_ext2 {
+    status = "disabled";
+};

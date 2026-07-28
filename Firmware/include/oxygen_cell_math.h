@@ -1,0 +1,153 @@
+/**
+ * @file oxygen_cell_math.h
+ * @brief Pure math functions for oxygen cell PPO2 calculation and calibration.
+ *
+ * All functions are side-effect free and do not call OS APIs, making them
+ * directly testable in the unit-test harness without mocks.
+ */
+#ifndef OXYGEN_CELL_MATH_H
+#define OXYGEN_CELL_MATH_H
+
+#include "common.h"
+#include "oxygen_cell_types.h"
+
+/* ---- Consensus voting ---- */
+
+/**
+ * @brief Calculate consensus PPO2 from an array of cell readings.
+ *
+ * Pure function — no OS calls, no side effects. The caller provides the
+ * current tick count so the function remains testable without mocks.
+ *
+ * @param cells           Array of cell messages (indexed 0..count-1)
+ * @param count           Number of cells (1-3)
+ * @param now_ticks       Current value of k_uptime_ticks()
+ * @param staleness_ticks Maximum age before a reading is excluded
+ * @return Consensus result with per-cell inclusion flags and voted PPO2
+ */
+ConsensusMsg_t consensus_calculate(const OxygenCellMsg_t cells[],
+                                   uint8_t count,
+                                   int64_t now_ticks,
+                                   int64_t staleness_ticks);
+
+/**
+ * @brief Count how many cells were included in the consensus vote.
+ *
+ * @param consensus Pointer to a completed ConsensusMsg_t
+ * @return Number of cells that voted (0-3)
+ */
+uint8_t consensus_confidence(const ConsensusMsg_t *consensus);
+
+/* ---- PPO2 wire-format conversion ---- */
+
+/**
+ * @brief Convert a floating-point PPO2 in centibar to the uint8 wire value.
+ *
+ * Rounds to nearest rather than truncating. A plain C cast truncates toward
+ * zero, which biases every reading up to a full centibar low: a true 0.70 bar
+ * (70.0 cbar, but 69.9999997 in floating point) truncates to 69 and is
+ * broadcast as 0.69. Rounding removes that systematic bias.
+ *
+ * The result is clamped to [0, MAX_VALID_PPO2] so a near-full-scale reading
+ * can never round up to 255 (0xFF), which is the PPO2_FAIL sentinel — a valid
+ * reading must never alias a failure. Over-range readings are flagged as
+ * CELL_FAIL by the caller independently of this conversion.
+ *
+ * @param centibar_ppo2 PPO2 in centibar (may be fractional / out of range)
+ * @return PPO2 in centibar as PPO2_t, in [0, MAX_VALID_PPO2]
+ */
+PPO2_t ppo2_centibar_to_wire(PrecisionPPO2_t centibar_ppo2);
+
+/* ---- Analog cell math ---- */
+
+/**
+ * @brief Convert raw ADS1115 ADC counts to millivolts (mV * 100 units).
+ *
+ * @param adc_counts Signed 15-bit ADC reading from ADS1115
+ * @return Cell voltage in units of 0.01 mV (Millivolts_t)
+ */
+Millivolts_t analog_counts_to_mv(int16_t adc_counts);
+
+/**
+ * @brief Calculate calibrated PPO2 from raw ADC counts and calibration coefficient.
+ *
+ * @param adc_counts Raw ADS1115 counts
+ * @param cal_coeff  Calibration coefficient (from analog_cal_coefficient())
+ * @return PPO2 in centibar as Numeric_t; caller converts to uint8_t via
+ *         ppo2_centibar_to_wire() (rounds + clamps, does not truncate)
+ */
+Numeric_t analog_calculate_ppo2(int16_t adc_counts, CalCoeff_t cal_coeff);
+
+/* ---- Calibration math ---- */
+
+/**
+ * @brief Sentinel returned by *_cal_coefficient() on math/hardware failure.
+ *
+ * Indicates a zero-or-near-zero divisor, near-zero cell sample, or any other
+ * arithmetic failure that prevented coefficient computation. The calibration
+ * pipeline maps this to CAL_RESULT_FAILED → DIVECAN_CAL_FAIL_GEN (the legacy
+ * "general failure" code).
+ */
+static const CalCoeff_t CAL_COEFF_ERR_MATH = -1.0f;
+
+/**
+ * @brief Sentinel returned by *_cal_coefficient() on out-of-envelope coefficient.
+ *
+ * Indicates the coefficient was computed successfully but falls outside the
+ * cell-type's valid range (ANALOG_CAL_LOWER..UPPER, DIVEO2_CAL_LOWER..UPPER,
+ * O2S_CAL_LOWER..UPPER). Mirrors the legacy `CELL_NEED_CAL`-after-calibrate
+ * condition. The calibration pipeline maps this to CAL_RESULT_OUT_OF_RANGE
+ * → DIVECAN_CAL_FAIL_FO2_RANGE so the handset shows the specific reason.
+ */
+static const CalCoeff_t CAL_COEFF_ERR_RANGE = -2.0f;
+
+/**
+ * @brief Discriminator threshold: coeff <= this is a range-error sentinel.
+ *
+ * Real coefficients are always >= 0. CAL_COEFF_ERR_MATH is -1.0f and
+ * CAL_COEFF_ERR_RANGE is -2.0f, so any value at or below -1.5f is the
+ * range-error sentinel and any value in (-1.5f, 0.0f) is the math-error
+ * sentinel. Use this constant instead of comparing floats for equality.
+ */
+static const CalCoeff_t CAL_COEFF_ERR_RANGE_THRESHOLD = -1.5f;
+
+/**
+ * @brief Compute target PPO2 in centibar from fO2 (percent) and pressure (mbar).
+ *
+ * @param fo2           Fraction of O2 in percent (0-100)
+ * @param pressure_mbar Ambient pressure in millibar
+ * @return Target PPO2 in centibar, or -1 on overflow or invalid input
+ */
+int16_t cal_compute_target_ppo2(FO2_t fo2, uint16_t pressure_mbar);
+
+/**
+ * @brief Compute analog calibration coefficient from ADC counts and target PPO2.
+ *
+ * @param adc_counts  Raw ADS1115 counts at calibration gas
+ * @param target_ppo2 Expected PPO2 in centibar at calibration conditions
+ * @return Calibration coefficient, CAL_COEFF_ERR_MATH on divisor near zero,
+ *         or CAL_COEFF_ERR_RANGE on coefficient outside ANALOG_CAL_LOWER..UPPER.
+ */
+CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2);
+
+/**
+ * @brief Compute DiveO2 calibration coefficient from raw cell sample and target PPO2.
+ *
+ * @param cell_sample Raw DiveO2 sensor reading at calibration gas
+ * @param target_ppo2 Expected PPO2 in centibar at calibration conditions
+ * @return Calibration coefficient, CAL_COEFF_ERR_MATH on zero target/sample,
+ *         or CAL_COEFF_ERR_RANGE on coefficient outside DIVEO2_CAL_LOWER..UPPER.
+ */
+CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2);
+
+/**
+ * @brief Compute O2S calibration coefficient from cell reading and target PPO2.
+ *
+ * @param cell_sample Raw O2S sensor reading at calibration gas
+ * @param target_ppo2 Expected PPO2 in centibar at calibration conditions
+ * @return Calibration coefficient, CAL_COEFF_ERR_MATH on near-zero sample,
+ *         or CAL_COEFF_ERR_RANGE on coefficient outside O2S_CAL_LOWER..UPPER.
+ */
+CalCoeff_t o2s_cal_coefficient(Numeric_t cell_sample, PPO2_t target_ppo2);
+
+#endif /* OXYGEN_CELL_MATH_H */

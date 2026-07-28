@@ -601,6 +601,8 @@
       gap: 0;
       margin-bottom: 0;
       border-bottom: 2px solid #3a3a3a;
+      overflow-x: auto;
+      scrollbar-width: thin;
     }
 
     .tab-button {
@@ -636,6 +638,46 @@
       display: block;
     }
 
+    /* Persistent real-time plot dock - stays visible across all tabs so the
+       chart can be watched while manipulating controls on other tabs. */
+    .plot-dock {
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
+      margin-top: 15px;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 15px 20px 20px;
+      box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45);
+    }
+
+    .plot-dock-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .plot-dock-header h2 {
+      margin: 0;
+    }
+
+    /* Collapsed state hides only the body; the sticky header stays reachable. */
+    .plot-dock.collapsed .plot-dock-body {
+      display: none;
+    }
+
+    .plot-dock.collapsed {
+      padding-bottom: 15px;
+    }
+
+    .plot-dock.collapsed .plot-dock-header {
+      margin-bottom: 0;
+    }
+
     .tab-container {
       background: #2a2a2a;
       border-radius: 0 8px 8px 8px;
@@ -669,6 +711,54 @@
       margin-top: 0;
     }
 
+    .progress-bar {
+      width: 100%;
+      height: 18px;
+      background: #1a1a1a;
+      border: 1px solid #555;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: #2ecc71;
+      transition: width 0.15s ease;
+    }
+
+    .settings-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 10px;
+      max-width: 720px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      background: #252525;
+      border: 1px solid #333;
+      border-radius: 4px;
+    }
+
+    .setting-row.dirty { background: #2a2416; }
+    .setting-row > label {
+      color: #ccc;
+      font-size: 13px;
+      white-space: nowrap;
+      flex: 0 0 130px;
+    }
+    .setting-row select, .setting-row input {
+      background: #1a1a1a; border: 1px solid #555; color: #e0e0e0;
+      padding: 6px 10px; border-radius: 4px;
+    }
+    .setting-row .setting-controls { flex: 1 1 auto; justify-content: flex-end; }
+
     /* Mobile responsive styles */
     @media (max-width: 600px) {
       body {
@@ -679,16 +769,18 @@
         font-size: 20px;
       }
 
+      /* Single scrollable row instead of wrapping - keeps the tab bar to one
+         row of vertical space on narrow screens. */
       .tab-bar {
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
       }
 
       .tab-button {
-        flex: 1 1 auto;
+        flex: 0 0 auto;
         padding: 10px 12px;
         font-size: 12px;
         text-align: center;
-        min-width: 80px;
+        white-space: nowrap;
       }
 
       .tab-container {
@@ -753,8 +845,22 @@
         white-space: nowrap;
       }
 
+      /* Cap against viewport height so the expanded sticky dock never
+         swallows the whole screen on a phone. */
       .chart-container {
-        height: 250px;
+        height: min(250px, 35vh);
+      }
+
+      .plot-dock {
+        padding: 10px 12px 12px;
+      }
+
+      .plot-dock.collapsed {
+        padding-bottom: 10px;
+      }
+
+      .plot-dock-header h2 {
+        font-size: 15px;
       }
 
       .subscription-controls {
@@ -789,7 +895,7 @@
   <h1>DiveCANHead Diagnostics</h1>
 
   <div class="warning" id="browserWarning" style="display: none;">
-    Web Bluetooth not available. Please use Chrome, Edge, or Opera browser.
+    Neither Web Bluetooth nor Web Serial is available. Please use a Chromium-based browser.
   </div>
 
   <!-- Connection Section -->
@@ -797,10 +903,15 @@
     <h2>Connection</h2>
     <div class="button-group">
       <button id="scanButton">Scan & Connect</button>
+      <button id="usbConnectButton">Connect USB-CAN</button>
       <button id="disconnectButton" disabled>Disconnect</button>
       <span class="status disconnected" id="connectionStatus">Disconnected</span>
       <span id="streamStatusDetail" style="color: #888; font-size: 13px;"></span>
     </div>
+    <label style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:#ccc;font-size:13px;">
+      <input type="checkbox" id="fetchDidsOnConnect" checked>
+      Fetch DIDs on connect (uncheck if the handset crashes on connect)
+    </label>
     <div id="deviceInfo" style="margin-top: 10px; font-size: 14px; color: #888;"></div>
   </div>
 
@@ -808,7 +919,11 @@
   <div class="tab-bar">
     <button class="tab-button active" data-tab="main">Main</button>
     <button class="tab-button" data-tab="control">Control</button>
-    <button class="tab-button" data-tab="config">Configuration</button>
+    <button class="tab-button" data-tab="autotune">Autotune</button>
+    <button class="tab-button" data-tab="settings">Settings</button>
+    <button class="tab-button" data-tab="firmware">Firmware Update</button>
+    <button class="tab-button" data-tab="logs">Logs</button>
+    <button class="tab-button" data-tab="errors">Errors</button>
     <button class="tab-button" data-tab="dids">DID Subscriptions</button>
   </div>
 
@@ -884,6 +999,33 @@
         </div>
       </div>
 
+      <!-- Optional HP cylinder-pressure transducers. The section and each
+           cylinder stay hidden unless that DID was accepted by the connected
+           firmware variant during the initial state fetch. -->
+      <div class="tab-section" id="cylinder-pressure-section" hidden>
+        <h2>Cylinder Pressure</h2>
+        <div class="summary-grid">
+          <div class="summary-item" id="o2-cylinder-pressure-item" hidden>
+            <div class="summary-label">O2 Cylinder</div>
+            <div class="summary-value" id="o2-cylinder-pressure">--</div>
+            <div class="summary-unit">bar</div>
+            <div class="plot-buttons">
+              <button class="plot-btn plot-left" onclick="plotToLeftAxis('o2_cyl_pressure', 'O2 Cylinder')">L</button>
+              <button class="plot-btn plot-right" onclick="plotToRightAxis('o2_cyl_pressure', 'O2 Cylinder')">R</button>
+            </div>
+          </div>
+          <div class="summary-item" id="dil-cylinder-pressure-item" hidden>
+            <div class="summary-label">Diluent Cylinder</div>
+            <div class="summary-value" id="dil-cylinder-pressure">--</div>
+            <div class="summary-unit">bar</div>
+            <div class="plot-buttons">
+              <button class="plot-btn plot-left" onclick="plotToLeftAxis('dil_cyl_pressure', 'Diluent Cylinder')">L</button>
+              <button class="plot-btn plot-right" onclick="plotToRightAxis('dil_cyl_pressure', 'Diluent Cylinder')">R</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Power Status -->
       <div class="tab-section">
         <h2>Power Status</h2>
@@ -925,6 +1067,15 @@
         </div>
       </div>
       <div class="summary-item">
+        <div class="summary-label">Current</div>
+        <div class="summary-value" id="device-current">--</div>
+        <div class="summary-unit">mA</div>
+        <div class="plot-buttons">
+          <button class="plot-btn plot-left" onclick="plotToLeftAxis('device_current', 'Current')">L</button>
+          <button class="plot-btn plot-right" onclick="plotToRightAxis('device_current', 'Current')">R</button>
+        </div>
+      </div>
+      <div class="summary-item">
         <div class="summary-label">Threshold</div>
         <div class="summary-value" id="threshold-voltage">--</div>
         <div class="summary-unit">V</div>
@@ -937,36 +1088,6 @@
           <div class="summary-label">VBus Source</div>
           <div class="summary-value" id="vbus-source">--</div>
         </div>
-        </div>
-      </div>
-
-      <!-- Real-Time Plot -->
-      <div class="tab-section">
-        <h2>Real-Time Plot</h2>
-    <div class="chart-controls axis-controls">
-      <div class="axis-group axis-left">
-        <span class="axis-label">Left:</span>
-        <span id="leftAxisLabel">--</span>
-        <button class="small" onclick="clearLeftAxis()">Clear</button>
-      </div>
-      <div class="axis-group axis-right">
-        <span class="axis-label">Right:</span>
-        <span id="rightAxisLabel">--</span>
-        <button class="small" onclick="clearRightAxis()">Clear</button>
-      </div>
-    </div>
-    <div class="chart-controls">
-      <label for="windowSelect">Window:</label>
-      <select id="windowSelect" onchange="setPlotWindow(this.value)">
-        <option value="30">30 seconds</option>
-        <option value="60" selected>60 seconds</option>
-        <option value="120">2 minutes</option>
-        <option value="300">5 minutes</option>
-      </select>
-        <button class="small" onclick="clearPlot()">Clear All</button>
-        </div>
-        <div class="chart-container">
-          <canvas id="realtimeChart"></canvas>
         </div>
       </div>
     <!-- End Main Tab -->
@@ -987,25 +1108,341 @@
         </div>
         <div id="cal-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
       </div>
+
+      <!-- Setpoint Section (DID 0xF240) -->
+      <div class="tab-section">
+        <h2>Manual Setpoint</h2>
+        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label for="setpoint-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Setpoint (bar)</label>
+            <input type="number" id="setpoint-input" min="0.40" max="1.60" step="0.05" value="0.70"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 100px; font-size: 14px;">
+          </div>
+          <button id="setSetpointButton" disabled>Set Setpoint</button>
+        </div>
+        <div style="color:#666;font-size:12px;margin-top:6px;">Firmware clamps to 0.40–1.60 bar; effective only in a setpoint-controlled PPO2 mode.</div>
+        <div id="setpoint-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+
+      <!-- Solenoid Override Section (DID 0xF242, HIL) -->
+      <div class="tab-section">
+        <h2>Solenoid Override (HIL)</h2>
+        <p style="color: #888; font-size: 12px; margin: 4px 0 10px;">
+          Raw-fires the solenoid for a fixed ~1.5 s. The firmware requires a
+          <strong>programming session at the surface with PPO2 mode OFF</strong>;
+          this enters the programming session for you before firing.
+        </p>
+        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label for="solenoid-channel" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Channel</label>
+            <input type="number" id="solenoid-channel" min="0" max="7" step="1" value="0"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 80px; font-size: 14px;">
+          </div>
+          <button id="fireSolenoidButton" disabled class="danger">Fire Solenoid</button>
+        </div>
+        <div id="solenoid-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
     <!-- End Control Tab -->
     </div>
 
-    <!-- Configuration Tab -->
-    <div class="tab-content" id="tab-config">
-      <h2>Configuration Settings</h2>
-    <div class="config-buttons">
-      <button id="readConfigButton" disabled>Read from Device</button>
-      <button id="writeConfigButton" disabled class="danger">Write to Device</button>
-      <span id="configStatus" class="config-status">(Connect to device to read configuration)</span>
-    </div>
-    <div id="configFieldsContainer" class="config-grid">
-      <!-- Dynamically populated -->
-    </div>
-      <div class="config-raw">
-        <span class="label">Raw Config Bytes:</span>
-        <span class="value" id="configRawHex">--</span>
+    <!-- Autotune Tab (on-device PID autotune via DID 0xF243 / 0xF213) -->
+    <div class="tab-content" id="tab-autotune">
+      <h2>PID Autotune</h2>
+
+      <!-- Preconditions / session -->
+      <div class="tab-section">
+        <h2>Preconditions</h2>
+        <p style="color: #888; font-size: 13px; margin: 4px 0 10px;">
+          The autotune routine applies one bounded, known duty excitation, records
+          commanded solenoid duty against PPO2, identifies the delayed mixing plant,
+          then derives gains from that model. It demands a controlled environment:
+        </p>
+        <ul style="color: #888; font-size: 13px; margin: 0 0 10px 18px;">
+          <li><strong>Surface only</strong> — the run auto-aborts if a dive is detected.</li>
+          <li><strong>PPO2 mode must be PID</strong> — otherwise START is refused (NRC 0x22).</li>
+          <li><strong>Cells calibrated &amp; healthy</strong> — a cell failure aborts the run.</li>
+        </ul>
+        <p style="color: #888; font-size: 12px; margin: 4px 0 10px;">
+          START requires a <strong>programming session</strong>; enter it here before starting.
+        </p>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button id="atEnterSessionButton" disabled>Enter Programming Session</button>
+        </div>
+        <div id="at-session-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
       </div>
-    <!-- End Configuration Tab -->
+
+      <!-- Parameters + Start/Abort -->
+      <div class="tab-section">
+        <h2>Run</h2>
+        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label for="at-base-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Base setpoint (bar)</label>
+            <input type="number" id="at-base-input" min="0.40" max="1.60" step="0.05" value="0.70"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 110px; font-size: 14px;">
+          </div>
+          <div>
+            <label for="at-step-input" style="color: #888; font-size: 13px; display: block; margin-bottom: 5px;">Incremental duty (%)</label>
+            <input type="number" id="at-step-input" min="5" max="30" step="1" value="20"
+              style="background: #1a1a1a; border: 1px solid #555; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; width: 110px; font-size: 14px;">
+          </div>
+          <button id="atStartButton" disabled class="danger">Start Autotune</button>
+          <button id="atAbortButton" disabled>Abort</button>
+        </div>
+        <div id="at-run-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+
+      <!-- Live status -->
+      <div class="tab-section">
+        <h2>Status</h2>
+        <div id="atStatusGrid" class="config-grid">
+          <div class="field-inactive">(Start a run to see live status)</div>
+        </div>
+      </div>
+
+      <!-- Live loop response (0xF200 / 0xF202 / 0xF210) -->
+      <div class="tab-section">
+        <h2>Live Loop Response</h2>
+        <div id="atLiveGrid" class="config-grid">
+          <div class="field-inactive">(Live PPO2 / setpoint / duty appears during a run)</div>
+        </div>
+      </div>
+
+      <!-- Recommended gains + commit -->
+      <div class="tab-section" id="atResultSection" style="display: none;">
+        <h2>Recommended Gains</h2>
+        <p style="color: #888; font-size: 13px; margin: 4px 0 10px;">
+          The run completed. The controller retained its pre-run gains so repeat tests
+          remain comparable. The recommendation is staged for review; persist it below
+          and reboot to make it the active controller tune.
+        </p>
+        <div id="atResultGrid" class="config-grid"></div>
+        <div style="margin-top: 12px;">
+          <button id="atCommitButton" class="danger">Commit to device (persist)</button>
+        </div>
+        <div id="at-commit-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+
+      <div class="tab-section" id="atReportSection" style="display: none;">
+        <h2>Tune Report</h2>
+        <p style="color: #888; font-size: 13px; margin: 4px 0 10px;">
+          Versioned JSON containing the request, sampled response, identified plant,
+          and recommended gains. Copy it into a tuning review for model refinement.
+        </p>
+        <textarea id="atReportText" readonly spellcheck="false" aria-label="Tune report JSON"
+          style="width: 100%; min-height: 260px; box-sizing: border-box; background: #111; border: 1px solid #555; color: #d7e6d7; padding: 10px; border-radius: 4px; font: 12px monospace;"></textarea>
+        <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+          <button id="atCopyReportButton">Copy report</button>
+          <button id="atExportReportButton">Export JSON</button>
+        </div>
+        <div id="at-report-message" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+      </div>
+    <!-- End Autotune Tab -->
+    </div>
+
+    <!-- Settings Tab (device settings menu via UDS 0x9xxx) -->
+    <div class="tab-content" id="tab-settings">
+      <h2>Device Settings</h2>
+      <div class="config-buttons">
+        <button id="readSettingsButton" disabled>Read from Device</button>
+        <span id="settingsStatus" class="config-status">(Connect to device to read settings)</span>
+      </div>
+      <div id="settingsContainer" class="settings-list">
+        <div class="field-inactive">(Connect to device to see settings)</div>
+      </div>
+    <!-- End Settings Tab -->
+    </div>
+
+    <!-- Firmware Update Tab -->
+    <div class="tab-content" id="tab-firmware">
+      <h2>Firmware Update (OTA)</h2>
+
+      <div class="tab-section">
+        <h2>Device / MCUBoot Status</h2>
+        <div class="config-buttons">
+          <button id="fwRefreshButton" disabled>Refresh Status</button>
+        </div>
+        <div id="fwStatusGrid" class="config-grid">
+          <div class="field-inactive">(Connect to read firmware status)</div>
+        </div>
+      </div>
+
+      <div class="tab-section">
+        <h2>Upload Image</h2>
+        <input type="file" id="fwFileInput" accept=".bin,.hex,.img" disabled aria-label="Firmware image file">
+        <div id="fwFileInfo" style="margin-top: 10px; color: #888; font-size: 13px;">No file selected</div>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
+          <button id="fwUpdateButton" class="danger" disabled>Update OTA</button>
+          <button id="fwUpdateCancelButton" disabled>Cancel</button>
+        </div>
+        <div class="progress-bar" style="margin-top: 12px;">
+          <div class="progress-fill" id="fwProgressFill"></div>
+        </div>
+        <div id="fwMessage" style="margin-top: 10px; color: #888; font-size: 13px;"></div>
+        <p style="color: #888; font-size: 12px; margin: 8px 0 0;">
+          Runs the whole pipeline back-to-back &mdash; programming session &rarr; stage &rarr;
+          activate &amp; reboot &rarr; poll until confirmed &mdash; so no timeout window can be
+          missed. Use <strong>Cancel</strong> to abort before activation.
+        </p>
+      </div>
+
+      <details class="tab-section" id="fwStages">
+        <summary style="cursor: pointer; font-weight: bold;">Stages (manual step-by-step)</summary>
+        <p style="color: #888; font-size: 12px; margin: 8px 0;">
+          Drive each OTA phase by hand. Mind the session and confirmation windows &mdash;
+          the one-click <strong>Update OTA</strong> button above exists to avoid missing them.
+        </p>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button id="fwEnterSessionButton" disabled>Enter Programming Session</button>
+          <button id="fwStageButton" disabled>Stage Image</button>
+          <button id="fwActivateButton" disabled class="danger">Activate &amp; Reboot</button>
+          <button id="fwCancelButton" disabled>Cancel</button>
+          <button id="fwConfirmPollButton" disabled>Poll Until Confirmed</button>
+          <button id="fwRevertButton" disabled class="danger">Force Revert</button>
+        </div>
+      </details>
+
+      <details class="tab-section" id="fwDestructive">
+        <summary style="cursor: pointer; color: #e74c3c; font-weight: bold;">Advanced / Destructive</summary>
+        <p style="color: #888; font-size: 12px; margin: 8px 0;">
+          Each action requires a programming session at the surface and is irreversible.
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 8px; max-width: 480px;">
+          <label><input type="checkbox" id="fwRestoreFactoryChk"> Restore factory image (0xF276)
+            <button id="fwRestoreFactoryButton" class="small danger" disabled>Run</button></label>
+          <label><input type="checkbox" id="fwCaptureChk"> Capture running image as factory (0xF277)
+            <button id="fwCaptureButton" class="small danger" disabled>Run</button></label>
+          <label><input type="checkbox" id="fwChipEraseChk"> Chip-erase external NOR (0xF278)
+            <button id="fwChipEraseButton" class="small danger" disabled>Run</button></label>
+          <label><input type="checkbox" id="fwNvsEraseChk"> Erase settings/cal NVS (0xF279)
+            <button id="fwNvsEraseButton" class="small danger" disabled>Run</button></label>
+        </div>
+      </details>
+    <!-- End Firmware Update Tab -->
+    </div>
+
+    <!-- Logs Tab (flash-log download) -->
+    <div class="tab-content" id="tab-logs">
+      <h2>Flash Logs</h2>
+
+      <div class="tab-section">
+        <h2>Stats</h2>
+        <div class="config-buttons">
+          <button id="logStatsButton" disabled>Refresh Stats</button>
+        </div>
+        <div id="logStatsGrid" class="config-grid">
+          <div class="field-inactive">(Connect to read log stats)</div>
+        </div>
+      </div>
+
+      <div class="tab-section">
+        <h2>Download</h2>
+        <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+          <div>
+            <label for="logStreamSelect" style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Stream</label>
+            <select id="logStreamSelect" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+              <option value="0">Telemetry</option>
+              <option value="1">Text</option>
+            </select>
+          </div>
+          <div>
+            <label for="logSelectorSelect" style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Selector</label>
+            <select id="logSelectorSelect" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+              <option value="allBoots">All retained records (all boots)</option>
+              <option value="latestBoot">Latest boot</option>
+              <option value="latestDive">Latest dive</option>
+              <option value="byBoot">By boot id</option>
+              <option value="byDive">By dive number</option>
+            </select>
+          </div>
+          <div>
+            <label for="logSelectorId" style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Id</label>
+            <input type="number" id="logSelectorId" min="0" value="0" disabled
+              style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;width:110px;">
+          </div>
+          <button id="logResolveButton" disabled>Resolve</button>
+          <button id="logDownloadButton" disabled>Download</button>
+          <button id="logCancelButton" disabled>Cancel</button>
+        </div>
+        <div id="logSelectorInfo" style="margin-top:10px;color:#888;font-size:13px;"></div>
+        <div class="progress-bar" style="margin-top: 12px;">
+          <div class="progress-fill" id="logProgressFill"></div>
+        </div>
+        <div id="logMessage" style="margin-top:10px;color:#888;font-size:13px;"></div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+          <button id="logExportJson" class="small" disabled>Export JSON</button>
+          <button id="logExportCsv" class="small" disabled>Export CSV</button>
+          <button id="logExportBin" class="small" disabled>Export .bin</button>
+        </div>
+      </div>
+
+      <div class="tab-section">
+        <h2>Runtime Capture</h2>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div>
+            <label for="logVerbositySelect" style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Text verbosity</label>
+            <select id="logVerbositySelect" disabled style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+              <option value="1">ERROR</option>
+              <option value="2">WARN</option>
+              <option value="3">INFO</option>
+              <option value="4">DEBUG</option>
+            </select>
+          </div>
+          <label style="color:#ccc;font-size:13px;"><input type="checkbox" id="logCanRx" disabled> Capture CAN RX</label>
+          <label style="color:#ccc;font-size:13px;"><input type="checkbox" id="logCanTx" disabled> Capture CAN TX</label>
+          <button id="logApplyCaptureButton" class="small" disabled>Apply</button>
+          <button id="logEraseButton" class="small danger" disabled>Erase Log&hellip;</button>
+        </div>
+      </div>
+
+      <div class="tab-section">
+        <h2>Records (<span id="logRecordCount">0</span>)</h2>
+        <div style="max-height: 340px; overflow: auto;">
+          <table id="logRecordTable" style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="text-align:left;color:#888;">
+              <th style="padding:4px;">#</th><th style="padding:4px;">Type</th>
+              <th style="padding:4px;">ts (us)</th><th style="padding:4px;">Details</th>
+            </tr></thead>
+            <tbody id="logRecordBody"></tbody>
+          </table>
+        </div>
+      </div>
+    <!-- End Logs Tab -->
+    </div>
+
+    <!-- Errors Tab -->
+    <div class="tab-content" id="tab-errors">
+      <div class="tab-section">
+        <h2>Error Histogram</h2>
+        <p style="color:#888;font-size:12px;margin:4px 0 12px;">
+          Per-code occurrence counters (DID <code>0xF260</code>), saturating and
+          persisted in NVS across reboots. Counts survive power cycles until
+          cleared.
+        </p>
+        <div class="chart-controls">
+          <button class="small" id="errorRefreshButton" disabled>Refresh</button>
+          <button class="small danger" id="errorClearButton" disabled>Clear Histogram&hellip;</button>
+          <label style="color:#ccc;font-size:13px;">
+            <input type="checkbox" id="errorShowAll"> Show zero-count codes
+          </label>
+          <span id="errorSummary" style="color:#888;font-size:13px;margin-left:auto;">--</span>
+        </div>
+        <div style="max-height: 460px; overflow: auto;">
+          <table id="errorTable" style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="text-align:left;color:#888;border-bottom:1px solid #3a3a3a;">
+              <th style="padding:6px 8px;">Code</th>
+              <th style="padding:6px 8px;">Error</th>
+              <th style="padding:6px 8px;">Category</th>
+              <th style="padding:6px 8px;">Description</th>
+              <th style="padding:6px 8px;text-align:right;">Count</th>
+            </tr></thead>
+            <tbody id="errorTableBody">
+              <tr><td colspan="5" style="padding:10px;color:#666;">(Connect and press Refresh)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="errorStatus" style="margin-top:10px;color:#888;font-size:13px;"></div>
+      </div>
+    <!-- End Errors Tab -->
     </div>
 
     <!-- DID Subscriptions Tab -->
@@ -1028,6 +1465,41 @@
   <!-- End Tab Container -->
   </div>
 
+  <!-- Real-Time Plot (persistent dock - visible on every tab) -->
+  <div class="plot-dock" id="plotDock">
+    <div class="plot-dock-header" onclick="togglePlotDock()" tabindex="0" role="button" aria-label="Toggle real-time plot" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); togglePlotDock(); }">
+      <h2>Real-Time Plot</h2>
+      <button class="small" id="plotDockToggle">Collapse</button>
+    </div>
+    <div class="plot-dock-body" id="plotDockBody">
+      <div class="chart-controls axis-controls">
+        <div class="axis-group axis-left">
+          <span class="axis-label">Left:</span>
+          <span id="leftAxisLabel">--</span>
+          <button class="small" onclick="clearLeftAxis()">Clear</button>
+        </div>
+        <div class="axis-group axis-right">
+          <span class="axis-label">Right:</span>
+          <span id="rightAxisLabel">--</span>
+          <button class="small" onclick="clearRightAxis()">Clear</button>
+        </div>
+      </div>
+      <div class="chart-controls">
+        <label for="windowSelect">Window:</label>
+        <select id="windowSelect" onchange="setPlotWindow(this.value)">
+          <option value="30">30 seconds</option>
+          <option value="60" selected>60 seconds</option>
+          <option value="120">2 minutes</option>
+          <option value="300">5 minutes</option>
+        </select>
+        <button class="small" onclick="clearPlot()">Clear All</button>
+      </div>
+      <div class="chart-container">
+        <canvas id="realtimeChart"></canvas>
+      </div>
+    </div>
+  </div>
+
   <!-- Log Messages -->
   <div class="section">
     <h2>Log Messages</h2>
@@ -1036,19 +1508,21 @@
   </div>
 
   <script type="module">
-    import { DeviceManager, Logger } from '../src/index.js';
+    import { DeviceManager, CanableProtocolStack, Logger } from '../src/index.js';
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
-    import { STATE_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES } from '../src/uds/constants.js';
-    import { ConfigurationDecoder, CONFIG_FIELDS } from '../src/config/ConfigurationDecoder.js';
+    import { ALL_READ_DIDS, EXTRA_READ_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT, UDS_SESSION_PROGRAMMING, AUTOTUNE_STATE_DONE, AUTOTUNE_STATE_ABORTED } from '../src/uds/constants.js';
+    import { parseMcubootImage, formatVersion } from '../src/firmware/McubootImage.js';
+    import { parseLogStream, decodeRecord } from '../src/logs/LogParser.js';
+    import { toJSON as logToJSON, toCSV as logToCSV, toRawBin as logToRawBin, triggerDownload } from '../src/logs/LogExport.js';
 
     // Reduce logging to improve performance - only show warnings and errors
     Logger.setGlobalLevel('debug');
 
     // Check browser support
     const checkBrowserSupport = () => {
-      if (!navigator.bluetooth) {
+      if (!navigator.bluetooth && !navigator.serial) {
         document.getElementById('browserWarning').style.display = 'block';
         return false;
       }
@@ -1082,6 +1556,12 @@
               content.classList.add('active');
             }
           });
+
+          // Auto-load the error histogram the first time the Errors tab is
+          // opened while connected (cheap single read; manual Refresh re-reads).
+          if (targetTab === 'errors' && stack && !errorHistogramLoaded) {
+            refreshErrorHistogram();
+          }
         });
       });
     };
@@ -1089,6 +1569,7 @@
     // UI Elements
     const elements = {
       scanButton: document.getElementById('scanButton'),
+      usbConnectButton: document.getElementById('usbConnectButton'),
       disconnectButton: document.getElementById('disconnectButton'),
       connectionStatus: document.getElementById('connectionStatus'),
       deviceInfo: document.getElementById('deviceInfo'),
@@ -1109,25 +1590,24 @@
       subscriptionCount: document.getElementById('subscriptionCount'),
       pollRate: document.getElementById('pollRate'),
       didSubscriptionList: document.getElementById('didSubscriptionList'),
-      // Configuration elements
-      readConfigButton: document.getElementById('readConfigButton'),
-      writeConfigButton: document.getElementById('writeConfigButton'),
-      configStatus: document.getElementById('configStatus'),
-      configFieldsContainer: document.getElementById('configFieldsContainer'),
-      configRawHex: document.getElementById('configRawHex'),
+      // Settings tab elements
+      readSettingsButton: document.getElementById('readSettingsButton'),
+      settingsStatus: document.getElementById('settingsStatus'),
+      settingsContainer: document.getElementById('settingsContainer'),
       // Control tab elements
       calFo2Input: document.getElementById('cal-fo2-input'),
       triggerCalButton: document.getElementById('triggerCalButton'),
-      calMessage: document.getElementById('cal-message')
+      calMessage: document.getElementById('cal-message'),
+      setpointInput: document.getElementById('setpoint-input'),
+      setSetpointButton: document.getElementById('setSetpointButton'),
+      setpointMessage: document.getElementById('setpoint-message'),
+      solenoidChannel: document.getElementById('solenoid-channel'),
+      fireSolenoidButton: document.getElementById('fireSolenoidButton'),
+      solenoidMessage: document.getElementById('solenoid-message')
     };
 
     // Subscription state
     let activeSubscriptions = new Map();  // didKey -> unsubscribe function
-
-    // Configuration state
-    let configDecoder = new ConfigurationDecoder();
-    let originalConfigBytes = [0, 0, 0, 0];
-    let configLoaded = false;
 
     // Initialize plot manager
     plotManager = new PlotManager('realtimeChart', {
@@ -1152,6 +1632,7 @@
     // Update UI state
     const updateUIState = (connected) => {
       elements.scanButton.disabled = connected;
+      elements.usbConnectButton.disabled = connected;
       elements.disconnectButton.disabled = !connected;
 
       if (connected) {
@@ -1202,9 +1683,9 @@
     };
 
     // Add to log messages (text logs only)
-    const addToLogMessages = (message) => {
+    const addToLogMessages = (message, isError = false) => {
       const entry = document.createElement('div');
-      entry.className = 'log-entry';
+      entry.className = `log-entry${isError ? ' error' : ''}`;
       entry.textContent = message;
       elements.logMessages.appendChild(entry);
 
@@ -1265,6 +1746,17 @@
         }
       });
 
+      // Whole-device current: DID is decoded to mA (see UDSClient.parseDIDValue);
+      // an unavailable/no-provider reading arrives as NaN. Display in mA for
+      // bench-testing legibility.
+      const currentEl = document.getElementById('device-current');
+      if (currentEl) {
+        const mA = dataStore.getDIDValue('DEVICE_CURRENT');
+        const haveCurrent = mA !== undefined && mA !== null && !Number.isNaN(mA);
+        currentEl.textContent = haveCurrent ? mA.toFixed(0) : '--';
+        updateStaleClass(currentEl, 'DEVICE_CURRENT');
+      }
+
       const sources = dataStore.getDIDValue('POWER_SOURCES');
       const vccEl = document.getElementById('vcc-source');
       const vbusEl = document.getElementById('vbus-source');
@@ -1278,6 +1770,42 @@
       // Both source fields depend on POWER_SOURCES DID
       updateStaleClass(vccEl, 'POWER_SOURCES');
       updateStaleClass(vbusEl, 'POWER_SOURCES');
+    };
+
+    // Show the optional cylinder-pressure banner only for DIDs the connected
+    // firmware actually implements. A NaN value means the transducer exists
+    // but currently reports its 0xFFFF failure sentinel, so it remains visible
+    // as "--" rather than making the capability disappear.
+    const updateCylinderPressure = () => {
+      const section = document.getElementById('cylinder-pressure-section');
+      const cylinders = [
+        {
+          key: 'O2_CYL_PRESSURE',
+          item: document.getElementById('o2-cylinder-pressure-item'),
+          value: document.getElementById('o2-cylinder-pressure')
+        },
+        {
+          key: 'DIL_CYL_PRESSURE',
+          item: document.getElementById('dil-cylinder-pressure-item'),
+          value: document.getElementById('dil-cylinder-pressure')
+        }
+      ];
+      let available = false;
+
+      for (const cylinder of cylinders) {
+        const pressure = dataStore.getDIDValue(cylinder.key);
+        const supported = pressure !== undefined;
+        cylinder.item.hidden = !supported;
+        if (supported) {
+          available = true;
+          cylinder.value.textContent = Number.isFinite(pressure)
+            ? pressure.toFixed(1)
+            : '--';
+          updateStaleClass(cylinder.value, cylinder.key);
+        }
+      }
+
+      section.hidden = !available;
     };
 
     // Track cell types for rebuilding panels
@@ -1453,6 +1981,25 @@
         cellSection.appendChild(cellGrid);
         container.appendChild(cellSection);
       });
+
+      // Build extra read-only DID sections (identity, diagnostics, firmware, flash log),
+      // grouped by category and in registry order.
+      const extraByCategory = {};
+      for (const [key, info] of Object.entries(EXTRA_READ_DIDS)) {
+        if (!extraByCategory[info.category]) { extraByCategory[info.category] = []; }
+        extraByCategory[info.category].push([key, info]);
+      }
+      for (const [category, entries] of Object.entries(extraByCategory)) {
+        const section = document.createElement('div');
+        section.innerHTML = `<div class="did-category">${category}</div>`;
+        const grid = document.createElement('div');
+        grid.className = 'did-grid';
+        for (const [key, info] of entries) {
+          grid.appendChild(createDIDItem(key, info));
+        }
+        section.appendChild(grid);
+        container.appendChild(section);
+      }
     };
 
     // Create a single DID item element
@@ -1528,11 +2075,17 @@
       const valueEl = document.getElementById(`did-value-${didKey}`);
       if (!valueEl) return;
 
-      const info = STATE_DIDS[didKey];
+      const info = ALL_READ_DIDS[didKey];
       if (!info) return;
 
       if (value === undefined || value === null) {
         valueEl.textContent = '--';
+        return;
+      }
+
+      // Extra DIDs are pre-formatted into a string/number by parseExtraDIDValue.
+      if (EXTRA_READ_DIDS[didKey]) {
+        valueEl.textContent = value.toString();
         return;
       }
 
@@ -1549,6 +2102,10 @@
           break;
         case 'bool':
           valueEl.textContent = value ? 'Yes' : 'No';
+          break;
+        case 'device_current':
+          // Decoded to mA; NaN = no provider / no sample yet.
+          valueEl.textContent = Number.isNaN(value) ? '--' : `${value.toFixed(0)} mA`;
           break;
         default:
           valueEl.textContent = value.toString();
@@ -1572,9 +2129,9 @@
       elements.subscriptionCount.textContent = activeSubscriptions.size;
     };
 
-    // Subscribe to all DIDs
+    // Subscribe to all DIDs (live state + extra read-only DIDs)
     const subscribeToAllDIDs = () => {
-      for (const key of Object.keys(STATE_DIDS)) {
+      for (const key of Object.keys(ALL_READ_DIDS)) {
         const checkbox = document.getElementById(`did-${key}`);
         if (checkbox && !checkbox.checked) {
           checkbox.checked = true;
@@ -1612,8 +2169,10 @@
           pollInterval: 200
         });
 
-        // Show initializing status
-        updateStreamStatus('initializing', 'Fetching DIDs...');
+        // Show initializing status. initialize() first drains the head's log
+        // backlog (waitForLogQuiescence) before the DID-fetch burst so log
+        // pushes don't interleave with our responses on the handset.
+        updateStreamStatus('initializing', 'Draining log backlog...');
 
         // Fetch all DIDs initially with progress callback
         await newDataStore.initialize((current, total) => {
@@ -1643,204 +2202,479 @@
     };
 
     // ============================================================
-    // Configuration Settings Functions
+    // Settings / Firmware / Logs tab logic
     // ============================================================
+    const $ = (id) => document.getElementById(id);
 
-    // Build configuration UI from CONFIG_FIELDS
-    const buildConfigUI = () => {
-      const container = elements.configFieldsContainer;
+    const renderKV = (container, pairs) => {
       container.innerHTML = '';
-
-      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
-        const fieldEl = document.createElement('div');
-        fieldEl.className = `config-field${field.editable ? '' : ' readonly'}`;
-        fieldEl.dataset.field = fieldName;
-
-        const label = document.createElement('label');
-        label.textContent = field.label;
-        fieldEl.appendChild(label);
-
-        if (!field.editable) {
-          // Read-only display
-          const display = document.createElement('span');
-          display.className = 'value-display';
-          display.id = `config-${fieldName}`;
-          display.textContent = '--';
-          fieldEl.appendChild(display);
-        } else if (field.type === 'bool') {
-          // Checkbox
-          const input = document.createElement('input');
-          input.type = 'checkbox';
-          input.id = `config-${fieldName}`;
-          input.addEventListener('change', () => onConfigFieldChange(fieldName));
-          fieldEl.appendChild(input);
-        } else if (field.type === 'enum') {
-          // Dropdown
-          const select = document.createElement('select');
-          select.id = `config-${fieldName}`;
-          for (const opt of field.options) {
-            const option = document.createElement('option');
-            option.value = opt.value;
-            option.textContent = opt.label;
-            select.appendChild(option);
-          }
-          select.addEventListener('change', () => onConfigFieldChange(fieldName));
-          fieldEl.appendChild(select);
-        }
-
-        container.appendChild(fieldEl);
+      for (const [label, value] of pairs) {
+        const row = document.createElement('div');
+        row.className = 'config-field readonly';
+        const l = document.createElement('label');
+        l.textContent = label;
+        const v = document.createElement('span');
+        v.className = 'value-display';
+        v.textContent = value;
+        row.appendChild(l);
+        row.appendChild(v);
+        container.appendChild(row);
       }
     };
 
-    // Load configuration from device
-    const loadConfigFromDevice = async () => {
-      if (!stack || !stack._uds) {
-        elements.configStatus.textContent = 'Not connected';
-        return;
-      }
-
-      elements.configStatus.textContent = 'Reading configuration...';
-      elements.readConfigButton.disabled = true;
-
-      try {
-        // Read 4 config bytes (settings indices 1-4)
-        const bytes = [];
-        for (let i = 1; i <= 4; i++) {
-          const result = await stack._uds.getSettingValue(i);
-          bytes.push(Number(result.currentValue) & 0xFF);
+    // ---------- Settings editor (UDS 0x9xxx menu) ----------
+    // Build the select/number-input control for one setting and return a
+    // getValue() accessor that reads the current control value as a BigInt.
+    const buildSettingValueControl = async (s, pidWireSetting, controls) => {
+      let getValue;
+      if (s.kind === SETTING_KIND_TEXT && s.optionCount > 0) {
+        const select = document.createElement('select');
+        for (let i = 0; i < s.optionCount; i++) {
+          const opt = document.createElement('option');
+          opt.value = String(i);
+          opt.textContent = await stack.uds.getSettingOptionLabel(s.index, i);
+          select.appendChild(opt);
         }
-
-        configDecoder.fromBytes(bytes);
-        originalConfigBytes = [...bytes];
-        configLoaded = true;
-
-        updateConfigUI();
-        elements.configStatus.textContent = 'Configuration loaded';
-        elements.writeConfigButton.disabled = false;
-
-      } catch (error) {
-        console.error('Failed to read config:', error);
-        elements.configStatus.textContent = 'Failed to read: ' + error.message;
-      } finally {
-        elements.readConfigButton.disabled = false;
-      }
-    };
-
-    // Update UI from decoder state
-    const updateConfigUI = () => {
-      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
-        const value = configDecoder.getField(fieldName);
-        const el = document.getElementById(`config-${fieldName}`);
-        if (!el) continue;
-
-        if (!field.editable) {
-          el.textContent = value;
-        } else if (field.type === 'bool') {
-          el.checked = !!value;
-        } else {
-          el.value = value;
-        }
-
-        // Clear dirty indicator
-        const fieldEl = el.closest('.config-field');
-        if (fieldEl) {
-          fieldEl.classList.remove('config-dirty');
-        }
-      }
-
-      elements.configRawHex.textContent = configDecoder.toHexString();
-    };
-
-    // Handle config field change
-    const onConfigFieldChange = (fieldName) => {
-      const field = CONFIG_FIELDS[fieldName];
-      const el = document.getElementById(`config-${fieldName}`);
-      if (!field || !el) return;
-
-      let newValue;
-      if (field.type === 'bool') {
-        newValue = el.checked ? 1 : 0;
+        select.value = String(Number(s.currentValue));
+        select.disabled = !s.editable;
+        controls.appendChild(select);
+        getValue = () => BigInt(select.value);
       } else {
-        newValue = Number.parseInt(el.value, 10);
-      }
-
-      configDecoder.setField(fieldName, newValue);
-
-      // Check if byte changed from original
-      const currentBytes = configDecoder.toBytes();
-      const byteIndex = field.byte;
-      const fieldEl = el.closest('.config-field');
-
-      if (currentBytes[byteIndex] === originalConfigBytes[byteIndex]) {
-        fieldEl.classList.remove('config-dirty');
-      } else {
-        fieldEl.classList.add('config-dirty');
-      }
-
-      elements.configRawHex.textContent = configDecoder.toHexString();
-    };
-
-    // Save configuration to device
-    const saveConfigToDevice = async () => {
-      if (!stack || !stack._uds || !configLoaded) {
-        elements.configStatus.textContent = 'Cannot save: not connected or config not loaded';
-        return;
-      }
-
-      elements.configStatus.textContent = 'Writing configuration...';
-      elements.writeConfigButton.disabled = true;
-
-      try {
-        const currentBytes = configDecoder.toBytes();
-
-        // Save only changed bytes
-        for (let i = 0; i < 4; i++) {
-          if (currentBytes[i] !== originalConfigBytes[i]) {
-            await stack._uds.saveSetting(i + 1, BigInt(currentBytes[i]));
-          }
-        }
-
-        originalConfigBytes = [...currentBytes];
-        updateConfigUI();  // Clear dirty indicators
-        elements.configStatus.textContent = 'Configuration saved successfully';
-
-      } catch (error) {
-        console.error('Failed to save config:', error);
-        elements.configStatus.textContent = 'Failed to save: ' + error.message;
-      } finally {
-        elements.writeConfigButton.disabled = false;
-      }
-    };
-
-    // Reset config UI state on disconnect
-    const resetConfigUI = () => {
-      configLoaded = false;
-      originalConfigBytes = [0, 0, 0, 0];
-      configDecoder = new ConfigurationDecoder();
-      elements.readConfigButton.disabled = true;
-      elements.writeConfigButton.disabled = true;
-      elements.configStatus.textContent = '(Connect to device to read configuration)';
-      elements.configRawHex.textContent = '--';
-
-      // Clear all field values
-      for (const [fieldName, field] of Object.entries(CONFIG_FIELDS)) {
-        const el = document.getElementById(`config-${fieldName}`);
-        if (!el) continue;
-
-        if (!field.editable) {
-          el.textContent = '--';
-        } else if (field.type === 'bool') {
-          el.checked = false;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        if (pidWireSetting) {
+          input.max = String(Number(s.maxValue) / 1000000);
+          input.step = '0.000001';
+          input.value = String(Number(s.currentValue) / 1000000);
+          input.title = 'Real PID gain (resolution 0.000001)';
         } else {
-          el.value = field.options ? field.options[0].value : 0;
+          input.max = String(s.maxValue);
+          input.value = String(s.currentValue);
         }
+        input.disabled = !s.editable;
+        input.style.width = '120px';
+        controls.appendChild(input);
+        getValue = () => BigInt(Math.round(Number(input.value) *
+          (pidWireSetting ? 1000000 : 1)));
+      }
+      return getValue;
+    };
 
-        const fieldEl = el.closest('.config-field');
-        if (fieldEl) {
-          fieldEl.classList.remove('config-dirty');
+    // Append the Set/Save action buttons for an editable setting.
+    const appendSettingActionButtons = (s, getValue, controls) => {
+      const setBtn = document.createElement('button');
+      setBtn.className = 'small';
+      setBtn.textContent = 'Set';
+      setBtn.title = 'Apply now (volatile)';
+      setBtn.addEventListener('click', async () => {
+        try { await stack.uds.writeSettingValue(s.index, getValue()); elements.settingsStatus.textContent = `Set "${s.label}"`; }
+        catch (e) { elements.settingsStatus.textContent = `Set failed: ${e.message}`; }
+      });
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'small';
+      saveBtn.textContent = 'Save';
+      saveBtn.title = 'Persist to NVS (may need power-cycle)';
+      saveBtn.addEventListener('click', async () => {
+        try { await stack.uds.saveSetting(s.index, getValue()); elements.settingsStatus.textContent = `Saved "${s.label}"`; }
+        catch (e) { elements.settingsStatus.textContent = `Save failed: ${e.message}`; }
+      });
+      controls.appendChild(setBtn);
+      controls.appendChild(saveBtn);
+    };
+
+    // Build one setting's row (label + value control + Set/Save buttons).
+    const buildSettingRow = async (s) => {
+      const pidWireSetting = /^(Kp|Ki|Kd) x1M$/.exec(s.label);
+      const row = document.createElement('div');
+      row.className = 'setting-row';
+      const label = document.createElement('label');
+      label.textContent = pidWireSetting ? `PID ${pidWireSetting[1]}` : s.label;
+      row.appendChild(label);
+
+      const controls = document.createElement('div');
+      controls.className = 'setting-controls';
+      controls.style.display = 'flex';
+      controls.style.gap = '8px';
+      controls.style.alignItems = 'center';
+
+      const getValue = await buildSettingValueControl(s, pidWireSetting, controls);
+      if (s.editable) { appendSettingActionButtons(s, getValue, controls); }
+
+      row.appendChild(controls);
+      return row;
+    };
+
+    const loadSettings = async () => {
+      if (!stack) return;
+      elements.settingsStatus.textContent = 'Reading settings...';
+      elements.readSettingsButton.disabled = true;
+      try {
+        const settings = await stack.uds.enumerateSettings();
+        const container = elements.settingsContainer;
+        container.innerHTML = '';
+
+        for (const s of settings) {
+          container.appendChild(await buildSettingRow(s));
         }
+        elements.settingsStatus.textContent = `${settings.length} settings loaded`;
+      } catch (error) {
+        elements.settingsStatus.textContent = 'Failed to read: ' + error.message;
+      } finally {
+        elements.readSettingsButton.disabled = false;
       }
     };
+
+    const resetSettingsUI = () => {
+      elements.readSettingsButton.disabled = true;
+      elements.settingsStatus.textContent = '(Connect to device to read settings)';
+      elements.settingsContainer.innerHTML = '<div class="field-inactive">(Connect to device to see settings)</div>';
+    };
+
+    // ---------- Firmware Update (OTA) ----------
+    let fwImageBytes = null;
+    let fwParsedImage = null;
+    let fwAbort = null;
+
+    const setFwProgress = (pct) => { $('fwProgressFill').style.width = `${pct}%`; };
+
+    const fwRefreshStatus = async () => {
+      if (!stack) return;
+      $('fwMessage').textContent = 'Reading status...';
+      try {
+        const [fw, variant, hw, serial, status, post] = await Promise.all([
+          stack.uds.readFirmwareVersion().catch(() => '?'),
+          stack.uds.readVariantName().catch(() => '?'),
+          stack.uds.readHardwareVersion().catch(() => '?'),
+          stack.uds.readSerialNumber().catch(() => '?'),
+          stack.ota.readMcubootStatus().catch(() => null),
+          stack.ota.readPostStatus().catch(() => null)
+        ]);
+        const pairs = [
+          ['Firmware', fw], ['Variant', variant], ['Hardware', String(hw)], ['Serial', serial]
+        ];
+        if (status) {
+          pairs.push(
+            ['Swap type', status.swapTypeName],
+            ['Confirmed', status.confirmed ? 'yes' : 'NO (unconfirmed)'],
+            ['Running slot', String(status.runningSlot)],
+            ['Slot0 version', formatVersion(status.slot0Version)],
+            ['Slot1 (pending)', formatVersion(status.slot1Version)],
+            ['Factory', formatVersion(status.factoryVersion)]
+          );
+        }
+        if (post) pairs.push(['POST passed', post.passed.join(', ') || '(none)']);
+        renderKV($('fwStatusGrid'), pairs);
+        $('fwMessage').textContent = '';
+      } catch (error) {
+        $('fwMessage').textContent = 'Status read failed: ' + error.message;
+      }
+    };
+
+    const onFwFileSelected = async (file) => {
+      if (!file) return;
+      fwImageBytes = new Uint8Array(await file.arrayBuffer());
+      fwParsedImage = parseMcubootImage(fwImageBytes);
+      if (fwParsedImage.valid) {
+        $('fwFileInfo').textContent =
+          `${file.name} — ${fwImageBytes.length} bytes, version ${formatVersion(fwParsedImage.version)} (valid MCUBoot image)`;
+        $('fwStageButton').disabled = !stack;
+        $('fwUpdateButton').disabled = !stack;
+      } else {
+        $('fwFileInfo').textContent = `${file.name} — INVALID: ${fwParsedImage.reason}`;
+        $('fwStageButton').disabled = true;
+        $('fwUpdateButton').disabled = true;
+      }
+    };
+
+    const fwEnterSession = async () => {
+      try {
+        $('fwMessage').textContent = 'Entering programming session...';
+        await stack.ota.enterProgrammingSession();
+        $('fwMessage').textContent = 'Programming session active (surface only).';
+      } catch (e) {
+        const nrc = e.nrc === 0x22 ? ' (refused — is the head in a dive?)' : '';
+        $('fwMessage').textContent = `Enter session failed: ${e.message}${nrc}`;
+      }
+    };
+
+    const fwStage = async () => {
+      if (!fwImageBytes || !fwParsedImage?.valid) return;
+      fwAbort = new AbortController();
+      $('fwStageButton').disabled = true;
+      $('fwCancelButton').disabled = false;
+      $('fwActivateButton').disabled = true;
+      setFwProgress(0);
+      try {
+        await stack.ota.stageImage(fwImageBytes, {
+          signal: fwAbort.signal,
+          onProgress: (done, total) => {
+            setFwProgress((done / total) * 100);
+            $('fwMessage').textContent = `Staging block ${done}/${total}...`;
+          }
+        });
+        $('fwMessage').textContent = 'Image staged to slot1. Ready to activate.';
+        $('fwActivateButton').disabled = false;
+      } catch (e) {
+        $('fwMessage').textContent = `Staging failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+      } finally {
+        $('fwStageButton').disabled = false;
+        $('fwCancelButton').disabled = true;
+        fwAbort = null;
+      }
+    };
+
+    const fwActivate = async () => {
+      if (!confirm('Activate the staged image? The head will validate it and REBOOT.')) return;
+      try {
+        $('fwMessage').textContent = 'Activating...';
+        const res = await stack.ota.activate();
+        $('fwMessage').textContent = res.inconclusive
+          ? 'Activate sent; no reply (head likely rebooting). Reconnect and verify version.'
+          : 'Activate accepted; head is rebooting into the new image (unconfirmed).';
+      } catch (e) {
+        const why = e.nrc === 0x22 ? ' — image failed SHA-256 verification' : '';
+        $('fwMessage').textContent = `Activate refused: ${e.message}${why}`;
+      }
+    };
+
+    const fwConfirmPoll = async () => {
+      $('fwMessage').textContent = 'Polling MCUBoot status until confirmed...';
+      for (let i = 0; i < 30; i++) {
+        try {
+          const s = await stack.ota.readMcubootStatus();
+          if (s && s.confirmed) { $('fwMessage').textContent = 'Image CONFIRMED.'; await fwRefreshStatus(); return; }
+          if (s && s.swapType === 3) { $('fwMessage').textContent = 'Image REVERTED (POST failed).'; await fwRefreshStatus(); return; }
+        } catch { /* head may be mid-reboot */ }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      $('fwMessage').textContent = 'Timed out waiting for confirmation.';
+    };
+
+    // Human-readable narration for each phase of the one-click update flow.
+    const FW_PHASE_MESSAGES = {
+      session: 'Entering programming session...',
+      staging: 'Staging image to slot1...',
+      activating: 'Activating (head validates SHA-256 and reboots)...',
+      polling: 'Polling MCUBoot status until confirmed...',
+      confirmed: 'Image CONFIRMED.',
+      reverted: 'Image REVERTED (POST failed).',
+      timeout: 'Timed out waiting for confirmation.'
+    };
+
+    // One-click OTA: session -> stage -> activate -> poll, with no gaps in which
+    // a session or confirmation window could lapse. Cancel aborts up to activation.
+    const fwUpdate = async () => {
+      if (!stack || !fwImageBytes || !fwParsedImage?.valid) return;
+      fwAbort = new AbortController();
+      $('fwUpdateButton').disabled = true;
+      $('fwUpdateCancelButton').disabled = false;
+      setFwProgress(0);
+      try {
+        const result = await stack.ota.updateFirmware(fwImageBytes, {
+          signal: fwAbort.signal,
+          onProgress: (done, total) => {
+            setFwProgress((done / total) * 100);
+            $('fwMessage').textContent = `Staging block ${done}/${total}...`;
+          },
+          onPhase: (phase) => {
+            if (FW_PHASE_MESSAGES[phase]) $('fwMessage').textContent = FW_PHASE_MESSAGES[phase];
+          }
+        });
+        if (result.confirmed) setFwProgress(100);
+      } catch (e) {
+        if (e?.details?.aborted) {
+          $('fwMessage').textContent = 'Update cancelled.';
+        } else if (e.nrc === 0x22) {
+          $('fwMessage').textContent = `Update refused: ${e.message} — head diving or image failed SHA-256 verification.`;
+        } else {
+          $('fwMessage').textContent = `Update failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+        }
+      } finally {
+        $('fwUpdateButton').disabled = !stack;
+        $('fwUpdateCancelButton').disabled = true;
+        fwAbort = null;
+        await fwRefreshStatus();
+      }
+    };
+
+    const fwGuardedAction = async (checkboxId, action, label) => {
+      if (!$(checkboxId).checked) { $('fwMessage').textContent = `Tick the box to confirm: ${label}`; return; }
+      if (!confirm(`${label}? This is irreversible.`)) return;
+      try {
+        $('fwMessage').textContent = `${label}...`;
+        const res = await action();
+        $('fwMessage').textContent = res.inconclusive
+          ? `${label}: sent; head likely rebooting.` : `${label}: acknowledged.`;
+        $(checkboxId).checked = false;
+      } catch (e) {
+        $('fwMessage').textContent = `${label} failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+      }
+    };
+
+    const enableFirmwareUI = (on) => {
+      for (const id of ['fwRefreshButton', 'fwFileInput', 'fwEnterSessionButton', 'fwConfirmPollButton',
+        'fwRevertButton', 'fwRestoreFactoryButton', 'fwCaptureButton', 'fwChipEraseButton', 'fwNvsEraseButton']) {
+        $(id).disabled = !on;
+      }
+      if (!on) {
+        $('fwUpdateButton').disabled = true;
+        $('fwUpdateCancelButton').disabled = true;
+        $('fwStageButton').disabled = true;
+        $('fwActivateButton').disabled = true;
+        $('fwCancelButton').disabled = true;
+        $('fwFileInfo').textContent = 'No file selected';
+        $('fwMessage').textContent = '';
+        setFwProgress(0);
+        $('fwStatusGrid').innerHTML = '<div class="field-inactive">(Connect to read firmware status)</div>';
+      }
+    };
+
+    // ---------- Logs ----------
+    let logRaw = null;
+    let logRecords = [];
+    let logAbort = null;
+
+    const setLogProgress = (pct) => { $('logProgressFill').style.width = `${pct}%`; };
+
+    const logRefreshStats = async () => {
+      try {
+        $('logMessage').textContent = 'Reading stats...';
+        const stats = await stack.logs.readStats();
+        if (!stats) { $('logStatsGrid').innerHTML = '<div class="field-inactive">(no stats)</div>'; return; }
+        renderKV($('logStatsGrid'), [
+          ['Telemetry boot id', String(stats.telemetry.bootIdCurrent)],
+          ['Telemetry dive', String(stats.telemetry.diveIdLatest)],
+          ['Telemetry sectors', `${stats.telemetry.sectorsFree}/${stats.telemetry.sectorsTotal} free`],
+          ['Telemetry drops', String(stats.telemetry.dropsSinceBoot)],
+          ['Text boot id', String(stats.text.bootIdCurrent)],
+          ['Text sectors', `${stats.text.sectorsFree}/${stats.text.sectorsTotal} free`]
+        ]);
+        $('logMessage').textContent = '';
+      } catch (e) { $('logMessage').textContent = 'Stats failed: ' + e.message; }
+    };
+
+    const currentSelector = () => {
+      const stream = Number($('logStreamSelect').value);
+      const mode = $('logSelectorSelect').value;
+      const id = Number($('logSelectorId').value);
+      if (mode === 'latestBoot') return (d) => d.selectLatestBoot(stream);
+      if (mode === 'latestDive') return (d) => d.selectLatestDive(stream);
+      if (mode === 'byBoot') return (d) => d.selectByBoot(id, stream);
+      return (d) => d.selectByDive(id, stream);
+    };
+
+    const logResolve = async () => {
+      try {
+        if ($('logSelectorSelect').value === 'allBoots') {
+          $('logMessage').textContent = 'Reading retained boot range...';
+          const stats = await stack.logs.readStats();
+          const stream = Number($('logStreamSelect').value);
+          const s = stream === 1 ? stats?.text : stats?.telemetry;
+          $('logSelectorInfo').textContent = s
+            ? `boot ids ${s.bootIdOldest}-${s.bootIdCurrent}; downloads each retained boot and merges locally`
+            : 'Stats unavailable';
+          $('logMessage').textContent = '';
+          return;
+        }
+        $('logMessage').textContent = 'Resolving (first selector builds the index, up to ~40s)...';
+        await currentSelector()(stack.logs);
+        const sel = await stack.logs.readSelectorResult();
+        if (!sel || sel.status < 0) {
+          $('logSelectorInfo').textContent = `No match (status ${sel ? sel.status : '?'})`;
+        } else {
+          $('logSelectorInfo').textContent =
+            `stream ${sel.stream}: ids ${sel.startId}-${sel.endId}, ${sel.entryCount} entries, ${sel.totalBytes} bytes`;
+        }
+        $('logMessage').textContent = '';
+      } catch (e) {
+        $('logSelectorInfo').textContent = `Resolve failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+        $('logMessage').textContent = '';
+      }
+    };
+
+    const logDownload = async () => {
+      logAbort = new AbortController();
+      $('logDownloadButton').disabled = true;
+      $('logCancelButton').disabled = false;
+      setLogProgress(0);
+      try {
+        $('logMessage').textContent = 'Downloading...';
+        const stream = Number($('logStreamSelect').value);
+        const allBoots = $('logSelectorSelect').value === 'allBoots';
+        const progress = ({ received, records, entryCount, bootId, bootsCompleted, totalBoots }) => {
+          if (totalBoots) {
+            setLogProgress(Math.min(100, (bootsCompleted / totalBoots) * 100));
+            $('logMessage').textContent =
+              `Boot ${bootId} (${bootsCompleted + 1}/${totalBoots}), ${records} records, ${received} bytes...`;
+          } else {
+            if (entryCount > 0) setLogProgress(Math.min(100, (records / entryCount) * 100));
+            const estimateSuffix = entryCount ? ` / ~${entryCount}` : '';
+            $('logMessage').textContent =
+              `${records}${estimateSuffix} records, ${received} bytes...`;
+          }
+        };
+        const result = allBoots
+          ? await stack.logs.downloadAllBoots({ stream, signal: logAbort.signal, onProgress: progress })
+          : await stack.logs.downloadLog({ stream, selector: currentSelector(), signal: logAbort.signal, onProgress: progress });
+        logRaw = result.raw;
+        logRecords = result.records || parseLogStream(logRaw);
+        renderLogRecords();
+        setLogProgress(100);
+        $('logMessage').textContent = allBoots
+          ? `Done: ${result.downloads.length} boots, ${logRaw.length} merged bytes, ${logRecords.length} records.`
+          : `Done: ${logRaw.length} bytes, ${logRecords.length} records.`;
+        for (const id of ['logExportJson', 'logExportCsv', 'logExportBin']) $(id).disabled = false;
+      } catch (e) {
+        $('logMessage').textContent = `Download failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+      } finally {
+        $('logDownloadButton').disabled = false;
+        $('logCancelButton').disabled = true;
+        logAbort = null;
+      }
+    };
+
+    const formatDetailValue = (v) => {
+      let formatted = v;
+      if (Array.isArray(v)) { formatted = `[${v}]`; }
+      return formatted;
+    };
+
+    const renderLogRecords = () => {
+      $('logRecordCount').textContent = String(logRecords.length);
+      const body = $('logRecordBody');
+      body.innerHTML = '';
+      logRecords.slice(0, 1000).forEach((rec, i) => {
+        const decoded = decodeRecord(rec);
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #222';
+        const details = decoded
+          ? Object.entries(decoded).map(([k, v]) => `${k}=${formatDetailValue(v)}`).join(' ')
+          : `${rec.payload.length} bytes`;
+        tr.innerHTML = `<td style="padding:4px;">${i}</td><td style="padding:4px;">${rec.typeName}</td>` +
+          `<td style="padding:4px;">${rec.tsUs}</td><td style="padding:4px;color:#aaa;">${details}</td>`;
+        body.appendChild(tr);
+      });
+    };
+
+    const enableLogsUI = (on) => {
+      for (const id of ['logStatsButton', 'logResolveButton', 'logDownloadButton', 'logVerbositySelect',
+        'logCanRx', 'logCanTx', 'logApplyCaptureButton', 'logEraseButton']) {
+        $(id).disabled = !on;
+      }
+      $('logSelectorId').disabled = !on || !['byBoot', 'byDive'].includes($('logSelectorSelect').value);
+      if (!on) {
+        for (const id of ['logExportJson', 'logExportCsv', 'logExportBin', 'logCancelButton']) $(id).disabled = true;
+        $('logStatsGrid').innerHTML = '<div class="field-inactive">(Connect to read log stats)</div>';
+        $('logSelectorInfo').textContent = '';
+        $('logMessage').textContent = '';
+        $('logRecordBody').innerHTML = '';
+        $('logRecordCount').textContent = '0';
+        setLogProgress(0);
+        logRaw = null; logRecords = [];
+      }
+    };
+
 
     // ============================================================
     // Control Tab Functions (Calibration)
@@ -1891,15 +2725,496 @@
       }
     };
 
+    // Manual setpoint write (DID 0xF240, centibar)
+    const setSetpoint = async () => {
+      if (!stack) { elements.setpointMessage.textContent = 'Not connected'; return; }
+      const bar = Number.parseFloat(elements.setpointInput.value);
+      if (Number.isNaN(bar) || bar < 0 || bar > 2.55) {
+        elements.setpointMessage.textContent = 'Invalid setpoint';
+        return;
+      }
+      const centibar = Math.round(bar * 100);
+      elements.setSetpointButton.disabled = true;
+      try {
+        await stack.uds.writeSetpoint(centibar);
+        elements.setpointMessage.textContent = `Setpoint set to ${bar.toFixed(2)} bar (${centibar} cbar)`;
+      } catch (error) {
+        const desc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        elements.setpointMessage.textContent = 'Failed: ' + desc;
+      } finally {
+        elements.setSetpointButton.disabled = false;
+      }
+    };
+
+    // HIL solenoid override (DID 0xF242) — needs programming session + surface + PPO2 OFF
+    const fireSolenoid = async () => {
+      if (!stack) { elements.solenoidMessage.textContent = 'Not connected'; return; }
+      const channel = Number.parseInt(elements.solenoidChannel.value, 10) || 0;
+      if (!confirm(`Fire solenoid channel ${channel} for ~1.5 s?\n\nRequires PPO2 mode OFF at the surface.`)) {
+        return;
+      }
+      elements.fireSolenoidButton.disabled = true;
+      try {
+        elements.solenoidMessage.textContent = 'Entering programming session...';
+        await stack.uds.enterSession(UDS_SESSION_PROGRAMMING);
+        elements.solenoidMessage.textContent = `Firing solenoid channel ${channel}...`;
+        await stack.uds.writeSolenoidOverride(channel);
+        elements.solenoidMessage.textContent = `Solenoid channel ${channel} fired.`;
+      } catch (error) {
+        let hint = '';
+        if (error.nrc === 0x22) hint = ' (refused — in a dive, or PPO2 mode not OFF)';
+        else if (error.nrc === 0x7F) hint = ' (needs programming session)';
+        else if (error.nrc === 0x31) hint = ' (invalid channel)';
+        const desc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        elements.solenoidMessage.textContent = 'Failed: ' + desc + hint;
+      } finally {
+        elements.fireSolenoidButton.disabled = false;
+      }
+    };
+
     // Reset control tab UI on disconnect
     const resetControlUI = () => {
       elements.triggerCalButton.disabled = true;
+      elements.setSetpointButton.disabled = true;
+      elements.fireSolenoidButton.disabled = true;
       elements.calMessage.textContent = '';
+      elements.setpointMessage.textContent = '';
+      elements.solenoidMessage.textContent = '';
     };
 
     // Enable control tab UI on connect
     const enableControlUI = () => {
       elements.triggerCalButton.disabled = false;
+      elements.setSetpointButton.disabled = false;
+      elements.fireSolenoidButton.disabled = false;
+    };
+
+    // ============================================================
+    // Errors tab logic (DID 0xF260 read, 0xF261 clear)
+    // ============================================================
+    let errorHistogramLoaded = false;  // avoid re-reading every tab open
+    let lastErrorEntries = [];         // cache so the filter toggle re-renders locally
+
+    // Render a decoded histogram into the table. Non-zero rows are highlighted;
+    // zero-count rows are hidden unless "Show zero-count codes" is checked. The
+    // NONE sentinel (index 0) is never shown.
+    // Build one error-histogram table row.
+    const buildErrorHistogramRow = (e) => {
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid #2a2a2a';
+      if (e.count > 0) { tr.style.background = 'rgba(255, 90, 90, 0.12)'; }
+      const countColor = e.count > 0 ? '#ff8a8a' : '#666';
+      const nameColor = e.count > 0 ? '#e0e0e0' : '#999';
+      tr.innerHTML =
+        `<td style="padding:6px 8px;color:#777;font-family:monospace;">${e.index}</td>` +
+        `<td style="padding:6px 8px;color:${nameColor};font-family:monospace;">${e.name}</td>` +
+        `<td style="padding:6px 8px;color:#888;">${e.category}</td>` +
+        `<td style="padding:6px 8px;color:#aaa;">${e.description}</td>` +
+        `<td style="padding:6px 8px;text-align:right;color:${countColor};font-weight:bold;">${e.count}</td>`;
+      return tr;
+    };
+
+    // Append a row per visible entry (skips the NONE sentinel, and zero-count
+    // entries unless "show all" is checked); tallies tripped codes/events.
+    const appendErrorHistogramRows = (entries, showAll, body) => {
+      let trippedCodes = 0;
+      let totalEvents = 0;
+      let rows = 0;
+      for (const e of entries) {
+        if (e.index === 0) continue;  // NONE sentinel
+        if (e.count > 0) { trippedCodes += 1; totalEvents += e.count; }
+        if (e.count === 0 && !showAll) continue;
+        body.appendChild(buildErrorHistogramRow(e));
+        rows += 1;
+      }
+      return { trippedCodes, totalEvents, rows };
+    };
+
+    const renderErrorHistogram = (entries) => {
+      lastErrorEntries = entries;
+      const body = $('errorTableBody');
+      const showAll = $('errorShowAll').checked;
+      body.innerHTML = '';
+
+      const { trippedCodes, totalEvents, rows } = appendErrorHistogramRows(entries, showAll, body);
+
+      if (rows === 0) {
+        body.innerHTML =
+          '<tr><td colspan="5" style="padding:10px;color:#4caf50;">No errors logged — all counters zero.</td></tr>';
+      }
+
+      let errorSummaryText = 'No errors logged';
+      if (trippedCodes !== 0) {
+        const codeSuffix = trippedCodes === 1 ? '' : 's';
+        errorSummaryText = `${trippedCodes} code${codeSuffix} tripped · ${totalEvents} total events`;
+      }
+      $('errorSummary').textContent = errorSummaryText;
+    };
+
+    const refreshErrorHistogram = async () => {
+      if (!stack) { $('errorStatus').textContent = 'Not connected'; return; }
+      $('errorRefreshButton').disabled = true;
+      $('errorStatus').textContent = 'Reading histogram…';
+      try {
+        const entries = await stack.uds.readErrorHistogram();
+        renderErrorHistogram(entries);
+        errorHistogramLoaded = true;
+        $('errorStatus').textContent = '';
+      } catch (error) {
+        $('errorStatus').textContent = `Read failed: ${error.message}`;
+      } finally {
+        $('errorRefreshButton').disabled = false;
+      }
+    };
+
+    const clearErrorHistogramUI = async () => {
+      if (!stack) return;
+      if (!confirm('Clear all error-histogram counters? This persists to NVS and cannot be undone.')) {
+        return;
+      }
+      $('errorClearButton').disabled = true;
+      $('errorStatus').textContent = 'Clearing…';
+      try {
+        await stack.uds.clearErrorHistogram();
+        $('errorStatus').textContent = 'Cleared.';
+        await refreshErrorHistogram();
+      } catch (error) {
+        $('errorStatus').textContent = `Clear failed: ${error.message}`;
+      } finally {
+        $('errorClearButton').disabled = false;
+      }
+    };
+
+    const enableErrorsUI = () => {
+      $('errorRefreshButton').disabled = false;
+      $('errorClearButton').disabled = false;
+    };
+
+    const resetErrorsUI = () => {
+      $('errorRefreshButton').disabled = true;
+      $('errorClearButton').disabled = true;
+      $('errorStatus').textContent = '';
+      $('errorSummary').textContent = '--';
+      errorHistogramLoaded = false;
+      lastErrorEntries = [];
+      $('errorTableBody').innerHTML =
+        '<tr><td colspan="5" style="padding:10px;color:#666;">(Connect and press Refresh)</td></tr>';
+    };
+
+    $('errorRefreshButton').addEventListener('click', refreshErrorHistogram);
+    $('errorClearButton').addEventListener('click', clearErrorHistogramUI);
+    $('errorShowAll').addEventListener('change', () => {
+      // Filter toggle re-renders the cached read locally — no device round-trip.
+      if (errorHistogramLoaded) renderErrorHistogram(lastErrorEntries);
+    });
+
+    // ============================================================
+    // Autotune tab logic (DID 0xF243 control, 0xF213 status)
+    // ============================================================
+    let autotunePollTimer = null;   // status/live poll interval handle
+    let autotuneLastStatus = null;  // last parsed status (used at commit time)
+    let autotuneRequest = null;
+    let autotuneSamples = [];
+
+    const fmtGain = (v) => (v === undefined || v === null || Number.isNaN(v)) ? '--' : v.toFixed(5);
+    const finiteInRange = (v, lo, hi) => Number.isFinite(v) && v >= lo && v <= hi;
+
+    const autotuneTelemetryWarnings = (status) => {
+      const warnings = [];
+      if (!finiteInRange(status.model.ambientPressureBar, 0.5, 20)) {
+        warnings.push('Ambient-pressure telemetry is invalid');
+      }
+      const expectedDose = ((autotuneRequest?.excitation_duty_pct ?? 20) / 100) * 10;
+      if (!finiteInRange(status.model.deliveredDoseDutyS, expectedDose * 0.5, expectedDose * 1.5)) {
+        warnings.push('Delivered-dose telemetry is inconsistent with the requested pulse');
+      }
+      return warnings;
+    };
+
+    const autotuneSampleDiagnostics = () => {
+      const elapsed = autotuneSamples.map(s => s.elapsed_s).filter(Number.isFinite);
+      const unique = new Set(elapsed);
+      return {
+        browser_poll_samples: autotuneSamples.length,
+        unique_elapsed_seconds: unique.size,
+        duplicate_elapsed_timestamps: elapsed.length - unique.size,
+        note: 'Browser-polled samples are diagnostic only; firmware identification uses its internal 2 Hz trace.'
+      };
+    };
+
+    // Enter a programming session for the autotune tab.
+    const atEnterSession = async () => {
+      if (!stack) { $('at-session-message').textContent = 'Not connected'; return; }
+      try {
+        $('at-session-message').textContent = 'Entering programming session...';
+        await stack.ota.enterProgrammingSession();
+        $('at-session-message').textContent = 'Programming session active (surface only). Ready to start.';
+      } catch (e) {
+        const nrc = e.nrc === 0x22 ? ' (refused — is the head in a dive?)' : '';
+        $('at-session-message').textContent = `Enter session failed: ${e.message}${nrc}`;
+      }
+    };
+
+    // Render the live status grid from a parsed status object.
+    const renderAutotuneStatus = (s) => {
+      const pairs = [
+        ['Phase', s.stateName],
+        ['Experiment', s.iteration ? 'Plant identified' : 'Collecting response'],
+        ['Elapsed', `${s.elapsedS} s`],
+        ['Best Kp', fmtGain(s.best.kp)],
+        ['Best Ki', fmtGain(s.best.ki)],
+        ['Best Kd', fmtGain(s.best.kd)],
+        ['Response-tail RMS noise', `${s.model.fitRmseBar.toFixed(4)} bar`],
+        ['Plant gain', `${s.model.gain.toFixed(3)} bar / duty`],
+        ['Transport delay', `${s.model.deadTimeS.toFixed(1)} s`],
+        ['Mixing time constant', `${s.model.timeConstantS.toFixed(1)} s`],
+        ['Mixing reversal', `${s.model.mixingExcursionBar.toFixed(3)} bar`],
+        ['Baseline duty', `${(s.model.baselineDuty * 100).toFixed(1)} %`],
+        ['Baseline PPO2 slope', `${s.model.baselineSlopeBarS.toFixed(5)} bar/s`],
+        ['Baseline RMS noise', `${s.model.baselineNoiseBar.toFixed(4)} bar`],
+        ['Ambient pressure', `${s.model.ambientPressureBar.toFixed(2)} bar`],
+        ['Incremental dose', `${s.model.deliveredDoseDutyS.toFixed(2)} duty·s`]
+      ];
+      const warnings = autotuneTelemetryWarnings(s);
+      if (warnings.length) pairs.push(['Telemetry warning', warnings.join('; ')]);
+      if (s.state === AUTOTUNE_STATE_ABORTED) {
+        pairs.push(['Abort reason', s.abortReasonName]);
+      }
+      renderKV($('atStatusGrid'), pairs);
+    };
+
+    // Render the live loop-response grid (PPO2 / setpoint / duty).
+    const renderAutotuneLive = (live) => {
+      const ppo2 = live.CONSENSUS_PPO2;
+      const setpoint = live.SETPOINT;
+      const duty = live.DUTY_CYCLE;
+      renderKV($('atLiveGrid'), [
+        ['Consensus PPO2', ppo2 === undefined ? '--' : `${ppo2.toFixed(3)} bar`],
+        ['Setpoint', setpoint === undefined ? '--' : `${setpoint.toFixed(2)} bar`],
+        ['Duty cycle', duty === undefined ? '--' : `${(duty * 100).toFixed(1)} %`]
+      ]);
+    };
+
+    const recordAutotuneSample = (status, live) => {
+      const ppo2 = live.CONSENSUS_PPO2;
+      const setpoint = live.SETPOINT;
+      const duty = live.DUTY_CYCLE;
+      if (ppo2 === undefined && setpoint === undefined && duty === undefined) return;
+      autotuneSamples.push({
+        elapsed_s: status.elapsedS,
+        ppo2_bar: ppo2 ?? null,
+        setpoint_bar: setpoint ?? null,
+        commanded_duty: duty ?? null,
+        phase: status.stateName
+      });
+    };
+
+    const buildAutotuneReport = (status) => ({
+      schema: 'divecan.pid_tune_report.v1',
+      generated_at: new Date().toISOString(),
+      request: autotuneRequest,
+      result: {
+        state: status.stateName,
+        abort_reason: status.abortReasonName,
+        elapsed_s: status.elapsedS,
+        experiment_complete: status.iteration > 0
+      },
+      recommended_gains: status.best,
+      model_fit_rmse_bar: status.bestCost,
+      plant: {
+        incremental_rate_gain_bar_per_s_per_duty: status.model.gain,
+        transport_delay_s: status.model.deadTimeS,
+        mixing_recovery_s: status.model.timeConstantS,
+        fit_rmse_bar: status.model.fitRmseBar,
+        mixing_reversal_bar: status.model.mixingExcursionBar,
+        baseline_effective_duty: status.model.baselineDuty,
+        baseline_ppo2_slope_bar_per_s: status.model.baselineSlopeBarS,
+        baseline_ppo2_noise_rms_bar: status.model.baselineNoiseBar,
+        ambient_pressure_bar: status.model.ambientPressureBar,
+        delivered_incremental_dose_duty_s: status.model.deliveredDoseDutyS,
+        response_tail_noise_rms_bar: status.model.fitRmseBar
+      },
+      quality: {
+        telemetry_warnings: autotuneTelemetryWarnings(status),
+        response_to_baseline_noise_ratio: status.model.mixingExcursionBar /
+          Math.max(status.model.baselineNoiseBar, 0.001),
+        samples: autotuneSampleDiagnostics()
+      },
+      samples: autotuneSamples
+    });
+
+    const showAutotuneReport = (status) => {
+      $('atReportText').value = JSON.stringify(buildAutotuneReport(status), null, 2);
+      $('atReportSection').style.display = '';
+      $('at-report-message').textContent = `${autotuneSamples.length} live samples captured.`;
+    };
+
+    // Show the recommended-gains section when a run completes.
+    const showAutotuneResult = (s) => {
+      renderKV($('atResultGrid'), [
+        ['Kp', fmtGain(s.best.kp)],
+        ['Ki', fmtGain(s.best.ki)],
+        ['Kd', fmtGain(s.best.kd)],
+        ['Response-tail RMS noise', `${s.model.fitRmseBar.toFixed(4)} bar`],
+        ['Baseline RMS noise', `${s.model.baselineNoiseBar.toFixed(4)} bar`],
+        ['Transport delay', `${s.model.deadTimeS.toFixed(1)} s`],
+        ['Dominant mixing time', `${s.model.timeConstantS.toFixed(1)} s`],
+        ['Rise/fall excursion', `${s.model.mixingExcursionBar.toFixed(3)} bar`]
+      ]);
+      $('atResultSection').style.display = '';
+      $('at-commit-message').textContent = '';
+    };
+
+    const stopAutotunePoll = () => {
+      if (autotunePollTimer) {
+        clearInterval(autotunePollTimer);
+        autotunePollTimer = null;
+      }
+    };
+
+    // Poll status + live loop response once (skips ticks that clash with other
+    // in-flight UDS traffic — those throw a transient "already pending" error).
+    const autotunePollTick = async () => {
+      if (!stack) return;
+      try {
+        const status = await stack.uds.readAutotuneStatus();
+        autotuneLastStatus = status;
+        renderAutotuneStatus(status);
+
+        try {
+          const live = await stack.uds.readDIDsParsed([0xF200, 0xF202, 0xF210]);
+          renderAutotuneLive(live);
+          recordAutotuneSample(status, live);
+        } catch (liveErr) {
+          // Live readout is best-effort; ignore a single failed tick.
+          console.warn('Autotune live readout failed', liveErr);
+        }
+
+        if (status.state === AUTOTUNE_STATE_DONE || status.state === AUTOTUNE_STATE_ABORTED) {
+          showAutotuneReport(status);
+          stopAutotunePoll();
+          $('atAbortButton').disabled = true;
+          $('atStartButton').disabled = false;
+          if (status.state === AUTOTUNE_STATE_DONE) {
+            $('at-run-message').textContent = 'Autotune complete. Pre-run gains remain active; review or persist the recommendation below.';
+            showAutotuneResult(status);
+          } else {
+            $('at-run-message').textContent = `Autotune aborted: ${status.abortReasonName}.`;
+          }
+        }
+      } catch (e) {
+        // Transient (e.g. request already pending during a poll clash) — retry next tick.
+        console.warn('Autotune status poll tick failed', e);
+      }
+    };
+
+    // Start an autotune run.
+    const autotuneStart = async () => {
+      if (!stack) { $('at-run-message').textContent = 'Not connected'; return; }
+      const baseBar = Number.parseFloat($('at-base-input').value);
+      const excitationDutyPct = Number.parseInt($('at-step-input').value, 10);
+      if (Number.isNaN(baseBar) || Number.isNaN(excitationDutyPct) ||
+          excitationDutyPct < 5 || excitationDutyPct > 30) {
+        $('at-run-message').textContent = 'Invalid parameters';
+        return;
+      }
+      const baseCb = Math.round(baseBar * 100);
+      if (!confirm(`Start plant-identification PID tune?\n\nBase ${baseBar.toFixed(2)} bar, duty pulse +${excitationDutyPct}%.\n\nThe firmware will qualify baseline noise, apply a bounded incremental actuation, return to equilibrium duty, and observe the delayed mixing response. The current PID gains are restored afterward so repeat runs remain comparable. Requires surface + PID mode + a programming session.`)) {
+        return;
+      }
+      $('atStartButton').disabled = true;
+      $('atResultSection').style.display = 'none';
+      $('atReportSection').style.display = 'none';
+      autotuneRequest = { base_setpoint_bar: baseBar, excitation_duty_pct: excitationDutyPct };
+      autotuneSamples = [];
+      try {
+        $('at-run-message').textContent = 'Starting autotune...';
+        await stack.uds.autotuneStart({ baseCb, excitationDutyPct });
+        $('at-run-message').textContent = 'Autotune running...';
+        $('atAbortButton').disabled = false;
+        stopAutotunePoll();
+        autotunePollTimer = setInterval(autotunePollTick, 1000);
+        autotunePollTick();
+      } catch (error) {
+        let hint = '';
+        if (error.nrc === 0x22) hint = ' (refused — in a dive, or PPO2 mode not PID)';
+        else if (error.nrc === 0x7F) hint = ' (needs programming session)';
+        else if (error.nrc === 0x31) hint = ' (bad parameters / magic)';
+        const desc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        $('at-run-message').textContent = 'Start failed: ' + desc + hint;
+        $('atStartButton').disabled = false;
+      }
+    };
+
+    // Abort an in-progress run.
+    const autotuneAbort = async () => {
+      if (!stack) return;
+      $('atAbortButton').disabled = true;
+      try {
+        await stack.uds.autotuneAbort();
+        $('at-run-message').textContent = 'Abort requested...';
+      } catch (error) {
+        const desc = error.getNRCDescription ? error.getNRCDescription() : error.message;
+        $('at-run-message').textContent = 'Abort failed: ' + desc;
+        $('atAbortButton').disabled = false;
+      }
+    };
+
+    // Persist the recommended gains to NVS by resolving the PID gain setting
+    // indices by label (never hardcode — menu order can be permuted per-variant).
+    const autotuneCommit = async () => {
+      if (!stack || !autotuneLastStatus) { $('at-commit-message').textContent = 'No completed run to commit'; return; }
+      const s = autotuneLastStatus;
+      const targets = [
+        { label: 'Kp x1M', gain: s.best.kp },
+        { label: 'Ki x1M', gain: s.best.ki },
+        { label: 'Kd x1M', gain: s.best.kd }
+      ];
+      $('atCommitButton').disabled = true;
+      try {
+        $('at-commit-message').textContent = 'Resolving setting indices...';
+        const settings = await stack.uds.enumerateSettings();
+        for (const t of targets) {
+          const match = settings.find(x => x.label === t.label);
+          if (!match) {
+            throw new Error(`Setting "${t.label}" not found on device`);
+          }
+          const microunits = BigInt(Math.round(t.gain * 1000000));
+          await stack.uds.writeSettingValue(match.index, microunits);
+          await stack.uds.saveSetting(match.index, microunits);
+        }
+        $('at-commit-message').textContent = 'Committed Kp/Ki/Kd to NVS. Reboot the head to activate them.';
+      } catch (error) {
+        $('at-commit-message').textContent = 'Commit failed: ' + (error.message || error);
+      } finally {
+        $('atCommitButton').disabled = false;
+      }
+    };
+
+    // Reset autotune tab UI on disconnect.
+    const resetAutotuneUI = () => {
+      stopAutotunePoll();
+      autotuneLastStatus = null;
+      autotuneRequest = null;
+      autotuneSamples = [];
+      $('atEnterSessionButton').disabled = true;
+      $('atStartButton').disabled = true;
+      $('atAbortButton').disabled = true;
+      $('at-session-message').textContent = '';
+      $('at-run-message').textContent = '';
+      $('at-commit-message').textContent = '';
+      $('atResultSection').style.display = 'none';
+      $('atReportSection').style.display = 'none';
+      $('atReportText').value = '';
+      $('atStatusGrid').innerHTML = '<div class="field-inactive">(Start a run to see live status)</div>';
+      $('atLiveGrid').innerHTML = '<div class="field-inactive">(Live PPO2 / setpoint / duty appears during a run)</div>';
+    };
+
+    // Enable autotune tab UI on connect.
+    const enableAutotuneUI = () => {
+      $('atEnterSessionButton').disabled = false;
+      $('atStartButton').disabled = false;
+      $('atAbortButton').disabled = true;
     };
 
     // Current axis selection mode: 'left' or 'right'
@@ -1973,49 +3288,82 @@
       elements.rightAxisLabel.textContent = '--';
     };
 
-    // Scan and connect
-    elements.scanButton.addEventListener('click', async () => {
+    // Collapse/expand the persistent plot dock. Chart.js v4 uses a
+    // ResizeObserver, so it re-fits automatically when the body is shown again.
+    // The whole header is the click target (button included, via bubbling) so
+    // the dock is easy to toggle on a phone.
+    const PLOT_DOCK_COLLAPSED_KEY = 'divecan.plotDockCollapsed';
+
+    const setPlotDockCollapsed = (collapsed) => {
+      document.getElementById('plotDock').classList.toggle('collapsed', collapsed);
+      document.getElementById('plotDockToggle').textContent =
+        collapsed ? 'Expand' : 'Collapse';
+    };
+
+    globalThis.togglePlotDock = () => {
+      const collapsed = !document.getElementById('plotDock').classList.contains('collapsed');
+      setPlotDockCollapsed(collapsed);
       try {
-        deviceManager = new DeviceManager();
-        const devices = await deviceManager.scan();
+        localStorage.setItem(PLOT_DOCK_COLLAPSED_KEY, collapsed ? '1' : '0');
+      } catch {
+        // Storage unavailable (private mode etc.) - state just won't persist
+      }
+    };
 
-        if (devices.length === 0) {
-          return;
-        }
+    // Restore the saved state; with no saved preference, start collapsed on
+    // small screens so the plot doesn't crowd out the tabbed interface.
+    {
+      let saved = null;
+      try {
+        saved = localStorage.getItem(PLOT_DOCK_COLLAPSED_KEY);
+      } catch {
+        // Storage unavailable - fall through to the screen-size default
+      }
+      if (saved === null) {
+        setPlotDockCollapsed(globalThis.matchMedia('(max-width: 600px)').matches);
+      } else {
+        setPlotDockCollapsed(saved === '1');
+      }
+    }
 
-        const currentDevice = devices[0].device;
-        elements.deviceInfo.textContent = `Device: ${devices[0].name}`;
+    // Both physical links share the same diagnostics/OTA setup. USB-CAN uses
+    // separate 0xFE dialog and 0xFF log ISO-TP contexts inside its stack.
+    const connectStack = async (newStack, label, connectArgument = undefined) => {
+      stack = newStack;
+      elements.deviceInfo.textContent = `Device: ${label}`;
 
-        // Create stack and connect
-        stack = deviceManager.createStack(currentDevice);
-
-        // Set up event handlers
-        stack.on('connected', async () => {
+      stack.on('connected', async () => {
           updateUIState(true);
 
-          // Enable config read button
-          elements.readConfigButton.disabled = false;
-          elements.configStatus.textContent = 'Ready to read configuration';
+          // Enable feature tabs
+          elements.readSettingsButton.disabled = false;
+          elements.settingsStatus.textContent = 'Ready to read settings';
+          enableFirmwareUI(true);
+          enableLogsUI(true);
 
           // Enable control tab
           enableControlUI();
 
+          // Enable autotune tab
+          enableAutotuneUI();
+
+          // Enable errors tab
+          enableErrorsUI();
+
           // Set target to SOLO (0x04)
           stack.setTargetAddress(0x04);
 
-          // Initialize DID-based polling
-          const success = await initDIDPolling();
-          if (success) {
-            // Auto-load configuration after DID polling is ready
-            try {
-              await loadConfigFromDevice();
-            } catch (error) {
-              console.error('Failed to auto-load config:', error);
-            }
+          // Initialize DID-based polling — the fetch burst can crash a handset
+          // running firmware without the log-push quiescent gate, so it's
+          // gated behind an opt-out checkbox (default on).
+          if (document.getElementById('fetchDidsOnConnect').checked) {
+            await initDIDPolling();
+          } else {
+            updateStreamStatus('inactive', 'DID fetch skipped');
           }
-        });
+      });
 
-        stack.on('disconnected', () => {
+      stack.on('disconnected', () => {
           updateUIState(false);
           updateStreamStatus('inactive');
 
@@ -2027,27 +3375,64 @@
           elements.refreshDIDs.disabled = true;
           elements.pollRate.textContent = '--';
 
-          // Reset configuration UI
-          resetConfigUI();
+          // Reset feature-tab UI
+          resetSettingsUI();
+          enableFirmwareUI(false);
+          enableLogsUI(false);
 
           // Reset control tab UI
           resetControlUI();
-        });
 
-        stack.on('error', (error) => {
-          console.error('Stack error:', error);
-        });
+          // Reset autotune tab UI
+          resetAutotuneUI();
 
-        // Handle log messages (text logs - displayed in log box)
-        stack.on('logMessage', (message) => {
-          addToLogMessages(message);
-        });
+          // Reset errors tab UI
+          resetErrorsUI();
+      });
 
-        // Connect
-        await stack.connect(currentDevice);
+      stack.on('error', (error) => {
+        console.error('Stack error:', error);
+        addToLogMessages(`Transport error: ${error.message || error}`, true);
+      });
 
+      stack.on('logMessage', (message) => addToLogMessages(message));
+      stack.on('handsetEmulation', ({ active }) => {
+        const mode = active ? 'supplying missing handset pings' : 'real handset detected';
+        elements.deviceInfo.textContent = `Device: ${label} · ${mode}`;
+        addToLogMessages(`USB-CAN handset heartbeat: ${mode}`);
+      });
+      await stack.connect(connectArgument);
+    };
+
+    // Scan and connect over the existing Bluetooth bridge.
+    elements.scanButton.addEventListener('click', async () => {
+      try {
+        deviceManager = new DeviceManager();
+        const devices = await deviceManager.scan();
+        if (devices.length === 0) return;
+        const currentDevice = devices[0].device;
+        await connectStack(deviceManager.createStack(currentDevice), devices[0].name, currentDevice);
       } catch (error) {
-        console.error('Connection failed:', error);
+        stack = null;
+        updateUIState(false);
+        console.error('Bluetooth connection failed:', error);
+      }
+    });
+
+    // Connect directly to an slcan/Lawicel CANable via Chromium Web Serial.
+    elements.usbConnectButton.addEventListener('click', async () => {
+      try {
+        if (!navigator.serial) throw new Error('Web Serial is not available in this browser');
+        const usbStack = new CanableProtocolStack({
+          sourceAddress: 0xFE,
+          logAddress: 0xFF,
+          targetAddress: 0x04
+        });
+        await connectStack(usbStack, 'CANable USB (dialog 0xFE, logs 0xFF)');
+      } catch (error) {
+        stack = null;
+        updateUIState(false);
+        console.error('USB-CAN connection failed:', error);
       }
     });
 
@@ -2083,18 +3468,89 @@
       }
     });
 
-    // Configuration buttons
-    elements.readConfigButton.addEventListener('click', loadConfigFromDevice);
-    elements.writeConfigButton.addEventListener('click', saveConfigToDevice);
+    // Settings tab
+    elements.readSettingsButton.addEventListener('click', loadSettings);
+
+    // Firmware Update tab
+    $('fwRefreshButton').addEventListener('click', fwRefreshStatus);
+    $('fwFileInput').addEventListener('change', (e) => onFwFileSelected(e.target.files[0]));
+    $('fwUpdateButton').addEventListener('click', fwUpdate);
+    $('fwUpdateCancelButton').addEventListener('click', () => fwAbort?.abort());
+    $('fwEnterSessionButton').addEventListener('click', fwEnterSession);
+    $('fwStageButton').addEventListener('click', fwStage);
+    $('fwActivateButton').addEventListener('click', fwActivate);
+    $('fwCancelButton').addEventListener('click', () => fwAbort?.abort());
+    $('fwConfirmPollButton').addEventListener('click', fwConfirmPoll);
+    $('fwRevertButton').addEventListener('click', async () => {
+      if (!confirm('Force revert to the previous image? The head will reboot.')) return;
+      try { await stack.ota.forceRevert(); $('fwMessage').textContent = 'Revert requested; head rebooting.'; }
+      catch (e) { $('fwMessage').textContent = `Revert failed: ${e.message}`; }
+    });
+    $('fwRestoreFactoryButton').addEventListener('click', () =>
+      fwGuardedAction('fwRestoreFactoryChk', () => stack.ota.restoreFactory(), 'Restore factory image'));
+    $('fwCaptureButton').addEventListener('click', () =>
+      fwGuardedAction('fwCaptureChk', () => stack.ota.factoryCapture(), 'Capture running image as factory'));
+    $('fwChipEraseButton').addEventListener('click', () =>
+      fwGuardedAction('fwChipEraseChk', () => stack.ota.chipEraseNor(), 'Chip-erase external NOR'));
+    $('fwNvsEraseButton').addEventListener('click', () =>
+      fwGuardedAction('fwNvsEraseChk', () => stack.ota.nvsErase(), 'Erase settings/cal NVS'));
+
+    // Logs tab
+    $('logStatsButton').addEventListener('click', logRefreshStats);
+    $('logResolveButton').addEventListener('click', logResolve);
+    $('logDownloadButton').addEventListener('click', logDownload);
+    $('logCancelButton').addEventListener('click', () => logAbort?.abort());
+    $('logSelectorSelect').addEventListener('change', () => {
+      $('logSelectorId').disabled = !['byBoot', 'byDive'].includes($('logSelectorSelect').value) || !stack;
+    });
+    $('logApplyCaptureButton').addEventListener('click', async () => {
+      try {
+        await stack.logs.setVerbosity(Number($('logVerbositySelect').value));
+        await stack.logs.setCanCapture(($('logCanRx').checked ? 1 : 0) | ($('logCanTx').checked ? 2 : 0));
+        $('logMessage').textContent = 'Capture settings applied.';
+      } catch (e) { $('logMessage').textContent = `Apply failed: ${e.message}`; }
+    });
+    $('logEraseButton').addEventListener('click', async () => {
+      const stream = Number($('logStreamSelect').value);
+      const mask = stream === 1 ? 0x02 : 0x01;
+      if (!confirm(`Erase the ${stream === 1 ? 'text' : 'telemetry'} log? (programming session, surface only)`)) return;
+      try { await stack.logs.eraseLog(mask); $('logMessage').textContent = 'Log erased.'; await logRefreshStats(); }
+      catch (e) { $('logMessage').textContent = `Erase failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : ''); }
+    });
+    $('logExportJson').addEventListener('click', () => triggerDownload('divecan-log.json', logToJSON(logRecords), 'application/json'));
+    $('logExportCsv').addEventListener('click', () => triggerDownload('divecan-log.csv', logToCSV(logRecords), 'text/csv'));
+    $('logExportBin').addEventListener('click', () => logRaw && triggerDownload('divecan-log.bin', logToRawBin(logRaw)));
 
     // Control tab buttons
     elements.triggerCalButton.addEventListener('click', triggerCalibration);
+    elements.setSetpointButton.addEventListener('click', setSetpoint);
+    elements.fireSolenoidButton.addEventListener('click', fireSolenoid);
+
+    // Autotune tab
+    $('atEnterSessionButton').addEventListener('click', atEnterSession);
+    $('atStartButton').addEventListener('click', autotuneStart);
+    $('atAbortButton').addEventListener('click', autotuneAbort);
+    $('atCommitButton').addEventListener('click', autotuneCommit);
+    $('atCopyReportButton').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText($('atReportText').value);
+        $('at-report-message').textContent = 'Tune report copied.';
+      } catch (error) {
+        console.warn('Clipboard copy failed:', error);
+        $('atReportText').select();
+        $('at-report-message').textContent = 'Clipboard unavailable; report selected for manual copy.';
+      }
+    });
+    $('atExportReportButton').addEventListener('click', () => {
+      triggerDownload('divecan-pid-tune-report.json', $('atReportText').value, 'application/json');
+    });
 
     // Periodic UI update for cell values
     setInterval(() => {
       updateCellPanelsFromDIDs();
       updateSummary();
       updatePowerStatus();
+      updateCylinderPressure();
 
       // Update poll rate display
       if (dataStore.isPolling) {
@@ -2104,9 +3560,6 @@
 
     // Build DID subscription UI on load
     buildDIDSubscriptionUI();
-
-    // Build configuration UI on load
-    buildConfigUI();
 
     // Initialize tabs
     initTabs();

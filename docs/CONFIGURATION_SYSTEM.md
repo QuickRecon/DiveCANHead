@@ -41,7 +41,7 @@ typedef struct
 | 10-11 | cell2 | 0=DiveO2, 1=Analog, 2=O2S |
 | 12-13 | cell3 | 0=DiveO2, 1=Analog, 2=O2S |
 | 14-15 | powerMode | 0=Off, 1=Battery, 2=CAN, 3=Auto |
-| 16-18 | calibrationMode | 0-3, see OxygenCalMethod_t |
+| 16-18 | calibrationMode | 0-4, see OxygenCalMethod_t |
 | 19 | enableUartPrinting | Debug output enable |
 | 20-21 | dischargeThresholdMode | Battery threshold selection |
 | 22-23 | ppo2controlMode | 0=Off, 1=PID, 2=MK15 |
@@ -78,9 +78,18 @@ typedef enum {
     CAL_DIGITAL_REFERENCE = 0,  // Use DiveO2 as reference
     CAL_ANALOG_ABSOLUTE = 1,    // FO2 + pressure
     CAL_TOTAL_ABSOLUTE = 2,     // All cells
-    CAL_SOLENOID_FLUSH = 3      // Flush then calibrate
+    CAL_SOLENOID_FLUSH = 3,     // Flush then calibrate
+    CAL_CHECK = 4               // Surface sensor check: O2 then diluent
+                                // flush, no recalibration, always OK
 } OxygenCalMethod_t;
 ```
+
+`CAL_CHECK` is a pre-dive diagnostic, not a calibration: it flushes the loop
+with O2 (cells swing high) then diluent (cells swing low) so the diver can
+confirm the cells respond, and reports success without altering any
+coefficients. It requires both a dedicated O2 flush solenoid and a diluent
+flush solenoid, so it is only selectable on variants that have both (currently
+`Poseidon_Aren`); other variants reject a write of this mode.
 
 ### PPO2ControlScheme_t
 

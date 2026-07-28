@@ -8,6 +8,10 @@ import {
   getValidCellDIDs,
   getControlStateDIDs,
   STATE_DIDS,
+  EXTRA_READ_DIDS,
+  ALL_READ_DIDS,
+  parseExtraDIDValue,
+  decodeDeviceCurrent,
   CELL_TYPE_ANALOG,
   CELL_TYPE_DIVEO2,
   CELL_TYPE_O2S,
@@ -40,6 +44,15 @@ describe('UDS constants', () => {
       const info = getDIDInfo(0xF202);
       expect(info.label).toBe('Setpoint');
     });
+
+    it('defines native-resolution cylinder pressure DIDs', () => {
+      expect(STATE_DIDS.O2_CYL_PRESSURE).toMatchObject({
+        did: 0xF238, size: 2, type: 'tank_pressure', unit: 'bar'
+      });
+      expect(STATE_DIDS.DIL_CYL_PRESSURE).toMatchObject({
+        did: 0xF239, size: 2, type: 'tank_pressure', unit: 'bar'
+      });
+    });
   });
 
   describe('getCellDIDs', () => {
@@ -64,7 +77,7 @@ describe('UDS constants', () => {
 
     it('returns empty object for invalid cell number', () => {
       const dids = getCellDIDs(99);
-      expect(Object.keys(dids).length).toBe(0);
+      expect(Object.keys(dids)).toHaveLength(0);
     });
 
     it('all returned DIDs have correct prefix', () => {
@@ -178,7 +191,7 @@ describe('UDS constants', () => {
     it('DID addresses are unique', () => {
       const dids = Object.values(STATE_DIDS).map(info => info.did);
       const uniqueDids = [...new Set(dids)];
-      expect(dids.length).toBe(uniqueDids.length);
+      expect(dids).toHaveLength(uniqueDids.length);
     });
 
     it('cell DIDs follow expected pattern', () => {
@@ -204,6 +217,91 @@ describe('UDS constants', () => {
           expect(info.size).toBe(1);
         }
       }
+    });
+  });
+
+  describe('extra read-only DIDs', () => {
+    it('ALL_READ_DIDS is the union of state + extra DIDs', () => {
+      expect(ALL_READ_DIDS.CONSENSUS_PPO2).toBe(STATE_DIDS.CONSENSUS_PPO2);
+      expect(ALL_READ_DIDS.FW_COMMIT).toBe(EXTRA_READ_DIDS.FW_COMMIT);
+    });
+
+    it('every extra DID has a did, type, label and category', () => {
+      for (const info of Object.values(EXTRA_READ_DIDS)) {
+        expect(typeof info.did).toBe('number');
+        expect(typeof info.type).toBe('string');
+        expect(typeof info.label).toBe('string');
+        expect(typeof info.category).toBe('string');
+      }
+    });
+
+    it('parseExtraDIDValue decodes strings, scalars, hex and sem_ver', () => {
+      expect(parseExtraDIDValue({ type: 'string' }, new TextEncoder().encode('AP_Aren\0')))
+        .toBe('AP_Aren');
+      expect(parseExtraDIDValue({ type: 'uint8' }, new Uint8Array([4]))).toBe(4);
+      expect(parseExtraDIDValue({ type: 'uint32' }, new Uint8Array([1, 0, 0, 0]))).toBe(1);
+      expect(parseExtraDIDValue({ type: 'hex32' }, new Uint8Array([0xEF, 0xBE, 0xAD, 0xDE])))
+        .toBe('0xdeadbeef');
+      expect(parseExtraDIDValue({ type: 'hex' }, new Uint8Array([0x01, 0xA5]))).toBe('01 a5');
+      // 1.2, revision=3, build=5
+      expect(parseExtraDIDValue({ type: 'semver' }, new Uint8Array([1, 2, 3, 0, 5, 0, 0, 0])))
+        .toBe('1.2.3+5');
+      expect(parseExtraDIDValue({ type: 'semver' }, new Uint8Array(8).fill(0xFF))).toBe('n/a');
+    });
+
+    it('parseExtraDIDValue decodes POST status (0xF271) state + pass mask', () => {
+      // state 5 = CONFIRMED, mask 0x1F = all five checks passed
+      expect(parseExtraDIDValue({ type: 'post_status' }, new Uint8Array([5, 0x1F, 0, 0])))
+        .toBe('CONFIRMED · passed: cells, consensus, ppo2_tx, handset, solenoid');
+      // state 3 = WAITING_HANDSET, mask 0x07 = cells|consensus|ppo2_tx
+      expect(parseExtraDIDValue({ type: 'post_status' }, new Uint8Array([3, 0x07, 0, 0])))
+        .toBe('WAITING_HANDSET · passed: cells, consensus, ppo2_tx');
+      // no bits set
+      expect(parseExtraDIDValue({ type: 'post_status' }, new Uint8Array([0, 0x00, 0, 0])))
+        .toBe('WAITING_CELLS · passed: none');
+    });
+
+    it('parseExtraDIDValue decodes Poseidon gauge (0xF236) percent/flags/age', () => {
+      // percent 72, flags b0|b1 (ever_received + fresh), age 15s
+      expect(parseExtraDIDValue({ type: 'poseidon_gauge' }, new Uint8Array([72, 0x03, 15, 0])))
+        .toBe('72% · fresh · age 15s');
+      // ever_received but stale (b0|b2), age 300s
+      expect(parseExtraDIDValue({ type: 'poseidon_gauge' }, new Uint8Array([50, 0x05, 0x2C, 0x01])))
+        .toBe('50% · stale · age 300s');
+      // never received -> "no data"
+      expect(parseExtraDIDValue({ type: 'poseidon_gauge' }, new Uint8Array([0, 0x00, 0, 0])))
+        .toBe('no data');
+    });
+
+    it('decodeDeviceCurrent decodes device current (0xF237) uA/age/valid', () => {
+      // 125000 uA = 125 mA, age 3s, valid
+      const draw = new Uint8Array([0x48, 0xE8, 0x01, 0x00, 0x03, 0x00, 0x01, 0x00]);
+      expect(decodeDeviceCurrent(draw)).toEqual({
+        valid: true, currentUa: 125000, currentMa: 125, ageS: 3
+      });
+      // negative draw (e.g. charging) -50000 uA = -50 mA, age 300s, valid
+      const charge = new Uint8Array([0xB0, 0x3C, 0xFF, 0xFF, 0x2C, 0x01, 0x01, 0x00]);
+      expect(decodeDeviceCurrent(charge)).toEqual({
+        valid: true, currentUa: -50000, currentMa: -50, ageS: 300
+      });
+      // no provider / no sample -> valid=0
+      const invalid = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]);
+      expect(decodeDeviceCurrent(invalid).valid).toBe(false);
+      // short payload -> null
+      expect(decodeDeviceCurrent(new Uint8Array([0, 0, 0, 0]))).toBeNull();
+    });
+
+    it('parseExtraDIDValue decodes MCUBoot status (0xF270)', () => {
+      // swap=None(0), confirmed=1, runningSlot=0, factory flag=0,
+      // slot0 v1.2.3, slot1 absent(0xFF), factory absent(0xFF)
+      const d = new Uint8Array([
+        0, 1, 0, 0,
+        1, 2, 3, 0,
+        0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF
+      ]);
+      expect(parseExtraDIDValue({ type: 'mcuboot' }, d))
+        .toBe('None · confirmed · run slot0 · s0 1.2.3 · s1 none');
     });
   });
 

@@ -1,0 +1,4 @@
+tests:
+  calibration.sm:
+    platform_allow: native_sim
+    tags: calibration smf

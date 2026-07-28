@@ -1,0 +1,5 @@
+# Exact versions keep CI dependency resolution reproducible. Update these in a
+# deliberate dependency-maintenance change after validating the native harness.
+pytest==9.1.1
+python-can==4.6.1
+matplotlib==3.11.1

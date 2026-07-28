@@ -143,6 +143,40 @@ The Head pushes unsolicited log messages to the bluetooth client using WDBI (0x2
 
 These are handled specially - the bluetooth client receives them as unsolicited WDBI frames rather than responses.
 
+## PID Autotune
+
+The Zephyr firmware exposes an on-device PID autotune routine over two DIDs.
+It dials in the solenoid PID gains (Kp/Ki/Kd) by perturbing the control loop
+with setpoint steps and scoring the closed-loop step response (bounded
+coordinate-descent search). Full wire formats are in
+[DATA_IDENTIFIERS.md](DATA_IDENTIFIERS.md).
+
+| DID | Service | Purpose |
+|-----|---------|---------|
+| 0xF243 | 0x2E (write) | Control — START / ABORT a tuning run |
+| 0xF213 | 0x22 (read) | Status — live state, candidate/best gains, cost, elapsed |
+
+**START** writes `[0x01, magic 0xA7, base_cb, step_cb, budget_hi, budget_lo]`;
+**ABORT** writes `[0x02, magic 0xA7]`. Both require the **Programming** session
+(NRC 0x7F otherwise) and a correct magic byte (NRC 0x31 otherwise). START is
+additionally refused (NRC 0x22) while diving or when the routine's own
+preconditions fail (PPO2 mode not PID, a run already active, or no solenoid on
+the variant). The session/dive gate is an **arming guard**, not a run-long
+requirement: once started the routine runs **autonomously on-device** in its own
+thread, so the supervising client may disconnect.
+
+**Self-abort on dive.** The routine is bench/surface-only. It self-aborts on
+operator request, dive start, cell failure (consensus `PPO2_FAIL`), or a 2-hour
+timeout, and restores the pre-tune gains on any abort. Dive-start abort is wired
+twice: the routine's own per-tick safety check (`UDS_IsInDive`), and
+`UDS_MaintainSession()` — the same dive signal that force-downgrades the
+Programming session also calls `ppo2_autotune_request_abort(AUTOTUNE_ABORT_DIVE)`.
+
+**Gains are staged, not persisted.** On success the winning gains are applied
+live and staged into the volatile settings cache (indices 4/5/6, "PID Kp/Ki/Kd
+x1k"). They are **not** auto-persisted — the operator reviews the result via the
+status DID and commits them through the settings-save DID (`0x9350 + N`).
+
 ## Response Format
 
 **Positive Response:** `[SID + 0x40, ...]`

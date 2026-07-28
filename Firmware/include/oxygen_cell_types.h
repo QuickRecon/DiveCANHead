@@ -1,0 +1,187 @@
+/**
+ * @file oxygen_cell_types.h
+ * @brief Domain types, constants, and zbus message structs for oxygen cells.
+ *
+ * Shared by sensor drivers, math helpers, calibration, and the DiveCAN
+ * transmitter. Defines the PPO2_t/Millivolts_t typedefs, per-cell message
+ * struct, consensus message struct, and calibration request/response types.
+ */
+#ifndef OXYGEN_CELL_TYPES_H
+#define OXYGEN_CELL_TYPES_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include "common.h"   /* PrecisionPPO2_t */
+
+/* ---- Domain value types ---- */
+
+typedef uint8_t PPO2_t;           /**< PPO2 in centibar (0-254; 0xFF = fail/uncal) */
+typedef uint16_t Millivolts_t;    /**< Cell voltage in units of 0.01 mV */
+typedef uint8_t ShortMillivolts_t;/**< Cell voltage in mV (DiveCAN wire format) */
+typedef float CalCoeff_t;         /**< Sensor calibration coefficient */
+typedef uint8_t FO2_t;            /**< Fraction of O2 in percent (0-100) */
+
+/* ---- Constants ---- */
+
+/** @brief PPO2 sentinel value meaning failed or uncalibrated (0xFF). */
+#define PPO2_FAIL        0xFFU
+/** @brief Maximum inter-cell deviation before a cell is excluded (0.15 bar in centibar). */
+#define MAX_DEVIATION    15U
+/** @brief Highest representable valid PPO2 (centibar). */
+#define MAX_VALID_PPO2   254U
+/** @brief Maximum number of oxygen cells supported. */
+#define CELL_MAX_COUNT   3U
+
+/* ADC counts to millivolts: ADS1115 at +/-0.256V full scale, 15-bit signed */
+#define COUNTS_TO_MILLIS ((0.256f * 100000.0f) / 32767.0f)
+
+/* Calibration coefficient bounds — chosen so 8-13mV in air is valid */
+/** @brief Upper bound for a valid analog cell calibration coefficient. */
+#define ANALOG_CAL_UPPER 0.02625f
+/** @brief Lower bound for a valid analog cell calibration coefficient. */
+#define ANALOG_CAL_LOWER 0.01428f
+
+/* DiveO2 calibration coefficient bounds — within 10% of nominal 1000000 */
+/** @brief Upper bound for a valid DiveO2 calibration coefficient. */
+#define DIVEO2_CAL_UPPER 1100000.0f
+/** @brief Lower bound for a valid DiveO2 calibration coefficient. */
+#define DIVEO2_CAL_LOWER  800000.0f
+/** @brief Default DiveO2 calibration coefficient (uncalibrated). */
+#define DIVEO2_CAL_DEFAULT 1000000.0f
+
+/* O2S calibration coefficient bounds — within 20% of nominal 1.0 */
+/** @brief Upper bound for a valid O2S calibration coefficient. */
+#define O2S_CAL_UPPER 1.2f
+/** @brief Lower bound for a valid O2S calibration coefficient. */
+#define O2S_CAL_LOWER 0.8f
+/** @brief Default O2S calibration coefficient (uncalibrated). */
+#define O2S_CAL_DEFAULT 1.0f
+
+/* ---- Cell status ---- */
+
+/** @brief Operational status of a single oxygen cell. */
+typedef enum {
+    CELL_OK = 0,      /**< Cell reading is valid and within expected range */
+    CELL_DEGRADED,    /**< Cell reading is valid but showing signs of degradation */
+    CELL_FAIL,        /**< Cell has reported an unrecoverable error */
+    CELL_NEED_CAL,    /**< Cell requires calibration before readings are trusted */
+} CellStatus_t;
+
+/** @brief UART fluorescence-cell protocol family.
+ *
+ * DiveO2 and Pyroscience cells speak a byte-identical ASCII protocol that
+ * differs only in the command-prefix letter: DiveO2 uses 'D' (#DOXY/#DRAW),
+ * Pyroscience uses 'M' (#MOXY/#MRAW). #BCST/#VERS etc. are common to both.
+ * The driver auto-detects which family a connected cell uses at runtime.
+ */
+typedef enum {
+    CELL_PROTO_UNKNOWN = 0, /**< Not yet detected */
+    CELL_PROTO_DIVEO2,      /**< DiveO2 — 'D' prefix */
+    CELL_PROTO_PYRO,        /**< Pyroscience — 'M' prefix */
+} CellProtocol_t;
+
+/**
+ * @brief Request that a UART fluorescence cell enter or leave broadcast mode.
+ *
+ * Live (transient) per-cell command issued from the UDS handler. The actual
+ * #BCST UART write happens asynchronously on the cell's own thread, so this is
+ * a non-blocking signal — safe to call from the divecan_rx/UDS context.
+ *
+ * @param cell_number Zero-based cell index (0..CELL_MAX_COUNT-1).
+ * @param on          true → start broadcast at the default interval; false → stop.
+ */
+void diveo2_request_broadcast(uint8_t cell_number, bool on);
+
+/* ---- zbus message types ---- */
+
+/** @brief Per-cell reading published on chan_cell_1..3.
+ *
+ * Common fields (cell_number .. timestamp_ticks) are populated by every
+ * driver. The trailing ancillary fields are populated by the cell type that
+ * has the data — DiveO2 #DRAW responses fill temperature/err_code/phase/
+ * intensity/ambient_light/pressure_uhpa/humidity_mrh; analog cells fill
+ * raw_sample with ADC counts; other drivers leave the unused fields zero.
+ * Exposed via the 0xF4Nx UDS state DIDs.
+ */
+typedef struct {
+    uint8_t cell_number;
+    PPO2_t ppo2;               /**< PPO2 in centibar; 0xFF = fail */
+    PrecisionPPO2_t precision_ppo2; /**< PPO2 in bar, full precision for PID */
+    Millivolts_t millivolts;
+    CellStatus_t status;
+    int64_t timestamp_ticks;   /**< k_uptime_ticks() — 64-bit, no overflow */
+    int32_t raw_sample;        /**< Cell-native raw reading (analog: ADC counts; DiveO2: cell count) */
+    int32_t temperature_dc;    /**< Temperature in tenths of °C (DiveO2 native); 0 otherwise */
+    uint32_t err_code;         /**< Digital cell raw error word; 0 otherwise */
+    int32_t phase;             /**< DiveO2 #DRAW phase field; 0 otherwise */
+    int32_t intensity;         /**< DiveO2 #DRAW intensity field; 0 otherwise */
+    int32_t ambient_light;     /**< DiveO2 #DRAW ambient-light field; 0 otherwise */
+    uint32_t pressure_uhpa;    /**< Pressure in units of 10^-3 hPa (DiveO2 native); 0 for analog */
+    int32_t humidity_mrh;      /**< Humidity in milliRH (DiveO2 native); 0 otherwise */
+} OxygenCellMsg_t;
+
+/** @brief Voted consensus result published on chan_consensus. */
+typedef struct {
+    PPO2_t consensus_ppo2;
+    PrecisionPPO2_t precision_consensus;
+    PPO2_t ppo2_array[CELL_MAX_COUNT];
+    PrecisionPPO2_t precision_ppo2_array[CELL_MAX_COUNT];
+    Millivolts_t milli_array[CELL_MAX_COUNT];
+    CellStatus_t status_array[CELL_MAX_COUNT];
+    bool include_array[CELL_MAX_COUNT];
+    uint8_t confidence;        /**< Number of cells that voted in (0-3) */
+} ConsensusMsg_t;
+
+/* ---- Calibration types ---- */
+
+/** @brief Calibration method identifier carried in a CalRequest_t. */
+typedef enum {
+    CAL_DIGITAL_REFERENCE = 0, /**< Use digital cell as reference */
+    CAL_ANALOG_ABSOLUTE = 1,   /**< Absolute analog calibration against known gas */
+    CAL_TOTAL_ABSOLUTE = 2,    /**< Absolute calibration of all cells */
+    CAL_SOLENOID_FLUSH = 3,    /**< Flush then calibrate */
+    CAL_CHECK = 4,             /**< Surface sensor check: O2 then diluent flush,
+                                    no recalibration, always reports success. */
+} CalMethod_t;
+
+/** @brief Result of a completed calibration sequence.
+ *
+ * Distinguishes failure modes so the DiveCAN response can report the
+ * specific reason (legacy parity with the STM32 firmware's
+ * DIVECAN_CAL_FAIL_FO2_RANGE / DIVECAN_CAL_FAIL_GEN / DIVECAN_CAL_FAIL_REJECTED
+ * / DIVECAN_CAL_FAIL_LOW_EXT_BAT).
+ */
+typedef enum {
+    CAL_RESULT_OK = 0,        /**< Calibration succeeded */
+    CAL_RESULT_REJECTED,      /**< Request itself rejected (fO2 out of bounds,
+                                   no reference cell, unknown method); maps to
+                                   DIVECAN_CAL_FAIL_REJECTED. */
+    CAL_RESULT_OUT_OF_RANGE,  /**< Coefficient computed but outside the cell-type's
+                                   valid envelope; old coefficients retained.
+                                   Maps to DIVECAN_CAL_FAIL_FO2_RANGE. */
+    CAL_RESULT_FAILED,        /**< Math, hardware, or flash error during cal;
+                                   maps to DIVECAN_CAL_FAIL_GEN. */
+    CAL_RESULT_LOW_BATTERY,   /**< Battery voltage too low to safely calibrate;
+                                   maps to DIVECAN_CAL_FAIL_LOW_EXT_BAT.
+                                   Reserved — no emitter wired yet (the legacy
+                                   firmware defined the code but never emitted
+                                   it either). Plumbed end-to-end so a future
+                                   pre-cal battery check can use it without
+                                   touching the DiveCAN response mapping. */
+    CAL_RESULT_BUSY,          /**< Calibration already in progress */
+} CalResult_t;
+
+/** @brief Calibration request published on chan_cal_request. */
+typedef struct {
+    CalMethod_t method;
+    FO2_t fo2;
+    uint16_t pressure_mbar;
+} CalRequest_t;
+
+/** @brief Calibration response published on chan_cal_response. */
+typedef struct {
+    CalResult_t result;
+    ShortMillivolts_t cell_mv[CELL_MAX_COUNT]; /**< Per-cell mV at calibration point */
+} CalResponse_t;
+
+#endif /* OXYGEN_CELL_TYPES_H */

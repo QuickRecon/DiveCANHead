@@ -9,6 +9,11 @@ import {
   buildRDBIResponse,
   buildNegativeResponse,
   buildWDBIResponse,
+  buildSessionResponse,
+  buildRoutineResponse,
+  buildRequestDownloadResponse,
+  buildTransferResponse,
+  buildTransferExitResponse,
   NRC
 } from '../../tests/fixtures/uds-responses.js';
 import {
@@ -16,6 +21,7 @@ import {
   UINT8_VECTORS,
   BOOL_VECTORS
 } from '../../tests/fixtures/did-test-vectors.js';
+import { STATE_DIDS, getDIDInfo } from './constants.js';
 
 describe('UDSClient', () => {
   let client;
@@ -33,7 +39,7 @@ describe('UDSClient', () => {
   describe('constructor', () => {
     it('sets up transport message handler', () => {
       expect(transport.events['message']).toBeDefined();
-      expect(transport.events['message'].length).toBe(1);
+      expect(transport.events['message']).toHaveLength(1);
     });
 
     it('accepts options', () => {
@@ -188,6 +194,22 @@ describe('UDSClient', () => {
       }
     });
 
+    describe('tank pressure', () => {
+      it('converts little-endian decibar to bar without losing tenths', () => {
+        expect(client.parseDIDValue(
+          STATE_DIDS.O2_CYL_PRESSURE.did,
+          new Uint8Array([0xD2, 0x04])
+        )).toBe(123.4);
+      });
+
+      it('maps the firmware failure sentinel to NaN', () => {
+        expect(client.parseDIDValue(
+          STATE_DIDS.DIL_CYL_PRESSURE.did,
+          new Uint8Array([0xFF, 0xFF])
+        )).toBeNaN();
+      });
+    });
+
     it('returns raw data for unknown DID', () => {
       const data = new Uint8Array([0x01, 0x02, 0x03]);
       const result = client.parseDIDValue(0xFFFF, data);
@@ -221,6 +243,20 @@ describe('UDSClient', () => {
       expect(handler).toHaveBeenCalledWith(message);
     });
 
+    it('accepts log pushes from a separate unsolicited channel', () => {
+      const handler = vi.fn();
+      client.on('logMessage', handler);
+      expect(client.processUnsolicited([0x2E, 0xA1, 0x00, 0x55, 0x53, 0x42])).toBe(true);
+      expect(handler).toHaveBeenCalledWith('USB');
+    });
+
+    it('does not feed non-WDBI side-channel traffic into a pending dialog', () => {
+      const handler = vi.fn();
+      client.on('response', handler);
+      expect(client.processUnsolicited([0x62, 0xF2, 0x00, 1])).toBe(false);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
     it('emits unsolicitedMessage for other DIDs', () => {
       const handler = vi.fn();
       client.on('unsolicitedMessage', handler);
@@ -251,42 +287,117 @@ describe('UDSClient', () => {
   });
 
   describe('concurrent request handling', () => {
-    it('rejects second request when one is pending', async () => {
-      vi.useFakeTimers();
+    it('serializes overlapping requests instead of rejecting', async () => {
+      // Two callers issue requests at the same time (e.g. background DID poll
+      // and a user-driven read). Both must succeed, in order, rather than the
+      // second throwing "Request already pending".
+      transport.queueResponse(buildRDBIResponse(0xF200, [0x11]));
+      transport.queueResponse(buildRDBIResponse(0xF201, [0x22]));
 
-      // Start first request (no response queued, will timeout)
+      const [first, second] = await Promise.all([
+        client.readDataByIdentifier(0xF200),
+        client.readDataByIdentifier(0xF201)
+      ]);
+
+      expect(Array.from(first)).toEqual([0x11]);
+      expect(Array.from(second)).toEqual([0x22]);
+
+      // Requests must have gone out in submission order, one at a time.
+      const sent = transport.getAllSent();
+      expect(sent).toHaveLength(2);
+      expect(Array.from(sent[0])).toEqual([0x22, 0xF2, 0x00]);
+      expect(Array.from(sent[1])).toEqual([0x22, 0xF2, 0x01]);
+    });
+
+    it('does not send a queued request until the prior one resolves', async () => {
+      transport.queueResponse(buildRDBIResponse(0xF200, [0x11]));
+      transport.queueResponse(buildRDBIResponse(0xF201, [0x22]));
+
       const first = client.readDataByIdentifier(0xF200);
+      const second = client.readDataByIdentifier(0xF201);
 
-      // Try second request immediately
-      await expect(client.readDataByIdentifier(0xF201))
-        .rejects.toThrow('pending');
+      // Let the first request's send + response microtasks settle.
+      await first;
 
-      // Cleanup
-      vi.advanceTimersByTime(10000);
-      await first.catch(() => {});
+      // The second request must not have been transmitted concurrently with
+      // the first — serialization holds it back until the first completes.
+      const sentAfterFirst = transport.getAllSent().map(b => Array.from(b));
+      expect(sentAfterFirst[0]).toEqual([0x22, 0xF2, 0x00]);
 
-      vi.useRealTimers();
+      await second;
+    });
+
+    it('advances the queue even when a request rejects', async () => {
+      // A negative response on the first request must not wedge the queue.
+      transport.queueResponse(buildNegativeResponse(0x22, NRC.REQUEST_OUT_OF_RANGE));
+      transport.queueResponse(buildRDBIResponse(0xF201, [0x22]));
+
+      const firstResult = await client.readDataByIdentifier(0xF200).catch(e => e);
+      expect(firstResult).toBeInstanceOf(Error);
+
+      const second = await client.readDataByIdentifier(0xF201);
+      expect(Array.from(second)).toEqual([0x22]);
     });
   });
 
   describe('high-level methods', () => {
-    describe('readSerialNumber', () => {
-      it('returns decoded string', async () => {
-        transport.queueResponse(RESPONSES.RDBI.SERIAL_NUMBER);
+    describe('readFirmwareVersion', () => {
+      it('returns decoded git-describe string', async () => {
+        transport.queueResponse(
+          buildRDBIResponse(0xF000, new TextEncoder().encode('v1.2.3-4'))
+        );
 
-        const serial = await client.readSerialNumber();
+        const version = await client.readFirmwareVersion();
 
-        expect(serial).toBe('SN12345678');
+        expect(version).toBe('v1.2.3-4');
       });
     });
 
-    describe('readModel', () => {
-      it('returns decoded string', async () => {
-        transport.queueResponse(RESPONSES.RDBI.MODEL);
+    describe('error histogram', () => {
+      it('readErrorHistogram decodes the 0xF260 uint16[] payload', async () => {
+        // 38 slots; slot 9 (CELL_FAILURE) = 3, slot 17 (ISOTP_TIMEOUT) = 0x0102
+        const payload = new Uint8Array(38 * 2);
+        const view = new DataView(payload.buffer);
+        view.setUint16(9 * 2, 3, true);
+        view.setUint16(17 * 2, 0x0102, true);
+        transport.queueResponse(buildRDBIResponse(0xF260, payload));
 
-        const model = await client.readModel();
+        const entries = await client.readErrorHistogram();
 
-        expect(model).toBe('DiveCANHead');
+        expect(entries).toHaveLength(38);
+        expect(entries[9]).toMatchObject({ name: 'CELL_FAILURE', count: 3 });
+        expect(entries[17]).toMatchObject({ name: 'ISOTP_TIMEOUT', count: 258 });
+      });
+
+      it('clearErrorHistogram writes a byte to 0xF261', async () => {
+        transport.queueResponse(buildWDBIResponse(0xF261));
+
+        await client.clearErrorHistogram();
+
+        const sent = transport.getLastSent();
+        expect(Array.from(sent)).toEqual([0x2E, 0xF2, 0x61, 0x01]);
+      });
+    });
+
+    describe('readVariantName', () => {
+      it('returns decoded variant string', async () => {
+        transport.queueResponse(
+          buildRDBIResponse(0xF002, new TextEncoder().encode('Poseidon_Aren'))
+        );
+
+        const variant = await client.readVariantName();
+
+        expect(variant).toBe('Poseidon_Aren');
+      });
+    });
+
+    describe('readSerialNumber', () => {
+      it('returns hex string of the raw UID', async () => {
+        transport.queueResponse(buildRDBIResponse(0xF003, [0xDE, 0xAD, 0xBE, 0xEF]));
+
+        const serial = await client.readSerialNumber();
+
+        expect(serial).toBe('deadbeef');
       });
     });
 
@@ -331,6 +442,162 @@ describe('UDSClient', () => {
         await expect(client.triggerCalibration(101)).rejects.toThrow();
       });
     });
+
+    describe('writeSolenoidOverride', () => {
+      it('sends [channel, 0x5A] to DID 0xF242', async () => {
+        transport.queueResponse(buildWDBIResponse(0xF242));
+        await client.writeSolenoidOverride(2);
+        expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x42, 2, 0x5A]);
+      });
+
+      it('defaults to channel 0', async () => {
+        transport.queueResponse(buildWDBIResponse(0xF242));
+        await client.writeSolenoidOverride();
+        expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x42, 0, 0x5A]);
+      });
+    });
+  });
+
+  describe('generic services', () => {
+    it('enterSession sends session control and resolves on 0x50', async () => {
+      transport.queueResponse(buildSessionResponse(0x02));
+      const resp = await client.enterSession(0x02);
+      expect(Array.from(transport.getLastSent())).toEqual([0x10, 0x02]);
+      expect(resp[0]).toBe(0x50);
+    });
+
+    it('routineControl sends 0x31 0x01 with big-endian RID + params', async () => {
+      transport.queueResponse(buildRoutineResponse(0xF105));
+      await client.routineControl(0xF105, [0x00]);
+      expect(Array.from(transport.getLastSent())).toEqual([0x31, 0x01, 0xF1, 0x05, 0x00]);
+    });
+
+    it('requestDownload sends OTA size big-endian and returns max block', async () => {
+      transport.queueResponse(buildRequestDownloadResponse(256));
+      const maxBlock = await client.requestDownload(0, 0x1234, { sizeEndian: 'BE' });
+      expect(Array.from(transport.getLastSent())).toEqual([
+        0x34, 0x00, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x34
+      ]);
+      expect(maxBlock).toBe(256);
+    });
+
+    it('requestDownload sends log size little-endian with sentinel addr', async () => {
+      transport.queueResponse(buildRequestDownloadResponse(253));
+      await client.requestDownload(0xFFFFFFFE, 61, { sizeEndian: 'LE' });
+      expect(Array.from(transport.getLastSent())).toEqual([
+        0x34, 0x00, 0x44, 0xFE, 0xFF, 0xFF, 0xFF, 0x3D, 0x00, 0x00, 0x00
+      ]);
+    });
+
+    it('transferData sends seq + data and returns full response body', async () => {
+      transport.queueResponse(buildTransferResponse(5, [0xAA, 0xBB]));
+      const resp = await client.transferData(5, [0x01, 0x02]);
+      expect(Array.from(transport.getLastSent())).toEqual([0x36, 5, 0x01, 0x02]);
+      expect(Array.from(resp)).toEqual([0x76, 5, 0xAA, 0xBB]);
+    });
+
+    it('requestTransferExit sends 0x37', async () => {
+      transport.queueResponse(buildTransferExitResponse());
+      const resp = await client.requestTransferExit();
+      expect(Array.from(transport.getLastSent())).toEqual([0x37]);
+      expect(resp[0]).toBe(0x77);
+    });
+  });
+
+  describe('settings wire format', () => {
+    it('getSettingOptionLabel uses (settingIndex<<4)+optionIndex', async () => {
+      // setting 2, option 3 -> 0x9150 + (2<<4) + 3 = 0x9173
+      transport.queueResponse(buildRDBIResponse(0x9173, new TextEncoder().encode('Absolute ')));
+      const label = await client.getSettingOptionLabel(2, 3);
+      const sent = transport.getLastSent();
+      expect(Array.from(sent.slice(1, 3))).toEqual([0x91, 0x73]);
+      expect(label).toBe('Absolute');
+    });
+
+    it('getSettingInfo parses fixed-width label + kind + editable + optionCount', async () => {
+      // label(9) + sep + kind(TEXT=1) + editable(1) + maxValue + optionCount(3)
+      const payload = [
+        ...new TextEncoder().encode('PPO2 Mode'), 0x00, 0x01, 0x01, 0x02, 0x03
+      ];
+      transport.queueResponse(buildRDBIResponse(0x9111, payload));
+      const info = await client.getSettingInfo(1);
+      expect(info.label).toBe('PPO2 Mode');
+      expect(info.kind).toBe(1);
+      expect(info.editable).toBe(true);
+      expect(info.optionCount).toBe(3);
+    });
+  });
+
+  describe('autotune', () => {
+    it('autotuneStart sends a bounded-duty identification request to 0xF243', async () => {
+      transport.queueResponse(buildWDBIResponse(0xF243));
+      await client.autotuneStart({ baseCb: 70, excitationDutyPct: 20 });
+      expect(Array.from(transport.getLastSent())).toEqual([
+        0x2E, 0xF2, 0x43, 0x01, 0xA7, 70, 20, 0x00, 0x01
+      ]);
+    });
+
+    it('autotuneAbort sends [0x02, 0xA7] to 0xF243', async () => {
+      transport.queueResponse(buildWDBIResponse(0xF243));
+      await client.autotuneAbort();
+      expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x43, 0x02, 0xA7]);
+    });
+
+    it('readAutotuneStatus parses the compact 66-byte model-identification status struct', async () => {
+      const buf = new ArrayBuffer(66);
+      const dv = new DataView(buf);
+      dv.setUint8(0, 2);              // state = STEPPING
+      dv.setUint8(1, 4);              // abort_reason = TIMEOUT
+      dv.setUint16(2, 5, true);       // iteration
+      dv.setUint16(4, 24, true);      // budget
+      dv.setFloat32(6, 1.75, true);   // best kp
+      dv.setFloat32(10, 0.3, true);   // best ki
+      dv.setFloat32(14, 0.05, true);  // best kd
+      dv.setFloat32(18, 0.0123, true);// response-tail noise
+      dv.setUint32(22, 42, true);     // elapsed_s
+      dv.setFloat32(26, 1.4, true);   // plant gain
+      dv.setFloat32(30, 3.5, true);   // dead time
+      dv.setFloat32(34, 8.0, true);   // recovery time
+      dv.setFloat32(38, 0.0123, true);// response-tail noise
+      dv.setFloat32(42, 0.07, true);  // mixing excursion
+      dv.setFloat32(46, 0.12, true);  // baseline duty
+      dv.setFloat32(50, 0.0004, true);// baseline slope
+      dv.setFloat32(54, 1.01, true);  // ambient pressure
+      dv.setFloat32(58, 1.8, true);   // delivered incremental dose
+      dv.setFloat32(62, 0.006, true); // baseline RMS noise
+      transport.queueResponse(buildRDBIResponse(0xF213, Array.from(new Uint8Array(buf))));
+
+      const st = await client.readAutotuneStatus();
+
+      expect(Array.from(transport.getLastSent())).toEqual([0x22, 0xF2, 0x13]);
+      expect(st.state).toBe(2);
+      expect(st.stateName).toBe('Identifying plant');
+      expect(st.abortReason).toBe(4);
+      expect(st.abortReasonName).toBe('Timeout');
+      expect(st.iteration).toBe(5);
+      expect(st.budget).toBe(24);
+      expect(st.cand).toEqual({ kp: 0, ki: 0, kd: 0 });
+      expect(st.best.kp).toBeCloseTo(1.75, 5);
+      expect(st.best.ki).toBeCloseTo(0.3, 5);
+      expect(st.best.kd).toBeCloseTo(0.05, 5);
+      expect(st.bestCost).toBeCloseTo(0.0123, 5);
+      expect(st.elapsedS).toBe(42);
+      expect(st.model.gain).toBeCloseTo(1.4, 5);
+      expect(st.model.deadTimeS).toBeCloseTo(3.5, 5);
+      expect(st.model.timeConstantS).toBeCloseTo(8.0, 5);
+      expect(st.model.fitRmseBar).toBeCloseTo(0.0123, 5);
+      expect(st.model.mixingExcursionBar).toBeCloseTo(0.07, 5);
+      expect(st.model.baselineDuty).toBeCloseTo(0.12, 5);
+      expect(st.model.baselineSlopeBarS).toBeCloseTo(0.0004, 6);
+      expect(st.model.ambientPressureBar).toBeCloseTo(1.01, 5);
+      expect(st.model.deliveredDoseDutyS).toBeCloseTo(1.8, 5);
+      expect(st.model.baselineNoiseBar).toBeCloseTo(0.006, 6);
+    });
+
+    it('readAutotuneStatus rejects a truncated legacy response', async () => {
+      transport.queueResponse(buildRDBIResponse(0xF213, new Array(60).fill(0)));
+      await expect(client.readAutotuneStatus()).rejects.toThrow(/too short/);
+    });
   });
 
   describe('event emitter', () => {
@@ -370,6 +637,36 @@ describe('UDSClient', () => {
 
       // Total time should be at least the delay (with some margin for execution)
       expect(elapsed).toBeGreaterThanOrEqual(40);
+    });
+  });
+
+  describe('fetchAllState resilience', () => {
+    it('falls back to individual reads when a bundled chunk fails', async () => {
+      const calls = [];
+      // Stub the bundled read: any multi-DID request fails; single-DID reads
+      // succeed (except one "unsupported" DID which always fails).
+      const UNSUPPORTED = STATE_DIDS.POWER_SOURCES.did;
+      client.readDIDsParsed = async (dids) => {
+        calls.push(dids.slice());
+        if (dids.length > 1) {
+          throw Object.assign(new Error('bundle failed'), { nrc: 0x31 });
+        }
+        if (dids[0] === UNSUPPORTED) {
+          throw Object.assign(new Error('unsupported'), { nrc: 0x31 });
+        }
+        const info = getDIDInfo(dids[0]);
+        return info ? { [info.key]: 1 } : {};
+      };
+
+      const result = await client.fetchAllState([1, 1, 1]); // analog cells
+
+      // Both a bundle attempt and individual fallbacks happened
+      expect(calls.some(c => c.length > 1)).toBe(true);
+      expect(calls.some(c => c.length === 1)).toBe(true);
+      // A supported DID came through the individual fallback
+      expect(result.CONSENSUS_PPO2).toBe(1);
+      // The unsupported DID was skipped, not fatal
+      expect(result.POWER_SOURCES).toBeUndefined();
     });
   });
 });

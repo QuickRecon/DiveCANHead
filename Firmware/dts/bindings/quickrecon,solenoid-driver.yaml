@@ -1,0 +1,42 @@
+description: |
+  Hardware-timed solenoid driver with deadman safety.
+
+  Drives 1-4 solenoid outputs via GPIO with a hardware timer
+  that guarantees all outputs are forced off after a configurable
+  interval, regardless of application state.
+
+  Example:
+
+    solenoids {
+        compatible = "quickrecon,solenoid-driver";
+        gpios = <&gpiob 4 GPIO_ACTIVE_HIGH>,
+                <&gpioc 11 GPIO_ACTIVE_HIGH>;
+        counter = <&sol_timer>;
+        max-on-time-us = <100000>;
+    };
+
+compatible: "quickrecon,solenoid-driver"
+
+properties:
+  gpios:
+    type: phandle-array
+    required: true
+    description: |
+      GPIO specifiers for each solenoid output, in channel order.
+      Between 1 and 4 entries.
+
+  counter:
+    type: phandle
+    required: true
+    description: |
+      Hardware counter device used as the deadman timer.
+      Must support at least one alarm channel. The counter
+      ISR forces all solenoid GPIOs low when it fires.
+
+  max-on-time-us:
+    type: int
+    required: true
+    description: |
+      Maximum allowed on-time in microseconds. Requests exceeding
+      this value are clamped. Acts as a hard safety ceiling
+      independent of application logic.

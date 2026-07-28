@@ -1,0 +1,9 @@
+tests:
+  divecan.poseidon_accessories:
+    platform_allow:
+      - native_sim
+      - native_sim/native/64
+    tags:
+      - poseidon
+      - i2c
+      - unit

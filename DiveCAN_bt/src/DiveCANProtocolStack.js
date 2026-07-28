@@ -11,6 +11,8 @@ import { SLIPCodec } from './slip/SLIPCodec.js';
 import { DiveCANFramer, BT_CLIENT_ADDRESS, CONTROLLER_ADDRESS } from './divecan/DiveCANFramer.js';
 import { DirectTransport } from './transport/DirectTransport.js';
 import { UDSClient } from './uds/UDSClient.js';
+import { OTAManager } from './firmware/OTAManager.js';
+import { LogDownloader } from './logs/LogDownloader.js';
 import { Logger } from './utils/Logger.js';
 import { ByteUtils } from './utils/ByteUtils.js';
 
@@ -75,6 +77,10 @@ export class DiveCANProtocolStack extends EventEmitter {
       options.transport
     );
     this._uds = new UDSClient(this._transport, options.uds);
+
+    // High-level feature managers (OTA + flash-log download) over the UDS client.
+    this._ota = new OTAManager(this._uds, options.ota);
+    this._logs = new LogDownloader(this._uds, options.logs);
 
     this._wireUpLayers();
   }
@@ -161,8 +167,14 @@ export class DiveCANProtocolStack extends EventEmitter {
 
     // Forward log streaming events
     this._uds.on('logMessage', (message) => this.emit('logMessage', message));
-    this._uds.on('eventMessage', (message) => this.emit('eventMessage', message));
     this._uds.on('unsolicitedMessage', (data) => this.emit('unsolicitedMessage', data));
+
+    // Forward feature-manager events (OTA staging + log download progress)
+    this._ota.on('progress', (p) => this.emit('otaProgress', p));
+    this._ota.on('staged', (p) => this.emit('otaStaged', p));
+    this._ota.on('sessionExpired', () => this.emit('otaSessionExpired'));
+    this._logs.on('progress', (p) => this.emit('logProgress', p));
+    this._logs.on('done', (p) => this.emit('logDownloadDone', p));
   }
 
   /**
@@ -228,28 +240,19 @@ export class DiveCANProtocolStack extends EventEmitter {
   }
 
   /**
-   * Convenience method: Read model name
-   * @returns {Promise<string>} Model name
+   * Convenience method: Read firmware version
+   * @returns {Promise<string>}
    */
-  async readModel() {
-    return await this._uds.readModel();
+  async readFirmwareVersion() {
+    return await this._uds.readFirmwareVersion();
   }
 
   /**
-   * Convenience method: Enumerate devices on the DiveCAN bus
-   * @returns {Promise<Array<number>>} Array of device IDs
+   * Convenience method: Read build variant name
+   * @returns {Promise<string>}
    */
-  async enumerateBusDevices() {
-    return await this._uds.enumerateBusDevices();
-  }
-
-  /**
-   * Convenience method: Get device name by ID
-   * @param {number} deviceId - Device ID
-   * @returns {Promise<string>} Device name
-   */
-  async getDeviceName(deviceId) {
-    return await this._uds.getDeviceName(deviceId);
+  async readVariantName() {
+    return await this._uds.readVariantName();
   }
 
   /**
@@ -258,55 +261,6 @@ export class DiveCANProtocolStack extends EventEmitter {
    */
   async readHardwareVersion() {
     return await this._uds.readHardwareVersion();
-  }
-
-  /**
-   * Convenience method: Read configuration
-   * @returns {Promise<Uint8Array>} Configuration data
-   */
-  async readConfiguration() {
-    return await this._uds.readConfiguration();
-  }
-
-  /**
-   * Convenience method: Write configuration
-   * @param {Uint8Array|Array} config - Configuration data
-   * @returns {Promise<void>}
-   */
-  async writeConfiguration(config) {
-    await this._uds.writeConfiguration(config);
-  }
-
-  /**
-   * Convenience method: Upload memory
-   * @param {number} address - Memory address
-   * @param {number} length - Number of bytes
-   * @param {Function} progressCallback - Progress callback
-   * @returns {Promise<Uint8Array>} Memory data
-   */
-  async uploadMemory(address, length, progressCallback = null) {
-    const wrappedCallback = progressCallback ? (current, total) => {
-      this.emit('progress', { current, total, percent: (current / total) * 100 });
-      progressCallback(current, total);
-    } : null;
-
-    return await this._uds.uploadMemory(address, length, wrappedCallback);
-  }
-
-  /**
-   * Convenience method: Download memory
-   * @param {number} address - Memory address
-   * @param {Uint8Array|Array} data - Data to write
-   * @param {Function} progressCallback - Progress callback
-   * @returns {Promise<void>}
-   */
-  async downloadMemory(address, data, progressCallback = null) {
-    const wrappedCallback = progressCallback ? (current, total) => {
-      this.emit('progress', { current, total, percent: (current / total) * 100 });
-      progressCallback(current, total);
-    } : null;
-
-    await this._uds.downloadMemory(address, data, wrappedCallback);
   }
 
   // ============================================================
@@ -383,6 +337,10 @@ export class DiveCANProtocolStack extends EventEmitter {
   get divecan() { return this._divecan; }
   get transport() { return this._transport; }
   get uds() { return this._uds; }
+
+  // Feature managers
+  get ota() { return this._ota; }
+  get logs() { return this._logs; }
 
   /**
    * Check if connected

@@ -1,0 +1,416 @@
+# CLAUDE.md — Zephyr Firmware
+
+AI assistant directives for the `Firmware/` subtree. This supplements the project-root CLAUDE.md.
+
+## Build Command
+
+On the DiveCAN test-rig host, use the installed upstream Zephyr venv and SDK.
+The older `/home/aren/ncs/...` and `/opt/zephyr-sdk` paths do not exist there.
+
+```bash
+export PATH=/home/aren/zephyr-venv/bin:$PATH
+export ZEPHYR_SDK_INSTALL_DIR=/home/aren/zephyr-sdk-1.0.1
+
+west build -d build -b divecan_jr/stm32l431xx . --sysbuild -p always -- \
+  -DBOARD_ROOT=. \
+  -DEXTRA_CONF_FILE=variants/<name>.conf \
+  -DEXTRA_DTC_OVERLAY_FILE=variants/<name>.overlay
+```
+
+Each variant has a matching `.overlay` next to its `.conf` that
+disables peripherals the variant won't use (unused ADS1115 instances,
+USARTs, etc.). Without it Zephyr still allocates driver state for
+hardware that's compiled-in but never spoken to (~1.5 KB per unused
+ADS1115, ~350 B per unused USART). Always pass both `EXTRA_*` flags
+for a given variant — they're a pair.
+
+Use a pristine rebuild when changing variants. Sysbuild produces MCUBoot, the
+signed app, the merged hex, and the HIL test manifest.
+
+## Native (host) test runner
+
+Every test under `tests/<name>/` builds for `native_sim` and runs as a host
+binary. Build dirs live under `build-native/<name>/` (NOT scattered as
+`build_test_<name>/` at the Firmware/ root) — keep this convention so the
+working tree stays tidy.
+
+The `scripts/native_test.py` wrapper handles toolchain env, build-dir
+naming, and aggregation. Use it instead of raw `west build -d build_test_*`:
+
+```bash
+python3 scripts/native_test.py list                     # show every discovered test
+python3 scripts/native_test.py build ppo2_control_math  # build one
+python3 scripts/native_test.py run   ppo2_control_math  # run a built binary
+python3 scripts/native_test.py build-all                # build every test
+python3 scripts/native_test.py run-all                  # build + run every test
+python3 scripts/native_test.py clean                    # nuke build-native/
+```
+
+### VSCode Test Explorer integration
+
+A CMake umbrella at `tests/CMakeLists.txt` (LANGUAGES NONE, no compile —
+pure CTest registration) discovers every test module under `tests/`,
+builds each one (incremental — runs `scripts/native_test.py build <name>`
+during CMake configure), then invokes `zephyr.exe -list` to enumerate the
+**individual ztest cases** inside each binary. One CTest entry is
+registered per case using ztest's `-test=<suite>::<case>` filter, so the
+Testing tab shows the full hierarchy:
+
+```
+ppo2_control_math/
+├── pid_update_suite/
+│   ├── test_step_response
+│   ├── test_integral_windup_clamp
+│   └── …
+├── fire_timing_suite/
+│   ├── test_clamps_to_max
+│   └── …
+└── …
+```
+
+Forward slashes in the CTest name structure the tree (CMake Tools
+hierarchises on `/`), and each entry also carries the module as a CTest
+LABEL so the explorer's filter picks them up too. Right-click → **Debug
+Test** in the Testing tab launches gdb against the selected case via the
+registered `-test=` filter — no extra launch config needed.
+
+CMake Tools (`ms-vscode.cmake-tools`) is pointed at the umbrella via
+`.vscode/settings.json` (`cmake.sourceDirectory = tests`,
+`cmake.buildDirectory = build-native/_runner`, `cmake.configureOnOpen`,
+`cmake.testSuiteDelimiter = "/"`). The delimiter setting is what makes
+the Test Explorer render the slash-separated names as a tree.
+
+**Use CMake Tools' built-in test view, not `brobeson.ctest-lab`** —
+ctest-lab calls `createTestItem` once per test with no parent linkage
+(verified in `src/test_discovery.ts`), so it always renders flat
+regardless of how the names are structured. Disable it (or just rely on
+CMake Tools' view, which appears in the Testing tab independently).
+The umbrella configures on workspace open. **Cold configure runs every
+test build** (parallel-friendly, ~2 min on a fast machine); incremental
+reconfigures after a code change are sub-second.
+
+When adding a new ztest **case** inside an existing test binary: rebuild
+that binary (Tasks: "Native Test: Build"), then trigger a CMake
+reconfigure — the new case appears in the explorer.
+
+When adding a new test **module** (new directory under `tests/` with its
+own `CMakeLists.txt`): the next CMake configure picks it up automatically
+via `file(GLOB)`. No edits to the umbrella required.
+
+If a module fails to compile, the umbrella registers a single
+`<module>::BUILD_FAILED` entry so the failure surfaces in the explorer
+instead of the module silently disappearing.
+
+### VSCode Tasks palette (alternative)
+
+`.vscode/tasks.json` provides the same flow via `Cmd/Ctrl+Shift+P →
+"Tasks: Run Task"`:
+
+- **Native Test: Build** / **Run** / **Build + Run** — pick a test from
+  the dropdown
+- **Native Test: Build All** / **Run All** — for full sweeps
+- **Native Test: Clean All** — wipes `build-native/`
+
+`launch.json` adds a **Debug Native Test (gdb)** configuration that runs
+the chosen test under cppdbg. Build the test via the Tasks palette or
+Testing tab first; the launcher just attaches a debugger to the existing
+binary. The existing **Debug (OpenOCD + ST-Link)** / **Attach** configs
+for hardware debugging are unchanged.
+
+When adding a new test directory under `tests/`, the Testing tab picks it
+up automatically on the next CMake configure. For the Tasks palette
+dropdowns, also add the new name to the `nativeTest` `pickString` options
+in both `.vscode/tasks.json` and `.vscode/launch.json` (VSCode
+`pickString` inputs cannot enumerate the filesystem at picker time).
+
+## Coverage
+
+`scripts/coverage.py` runs every ztest module + the pytest integration
+suite under gcov instrumentation and stitches the traces into a single
+report. Builds live under `build-coverage/<name>/` (parallel to
+`build-native/`) so coverage runs never disturb the ordinary developer
+flow. The overlay that adds `--coverage` to the compiler is
+`tests/coverage.conf` — it's layered on top of each test's own
+`prj.conf` (and, for the integration build, on top of the
+self-contained `tests/integration/integration.conf`).
+
+Typical full-sweep invocation:
+
+```bash
+python3 scripts/coverage.py all          # build + run-tests + run-pytest + report
+xdg-open coverage-report/index.html      # browse line/branch heatmap
+```
+
+Granular subcommands when iterating on a specific gap:
+
+```bash
+python3 scripts/coverage.py build-tests       # build every ztest with --coverage
+python3 scripts/coverage.py build-integration # build the integration firmware
+python3 scripts/coverage.py run-tests         # run the ztest binaries
+python3 scripts/coverage.py run-pytest <args> # pytest with DIVECAN_FW_BIN set
+                                         # and a longer SIGTERM grace
+python3 scripts/coverage.py report       # gcovr → coverage-report/
+python3 scripts/coverage.py clean        # wipe build-coverage/ + coverage-report/
+```
+
+`scripts/native_test.py` also gained a `--coverage` flag for single-test
+iteration:
+
+```bash
+python3 scripts/native_test.py build --coverage ppo2_control_math
+python3 scripts/native_test.py run   --coverage ppo2_control_math
+```
+
+`.gcda` files are flushed by libgcov's `atexit` hook when the process
+exits cleanly. The pytest fixture's `SIGTERM → wait → SIGKILL` teardown
+runs that hook reliably, but the grace period must be long enough.
+`scripts/coverage.py run-pytest` sets these env vars so the harness
+handles coverage-instrumented binaries correctly; each is also a knob
+for ad-hoc invocations:
+
+| Env var | Coverage default | Purpose |
+|---------|------------------|---------|
+| `DIVECAN_FW_BIN` | path to coverage binary | Already supported — pin the harness to a non-default build |
+| `DIVECAN_TERMINATE_GRACE_S` | `5.0` (vs `1.0`) | SIGTERM grace before the harness escalates to SIGKILL |
+| `DIVECAN_SHUTDOWN_DEADLINE_S` | `15.0` (vs `4.0`) | `test_pwr_management` deadline for the firmware to exit on shutdown |
+| `DIVECAN_RT_RATIO_MAX` | `10` (unset normally) | Cap any `@pytest.mark.rt_ratio(N)` so coverage's `-fno-inline` overhead doesn't starve the firmware |
+
+`test_pwr_management::test_power_cycle_bus_off_then_shutdown` and
+`::test_power_cycle_bus_on_recovery` skip themselves under coverage —
+the instrumented binary loses the BUS_OFF CAN frame at the SocketCAN
+boundary even at `rt_ratio=1` with a 60 s deadline. The skip key is
+either `DIVECAN_RT_RATIO_MAX` being set or `build-coverage/` appearing
+in `DIVECAN_FW_BIN`. Coverage on `shutdown_thread_fn` comes from the
+other tests in the same file.
+
+Reports land at:
+
+* `coverage-report/index.html` — line + branch heatmap, drill-down per file
+* `coverage-report/coverage.xml` — gcovr SonarQube generic-coverage XML,
+  ready to upload alongside a SonarCloud scan
+
+The report filters to `src/`, `drivers/`, and `include/` and excludes
+`tests/` and `drivers/gpio_sim/` so the percentage reflects application
+coverage (including the ADS1x1x/solenoid drivers and header inlines), not
+test scaffolding.
+
+## Documentation Maintenance
+
+### ARCHITECTURE.md
+Records design decisions, module purposes, and system-level rationale. Update when:
+- A new module or zbus channel is added
+- The build system, flash layout, or hardening configuration changes
+- A new abstraction layer is introduced
+- The variant system or configuration split changes
+
+### COMPROMISE.md
+Tracks every case where a constraint from the old FreeRTOS firmware was relaxed. Update when:
+- A compiler warning or hardening flag is removed or weakened due to Zephyr internals
+- A NASA Power of 10 rule is bent for framework compatibility
+- A safety practice is replaced with a weaker alternative
+- A previously documented compromise is resolved (mark it resolved, don't delete)
+
+Each entry must include: what changed, why, what still provides coverage, and possible alternatives to investigate.
+
+## Coding Conventions (Zephyr Port)
+
+- Indentation: **4 spaces, no tabs**. SonarCloud S105 forbids tabs and the project rule profile is authoritative; this overrides upstream Zephyr style for this subtree.
+- K&R braces, `LOG_MODULE_REGISTER` per TU
+- Use the error handling tiers from `errors.h`:
+  - `__ASSERT` for programming invariants
+  - `MUST_SUCCEED()` for init-time calls that must not fail
+  - `OP_ERROR()` / `OP_ERROR_DETAIL()` for non-fatal runtime errors
+  - `FATAL_OP_ERROR()` for unrecoverable runtime conditions
+- Every new source file must `#include <zephyr/logging/log.h>` and register a log module
+- New Kconfig options go in `src/Kconfig` (app topology/features) or driver subdirs
+- When adding zbus channels, document them in ARCHITECTURE.md under the IPC section
+- The real hardware variants are `AP_Aren`, `AP_Paul`, `eCCR_classic`,
+  `Poseidon_Aren`, and `Sidewinder_Gabriel` (each a `.conf` + `.overlay`
+  pair in `variants/`).
+  Verify at least `Poseidon_Aren` (most features) builds after changes; the
+  native test topology lives in `tests/integration/integration.conf`.
+
+## Channel Semantics
+
+- **`chan_atmos_pressure` carries ambient pressure including depth**, not
+  surface atmospheric pressure. The variable name is a legacy carryover from
+  the STM32/FreeRTOS firmware (`atmoPressure`) where the same misnomer
+  applied. The system is expected to operate at depths well in excess of
+  500 m, so any value the channel carries is legitimate. **Do not impose
+  any upper bound** — not a "physical maximum", not a storage-type range
+  cap, not a "human dive limit". The only legitimate runtime check is
+  `pressure == 0` for divide-by-zero protection in code that uses the value
+  as a divisor (e.g. PPO2 depth compensation: `duty /= pressure / 1000.0f`).
+
+## Code Style Notes
+
+- VLAs are forbidden in application code (enforced by review, not compiler — see COMPROMISE.md)
+- Float literals in app code should use `f` suffix (e.g., `0.5f`) even though the compiler flag was removed
+- All fatal paths must reboot, never halt
+- **Never use `CONFIG_LOG_MODE_IMMEDIATE=y`** — causes spinlock reentry crash with RTT backend (see COMPROMISE.md #5)
+- **`k_sys_fatal_error_handler` is currently NOT overridden** — every variation we tried (printk + spin-wait, LOG_PANIC only, no-op + reboot) ended up truncating the standard fatal dump in a different way. The upstream default (`LOG_PANIC` → `LOG_ERR("Halting system")` → `arch_system_halt`) gives a complete, reliable diagnostic trace. Trade-off: the chip halts on a true fault instead of rebooting. Acceptable during development; revisit before production. Our override is kept in `errors.c` under `#if 0` so reintroducing it is one flag away once the underlying fault is identified.
+- **`fatal_op_error()` (the custom path called directly by app code) DOES use `printk`** — that path bypasses Zephyr's fatal machinery, so we have to do the diagnostic line ourselves. The logging subsystem isn't safe to call from a hand-invoked panic.
+- **`crash_noinit` + `errors_get_last_crash()` infrastructure is still active** — used by `fatal_op_error()` and surfaced on next boot by `main.c`. The Zephyr stock halt path doesn't populate it, so PC/LR/CFSR won't appear in the next-boot report when the fault came from a CPU exception. Live with that for now.
+
+## Stack analysis (belt and braces)
+
+Two complementary tools keep K_THREAD_DEFINE stack budgets honest. Use
+both — static gives upper bounds at build time, runtime confirms the
+upper bounds are not wasteful.
+
+### Static — `scripts/stack_analysis.sh` (opt-in)
+
+Walks the build directory's `.c.su` (per-function local stack from
+`-fstack-usage`) and `.c.<NNN>r.dfinish` (call-graph RTL dump from
+`-fdump-rtl-dfinish`) artefacts. The regular build emits `.su` files;
+pass `-fdump-rtl-dfinish` explicitly when producing a static-analysis
+build. The Python core
+(`scripts/wcs.py`) is a Zephyr-adapted port of the old STM32 firmware's
+`WCS.py`.
+
+```bash
+# After a build, dump worst-case stack per function, sorted descending.
+scripts/stack_analysis.sh build | head -30
+```
+
+Output is also written to `stackAnalysis.txt` for diffing across
+changes. Each row reads: TU, function, worst-case stack, unresolved
+externs the call graph couldn't see through.
+
+Unresolved externs (picolibc, libgcc soft-float, Zephyr kernel syscall
+impls compiled without `-fstack-usage`) get conservative ceilings from
+`scripts/wcs_manual.msu` — append a new line `<symbol> <bytes>` when
+the report flags a name you haven't seen before. Without an override
+the function is treated as a zero-stack leaf, so an over-eager number
+in the manual file is safer than an omission.
+
+The static numbers are upper bounds for the call paths the analyzer
+can resolve, but they are **lower bounds in absolute terms**: any call
+into a TU that wasn't compiled with `-fstack-usage` (Zephyr kernel,
+HAL, picolibc) is treated as a zero-stack leaf unless `wcs_manual.msu`
+declares otherwise. Real high-water marks have been observed at
+**~2× the static WCS** for threads that go deep through the CAN
+driver, settings/NVS, or the log subsystem.
+
+Concrete case: `divecan_ppo2_tx` static WCS was 264 B; runtime
+high-water mark on real hardware was 552 B — a 512 B stack derived
+from the static number tripped the canary and produced a hardware
+bootloop. Resolved by reverting to the legacy 1024 B size and
+confirmed via the runtime analyzer afterward.
+
+Sizing rule: use static WCS only to identify obviously oversized
+stacks (>4× the reported number). For threads near the boundary,
+**flash and read runtime high-water marks before trimming**. The
+runtime analyzer logs every 30 s once `CONFIG_THREAD_ANALYZER_AUTO=y`.
+
+### Runtime — `CONFIG_THREAD_ANALYZER`
+
+`prj.conf` enables `CONFIG_THREAD_ANALYZER + CONFIG_INIT_STACKS +
+CONFIG_THREAD_ANALYZER_AUTO=y` so every 30 seconds a high-water-mark
+table for every K_THREAD_DEFINE'd thread is logged via the RTT
+backend. `INIT_STACKS` fills each stack with a sentinel pattern at
+spawn so the analyzer can count untouched bytes accurately.
+
+The two views diverge by design:
+
+- **Static says how bad it could get.** Use it before flashing to
+  catch obviously-undersized stacks.
+- **Runtime says how bad it actually got.** Use it on a real workload
+  to recover headroom and confirm assumptions.
+
+If runtime shows a thread is using 30 % of its allocation, halve the
+static number it was sized against. If runtime ever creeps above 80 %
+of the allocation, the static estimate was right and the stack needs
+more.
+
+## Iterative Diagnostic Procedure
+
+**After every major round of changes**, run a SonarQube diagnostic sweep before
+declaring work complete. "Major round" = any of: a multi-file refactor, a
+batch fix targeting a rule class, a structural change (function splits, type
+introductions), or a series of edits to one file that spans more than a few
+LOC.
+
+The procedure:
+
+1. `mcp__ide__getDiagnostics` (no args). Persist to
+   `Firmware/.sonarqube-diagnostics.json` — the `<new-diagnostics>` payload
+   is consumed on first read, so save it immediately:
+   ```bash
+   # The tool output gets saved to a temp path; pipe it through jq.
+   cat <tool-output> | jq -r '.[0].text' > Firmware/.sonarqube-diagnostics.json
+   ```
+2. Filter to SonarQube-only and split per file / per rule:
+   ```bash
+   cd Firmware
+   jq '[.[] | {uri:.uri, diagnostics:[.diagnostics[] | select(.source=="sonarqube")]}]
+       | map(select(.diagnostics | length > 0))' \
+       .sonarqube-diagnostics.json > .sonarqube-only.json
+
+   jq -r '[.[].diagnostics | length] | add' .sonarqube-only.json   # total
+   jq -r '.[] | "\(.diagnostics | length) \(.uri | sub("^file://.*/Firmware/"; ""))"' \
+       .sonarqube-only.json | sort -rn                              # per-file
+   jq -r '.[].diagnostics[] | .code' .sonarqube-only.json | sort | uniq -c | sort -rn
+                                                                    # per-rule
+   ```
+3. Compare against the previous count. If new issues appeared, address them
+   before moving on. If counts dropped, repeat the sweep at the end of the
+   next round.
+4. **IDE staleness:** SonarLint caches analysis aggressively. Cross-check the
+   actual file content (`sed -n '<line>p' <file>`) before "fixing" an issue
+   that may already be resolved. Save fresh diagnostics each round; do not
+   trust counts from earlier in the session.
+5. When the only remaining issues are framework-mandated carve-outs (see
+   `docs/SONARQUBE_ACCEPTED_ISSUES.md`), append any new ones to that doc and
+   accept them on the SonarCloud UI per-issue.
+
+This loop is **not optional** — running it after each round catches
+regressions (e.g. an edit reintroducing a tab, a refactor adding a magic
+number) while the change is still fresh.
+
+## Quality Checks (SonarQube)
+
+The repo is linked to SonarCloud org `quickrecon`, project key `QuickRecon_DiveCANHead` (see `.sonarlint/connectedMode.json` at repo root). The Zephyr rewrite under `Firmware/` is analyzed under the same project once commits are pushed — SonarCloud only sees pushed branches, so local-only changes will not appear in MCP queries.
+
+**Real-time (current edits):** `mcp__ide__getDiagnostics` returns SonarQube findings for open files. Filter for `source: "sonarqube"` (ignore `cSpell`). Save fresh results to `Firmware/.sonarqube-diagnostics.json` if you need them to persist beyond one tool call — the `<new-diagnostics>` payload is consumed on first read.
+
+**Project-wide (pushed code):** use the MCP tools, scoping to `Firmware/` paths:
+
+```
+mcp__sonarqube__search_sonar_issues_in_projects \
+  projects=["QuickRecon_DiveCANHead"] \
+  branch="<branch>"   # e.g. zephyr_rewrite, once pushed
+```
+
+Component paths in results are prefixed `QuickRecon_DiveCANHead:Firmware/...`. The full rule reference and style-fix conventions live in the root CLAUDE.md under "SonarQube Integration" and "Code Style Guide" — apply those same patterns here. Zephyr-specific carve-outs (K&R braces, `LOG_MODULE_REGISTER`) take precedence over the root style guide where they conflict, but indentation follows SonarCloud (spaces, not tabs) — see `Coding Conventions (Zephyr Port)` above.
+
+### Common SonarQube patterns in this subtree
+
+- **S813 (raw `float`/`double`/`int`)**: use the typedefs in `include/oxygen_cell_types.h` (`PPO2_t`, `Millivolts_t`, `CalCoeff_t`, `Numeric_t`, `PrecisionPPO2_t`, `Percent_t`, `ADCV_t`, `Status_t`).
+- **S1772 (yoda)**: write equality tests with the constant on the left, e.g. `if (0 == x)`. Mirrors the STM32 base.
+- **S1005 / S1142 (single return)**: project convention is single-return — use a result variable, never early-return except for `static const char *` lookup helpers where it's clearer.
+- **S109 (magic numbers)**: replace literals other than 0, 1, -1 with `static const` named constants in the smallest applicable scope.
+- **S1705**: prefix increment (`++i`, not `i++`).
+- **M23_321**: initialise locals at declaration.
+- **S909 (`continue`)**: convert to an `if` skipping the loop body.
+- **S1066**: collapse nested `if` with `&&`.
+- **S968 / M23_212 / S960 / M23_042 / S967 / S958 (macros with `##`/`#`, function-like macros, namespace-scoped `#define`)**: fire on Zephyr DT-driver macro patterns (`DEVICE_DT_INST_DEFINE`, `DT_INST_FOREACH_PROP_ELEM`). These are framework-mandated and cannot be replaced. **Do not blanket-suppress the rule.** Add the specific case to `docs/SONARQUBE_ACCEPTED_ISSUES.md` and mark the individual issue **Won't Fix** on the SonarCloud web UI.
+- **S978 (`_POSIX_C_SOURCE`)**: required by glibc for `strtok_r`/`strncasecmp` from `<string.h>` on the `native_sim` host build. Same handling — accept on a per-issue basis.
+- **S995 / S1172 (UART / CAN callback signatures, `dev` parameter)**: Zephyr callback contracts. Per-issue accept.
+- **S3687 / S859 / M23_090 / M23_094 (volatile / volatile-cast)**: `errors.c` busy-wait + crash-info snapshot. Per-issue accept.
+- **M23_388 (mutable file-scope globals)**: required when `K_THREAD_DEFINE` captures the address at compile time, or when `__noinit` placement is needed. Per-issue accept; document the specific instance.
+
+### Suppression policy
+
+`sonar-project.properties` carries **no rule suppressions**, and
+`.vscode/settings.json` does not disable any SonarLint rule. When a rule
+legitimately can't apply to a specific line (framework constraint, hardware
+contract), follow the process in `docs/SONARQUBE_ACCEPTED_ISSUES.md`:
+
+1. Try to fix the code first.
+2. If impossible, append the case to that doc with file + location + reason.
+3. Mark the individual issue **Won't Fix** (design decision) or **False
+   Positive** (rule misfires) on the SonarCloud UI.
+
+This keeps the rule enforced everywhere else and surfaces any new violation
+on a future scan.

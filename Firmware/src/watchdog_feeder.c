@@ -1,0 +1,204 @@
+/**
+ * @file watchdog_feeder.c
+ * @brief IWDG feeder thread — only feeds when every registered heartbeat advances.
+ *
+ * Sets up the SoC's independent watchdog (IWDG via the `watchdog0` DT
+ * alias) at boot, then runs a low-priority loop that polls
+ * heartbeat_check_all_alive(). When all registered slots have ticked
+ * since the previous check, the IWDG is fed; when any slot is stalled
+ * the feed is skipped, allowing the IWDG to fire and reset the SoC.
+ *
+ * Many windows per timeout: WDT_TIMEOUT_MS / WDT_FEED_INTERVAL_MS = 16
+ * for the chosen 32000/2000 budget. The timeout was raised from 8 s to
+ * the STM32L4 IWDG hardware maximum (~32 s) because the boot-time
+ * flash-log FCB mount can do a one-shot full-partition recovery erase of
+ * the now-48 MB telemetry region, which blocks for far longer than 8 s
+ * and was tripping the IWDG into a reset loop before the head could
+ * broadcast. 32 s buys headroom for that rare recovery path; steady-state
+ * liveness is still enforced every 2 s.
+ *
+ * Compile-out behaviour: when CONFIG_DIVECAN_WATCHDOG=n the entire
+ * translation unit becomes a no-op so native_sim test fixtures (which
+ * have no IWDG hardware) keep building.
+ */
+
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/watchdog.h>
+#include <zephyr/logging/log.h>
+
+#if defined(CONFIG_SOC_FAMILY_STM32)
+#include <stm32l4xx_ll_iwdg.h>
+#endif
+
+#include "common.h"
+#include "errors.h"
+#include "heartbeat.h"
+
+LOG_MODULE_REGISTER(watchdog_feeder, LOG_LEVEL_INF);
+
+#if defined(CONFIG_DIVECAN_WATCHDOG)
+
+/* IWDG window-max (ms). Set to the STM32L4 IWDG hardware maximum (~32 s at
+ * the /256 LSI prescaler). Raised from 8000 because the boot-time flash-log
+ * FCB mount can block on a one-shot full-partition recovery erase of the
+ * 48 MB telemetry region, which overruns an 8 s window and resets the SoC
+ * before it can broadcast. The slowest registered steady-state thread is the
+ * battery monitor at 2 s, so 32 s is still a valid liveness bound in normal
+ * operation; the long window only matters for that rare recovery erase. */
+#define WDT_TIMEOUT_MS       32000U
+
+/* How often the feeder wakes and decides whether to feed. With a 32 s
+ * timeout this is 16 checks per window — many consecutive missed feeds are
+ * tolerated before reset, deliberately generous to ride out the recovery
+ * erase above. */
+#define WDT_FEED_INTERVAL_MS 2000U
+
+/* Lowest thread priority used in the app today is 10 (battery_monitor).
+ * The feeder runs cooperatively-lowest at 14 so any registered thread
+ * that's still scheduling will pre-empt it before it gets to feed. */
+#define WDT_FEEDER_PRIORITY  14
+#define WDT_FEEDER_STACK     512
+
+/* Resolved at compile time from the `watchdog0` alias in the board DTS. */
+#define WDT_NODE DT_ALIAS(watchdog0)
+BUILD_ASSERT(DT_NODE_HAS_STATUS(WDT_NODE, okay),
+         "CONFIG_DIVECAN_WATCHDOG=y requires the watchdog0 alias to be enabled");
+
+/* Post-setup IWDG register-level assertion (STM32L4).
+ *
+ * The legacy firmware has been bitten in the past by silent IWDG
+ * mis-configuration — the Zephyr WDT driver returns success but the
+ * hardware shadow registers never accept the writes, leaving the IWDG
+ * either running with reset-default values (~512 ms window) or
+ * effectively off depending on context. The reset-default RLR is
+ * 0xFFF; the value the driver should have programmed for our 32000 ms
+ * timeout is 3999, with PR=6 (LL_IWDG_PRESCALER_256). Anything else
+ * means our `wdt_setup` claim doesn't match silicon, which we treat
+ * as a fatal init failure rather than ship silently.
+ *
+ *   t_IWDG = (1/LSI) × 4 × 2^PR × (RLR + 1)
+ *
+ * For WDT_TIMEOUT_MS=32000 and LSI=32 kHz:
+ *   ticks = 32000 × 32 = 1024000
+ *   PR    = 6  → divider = 4 × 2^6 = 256
+ *   RLR   = (ticks / divider) − 1 = (1024000 / 256) − 1 = 3999
+ *
+ * (The reload happens to stay 3999: 4× the timeout with 4× the prescaler.)
+ */
+#define EXPECTED_IWDG_PR    LL_IWDG_PRESCALER_256
+#define EXPECTED_IWDG_RLR   3999U
+
+static Status_t wdt_channel_id_get_or_init(const struct device *wdt)
+{
+    static Status_t cached_channel_id = -1;
+
+    if (cached_channel_id < 0) {
+        struct wdt_timeout_cfg cfg = {
+            .window = {
+                .min = 0U,
+                .max = WDT_TIMEOUT_MS,
+            },
+            .callback = NULL,
+            .flags = WDT_FLAG_RESET_SOC,
+        };
+        Status_t channel = wdt_install_timeout(wdt, &cfg);
+        if (channel < 0) {
+            FATAL_OP_ERROR(FATAL_UNDEFINED_STATE);
+        }
+        else
+        {
+            Status_t rc = wdt_setup(wdt, WDT_OPT_PAUSE_HALTED_BY_DBG);
+            if (0 != rc) {
+                FATAL_OP_ERROR(FATAL_UNDEFINED_STATE);
+            }
+            else
+            {
+                /* Belt-and-braces: read the IWDG registers directly and
+                 * confirm the driver actually wrote our values, not the
+                 * reset defaults. See COMPROMISE.md #13 for context.
+                 * Anything else means the watchdog is silently mis-armed
+                 * and we'd ship without protection — fatal init failure. */
+                uint32_t actual_pr  = LL_IWDG_GetPrescaler(IWDG);
+                uint32_t actual_rlr = LL_IWDG_GetReloadCounter(IWDG);
+
+                if ((actual_pr != EXPECTED_IWDG_PR) ||
+                    (actual_rlr != EXPECTED_IWDG_RLR)) {
+                    LOG_ERR("IWDG mis-armed: got PR=%u RLR=%u, expected PR=%u RLR=%u",
+                            (unsigned)actual_pr, (unsigned)actual_rlr,
+                            (unsigned)EXPECTED_IWDG_PR, (unsigned)EXPECTED_IWDG_RLR);
+                    FATAL_OP_ERROR(FATAL_UNDEFINED_STATE);
+                }
+                else
+                {
+                    cached_channel_id = channel;
+                    LOG_INF("IWDG armed: channel=%d, timeout=%ums, PR=%u, RLR=%u (verified)",
+                        channel, WDT_TIMEOUT_MS,
+                        actual_pr, actual_rlr);
+                }
+            }
+        }
+    }
+
+    return cached_channel_id;
+}
+
+void watchdog_kick(void)
+{
+    const struct device *wdt = DEVICE_DT_GET(WDT_NODE);
+
+    if (device_is_ready(wdt)) {
+        Status_t channel = wdt_channel_id_get_or_init(wdt);
+
+        if (channel >= 0) {
+            (void)wdt_feed(wdt, channel);
+        }
+    }
+}
+
+static void watchdog_feeder_thread(void *p1, void *p2, void *p3)
+{
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+
+    const struct device *wdt = DEVICE_DT_GET(WDT_NODE);
+    if (!device_is_ready(wdt)) {
+        FATAL_OP_ERROR(FATAL_UNDEFINED_STATE);
+    }
+    else
+    {
+        Status_t channel = wdt_channel_id_get_or_init(wdt);
+
+        /* First sleep gives every registered thread time to take its
+         * first lap before we start enforcing liveness. Without this,
+         * threads that registered late in boot would all read as
+         * stalled on the very first check and the IWDG would fire
+         * before the system ever runs steady-state. */
+        (void)k_msleep(WDT_FEED_INTERVAL_MS);
+        (void)heartbeat_check_all_alive();
+        (void)wdt_feed(wdt, channel);
+
+        while (true) {
+            (void)k_msleep(WDT_FEED_INTERVAL_MS);
+            if (heartbeat_check_all_alive()) {
+                Status_t rc = wdt_feed(wdt, channel);
+                if (0 != rc) {
+                    LOG_ERR("wdt_feed failed: %d", rc);
+                }
+            }
+            else {
+                /* Deliberate: skipping the feed lets the IWDG fire.
+                 * The reset cause register survives reset and is
+                 * captured into the crash record on the next boot. */
+                LOG_ERR("Heartbeat stalled, withholding feed -> SoC reset imminent");
+            }
+        }
+    }
+}
+
+K_THREAD_DEFINE(watchdog_feeder, WDT_FEEDER_STACK,
+        watchdog_feeder_thread, NULL, NULL, NULL,
+        WDT_FEEDER_PRIORITY, 0, 0);
+
+#endif /* CONFIG_DIVECAN_WATCHDOG */

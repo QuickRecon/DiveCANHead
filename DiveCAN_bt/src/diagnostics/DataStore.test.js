@@ -45,7 +45,7 @@ describe('DataStore', () => {
     it('adds point to new series', () => {
       store._addPoint('test', 100, 42);
       const series = store.getSeries('test');
-      expect(series.length).toBe(1);
+      expect(series).toHaveLength(1);
       expect(series[0].value).toBe(42);
       expect(series[0].timestamp).toBe(100);
     });
@@ -54,22 +54,22 @@ describe('DataStore', () => {
       store._addPoint('test', 100, 1);
       store._addPoint('test', 101, 2);
       const series = store.getSeries('test');
-      expect(series.length).toBe(2);
+      expect(series).toHaveLength(2);
     });
 
     it('ignores undefined values', () => {
       store._addPoint('test', 100, undefined);
-      expect(store.getSeries('test').length).toBe(0);
+      expect(store.getSeries('test')).toHaveLength(0);
     });
 
     it('ignores null values', () => {
       store._addPoint('test', 100, null);
-      expect(store.getSeries('test').length).toBe(0);
+      expect(store.getSeries('test')).toHaveLength(0);
     });
 
     it('ignores NaN values', () => {
       store._addPoint('test', 100, NaN);
-      expect(store.getSeries('test').length).toBe(0);
+      expect(store.getSeries('test')).toHaveLength(0);
     });
 
     it('prunes old points by age', () => {
@@ -91,7 +91,7 @@ describe('DataStore', () => {
       smallStore._addPoint('test', 103, 4);
 
       const series = smallStore.getSeries('test');
-      expect(series.length).toBe(3);
+      expect(series).toHaveLength(3);
       expect(series[0].value).toBe(2);  // First point pruned
     });
   });
@@ -378,6 +378,49 @@ describe('DataStore', () => {
     it('returns true for non-cell DIDs', () => {
       const didInfo = { cellType: CELL_TYPE_ANALOG };
       expect(store._isValidDIDForCell('CONSENSUS_PPO2', didInfo)).toBe(true);
+    });
+  });
+
+  describe('log-drain quiescence', () => {
+    /** Minimal EventEmitter stand-in for a UDSClient. */
+    const makeFakeUds = () => {
+      const handlers = {};
+      return {
+        on(evt, cb) { (handlers[evt] ||= []).push(cb); return this; },
+        emit(evt) { (handlers[evt] || []).forEach(cb => cb()); }
+      };
+    };
+
+    it('stamps log activity when the UDS client pushes a message', () => {
+      const uds = makeFakeUds();
+      const s = new DataStore({ udsClient: uds });
+      expect(s._lastLogActivityMs).toBe(0);
+      uds.emit('logMessage');
+      expect(s._lastLogActivityMs).toBeGreaterThan(0);
+    });
+
+    it('resolves after the quiet window when no pushes arrive', async () => {
+      const s = new DataStore({ logDrainQuietMs: 40, logDrainMaxMs: 500 });
+      const start = Date.now();
+      await s.waitForLogQuiescence();
+      const elapsed = Date.now() - start;
+      expect(elapsed).toBeGreaterThanOrEqual(30);   // ~quiet window (margin for timers)
+      expect(elapsed).toBeLessThan(500);            // resolved via quiet, not the cap
+    });
+
+    it('gives up at the hard cap when pushes never stop', async () => {
+      const uds = makeFakeUds();
+      const s = new DataStore({ udsClient: uds, logDrainQuietMs: 60, logDrainMaxMs: 200 });
+      // Keep stamping activity faster than the quiet window so it never goes idle.
+      const ticker = setInterval(() => uds.emit('logMessage'), 15);
+      const start = Date.now();
+      try {
+        await s.waitForLogQuiescence();
+      } finally {
+        clearInterval(ticker);
+      }
+      const elapsed = Date.now() - start;
+      expect(elapsed).toBeGreaterThanOrEqual(180);  // hit the cap (~maxMs)
     });
   });
 });

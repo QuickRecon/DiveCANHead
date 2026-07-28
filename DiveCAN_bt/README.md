@@ -103,25 +103,68 @@ stack.on('error', (error) => console.error('Error:', error));
 // Connect to device
 await stack.connect(device);
 
-// Start extended diagnostic session
-await stack.uds.startSession(UDSConstants.SESSION_EXTENDED_DIAGNOSTIC);
+// Read device settings (individual settings under 0x9xxx)
+const settings = await stack.uds.enumerateSettings();
+console.log('Settings:', settings);
 
-// Read configuration
-const config = await stack.uds.readDataByIdentifier(UDSConstants.DID_CONFIGURATION_BLOCK);
-console.log('Config:', config);
+// Stage + activate a firmware image (see docs/DIVECAN_BT.md)
+await stack.ota.enterProgrammingSession();
+await stack.ota.stageImage(imageBytes, { onProgress: (d, t) => {} });
+await stack.ota.activate();
 
-// Write configuration
-await stack.uds.writeDataByIdentifier(UDSConstants.DID_CONFIGURATION_BLOCK, newConfig);
+// Download a flash log
+const { raw } = await stack.logs.downloadLog({ selector: (d) => d.selectLatestBoot(0) });
 
-// Upload memory with progress tracking
-const memory = await stack.uploadMemory(
-  UDSConstants.MEMORY_CONFIG,
-  128,
-  (current, total) => {
-    console.log(`Progress: ${current}/${total} bytes`);
-  }
-);
+// Download every telemetry boot still retained in the circular flash log and
+// merge the overlapping boot ranges locally. No firmware update is required.
+const { raw: allRaw, records } = await stack.logs.downloadAllBoots({ stream: 0 });
 ```
+
+### CANable over Web Serial
+
+Chromium can talk directly to a CANable when it is running `slcan`/Lawicel
+serial firmware (the candleLight/gs_usb firmware is not a serial protocol and
+cannot be used through Web Serial). The adapter is configured for DiveCAN's
+125 kbit/s bus by default (`S4`). This direct path performs DiveCAN's padded
+ISO-TP variant in the browser; it does not use SLIP or the Petrel bridge.
+
+```javascript
+import { CanableProtocolStack } from './src/index.js';
+
+// Defaults: serial 115200 baud, CAN 125 kbit/s, dialog client 0xFE,
+// broadcast-log client 0xFF, head 0x04.
+const stack = new CanableProtocolStack();
+
+stack.on('logMessage', message => console.log('HEAD:', message));
+stack.on('error', error => console.error(error));
+
+// Must be called from a user gesture (for example, a button click).
+await stack.connect(); // opens Chromium's serial-port chooser
+
+const imageBytes = new Uint8Array(await (await fetch('./firmware.bin')).arrayBuffer());
+const result = await stack.ota.updateFirmware(imageBytes, {
+  onPhase: phase => console.log('OTA phase:', phase),
+  onProgress: (done, total) => console.log(`${done}/${total}`)
+});
+console.log(result);
+```
+
+Web Serial requires a secure context; `http://localhost` is accepted for local
+development. Disconnect any other active CAN controller/diagnostic client
+during OTA so only one ISO-TP dialog owns the head.
+
+Direct USB-CAN deliberately uses two independent ISO-TP receive contexts:
+addressed OTA/DID replies target client `0xFE`, while pushed logs remain on
+`0xFF`. Interleaved log frames therefore cannot alter the dialog reassembly
+sequence or complete a pending UDS request. BLE continues to use `0xFF` for
+both because the Bluetooth bridge exposes only that single client address.
+
+The CANable stack also watches for the handset's controller `BUS_ID` ping
+(`0x0D000001`). If none is observed for 2.5 seconds it supplies the same ping
+once per second, allowing a freshly swapped image to pass its handset-liveness
+POST when the USB adapter is the only bus peer. Emulation stops immediately
+when a real handset ping appears. Set `handsetEmulation: false` to disable it,
+or override `handsetMissingAfterMs` / `handsetPingIntervalMs` if required.
 
 ### Direct Layer Access
 
@@ -130,13 +173,15 @@ const memory = await stack.uploadMemory(
 const ble = stack.ble;           // BLEConnection
 const slip = stack.slip;         // SLIPCodec
 const divecan = stack.divecan;   // DiveCANFramer
-const isotp = stack.isotp;       // ISOTPTransport
+const transport = stack.transport; // DirectTransport (Petrel handles ISO-TP)
 const uds = stack.uds;           // UDSClient
+const ota = stack.ota;           // OTAManager
+const logs = stack.logs;         // LogDownloader
 
 // Direct UDS operations
-await uds.startSession(0x03);
+await uds.enterSession(UDSConstants.UDS_SESSION_PROGRAMMING); // 0x10 0x02
 const data = await uds.readDataByIdentifier(0xF000);
-await uds.writeDataByIdentifier(0xF100, [0x01, 0x02, 0x03, 0x04]);
+await uds.writeDataByIdentifier(0xF240, [130]); // setpoint 1.30 bar
 ```
 
 ## Architecture
@@ -239,20 +284,25 @@ DiveCAN_bt/
 ### UDS Layer
 - **ISO 14229-1** diagnostic services
 - **Service 0x10**: DiagnosticSessionControl
+- **Service 0x10**: DiagnosticSessionControl (default / programming)
 - **Service 0x22**: ReadDataByIdentifier
 - **Service 0x2E**: WriteDataByIdentifier
-- **Service 0x34/0x35**: RequestDownload/Upload
+- **Service 0x31**: RoutineControl (OTA activate, log selectors)
+- **Service 0x34**: RequestDownload (OTA + log download)
 - **Service 0x36**: TransferData
 - **Service 0x37**: RequestTransferExit
 
 ### Data Identifiers (DIDs)
 - **0xF000**: Firmware version (string)
 - **0xF001**: Hardware version (byte)
-- **0xF100**: Configuration block (4 bytes)
+- **0xF002**: Variant name (string)
+- **0xF003**: Serial number (raw MCU UID)
+- **0xF270–0xF279**: MCUBoot status / OTA management
+- **0xF280–0xF284**: Flash-log stats / selector / management
 - **0x9100**: Setting count
 - **0x9110+i**: Setting info for setting i
 - **0x9130+i**: Setting value for setting i
-- **0x9350**: Save settings to flash
+- **0x9350+i**: Save setting i to flash
 
 ## Events
 

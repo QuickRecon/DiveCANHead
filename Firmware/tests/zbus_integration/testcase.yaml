@@ -1,0 +1,4 @@
+tests:
+  oxygen_cell.zbus_integration:
+    platform_allow: native_sim
+    tags: oxygen_cell zbus integration

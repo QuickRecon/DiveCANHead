@@ -8,8 +8,20 @@ export class MockTransport {
     this.events = {};
     this.sentData = [];
     this.responseQueue = [];
+    this.responder = null;
     this.sourceAddress = 0xFF;
     this.targetAddress = 0x80;
+  }
+
+  /**
+   * Install a scripted responder for multi-step sequences (OTA, log download).
+   * The function receives the sent request (Uint8Array) and its 0-based index,
+   * and returns the response bytes to emit (or null/undefined to stay silent,
+   * e.g. to simulate a lost reply). Takes precedence over the response queue.
+   * @param {(request: Uint8Array, index: number) => (Uint8Array|Array|null)} fn
+   */
+  setResponder(fn) {
+    this.responder = fn;
   }
 
   /**
@@ -52,7 +64,18 @@ export class MockTransport {
    */
   async send(data) {
     const dataArray = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const index = this.sentData.length;
     this.sentData.push(dataArray);
+
+    // A scripted responder takes precedence and can vary by request/index.
+    if (this.responder) {
+      const response = this.responder(dataArray, index);
+      if (response !== null && response !== undefined) {
+        const respArray = response instanceof Uint8Array ? response : new Uint8Array(response);
+        setTimeout(() => this.emit('message', respArray), 0);
+      }
+      return;
+    }
 
     // Auto-respond if responses are queued
     if (this.responseQueue.length > 0) {
@@ -124,6 +147,7 @@ export class MockTransport {
   reset() {
     this.sentData = [];
     this.responseQueue = [];
+    this.responder = null;
     this.events = {};
   }
 

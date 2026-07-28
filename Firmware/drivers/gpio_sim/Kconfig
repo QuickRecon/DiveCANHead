@@ -1,0 +1,8 @@
+config GPIO_SIM
+    bool "GPIO emulator with external drive simulation"
+    depends on GPIO
+    default y if DT_HAS_QUICKRECON_GPIO_SIM_ENABLED
+    help
+      GPIO emulator that tracks externally-driven pins. Pins set via
+      gpio_sim_drive() preserve their value through pull-up/pull-down
+      reconfigurations, simulating real pin capacitance behavior.

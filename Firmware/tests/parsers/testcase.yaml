@@ -1,0 +1,4 @@
+tests:
+  oxygen_cell.parsers:
+    platform_allow: native_sim
+    tags: oxygen_cell parsers
