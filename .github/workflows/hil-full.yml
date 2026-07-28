@@ -71,31 +71,21 @@ jobs:
       - name: Validate runner and trusted harness
         run: |
           test -x "$HIL_HOST_CONTAINER_RUNNER"
-          test -d "$HIL_HOST_TEST_RIG_DIR"
-          test -d "$HIL_HOST_TEST_RIG_DIR/tests"
-          test -x "$HIL_HOST_TEST_RIG_DIR/scripts/flash_and_test.py"
-          test -x "$HIL_HOST_TEST_RIG_DIR/tools/run_hil_host_container.sh"
-          test -x "$HIL_HOST_TEST_RIG_DIR/tools/run_hil_in_container.sh"
-          test -d "$HIL_HOST_ZEPHYR_SDK"
-          test -d "$HIL_HOST_CELLSIM_TOOLS_DIR"
-          test -d "$HIL_HOST_RIDEN_PSU_DIR"
-          git config --global --add safe.directory "$HIL_HOST_TEST_RIG_DIR"
-          git -C "$HIL_HOST_TEST_RIG_DIR" rev-parse --is-inside-work-tree
-          echo "Harness commit: $(git -C "$HIL_HOST_TEST_RIG_DIR" rev-parse HEAD)"
-          git config --global --add safe.directory "$HIL_HOST_TEST_RIG_DIR/tests"
-          git -C "$HIL_HOST_TEST_RIG_DIR/tests" rev-parse --is-inside-work-tree
-          echo "Test suite commit: $(git -C "$HIL_HOST_TEST_RIG_DIR/tests" rev-parse HEAD)"
-
-          if [ "$DIVECAN_HIL_ALLOW_DIRTY_HARNESS" != "1" ]; then
-            if ! git -C "$HIL_HOST_TEST_RIG_DIR" diff --quiet ||
-               ! git -C "$HIL_HOST_TEST_RIG_DIR" diff --cached --quiet ||
-               [ -n "$(git -C "$HIL_HOST_TEST_RIG_DIR" ls-files --others --exclude-standard)" ]; then
-              echo "::error title=Dirty HIL harness::Commit or clean the out-of-tree Test Rig checkout before using it as a required gate."
-              git -C "$HIL_HOST_TEST_RIG_DIR" status --short
-              exit 2
-            fi
+          mkdir -p "$RUNNER_TEMP/divecan-hil"
+          if [ "$HIL_HOST_CONTAINER_RUNNER_USE_SUDO" = "1" ]; then
+            sudo "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" \
+              --preflight
           else
-            echo "::warning title=Dirty HIL harness allowed::DIVECAN_HIL_ALLOW_DIRTY_HARNESS=1; results are not tied to a clean harness checkout."
+            "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" \
+              --preflight
           fi
 
       - name: Build, flash, and run HIL inside Docker
@@ -105,9 +95,17 @@ jobs:
 
           set +e
           if [ "$HIL_HOST_CONTAINER_RUNNER_USE_SUDO" = "1" ]; then
-            sudo "$HIL_HOST_CONTAINER_RUNNER" 2>&1 | tee "$log"
+            sudo "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$log"
           else
-            "$HIL_HOST_CONTAINER_RUNNER" 2>&1 | tee "$log"
+            "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$log"
           fi
           status=${PIPESTATUS[0]}
           set -e
