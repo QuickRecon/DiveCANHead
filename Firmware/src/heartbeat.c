@@ -52,7 +52,11 @@ static atomic_val_t *get_last_snapshot(void)
 void heartbeat_register(HeartbeatId_t id)
 {
     if (id < HEARTBEAT_COUNT) {
-        atomic_val_t bit = (atomic_val_t)BIT(id);
+        /* Shift unsigned, then convert the named value: keeps the shift off a
+         * signed type (S874), the operands unmixed (S845), and the conversion
+         * off a composite expression (S851). */
+        unsigned long bit_ul = BIT(id);
+        atomic_val_t bit = (atomic_val_t)bit_ul;
 
         (void)atomic_or(get_registered_mask(), bit);
     }
