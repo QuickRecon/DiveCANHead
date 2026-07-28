@@ -125,3 +125,9 @@ authoritative list).
 4. **Do not add rule suppressions to `sonar-project.properties` or
    `.vscode/settings.json`.** Per-issue acceptance on SonarCloud keeps the
    rule active for any new violation.
+
+## Zephyr atomic bit-mask rule carousel
+
+| Rule | File / Location | Justification |
+|------|------|---------------|
+| c:S813 / c:M23_058 | `src/heartbeat.c` `heartbeat_register`, `unsigned long bit_ul = BIT(id)` | Four rules form an unsatisfiable cycle on `atomic_or(mask, BIT(id))`: no cast → S845 (signed/unsigned mix), cast on `BIT(id)` → S851 (cast on composite), shift in `atomic_val_t` → S874 (shift on signed), and the intermediate `unsigned long` — the exact type `BIT()` yields — → S813/M23_058 (raw builtin). Zephyr's `atomic_val_t` is signed `long` and `BIT()` is `unsigned long` by API contract; `unsigned long` is the least-wrong resting point. Accepted 2026-07-28 (keys AZ-mYY46vl4caSOBYurf/-g). |
