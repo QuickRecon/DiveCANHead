@@ -191,7 +191,13 @@ def dt_solenoid_channels(dt_header: str | None) -> int:
     return (max(int(i) for i in idxs) + 1) if idxs else 0
 
 
-def build_manifest(cfg: dict, dt_header: str | None, variant: str = "unknown") -> dict:
+def build_manifest(
+    cfg: dict,
+    dt_header: str | None,
+    variant: str = "unknown",
+    version: str = "unknown",
+    commit: str = "unknown",
+) -> dict:
     count = int_cfg(cfg, "CONFIG_CELL_COUNT", 0)
     types = [cell_type(cfg, n) for n in range(1, count + 1)]
 
@@ -211,9 +217,11 @@ def build_manifest(cfg: dict, dt_header: str | None, variant: str = "unknown") -
         ("OFF", "CONFIG_PPO2_CONTROL_DEFAULT_OFF")], default="OFF")
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": "kconfig+devicetree",
         "variant": variant,
+        "version": version,
+        "commit": commit,
         "board": cfg.get("CONFIG_BOARD", "unknown"),
         "soc": cfg.get("CONFIG_SOC", "unknown"),
         "can": {"bitrate": bitrate},
@@ -370,17 +378,23 @@ def main(argv=None) -> int:
     ap.add_argument("--variant", default="unknown",
                     help="build variant name (from the selected variants/<name>.conf); "
                          "the HIL rig asserts the flashed firmware reports this same name")
+    ap.add_argument("--version", default="unknown",
+                    help="numbered application version sourced from Firmware/VERSION")
+    ap.add_argument("--commit", default="unknown",
+                    help="exact source commit used for the build")
     ap.add_argument("--out", required=True, help="output JSON path")
     args = ap.parse_args(argv)
 
     cfg = parse_config(args.config)
-    manifest = build_manifest(cfg, args.dt_header, args.variant)
+    manifest = build_manifest(
+        cfg, args.dt_header, args.variant, args.version, args.commit)
     out_path = _validated_path(args.out)
     with open(out_path, "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
     print(f"[gen_test_manifest] wrote {args.out} "
-          f"(variant={manifest['variant']}, board={manifest['board']}, "
+          f"(variant={manifest['variant']}, version={manifest['version']}, "
+          f"commit={manifest['commit']}, board={manifest['board']}, "
           f"cells={manifest['cells']['types']}, "
           f"can={manifest['can']['bitrate']})", file=sys.stderr)
     return 0

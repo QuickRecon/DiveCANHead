@@ -268,6 +268,29 @@ target_compile_definitions(app PRIVATE
     APP_BUILD_VERSION_STR="${APP_BUILD_VERSION_RAW}"
 )
 
+# Keep a full commit identity for manifests and release provenance. git describe
+# is intentionally shorter/human-facing and remains the firmware UI string.
+execute_process(
+    COMMAND git -C ${CMAKE_CURRENT_SOURCE_DIR} rev-parse HEAD
+    OUTPUT_VARIABLE APP_BUILD_COMMIT_RAW
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE APP_BUILD_COMMIT_RC
+)
+if(NOT APP_BUILD_COMMIT_RC EQUAL 0 OR APP_BUILD_COMMIT_RAW STREQUAL "")
+    set(APP_BUILD_COMMIT_RAW "${APP_BUILD_VERSION_RAW}")
+endif()
+
+# VERSION is the product release number and the source for MCUboot's image
+# header version. Keep the independently-derived git identity above as the
+# exact source revision. Both are emitted into test_manifest.json so HIL and
+# release packaging can prove which numbered image and commit they exercised.
+if(NOT DEFINED APP_VERSION_STRING OR APP_VERSION_STRING STREQUAL "")
+    set(APP_RELEASE_VERSION_RAW "0.0.0")
+else()
+    set(APP_RELEASE_VERSION_RAW "${APP_VERSION_STRING}")
+endif()
+
 # Build-time variant string, derived from the selected variant conf
 # (-DEXTRA_CONF_FILE=variants/<Name>.conf). Baked into the binary (served over
 # UDS DID 0xF002) AND written into test_manifest.json below, both from this one
@@ -350,6 +373,8 @@ add_custom_command(
             --config ${CMAKE_BINARY_DIR}/zephyr/.config
             --dt-header ${CMAKE_BINARY_DIR}/zephyr/include/generated/zephyr/devicetree_generated.h
             --variant ${APP_BUILD_VARIANT_RAW}
+            --version ${APP_RELEASE_VERSION_RAW}
+            --commit ${APP_BUILD_COMMIT_RAW}
             --out ${CMAKE_BINARY_DIR}/zephyr/test_manifest.json
     BYPRODUCTS ${CMAKE_BINARY_DIR}/zephyr/test_manifest.json
     COMMENT "Emitting HIL test_manifest.json from resolved Kconfig + devicetree"

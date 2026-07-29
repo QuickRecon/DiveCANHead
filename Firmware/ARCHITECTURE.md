@@ -509,6 +509,25 @@ west build -d build -b divecan_jr/stm32l431xx . --sysbuild \
      -DEXTRA_DTC_OVERLAY_FILE=variants/Poseidon_Aren.overlay
 ```
 
+### Numbered releases
+
+`VERSION` is the canonical firmware/MCUboot SemVer. `changelog.txt` is the
+authoritative source for both the GitHub Release notes and the changelog
+included in the downloadable package. CMake writes the resolved version,
+full source commit, and hardware topology to `test_manifest.json`; the HIL
+release workflow will package binaries only when that manifest matches the
+requested version, commit, and variant.
+
+The manually dispatched `.github/workflows/release.yml` workflow runs entirely
+on the serialized DiveCAN HIL runner. It requires successful ordinary software
+CI for the same immutable commit, then builds, flashes, and runs the full HIL
+suite once for each production variant. Only the exact merged full-flash image
+and `zephyr.signed.bin` OTA image from those tested build directories are
+staged. After all variants pass, the workflow creates one deterministic
+all-variant ZIP plus a deterministic ZIP for each variant, checksums all six,
+tags the tested commit, and publishes a GitHub Release. See
+`docs/RELEASING.md` for the operator procedure and package layout.
+
 ## File Layout
 
 ```
@@ -574,11 +593,15 @@ Firmware/
 │   ├── ppo2_broadcast/             PPO2 broadcast filtering logic (8 tests)
 │   └── ppo2_autotune_math/         Plant identification + model tuning tests
 ├── variants/
-│   └── <variant>.conf/.overlay     Hardware variants (AP_Aren, eCCR_classic,
-│                                   Poseidon_Aren, Sidewinder_Gabriel)
+│   └── <variant>.conf/.overlay     Hardware variants (AP_Aren, AP_Paul,
+│                                   eCCR_classic, Poseidon_Aren,
+│                                   Sidewinder_Gabriel)
 ├── scripts/
-│   └── lint_variant.sh             CI lint for duplicate Kconfig choices
+│   ├── lint_variant.sh             CI lint for duplicate Kconfig choices
+│   └── release.py                  Release validation, artifact staging, bundling
 ├── prj.conf                        Common Zephyr config (hardening, RTT, logging, zbus)
+├── VERSION                         Canonical numbered firmware/MCUboot version
+├── changelog.txt                   Authoritative release changelog and notes source
 ├── CMakeLists.txt                  App build, compile flags
 ├── west.yml                        Workspace manifest
 ├── ARCHITECTURE.md                 This file

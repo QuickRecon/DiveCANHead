@@ -1,0 +1,31 @@
+# DiveCANHead Firmware Changelog
+
+<!--
+Before running the Firmware Release action:
+
+1. Set VERSION to the numbered release.
+2. Move the applicable Unreleased entries under a heading formatted exactly as:
+   ## 1.2.3 - YYYY-MM-DD
+3. Leave a new Unreleased section at the top.
+
+The release action uses the numbered section as the GitHub Release description
+and includes this complete file in the downloadable package.
+-->
+
+## Unreleased
+
+### Added
+
+### Changed
+
+### Fixed
+
+## 0.0.1 - 2026-07-29
+
+### Added
+
+- Initial numbered firmware release workflow with serialized HIL qualification
+  for every production variant.
+- Complete and per-variant downloadable release packages containing the exact
+  tested full-flash and signed OTA images, qualification records, and SHA-256
+  checksums.

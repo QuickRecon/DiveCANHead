@@ -1,0 +1,356 @@
+name: Firmware Release (HIL qualified)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer from Firmware/VERSION, without a leading v
+        required: true
+        type: string
+
+# The physical bench and publisher receive only the permissions their jobs use.
+permissions:
+  actions: read
+  contents: read
+
+# Share the existing bench lock with ordinary full-HIL runs. A release owns the
+# bench for its whole five-variant qualification and is never cancelled midway.
+concurrency:
+  group: divecan-hil-bench
+  cancel-in-progress: false
+
+env:
+  RELEASE_VERSION: ${{ inputs.version }}
+  HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig/tools/run_hil_host_container.sh' }}
+  HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '0' }}
+  HIL_HOST_TEST_RIG_DIR: ${{ vars.DIVECAN_HIL_TEST_RIG_DIR || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig' }}
+
+jobs:
+  validate:
+    name: Validate release request
+    runs-on: [self-hosted, divecan-hil]
+    timeout-minutes: 15
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
+
+    steps:
+      - name: Require a master dispatch
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/master" ]; then
+            echo "::error title=Unsafe release ref::Run this workflow from master, not $GITHUB_REF."
+            exit 2
+          fi
+
+      # Match the repository's existing plain-git checkout. The two legacy
+      # gitlinks have no matching .gitmodules entries, so actions/checkout
+      # traverses them while cleaning credentials and fails.
+      - name: Checkout exact release commit
+        env:
+          CI_REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+          CI_EVENT_SHA: ${{ github.sha }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [ ! -d .git ]; then
+            git init .
+          fi
+          if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "$CI_REPOSITORY_URL"
+          else
+            git remote add origin "$CI_REPOSITORY_URL"
+          fi
+          git fetch --force --prune --no-recurse-submodules origin \
+            '+refs/heads/master:refs/remotes/origin/master' \
+            '+refs/tags/*:refs/tags/*'
+          git merge-base --is-ancestor "$CI_EVENT_SHA" refs/remotes/origin/master
+          git checkout --force "$CI_EVENT_SHA"
+          git clean -ffdx
+
+      - name: Test release tooling
+        run: |
+          command -v gh
+          command -v python3
+          python3 -m unittest Firmware/scripts/tests/test_release.py
+
+      - name: Validate VERSION and changelog
+        run: |
+          python3 Firmware/scripts/release.py validate \
+            --version "$RELEASE_VERSION" \
+            --version-file Firmware/VERSION \
+            --changelog Firmware/changelog.txt
+
+      - name: Reject an existing release tag
+        run: |
+          if git ls-remote --exit-code --tags origin \
+              "refs/tags/v${RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "::error title=Release already exists::Tag v${RELEASE_VERSION} already exists."
+            exit 2
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then
+              echo "::error title=Tag lookup failed::git ls-remote exited with $status."
+              exit "$status"
+            fi
+          fi
+
+      - name: Require successful software CI for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_REPOSITORY: ${{ github.repository }}
+          CI_COMMIT: ${{ github.sha }}
+        run: |
+          successful_runs=$(
+            gh api --method GET \
+              "repos/${CI_REPOSITORY}/actions/workflows/build.yml/runs" \
+              -f head_sha="$CI_COMMIT" \
+              -f status=success \
+              --jq '.total_count'
+          )
+          if [ "$successful_runs" -lt 1 ]; then
+            echo "::error title=Software CI is not green::No successful Build + SonarCloud Analysis run exists for $CI_COMMIT."
+            exit 2
+          fi
+
+      - name: Record immutable source identity
+        id: identity
+        run: |
+          echo "commit=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Release candidate"
+            echo
+            echo "- Version: \`v${RELEASE_VERSION}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Software CI: passed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  hil:
+    name: Build + HIL (${{ matrix.variant }})
+    needs: validate
+    runs-on: [self-hosted, divecan-hil]
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        variant:
+          - Poseidon_Aren
+          - AP_Aren
+          - AP_Paul
+          - eCCR_classic
+          - Sidewinder_Gabriel
+    env:
+      HIL_VARIANT: ${{ matrix.variant }}
+      HIL_BUILD_DIR: build-release-${{ github.run_id }}-${{ matrix.variant }}
+      RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: Checkout exact release commit
+        env:
+          CI_REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+          CI_EVENT_SHA: ${{ needs.validate.outputs.commit }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [ ! -d .git ]; then
+            git init .
+          fi
+          if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "$CI_REPOSITORY_URL"
+          else
+            git remote add origin "$CI_REPOSITORY_URL"
+          fi
+          git fetch --force --prune --no-recurse-submodules origin \
+            '+refs/heads/master:refs/remotes/origin/master' \
+            '+refs/tags/*:refs/tags/*'
+          git checkout --force "$CI_EVENT_SHA"
+          git clean -ffdx
+          test "$(git rev-parse HEAD)" = "$CI_EVENT_SHA"
+
+      - name: Validate trusted HIL launcher
+        run: |
+          test -x "$HIL_HOST_CONTAINER_RUNNER"
+          mkdir -p "$RUNNER_TEMP/divecan-hil"
+          if [ "$HIL_HOST_CONTAINER_RUNNER_USE_SUDO" = "1" ]; then
+            sudo "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" \
+              --preflight
+          else
+            "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" \
+              --preflight
+          fi
+
+      - name: Build, flash, and run full HIL
+        run: |
+          mkdir -p "$RUNNER_TEMP/divecan-hil"
+          outer_log="$RUNNER_TEMP/divecan-hil/release-${HIL_VARIANT}.log"
+
+          set +e
+          if [ "$HIL_HOST_CONTAINER_RUNNER_USE_SUDO" = "1" ]; then
+            sudo "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$outer_log"
+          else
+            "$HIL_HOST_CONTAINER_RUNNER" \
+              --workspace "$GITHUB_WORKSPACE" \
+              --runner-temp "$RUNNER_TEMP" \
+              --variant "$HIL_VARIANT" \
+              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$outer_log"
+          fi
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ -s "$RUNNER_TEMP/divecan-hil/summary.md" ]; then
+            cat "$RUNNER_TEMP/divecan-hil/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "HIL pytest status: $status" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Stage exact tested images
+        env:
+          RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
+        run: |
+          harness_commit=$(git -C "$HIL_HOST_TEST_RIG_DIR" rev-parse HEAD)
+          python3 Firmware/scripts/release.py stage-variant \
+            --version "$RELEASE_VERSION" \
+            --variant "$HIL_VARIANT" \
+            --commit "$RELEASE_COMMIT" \
+            --build-dir "Firmware/$HIL_BUILD_DIR" \
+            --output-root Firmware/release-staging \
+            --run-url "$RELEASE_RUN_URL" \
+            --harness-commit "$harness_commit"
+
+      - name: Upload qualified variant
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-${{ inputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.variant }}
+          path: Firmware/release-staging/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Archive HIL evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-hil-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.variant }}
+          path: ${{ runner.temp }}/divecan-hil/
+          if-no-files-found: warn
+          retention-days: 90
+
+  publish:
+    name: Bundle and publish v${{ inputs.version }}
+    needs: [validate, hil]
+    runs-on: [self-hosted, divecan-hil]
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+    env:
+      RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
+      RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: Checkout exact release commit
+        env:
+          CI_REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+          CI_EVENT_SHA: ${{ needs.validate.outputs.commit }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [ ! -d .git ]; then
+            git init .
+          fi
+          if git remote get-url origin >/dev/null 2>&1; then
+            git remote set-url origin "$CI_REPOSITORY_URL"
+          else
+            git remote add origin "$CI_REPOSITORY_URL"
+          fi
+          git fetch --force --prune --no-recurse-submodules origin \
+            '+refs/heads/master:refs/remotes/origin/master' \
+            '+refs/tags/*:refs/tags/*'
+          git checkout --force "$CI_EVENT_SHA"
+          git clean -ffdx
+          test "$(git rev-parse HEAD)" = "$CI_EVENT_SHA"
+
+      - name: Download all qualified variants
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: release-${{ inputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: Firmware/release-input
+          merge-multiple: true
+
+      - name: Build deterministic release package
+        run: |
+          python3 Firmware/scripts/release.py bundle \
+            --version "$RELEASE_VERSION" \
+            --commit "$RELEASE_COMMIT" \
+            --source-root Firmware/release-input \
+            --output-dir Firmware/release-output \
+            --version-file Firmware/VERSION \
+            --changelog Firmware/changelog.txt \
+            --run-url "$RELEASE_RUN_URL"
+
+      - name: Preserve final package as a workflow artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: firmware-release-package-${{ inputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            Firmware/release-output/DiveCANHead-v${{ inputs.version }}.zip
+            Firmware/release-output/DiveCANHead-*-v${{ inputs.version }}.zip
+            Firmware/release-output/DiveCANHead-v${{ inputs.version }}-SHA256SUMS.txt
+            Firmware/release-output/changelog.txt
+            Firmware/release-output/release-notes.txt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Recheck that the tag is still unused
+        run: |
+          if git ls-remote --exit-code --tags origin \
+              "refs/tags/v${RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "::error title=Release race::Tag v${RELEASE_VERSION} was created while HIL was running."
+            exit 2
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then
+              echo "::error title=Tag lookup failed::git ls-remote exited with $status."
+              exit "$status"
+            fi
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${RELEASE_VERSION}" \
+            "Firmware/release-output/DiveCANHead-v${RELEASE_VERSION}.zip#Complete firmware package" \
+            "Firmware/release-output/DiveCANHead-Poseidon_Aren-v${RELEASE_VERSION}.zip#Poseidon_Aren firmware" \
+            "Firmware/release-output/DiveCANHead-AP_Aren-v${RELEASE_VERSION}.zip#AP_Aren firmware" \
+            "Firmware/release-output/DiveCANHead-AP_Paul-v${RELEASE_VERSION}.zip#AP_Paul firmware" \
+            "Firmware/release-output/DiveCANHead-eCCR_classic-v${RELEASE_VERSION}.zip#eCCR_classic firmware" \
+            "Firmware/release-output/DiveCANHead-Sidewinder_Gabriel-v${RELEASE_VERSION}.zip#Sidewinder_Gabriel firmware" \
+            "Firmware/release-output/DiveCANHead-v${RELEASE_VERSION}-SHA256SUMS.txt#SHA-256 checksums" \
+            "Firmware/release-output/changelog.txt#Complete changelog" \
+            --target "$RELEASE_COMMIT" \
+            --title "DiveCANHead Firmware v${RELEASE_VERSION}" \
+            --notes-file Firmware/release-output/release-notes.txt \
+            --fail-on-no-commits \
+            --latest
+
+          {
+            echo "### Published firmware release"
+            echo
+            echo "- Release: \`v${RELEASE_VERSION}\`"
+            echo "- Commit: \`${RELEASE_COMMIT}\`"
+            echo "- Complete package: \`DiveCANHead-v${RELEASE_VERSION}.zip\`"
+            echo "- Per-variant packages: 5"
+            echo "- Qualified variants: 5"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -12,6 +12,7 @@ on:
         options:
           - Poseidon_Aren
           - AP_Aren
+          - AP_Paul
           - eCCR_classic
           - Sidewinder_Gabriel
 
