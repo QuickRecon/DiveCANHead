@@ -26,6 +26,7 @@
 #include "heartbeat.h"
 #include "errors.h"
 #include "maintenance_arena.h"
+#include "external_flash.h"
 #include "common.h"
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
@@ -195,7 +196,8 @@ static Status_t verify_slot1_readback(const struct flash_area *fa, uint32_t off,
         if ((len - v) < VERIFY_BUF_SIZE) {
             step = len - v;
         }
-        Status_t rc = flash_area_read(fa, (off_t)off + (off_t)v, verify_buf, step);
+        Status_t rc = external_flash_area_read(fa, (off_t)off + (off_t)v,
+                                               verify_buf, step);
         if (0 != rc) {
             result = rc;
         } else if (0 != memcmp(expected + v, verify_buf, step)) {
@@ -653,7 +655,8 @@ static Status_t stream_image_to_slot1(const struct flash_area *slot1_fa,
         do {
             rc = get_state()->backend->read(off, chunk, this_chunk);
             if (0 == rc) {
-                rc = flash_area_write(slot1_fa, (off_t)off, chunk, this_chunk);
+                rc = external_flash_area_write(slot1_fa, (off_t)off, chunk,
+                                               this_chunk);
             }
             if (0 == rc) {
                 rc = verify_slot1_readback(slot1_fa, off, chunk, this_chunk);
@@ -710,7 +713,7 @@ static Status_t copy_backend_to_slot1(void)
                         (unsigned)copy_size, (unsigned)slot1_size);
                 result = -ENOSPC;
             } else {
-                rc = flash_area_erase(slot1_fa, 0U, slot1_size);
+                rc = external_flash_area_erase(slot1_fa, 0U, slot1_size);
                 if (0 != rc) {
                     LOG_ERR("slot1 erase failed: %d", rc);
                     result = rc;
@@ -734,9 +737,9 @@ static Status_t erase_slot1_trailer_page(const struct flash_area *slot1_fa)
     Status_t rc = flash_get_page_info_by_offs(slot1_fa->fa_dev, last, &pinfo);
 
     if (0 == rc) {
-        rc = flash_area_erase(slot1_fa,
-                              pinfo.start_offset - slot1_fa->fa_off,
-                              pinfo.size);
+        rc = external_flash_area_erase(slot1_fa,
+                                       pinfo.start_offset - slot1_fa->fa_off,
+                                       pinfo.size);
     }
     return rc;
 }
@@ -759,9 +762,20 @@ static Status_t stage_pending_swap(const struct flash_area *slot1_fa)
         if (i > 0U) {
             (void)erase_slot1_trailer_page(slot1_fa);
         }
-        Status_t rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
-        if ((0 == rc) && (BOOT_SWAP_TYPE_TEST == mcuboot_swap_type())
-                      && (BOOT_SWAP_TYPE_TEST == mcuboot_swap_type())) {
+        Status_t rc = external_flash_acquire(K_FOREVER);
+        int swap_type_a = BOOT_SWAP_TYPE_NONE;
+        int swap_type_b = BOOT_SWAP_TYPE_NONE;
+
+        if (0 == rc) {
+            rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+            if (0 == rc) {
+                swap_type_a = mcuboot_swap_type();
+                swap_type_b = mcuboot_swap_type();
+            }
+            external_flash_release();
+        }
+        if ((0 == rc) && (BOOT_SWAP_TYPE_TEST == swap_type_a)
+                      && (BOOT_SWAP_TYPE_TEST == swap_type_b)) {
             result = 0;
         } else {
             LOG_WRN("pending swap not registered (rc=%d, try %d)", rc, i + 1);
@@ -790,7 +804,8 @@ static Status_t verify_and_stage_slot1(void)
     if (0 != rc) {
         result = rc;
     } else {
-        rc = flash_area_read(slot1_fa, 0U, magic_buf, sizeof(magic_buf));
+        rc = external_flash_area_read(slot1_fa, 0U, magic_buf,
+                                      sizeof(magic_buf));
         uint32_t magic = ((uint32_t)magic_buf[0])
                        | ((uint32_t)magic_buf[1] << 8U)
                        | ((uint32_t)magic_buf[2] << 16U)

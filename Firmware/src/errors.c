@@ -41,6 +41,21 @@ static volatile CrashInfo_t crash_noinit __noinit;
 static CrashInfo_t last_crash;
 static bool had_crash;
 
+#if defined(CONFIG_ARM)
+#define XPSR_IPSR_MASK 0x1FFU
+#define XPSR_STACK_ALIGN_FLAG 0x200U
+
+static uint32_t fault_sp_from_esf(const struct arch_esf *esf)
+{
+    uint32_t sp = (uint32_t)(uintptr_t)esf + sizeof(esf->basic);
+
+    if (0U != (esf->basic.xpsr & XPSR_STACK_ALIGN_FLAG)) {
+        sp += sizeof(uint32_t);
+    }
+    return sp;
+}
+#endif
+
 /* ---- zbus error channel ---- */
 
 ZBUS_CHAN_DEFINE(chan_error,
@@ -202,6 +217,10 @@ FUNC_NORETURN void fatal_op_error(FatalOpError_t code, const char *file,
     crash_noinit.pc = 0U;
     crash_noinit.lr = 0U;
     crash_noinit.cfsr = 0U;
+    crash_noinit.sp = 0U;
+    crash_noinit.xpsr = 0U;
+    crash_noinit.exc_return = 0U;
+    crash_noinit.stack_source = CRASH_STACK_SOURCE_UNKNOWN;
     crash_noinit.thread = (uint32_t)(uintptr_t)k_current_get();
 
     /* Don't call LOG_PANIC() here — the RTT log backend's flush path
@@ -250,16 +269,44 @@ void k_sys_fatal_error_handler(uint32_t reason,
                reason, esf->basic.pc, esf->basic.lr);
         crash_noinit.pc = esf->basic.pc;
         crash_noinit.lr = esf->basic.lr;
+        crash_noinit.xpsr = esf->basic.xpsr;
+#if defined(CONFIG_EXTRA_EXCEPTION_INFO)
+        crash_noinit.exc_return = esf->extra_info.exc_return;
+        if (0U != (esf->basic.xpsr & XPSR_IPSR_MASK)) {
+            crash_noinit.sp = esf->extra_info.msp;
+            crash_noinit.stack_source = CRASH_STACK_SOURCE_MSP;
+        } else if (esf->extra_info.callee != NULL) {
+            crash_noinit.sp = esf->extra_info.callee->psp;
+            crash_noinit.stack_source = CRASH_STACK_SOURCE_PSP;
+        } else {
+            crash_noinit.sp = esf->extra_info.msp;
+            crash_noinit.stack_source = CRASH_STACK_SOURCE_MSP;
+        }
+#else
+        crash_noinit.sp = fault_sp_from_esf(esf);
+        crash_noinit.exc_return = 0U;
+        crash_noinit.stack_source =
+            (0U != (esf->basic.xpsr & XPSR_IPSR_MASK)) ?
+            CRASH_STACK_SOURCE_MSP : CRASH_STACK_SOURCE_PSP;
+#endif
     } else {
         (void)printk("*** FATAL: reason %u  (no ESF) ***\n", reason);
         crash_noinit.pc = 0U;
         crash_noinit.lr = 0U;
+        crash_noinit.sp = 0U;
+        crash_noinit.xpsr = 0U;
+        crash_noinit.exc_return = 0U;
+        crash_noinit.stack_source = CRASH_STACK_SOURCE_UNKNOWN;
     }
 #else
     ARG_UNUSED(esf);
     (void)printk("*** FATAL: reason %u ***\n", reason);
     crash_noinit.pc = 0U;
     crash_noinit.lr = 0U;
+    crash_noinit.sp = 0U;
+    crash_noinit.xpsr = 0U;
+    crash_noinit.exc_return = 0U;
+    crash_noinit.stack_source = CRASH_STACK_SOURCE_UNKNOWN;
 #endif
 
     crash_noinit.magic = CRASH_MAGIC;

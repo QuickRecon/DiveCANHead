@@ -10,6 +10,7 @@
 #include <zephyr/logging/log.h>
 
 #include "flash_mass_erase.h"
+#include "external_flash.h"
 #include "watchdog_feeder.h"
 #include "common.h"
 
@@ -74,81 +75,86 @@ Status_t flash_mass_erase_external(void)
         LOG_ERR("external flash not ready");
         result = -ENODEV;
     } else {
-        uint64_t total = 0;
-        Status_t rc = flash_get_size(flash, &total);
+        result = external_flash_acquire(K_FOREVER);
+        if (0 == result) {
+            uint64_t total = 0;
+            Status_t rc = flash_get_size(flash, &total);
 
-        if ((rc != 0) || (total == 0U)) {
-            LOG_ERR("flash_get_size failed: %d", rc);
-            if (rc != 0) {
-                result = rc;
+            if ((rc != 0) || (total == 0U)) {
+                LOG_ERR("flash_get_size failed: %d", rc);
+                if (rc != 0) {
+                    result = rc;
+                } else {
+                    result = -EIO;
+                }
             } else {
-                result = -EIO;
-            }
-        } else {
-            LOG_WRN("MASS ERASE: wiping %u KiB of external NOR in %u KiB chunks "
-                "(slot1/OTA, factory, flash-log, NVS) — takes minutes, IWDG-fed",
-                (unsigned)(total / 1024U), (unsigned)(ERASE_CHUNK_BYTES / 1024U));
+                LOG_WRN("MASS ERASE: wiping %u KiB of external NOR in %u KiB chunks "
+                    "(slot1/OTA, factory, flash-log, NVS) — takes minutes, IWDG-fed",
+                    (unsigned)(total / 1024U), (unsigned)(ERASE_CHUNK_BYTES / 1024U));
 
-            Status_t first_err = 0;
-            uint32_t fail_count = 0U;
+                Status_t first_err = 0;
+                uint32_t fail_count = 0U;
 
-            /* Erase the NVS/"storage" partition FIRST — see erase_nvs_partition().
-             * slot1 (offset 0) and the factory backup (0x47000) sit at LOW
-             * offsets and are always reached by the sweep before any deep hang,
-             * so the rest of the contract still holds. */
+                /* Erase the NVS/"storage" partition FIRST — see erase_nvs_partition().
+                 * slot1 (offset 0) and the factory backup (0x47000) sit at LOW
+                 * offsets and are always reached by the sweep before any deep hang,
+                 * so the rest of the contract still holds. */
 #if DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
-            Status_t nrc = erase_nvs_partition(flash);
-            if (nrc != 0) {
-                if (first_err == 0) {
-                    first_err = nrc;
-                }
-                ++fail_count;
-            }
-#endif
-
-            for (uint64_t off = 0; off < total; off += ERASE_CHUNK_BYTES) {
-                size_t chunk = (size_t)MIN((uint64_t)ERASE_CHUNK_BYTES, total - off);
-
-                /* Coarse progress log so a mid-sweep IWDG reset from a driver
-                 * WIP hang leaves the last-reached region visible without
-                 * spamming 256 lines. */
-                if ((off % (PROGRESS_LOG_CHUNK_INTERVAL * ERASE_CHUNK_BYTES)) == 0U) {
-                    LOG_INF("MASS ERASE @0x%08x", (unsigned)off);
-                }
-
-                watchdog_kick();   /* feed before each chunk's (worst-case ~8 s) erase */
-
-                Status_t crc = flash_erase(flash, (off_t)off, chunk);
-                /* Erase is idempotent — retry a transient WIP-poll timeout
-                 * (now bounded in the spi_nor driver) before giving up. */
-                uint8_t attempt = 1U;
-                while ((crc != 0) && (attempt < ERASE_RETRY_ATTEMPTS)) {
-                    watchdog_kick();
-                    crc = flash_erase(flash, (off_t)off, chunk);
-                    ++attempt;
-                }
-                if (crc != 0) {
-                    /* Do NOT abort the sweep on a single bad chunk. NVS at the
-                     * TOP of the chip is erased FIRST (above), so the factory-
-                     * reset contract holds even if a later chunk fails. Log the
-                     * offending region, keep going, and surface the first rc. */
-                    LOG_ERR("erase @0x%08x (%u B) failed: %d — continuing",
-                        (unsigned)off, (unsigned)chunk, crc);
+                Status_t nrc = erase_nvs_partition(flash);
+                if (nrc != 0) {
                     if (first_err == 0) {
-                        first_err = crc;
+                        first_err = nrc;
                     }
                     ++fail_count;
                 }
-            }
+#endif
 
-            watchdog_kick();
-            if (first_err != 0) {
-                LOG_ERR("MASS ERASE INCOMPLETE: %u chunk(s) failed, first rc=%d",
-                    fail_count, first_err);
-                result = first_err;
-            } else {
-                LOG_WRN("MASS ERASE complete — external NOR is blank");
+                for (uint64_t off = 0; off < total; off += ERASE_CHUNK_BYTES) {
+                    size_t chunk = (size_t)MIN((uint64_t)ERASE_CHUNK_BYTES,
+                                               total - off);
+
+                    /* Coarse progress log so a mid-sweep IWDG reset from a driver
+                     * WIP hang leaves the last-reached region visible without
+                     * spamming 256 lines. */
+                    if ((off % (PROGRESS_LOG_CHUNK_INTERVAL * ERASE_CHUNK_BYTES)) == 0U) {
+                        LOG_INF("MASS ERASE @0x%08x", (unsigned)off);
+                    }
+
+                    watchdog_kick();   /* feed before each chunk's (worst-case ~8 s) erase */
+
+                    Status_t crc = flash_erase(flash, (off_t)off, chunk);
+                    /* Erase is idempotent — retry a transient WIP-poll timeout
+                     * (now bounded in the spi_nor driver) before giving up. */
+                    uint8_t attempt = 1U;
+                    while ((crc != 0) && (attempt < ERASE_RETRY_ATTEMPTS)) {
+                        watchdog_kick();
+                        crc = flash_erase(flash, (off_t)off, chunk);
+                        ++attempt;
+                    }
+                    if (crc != 0) {
+                        /* Do NOT abort the sweep on a single bad chunk. NVS at the
+                         * TOP of the chip is erased FIRST (above), so the factory-
+                         * reset contract holds even if a later chunk fails. Log the
+                         * offending region, keep going, and surface the first rc. */
+                        LOG_ERR("erase @0x%08x (%u B) failed: %d — continuing",
+                            (unsigned)off, (unsigned)chunk, crc);
+                        if (first_err == 0) {
+                            first_err = crc;
+                        }
+                        ++fail_count;
+                    }
+                }
+
+                watchdog_kick();
+                if (first_err != 0) {
+                    LOG_ERR("MASS ERASE INCOMPLETE: %u chunk(s) failed, first rc=%d",
+                        fail_count, first_err);
+                    result = first_err;
+                } else {
+                    LOG_WRN("MASS ERASE complete — external NOR is blank");
+                }
             }
+            external_flash_release();
         }
     }
     return result;

@@ -19,6 +19,7 @@ project(test_error_histogram)
 # real-time native_sim host. errors.c stays a separate TU (it owns chan_error).
 target_sources(app PRIVATE
     src/main.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/external_flash.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/errors.c
 )
 target_include_directories(app PRIVATE

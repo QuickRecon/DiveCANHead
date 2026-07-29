@@ -1264,6 +1264,10 @@ ZTEST(uds_state_did_ota, test_crash_dids_clean_and_populated)
     stub_crash_info.pc = 0x55667788U;
     stub_crash_info.lr = 0x99AABBCCU;
     stub_crash_info.cfsr = 0xDDEEFF00U;
+    stub_crash_info.sp = 0x20003000U;
+    stub_crash_info.xpsr = 0x01000000U;
+    stub_crash_info.exc_return = 0xFFFFFFFDU;
+    stub_crash_info.stack_source = CRASH_STACK_SOURCE_PSP;
 
     read_did(UDS_DID_CRASH_VALID);
     zassert_equal(fx.captured_response[3], 1U);
@@ -1271,10 +1275,16 @@ ZTEST(uds_state_did_ota, test_crash_dids_clean_and_populated)
     const uint16_t dids[] = {
         UDS_DID_CRASH_REASON, UDS_DID_CRASH_PC,
         UDS_DID_CRASH_LR, UDS_DID_CRASH_CFSR,
+        UDS_DID_CRASH_SP,
+        UDS_DID_CRASH_XPSR, UDS_DID_CRASH_EXC_RETURN,
+        UDS_DID_CRASH_STACK_SOURCE,
     };
     const uint32_t expected[] = {
         stub_crash_info.reason, stub_crash_info.pc,
         stub_crash_info.lr, stub_crash_info.cfsr,
+        stub_crash_info.sp,
+        stub_crash_info.xpsr, stub_crash_info.exc_return,
+        stub_crash_info.stack_source,
     };
     for (size_t i = 0U; i < ARRAY_SIZE(dids); ++i) {
         read_did(dids[i]);
@@ -1291,6 +1301,10 @@ ZTEST(uds_state_did_ota, test_persisted_crash_and_reboot_history_dids)
         .pc = 0x08001234U,
         .lr = 0x08005678U,
         .cfsr = 0x00010000U,
+        .sp = 0x20003000U,
+        .xpsr = 0x01000000U,
+        .exc_return = 0xFFFFFFFDU,
+        .stack_source = CRASH_STACK_SOURCE_PSP,
         .thread = 0x20001000U,
     };
     stub_crash_history[1] = (BootCrashRecord_t) {
@@ -1299,17 +1313,25 @@ ZTEST(uds_state_did_ota, test_persisted_crash_and_reboot_history_dids)
         .pc = 0x0800ABCDU,
         .lr = 0x0800DCBAU,
         .cfsr = 0x00020000U,
+        .sp = 0x20004000U,
+        .xpsr = 0x01000010U,
+        .exc_return = 0xFFFFFFF1U,
+        .stack_source = CRASH_STACK_SOURCE_MSP,
         .thread = 0x20002000U,
     };
 
     read_did(UDS_DID_CRASH_HISTORY);
-    zassert_equal(fx.captured_response_len, 3U + 2U + (2U * 24U));
+    zassert_equal(fx.captured_response_len, 3U + 2U + (2U * 40U));
     zassert_equal(fx.captured_response[3], BOOT_HISTORY_WIRE_VERSION);
     zassert_equal(fx.captured_response[4], 2U);
     zassert_equal(captured_le32_at(5U), 12U);
     zassert_equal(captured_le32_at(9U), 2U);
     zassert_equal(captured_le32_at(13U), 0x08001234U);
-    zassert_equal(captured_le32_at(29U), 9U);
+    zassert_equal(captured_le32_at(25U), 0x20003000U);
+    zassert_equal(captured_le32_at(29U), 0x01000000U);
+    zassert_equal(captured_le32_at(33U), 0xFFFFFFFDU);
+    zassert_equal(captured_le32_at(37U), CRASH_STACK_SOURCE_PSP);
+    zassert_equal(captured_le32_at(45U), 9U);
 
     stub_reboot_history_count = 2U;
     stub_reboot_history[0] = (BootRebootRecord_t) {

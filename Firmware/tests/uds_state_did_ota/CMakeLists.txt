@@ -35,6 +35,7 @@ target_sources(app PRIVATE
     src/main.c
     ${APP_SRC}/divecan/uds/uds.c
     ${APP_SRC}/divecan/uds/uds_state_did.c
+    ${APP_SRC}/external_flash.c
     ${APP_SRC}/divecan/divecan_channels.c
     ${APP_SRC}/oxygen_cell_channels.c
     ${APP_SRC}/alarm.c

@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include "factory_image_backend.h"
+#include "external_flash.h"
 #include "errors.h"
 #include "common.h"
 
@@ -79,7 +80,7 @@ static Status_t flash_backend_init(void)
 {
     Status_t result = 0;
     if (!get_state()->initialised) {
-        Status_t rc = settings_load_subtree(FACTORY_FLAG_SUBTREE);
+        Status_t rc = external_flash_settings_load_subtree(FACTORY_FLAG_SUBTREE);
         if (0 != rc) {
             LOG_WRN("Settings load (%s) failed: %d", FACTORY_FLAG_SUBTREE, rc);
             /* Treat as "not captured" and continue — the next capture
@@ -98,7 +99,7 @@ static Status_t flash_backend_erase(void)
     Status_t result = -EIO;
 
     if (0 == rc) {
-        rc = flash_area_erase(fa, 0, fa->fa_size);
+        rc = external_flash_area_erase(fa, 0, fa->fa_size);
         if (0 == rc) {
             result = 0;
         } else {
@@ -120,7 +121,7 @@ static Status_t flash_backend_write(uint32_t offset, const void *buf, size_t len
     Status_t result = -EIO;
 
     if (0 == rc) {
-        rc = flash_area_write(fa, (off_t)offset, buf, len);
+        rc = external_flash_area_write(fa, (off_t)offset, buf, len);
         if (0 == rc) {
             result = 0;
         } else {
@@ -142,7 +143,7 @@ static Status_t flash_backend_read(uint32_t offset, void *buf, size_t len)
     Status_t result = -EIO;
 
     if (0 == rc) {
-        rc = flash_area_read(fa, (off_t)offset, buf, len);
+        rc = external_flash_area_read(fa, (off_t)offset, buf, len);
         if (0 == rc) {
             result = 0;
         } else {
@@ -197,7 +198,8 @@ static Status_t flash_backend_mark_captured(bool captured)
     } else {
         value = 0U;
     }
-    rc = settings_save_one(FACTORY_FLAG_KEY, &value, sizeof(value));
+    rc = external_flash_settings_save_one(FACTORY_FLAG_KEY, &value,
+                                          sizeof(value));
 
     if (0 == rc) {
         get_state()->captured = captured;

@@ -11,6 +11,7 @@
 
 #include "runtime_settings.h"
 #include "common.h"
+#include "external_flash.h"
 #include <zephyr/settings/settings.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
@@ -317,7 +318,7 @@ Status_t runtime_settings_load(RuntimeSettings_t *out)
     }
     else
     {
-        rc = settings_load_subtree(SETTINGS_SUBTREE);
+        rc = external_flash_settings_load_subtree(SETTINGS_SUBTREE);
         if (0 != rc) {
             LOG_WRN("settings load failed: %d, using defaults", rc);
         }
@@ -366,24 +367,24 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
 
         enum { SAVE_FIELD_COUNT = 8 };
         const Status_t rc_codes[SAVE_FIELD_COUNT] = {
-            settings_save_one(SETTINGS_SUBTREE "/ppo2",
-                      &ppo2_val, sizeof(ppo2_val)),
-            settings_save_one(SETTINGS_SUBTREE "/cal",
-                      &cal_val, sizeof(cal_val)),
-            settings_save_one(SETTINGS_SUBTREE "/depth",
-                      &s->depth_compensation,
-                      sizeof(s->depth_compensation)),
-            settings_save_one(SETTINGS_SUBTREE "/kp",
-                      &s->pid_kp, sizeof(s->pid_kp)),
-            settings_save_one(SETTINGS_SUBTREE "/ki",
-                      &s->pid_ki, sizeof(s->pid_ki)),
-            settings_save_one(SETTINGS_SUBTREE "/kd",
-                      &s->pid_kd, sizeof(s->pid_kd)),
-            settings_save_one(SETTINGS_SUBTREE "/bat",
-                      &bat_val, sizeof(bat_val)),
-            settings_save_one(SETTINGS_SUBTREE "/bcst",
-                      s->enforce_broadcast,
-                      sizeof(s->enforce_broadcast)),
+            external_flash_settings_save_one(SETTINGS_SUBTREE "/ppo2",
+                             &ppo2_val, sizeof(ppo2_val)),
+            external_flash_settings_save_one(SETTINGS_SUBTREE "/cal",
+                             &cal_val, sizeof(cal_val)),
+            external_flash_settings_save_one(SETTINGS_SUBTREE "/depth",
+                             &s->depth_compensation,
+                             sizeof(s->depth_compensation)),
+            external_flash_settings_save_one(SETTINGS_SUBTREE "/kp",
+                             &s->pid_kp, sizeof(s->pid_kp)),
+            external_flash_settings_save_one(SETTINGS_SUBTREE "/ki",
+                             &s->pid_ki, sizeof(s->pid_ki)),
+            external_flash_settings_save_one(SETTINGS_SUBTREE "/kd",
+                             &s->pid_kd, sizeof(s->pid_kd)),
+            external_flash_settings_save_one(SETTINGS_SUBTREE "/bat",
+                             &bat_val, sizeof(bat_val)),
+            external_flash_settings_save_one(SETTINGS_SUBTREE "/bcst",
+                             s->enforce_broadcast,
+                             sizeof(s->enforce_broadcast)),
         };
 
         Status_t first_err = 0;
@@ -418,40 +419,43 @@ Status_t runtime_settings_save_field(RuntimeSettingField_t field)
         switch (field) {
         case RT_FIELD_PPO2: {
             uint8_t v = (uint8_t)cached->ppo2_control_mode;
-            rc = settings_save_one(SETTINGS_SUBTREE "/ppo2", &v, sizeof(v));
+            rc = external_flash_settings_save_one(SETTINGS_SUBTREE "/ppo2",
+                                  &v, sizeof(v));
             break;
         }
         case RT_FIELD_CAL: {
             uint8_t v = (uint8_t)cached->calibration_mode;
-            rc = settings_save_one(SETTINGS_SUBTREE "/cal", &v, sizeof(v));
+            rc = external_flash_settings_save_one(SETTINGS_SUBTREE "/cal",
+                                  &v, sizeof(v));
             break;
         }
         case RT_FIELD_DEPTH:
-            rc = settings_save_one(SETTINGS_SUBTREE "/depth",
-                           &cached->depth_compensation,
-                           sizeof(cached->depth_compensation));
+            rc = external_flash_settings_save_one(SETTINGS_SUBTREE "/depth",
+                                  &cached->depth_compensation,
+                                  sizeof(cached->depth_compensation));
             break;
         case RT_FIELD_KP:
-            rc = settings_save_one(SETTINGS_SUBTREE "/kp",
-                           &cached->pid_kp, sizeof(cached->pid_kp));
+            rc = external_flash_settings_save_one(SETTINGS_SUBTREE "/kp",
+                                  &cached->pid_kp, sizeof(cached->pid_kp));
             break;
         case RT_FIELD_KI:
-            rc = settings_save_one(SETTINGS_SUBTREE "/ki",
-                           &cached->pid_ki, sizeof(cached->pid_ki));
+            rc = external_flash_settings_save_one(SETTINGS_SUBTREE "/ki",
+                                  &cached->pid_ki, sizeof(cached->pid_ki));
             break;
         case RT_FIELD_KD:
-            rc = settings_save_one(SETTINGS_SUBTREE "/kd",
-                           &cached->pid_kd, sizeof(cached->pid_kd));
+            rc = external_flash_settings_save_one(SETTINGS_SUBTREE "/kd",
+                                  &cached->pid_kd, sizeof(cached->pid_kd));
             break;
         case RT_FIELD_BATTERY: {
             uint8_t v = (uint8_t)cached->battery_type;
-            rc = settings_save_one(SETTINGS_SUBTREE "/bat", &v, sizeof(v));
+            rc = external_flash_settings_save_one(SETTINGS_SUBTREE "/bat",
+                                  &v, sizeof(v));
             break;
         }
         case RT_FIELD_BCST:
-            rc = settings_save_one(SETTINGS_SUBTREE "/bcst",
-                           cached->enforce_broadcast,
-                           sizeof(cached->enforce_broadcast));
+            rc = external_flash_settings_save_one(SETTINGS_SUBTREE "/bcst",
+                                  cached->enforce_broadcast,
+                                  sizeof(cached->enforce_broadcast));
             break;
         default:
             rc = -EINVAL;

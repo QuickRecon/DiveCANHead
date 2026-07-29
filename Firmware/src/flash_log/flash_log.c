@@ -19,6 +19,7 @@
 #include "flash_log_reader.h"
 #include "heartbeat.h"
 #include "watchdog_feeder.h"
+#include "external_flash.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
@@ -108,6 +109,7 @@ static uint8_t fl_last_drop_type_text;
 
 static atomic_t fl_paused = ATOMIC_INIT(0);
 static atomic_t fl_initialized = ATOMIC_INIT(0);
+static K_MUTEX_DEFINE(fl_init_mutex);
 
 /* ---- Cached runtime settings ----
  *
@@ -546,45 +548,49 @@ static Status_t fl_write_entry_to_fcb(struct fcb *fcb_p, uint8_t type,
         .ts_boot_us = ts_us,
     };
     struct fcb_entry loc = {0};
-    Status_t rc = fcb_append(fcb_p, (uint16_t)(sizeof(hdr) + length), &loc);
-    if ((0 != rc) && (-ENOSPC == rc)) {
-        /* Ring is full — erase oldest sector and retry once. */
-        rc = fcb_rotate(fcb_p);
-        if (0 == rc) {
-            rc = fcb_append(fcb_p,
-                    (uint16_t)(sizeof(hdr) + length),
-                    &loc);
-        }
-    }
+    Status_t rc = external_flash_acquire(K_FOREVER);
 
     if (0 == rc) {
-        /* Coalesce header + payload into a SINGLE flash write — one SPI
-         * program instead of two, ~25% fewer ops per entry (each op costs a
-         * page-program + WIP wait). The buffer is bounded by the ingest slot
-         * size (CONFIG_FLASH_LOG_MAX_ENTRY_BYTES); fall back to two writes for
-         * any (unexpected) larger entry. */
-        size_t total = sizeof(hdr) + length;
-        if (total <= sizeof(fl_writer_scratch)) {
-            (void)memcpy(fl_writer_scratch, &hdr, sizeof(hdr));
-            if ((length > 0U) && (payload != NULL)) {
-                (void)memcpy(&fl_writer_scratch[sizeof(hdr)], payload, length);
-            }
-            rc = flash_area_write(fcb_p->fap, fl_entry_data_off(&loc),
-                          fl_writer_scratch, total);
-        } else {
-            rc = flash_area_write(fcb_p->fap, fl_entry_data_off(&loc),
-                          &hdr, sizeof(hdr));
-            if ((0 == rc) && (length > 0U) && (payload != NULL)) {
-                rc = flash_area_write(fcb_p->fap,
-                              fl_entry_data_off(&loc) + (off_t)sizeof(hdr),
-                              payload, length);
+        rc = fcb_append(fcb_p, (uint16_t)(sizeof(hdr) + length), &loc);
+        if ((0 != rc) && (-ENOSPC == rc)) {
+            /* Ring is full — erase oldest sector and retry once. */
+            rc = fcb_rotate(fcb_p);
+            if (0 == rc) {
+                rc = fcb_append(fcb_p,
+                        (uint16_t)(sizeof(hdr) + length),
+                        &loc);
             }
         }
-        if (0 == rc) {
-            rc = fcb_append_finish(fcb_p, &loc);
-        }
-    }
 
+        if (0 == rc) {
+            /* Coalesce header + payload into a SINGLE flash write — one SPI
+             * program instead of two, ~25% fewer ops per entry (each op costs a
+             * page-program + WIP wait). The buffer is bounded by the ingest slot
+             * size (CONFIG_FLASH_LOG_MAX_ENTRY_BYTES); fall back to two writes for
+             * any (unexpected) larger entry. */
+            size_t total = sizeof(hdr) + length;
+            if (total <= sizeof(fl_writer_scratch)) {
+                (void)memcpy(fl_writer_scratch, &hdr, sizeof(hdr));
+                if ((length > 0U) && (payload != NULL)) {
+                    (void)memcpy(&fl_writer_scratch[sizeof(hdr)], payload, length);
+                }
+                rc = flash_area_write(fcb_p->fap, fl_entry_data_off(&loc),
+                              fl_writer_scratch, total);
+            } else {
+                rc = flash_area_write(fcb_p->fap, fl_entry_data_off(&loc),
+                              &hdr, sizeof(hdr));
+                if ((0 == rc) && (length > 0U) && (payload != NULL)) {
+                    rc = flash_area_write(fcb_p->fap,
+                                  fl_entry_data_off(&loc) + (off_t)sizeof(hdr),
+                                  payload, length);
+                }
+            }
+            if (0 == rc) {
+                rc = fcb_append_finish(fcb_p, &loc);
+            }
+        }
+        external_flash_release();
+    }
     return rc;
 }
 
@@ -763,6 +769,11 @@ static void fl_write_telemetry_batch(void)
         return;
     }
 
+    Status_t rc = external_flash_acquire(K_FOREVER);
+    if (0 != rc) {
+        return;
+    }
+
     /* Reserve one FCB entry for the whole batch (rotate once on a full ring). */
     fl_entry_hdr_t bhdr = {
         .type = FL_TYPE_BATCH,
@@ -771,7 +782,7 @@ static void fl_write_telemetry_batch(void)
         .ts_boot_us = first_ts,
     };
     struct fcb_entry loc = {0};
-    Status_t rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
+    rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
     if (-ENOSPC == rc) {
         rc = fcb_rotate(fcb_p);
         if (0 == rc) {
@@ -779,6 +790,7 @@ static void fl_write_telemetry_batch(void)
         }
     }
     if (0 != rc) {
+        external_flash_release();
         return;
     }
 
@@ -812,6 +824,19 @@ static void fl_write_telemetry_batch(void)
     if (0 == rc) {
         (void)fcb_append_finish(fcb_p, &loc);
     }
+    external_flash_release();
+}
+
+static Status_t fl_settings_save_one_quiet(const char *name, const void *value,
+                                           size_t len)
+{
+    atomic_val_t was_paused = atomic_set(&fl_paused, 1);
+    Status_t rc = external_flash_settings_save_one(name, value, len);
+
+    if (0 == was_paused) {
+        (void)atomic_set(&fl_paused, 0);
+    }
+    return rc;
 }
 
 /**
@@ -1048,7 +1073,11 @@ static Status_t fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
      * grinds for tens of seconds and the board never reaches normal operation.
      * Trade-off: entries are validated by the fixed end-marker, not a CRC (still
      * catches truncated/torn writes). See the fcb defs + FL_FCB_MAGIC bump. */
-    Status_t rc = fcb_init(area_id, fcb_p);
+    Status_t rc = external_flash_acquire(K_FOREVER);
+    if (0 == rc) {
+        rc = fcb_init(area_id, fcb_p);
+        external_flash_release();
+    }
     if (0 != rc) {
         /* One-shot recovery: erase the partition and retry. fcb_init bails fast
          * here (sector-0 magic mismatch → -ENOMSG, no entry walk) on stale or
@@ -1062,10 +1091,14 @@ static Status_t fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
 
         if (0 == flash_area_open((uint8_t)area_id, &fa)) {
             heartbeat_set_long_op(true);
-            (void)flash_area_erase(fa, 0U, fa->fa_size);
+            (void)external_flash_area_erase(fa, 0U, fa->fa_size);
             heartbeat_set_long_op(false);
             flash_area_close(fa);
-            rc = fcb_init(area_id, fcb_p);
+            rc = external_flash_acquire(K_FOREVER);
+            if (0 == rc) {
+                rc = fcb_init(area_id, fcb_p);
+                external_flash_release();
+            }
         }
     }
 
@@ -1078,13 +1111,14 @@ Status_t flash_log_init(void)
 {
     Status_t result = 0;
 
-    if (atomic_set(&fl_initialized, 1) == 1) {
+    (void)k_mutex_lock(&fl_init_mutex, K_FOREVER);
+    if (0 != atomic_get(&fl_initialized)) {
         result = 0;
     } else {
         /* Settings subsystem may already be up (runtime_settings loaded
          * during calibration_init). settings_subsys_init is idempotent. */
         (void)settings_subsys_init();
-        (void)settings_load_subtree("log");
+        (void)external_flash_settings_load_subtree("log");
 
         Status_t rc_telemetry = fl_mount_fcb(&fl_telemetry_fcb,
                         fl_telemetry_sectors,
@@ -1114,10 +1148,13 @@ Status_t flash_log_init(void)
         } else {
             /* Increment + persist boot counter. */
             fl_boot_id += 1U;
-            (void)settings_save_one("log/boot_id", &fl_boot_id, sizeof(fl_boot_id));
+            (void)fl_settings_save_one_quiet("log/boot_id", &fl_boot_id,
+                             sizeof(fl_boot_id));
             result = 0;
         }
+        (void)atomic_set(&fl_initialized, 1);
     }
+    (void)k_mutex_unlock(&fl_init_mutex);
     return result;
 }
 
@@ -1175,9 +1212,10 @@ Status_t flash_log_set_rtt_level(uint8_t level)
     if ((level < FL_RTT_LEVEL_MIN) || (level > FL_RTT_LEVEL_MAX)) {
         rc = -EINVAL;
     } else {
+        (void)flash_log_init();
         fl_rtt_level = level;
-        rc = settings_save_one("log/rtt_level", &fl_rtt_level,
-                       sizeof(fl_rtt_level));
+        rc = fl_settings_save_one_quiet("log/rtt_level", &fl_rtt_level,
+                        sizeof(fl_rtt_level));
         if (0 != rc) {
             op_error_publish(OP_ERR_FLASH, (uint32_t)(-rc));
         }
@@ -1197,9 +1235,10 @@ Status_t flash_log_set_can_verbose(uint8_t bitmask)
     if (bitmask > FL_CAN_VERBOSE_MASK) {
         rc = -EINVAL;
     } else {
+        (void)flash_log_init();
         fl_can_verbose = bitmask;
-        rc = settings_save_one("log/can_verbose", &fl_can_verbose,
-                       sizeof(fl_can_verbose));
+        rc = fl_settings_save_one_quiet("log/can_verbose", &fl_can_verbose,
+                        sizeof(fl_can_verbose));
         if (0 != rc) {
             op_error_publish(OP_ERR_FLASH, (uint32_t)(-rc));
         }
@@ -1276,13 +1315,16 @@ Status_t flash_log_stats(FlashLogStats_t *out)
  * flash_log_reader.c). Feed directly, like flash_mass_erase. */
 static Status_t fl_fcb_clear_fed(struct fcb *fcbp)
 {
-    Status_t rc = 0;
+    Status_t rc = external_flash_acquire(K_FOREVER);
     bool empty = (0 != fcb_is_empty(fcbp));
 
-    while ((!empty) && (0 == rc)) {
-        watchdog_kick();
-        rc = fcb_rotate(fcbp);
-        empty = (0 != fcb_is_empty(fcbp));
+    if (0 == rc) {
+        while ((!empty) && (0 == rc)) {
+            watchdog_kick();
+            rc = fcb_rotate(fcbp);
+            empty = (0 != fcb_is_empty(fcbp));
+        }
+        external_flash_release();
     }
     watchdog_kick();
     return rc;

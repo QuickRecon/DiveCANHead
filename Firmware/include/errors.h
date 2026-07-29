@@ -23,6 +23,10 @@
 /** @brief Magic value written to CrashInfo_t.magic to mark a valid crash record. */
 #define CRASH_MAGIC 0xDEADC0DEU
 
+#define CRASH_STACK_SOURCE_UNKNOWN 0U
+#define CRASH_STACK_SOURCE_PSP     1U
+#define CRASH_STACK_SOURCE_MSP     2U
+
 /** @brief Crash record persisted across warm resets in __noinit RAM. */
 typedef struct {
     uint32_t magic;  /**< Set to CRASH_MAGIC when record is valid */
@@ -30,6 +34,10 @@ typedef struct {
     uint32_t pc;     /**< Program counter at the time of the fault */
     uint32_t lr;     /**< Link register at the time of the fault */
     uint32_t cfsr;   /**< Cortex-M Configurable Fault Status Register */
+    uint32_t sp;     /**< Stack pointer captured from the exception metadata */
+    uint32_t xpsr;   /**< Program status register from the exception stack frame */
+    uint32_t exc_return;   /**< ARM EXC_RETURN value when available */
+    uint32_t stack_source; /**< CRASH_STACK_SOURCE_* for @ref sp */
     uint32_t thread; /**< Faulting thread object pointer (k_current_get()) */
 } CrashInfo_t;
 
@@ -311,6 +319,9 @@ typedef enum {
 
     /** RTOS critical error handler triggered */
     FATAL_CRITICAL,
+
+    /** Deliberate programming-session fault injection for HIL crash-log tests */
+    FATAL_TEST_INJECTION,
 
     FATAL_OP_MAX
 } FatalOpError_t;

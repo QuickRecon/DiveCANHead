@@ -15,6 +15,7 @@ project(test_boot_history)
 target_sources(app PRIVATE
     src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/boot_history.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/external_flash.c
 )
 target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include

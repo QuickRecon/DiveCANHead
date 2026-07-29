@@ -19,6 +19,7 @@ target_sources(app PRIVATE
     src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/divecan/uds/uds_log_download.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/flash_log/flash_log_reader.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/external_flash.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/flash_log/flash_log_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/maintenance_arena.c
 )

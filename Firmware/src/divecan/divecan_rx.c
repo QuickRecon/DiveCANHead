@@ -462,9 +462,11 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
     }
 }
 
-/* Static WCS = 760 B (scripts/wcs.py). 1280 B gives ~70 % margin for the
- * OTA / settings paths reachable through UDS handling. */
-K_THREAD_DEFINE(divecan_rx, 1280,
+/* UDS/state DID paths hit enough Zephyr/logging/ISO-TP depth on hardware that
+ * 1280 B tripped K_ERR_STACK_CHK_FAIL during HIL fault-injection setup. Keep
+ * this at the architecture-documented 2048 B; do not trim without
+ * INIT_STACKS-backed high-water data from the real rig. */
+K_THREAD_DEFINE(divecan_rx, 2048,
         divecan_rx_thread, NULL, NULL, NULL,
         5, 0, 0);
 

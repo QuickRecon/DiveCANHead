@@ -27,6 +27,7 @@
 #include "firmware_confirm.h"
 #include "errors.h"
 #include "boot_history.h"
+#include "external_flash.h"
 #include "common.h"
 #ifdef CONFIG_ALARM
 #include "alarm.h"
@@ -60,6 +61,12 @@ static const uint8_t BYTE_IDX_0 = 0U;
 static const uint8_t BYTE_IDX_1 = 1U;
 static const uint8_t BYTE_IDX_2 = 2U;
 static const uint8_t BYTE_IDX_3 = 3U;
+
+/* UDS state DID handlers run synchronously on the single DiveCAN RX thread.
+ * Keep history serialization scratch off that thread's stack; the expanded
+ * crash record is large enough to trip hardware stack checks on HIL. */
+static BootCrashRecord_t crash_history_scratch[BOOT_HISTORY_DEPTH];
+static BootRebootRecord_t reboot_history_scratch[BOOT_HISTORY_DEPTH];
 
 /* ============================================================================
  * Helper Functions
@@ -247,7 +254,12 @@ static bool readBankSemVer(uint8_t area_id, struct mcuboot_img_sem_ver *out)
 {
     struct mcuboot_img_header hdr = {0};
     bool ok = false;
-    int rc = boot_read_bank_header(area_id, &hdr, sizeof(hdr));
+    int rc = external_flash_acquire(K_FOREVER);
+
+    if (0 == rc) {
+        rc = boot_read_bank_header(area_id, &hdr, sizeof(hdr));
+        external_flash_release();
+    }
     if ((0 == rc) && (1U == hdr.mcuboot_version)) {
         *out = hdr.h.v1.sem_ver;
         ok = true;
@@ -670,6 +682,10 @@ typedef enum {
     CRASH_FIELD_PC     = 1,
     CRASH_FIELD_LR     = 2,
     CRASH_FIELD_CFSR   = 3,
+    CRASH_FIELD_SP     = 4,
+    CRASH_FIELD_XPSR   = 5,
+    CRASH_FIELD_EXC_RETURN = 6,
+    CRASH_FIELD_STACK_SOURCE = 7,
 } CrashField_t;
 
 /**
@@ -695,6 +711,18 @@ static uint32_t crashInfoField(const CrashInfo_t *info, CrashField_t field)
         break;
     case CRASH_FIELD_CFSR:
         result = info->cfsr;
+        break;
+    case CRASH_FIELD_SP:
+        result = info->sp;
+        break;
+    case CRASH_FIELD_XPSR:
+        result = info->xpsr;
+        break;
+    case CRASH_FIELD_EXC_RETURN:
+        result = info->exc_return;
+        break;
+    case CRASH_FIELD_STACK_SOURCE:
+        result = info->stack_source;
         break;
     default:
         result = 0U;
@@ -746,15 +774,17 @@ static void buildCrashFieldStatus(uint8_t *buf, uint16_t *len, CrashField_t fiel
  * @brief Serialise the persisted crash-history ring.
  *
  * Wire format is [version u8, count u8], followed by newest-first records:
- * [reboot_sequence, reason, pc, lr, cfsr, thread], all uint32 little-endian.
+ * [reboot_sequence, reason, pc, lr, cfsr, sp, xpsr, exc_return,
+ *  stack_source, thread], all uint32 little-endian.
  */
 static bool buildCrashHistoryStatus(uint8_t *buf, uint16_t maxLen,
                                     uint16_t *len)
 {
-    BootCrashRecord_t records[BOOT_HISTORY_DEPTH] = {0};
-    size_t count = boot_history_get_crashes(records, ARRAY_SIZE(records));
+    BootCrashRecord_t *records = crash_history_scratch;
+    size_t count = boot_history_get_crashes(records,
+                                            ARRAY_SIZE(crash_history_scratch));
     const size_t header_size = sizeof(uint8_t) * 2U;
-    const size_t record_size = sizeof(uint32_t) * 6U;
+    const size_t record_size = sizeof(uint32_t) * 10U;
     size_t required = header_size + (count * record_size);
     bool result = false;
 
@@ -773,6 +803,14 @@ static bool buildCrashHistoryStatus(uint8_t *buf, uint16_t maxLen,
             writeUint32(&buf[offset], records[i].lr);
             offset += sizeof(uint32_t);
             writeUint32(&buf[offset], records[i].cfsr);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].sp);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].xpsr);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].exc_return);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].stack_source);
             offset += sizeof(uint32_t);
             writeUint32(&buf[offset], records[i].thread);
             offset += sizeof(uint32_t);
@@ -794,8 +832,9 @@ static bool buildCrashHistoryStatus(uint8_t *buf, uint16_t maxLen,
 static bool buildRebootHistoryStatus(uint8_t *buf, uint16_t maxLen,
                                      uint16_t *len)
 {
-    BootRebootRecord_t records[BOOT_HISTORY_DEPTH] = {0};
-    size_t count = boot_history_get_reboots(records, ARRAY_SIZE(records));
+    BootRebootRecord_t *records = reboot_history_scratch;
+    size_t count = boot_history_get_reboots(records,
+                                            ARRAY_SIZE(reboot_history_scratch));
     const size_t header_size = sizeof(uint8_t) * 2U;
     const size_t record_size = sizeof(uint32_t) * 2U;
     size_t required = header_size + (count * record_size);
@@ -1081,6 +1120,22 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         buildCrashFieldStatus(buf, len, CRASH_FIELD_CFSR);
         break;
 
+    case UDS_DID_CRASH_SP:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_SP);
+        break;
+
+    case UDS_DID_CRASH_XPSR:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_XPSR);
+        break;
+
+    case UDS_DID_CRASH_EXC_RETURN:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_EXC_RETURN);
+        break;
+
+    case UDS_DID_CRASH_STACK_SOURCE:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_STACK_SOURCE);
+        break;
+
     case UDS_DID_CRASH_HISTORY:
         result = buildCrashHistoryStatus(buf, maxLen, len);
         break;
@@ -1103,11 +1158,13 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         break;
 
     case UDS_DID_LOG_VERBOSITY:
+        (void)flash_log_init();
         buf[0] = flash_log_get_rtt_level();
         *len = 1U;
         break;
 
     case UDS_DID_LOG_CAN_VERBOSE:
+        (void)flash_log_init();
         buf[0] = flash_log_get_can_verbose();
         *len = 1U;
         break;

@@ -18,6 +18,7 @@ set(APP_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
 target_sources(app PRIVATE
     src/main.c
     ${APP_SRC}/runtime_settings.c
+    ${APP_SRC}/external_flash.c
     ${APP_SRC}/divecan/uds/uds_settings.c
 )
 target_include_directories(app PRIVATE

@@ -156,9 +156,9 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF200–0xF22F  | PPO2 control state                            |
 | 0xF230–0xF236  | Power and external battery monitoring         |
 | 0xF240–0xF242  | Control writes (setpoint, calibration, HIL solenoid override) |
-| 0xF250–0xF254  | Crash info (next-boot diagnostic)             |
+| 0xF250–0xF25A  | Crash and reboot history diagnostics          |
 | 0xF260–0xF261  | Error histogram                               |
-| 0xF270–0xF279  | MCUBoot / OTA / factory and NVS management    |
+| 0xF270–0xF27A  | MCUBoot / OTA / factory, NVS, and HIL fault injection |
 | 0xF280–0xF284  | Flash log management (see [Flash Log DIDs](#flash-log-dids-0xf280-0xf284)) |
 | 0xF400–0xF42F  | Per-cell data (3 cells × 16 sub-IDs)          |
 | 0x9100–0x935F  | Settings (count, info, value, label, save)    |
@@ -195,6 +195,12 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF252 | 4     | uint32   | R         | Crash program counter                                    |
 | 0xF253 | 4     | uint32   | R         | Crash link register                                      |
 | 0xF254 | 4     | uint32   | R         | Crash CFSR (Cortex-M Fault Status Register)              |
+| 0xF255 | var   | struct   | R         | Persisted crash ring, newest-first: version/count + up to five 40 B records |
+| 0xF256 | var   | struct   | R         | Persisted reboot ring, newest-first: version/count + up to five 8 B records |
+| 0xF257 | 4     | uint32   | R         | Crash stack pointer                                      |
+| 0xF258 | 4     | uint32   | R         | Crash xPSR                                               |
+| 0xF259 | 4     | uint32   | R         | Crash EXC_RETURN, or 0 if unavailable                   |
+| 0xF25A | 4     | uint32   | R         | Crash stack source: 0 unknown, 1 PSP, 2 MSP             |
 | 0xF260 | var   | uint16[] | R         | Error histogram (one u16 saturated counter per `OP_ERR_*`)|
 | 0xF261 | any   | —        | W         | Clear error histogram (any byte payload triggers)        |
 | 0xF270 | 16    | struct   | R         | MCUBoot status (see [MCUBoot Status DID](#mcuboot-status-did-0xf270)) |
@@ -207,6 +213,7 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF277 | 1     | uint8=1  | W         | Force re-capture of current slot0 into factory backup    |
 | 0xF278 | 1     | uint8=1  | W         | Chip-erase the whole external NOR (slot1/factory/log/NVS) + reboot — gated to programming + !in_dive; multi-minute |
 | 0xF279 | 1     | uint8=1  | W         | Erase ONLY the NVS/settings (storage) partition + reboot — keeps log + OTA slot1/factory; cal lives in NVS so it is cleared too; gated to programming + !in_dive |
+| 0xF27A | 2     | u8+u8    | W         | Fault injection `[kind, 0xC5]` for HIL crash-log validation — gated to programming + !in_dive; sends ACK then faults/reboots |
 | 0xF280 | 48    | struct   | R         | Flash log stats (per-FCB breakdown — see [Flash Log DIDs](#flash-log-dids-0xf280-0xf284)) |
 | 0xF281 | 20    | struct   | R         | Selector result from the most recent 0x31 0xF10x routine |
 | 0xF282 | 2     | u8+u8    | W         | Erase flash log (stream mask + magic 0xA5) — gated to programming + !in_dive |
@@ -309,6 +316,35 @@ new factory baseline, overwriting any prior backup.
    preemptible work queue, so the UDS dispatcher returns immediately
    and the watchdog feeder keeps ticking through the multi-second SPI
    NOR erase.
+
+### Fault Injection (0xF27A)
+
+Payload `[kind, 0xC5]` deliberately faults after sending the positive
+WDBI response. This DID exists only for programming-session HIL
+validation of the crash logger and persistent boot-history rings.
+
+Kinds:
+
+| Kind | Path | Expected diagnostic coverage |
+|------|------|------------------------------|
+| 0x01 | `FATAL_OP_ERROR(FATAL_TEST_INJECTION)` | deterministic fatal-op reason; PC/LR/CFSR/SP metadata intentionally zero |
+| 0x02 | ARM undefined instruction from the UDS thread | thread-mode CPU fault; PSP stack-source capture |
+| 0x03 | ARM undefined instruction from a one-shot timer callback | handler-mode CPU fault; MSP stack-source capture |
+
+Preconditions:
+
+1. Session = Programming.
+2. Ambient pressure is not in-dive.
+3. Payload length is exactly two bytes.
+4. Kind byte is supported and magic byte is `0xC5`.
+
+After the reboot, DIDs `0xF250`-`0xF25A` expose the current recovered
+crash snapshot, and `0xF255`/`0xF256` expose the persisted crash/reboot
+history records. Crash-history record layout is:
+
+`[reboot_sequence, reason, pc, lr, cfsr, sp, xpsr, exc_return, stack_source, thread]`
+
+All fields are little-endian `uint32`.
 
 ### Flash Log DIDs (0xF280–0xF284)
 
@@ -772,7 +808,7 @@ Response: 00 62 F2 70
 - `BENCHTEST.md` Section 5 — hardware-in-the-loop checklist for every
   OTA / status DID.
 - `tests/uds_state_did_ota/` — 31-case native ztest coverage of the
-  full 0xF270–0xF279 dispatch.
+  full 0xF270–0xF27A dispatch.
 - `tests/integration/harness/test_uds_did_ota.py` — 14-case pytest
   coverage against the native_sim integration firmware.
 - `tests/uds_ota/` — 0x34/0x36/0x37/0x31 pipeline coverage.

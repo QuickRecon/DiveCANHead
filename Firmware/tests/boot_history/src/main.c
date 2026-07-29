@@ -14,7 +14,8 @@
 #include "errors.h"
 
 #define TEST_HISTORY_MAGIC 0x42484953U
-#define TEST_HISTORY_VERSION 1U
+#define TEST_HISTORY_VERSION 2U
+#define TEST_REBOOT_SAVE_ERR (-ENOSPC)
 
 typedef struct {
     uint32_t magic;
@@ -50,6 +51,10 @@ static CrashInfo_t recovered_crash = {
     .pc = 0x08001234U,
     .lr = 0x08005678U,
     .cfsr = 0x00010000U,
+    .sp = 0x20003000U,
+    .xpsr = 0x01000000U,
+    .exc_return = 0xFFFFFFFDU,
+    .stack_source = CRASH_STACK_SOURCE_PSP,
     .thread = 0x20001000U,
 };
 
@@ -91,7 +96,7 @@ int __wrap_settings_save_one(const char *name, const void *value,
         ++observed.reboot_save_calls;
         /* Prove the two rings are independent: a reboot-ring write failure
          * does not prevent the crash ring from being saved and acknowledged. */
-        result = -EIO;
+        result = TEST_REBOOT_SAVE_ERR;
     }
     return result;
 }
@@ -130,7 +135,7 @@ ZTEST(boot_history, test_rolls_both_rings_and_persists_crash_independently)
         seed_reboots.records[i].reset_cause = RESET_SOFTWARE;
     }
 
-    zassert_equal(boot_history_init(), -EIO,
+    zassert_equal(boot_history_init(), TEST_REBOOT_SAVE_ERR,
                   "reboot-ring failure must be reported");
     zassert_equal(boot_history_current_reset_cause(), RESET_WATCHDOG);
     zassert_equal(observed.clear_reset_calls, 1U);
@@ -145,6 +150,10 @@ ZTEST(boot_history, test_rolls_both_rings_and_persists_crash_independently)
     zassert_equal(crash_count, BOOT_HISTORY_DEPTH);
     zassert_equal(crashes[0].reboot_sequence, 6U);
     zassert_equal(crashes[0].reason, recovered_crash.reason);
+    zassert_equal(crashes[0].sp, recovered_crash.sp);
+    zassert_equal(crashes[0].xpsr, recovered_crash.xpsr);
+    zassert_equal(crashes[0].exc_return, recovered_crash.exc_return);
+    zassert_equal(crashes[0].stack_source, recovered_crash.stack_source);
     zassert_equal(crashes[0].thread, recovered_crash.thread);
     zassert_equal(crashes[BOOT_HISTORY_DEPTH - 1U].reboot_sequence, 2U,
                   "oldest sequence must roll out");

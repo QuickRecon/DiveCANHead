@@ -21,6 +21,7 @@
 #include "flash_log_internal.h"
 #include "watchdog_feeder.h"
 #include "maintenance_arena.h"
+#include "external_flash.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
@@ -274,7 +275,11 @@ static Status_t fl_build_index(FlashLogDest_t dest)
         fl_index_build_ctx_t ctx = { .index = index, .fcb_p = fcb_p, .walked = 0U };
 
         watchdog_kick();   /* feed once before the walk begins */
-        rc = fcb_walk(fcb_p, NULL, fl_index_walk_cb, &ctx);
+        rc = external_flash_acquire(K_FOREVER);
+        if (0 == rc) {
+            rc = fcb_walk(fcb_p, NULL, fl_index_walk_cb, &ctx);
+            external_flash_release();
+        }
         if (0 == rc) {
             fl_state()->built_epoch[dest] = epoch;
             (void)atomic_set(&fl_state()->valid[dest], 1);
@@ -373,7 +378,10 @@ static size_t fl_scan_for_marker(struct fcb *fcb_p, uint8_t marker_type,
         .walked = 0U,
     };
     watchdog_kick();
-    (void)fcb_walk(fcb_p, NULL, fl_marker_scan_cb, &ctx);
+    if (0 == external_flash_acquire(K_FOREVER)) {
+        (void)fcb_walk(fcb_p, NULL, fl_marker_scan_cb, &ctx);
+        external_flash_release();
+    }
     return ctx.found_sector;
 }
 
@@ -452,8 +460,11 @@ Status_t flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out)
             /* begin = NULL ⇒ "start at the oldest entry" for fcb_getnext */
             uint32_t count = 0U;
             watchdog_kick();
-            Status_t walk_rc = fcb_walk(fcb_p, NULL, fl_count_entry_cb,
-                            &count);
+            Status_t walk_rc = external_flash_acquire(K_FOREVER);
+            if (0 == walk_rc) {
+                walk_rc = fcb_walk(fcb_p, NULL, fl_count_entry_cb, &count);
+                external_flash_release();
+            }
             if (walk_rc < 0) {
                 rc = walk_rc;
             } else {
@@ -777,75 +788,82 @@ Status_t flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_siz
         if (fcb_p == NULL) {
             result = -EINVAL;
         } else {
-            bool stopped = false;
+            Status_t lock_rc = external_flash_acquire(K_FOREVER);
 
-            /* Advance to the next entry only once the current one is fully
-             * emitted. A single FCB entry may span several next() calls
-             * (see have_entry). */
-            if (!r->have_entry) {
-                Status_t rc = fcb_getnext(fcb_p, &r->cursor);
+            if (0 != lock_rc) {
+                result = lock_rc;
+            } else {
+                bool stopped = false;
 
-                if (0 != rc) {
-                    r->finished = true;
-                    stopped = true;
-                } else {
-                    r->started = true;
+                /* Advance to the next entry only once the current one is fully
+                 * emitted. A single FCB entry may span several next() calls
+                 * (see have_entry). */
+                if (!r->have_entry) {
+                    Status_t rc = fcb_getnext(fcb_p, &r->cursor);
 
-                    /* End test: if range.end is set and we walked past it,
-                     * stop. */
-                    if ((r->range.end.fe_sector != NULL) &&
-                        (r->cursor.fe_sector == r->range.end.fe_sector) &&
-                        (r->cursor.fe_elem_off >= r->range.end.fe_elem_off)) {
+                    if (0 != rc) {
                         r->finished = true;
                         stopped = true;
                     } else {
-                        r->have_entry = true;
-                        r->emit_off = 0U;
+                        r->started = true;
+
+                        /* End test: if range.end is set and we walked past it,
+                         * stop. */
+                        if ((r->range.end.fe_sector != NULL) &&
+                            (r->cursor.fe_sector == r->range.end.fe_sector) &&
+                            (r->cursor.fe_elem_off >= r->range.end.fe_elem_off)) {
+                            r->finished = true;
+                            stopped = true;
+                        } else {
+                            r->have_entry = true;
+                            r->emit_off = 0U;
+                        }
                     }
                 }
-            }
 
-            if (stopped) {
-                result = 0;
-            } else {
-                /* The clean wire entry is exactly the FCB entry's data: the
-                 * writer stored [fl_entry_hdr_t | payload] as one
-                 * fcb_append of fe_data_len bytes, which is precisely the
-                 * TLV the client's parser expects — so stream those bytes
-                 * verbatim (no separate header read; the old +sizeof(hdr)
-                 * double-counted it). Emit at most buf_size of the
-                 * remaining entry; the rest follows on the next call, so
-                 * an entry larger than one download chunk is split across
-                 * chunks and reassembled by simple concatenation on the
-                 * client. */
-                size_t total = (size_t)r->cursor.fe_data_len;
-                size_t remaining = total - r->emit_off;
-                size_t n = buf_size;
-                Status_t read_rc = 0;
-
-                if (remaining < buf_size) {
-                    n = remaining;
-                }
-
-                if (n > 0U) {
-                    read_rc = flash_area_read(fcb_p->fap,
-                                 fl_entry_data_off(&r->cursor) +
-                                     (off_t)r->emit_off,
-                                 buf, n);
-                }
-
-                if (0 != read_rc) {
-                    result = read_rc;
+                if (stopped) {
+                    result = 0;
                 } else {
-                    r->emit_off += (uint32_t)n;
-                    if (r->emit_off >= total) {
-                        /* Whole entry emitted — next call advances to the
-                         * following entry. */
-                        r->have_entry = false;
-                        r->emit_off = 0U;
+                    /* The clean wire entry is exactly the FCB entry's data: the
+                     * writer stored [fl_entry_hdr_t | payload] as one
+                     * fcb_append of fe_data_len bytes, which is precisely the
+                     * TLV the client's parser expects — so stream those bytes
+                     * verbatim (no separate header read; the old +sizeof(hdr)
+                     * double-counted it). Emit at most buf_size of the
+                     * remaining entry; the rest follows on the next call, so
+                     * an entry larger than one download chunk is split across
+                     * chunks and reassembled by simple concatenation on the
+                     * client. */
+                    size_t total = (size_t)r->cursor.fe_data_len;
+                    size_t remaining = total - r->emit_off;
+                    size_t n = buf_size;
+                    Status_t read_rc = 0;
+
+                    if (remaining < buf_size) {
+                        n = remaining;
                     }
-                    result = (Status_t)n;
+
+                    if (n > 0U) {
+                        read_rc = flash_area_read(fcb_p->fap,
+                                     fl_entry_data_off(&r->cursor) +
+                                         (off_t)r->emit_off,
+                                     buf, n);
+                    }
+
+                    if (0 != read_rc) {
+                        result = read_rc;
+                    } else {
+                        r->emit_off += (uint32_t)n;
+                        if (r->emit_off >= total) {
+                            /* Whole entry emitted — next call advances to the
+                             * following entry. */
+                            r->have_entry = false;
+                            r->emit_off = 0U;
+                        }
+                        result = (Status_t)n;
+                    }
                 }
+                external_flash_release();
             }
         }
     }

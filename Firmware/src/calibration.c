@@ -25,6 +25,7 @@
 #include "oxygen_cell_math.h"
 #include "errors.h"
 #include "common.h"
+#include "external_flash.h"
 
 #include <math.h>
 #include <zephyr/sys/printk.h>
@@ -284,7 +285,7 @@ static Status_t cal_save_coefficient(uint8_t cell_num, CalCoeff_t coeff)
 
     (void)snprintk(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
 
-    result = settings_save_one(key, &coeff, sizeof(coeff));
+    result = external_flash_settings_save_one(key, &coeff, sizeof(coeff));
 
     if (0 == result) {
         /* Force the cache to reload from NVS so the validation readback in
@@ -292,7 +293,7 @@ static Status_t cal_save_coefficient(uint8_t cell_num, CalCoeff_t coeff)
          * flash, not what we just tried to write.  This catches a class of
          * failures where NVS accepts the write but the backing flash is
          * full/corrupt. */
-        result = settings_load_subtree("cal");
+        result = external_flash_settings_load_subtree("cal");
     }
 
     return result;

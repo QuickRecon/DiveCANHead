@@ -13,11 +13,12 @@
 #include <string.h>
 
 #include "errors.h"
+#include "external_flash.h"
 
 LOG_MODULE_REGISTER(boot_history, LOG_LEVEL_INF);
 
 #define BOOT_HISTORY_MAGIC 0x42484953U /* "BHIS" */
-#define BOOT_HISTORY_STORAGE_VERSION 1U
+#define BOOT_HISTORY_STORAGE_VERSION 2U
 
 typedef struct {
     uint32_t magic;
@@ -71,7 +72,8 @@ static void reset_reboot_store(RebootHistoryStore_t *store)
 
 static void load_crash_store(CrashHistoryStore_t *store)
 {
-    ssize_t got = settings_load_one("bootdiag/crashes", store, sizeof(*store));
+    ssize_t got = external_flash_settings_load_one("bootdiag/crashes", store,
+                                                   sizeof(*store));
 
     if (((ssize_t)sizeof(*store) != got) || !crash_store_valid(store)) {
         reset_crash_store(store);
@@ -80,7 +82,8 @@ static void load_crash_store(CrashHistoryStore_t *store)
 
 static void load_reboot_store(RebootHistoryStore_t *store)
 {
-    ssize_t got = settings_load_one("bootdiag/reboots", store, sizeof(*store));
+    ssize_t got = external_flash_settings_load_one("bootdiag/reboots", store,
+                                                   sizeof(*store));
 
     if (((ssize_t)sizeof(*store) != got) || !reboot_store_valid(store)) {
         reset_reboot_store(store);
@@ -134,7 +137,8 @@ static Status_t record_reboot(RebootHistoryStore_t *store, uint32_t sequence)
     };
 
     append_reboot(store, &record);
-    return settings_save_one("bootdiag/reboots", store, sizeof(*store));
+    return external_flash_settings_save_one("bootdiag/reboots", store,
+                                            sizeof(*store));
 }
 
 static Status_t record_crash(CrashHistoryStore_t *store, uint32_t sequence)
@@ -149,11 +153,16 @@ static Status_t record_crash(CrashHistoryStore_t *store, uint32_t sequence)
             .pc = crash.pc,
             .lr = crash.lr,
             .cfsr = crash.cfsr,
+            .sp = crash.sp,
+            .xpsr = crash.xpsr,
+            .exc_return = crash.exc_return,
+            .stack_source = crash.stack_source,
             .thread = crash.thread,
         };
 
         append_crash(store, &record);
-        result = settings_save_one("bootdiag/crashes", store, sizeof(*store));
+        result = external_flash_settings_save_one("bootdiag/crashes", store,
+                                                  sizeof(*store));
         if (0 == result) {
             errors_acknowledge_last_crash();
         }

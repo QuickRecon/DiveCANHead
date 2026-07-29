@@ -45,6 +45,7 @@
 #include "common.h"
 #include "heartbeat.h"
 #include "maintenance_arena.h"
+#include "external_flash.h"
 
 LOG_MODULE_REGISTER(uds_ota, LOG_LEVEL_INF);
 
@@ -277,7 +278,7 @@ static bool ota_erase_and_init_download(OtaSmCtx_t *sm,
 #ifdef CONFIG_FLASH_LOG
     flash_log_pause();
 #endif
-    int rc = flash_area_erase(fa, 0U, fa->fa_size);
+    int rc = external_flash_area_erase(fa, 0U, fa->fa_size);
 #ifdef CONFIG_FLASH_LOG
     flash_log_resume();
 #endif
@@ -450,8 +451,12 @@ static void ota_handle_transfer_data(OtaSmCtx_t *sm)
         } else {
             size_t dataLen = request_length - OTA_TRANSFER_OVERHEAD;
             const uint8_t *data = &request_data[UDS_SID_IDX + 2U];
-            int rc = flash_img_buffered_write(sm->flash_ctx, data,
-                              dataLen, false);
+            int rc = external_flash_acquire(K_FOREVER);
+            if (0 == rc) {
+                rc = flash_img_buffered_write(sm->flash_ctx, data,
+                                  dataLen, false);
+                external_flash_release();
+            }
             if (0 != rc) {
                 OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
                 UDS_SendNegativeResponse(ctx, UDS_SID_TRANSFER_DATA,
@@ -492,16 +497,24 @@ static void ota_handle_transfer_exit(OtaSmCtx_t *sm)
         /* Flush any unwritten bytes from flash_img_buffered_write's
          * internal block buffer. Pass an empty data buffer so only
          * the flush flag has effect. */
-        int rc = flash_img_buffered_write(sm->flash_ctx, NULL, 0, true);
+        int rc = external_flash_acquire(K_FOREVER);
+        if (0 == rc) {
+            rc = flash_img_buffered_write(sm->flash_ctx, NULL, 0, true);
+            external_flash_release();
+        }
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
             UDS_SendNegativeResponse(ctx, UDS_SID_REQUEST_TRANSFER_EXIT,
                          UDS_NRC_GENERAL_PROG_FAIL);
         } else {
             struct mcuboot_img_header hdr = {0};
-            rc = boot_read_bank_header(
-                PARTITION_ID(slot1_partition),
-                &hdr, sizeof(hdr));
+            rc = external_flash_acquire(K_FOREVER);
+            if (0 == rc) {
+                rc = boot_read_bank_header(
+                    PARTITION_ID(slot1_partition),
+                    &hdr, sizeof(hdr));
+                external_flash_release();
+            }
             if (0 != rc) {
                 OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
                 UDS_SendNegativeResponse(
@@ -639,7 +652,11 @@ static void ota_handle_routine_control(OtaSmCtx_t *sm)
                  * for clarity. */
                 flash_log_pause();
 #endif
-                rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+                rc = external_flash_acquire(K_FOREVER);
+                if (0 == rc) {
+                    rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+                    external_flash_release();
+                }
 #ifdef CONFIG_FLASH_LOG
                 flash_log_resume();
 #endif
@@ -759,7 +776,8 @@ static TlvWalkResult_e readOneTlvEntry(const struct flash_area *fa,
 {
     TlvWalkResult_e result = TLV_WALK_ERROR;
     uint8_t tlvHdr[TLV_HEADER_LEN] = {0};
-    int rc = flash_area_read(fa, (off_t)cursor, tlvHdr, sizeof(tlvHdr));
+    int rc = external_flash_area_read(fa, (off_t)cursor, tlvHdr,
+                                      sizeof(tlvHdr));
 
     if (0 != rc) {
         OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
@@ -773,8 +791,9 @@ static TlvWalkResult_e readOneTlvEntry(const struct flash_area *fa,
             (uint16_t)((uint16_t)tlvHdr[3] << BYTE_SHIFT_8);
 
         if ((TLV_TYPE_SHA256 == tType) && (IMG_SHA256_LEN == tLen)) {
-            rc = flash_area_read(fa, (off_t)cursor + (off_t)TLV_HEADER_LEN, outHash,
-                         IMG_SHA256_LEN);
+            rc = external_flash_area_read(fa,
+                          (off_t)cursor + (off_t)TLV_HEADER_LEN,
+                          outHash, IMG_SHA256_LEN);
             if (0 == rc) {
                 result = TLV_WALK_FOUND;
             } else {
@@ -858,7 +877,7 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
     /* Read the fixed-size image_header. ih_hdr_size, ih_img_size and
      * ih_protect_tlv_size tell us where the TLV section starts. */
     uint8_t hdrRaw[IMG_HEADER_RAW_BYTES] = {0};
-    int rc = flash_area_read(fa, 0, hdrRaw, sizeof(hdrRaw));
+    int rc = external_flash_area_read(fa, 0, hdrRaw, sizeof(hdrRaw));
     if (0 != rc) {
         OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
     } else {
@@ -881,7 +900,8 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
 
         /* Read the image_tlv_info magic + total size. */
         uint8_t tlvInfo[TLV_INFO_HEADER_LEN] = {0};
-        rc = flash_area_read(fa, (off_t)tlvOff, tlvInfo, sizeof(tlvInfo));
+        rc = external_flash_area_read(fa, (off_t)tlvOff, tlvInfo,
+                                      sizeof(tlvInfo));
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
         } else {

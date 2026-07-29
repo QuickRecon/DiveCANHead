@@ -28,6 +28,10 @@ typedef struct {
     uint32_t pc;
     uint32_t lr;
     uint32_t cfsr;
+    uint32_t sp;
+    uint32_t xpsr;
+    uint32_t exc_return;
+    uint32_t stack_source;
     uint32_t thread;
 } BootCrashRecord_t;
 

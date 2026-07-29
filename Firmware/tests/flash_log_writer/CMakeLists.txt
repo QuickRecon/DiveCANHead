@@ -26,6 +26,7 @@ set(APP_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
 target_sources(app PRIVATE
     src/main.c
     ${APP_SRC}/flash_log/flash_log.c
+    ${APP_SRC}/external_flash.c
     ${APP_SRC}/heartbeat.c
 )
 target_include_directories(app PRIVATE

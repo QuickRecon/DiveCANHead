@@ -891,7 +891,8 @@ ZTEST(factory_image, test_restore_refuses_reboot_when_swap_never_registers)
 
     zassert_equal(rc, -EIO);
     zassert_equal(hooks.boot_upgrade_calls, 5);
-    zassert_equal(hooks.swap_type_calls, 5);
+    zassert_equal(hooks.swap_type_calls, 10,
+                  "two confirmation reads per staging attempt");
     zassert_equal(hooks.page_info_calls, 4);
     zassert_equal(hooks.reboot_calls, 0);
 }
@@ -1097,7 +1098,8 @@ ZTEST(factory_image, test_restore_swap_registers_on_second_attempt)
 
     zassert_equal(hooks.reboot_calls, 1, "restore reboots once staged");
     zassert_equal(hooks.boot_upgrade_calls, 2, "one retry of the staging");
-    zassert_equal(hooks.swap_type_calls, 3, "1 failed read + 2 verify reads");
+    zassert_equal(hooks.swap_type_calls, 4,
+                  "2 first-attempt reads + 2 verify reads");
     zassert_equal(hooks.page_info_calls, 1, "trailer erased once between tries");
 }
 

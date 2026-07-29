@@ -26,6 +26,7 @@ target_sources(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/oxygen_cell_channels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/oxygen_cell_math.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/runtime_settings.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/external_flash.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/heartbeat.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/errors.c
 )

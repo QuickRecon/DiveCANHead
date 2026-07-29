@@ -30,6 +30,7 @@
 #include "error_histogram.h"
 #include "factory_image.h"
 #include "flash_mass_erase.h"
+#include "external_flash.h"
 #include "isotp_tx_queue.h"
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
@@ -62,6 +63,16 @@ static const uint32_t UDS_ZBUS_READ_TIMEOUT_MS = 10U;
  * Treating these as "command" DIDs that demand a deliberate non-zero byte
  * keeps an accidental zero-fill write from triggering a reboot. */
 static const uint8_t OTA_WRITE_MAGIC = 0x01U;
+
+/* Fault injection (0xF27A): programming-session-only HIL hook used to prove
+ * crash records survive a reboot and are durably copied into the boot-history
+ * ring. The magic byte keeps accidental writes inert. Kind 1 routes through the
+ * software fatal path; kinds 2 and 3 trigger thread-mode and timer-ISR CPU
+ * exceptions so the saved ESF stack metadata can be validated on hardware. */
+static const uint8_t FAULT_INJECTION_MAGIC = 0xC5U;
+static const uint8_t FAULT_INJECTION_KIND_FATAL_OP = 0x01U;
+static const uint8_t FAULT_INJECTION_KIND_HARDFAULT = 0x02U;
+static const uint8_t FAULT_INJECTION_KIND_ISR_HARDFAULT = 0x03U;
 
 #ifdef CONFIG_HAS_O2_SOLENOID
 /* Solenoid override (0xF242): HIL-only raw-channel fire. Fixed on-time with NO
@@ -97,6 +108,9 @@ static const uint32_t FLASH_ERASE_TX_FLUSH_POLL_MS = 10U;
 static const uint16_t UDS_SESSION_CTRL_REQ_LEN = 2U;
 static const uint16_t UDS_SESSION_CTRL_RESP_LEN = 2U;
 
+static void faultInjectionTimerHandler(struct k_timer *timer);
+K_TIMER_DEFINE(fault_injection_timer, faultInjectionTimerHandler, NULL);
+
 /* Forward declarations */
 static void HandleReadDataByIdentifier(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
 static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
@@ -118,6 +132,24 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, const 
 #ifdef CONFIG_HAS_DIVEO2_CELL
 static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did, const uint8_t *request_data, uint16_t request_length);
 #endif
+static bool writeFaultInjectionDID(UDSContext_t *ctx, const uint8_t *request_data,
+                                   uint16_t request_length);
+
+static void triggerCpuFault(void)
+{
+#if defined(CONFIG_ARM)
+    __asm__ volatile("udf #0");
+#else
+    k_oops();
+#endif
+    CODE_UNREACHABLE;
+}
+
+static void faultInjectionTimerHandler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+    triggerCpuFault();
+}
 
 /**
  * @brief Initialize UDS context
@@ -1220,6 +1252,23 @@ static uint8_t checkOtaWritePrecondition(const UDSContext_t *ctx,
     return nrc;
 }
 
+static void flushWriteDidResponseTxQueue(void)
+{
+    uint32_t flushPolls = 0U;
+    bool flushDone = false;
+
+    while ((flushPolls < FLASH_ERASE_TX_FLUSH_POLLS) && (!flushDone)) {
+        ISOTP_TxQueue_Poll(k_uptime_get_32());
+        if ((!ISOTP_TxQueue_IsBusy()) &&
+            (0U == ISOTP_TxQueue_GetPendingCount())) {
+            flushDone = true;
+        } else {
+            (void)k_msleep(FLASH_ERASE_TX_FLUSH_POLL_MS);
+        }
+        ++flushPolls;
+    }
+}
+
 /**
  * @brief Build a standard WDBI positive response in ctx->response_buffer.
  */
@@ -1254,8 +1303,12 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
     } else {
         struct mcuboot_img_header hdr = {0};
-        int rc = boot_read_bank_header(PARTITION_ID(slot1_partition),
+        int rc = external_flash_acquire(K_FOREVER);
+        if (0 == rc) {
+            rc = boot_read_bank_header(PARTITION_ID(slot1_partition),
                                        &hdr, sizeof(hdr));
+            external_flash_release();
+        }
         if (0 != rc) {
             LOG_WRN("Force-revert refused: slot1 header read failed %d", rc);
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
@@ -1265,7 +1318,11 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
 #ifdef CONFIG_FLASH_LOG
             flash_log_pause();
 #endif
-            rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+            rc = external_flash_acquire(K_FOREVER);
+            if (0 == rc) {
+                rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
+                external_flash_release();
+            }
 #ifdef CONFIG_FLASH_LOG
             flash_log_resume();
 #endif
@@ -1314,18 +1371,7 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
          * dark; the tool should expect the unit to drop off then reboot. */
         buildWriteDidPositiveResponse(ctx, request_data);
         UDS_SendResponse(ctx);
-        uint32_t flushPolls = 0U;
-        bool flushDone = false;
-        while ((flushPolls < FLASH_ERASE_TX_FLUSH_POLLS) && (!flushDone)) {
-            ISOTP_TxQueue_Poll(k_uptime_get_32());
-            if ((!ISOTP_TxQueue_IsBusy()) &&
-                (0U == ISOTP_TxQueue_GetPendingCount())) {
-                flushDone = true;
-            } else {
-                (void)k_msleep(FLASH_ERASE_TX_FLUSH_POLL_MS);
-            }
-            ++flushPolls;
-        }
+        flushWriteDidResponseTxQueue();
 #ifdef CONFIG_FLASH_LOG
         flash_log_pause();
 #endif
@@ -1379,18 +1425,7 @@ static bool writeNvsEraseDID(UDSContext_t *ctx,
          * queued ACK). */
         buildWriteDidPositiveResponse(ctx, request_data);
         UDS_SendResponse(ctx);
-        uint32_t flushPolls = 0U;
-        bool flushDone = false;
-        while ((flushPolls < FLASH_ERASE_TX_FLUSH_POLLS) && (!flushDone)) {
-            ISOTP_TxQueue_Poll(k_uptime_get_32());
-            if ((!ISOTP_TxQueue_IsBusy()) &&
-                (0U == ISOTP_TxQueue_GetPendingCount())) {
-                flushDone = true;
-            } else {
-                (void)k_msleep(FLASH_ERASE_TX_FLUSH_POLL_MS);
-            }
-            ++flushPolls;
-        }
+        flushWriteDidResponseTxQueue();
 #ifdef CONFIG_FLASH_LOG
         /* The settings partition shares the SPI NOR with the log; pause the log
          * writer so its sector-erase waits don't fight this erase for the bus. */
@@ -1399,7 +1434,7 @@ static bool writeNvsEraseDID(UDSContext_t *ctx,
         const struct flash_area *fa = NULL;
         int rc = flash_area_open(PARTITION_ID(storage_partition), &fa);
         if (0 == rc) {
-            rc = flash_area_erase(fa, 0U, fa->fa_size);
+            rc = external_flash_area_erase(fa, 0U, fa->fa_size);
             (void)flash_area_close(fa);
         }
         if (0 != rc) {
@@ -1479,6 +1514,55 @@ static bool writeFactoryCaptureDID(UDSContext_t *ctx,
         factory_image_force_capture_async();
         buildWriteDidPositiveResponse(ctx, request_data);
         UDS_SendResponse(ctx);
+    }
+    return true;
+}
+
+/**
+ * @brief Handle a WDBI write to UDS_DID_FAULT_INJECTION (0xF27A).
+ *
+ * Two-byte payload: kind + magic. This is intentionally a maintenance-only
+ * HIL hook, not a runtime feature: refused outside the programming session and
+ * refused once ambient pressure indicates a dive.
+ */
+static bool writeFaultInjectionDID(UDSContext_t *ctx,
+                                   const uint8_t *request_data,
+                                   uint16_t request_length)
+{
+    uint8_t nrc = 0U;
+
+    if (request_length != (UDS_SINGLE_VALUE_LEN + 1U)) {
+        nrc = UDS_NRC_INCORRECT_MSG_LEN;
+    } else if (FAULT_INJECTION_MAGIC != request_data[UDS_DATA_IDX + 1U]) {
+        nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
+    } else if ((FAULT_INJECTION_KIND_FATAL_OP != request_data[UDS_DATA_IDX]) &&
+               (FAULT_INJECTION_KIND_HARDFAULT != request_data[UDS_DATA_IDX]) &&
+               (FAULT_INJECTION_KIND_ISR_HARDFAULT != request_data[UDS_DATA_IDX])) {
+        nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
+    } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
+        nrc = UDS_NRC_SERVICE_NOT_IN_SESSION;
+    } else if (UDS_IsInDive()) {
+        nrc = UDS_NRC_CONDITIONS_NOT_CORRECT;
+    } else {
+        /* All preconditions OK */
+    }
+
+    if (0U != nrc) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
+    } else {
+        uint8_t kind = request_data[UDS_DATA_IDX];
+        LOG_WRN("Fault injection: triggering kind %u", kind);
+        buildWriteDidPositiveResponse(ctx, request_data);
+        UDS_SendResponse(ctx);
+        flushWriteDidResponseTxQueue();
+        if (FAULT_INJECTION_KIND_FATAL_OP == kind) {
+            FATAL_OP_ERROR(FATAL_TEST_INJECTION);
+        } else if (FAULT_INJECTION_KIND_HARDFAULT == kind) {
+            triggerCpuFault();
+        } else {
+            k_timer_start(&fault_injection_timer, K_MSEC(1), K_NO_WAIT);
+        }
     }
     return true;
 }
@@ -1621,6 +1705,7 @@ static const struct {
     { UDS_DID_OTA_FACTORY_CAPTURE,   writeFactoryCaptureDID },
     { UDS_DID_FACTORY_FLASH_ERASE,   writeFactoryFlashEraseDID },
     { UDS_DID_NVS_ERASE,             writeNvsEraseDID },
+    { UDS_DID_FAULT_INJECTION,       writeFaultInjectionDID },
 #ifdef CONFIG_FLASH_LOG
     { UDS_DID_LOG_ERASE,             writeLogEraseDID },
     { UDS_DID_LOG_VERBOSITY,         writeLogVerbosityDID },

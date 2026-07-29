@@ -56,8 +56,12 @@
 #define UDS_DID_CRASH_PC            0xF252U  /**< uint32: program counter at fault */
 #define UDS_DID_CRASH_LR            0xF253U  /**< uint32: link register at fault */
 #define UDS_DID_CRASH_CFSR          0xF254U  /**< uint32: Cortex-M Configurable Fault Status Register */
-#define UDS_DID_CRASH_HISTORY       0xF255U  /**< 2 + N*24 B: version/count + up to 5 newest-first persisted crashes */
+#define UDS_DID_CRASH_HISTORY       0xF255U  /**< 2 + N*40 B: version/count + up to 5 newest-first persisted crashes */
 #define UDS_DID_REBOOT_HISTORY      0xF256U  /**< 2 + N*8 B: version/count + up to 5 newest-first persisted reset causes */
+#define UDS_DID_CRASH_SP            0xF257U  /**< uint32: stack pointer captured from exception metadata */
+#define UDS_DID_CRASH_XPSR          0xF258U  /**< uint32: xPSR from exception stack frame */
+#define UDS_DID_CRASH_EXC_RETURN    0xF259U  /**< uint32: ARM EXC_RETURN value, or 0 if unavailable */
+#define UDS_DID_CRASH_STACK_SOURCE  0xF25AU  /**< uint32: 0 unknown, 1 PSP, 2 MSP */
 
 /* Error-histogram DIDs (0xF26x) — populated from error_histogram_snapshot() */
 #define UDS_DID_ERROR_HISTOGRAM       0xF260U  /**< uint16[OP_ERR_MAX]: per-code occurrence counts (saturated) */
@@ -74,6 +78,7 @@
 #define UDS_DID_OTA_FACTORY_CAPTURE   0xF277U  /**< write-only, magic 0x01: force re-capture of slot0 into factory backup */
 #define UDS_DID_FACTORY_FLASH_ERASE   0xF278U  /**< write-only, magic 0x01: chip-erase the external NOR (slot1/factory/log/NVS) + reboot */
 #define UDS_DID_NVS_ERASE             0xF279U  /**< write-only, magic 0x01: erase ONLY the NVS/settings (storage) partition + reboot; keeps flash log + OTA slot1/factory (cal lives in NVS, so it is cleared too) */
+#define UDS_DID_FAULT_INJECTION       0xF27AU  /**< write-only [kind,magic 0xC5]: programming-mode HIL fault injection; gated to programming + !in_dive */
 
 /* Flash log management DIDs (0xF28x) — see docs/FLASH_LOG.md */
 #define UDS_DID_LOG_STATS             0xF280U  /**< 48 B: FlashLogStats_t per-FCB breakdown */

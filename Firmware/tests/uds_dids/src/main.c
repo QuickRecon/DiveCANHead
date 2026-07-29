@@ -39,6 +39,7 @@
 #include "ppo2_autotune.h"
 #include "flash_log.h"
 #include "solenoid_roles.h"
+#include "errors.h"
 
 /* ---- Wire constants mirrored from uds.c ----
  *
@@ -51,6 +52,8 @@ static const uint8_t AUTOTUNE_CMD_START = 0x01U;
 static const uint8_t AUTOTUNE_CMD_ABORT = 0x02U;
 static const uint32_t SOL_OVERRIDE_ON_US = 1500000U;
 static const uint8_t OTA_WRITE_MAGIC = 0x01U;
+static const uint8_t FAULT_INJECTION_MAGIC = 0xC5U;
+static const uint8_t FAULT_INJECTION_KIND_FATAL_OP = 0x01U;
 
 /* Ambient pressure fixtures (mbar). */
 static const uint16_t SURFACE_PRESSURE_MBAR = 1013U;
@@ -1405,6 +1408,62 @@ ZTEST(uds_dids_core, test_nvs_erase_open_erase_failures_and_success)
     zassert_equal(stub.flash_open_calls, 3, "storage partition opened");
     zassert_equal(stub.flash_erase_calls, 2,
                   "erase attempted when open succeeds");
+}
+
+ZTEST(uds_dids_core, test_fault_injection_guards)
+{
+    uint8_t payload[3] = {
+        FAULT_INJECTION_KIND_FATAL_OP,
+        FAULT_INJECTION_MAGIC,
+        0x00U,
+    };
+
+    send_write_did(UDS_DID_FAULT_INJECTION, payload, 1U);
+    expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
+    send_write_did(UDS_DID_FAULT_INJECTION, payload, 3U);
+    expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
+
+    send_write_did(UDS_DID_FAULT_INJECTION, payload, 2U);
+    expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_SERVICE_NOT_IN_SESSION);
+
+    enter_programming();
+    payload[1] = 0x00U;
+    send_write_did(UDS_DID_FAULT_INJECTION, payload, 2U);
+    expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+
+    payload[0] = 0x7FU;
+    payload[1] = FAULT_INJECTION_MAGIC;
+    send_write_did(UDS_DID_FAULT_INJECTION, payload, 2U);
+    expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+
+    payload[0] = FAULT_INJECTION_KIND_FATAL_OP;
+    arm_dive_after_session_check();
+    send_write_did(UDS_DID_FAULT_INJECTION, payload, 2U);
+    expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+
+    zassert_equal(stub.sys_reboot_calls, 0, "guarded writes must not reboot");
+}
+
+ZTEST(uds_dids_core, test_fault_injection_positive_acks_and_reboots)
+{
+    uint8_t payload[2] = {
+        FAULT_INJECTION_KIND_FATAL_OP,
+        FAULT_INJECTION_MAGIC,
+    };
+
+    enter_programming();
+    stub.txq_pending_polls = 2U;
+    reboot_escape_armed = true;
+    if (0 == setjmp(reboot_escape)) {
+        send_write_did(UDS_DID_FAULT_INJECTION, payload, sizeof(payload));
+        zassert_unreachable("fault injection did not reboot");
+    }
+    reboot_escape_armed = false;
+
+    zassert_equal(stub.sys_reboot_calls, 1, "fatal path must reboot once");
+    zassert_true(stub.txq_poll_calls >= 3,
+                 "positive ACK must be flushed before the injected reboot");
+    expect_write_positive(UDS_DID_FAULT_INJECTION);
 }
 
 /* ---- Response-buffer boundary paths in the read handlers ---- */
