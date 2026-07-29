@@ -2,15 +2,65 @@
 
 AI assistant directives for the `Firmware/` subtree. This supplements the project-root CLAUDE.md.
 
-## Build Command
+## Build environment
 
-On the DiveCAN test-rig host, use the installed upstream Zephyr venv and SDK.
-The older `/home/aren/ncs/...` and `/opt/zephyr-sdk` paths do not exist there.
+The manifest is the source of truth, not a remembered host path:
+
+- `west.yml` pins the Zephyr revision and places West-managed projects under
+  the workspace-root `.west-projects/` directory.
+- `.west-projects/zephyr/SDK_VERSION` specifies the SDK expected by that
+  Zephyr revision (currently 1.0.1).
+- The caller selects Python/West and the SDK. Repository helpers inherit that
+  environment; they must not prepend an NCS toolchain or silently replace it.
+- `ZEPHYR_SDK_INSTALL_DIR` is the exact selected SDK directory, not a
+  machine-wide default that should be hard-coded in CMake or VSCode files.
+
+From `Firmware/`, verify the active workspace before building:
 
 ```bash
-export PATH=/home/aren/zephyr-venv/bin:$PATH
-export ZEPHYR_SDK_INSTALL_DIR=/home/aren/zephyr-sdk-1.0.1
+west topdir
+west config zephyr.base
+west --version
+cat ../.west-projects/zephyr/SDK_VERSION
 
+# Set this to the exact SDK directory installed on the current host.
+export ZEPHYR_SDK_INSTALL_DIR=/absolute/path/to/zephyr-sdk-1.0.1
+cat "$ZEPHYR_SDK_INSTALL_DIR/sdk_version"
+```
+
+Use the current host's supported Python environment: system West is valid on
+the development machine; the test rig and CI use their own virtual
+environments. Activate one before invoking repository helpers when needed.
+Do not add the legacy `/home/aren/ncs/toolchains/927563c840` bundle to `PATH`
+or `LD_LIBRARY_PATH`.
+
+The 2026-07-29 audit found that the development host's `/opt/zephyr-sdk` is
+SDK 1.0.0 while current CI uses SDK 1.0.1. Native host tests can still use the
+older SDK's host tools, but an ARM result from it is not CI-equivalent. Install
+or select SDK 1.0.1 before using a local ARM build for release comparison.
+
+If the West workspace is absent, run `west init -l Firmware` once from the
+repository root (the directory containing `Firmware/`). Then update it and
+install the version named by `SDK_VERSION`:
+
+```bash
+cd /path/to/DiveCANHeadRev2
+# First checkout only, when .west/ does not yet exist:
+west init -l Firmware
+west update --narrow
+west sdk install --install-base /absolute/sdk/base --no-hosttools \
+  -t arm-zephyr-eabi
+```
+
+`west sdk install` creates a versioned subdirectory under the install base;
+point `ZEPHYR_SDK_INSTALL_DIR` at that versioned directory afterward. CI is
+the reproducible reference: production images use the Zephyr SDK ARM GCC,
+while native coverage uses the separately pinned LLVM toolchain.
+
+## Production build command
+
+```bash
+ZEPHYR_TOOLCHAIN_VARIANT=zephyr \
 west build -d build -b divecan_jr/stm32l431xx . --sysbuild -p always -- \
   -DBOARD_ROOT=. \
   -DEXTRA_CONF_FILE=variants/<name>.conf \
@@ -34,17 +84,32 @@ binary. Build dirs live under `build-native/<name>/` (NOT scattered as
 `build_test_<name>/` at the Firmware/ root) — keep this convention so the
 working tree stays tidy.
 
-The `scripts/native_test.py` wrapper handles toolchain env, build-dir
-naming, and aggregation. Use it instead of raw `west build -d build_test_*`:
+The `scripts/native_test.py` wrapper handles the board qualifier, writable
+per-test Zephyr cache, build-dir naming, and aggregation. It intentionally
+inherits the caller's Python/West/SDK/compiler environment. Use it instead of
+raw `west build -d build_test_*`:
 
 ```bash
-python3 scripts/native_test.py list                     # show every discovered test
-python3 scripts/native_test.py build ppo2_control_math  # build one
+python3 scripts/native_test.py list  # show every discovered test
+ZEPHYR_TOOLCHAIN_VARIANT=host \
+  python3 scripts/native_test.py build ppo2_control_math  # build one
 python3 scripts/native_test.py run   ppo2_control_math  # run a built binary
-python3 scripts/native_test.py build-all                # build every test
-python3 scripts/native_test.py run-all                  # build + run every test
+ZEPHYR_TOOLCHAIN_VARIANT=host \
+  python3 scripts/native_test.py build-all              # build every test
+ZEPHYR_TOOLCHAIN_VARIANT=host \
+  python3 scripts/native_test.py run-all                # build + run every test
 python3 scripts/native_test.py clean                    # nuke build-native/
 ```
+
+Changing Python, West, CMake, Ninja, SDK, or host compiler can leave absolute
+paths in an existing CMake cache. Clean the affected module (or use a pristine
+build) once when changing environments; do not repair that by reintroducing a
+second toolchain into `PATH`.
+
+The wrapper passes a writable `USER_CACHE_DIR` under `build-native/` (or
+`build-coverage/`). `XDG_CACHE_HOME=/tmp/...` is only an agent-sandbox
+workaround for an ad-hoc raw build; it is not part of normal developer or rig
+setup.
 
 ### VSCode Test Explorer integration
 
@@ -161,11 +226,14 @@ python3 scripts/native_test.py build --coverage ppo2_control_math
 python3 scripts/native_test.py run   --coverage ppo2_control_math
 ```
 
-**Pin the toolchain for coverage runs**: prefix every coverage build/run with
-`ZEPHYR_TOOLCHAIN_VARIANT=host`. Zephyr's auto-detection can pick clang for
-native_sim, whose `.gcda` format neither system `gcov` nor `llvm-cov gcov`
-parses reliably on this host; pinning to host gcc keeps every
-`build-coverage/` dir on one instrumentation format so gcovr merges cleanly.
+**Keep one compiler and coverage reader per coverage tree.** Current CI pins
+LLVM 22 with `ZEPHYR_TOOLCHAIN_VARIANT=host/llvm`,
+`LLVM_TOOLCHAIN_PATH=/usr/lib/llvm-22`, and
+`GCOV_EXECUTABLE="/usr/lib/llvm-22/bin/llvm-cov gcov"`. A local GCC coverage
+run may instead use `ZEPHYR_TOOLCHAIN_VARIANT=host` with system `gcov`.
+Both are supported for local investigation, but LLVM CI is authoritative.
+Run `python3 scripts/coverage.py clean` before switching compiler or gcov
+format; never merge GCC `.gcda` files with LLVM coverage data.
 
 **native_sim time-freeze pitfall** (bit several test efforts): simulated time
 only advances across sleeps (`k_msleep`/`k_usleep`/`k_busy_wait`). Any loop

@@ -4,10 +4,6 @@
 
 set -euo pipefail
 
-NCS=/home/aren/ncs/toolchains/927563c840
-export PATH=$NCS/usr/local/bin:$PATH
-export LD_LIBRARY_PATH=$NCS/usr/local/lib:${LD_LIBRARY_PATH:-}
-
 cd "$(dirname "$0")/.."
 
 openocd \

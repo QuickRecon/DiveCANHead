@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -32,9 +33,35 @@ from pathlib import Path
 FIRMWARE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = FIRMWARE_DIR / "build" / "Firmware" / "zephyr" / ".config"
 DEFAULT_IMGTOOL = (
-    FIRMWARE_DIR.parent / "bootloader" / "mcuboot" / "scripts" / "imgtool.py"
+    FIRMWARE_DIR.parent / ".west-projects" / "bootloader" / "mcuboot"
+    / "scripts" / "imgtool.py"
 )
-DEFAULT_NCS_TOOLCHAIN = Path("/home/aren/ncs/toolchains/927563c840")
+
+
+def _imgtool_python() -> str:
+    """Use the interpreter behind the caller-selected West environment."""
+    override = os.environ.get("DIVECAN_IMGTOOL_PYTHON")
+    if override:
+        return override
+
+    west = shutil.which("west")
+    if west:
+        try:
+            first_line = Path(west).read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines()[0]
+            if first_line.startswith("#!"):
+                command = first_line[2:].strip().split()
+                if command and Path(command[0]).name == "env" and 1 < len(command):
+                    resolved = shutil.which(command[1])
+                    if resolved:
+                        return resolved
+                elif command and Path(command[0]).is_file():
+                    return command[0]
+        except (OSError, IndexError):
+            pass
+
+    return sys.executable
 
 
 def _validated_path(raw: str, *, must_exist: bool = False) -> Path:
@@ -99,12 +126,7 @@ def main() -> int:
     output = args.output or args.input_bin.with_suffix(".signed.bin")
 
     env = os.environ.copy()
-    if DEFAULT_NCS_TOOLCHAIN.is_dir():
-        lib = str(DEFAULT_NCS_TOOLCHAIN / "usr" / "local" / "lib")
-        env["LD_LIBRARY_PATH"] = lib + ":" + env.get("LD_LIBRARY_PATH", "")
-        python = str(DEFAULT_NCS_TOOLCHAIN / "usr" / "local" / "bin" / "python3.12")
-    else:
-        python = sys.executable
+    python = _imgtool_python()
 
     def run_sign(out_path: Path, confirm: bool) -> int:
         cmd = [

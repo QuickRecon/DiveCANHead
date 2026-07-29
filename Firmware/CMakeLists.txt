@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.20.0)
-set(ZEPHYR_SDK_INSTALL_DIR "/opt/zephyr-sdk" CACHE PATH "Zephyr SDK")
 
 set(DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 

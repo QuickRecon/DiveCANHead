@@ -3,10 +3,11 @@
 # then connect to the RTT console.
 #
 # Usage:
-#   ./flash.sh              # Build (if needed) and flash
-#   ./flash.sh --no-build   # Flash only, skip build
-#   ./flash.sh --rtt-only   # Skip build and flash, just connect RTT
-#   ./flash.sh --erase      # Mass-erase the chip before flashing.
+#   ./flash.sh                       # Build Poseidon_Aren and flash
+#   ./flash.sh --variant AP_Aren     # Build another real variant and flash
+#   ./flash.sh --no-build            # Flash only, skip build
+#   ./flash.sh --rtt-only            # Skip build and flash, just connect RTT
+#   ./flash.sh --erase               # Mass-erase the chip before flashing.
 #                           # Needed when the chip has firmware that
 #                           # enters STOP/SHUTDOWN before openocd can
 #                           # halt it (e.g. the pre-MCUBoot image's
@@ -18,28 +19,48 @@
 
 set -e
 
-NCS=/home/aren/ncs/toolchains/927563c840
-export PATH=$NCS/usr/local/bin:$PATH
-export LD_LIBRARY_PATH=$NCS/usr/local/lib:$LD_LIBRARY_PATH
-export ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 RTT_ONLY=false
 NO_BUILD=false
 ERASE=false
+VARIANT="${DIVECAN_VARIANT:-Poseidon_Aren}"
 
-for arg in "$@"; do
-    case "$arg" in
+while (($# > 0)); do
+    case "$1" in
         --rtt-only) RTT_ONLY=true; NO_BUILD=true ;;
         --no-build) NO_BUILD=true ;;
         --erase)    ERASE=true ;;
-        *) ;;
+        --variant)
+            shift
+            if (($# == 0)); then
+                echo "ERROR: --variant requires a name" >&2
+                exit 2
+            fi
+            VARIANT="$1"
+            ;;
+        --variant=*) VARIANT="${1#--variant=}" ;;
+        *)
+            echo "ERROR: unknown argument '$1'" >&2
+            exit 2
+            ;;
     esac
+    shift
 done
 
 if [[ "$NO_BUILD" = false ]]; then
+    if [[ ! -f "variants/$VARIANT.conf" ]] || \
+       [[ ! -f "variants/$VARIANT.overlay" ]]; then
+        echo "ERROR: variant '$VARIANT' needs both variants/$VARIANT.conf" \
+             "and variants/$VARIANT.overlay" >&2
+        exit 2
+    fi
+    if [[ -z "${ZEPHYR_SDK_INSTALL_DIR:-}" ]]; then
+        echo "WARNING: ZEPHYR_SDK_INSTALL_DIR is unset; Zephyr will auto-detect" \
+             "an SDK. See CLAUDE.md and verify it matches" \
+             ".west-projects/zephyr/SDK_VERSION." >&2
+    fi
     echo "=== Building ==="
     # --sysbuild pulls in MCUBoot as a child image. The resulting
     # build/merged_<board>.hex contains bootloader + signed app and
@@ -58,11 +79,12 @@ if [[ "$NO_BUILD" = false ]]; then
     # The .overlay sibling to .conf disables peripherals the variant
     # doesn't use, recovering ~1.8 KB RAM from driver state structs
     # that would otherwise be allocated for hardware never spoken to.
-    # See variants/dev_full.overlay and reports/memory_analysis.md.
+    # See the selected variants/<name>.overlay and reports/memory_analysis.md.
+    ZEPHYR_TOOLCHAIN_VARIANT=zephyr \
     west build -d build -b divecan_jr/stm32l431xx . --sysbuild \
         -- -DBOARD_ROOT=. \
-           -DEXTRA_CONF_FILE=variants/dev_full.conf \
-           -DEXTRA_DTC_OVERLAY_FILE=variants/dev_full.overlay
+           -DEXTRA_CONF_FILE="variants/$VARIANT.conf" \
+           -DEXTRA_DTC_OVERLAY_FILE="variants/$VARIANT.overlay"
 fi
 
 if [[ "$RTT_ONLY" = false ]]; then

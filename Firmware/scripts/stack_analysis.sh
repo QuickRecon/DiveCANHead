@@ -17,11 +17,14 @@ BUILD_DIR="${1:-build}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 
-# readelf — prefer the arm-zephyr-eabi toolchain's binutils so weak/local
-# bindings line up with what actually links. Falls back to system readelf.
-TOOLCHAIN_READELF="/opt/zephyr-sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-readelf"
-if [[ -x "$TOOLCHAIN_READELF" ]]; then
-    export READELF="$TOOLCHAIN_READELF"
+# readelf — prefer the selected Zephyr SDK's binutils so weak/local bindings
+# line up with what actually links. Falls back to PATH, then system readelf.
+if [[ -n "${ZEPHYR_SDK_INSTALL_DIR:-}" ]] && \
+   [[ -x "$ZEPHYR_SDK_INSTALL_DIR/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-readelf" ]]; then
+    export READELF="$ZEPHYR_SDK_INSTALL_DIR/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-readelf"
+elif command -v arm-zephyr-eabi-readelf >/dev/null 2>&1; then
+    export READELF
+    READELF="$(command -v arm-zephyr-eabi-readelf)"
 fi
 
 OUT="$ROOT/stackAnalysis.txt"

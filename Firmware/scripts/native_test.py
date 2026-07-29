@@ -64,14 +64,6 @@ NATIVE_BOARD = "native_sim/native/64" if sys.maxsize > 2**32 else "native_sim"
 def _root_for(coverage: bool) -> Path:
     return COVERAGE_BUILD_ROOT if coverage else BUILD_ROOT
 
-NCS_TOOLCHAIN = Path(os.environ.get(
-    "NCS", "/home/aren/ncs/toolchains/927563c840"
-))
-ZEPHYR_SDK = os.environ.get(
-    "ZEPHYR_SDK_INSTALL_DIR", "/opt/zephyr-sdk"
-)
-
-
 def discover_tests() -> list[str]:
     """Every directory under tests/ that contains a CMakeLists.txt counts."""
     if not TESTS_DIR.is_dir():
@@ -83,15 +75,8 @@ def discover_tests() -> list[str]:
 
 
 def build_env() -> dict[str, str]:
-    """Toolchain env for west — matches CLAUDE.md's documented build command."""
-    env = os.environ.copy()
-    env["PATH"] = f"{NCS_TOOLCHAIN / 'usr/local/bin'}:{env.get('PATH', '')}"
-    env["LD_LIBRARY_PATH"] = (
-        f"{NCS_TOOLCHAIN / 'usr/local/lib'}:"
-        f"{env.get('LD_LIBRARY_PATH', '')}"
-    )
-    env["ZEPHYR_SDK_INSTALL_DIR"] = ZEPHYR_SDK
-    return env
+    """Inherit the caller-selected West, Python, SDK, and host compiler."""
+    return os.environ.copy()
 
 
 def build_one(name: str, coverage: bool = False) -> int:
