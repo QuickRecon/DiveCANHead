@@ -1,0 +1,24 @@
+/*
+ * Fixed partitions for the flash-log FCBs on the native_sim
+ * flash_simulator (2 MiB, 4 KiB erase blocks).
+ *
+ * 4 x 8 KiB telemetry + 3 x 8 KiB text, placed in the free space above
+ * the stock native_sim partition map (which ends with storage_partition
+ * at 0xfc000-0xfffff — left untouched for the NVS settings backend).
+ * Sizes must equal FLASH_LOG_*_SECTOR_COUNT x FLASH_LOG_SECTOR_SIZE
+ * from prj.conf.
+ */
+
+&flash0 {
+    partitions {
+        log_telemetry_partition: partition@100000 {
+            label = "log-telemetry";
+            reg = <0x00100000 0x00008000>;
+        };
+
+        log_text_partition: partition@108000 {
+            label = "log-text";
+            reg = <0x00108000 0x00006000>;
+        };
+    };
+};

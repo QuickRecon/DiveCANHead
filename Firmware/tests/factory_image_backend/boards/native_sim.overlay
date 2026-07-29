@@ -1,0 +1,16 @@
+/* Factory image partition for the flash-backend unit test.
+ *
+ * Production hardware hosts factory_partition on the external SPI NOR;
+ * native_sim has no NOR, so it lands in the free space at the top of the
+ * 2 MB flash_simulator — same placement as tests/integration. Without this
+ * node factory_image_backend_flash.c fails to compile because
+ * PARTITION_ID(factory_partition) has no DT-derived ordinal.
+ */
+&flash0 {
+    partitions {
+        factory_partition: partition@100000 {
+            label = "factory-image";
+            reg = <0x00100000 0x00069000>;
+        };
+    };
+};

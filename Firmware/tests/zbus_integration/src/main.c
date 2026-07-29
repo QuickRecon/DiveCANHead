@@ -130,6 +130,41 @@ ZTEST(zbus_integration, test_outlier_excluded)
     zassert_false(result.include_array[1], "outlier should be excluded");
 }
 
+/**
+ * @brief A cell whose channel read times out is flagged FAILED for that cycle.
+ *
+ * Claim chan_cell_1's mutex and hold it past a full consensus period so the
+ * consensus thread's bounded (10 ms) read of cell 1 loses the mutex race —
+ * exercising the read_cell_or_fail failure arm (mark CELL_FAIL / PPO2_FAIL).
+ * Cells 2 and 3 stay readable and healthy, so the published consensus that
+ * lands during the hold reflects exactly two contributing cells.
+ */
+ZTEST(zbus_integration, test_cell_read_timeout_marks_failed)
+{
+    OxygenCellMsg_t c1 = make_cell(0, 100, 1.0, CELL_OK);
+    OxygenCellMsg_t c2 = make_cell(1, 100, 1.0, CELL_OK);
+    OxygenCellMsg_t c3 = make_cell(2, 100, 1.0, CELL_OK);
+    (void)publish_and_read_consensus(&c1, &c2, &c3);
+
+    zassert_ok(zbus_chan_claim(&chan_cell_1, K_MSEC(100)),
+               "test must be able to claim cell 1's channel");
+    /* Hold across ~2.5 consensus periods so at least one full cycle runs with
+     * cell 1 unreadable and publishes its result. */
+    k_msleep(250);
+
+    ConsensusMsg_t during = {0};
+    (void)zbus_chan_read(&chan_consensus, &during, K_MSEC(100));
+
+    zbus_chan_finish(&chan_cell_1);
+
+    zassert_equal(during.confidence, 2,
+                  "a timed-out cell must be excluded (confidence=%u)",
+                  during.confidence);
+    zassert_equal(during.consensus_ppo2, 100,
+                  "remaining two healthy cells still agree (ppo2=%u)",
+                  during.consensus_ppo2);
+}
+
 /** @brief Per-cell ppo2_array and status_array in ConsensusMsg_t reflect the published values. */
 ZTEST(zbus_integration, test_arrays_populated)
 {

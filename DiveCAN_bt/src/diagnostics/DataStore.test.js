@@ -423,4 +423,332 @@ describe('DataStore', () => {
       expect(elapsed).toBeGreaterThanOrEqual(180);  // hit the cap (~maxMs)
     });
   });
+
+  // A minimal UDSClient stand-in with mockable async DID methods and an `on`
+  // that captures push handlers (so the constructor's stamp wiring runs).
+  const makeUds = (overrides = {}) => ({
+    on: vi.fn(),
+    readDIDsParsed: vi.fn().mockResolvedValue({}),
+    fetchAllState: vi.fn().mockResolvedValue({}),
+    readDataByIdentifier: vi.fn().mockResolvedValue(new Uint8Array([0])),
+    ...overrides
+  });
+
+  describe('fetchAllDIDs', () => {
+    it('rejects without a udsClient', async () => {
+      await expect(store.fetchAllDIDs()).rejects.toThrow('UDSClient required');
+    });
+
+    it('reads cell types then fetches all state', async () => {
+      const uds = makeUds({
+        readDIDsParsed: vi.fn().mockResolvedValue({
+          CELL0_TYPE: CELL_TYPE_ANALOG,
+          CELL1_TYPE: CELL_TYPE_DIVEO2,
+          CELL2_TYPE: 2
+        }),
+        fetchAllState: vi.fn().mockResolvedValue({ CONSENSUS_PPO2: 1.05 })
+      });
+      const s = new DataStore({ udsClient: uds });
+
+      const state = await s.fetchAllDIDs();
+
+      expect(state).toEqual({ CONSENSUS_PPO2: 1.05 });
+      expect(s.cellTypes).toEqual([CELL_TYPE_ANALOG, CELL_TYPE_DIVEO2, 2]);
+      expect(uds.fetchAllState).toHaveBeenCalledWith(
+        [CELL_TYPE_ANALOG, CELL_TYPE_DIVEO2, 2],
+        null
+      );
+      // Stored, charted, and available via getDIDValue
+      expect(s.getDIDValue('CONSENSUS_PPO2')).toBe(1.05);
+      expect(s.getSeries('consensus_ppo2')).toHaveLength(1);
+    });
+
+    it('defaults cell types to 0 when the type read fails', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const uds = makeUds({
+        readDIDsParsed: vi.fn().mockRejectedValue(new Error('desync')),
+        fetchAllState: vi.fn().mockResolvedValue({})
+      });
+      const s = new DataStore({ udsClient: uds });
+
+      await s.fetchAllDIDs();
+
+      expect(s.cellTypes).toEqual([0, 0, 0]);
+      expect(uds.fetchAllState).toHaveBeenCalledWith([0, 0, 0], null);
+      expect(warn).toHaveBeenCalled();
+    });
+
+    it('adopts _cellTypes from the fetch result and skips metadata keys', async () => {
+      const uds = makeUds({
+        readDIDsParsed: vi.fn().mockResolvedValue({ CELL0_TYPE: 0, CELL1_TYPE: 0, CELL2_TYPE: 0 }),
+        fetchAllState: vi.fn().mockResolvedValue({
+          _cellTypes: [CELL_TYPE_ANALOG, CELL_TYPE_ANALOG, CELL_TYPE_ANALOG],
+          SETPOINT: 1.2
+        })
+      });
+      const s = new DataStore({ udsClient: uds });
+
+      await s.fetchAllDIDs();
+
+      expect(s.cellTypes).toEqual([CELL_TYPE_ANALOG, CELL_TYPE_ANALOG, CELL_TYPE_ANALOG]);
+      // Metadata key not stored as a DID value
+      expect(s.getDIDValue('_cellTypes')).toBeUndefined();
+      expect(s.getDIDValue('SETPOINT')).toBe(1.2);
+    });
+
+    it('notifies subscribers only when a value changes', async () => {
+      const uds = makeUds({
+        readDIDsParsed: vi.fn().mockResolvedValue({ CELL0_TYPE: 0, CELL1_TYPE: 0, CELL2_TYPE: 0 }),
+        fetchAllState: vi.fn().mockResolvedValue({ SETPOINT: 1.2 })
+      });
+      const s = new DataStore({ udsClient: uds });
+      const cb = vi.fn();
+      s.subscribe('SETPOINT', cb);
+
+      await s.fetchAllDIDs();
+      expect(cb).toHaveBeenCalledWith(1.2, undefined, 'SETPOINT');
+
+      // Second fetch with same value: no further notification
+      await s.fetchAllDIDs();
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('forwards the progress callback to fetchAllState', async () => {
+      const progress = vi.fn();
+      const uds = makeUds();
+      const s = new DataStore({ udsClient: uds });
+
+      await s.fetchAllDIDs(progress);
+
+      expect(uds.fetchAllState).toHaveBeenCalledWith([0, 0, 0], progress);
+    });
+  });
+
+  describe('initialize', () => {
+    it('rejects without a udsClient', async () => {
+      await expect(store.initialize()).rejects.toThrow('UDSClient required');
+    });
+
+    it('drains logs, fetches state, then starts polling', async () => {
+      const uds = makeUds({
+        readDIDsParsed: vi.fn().mockResolvedValue({ CELL0_TYPE: 0, CELL1_TYPE: 0, CELL2_TYPE: 0 }),
+        fetchAllState: vi.fn().mockResolvedValue({ CONSENSUS_PPO2: 0.9 })
+      });
+      const s = new DataStore({ udsClient: uds, logDrainQuietMs: 1, logDrainMaxMs: 50 });
+
+      const state = await s.initialize();
+
+      expect(state).toEqual({ CONSENSUS_PPO2: 0.9 });
+      expect(s.isPolling).toBe(true);
+      s.stopPolling();
+    });
+  });
+
+  describe('_collectSubscribedDIDs', () => {
+    it('collects DIDs of subscribed STATE_DIDs', () => {
+      store.subscribe('CONSENSUS_PPO2', vi.fn());
+      store.subscribe('SETPOINT', vi.fn());
+      expect(store._collectSubscribedDIDs()).toEqual([0xF200, 0xF202]);
+    });
+
+    it('skips unknown DID keys', () => {
+      store.subscribe('NOT_A_REAL_DID', vi.fn());
+      expect(store._collectSubscribedDIDs()).toEqual([]);
+    });
+
+    it('filters cell DIDs by configured cell type', () => {
+      store.cellTypes = [CELL_TYPE_ANALOG, 0, 0];
+      // CELL0_MILLIVOLTS is analog-only -> included; CELL0_TEMPERATURE is DiveO2 -> excluded
+      store.subscribe('CELL0_MILLIVOLTS', vi.fn());
+      store.subscribe('CELL0_TEMPERATURE', vi.fn());
+      expect(store._collectSubscribedDIDs()).toEqual([0xF405]);
+    });
+  });
+
+  describe('_collectSubscribedExtraDIDs', () => {
+    it('collects subscribed EXTRA_READ_DIDs with their info', () => {
+      store.subscribe('CRASH_REASON', vi.fn());
+      store.subscribe('CONSENSUS_PPO2', vi.fn());  // STATE_DID, not extra
+      const extras = store._collectSubscribedExtraDIDs();
+      expect(extras).toHaveLength(1);
+      expect(extras[0].key).toBe('CRASH_REASON');
+      expect(extras[0].info.did).toBe(0xF251);
+    });
+  });
+
+  describe('_updateDIDValues', () => {
+    it('stores values, charts them, and notifies on change', () => {
+      const cb = vi.fn();
+      store.subscribe('CONSENSUS_PPO2', cb);
+      store._updateDIDValues({ CONSENSUS_PPO2: 1.1 }, 123);
+
+      expect(store.getDIDValue('CONSENSUS_PPO2')).toBe(1.1);
+      expect(store.getSeries('consensus_ppo2')).toEqual([{ timestamp: 123, value: 1.1 }]);
+      expect(cb).toHaveBeenCalledWith(1.1, undefined, 'CONSENSUS_PPO2');
+    });
+
+    it('does not notify when the value is unchanged', () => {
+      const cb = vi.fn();
+      store.didValues.set('SETPOINT', 1.3);
+      store.subscribe('SETPOINT', cb);
+      store._updateDIDValues({ SETPOINT: 1.3 }, 200);
+      expect(cb).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('_pollSubscribedExtraDIDs', () => {
+    it('reads each extra DID and stores the parsed value', async () => {
+      const uds = makeUds({
+        readDataByIdentifier: vi.fn().mockResolvedValue(new Uint8Array([0, 0, 0, 7]))
+      });
+      const s = new DataStore({ udsClient: uds });
+      s.subscribe('CRASH_REASON', vi.fn());
+
+      await s._pollSubscribedExtraDIDs(500);
+
+      expect(uds.readDataByIdentifier).toHaveBeenCalledWith(0xF251);
+      expect(s.getDIDValue('CRASH_REASON')).toBeDefined();
+    });
+
+    it('isolates a per-DID failure and leaves the value unchanged', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const uds = makeUds({
+        readDataByIdentifier: vi.fn().mockRejectedValue(new Error('NRC'))
+      });
+      const s = new DataStore({ udsClient: uds });
+      s.subscribe('CRASH_REASON', vi.fn());
+
+      await s._pollSubscribedExtraDIDs(500);
+
+      expect(s.getDIDValue('CRASH_REASON')).toBeUndefined();
+      expect(warn).toHaveBeenCalled();
+    });
+  });
+
+  describe('_pollSubscribedDIDs', () => {
+    it('returns early without a udsClient', async () => {
+      store.subscribe('CONSENSUS_PPO2', vi.fn());
+      await expect(store._pollSubscribedDIDs()).resolves.toBeUndefined();
+    });
+
+    it('returns early with no subscriptions', async () => {
+      const uds = makeUds();
+      const s = new DataStore({ udsClient: uds });
+      await s._pollSubscribedDIDs();
+      expect(uds.readDIDsParsed).not.toHaveBeenCalled();
+    });
+
+    it('chunks bundled scalar reads into requests of 4', async () => {
+      const readDIDsParsed = vi.fn().mockResolvedValue({});
+      const uds = makeUds({ readDIDsParsed });
+      const s = new DataStore({ udsClient: uds });
+      // 5 non-cell-typed STATE_DIDs -> 2 chunks (4 + 1)
+      ['CONSENSUS_PPO2', 'SETPOINT', 'DUTY_CYCLE', 'INTEGRAL_STATE', 'UPTIME_SEC']
+        .forEach((k) => s.subscribe(k, vi.fn()));
+
+      await s._pollSubscribedDIDs();
+
+      expect(readDIDsParsed).toHaveBeenCalledTimes(2);
+      expect(readDIDsParsed.mock.calls[0][0]).toHaveLength(4);
+      expect(readDIDsParsed.mock.calls[1][0]).toHaveLength(1);
+    });
+
+    it('reads both bundled and extra DIDs in one cycle', async () => {
+      const readDIDsParsed = vi.fn().mockResolvedValue({ CONSENSUS_PPO2: 1.0 });
+      const readDataByIdentifier = vi.fn().mockResolvedValue(new Uint8Array([0, 0, 0, 1]));
+      const uds = makeUds({ readDIDsParsed, readDataByIdentifier });
+      const s = new DataStore({ udsClient: uds });
+      s.subscribe('CONSENSUS_PPO2', vi.fn());
+      s.subscribe('CRASH_REASON', vi.fn());
+
+      await s._pollSubscribedDIDs();
+
+      expect(readDIDsParsed).toHaveBeenCalledTimes(1);
+      expect(readDataByIdentifier).toHaveBeenCalledWith(0xF251);
+    });
+  });
+
+  describe('polling loop (timer-driven)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('polls subscribed DIDs on each interval tick', async () => {
+      const readDIDsParsed = vi.fn().mockResolvedValue({ CONSENSUS_PPO2: 1.0 });
+      const uds = makeUds({ readDIDsParsed });
+      const s = new DataStore({ udsClient: uds, pollInterval: 100 });
+      s.subscribe('CONSENSUS_PPO2', vi.fn());
+      s.startPolling();
+
+      await vi.advanceTimersByTimeAsync(120);
+
+      expect(readDIDsParsed).toHaveBeenCalled();
+      s.stopPolling();
+    });
+
+    it('skips a tick when a poll cycle is already in flight', async () => {
+      const uds = makeUds();
+      const s = new DataStore({ udsClient: uds, pollInterval: 100 });
+      s.subscribe('CONSENSUS_PPO2', vi.fn());
+      s.startPolling();
+      s._pollInFlight = true;  // pretend previous cycle still running
+
+      await vi.advanceTimersByTimeAsync(120);
+
+      expect(uds.readDIDsParsed).not.toHaveBeenCalled();
+      s.stopPolling();
+    });
+
+    it('logs and recovers when a poll cycle throws', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const uds = makeUds({ readDIDsParsed: vi.fn().mockRejectedValue(new Error('bus')) });
+      const s = new DataStore({ udsClient: uds, pollInterval: 100 });
+      s.subscribe('CONSENSUS_PPO2', vi.fn());
+      s.startPolling();
+
+      await vi.advanceTimersByTimeAsync(120);
+
+      expect(error).toHaveBeenCalledWith('Poll error:', expect.any(Error));
+      expect(s._pollInFlight).toBe(false);  // guard reset in finally
+      s.stopPolling();
+    });
+  });
+
+  describe('refreshCellTypes', () => {
+    it('rejects without a udsClient', async () => {
+      await expect(store.refreshCellTypes()).rejects.toThrow('UDSClient required');
+    });
+
+    it('reads and caches the three cell type DIDs', async () => {
+      const uds = makeUds({
+        readDIDsParsed: vi.fn().mockResolvedValue({
+          CELL0_TYPE: CELL_TYPE_DIVEO2,
+          CELL1_TYPE: CELL_TYPE_ANALOG,
+          CELL2_TYPE: 2
+        })
+      });
+      const s = new DataStore({ udsClient: uds });
+
+      const types = await s.refreshCellTypes();
+
+      expect(types).toEqual([CELL_TYPE_DIVEO2, CELL_TYPE_ANALOG, 2]);
+      expect(s.cellTypes).toEqual([CELL_TYPE_DIVEO2, CELL_TYPE_ANALOG, 2]);
+      expect(uds.readDIDsParsed).toHaveBeenCalledWith([0xF401, 0xF411, 0xF421]);
+    });
+
+    it('defaults missing types to 0', async () => {
+      const uds = makeUds({
+        readDIDsParsed: vi.fn().mockResolvedValue({ CELL0_TYPE: CELL_TYPE_ANALOG })
+      });
+      const s = new DataStore({ udsClient: uds });
+
+      const types = await s.refreshCellTypes();
+
+      expect(types).toEqual([CELL_TYPE_ANALOG, 0, 0]);
+    });
+  });
 });

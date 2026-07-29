@@ -1,0 +1,5 @@
+mainmenu "Watchdog Feeder Tests"
+
+rsource "../../src/Kconfig"
+
+source "Kconfig.zephyr"

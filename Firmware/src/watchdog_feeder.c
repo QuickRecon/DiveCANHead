@@ -86,8 +86,18 @@ BUILD_ASSERT(DT_NODE_HAS_STATUS(WDT_NODE, okay),
  *
  * (The reload happens to stay 3999: 4× the timeout with 4× the prescaler.)
  */
+#if defined(CONFIG_SOC_FAMILY_STM32)
 #define EXPECTED_IWDG_PR    LL_IWDG_PRESCALER_256
 #define EXPECTED_IWDG_RLR   3999U
+
+/* The IWDG keeps counting while the debugger halts the core unless the
+ * driver sets the freeze option. Emulated watchdog backends used by the
+ * native_sim test builds (e.g. wdt_counter) reject this option with
+ * -ENOTSUP, so it is STM32-only. */
+#define WDT_SETUP_OPTIONS   WDT_OPT_PAUSE_HALTED_BY_DBG
+#else
+#define WDT_SETUP_OPTIONS   0U
+#endif
 
 static Status_t wdt_channel_id_get_or_init(const struct device *wdt)
 {
@@ -108,17 +118,19 @@ static Status_t wdt_channel_id_get_or_init(const struct device *wdt)
         }
         else
         {
-            Status_t rc = wdt_setup(wdt, WDT_OPT_PAUSE_HALTED_BY_DBG);
+            Status_t rc = wdt_setup(wdt, WDT_SETUP_OPTIONS);
             if (0 != rc) {
                 FATAL_OP_ERROR(FATAL_UNDEFINED_STATE);
             }
             else
             {
+#if defined(CONFIG_SOC_FAMILY_STM32)
                 /* Belt-and-braces: read the IWDG registers directly and
                  * confirm the driver actually wrote our values, not the
                  * reset defaults. See COMPROMISE.md #13 for context.
                  * Anything else means the watchdog is silently mis-armed
-                 * and we'd ship without protection — fatal init failure. */
+                 * and we'd ship without protection — fatal init failure.
+                 * STM32-only: emulated backends have no IWDG registers. */
                 uint32_t actual_pr  = LL_IWDG_GetPrescaler(IWDG);
                 uint32_t actual_rlr = LL_IWDG_GetReloadCounter(IWDG);
 
@@ -136,6 +148,11 @@ static Status_t wdt_channel_id_get_or_init(const struct device *wdt)
                         channel, WDT_TIMEOUT_MS,
                         actual_pr, actual_rlr);
                 }
+#else
+                cached_channel_id = channel;
+                LOG_INF("watchdog armed: channel=%d, timeout=%ums",
+                    channel, WDT_TIMEOUT_MS);
+#endif
             }
         }
     }

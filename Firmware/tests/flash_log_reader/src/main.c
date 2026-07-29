@@ -41,15 +41,59 @@ static struct flash_sector test_sectors[N_SECTORS] = {
 static struct fcb test_fcb;
 static uint32_t test_index_epoch;
 
+/* ---- Second FCB (FL_DEST_TEXT) for the resolver edge-case tests ----
+ *
+ * The TELEMETRY fixture packs every marker into a single physical sector, so
+ * the sector-rotation arms of the resolvers (index-derived end sectors,
+ * empty-ring -ENOENT, highest-id-in-a-later-sector) never run against it. A
+ * second, independently seeded FCB on the scratch partition — with 4 KiB
+ * sectors so a marker can be forced into a chosen sector cheaply — drives those
+ * arms. It is off by default (get_fcb returns NULL) so the existing
+ * TEXT-is-EINVAL guards stay green; the TEXT tests flip `text_fcb_ready` on for
+ * their duration and the suite `before` hook flips it back. */
+#define TEXT_AREA_ID     FIXED_PARTITION_ID(scratch_partition)
+#define TEXT_SECTOR_SIZE 0x1000   /* 4 KiB — matches the sim erase-block */
+#define TEXT_N_SECTORS   6
+
+static struct flash_sector text_sectors[TEXT_N_SECTORS] = {
+    { .fs_off = 0 * TEXT_SECTOR_SIZE, .fs_size = TEXT_SECTOR_SIZE },
+    { .fs_off = 1 * TEXT_SECTOR_SIZE, .fs_size = TEXT_SECTOR_SIZE },
+    { .fs_off = 2 * TEXT_SECTOR_SIZE, .fs_size = TEXT_SECTOR_SIZE },
+    { .fs_off = 3 * TEXT_SECTOR_SIZE, .fs_size = TEXT_SECTOR_SIZE },
+    { .fs_off = 4 * TEXT_SECTOR_SIZE, .fs_size = TEXT_SECTOR_SIZE },
+    { .fs_off = 5 * TEXT_SECTOR_SIZE, .fs_size = TEXT_SECTOR_SIZE },
+};
+static struct fcb text_fcb;
+static bool text_fcb_ready;
+static size_t text_last_sector;
+
 /* ---- stubs the reader links against (real ones live in flash_log.c) ---- */
 struct fcb *flash_log_internal_get_fcb(FlashLogDest_t dest)
 {
-    return (dest == FL_DEST_TELEMETRY) ? &test_fcb : NULL;
+    struct fcb *fcb_p = NULL;
+
+    if (FL_DEST_TELEMETRY == dest) {
+        fcb_p = &test_fcb;
+    } else if ((FL_DEST_TEXT == dest) && text_fcb_ready) {
+        fcb_p = &text_fcb;
+    } else {
+        /* No action required */
+    }
+    return fcb_p;
 }
 
 uint8_t flash_log_internal_sector_count(FlashLogDest_t dest)
 {
-    return (dest == FL_DEST_TELEMETRY) ? (uint8_t)N_SECTORS : 0U;
+    uint8_t count = 0U;
+
+    if (FL_DEST_TELEMETRY == dest) {
+        count = (uint8_t)N_SECTORS;
+    } else if ((FL_DEST_TEXT == dest) && text_fcb_ready) {
+        count = (uint8_t)TEXT_N_SECTORS;
+    } else {
+        /* No action required */
+    }
+    return count;
 }
 
 uint32_t flash_log_internal_index_epoch(void)
@@ -178,7 +222,242 @@ static void *suite_setup(void)
     return NULL;
 }
 
-ZTEST_SUITE(flash_log_reader, NULL, suite_setup, NULL, NULL, NULL);
+/* Reset the TEXT toggle before every test so the default (get_fcb(TEXT)==NULL)
+ * holds regardless of test ordering — the TEXT tests opt in explicitly. */
+static void reader_before(void *fixture)
+{
+    ARG_UNUSED(fixture);
+    text_fcb_ready = false;
+}
+
+ZTEST_SUITE(flash_log_reader, NULL, suite_setup, reader_before, NULL, NULL);
+
+/* ---- TEXT-FCB helpers (multi-sector resolver coverage) ---- */
+
+/* Append one [hdr|payload] entry to the TEXT FCB and record its sector. */
+static size_t text_append(uint8_t type, const void *payload, uint16_t len)
+{
+    fl_entry_hdr_t hdr = {
+        .type = type, .flags = 0U, .length = len, .ts_boot_us = 0U,
+    };
+    struct fcb_entry loc;
+    int rc = fcb_append(&text_fcb, (uint16_t)(sizeof(hdr) + len), &loc);
+
+    zassert_ok(rc, "text fcb_append(len=%u) failed: %d", len, rc);
+    rc = flash_area_write(text_fcb.fap, FCB_ENTRY_FA_DATA_OFF(loc),
+                          &hdr, sizeof(hdr));
+    zassert_ok(rc, "text hdr write failed: %d", rc);
+    if (len > 0U) {
+        rc = flash_area_write(text_fcb.fap,
+                              FCB_ENTRY_FA_DATA_OFF(loc) + sizeof(hdr),
+                              payload, len);
+        zassert_ok(rc, "text payload write failed: %d", rc);
+    }
+    zassert_ok(fcb_append_finish(&text_fcb, &loc));
+    text_last_sector = (size_t)(loc.fe_sector - text_sectors);
+    return text_last_sector;
+}
+
+/* Write non-marker filler until the append cursor reaches @p target sector, so
+ * the next marker lands in a chosen sector (and intervening sectors stay
+ * marker-free, reproducing a rotation-induced gap). */
+static void text_fill_to_sector(size_t target)
+{
+    static const uint8_t filler[512] = {0};
+
+    while (text_last_sector < target) {
+        (void)text_append(FL_TYPE_CONSENSUS, filler, (uint16_t)sizeof(filler));
+    }
+}
+
+static void text_write_boot(uint32_t boot_id)
+{
+    fl_payload_boot_marker_t p = { .boot_id = boot_id };
+
+    (void)text_append(FL_TYPE_BOOT_MARKER, &p, sizeof(p));
+}
+
+static void text_write_dive(uint8_t type, uint16_t dive_number)
+{
+    fl_payload_dive_marker_t p = {
+        .dive_number = dive_number, .unix_timestamp = 0U,
+    };
+
+    (void)text_append(type, &p, sizeof(p));
+}
+
+/* Erase + re-init the TEXT FCB, enable it, and drop the reader's cached index
+ * so the next selector rebuilds against the fresh ring. */
+static void text_fcb_reset(void)
+{
+    const struct flash_area *fap;
+    int rc = flash_area_open(TEXT_AREA_ID, &fap);
+
+    zassert_ok(rc, "text flash_area_open failed: %d", rc);
+    rc = flash_area_erase(fap, 0, TEXT_N_SECTORS * TEXT_SECTOR_SIZE);
+    zassert_ok(rc, "text erase failed: %d", rc);
+    flash_area_close(fap);
+
+    (void)memset(&text_fcb, 0, sizeof(text_fcb));
+    text_fcb.f_magic = 0U;
+    text_fcb.f_version = 1U;
+    text_fcb.f_sector_cnt = TEXT_N_SECTORS;
+    text_fcb.f_sectors = text_sectors;
+    rc = fcb_init(TEXT_AREA_ID, &text_fcb);
+    zassert_ok(rc, "text fcb_init failed: %d", rc);
+
+    text_last_sector = 0U;
+    text_fcb_ready = true;
+    flash_log_reader_invalidate_index();
+}
+
+ZTEST(flash_log_reader, test_text_multi_sector_resolvers)
+{
+    FlashLogRange_t range;
+    FlashLogIndexSummary_t summary;
+
+    text_fcb_reset();
+    /* Sector 0: two boots + two dive-starts share the sector. Only the FIRST of
+     * each is keyed by the index, so resolving the second forces the exact-
+     * marker scan fallback. */
+    text_write_boot(100U);
+    text_write_boot(105U);
+    text_write_dive(FL_TYPE_DIVE_START, 50U);
+    text_write_dive(FL_TYPE_DIVE_START, 55U);
+    /* Sector 1 left marker-free (rotation-induced gap the resolvers must skip). */
+    text_fill_to_sector(2U);
+    text_write_boot(300U);                     /* highest boot id */
+    text_write_dive(FL_TYPE_DIVE_START, 70U);  /* highest dive id */
+    text_write_dive(FL_TYPE_DIVE_END, 70U);
+    text_fill_to_sector(3U);
+    text_write_boot(200U);                     /* lower id in a later sector */
+    text_write_dive(FL_TYPE_DIVE_START, 60U);
+    /* Sector 4: a dive-END with no matching START in the same sector — its
+     * first_dive_id matches a query but the HAS_DIVE_START guard rejects it. */
+    text_fill_to_sector(4U);
+    text_write_dive(FL_TYPE_DIVE_END, 80U);
+
+    /* latest boot: highest id (300) starts at sector 2 — exercises the
+     * `> best_id` comparison in both directions (300>100 true, 200>300 false). */
+    zassert_ok(flash_log_reader_resolve_latest_boot(FL_DEST_TEXT, &range));
+    zassert_equal(range.begin.fe_sector, &text_sectors[2]);
+    zassert_ok(flash_log_reader_resolve_latest_dive(FL_DEST_TEXT, &range));
+    zassert_equal(range.begin.fe_sector, &text_sectors[2]);
+
+    /* boot 100 is first-of-sector: the index loop finds the next boot sector as
+     * the exclusive end (index-derived end path + out->end assignment). */
+    zassert_ok(flash_log_reader_resolve_boot_id(FL_DEST_TEXT, 100U, &range));
+    zassert_equal(range.begin.fe_sector, &text_sectors[0]);
+    zassert_equal(range.end.fe_sector, &text_sectors[2]);
+    /* boot 105 shares sector 0 → scan fallback locates it, then the post-scan
+     * end-sector loop finds sector 2. */
+    zassert_ok(flash_log_reader_resolve_boot_id(FL_DEST_TEXT, 105U, &range));
+    zassert_equal(range.begin.fe_sector, &text_sectors[0]);
+    zassert_equal(range.end.fe_sector, &text_sectors[2]);
+
+    /* Same two paths for dives. */
+    zassert_ok(flash_log_reader_resolve_dive_id(FL_DEST_TEXT, 50U, &range));
+    zassert_equal(range.begin.fe_sector, &text_sectors[0]);
+    zassert_equal(range.end.fe_sector, &text_sectors[2]);
+    zassert_ok(flash_log_reader_resolve_dive_id(FL_DEST_TEXT, 55U, &range));
+    zassert_equal(range.begin.fe_sector, &text_sectors[0]);
+    zassert_equal(range.end.fe_sector, &text_sectors[2]);
+
+    /* dive 80 exists only as a DIVE_END → the START-gated match rejects it and
+     * the scan finds no DIVE_START, so it resolves to -ENOENT. */
+    zassert_equal(flash_log_reader_resolve_dive_id(FL_DEST_TEXT, 80U, &range),
+                  -ENOENT);
+
+    /* Summary over the multi-sector TEXT ring (also covers fl_index_for(TEXT)). */
+    zassert_ok(flash_log_reader_index_summary(FL_DEST_TEXT, &summary));
+    zassert_equal(summary.boot_id_oldest, 100U);
+    zassert_equal(summary.boot_id_latest, 300U);
+    zassert_equal(summary.dive_id_latest, 70U);
+    zassert_equal(summary.boot_count, 3U);
+}
+
+ZTEST(flash_log_reader, test_text_empty_ring_enoent)
+{
+    FlashLogRange_t range;
+
+    text_fcb_reset();
+    /* A ring with only non-marker filler: every selector must report -ENOENT
+     * (the empty-index arms of latest-boot/latest-dive and the scan-miss arms
+     * of boot-id/dive-id). */
+    text_fill_to_sector(1U);
+    zassert_equal(flash_log_reader_resolve_latest_boot(FL_DEST_TEXT, &range),
+                  -ENOENT);
+    zassert_equal(flash_log_reader_resolve_latest_dive(FL_DEST_TEXT, &range),
+                  -ENOENT);
+    zassert_equal(flash_log_reader_resolve_boot_id(FL_DEST_TEXT, 1U, &range),
+                  -ENOENT);
+    zassert_equal(flash_log_reader_resolve_dive_id(FL_DEST_TEXT, 1U, &range),
+                  -ENOENT);
+}
+
+ZTEST(flash_log_reader, test_text_large_ring_watchdog)
+{
+    FlashLogRange_t range;
+    FlashLogIndexSummary_t summary;
+    const uint16_t entry_count = 300U;   /* > FL_INDEX_WALK_WDT_KICK (256) */
+
+    text_fcb_reset();
+    text_write_boot(500U);
+    for (uint16_t i = 0U; i < entry_count; ++i) {
+        uint8_t small = (uint8_t)i;
+
+        (void)text_append(FL_TYPE_CONSENSUS, &small, sizeof(small));
+    }
+    /* Each of these drives a full-ring fcb_walk that crosses the periodic
+     * watchdog-kick boundary: the index build, the resolve-all count, and the
+     * exact-marker scan on a miss. */
+    zassert_ok(flash_log_reader_index_summary(FL_DEST_TEXT, &summary));
+    zassert_equal(summary.boot_id_latest, 500U);
+    zassert_ok(flash_log_reader_resolve_all(FL_DEST_TEXT, &range));
+    zassert_true(range.entry_count_estimate >= entry_count,
+                 "counted %u entries", range.entry_count_estimate);
+    zassert_equal(flash_log_reader_resolve_boot_id(FL_DEST_TEXT, 9999U, &range),
+                  -ENOENT);
+}
+
+ZTEST(flash_log_reader, test_text_fcb_pulled_after_index_built)
+{
+    FlashLogRange_t range;
+    FlashLogIndexSummary_t summary;
+
+    /* Build a valid TEXT index while the FCB is present. */
+    text_fcb_reset();
+    text_write_boot(700U);
+    zassert_ok(flash_log_reader_index_summary(FL_DEST_TEXT, &summary));
+
+    /* Pull the FCB out from under the still-valid cached index (epoch and arena
+     * generation unchanged, so no rebuild is triggered). Every resolver then
+     * reaches its defensive NULL-fcb arm. */
+    text_fcb_ready = false;
+    zassert_equal(flash_log_reader_resolve_latest_boot(FL_DEST_TEXT, &range),
+                  -EINVAL);
+    zassert_equal(flash_log_reader_resolve_boot_id(FL_DEST_TEXT, 700U, &range),
+                  -EINVAL);
+    zassert_equal(flash_log_reader_resolve_latest_dive(FL_DEST_TEXT, &range),
+                  -EINVAL);
+    zassert_equal(flash_log_reader_resolve_dive_id(FL_DEST_TEXT, 1U, &range),
+                  -EINVAL);
+
+    /* With the index invalidated and the FCB gone, the rebuild itself fails at
+     * the build's NULL-fcb guard — so the selectors now short-circuit on the
+     * ensure-index failure path rather than the cached-index NULL-fcb arm. */
+    flash_log_reader_invalidate_index();
+    zassert_equal(flash_log_reader_index_summary(FL_DEST_TEXT, &summary),
+                  -EINVAL);
+    zassert_equal(flash_log_reader_resolve_latest_boot(FL_DEST_TEXT, &range),
+                  -EINVAL);
+    zassert_equal(flash_log_reader_resolve_boot_id(FL_DEST_TEXT, 700U, &range),
+                  -EINVAL);
+    zassert_equal(flash_log_reader_resolve_latest_dive(FL_DEST_TEXT, &range),
+                  -EINVAL);
+    zassert_equal(flash_log_reader_resolve_dive_id(FL_DEST_TEXT, 1U, &range),
+                  -EINVAL);
+}
 
 static FlashLogRange_t whole_range(void)
 {
@@ -377,6 +656,8 @@ ZTEST(flash_log_reader, test_resolver_input_and_busy_guards)
         FL_DEST_TELEMETRY, 1U, NULL), -EINVAL);
 
     zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY));
+    zassert_equal(flash_log_reader_index_summary(
+        FL_DEST_TELEMETRY, &summary), -EBUSY);
     zassert_equal(flash_log_reader_resolve_latest_boot(
         FL_DEST_TELEMETRY, &range), -EBUSY);
     zassert_equal(flash_log_reader_resolve_boot_id(

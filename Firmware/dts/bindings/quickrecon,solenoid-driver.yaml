@@ -17,6 +17,11 @@ description: |
 
 compatible: "quickrecon,solenoid-driver"
 
+# Standard properties (status, zephyr,deferred-init, ...) — required so test
+# overlays can defer instances whose dependencies (counter/GPIO) are
+# themselves deferred, and drive the init failure arms via device_init().
+include: base.yaml
+
 properties:
   gpios:
     type: phandle-array

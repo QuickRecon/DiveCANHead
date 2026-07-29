@@ -39,6 +39,42 @@ static int16_t ads1115_emul_conv_for_mux(uint8_t mux)
 	return (int16_t)(1000 * (mux + 1));
 }
 
+/* ---- Fault injection (test-controlled) ----
+ *
+ * The plain emulator always succeeds, so the driver's I2C-error and
+ * conversion-not-ready branches never run. These knobs let a test make a
+ * write fail, make the Nth read since arming fail, or report CONFIG with the
+ * OS "still converting" bit clear for a bounded number of reads (so
+ * wait_data_ready() has to poll). All default off. */
+static bool emul_fail_writes;
+static int  emul_fail_read_at;   /* 1-based index of the read to fail; 0 = off */
+static int  emul_read_seen;      /* reads observed since the last arm */
+static int  emul_os_busy_reads;  /* upcoming CONFIG reads to report as not-ready */
+
+void ads1115_emul_fault_reset(void)
+{
+	emul_fail_writes = false;
+	emul_fail_read_at = 0;
+	emul_read_seen = 0;
+	emul_os_busy_reads = 0;
+}
+
+void ads1115_emul_fail_writes(bool on)
+{
+	emul_fail_writes = on;
+}
+
+void ads1115_emul_fail_read_at(int nth)
+{
+	emul_fail_read_at = nth;
+	emul_read_seen = 0;
+}
+
+void ads1115_emul_os_busy_reads(int n)
+{
+	emul_os_busy_reads = n;
+}
+
 static int ads1115_emul_transfer(const struct emul *target, struct i2c_msg *msgs,
 				 int num_msgs, int addr)
 {
@@ -52,6 +88,9 @@ static int ads1115_emul_transfer(const struct emul *target, struct i2c_msg *msgs
 		uint8_t reg;
 		uint16_t val;
 
+		if (emul_fail_writes) {
+			return -EIO;
+		}
 		if (msgs[0].len != 3) {
 			LOG_ERR("unexpected write len %d", msgs[0].len);
 			return -EIO;
@@ -79,7 +118,12 @@ static int ads1115_emul_transfer(const struct emul *target, struct i2c_msg *msgs
 	if (num_msgs == 2 && (msgs[0].flags & I2C_MSG_READ) == 0 &&
 	    (msgs[1].flags & I2C_MSG_READ) != 0) {
 		uint8_t reg;
+		uint16_t out;
 
+		++emul_read_seen;
+		if ((0 != emul_fail_read_at) && (emul_read_seen == emul_fail_read_at)) {
+			return -EIO;
+		}
 		if (msgs[0].len != 1 || msgs[1].len != 2) {
 			LOG_ERR("unexpected read framing %d/%d", msgs[0].len, msgs[1].len);
 			return -EIO;
@@ -88,7 +132,13 @@ static int ads1115_emul_transfer(const struct emul *target, struct i2c_msg *msgs
 		if (reg >= ADS1115_NUM_REGS) {
 			return -EIO;
 		}
-		sys_put_be16(data->reg[reg], msgs[1].buf);
+		out = data->reg[reg];
+		if ((reg == ADS1115_REG_CONFIG) && (emul_os_busy_reads > 0)) {
+			/* Report "conversion still running" so wait_data_ready polls. */
+			out &= (uint16_t)~ADS1115_CONFIG_OS;
+			--emul_os_busy_reads;
+		}
+		sys_put_be16(out, msgs[1].buf);
 		return 0;
 	}
 

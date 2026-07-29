@@ -1,0 +1,4 @@
+tests:
+  oxygen_cell.o2s_thread:
+    platform_allow: native_sim
+    tags: oxygen_cell o2s uart

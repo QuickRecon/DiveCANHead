@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { LogDownloader } from './LogDownloader.js';
 import { parseLogStream } from './LogParser.js';
 import { UDSClient } from '../uds/UDSClient.js';
@@ -108,6 +108,54 @@ function multiBootResponder(streams) {
     if (sid === 0x36) return buildTransferResponse(req[1], chunks[idx++] || new Uint8Array());
     if (sid === 0x37) return buildTransferExitResponse();
     return null;
+  };
+}
+
+/** Serve boot streams but fail one boot's by-boot selector with a non-0x22 NRC. */
+function bootFaultResponder(streams, faultBoot, nrc) {
+  let selectedBoot = null;
+  let chunks = [];
+  let idx = 0;
+  return (req) => {
+    const sid = req[0];
+    if (sid === 0x31) {
+      const rid = (req[2] << 8) | req[3];
+      if (rid === 0xF101) {
+        selectedBoot = req[5] | (req[6] << 8) | (req[7] << 16) | (req[8] << 24);
+        if (selectedBoot === faultBoot) return buildNegativeResponse(0x31, nrc);
+      }
+      return buildRoutineResponse(rid);
+    }
+    if (sid === 0x22) {
+      const bytes = streams[selectedBoot] || new Uint8Array();
+      return buildRDBIResponse(0xF281, [
+        0, 0, 0, 0, 0, 0, 4, 0, 0, 0,
+        bytes.length & 0xFF, (bytes.length >> 8) & 0xFF, 0, 0, 0, 0, 0, 0, 0, 0
+      ]);
+    }
+    if (sid === 0x34) {
+      const requested = req[7] | (req[8] << 8) | (req[9] << 16) | (req[10] << 24);
+      const block = Math.min(Math.max(requested || 253, 32), 253);
+      chunks = chunkify(streams[selectedBoot], block);
+      idx = 0;
+      return buildRequestDownloadResponse(block);
+    }
+    if (sid === 0x36) return buildTransferResponse(req[1], chunks[idx++] || new Uint8Array());
+    if (sid === 0x37) return buildTransferExitResponse();
+    return null;
+  };
+}
+
+/** Wrap a responder so DID 0xF280 (stats) returns a 56-byte block with the given boot ids. */
+function withStats(inner, { bootIdCurrent, bootIdOldest }) {
+  return (req) => {
+    if (req[0] === 0x22 && ((req[1] << 8) | req[2]) === 0xF280) {
+      const b = new Uint8Array(56);
+      b[0] = bootIdCurrent & 0xFF;   // telemetry bootIdCurrent (LE32 @ 0)
+      b[4] = bootIdOldest & 0xFF;    // telemetry bootIdOldest  (LE32 @ 4)
+      return buildRDBIResponse(0xF280, b);
+    }
+    return inner(req);
   };
 }
 
@@ -273,5 +321,171 @@ describe('LogDownloader', () => {
     transport.setResponder((req) => buildWDBIResponse((req[1] << 8) | req[2]));
     await logs.eraseLog(0x03);
     expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x82, 0x03, 0xA5]);
+  });
+
+  it('rethrows a non-CONDITIONS_NOT_CORRECT selector fault from downloadAllBoots', async () => {
+    const boot7 = buildStream([
+      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(7, 'v2', 1), { tsUs: 10 })
+    ]);
+    // Boot 8's selector faults with 0x33 (security) — must propagate, not be skipped.
+    transport.setResponder(bootFaultResponder({ 7: boot7 }, 8, 0x33));
+    await expect(logs.downloadAllBoots({
+      stats: { telemetry: { bootIdOldest: 7, bootIdCurrent: 8 }, text: {} }
+    })).rejects.toMatchObject({ nrc: 0x33 });
+  });
+
+  it('downloads the text stream range (stream = TEXT)', async () => {
+    const boot3 = buildStream([
+      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(3, 'v2', 1), { tsUs: 10 })
+    ]);
+    transport.setResponder(multiBootResponder({ 3: boot3 }));
+    const result = await logs.downloadAllBoots({
+      stream: 1,
+      stats: {
+        telemetry: { bootIdOldest: 0, bootIdCurrent: 0 },
+        text: { bootIdOldest: 3, bootIdCurrent: 3 }
+      }
+    });
+    expect(result.downloads.map(d => d.bootId)).toEqual([3]);
+    expect(result.records).toHaveLength(1);
+    // Locally-encoded stream tags the TEXT stream id in the DCLG header (byte 6).
+    expect(result.raw[6]).toBe(1);
+  });
+
+  it('reads stats itself when downloadAllBoots is called without a stats override', async () => {
+    const boot7 = buildStream([
+      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(7, 'v2', 1), { tsUs: 10 })
+    ]);
+    transport.setResponder(withStats(multiBootResponder({ 7: boot7 }),
+      { bootIdCurrent: 7, bootIdOldest: 7 }));
+    const result = await logs.downloadAllBoots({ stream: 0 });
+    expect(result.downloads.map(d => d.bootId)).toEqual([7]);
+    expect(result.stats.telemetry.bootIdCurrent).toBe(7);
+  });
+
+  it('keeps a boot download whose stream lacks a matching boot marker (no records merged)', async () => {
+    const orphan = buildStream([
+      buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'orphan'), { tsUs: 1 })
+    ]);
+    transport.setResponder(multiBootResponder({ 5: orphan }));
+    const result = await logs.downloadAllBoots({
+      stats: { telemetry: { bootIdOldest: 5, bootIdCurrent: 5 }, text: {} }
+    });
+    expect(result.downloads.map(d => d.bootId)).toEqual([5]);
+    expect(result.records).toHaveLength(0);
+  });
+
+  it('rejects a wrapped boot-id range', async () => {
+    await expect(logs.downloadAllBoots({
+      stats: { telemetry: { bootIdOldest: 8, bootIdCurrent: 7 }, text: {} }
+    })).rejects.toThrow(/Wrapped boot-id/);
+  });
+
+  it('refuses to scan more boots than the limit', async () => {
+    await expect(logs.downloadAllBoots({
+      maxBoots: 1,
+      stats: { telemetry: { bootIdOldest: 1, bootIdCurrent: 5 }, text: {} }
+    })).rejects.toThrow(/Refusing to scan/);
+  });
+
+  it('throws when stream stats are unavailable', async () => {
+    await expect(logs.downloadAllBoots({ stream: 0, stats: {} }))
+      .rejects.toThrow(/stats are unavailable/);
+  });
+
+  it('aborts downloadAllBoots when the signal is already aborted', async () => {
+    transport.setResponder(multiBootResponder({ 7: sampleStream() }));
+    const controller = new AbortController();
+    controller.abort();
+    await expect(logs.downloadAllBoots({
+      signal: controller.signal,
+      stats: { telemetry: { bootIdOldest: 7, bootIdCurrent: 7 }, text: {} }
+    })).rejects.toThrow(/cancelled/);
+  });
+
+  it('stops pulling chunks when the download signal is already aborted', async () => {
+    transport.setResponder(logResponder(sampleStream()));
+    const controller = new AbortController();
+    controller.abort();
+    const result = await logs.downloadLog({ signal: controller.signal, maxChunk: 32 });
+    expect(result.chunkLens).toHaveLength(0);
+  });
+
+  it('grows the accumulation buffer for streams larger than the initial 4 KiB', async () => {
+    const bigText = 'A'.repeat(5000);
+    const stream = buildStream([
+      buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, bigText), { tsUs: 1 })
+    ]);
+    transport.setResponder(logResponder(stream));
+    const result = await logs.downloadLog({ maxChunk: 253 });
+    const records = parseLogStream(result.raw);
+    expect(records).toHaveLength(1);
+    // level(1) + moduleId(2) + 5000 text bytes
+    expect(records[0].payload.length).toBe(5003);
+  });
+
+  it('readStats returns null when the payload is shorter than two FCB blocks', async () => {
+    transport.setResponder(() => buildRDBIResponse(0xF280, new Uint8Array(10)));
+    expect(await logs.readStats()).toBeNull();
+  });
+
+  it('readSelectorResult returns null for a short payload', async () => {
+    transport.setResponder(() => buildRDBIResponse(0xF281, new Uint8Array(10)));
+    expect(await logs.readSelectorResult()).toBeNull();
+  });
+
+  it('readSelectorResult decodes a full result with a signed status', async () => {
+    transport.setResponder(() => buildRDBIResponse(0xF281, [
+      1, 0, 2, 0, 9, 0, 5, 0, 0, 0, 0x10, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF
+    ]));
+    const r = await logs.readSelectorResult();
+    expect(r.stream).toBe(1);
+    expect(r.startId).toBe(2);
+    expect(r.endId).toBe(9);
+    expect(r.entryCount).toBe(5);
+    expect(r.totalBytes).toBe(0x10);
+    expect(r.status).toBe(-1); // 0xFFFFFFFF as signed
+  });
+
+  it('selectByDive and selectLatestDive send their routine ids and parameters', async () => {
+    transport.setResponder(logResponder(sampleStream()));
+
+    await logs.selectByDive(0x0207, 1);
+    // RID 0xF102, params: stream(u8) + dive_id(u16 LE)
+    expect(Array.from(transport.getLastSent())).toEqual([0x31, 0x01, 0xF1, 0x02, 1, 0x07, 0x02]);
+
+    await logs.selectLatestDive();
+    // RID 0xF104, params: stream(u8) defaulting to telemetry
+    expect(Array.from(transport.getLastSent())).toEqual([0x31, 0x01, 0xF1, 0x04, 0]);
+  });
+
+  it('a throwing progress listener does not abort the download', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    transport.setResponder(logResponder(sampleStream()));
+    logs.on('progress', () => { throw new Error('listener exploded'); });
+
+    const result = await logs.downloadLog({ maxChunk: 32 });
+
+    expect(parseLogStream(result.raw)).toHaveLength(2);
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('off detaches a progress listener', async () => {
+    transport.setResponder(logResponder(sampleStream()));
+    const listener = vi.fn();
+    logs.on('progress', listener);
+    logs.off('progress', listener);
+    await logs.downloadLog({ maxChunk: 32 });
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('readVerbosity and readCanCapture return null on empty data, values otherwise', async () => {
+    transport.setResponder((req) => buildRDBIResponse((req[1] << 8) | req[2], []));
+    expect(await logs.readVerbosity()).toBeNull();
+    expect(await logs.readCanCapture()).toBeNull();
+
+    transport.setResponder((req) => buildRDBIResponse((req[1] << 8) | req[2], [0x03]));
+    expect(await logs.readCanCapture()).toBe(3);
   });
 });

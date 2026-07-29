@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseLogStream, parseDclgHeader, decodeBootMarker, decodeDiveMarker,
-  decodeCanFrame, decodeLogText, decodeRecord, makeRecordCounter
+  decodeCanFrame, decodeLogText, decodeConsensus, decodeRecord, makeRecordCounter
 } from './LogParser.js';
 import {
   buildStream, buildRecord, buildDclgHeader,
@@ -9,6 +9,9 @@ import {
   FL_TYPE_BOOT_MARKER, FL_TYPE_DIVE_START, FL_TYPE_LOG_TEXT, FL_TYPE_CAN_RX,
   FL_TYPE_BATCH, FL_TYPE_END_OF_STREAM
 } from '../../tests/fixtures/log-streams.js';
+import {
+  FL_TYPE_DIVE_END, FL_TYPE_CAN_TX, FL_TYPE_CONSENSUS
+} from '../uds/constants.js';
 
 describe('LogParser', () => {
   it('parses the DCLG header', () => {
@@ -80,6 +83,84 @@ describe('LogParser', () => {
     expect(decodeRecord(rec)).toEqual({ level: 3, moduleId: 9, text: 'x' });
   });
 
+  describe('decodeRecord dispatch (all branches)', () => {
+    const consensus = [
+      100, 90, 95, 105,
+      0x10, 0x27, 0x20, 0x4E, 0x30, 0x75,
+      0x00, 0x00, 80, 130
+    ];
+
+    it('dispatches BOOT_MARKER', () => {
+      const rec = { type: FL_TYPE_BOOT_MARKER, payload: new Uint8Array(bootMarkerPayload(5, 'v', 2)) };
+      expect(decodeRecord(rec)).toEqual({ bootId: 5, fwVersion: 'v', resetCause: 2 });
+    });
+
+    it('dispatches DIVE_START and DIVE_END to the dive-marker decoder', () => {
+      const start = { type: FL_TYPE_DIVE_START, payload: new Uint8Array(diveMarkerPayload(3, 1700)) };
+      const end = { type: FL_TYPE_DIVE_END, payload: new Uint8Array(diveMarkerPayload(3, 1800)) };
+      expect(decodeRecord(start)).toEqual({ diveNumber: 3, unixTimestamp: 1700 });
+      expect(decodeRecord(end)).toEqual({ diveNumber: 3, unixTimestamp: 1800 });
+    });
+
+    it('dispatches CAN_RX and CAN_TX to the CAN-frame decoder', () => {
+      const rx = { type: FL_TYPE_CAN_RX, payload: new Uint8Array(canFramePayload(0x321, 2, [9, 8])) };
+      const tx = { type: FL_TYPE_CAN_TX, payload: new Uint8Array(canFramePayload(0x321, 2, [9, 8])) };
+      expect(decodeRecord(rx).id).toBe(0x321);
+      expect(decodeRecord(tx).id).toBe(0x321);
+    });
+
+    it('dispatches CONSENSUS', () => {
+      const rec = { type: FL_TYPE_CONSENSUS, payload: new Uint8Array(consensus) };
+      const decoded = decodeRecord(rec);
+      expect(decoded.consensusPpo2).toBe(100);
+      expect(decoded.ppo2).toEqual([90, 95, 105]);
+      expect(decoded.setpoint).toBe(130);
+    });
+
+    it('returns null for an unknown type', () => {
+      expect(decodeRecord({ type: 0x99, payload: new Uint8Array(4) })).toBeNull();
+    });
+  });
+
+  describe('decoder null-guards for short payloads', () => {
+    it('decodeBootMarker returns null below 24 bytes', () => {
+      expect(decodeBootMarker(new Uint8Array(23))).toBeNull();
+    });
+    it('decodeDiveMarker returns null below 6 bytes', () => {
+      expect(decodeDiveMarker(new Uint8Array(5))).toBeNull();
+    });
+    it('decodeCanFrame returns null below 13 bytes', () => {
+      expect(decodeCanFrame(new Uint8Array(12))).toBeNull();
+    });
+    it('decodeLogText returns null below 3 bytes', () => {
+      expect(decodeLogText(new Uint8Array(2))).toBeNull();
+    });
+    it('decodeConsensus returns null below 14 bytes', () => {
+      expect(decodeConsensus(new Uint8Array(13))).toBeNull();
+    });
+  });
+
+  it('decodeBootMarker keeps the full version string when there is no NUL terminator', () => {
+    const decoded = decodeBootMarker(new Uint8Array(bootMarkerPayload(1, 'ABCDEFGHIJKLMNOP', 0)));
+    expect(decoded.fwVersion).toBe('ABCDEFGHIJKLMNOP'); // exactly 16 chars, no NUL
+  });
+
+  it('parseDclgHeader returns null when the buffer is shorter than the header', () => {
+    expect(parseDclgHeader(new Uint8Array(15))).toBeNull();
+  });
+
+  it('parseLogStream accepts a plain array input', () => {
+    const stream = buildStream([buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'cd'))]);
+    const records = parseLogStream(Array.from(stream));
+    expect(records).toHaveLength(1);
+  });
+
+  it('parseLogStream accepts an ArrayBuffer input', () => {
+    const stream = buildStream([buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'ab'))]);
+    const records = parseLogStream(stream.buffer.slice(stream.byteOffset, stream.byteOffset + stream.byteLength));
+    expect(records).toHaveLength(1);
+  });
+
   describe('makeRecordCounter (resumable progress)', () => {
     it('counts records incrementally as bytes arrive, resuming its cursor', () => {
       const stream = buildStream([
@@ -100,6 +181,20 @@ describe('LogParser', () => {
       }
       expect(last).toBe(total);
       expect(total).toBe(3);
+    });
+
+    it('flattens a BATCH nested inside a BATCH in the running count', () => {
+      const innermost = [
+        ...buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'x')),
+        ...buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'y'))
+      ];
+      const inner = [
+        ...buildRecord(FL_TYPE_BATCH, innermost),
+        ...buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'z'))
+      ];
+      const stream = buildStream([buildRecord(FL_TYPE_BATCH, inner)]);
+      const counter = makeRecordCounter();
+      expect(counter(stream)).toBe(3);
     });
 
     it('flattens BATCH sub-records in the running count', () => {

@@ -408,6 +408,38 @@ ZTEST(firmware_confirm, test_handset_one_bus_id_only_passes)
                   "BUS_ID-only handset evidence must pass the gate");
 }
 
+ZTEST(firmware_confirm, test_handset_counter_saturates)
+{
+    /* Pin both handset RX counters at their ceiling so their sum exceeds
+     * UINT32_MAX and handset_rx_total() takes the saturation-clamp arm.
+     * With both counters static at UINT32_MAX the gate never sees growth
+     * (now_total == rx_baseline), so it fails NO_HANDSET — but the clamp
+     * is exercised during baseline capture and every handset tick. */
+    arm_healthy_cells();
+    publish_consensus_ok();
+    (void)atomic_set(&g.tx_advance, 5);
+    (void)atomic_set(&g.bus_init_value, (atomic_val_t)UINT32_MAX);
+    (void)atomic_set(&g.bus_id_value, (atomic_val_t)UINT32_MAX);
+    (void)atomic_set(&g.handset_advance, 0);
+
+    run_post_with_reboot_catch();
+
+    zassert_equal(firmware_confirm_get_state(), POST_FAILED_NO_HANDSET,
+                  "saturated static handset counters must fail the gate");
+    zassert_equal(g.reboot_calls, 1, "must reboot");
+}
+
+ZTEST(firmware_confirm, test_ztest_init_is_noop)
+{
+    /* The CONFIG_ZTEST firmware_confirm_init() is a deliberate no-op — the
+     * suite drives run_post_sequence() directly. Invoke it to document that
+     * contract and cover the stub body. */
+    PostState_t before = firmware_confirm_get_state();
+    firmware_confirm_init();
+    zassert_equal(firmware_confirm_get_state(), before,
+                  "ztest firmware_confirm_init() must not change POST state");
+}
+
 /* ---- firmware_confirm_init decision matrix --------------------------------
  *
  * Regression coverage for the bug where POST was DEFERRED on a freshly-swapped

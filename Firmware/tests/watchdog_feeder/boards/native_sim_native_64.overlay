@@ -1,0 +1,19 @@
+/* The watchdog0 alias satisfies watchdog_feeder.c's BUILD_ASSERT. The node
+ * carries the counter-watchdog binding purely for devicetree validity; no
+ * wdt driver Kconfig is enabled, so the test's scripted device (registered
+ * with DEVICE_DT_DEFINE in src/main.c) is the node's only implementation. */
+/ {
+    wdt_scripted: watchdog {
+        compatible = "zephyr,counter-watchdog";
+        counter = <&counter0>;
+        status = "okay";
+    };
+
+    aliases {
+        watchdog0 = &wdt_scripted;
+    };
+};
+
+&counter0 {
+    status = "okay";
+};

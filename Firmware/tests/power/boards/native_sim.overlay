@@ -1,21 +1,170 @@
-/ {
-	/* Emulated VBUS regulator using a GPIO on the emulated controller */
-	test_vbus_reg: test-vbus-regulator {
-		compatible = "regulator-fixed";
-		regulator-name = "test-vbus";
-		enable-gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
-	};
+/* Test topology for power_management.c coverage.
+ *
+ * gpio0 pin map (all on the emulated controller):
+ *   0  = VBUS regulator enable (main instance)
+ *   1  = CAN enable input, active-low (main instance)
+ *   2  = CAN shutdown output (main instance)
+ *   3  = bus_sel1 (main instance)
+ *   4  = bus_sel2 (main instance)
+ *   5  = CAN silent output (main instance)
+ *   6  = shared aux regulator enable (test_vbus_reg2)
+ *   7  = deferred regulator enable (test_vbus_reg_late)
+ *   8  = power_badshdn can-shutdown (open-drain -> configure fails)
+ *   9  = power_badsilent can-shutdown (ok)
+ *   10 = power_badsilent can-silent (open-drain -> configure fails)
+ *   11 = power_badmux0 bus_sel1 (open-drain -> configure fails)
+ *   12 = power_badmux0 bus_sel2
+ *   13 = power_badmux1 bus_sel1
+ *   14 = power_badmux1 bus_sel2 (open-drain -> configure fails)
+ *
+ * The gpio_emul driver rejects GPIO_OPEN_DRAIN with -ENOTSUP, which is the
+ * only error the emulator can produce from gpio_pin_configure() on an
+ * output pin without tripping the gpio.h __ASSERTs. The power_bad*
+ * instances use that to drive configure_can_gpios()/power_init() down
+ * their failure arms at boot.
+ */
 
-	/* Power subsystem under test — uses emulated GPIO and ADC */
-	power: test-power-subsystem {
-		compatible = "quickrecon,power-subsystem";
-		vbus-supply = <&test_vbus_reg>;
-		battery-sense-io-channels = <&adc0 0>;
-		battery-divider-ratio = <7250>;
-		can-enable-gpios = <&gpio0 1 GPIO_ACTIVE_LOW>;
-		can-shutdown-gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
-		/* Rev2-style bus select mux for mux logic testing */
-		bus-select-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>,
-				   <&gpio0 4 GPIO_ACTIVE_HIGH>;
-	};
+&adc0 {
+    /* native_sim's adc-emul defaults ref-internal-mv to 0, which makes
+     * channel setup with ADC_REF_INTERNAL fail. Model a 3.3 V internal
+     * reference so the battery ADC path works. */
+    ref-internal-mv = <3300>;
+};
+
+/ {
+    /* Emulated VBUS regulator using a GPIO on the emulated controller */
+    test_vbus_reg: test-vbus-regulator {
+        compatible = "regulator-fixed";
+        regulator-name = "test-vbus";
+        enable-gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+    };
+
+    /* Shared regulator for the auxiliary power instances so their
+     * enable refcounts never interact with the main instance's tests. */
+    test_vbus_reg2: test-vbus-regulator-2 {
+        compatible = "regulator-fixed";
+        regulator-name = "test-vbus-2";
+        enable-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+    };
+
+    /* Never initialised (deferred): device_is_ready() == false, so
+     * power_deadreg's power_init() takes the -ENODEV arm. */
+    test_vbus_reg_late: test-vbus-regulator-late {
+        compatible = "regulator-fixed";
+        regulator-name = "test-vbus-late";
+        enable-gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;
+        zephyr,deferred-init;
+    };
+
+    /* Second emulated ADC, never initialised: battery ADC "not ready" arm. */
+    adc_late: adc-late {
+        compatible = "zephyr,adc-emul";
+        nchannels = <1>;
+        ref-internal-mv = <3300>;
+        #io-channel-cells = <1>;
+        zephyr,deferred-init;
+        status = "okay";
+    };
+
+    /* VCC sense sensor stub — the sensor API implementation lives in the
+     * test binary (DEVICE_DT_DEFINE in src/main.c) with scriptable
+     * fetch/get return values. */
+    vcc_sense_sim: vcc-sense-sim {
+    };
+
+    /* VCC sense sensor whose init fails: device_is_ready() == false, so
+     * power_senses' power_init() takes the "VCC sense not ready" arm. */
+    vcc_sense_dead: vcc-sense-dead {
+    };
+
+    /* Power subsystem under test — uses emulated GPIO and ADC */
+    power: test-power-subsystem {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&test_vbus_reg>;
+        battery-sense-io-channels = <&adc0 0>;
+        battery-divider-ratio = <7250>;
+        can-enable-gpios = <&gpio0 1 GPIO_ACTIVE_LOW>;
+        can-shutdown-gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+        can-silent-gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;
+        /* Rev2-style bus select mux for mux logic testing */
+        bus-select-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>,
+                   <&gpio0 4 GPIO_ACTIVE_HIGH>;
+        vcc-sense = <&vcc_sense_sim>;
+    };
+
+    /* Minimal instance: no CAN GPIOs, no mux, no sense hardware.
+     * Exercises every "hardware absent" arm. */
+    power_bare: test-power-bare {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&test_vbus_reg2>;
+        battery-sense-io-channels = <&adc0 1>;
+        battery-divider-ratio = <7250>;
+    };
+
+    /* VBUS regulator never ready -> power_init() returns -ENODEV.
+     * Deferred (and driven via device_init() from the test) because the
+     * init-priority checker rejects a non-deferred device that depends on
+     * the deferred regulator. */
+    power_deadreg: test-power-deadreg {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&test_vbus_reg_late>;
+        battery-sense-io-channels = <&adc0 1>;
+        battery-divider-ratio = <7250>;
+        zephyr,deferred-init;
+    };
+
+    /* can-shutdown configure fails (open-drain); battery ADC channel 5 is
+     * out of range for adc0 (nchannels = 2) so channel setup fails too. */
+    power_badshdn: test-power-badshdn {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&test_vbus_reg2>;
+        battery-sense-io-channels = <&adc0 5>;
+        battery-divider-ratio = <7250>;
+        can-shutdown-gpios = <&gpio0 8 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+    };
+
+    /* can-silent configure fails after can-shutdown succeeds; battery ADC
+     * device (adc_late) is never ready. Deferred for the same
+     * init-priority-checker reason as power_deadreg. */
+    power_badsilent: test-power-badsilent {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&test_vbus_reg2>;
+        battery-sense-io-channels = <&adc_late 0>;
+        battery-divider-ratio = <7250>;
+        can-shutdown-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
+        can-silent-gpios = <&gpio0 10 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+        zephyr,deferred-init;
+    };
+
+    /* First bus-select GPIO fails to configure. */
+    power_badmux0: test-power-badmux0 {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&test_vbus_reg2>;
+        battery-sense-io-channels = <&adc0 1>;
+        battery-divider-ratio = <7250>;
+        bus-select-gpios = <&gpio0 11 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>,
+                   <&gpio0 12 GPIO_ACTIVE_HIGH>;
+    };
+
+    /* Second bus-select GPIO fails after the first succeeds. */
+    power_badmux1: test-power-badmux1 {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&test_vbus_reg2>;
+        battery-sense-io-channels = <&adc0 1>;
+        battery-divider-ratio = <7250>;
+        bus-select-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>,
+                   <&gpio0 14 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+    };
+
+    /* Rev2-style sense channels present (TODO stubs in the driver) plus a
+     * VCC sense device that is not ready. */
+    power_senses: test-power-senses {
+        compatible = "quickrecon,power-subsystem";
+        vbus-supply = <&test_vbus_reg2>;
+        battery-sense-io-channels = <&adc0 1>;
+        battery-divider-ratio = <7250>;
+        vbus-sense-io-channels = <&adc0 1>;
+        can-sense-io-channels = <&adc0 1>;
+        vcc-sense = <&vcc_sense_dead>;
+    };
 };

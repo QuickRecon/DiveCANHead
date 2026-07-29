@@ -14,6 +14,7 @@ import {
   buildRequestDownloadResponse,
   buildTransferResponse,
   buildTransferExitResponse,
+  MULTI_DID_RESPONSES,
   NRC
 } from '../../tests/fixtures/uds-responses.js';
 import {
@@ -667,6 +668,295 @@ describe('UDSClient', () => {
       expect(result.CONSENSUS_PPO2).toBe(1);
       // The unsupported DID was skipped, not fatal
       expect(result.POWER_SOURCES).toBeUndefined();
+    });
+
+    it('invokes the progress callback once per chunk', async () => {
+      client.readDIDsParsed = async (dids) => {
+        const out = {};
+        for (const did of dids) {
+          const info = getDIDInfo(did);
+          if (info) out[info.key] = 1;
+        }
+        return out;
+      };
+
+      const progress = vi.fn();
+      await client.fetchAllState([1, 1, 1], progress);
+
+      expect(progress).toHaveBeenCalled();
+      // Each call is (chunkIndex, totalChunks); the number of calls equals total.
+      const total = progress.mock.calls[0][1];
+      expect(progress.mock.calls).toHaveLength(total);
+      expect(progress).toHaveBeenLastCalledWith(total, total);
+    });
+  });
+
+  describe('EventEmitter', () => {
+    it('off removes a previously registered handler', () => {
+      const handler = vi.fn();
+      client.on('foo', handler);
+      client.off('foo', handler);
+      client.emit('foo');
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('off on an unknown event is a no-op', () => {
+      expect(() => client.off('never-registered', () => {})).not.toThrow();
+    });
+
+    it('removeAllListeners(event) clears only that event', () => {
+      const a = vi.fn();
+      const b = vi.fn();
+      client.on('a', a);
+      client.on('b', b);
+      client.removeAllListeners('a');
+      client.emit('a');
+      client.emit('b');
+      expect(a).not.toHaveBeenCalled();
+      expect(b).toHaveBeenCalled();
+    });
+
+    it('removeAllListeners() clears every event', () => {
+      const a = vi.fn();
+      client.on('a', a);
+      client.removeAllListeners();
+      client.emit('a');
+      expect(a).not.toHaveBeenCalled();
+    });
+
+    it('swallows errors thrown inside a handler', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      client.on('boom', () => { throw new Error('handler failure'); });
+      expect(() => client.emit('boom')).not.toThrow();
+      expect(spy).toHaveBeenCalled();
+    });
+  });
+
+  describe('transport error while a request is pending', () => {
+    it('rejects the in-flight request when the transport errors', async () => {
+      // No response queued -> the request stays pending.
+      const promise = client.readDataByIdentifier(0xF200);
+      // Let the dispatch settle so pendingReject is armed.
+      await new Promise(r => setTimeout(r, 0));
+      transport.injectError(new Error('bus dropped'));
+      await expect(promise).rejects.toThrow('bus dropped');
+    });
+  });
+
+  describe('send failure and dispatch guards', () => {
+    it('rejects with "Failed to send request" when transport.send rejects', async () => {
+      transport.send = vi.fn(() => Promise.reject(new Error('write failed')));
+      await expect(client.readDataByIdentifier(0xF200))
+        .rejects.toThrow('Failed to send request');
+    });
+
+    it('_dispatchRequest throws when a request is already pending', async () => {
+      // Directly exercise the serialization assertion (unreachable via the
+      // public queue). The first dispatch arms pendingRequest synchronously.
+      client._dispatchRequest([0x22, 0xF2, 0x00], 5000).catch(() => {});
+      await expect(client._dispatchRequest([0x22, 0xF2, 0x01], 5000))
+        .rejects.toThrow('Request already pending');
+      client._clearPendingRequest();
+    });
+  });
+
+  describe('unexpected positive response SID', () => {
+    it('rejects when the response SID does not match the request', async () => {
+      // A DiagnosticSessionControl reply (0x50) arrives while an RDBI (expects
+      // 0x62) is pending.
+      transport.queueResponse(new Uint8Array([0x50, 0x02]));
+      await expect(client.readDataByIdentifier(0xF200))
+        .rejects.toThrow('Unexpected response SID');
+    });
+  });
+
+  describe('requestDownload validation', () => {
+    it('throws on a malformed (short) 0x74 response', async () => {
+      transport.queueResponse(new Uint8Array([0x74, 0x20]));
+      await expect(client.requestDownload(0, 0x100))
+        .rejects.toThrow('Malformed RequestDownload response');
+    });
+  });
+
+  describe('settings enumeration', () => {
+    it('getSettingCount returns the first payload byte', async () => {
+      transport.queueResponse(buildRDBIResponse(0x9100, [5]));
+      const count = await client.getSettingCount();
+      expect(Array.from(transport.getLastSent())).toEqual([0x22, 0x91, 0x00]);
+      expect(count).toBe(5);
+    });
+
+    it('getSettingInfo parses a NUMBER-kind setting (no option count)', async () => {
+      const payload = [
+        ...new TextEncoder().encode('Setpoint'), 0x00, // 8 chars + pad to 9? handled below
+      ];
+      // Build exactly 9-byte label field + sep + kind + editable.
+      const label = new Uint8Array(9);
+      label.set(new TextEncoder().encode('Setpoint'));
+      const number = [...label, 0x00, 0x00 /* NUMBER */, 0x00 /* not editable */];
+      transport.queueResponse(buildRDBIResponse(0x9110, number));
+      const info = await client.getSettingInfo(0);
+      expect(info.label).toBe('Setpoint');
+      expect(info.kind).toBe(0);
+      expect(info.editable).toBe(false);
+      expect(info.optionCount).toBe(0);
+      void payload;
+    });
+
+    it('getSettingValue parses max + current 64-bit big-endian values', async () => {
+      const payload = [0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 100];
+      transport.queueResponse(buildRDBIResponse(0x9130, payload));
+      const { maxValue, currentValue } = await client.getSettingValue(0);
+      expect(Array.from(transport.getLastSent())).toEqual([0x22, 0x91, 0x30]);
+      expect(maxValue).toBe(255n);
+      expect(currentValue).toBe(100n);
+    });
+
+    it('writeSettingValue writes 8 big-endian bytes to the value DID', async () => {
+      transport.queueResponse(buildWDBIResponse(0x9130));
+      await client.writeSettingValue(0, 5);
+      expect(Array.from(transport.getLastSent()))
+        .toEqual([0x2E, 0x91, 0x30, 0, 0, 0, 0, 0, 0, 0, 5]);
+    });
+
+    it('saveSetting writes to the save-base DID', async () => {
+      transport.queueResponse(buildWDBIResponse(0x9351));
+      await client.saveSetting(1, 3);
+      expect(Array.from(transport.getLastSent()))
+        .toEqual([0x2E, 0x93, 0x51, 0, 0, 0, 0, 0, 0, 0, 3]);
+    });
+
+    it('enumerateSettings reads info + value for each setting', async () => {
+      // count = 1, then info(0) and value(0)
+      transport.queueResponse(buildRDBIResponse(0x9100, [1]));
+      const label = new Uint8Array(9);
+      label.set(new TextEncoder().encode('Mode'));
+      transport.queueResponse(buildRDBIResponse(0x9110,
+        [...label, 0x00, 0x01 /* TEXT */, 0x01 /* editable */, 0x02, 0x04]));
+      transport.queueResponse(buildRDBIResponse(0x9130,
+        [0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 2]));
+
+      const settings = await client.enumerateSettings();
+      expect(settings).toHaveLength(1);
+      expect(settings[0]).toMatchObject({
+        index: 0,
+        label: 'Mode',
+        kind: 1,
+        editable: true,
+        optionCount: 4,
+        maxValue: 7n,
+        currentValue: 2n
+      });
+    });
+  });
+
+  describe('readMultipleDIDs', () => {
+    it('returns an empty Map for an empty DID list', async () => {
+      expect((await client.readMultipleDIDs([])).size).toBe(0);
+    });
+
+    it('returns an empty Map for null', async () => {
+      expect((await client.readMultipleDIDs(null)).size).toBe(0);
+    });
+
+    it('parses a bundled response using each DID size', async () => {
+      transport.queueResponse(MULTI_DID_RESPONSES.CONTROL_STATE);
+      const map = await client.readMultipleDIDs([0xF200, 0xF202, 0xF203]);
+      expect(map.size).toBe(3);
+      expect(Array.from(map.get(0xF203))).toEqual([0x07]);
+      expect(Array.from(map.get(0xF200))).toEqual([0x66, 0x66, 0x86, 0x3F]);
+    });
+
+    it('consumes the remainder for an unknown trailing DID', async () => {
+      // [0x62, 0xFFFF, payload...] -> unknown DID, no further known header found
+      transport.queueResponse(new Uint8Array([0x62, 0xFF, 0xFF, 0x01, 0x02, 0x03]));
+      const map = await client.readMultipleDIDs([0xFFFF]);
+      expect(Array.from(map.get(0xFFFF))).toEqual([0x01, 0x02, 0x03]);
+    });
+
+    it('finds the next known DID header after an unknown DID', async () => {
+      // Unknown 0xFFFF then known 0xF203 (1 byte). The scan must stop the
+      // unknown field at the 0xF203 header.
+      transport.queueResponse(new Uint8Array([
+        0x62, 0xFF, 0xFF, 0xAA, 0xF2, 0x03, 0x07
+      ]));
+      const map = await client.readMultipleDIDs([0xFFFF, 0xF203]);
+      expect(Array.from(map.get(0xFFFF))).toEqual([0xAA]);
+      expect(Array.from(map.get(0xF203))).toEqual([0x07]);
+    });
+  });
+
+  describe('parseDIDValue integer types', () => {
+    it('parses int32 little-endian', () => {
+      // CELL0_TEMPERATURE (0xF406, int32)
+      const v = client.parseDIDValue(0xF406, new Uint8Array([0xFF, 0xFF, 0xFF, 0xFF]));
+      expect(v).toBe(-1);
+    });
+
+    it('parses uint32 little-endian', () => {
+      // CELL0_ERROR (0xF407, uint32)
+      const v = client.parseDIDValue(0xF407, new Uint8Array([0x00, 0x00, 0x00, 0x80]));
+      expect(v).toBe(0x80000000);
+    });
+
+    it('parses int16 little-endian', () => {
+      // CELL0_RAW_ADC (0xF404, int16)
+      const v = client.parseDIDValue(0xF404, new Uint8Array([0x00, 0x80]));
+      expect(v).toBe(-32768);
+    });
+
+    it('parses uint16 little-endian', () => {
+      // SATURATION_COUNT (0xF212, uint16)
+      const v = client.parseDIDValue(0xF212, new Uint8Array([0x34, 0x12]));
+      expect(v).toBe(0x1234);
+    });
+
+    it('parses device_current, returning the draw in mA', () => {
+      // 0xF237: currentUa=1000, age=0, valid=1
+      const v = client.parseDIDValue(
+        0xF237,
+        new Uint8Array([0xE8, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00])
+      );
+      expect(v).toBe(1);
+    });
+
+    it('maps an invalid device_current sample to NaN', () => {
+      const v = client.parseDIDValue(
+        0xF237,
+        new Uint8Array([0xE8, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+      );
+      expect(v).toBeNaN();
+    });
+  });
+
+  describe('readDIDsParsed / readControlState / readCellState', () => {
+    it('keys known DIDs by name and unknown DIDs by hex', async () => {
+      transport.queueResponse(buildRDBIResponse(0xF203, [0x07]));
+      const known = await client.readDIDsParsed([0xF203]);
+      expect(known.CELLS_VALID).toBe(7);
+
+      transport.queueResponse(new Uint8Array([0x62, 0xFF, 0xFF, 0x09]));
+      const unknown = await client.readDIDsParsed([0xFFFF]);
+      expect(Array.from(unknown['0xffff'])).toEqual([0x09]);
+    });
+
+    it('readControlState fetches the control DID set', async () => {
+      const spy = vi.fn(async (dids) => ({ dids }));
+      client.readDIDsParsed = spy;
+      const result = await client.readControlState();
+      expect(spy).toHaveBeenCalledTimes(1);
+      // Control DIDs exclude cell DIDs (0xF4xx)
+      expect(result.dids.every(d => d < 0xF400)).toBe(true);
+      expect(result.dids).toContain(0xF200);
+    });
+
+    it('readCellState fetches only DIDs valid for the cell type', async () => {
+      const spy = vi.fn(async (dids) => ({ dids }));
+      client.readDIDsParsed = spy;
+      const result = await client.readCellState(0, 1 /* analog */);
+      expect(spy).toHaveBeenCalledTimes(1);
+      // All requested DIDs belong to cell 0 (0xF400-0xF40C)
+      expect(result.dids.every(d => d >= 0xF400 && d <= 0xF40C)).toBe(true);
     });
   });
 });

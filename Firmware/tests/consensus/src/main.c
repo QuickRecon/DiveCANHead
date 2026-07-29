@@ -606,6 +606,78 @@ ZTEST(consensus, test_overflow_saturates)
     zassert_equal(result.consensus_ppo2, PPO2_FAIL);
 }
 
+/**
+ * @brief Two agreeing but over-range cells saturate to PPO2_FAIL.
+ *
+ * Exercises the two-cell averaging path (two_cell_consensus): both cells are
+ * within MAX_DEVIATION of each other so they are not voted out, but their
+ * average exceeds MAX_VALID_PPO2 and must saturate rather than wrap the
+ * uint8_t wire value. Distinct from test_overflow_saturates which drives the
+ * three-cell path.
+ */
+ZTEST(consensus, test_two_cells_overflow_saturates)
+{
+    OxygenCellMsg_t cells[2] = {
+        make_cell(0, 254, 2.55, 0, CELL_OK, 0),
+        make_cell(1, 254, 2.55, 0, CELL_OK, 0),
+    };
+
+    ConsensusMsg_t result = consensus_calculate(cells, 2, NOW_TICKS,
+                            STALENESS_TICKS);
+
+    /* (2.55 + 2.55) / 2 * 100 = 255 > MAX_VALID_PPO2(254), must saturate */
+    zassert_equal(result.consensus_ppo2, PPO2_FAIL);
+    zassert_equal(result.confidence, 2);
+}
+
+/**
+ * @brief Three cells that all mutually diverge beyond MAX_DEVIATION.
+ *
+ * Drives the three-cell path where even the closest pair exceeds
+ * MAX_DEVIATION, so all three cells are voted out (no reliable reading).
+ */
+ZTEST(consensus, test_three_cells_all_diverge)
+{
+    OxygenCellMsg_t cells[3] = {
+        make_cell(0, 50, 0.50, 0, CELL_OK, 0),
+        make_cell(1, 100, 1.00, 0, CELL_OK, 0),
+        make_cell(2, 150, 1.50, 0, CELL_OK, 0),
+    };
+
+    ConsensusMsg_t result = consensus_calculate(cells, 3, NOW_TICKS,
+                            STALENESS_TICKS);
+
+    /* Closest pair differs by 0.50 bar = 50 cbar > MAX_DEVIATION(15) */
+    zassert_equal(result.consensus_ppo2, PPO2_FAIL);
+    zassert_equal(result.confidence, 0);
+}
+
+/**
+ * @brief Three-cell path where the winning pair is itself over-range.
+ *
+ * Two high cells agree closely (closest pair) and the third is a distant
+ * outlier that gets voted out; the surviving pair's average exceeds
+ * MAX_VALID_PPO2 and must saturate to PPO2_FAIL. Covers the saturation arm of
+ * the two-of-three branch.
+ */
+ZTEST(consensus, test_three_cells_pair_overflow_saturates)
+{
+    OxygenCellMsg_t cells[3] = {
+        make_cell(0, 254, 2.55, 0, CELL_OK, 0),
+        make_cell(1, 254, 2.55, 0, CELL_OK, 0),
+        make_cell(2, 50, 0.50, 0, CELL_OK, 0),
+    };
+
+    ConsensusMsg_t result = consensus_calculate(cells, 3, NOW_TICKS,
+                            STALENESS_TICKS);
+
+    /* Pair average 2.55 bar -> 255 cbar > MAX_VALID_PPO2(254), must saturate.
+     * Outlier cell 2 is voted out, so confidence is the surviving pair (2). */
+    zassert_equal(result.consensus_ppo2, PPO2_FAIL);
+    zassert_equal(result.confidence, 2);
+    zassert_false(result.include_array[2]);
+}
+
 ZTEST(consensus, test_alarm_exact_boundaries)
 {
     zassert_equal(alarm_ppo2_reasons(39, 2, SP_NORMAL_CB), ALARM_PPO2_LOW);
@@ -742,4 +814,76 @@ ZTEST(consensus, test_perfect_cells_consensus_not_low)
     };
     ConsensusMsg_t r2 = consensus_calculate(two, 2, NOW_TICKS, STALENESS_TICKS);
     zassert_equal(r2.consensus_ppo2, 70, "two perfect 0.70 cells must read 70");
+}
+
+/* ---- Calibration-coefficient error reporting (CONFIG_ZBUS build) ----
+ *
+ * The cal-coefficient helpers in oxygen_cell_math.c are functionally covered
+ * by tests/calibration_math, but their OP_ERROR_DETAIL diagnostic arms are
+ * compiled only when CONFIG_ZBUS is defined. This module is the ZBUS-enabled
+ * math build (it stubs op_error_publish above), so driving the error inputs
+ * here exercises those otherwise-unreachable reporting branches. Assertions
+ * pin the sentinel returns so the tests stay meaningful, not just coverage
+ * scaffolding.
+ */
+
+/** @brief Suite: cal-coefficient error paths under CONFIG_ZBUS reporting. */
+ZTEST_SUITE(cal_error_reporting, NULL, NULL, NULL, NULL, NULL);
+
+/** @brief analog: zero counts -> near-zero divisor -> MATH sentinel + report. */
+ZTEST(cal_error_reporting, test_analog_zero_counts_math)
+{
+    zassert_equal(analog_cal_coefficient(0, 21), CAL_COEFF_ERR_MATH);
+}
+
+/** @brief analog: out-of-envelope coefficient -> RANGE sentinel + report. */
+ZTEST(cal_error_reporting, test_analog_out_of_range)
+{
+    zassert_equal(analog_cal_coefficient(10, 200), CAL_COEFF_ERR_RANGE);
+}
+
+/** @brief DiveO2: zero target PPO2 -> MATH sentinel + report. */
+ZTEST(cal_error_reporting, test_diveo2_zero_ppo2_math)
+{
+    zassert_equal(diveo2_cal_coefficient(1000000, 0), CAL_COEFF_ERR_MATH);
+}
+
+/** @brief DiveO2: near-zero sample -> MATH sentinel + report. */
+ZTEST(cal_error_reporting, test_diveo2_zero_sample_math)
+{
+    zassert_equal(diveo2_cal_coefficient(0, 21), CAL_COEFF_ERR_MATH);
+}
+
+/** @brief DiveO2: below-envelope coefficient -> RANGE sentinel + report. */
+ZTEST(cal_error_reporting, test_diveo2_below_range)
+{
+    /* sample 100 / 0.21 bar = tiny coeff, well under DIVEO2_CAL_LOWER */
+    zassert_equal(diveo2_cal_coefficient(100, 21), CAL_COEFF_ERR_RANGE);
+}
+
+/** @brief DiveO2: above-envelope coefficient -> RANGE sentinel (upper arm). */
+ZTEST(cal_error_reporting, test_diveo2_above_range)
+{
+    /* 300000 / 0.21 bar = 1.43e6 coeff, above DIVEO2_CAL_UPPER (1.1e6) */
+    zassert_equal(diveo2_cal_coefficient(300000, 21), CAL_COEFF_ERR_RANGE);
+}
+
+/** @brief O2S: exactly-zero sample -> MATH sentinel + report. */
+ZTEST(cal_error_reporting, test_o2s_zero_sample_math)
+{
+    zassert_equal(o2s_cal_coefficient(0.0f, 21), CAL_COEFF_ERR_MATH);
+}
+
+/** @brief O2S: above-envelope coefficient -> RANGE sentinel + report. */
+ZTEST(cal_error_reporting, test_o2s_above_range)
+{
+    /* 0.21 bar / 0.01 = 21.0 coeff, far above O2S_CAL_UPPER (1.2) */
+    zassert_equal(o2s_cal_coefficient(0.01f, 21), CAL_COEFF_ERR_RANGE);
+}
+
+/** @brief O2S: below-envelope coefficient -> RANGE sentinel (lower arm). */
+ZTEST(cal_error_reporting, test_o2s_below_range)
+{
+    /* 0.21 bar / 1.0 = 0.21 coeff, below O2S_CAL_LOWER (0.8) */
+    zassert_equal(o2s_cal_coefficient(1.0f, 21), CAL_COEFF_ERR_RANGE);
 }

@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20.0)
 
+# power_shutdown() ends in sys_reboot(), which exits the native_sim process.
+# Wrap it so the shutdown tests can observe the call instead of dying.
+add_link_options(
+    -Wl,--wrap=sys_reboot
+)
+
 set(DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(test_power)

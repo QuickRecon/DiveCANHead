@@ -149,6 +149,24 @@ def test_preamble_emits_runtime_section(boot_log: str) -> None:
     assert "  Battery type:" in boot_log
 
 
+def test_preamble_runtime_ppo2_mode_is_pid(boot_log: str) -> None:
+    """The integration build's compiled-in default latches PPO2 mode = PID,
+    so ppo2_mode_name() must project the runtime setting to "PID"."""
+    assert "  PPO2 mode: PID" in boot_log
+
+
+def test_preamble_runtime_cal_mode_is_digital_ref(boot_log: str) -> None:
+    """integration.conf defaults the cal method to DIGITAL_REFERENCE, so
+    cal_mode_name() must render it as "DIGITAL_REF"."""
+    assert "  Cal mode: DIGITAL_REF" in boot_log
+
+
+def test_preamble_runtime_battery_type_is_li2s(boot_log: str) -> None:
+    """integration.conf pins the LI2S battery chemistry, so battery_type_name()
+    must render the runtime battery type as "LI2S"."""
+    assert "  Battery type: LI2S" in boot_log
+
+
 def test_preamble_runtime_pid_gains_are_integers(boot_log: str) -> None:
     """The Kp/Ki/Kd line uses the x1000 integer encoding (no floats)."""
     pid_lines = [

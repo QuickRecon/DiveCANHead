@@ -1,0 +1,4 @@
+tests:
+  oxygen_cell.diveo2_thread:
+    platform_allow: native_sim
+    tags: oxygen_cell diveo2 uart

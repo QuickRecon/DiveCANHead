@@ -161,6 +161,23 @@ python3 scripts/native_test.py build --coverage ppo2_control_math
 python3 scripts/native_test.py run   --coverage ppo2_control_math
 ```
 
+**Pin the toolchain for coverage runs**: prefix every coverage build/run with
+`ZEPHYR_TOOLCHAIN_VARIANT=host`. Zephyr's auto-detection can pick clang for
+native_sim, whose `.gcda` format neither system `gcov` nor `llvm-cov gcov`
+parses reliably on this host; pinning to host gcc keeps every
+`build-coverage/` dir on one instrumentation format so gcovr merges cleanly.
+
+**native_sim time-freeze pitfall** (bit several test efforts): simulated time
+only advances across sleeps (`k_msleep`/`k_usleep`/`k_busy_wait`). Any loop
+that polls `k_uptime_get`/`k_cycle_get_32` without sleeping spins forever —
+this includes upstream driver code (e.g. `i2c_bitbang.c`'s delay loop), so a
+"passing" configuration change can turn into a hard hang when it makes such a
+path newly reachable. Scripted test-local devices (DEVICE_DT_DEFINE against
+the node with the real driver's Kconfig disabled) are the proven workaround —
+see `tests/watchdog_feeder/`, which also documents why a real
+counter-watchdog cannot coexist with the solenoid deadman on native_sim's
+single counter instance.
+
 `.gcda` files are flushed by libgcov's `atexit` hook when the process
 exits cleanly. The pytest fixture's `SIGTERM → wait → SIGKILL` teardown
 runs that hook reliably, but the grace period must be long enough.
@@ -248,7 +265,7 @@ Each entry must include: what changed, why, what still provides coverage, and po
 - Float literals in app code should use `f` suffix (e.g., `0.5f`) even though the compiler flag was removed
 - All fatal paths must reboot, never halt
 - **Never use `CONFIG_LOG_MODE_IMMEDIATE=y`** — causes spinlock reentry crash with RTT backend (see COMPROMISE.md #5)
-- **`k_sys_fatal_error_handler` is currently NOT overridden** — every variation we tried (printk + spin-wait, LOG_PANIC only, no-op + reboot) ended up truncating the standard fatal dump in a different way. The upstream default (`LOG_PANIC` → `LOG_ERR("Halting system")` → `arch_system_halt`) gives a complete, reliable diagnostic trace. Trade-off: the chip halts on a true fault instead of rebooting. Acceptable during development; revisit before production. Our override is kept in `errors.c` under `#if 0` so reintroducing it is one flag away once the underlying fault is identified.
+- **`k_sys_fatal_error_handler` IS overridden** (`src/errors.c`, active — an earlier note here claiming it sat under `#if 0` was stale as of 2026-07; the override snapshots crash info into `crash_noinit` then reboots). Covered by `tests/errors_fatal/`.
 - **`fatal_op_error()` (the custom path called directly by app code) DOES use `printk`** — that path bypasses Zephyr's fatal machinery, so we have to do the diagnostic line ourselves. The logging subsystem isn't safe to call from a hand-invoked panic.
 - **`crash_noinit` + `errors_get_last_crash()` infrastructure is still active** — used by `fatal_op_error()` and surfaced on next boot by `main.c`. The Zephyr stock halt path doesn't populate it, so PC/LR/CFSR won't appear in the next-boot report when the fault came from a CPU exception. Live with that for now.
 

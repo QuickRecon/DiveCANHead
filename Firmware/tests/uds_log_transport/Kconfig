@@ -1,0 +1,5 @@
+mainmenu "UDS Log Transport Tests"
+
+rsource "../../src/Kconfig.flash_log"
+
+source "Kconfig.zephyr"

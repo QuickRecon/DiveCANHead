@@ -124,6 +124,8 @@ static Status_t read_pin_tristate(const struct gpio_dt_spec *pin)
  *
  * @param led GPIO spec for the error indicator LED (must already be configured)
  */
+/* GCOVR_EXCL_START — infinite pre-boot halt loop: unreachable by any
+ * passing test by design (a covered run would never terminate). */
 static void blink_forever(const struct gpio_dt_spec *led)
 {
     /* Fast blink = version mismatch (3 blinks, pause, repeat) */
@@ -171,6 +173,7 @@ static void halt_with_blink(const struct hw_version_config *cfg,
         blink_forever(&cfg->error_led);
     }
 }
+/* GCOVR_EXCL_STOP */
 
 /**
  * @brief Print pin states as "<prefix>: [s0,s1,...]" via printk

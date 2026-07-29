@@ -26,6 +26,10 @@ description: |
 
 compatible: "quickrecon,power-subsystem"
 
+# Standard properties (status, zephyr,deferred-init, ...) — required so test
+# overlays can defer instances whose dependencies are themselves deferred.
+include: base.yaml
+
 properties:
   vbus-supply:
     type: phandle

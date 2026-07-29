@@ -1,0 +1,100 @@
+/*
+ * Test topology for hw_version.c coverage.
+ *
+ * A quickrecon,gpio-sim controller (gpio_sim0) hosts the version-detect pins.
+ * Unlike the stock gpio_emul, gpio-sim keeps an externally-driven value pinned
+ * through the GPIO_PULL_UP / GPIO_PULL_DOWN reconfigures that
+ * read_pin_tristate() applies, so the three decode outcomes can be produced
+ * deterministically from the test:
+ *
+ *   - gpio_sim_drive(pin, 1)  -> both pulled reads HIGH  -> PIN_HIGH
+ *   - gpio_sim_drive(pin, 0)  -> both pulled reads LOW   -> PIN_LOW
+ *   - gpio_sim_release(pin)   -> pull-up HIGH, pull-down LOW -> PIN_FLOATING
+ *
+ * gpio_sim0 pin map:
+ *   7,8,9    hwver_float detect pins (expected [Z,Z,Z])
+ *   10,11,12 hwver_high  detect pins (expected [1,1,1])
+ *   13,14,15 hwver_low   detect pins (expected [0,0,0])
+ *   16,17,18 hwver_mixed detect pins (expected [0,1,Z])
+ *   4        hwver_mixed error LED (exercises the error-led COND_CODE_1 arm)
+ *
+ * Every hw-version instance is deferred so the test controls pin state before
+ * driving device_init(); nothing runs at boot, so no mismatch can trip the
+ * unrecoverable halt-with-blink loop during startup.
+ *
+ * hwver_enodev points at gpio_sim_late, a second gpio-sim that is never
+ * initialised, so gpio_is_ready_dt() is false and read_one_detect_pin() takes
+ * its -ENODEV arm.
+ */
+
+/ {
+    gpio_sim0: gpio_sim {
+        compatible = "quickrecon,gpio-sim";
+        status = "okay";
+        gpio-controller;
+        #gpio-cells = <2>;
+        ngpios = <32>;
+        rising-edge;
+        falling-edge;
+        high-level;
+        low-level;
+    };
+
+    /* Deferred: never initialised, so device_is_ready() stays false. */
+    gpio_sim_late: gpio_sim_late {
+        compatible = "quickrecon,gpio-sim";
+        status = "okay";
+        gpio-controller;
+        #gpio-cells = <2>;
+        ngpios = <8>;
+        rising-edge;
+        falling-edge;
+        high-level;
+        low-level;
+        zephyr,deferred-init;
+    };
+
+    hwver_float: hwver-float {
+        compatible = "quickrecon,hw-version";
+        detect-gpios = <&gpio_sim0 7 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 8 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 9 GPIO_ACTIVE_HIGH>;
+        expected-pattern = <2 2 2>;
+        zephyr,deferred-init;
+    };
+
+    hwver_high: hwver-high {
+        compatible = "quickrecon,hw-version";
+        detect-gpios = <&gpio_sim0 10 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 11 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 12 GPIO_ACTIVE_HIGH>;
+        expected-pattern = <1 1 1>;
+        zephyr,deferred-init;
+    };
+
+    hwver_low: hwver-low {
+        compatible = "quickrecon,hw-version";
+        detect-gpios = <&gpio_sim0 13 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 14 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 15 GPIO_ACTIVE_HIGH>;
+        expected-pattern = <0 0 0>;
+        zephyr,deferred-init;
+    };
+
+    hwver_mixed: hwver-mixed {
+        compatible = "quickrecon,hw-version";
+        detect-gpios = <&gpio_sim0 16 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 17 GPIO_ACTIVE_HIGH>,
+                       <&gpio_sim0 18 GPIO_ACTIVE_HIGH>;
+        expected-pattern = <0 1 2>;
+        error-led-gpios = <&gpio_sim0 4 GPIO_ACTIVE_HIGH>;
+        zephyr,deferred-init;
+    };
+
+    hwver_enodev: hwver-enodev {
+        compatible = "quickrecon,hw-version";
+        detect-gpios = <&gpio_sim_late 0 GPIO_ACTIVE_HIGH>;
+        expected-pattern = <2>;
+        zephyr,deferred-init;
+    };
+};

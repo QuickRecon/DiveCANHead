@@ -58,6 +58,12 @@ int __wrap_settings_load_subtree(const char *subtree)
     return stub.load_rc;
 }
 
+/* Pull the production module into this TU so the tests can reach its static
+ * periodic-save internals (save_work_handler / save_to_nvs / save_timer_expiry).
+ * The --wrap link options above still redirect its settings_save_one /
+ * settings_load_subtree calls to the stubs. */
+#include "../../../src/error_histogram.c"
+
 /** @brief Publish a synthetic ErrorEvent and let the listener increment. */
 static void publish_error(OpError_t code)
 {
@@ -261,4 +267,53 @@ ZTEST(error_histogram, test_init_handles_backend_load_failure)
     error_histogram_init();
 
     zassert_equal(stub.load_calls, 1);
+}
+
+ZTEST(error_histogram, test_periodic_save_flushes_dirty_histogram)
+{
+    publish_error(OP_ERR_I2C_BUS);      /* listener sets the dirty flag */
+    zassert_equal(atomic_get(&dirty), 1, "publish must mark the histogram dirty");
+
+    save_work_handler(NULL);            /* what the periodic timer drives */
+
+    zassert_equal(stub.save_calls, 1, "a dirty histogram must be flushed to NVS");
+    zassert_equal(atomic_get(&dirty), 0, "a successful save clears the dirty flag");
+}
+
+ZTEST(error_histogram, test_periodic_save_skips_when_paused)
+{
+    error_histogram_pause();
+    publish_error(OP_ERR_FLASH);        /* dirty = 1 */
+
+    save_work_handler(NULL);
+    zassert_equal(stub.save_calls, 0, "a paused save must not touch NVS");
+    zassert_equal(atomic_get(&dirty), 1, "dirty stays set while paused");
+
+    error_histogram_resume();
+    save_work_handler(NULL);
+    zassert_equal(stub.save_calls, 1, "resume lets the next tick flush");
+    zassert_equal(atomic_get(&dirty), 0, "flush after resume clears dirty");
+}
+
+ZTEST(error_histogram, test_periodic_save_retries_on_backend_failure)
+{
+    publish_error(OP_ERR_TIMEOUT);      /* dirty = 1 */
+    stub.save_rc = -EIO;                /* injected NVS write failure */
+
+    save_work_handler(NULL);
+
+    zassert_equal(atomic_get(&dirty), 1,
+                  "a failed save must leave dirty set so the next tick retries");
+    zassert_equal(stub.save_calls, 0, "a failed save captures nothing");
+}
+
+ZTEST(error_histogram, test_save_timer_expiry_schedules_work)
+{
+    /* The timer ISR path only reschedules the delayable work — with nothing
+     * dirty the resulting run is a no-op, so no NVS write occurs. */
+    (void)atomic_set(&dirty, 0);
+    save_timer_expiry(&save_timer);
+    k_msleep(1);                        /* let the system workqueue drain it */
+
+    zassert_equal(stub.save_calls, 0, "clean timer tick performs no save");
 }

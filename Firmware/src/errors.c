@@ -63,6 +63,9 @@ ZBUS_CHAN_DEFINE(chan_error,
  */
 static Status_t errors_init(void)
 {
+    /* GCOVR_EXCL_START — crash-replay path: needs CRASH_MAGIC to survive a
+     * warm reset in noinit RAM. A native_sim process boots exactly once
+     * with the slot zeroed, so only hardware can take this arm. */
     if (CRASH_MAGIC == crash_noinit.magic) {
         /* Take a non-volatile snapshot via memcpy. The volatile qualifier
          * on crash_noinit is only for link-time placement in noinit RAM;
@@ -83,6 +86,7 @@ static Status_t errors_init(void)
             last_crash.reason, last_crash.pc,
             last_crash.lr, last_crash.cfsr, last_crash.thread);
     }
+    /* GCOVR_EXCL_STOP */
 
     return 0;
 }
@@ -101,8 +105,12 @@ bool errors_get_last_crash(CrashInfo_t *out)
     bool valid = false;
 
     if (had_crash && (out != NULL)) {
+        /* GCOVR_EXCL_START — only reachable when the crash-replay arm in
+         * errors_init() ran, which needs noinit RAM surviving a warm
+         * reset (hardware only; see exclusion above). */
         *out = last_crash;
         valid = true;
+        /* GCOVR_EXCL_STOP */
     }
 
     return valid;

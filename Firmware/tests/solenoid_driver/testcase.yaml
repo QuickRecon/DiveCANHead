@@ -1,0 +1,4 @@
+tests:
+  drivers.solenoid.driver:
+    platform_allow: native_sim
+    tags: solenoid drivers

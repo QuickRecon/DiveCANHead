@@ -1,0 +1,82 @@
+/* Test topology for drivers/solenoid/solenoid.c coverage.
+ *
+ * A single "good" solenoid instance drives the runtime paths (fire, off,
+ * all-off, re-arm, clamp, channel count, out-of-range) against the emulated
+ * gpio0 controller and the native_sim counter0 deadman timer.
+ *
+ * Three fault instances drive solenoid_init()'s error arms:
+ *   - sol_deadcounter: its counter phandle points at a never-initialised
+ *     (deferred) GPIO device, so device_is_ready(counter) is false and init
+ *     returns -ENODEV on the counter check.
+ *   - sol_deadgpio:    counter is ready (counter0) but its channel GPIO lives
+ *     on the deferred device, so gpio_is_ready_dt() is false and init returns
+ *     -ENODEV on the GPIO check.
+ *   - sol_badcfg:      counter and GPIO are both ready, but the channel is
+ *     GPIO_OPEN_DRAIN, which gpio_emul rejects from gpio_pin_configure_dt()
+ *     with -ENOTSUP — the configure-failure arm. This one runs (and fails) at
+ *     boot; the others are deferred and driven via device_init() from the test.
+ *
+ * gpio_emul cannot fail a pin *write* (port_set always returns 0), so the
+ * runtime gpio_pin_set_dt() failure arms in solenoid_fire/off/all_off are not
+ * reachable here — see the test file's note.
+ */
+
+/ {
+    /* Deferred, never-initialised GPIO controller: device_is_ready() == false.
+     * Reused as both a not-ready "counter" (via phandle) and a not-ready GPIO
+     * port to reach solenoid_init()'s two -ENODEV arms. */
+    gpio_late: gpio_late {
+        compatible = "zephyr,gpio-emul";
+        gpio-controller;
+        #gpio-cells = <2>;
+        ngpios = <8>;
+        rising-edge;
+        falling-edge;
+        high-level;
+        low-level;
+        zephyr,deferred-init;
+        status = "okay";
+    };
+
+    /* Good instance under test. */
+    solenoids: solenoids {
+        compatible = "quickrecon,solenoid-driver";
+        gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>,
+                <&gpio0 1 GPIO_ACTIVE_HIGH>;
+        counter = <&counter0>;
+        max-on-time-us = <100000>;
+    };
+
+    /* Counter not ready -> solenoid_init() -ENODEV (counter check). Deferred
+     * because it depends on the deferred gpio_late device via the counter
+     * phandle. */
+    sol_deadcounter: sol-deadcounter {
+        compatible = "quickrecon,solenoid-driver";
+        gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+        counter = <&gpio_late>;
+        max-on-time-us = <100000>;
+        zephyr,deferred-init;
+    };
+
+    /* Counter ready, channel GPIO not ready -> solenoid_init() -ENODEV (GPIO
+     * check). Deferred because the channel GPIO lives on the deferred device. */
+    sol_deadgpio: sol-deadgpio {
+        compatible = "quickrecon,solenoid-driver";
+        gpios = <&gpio_late 0 GPIO_ACTIVE_HIGH>;
+        counter = <&counter0>;
+        max-on-time-us = <100000>;
+        zephyr,deferred-init;
+    };
+
+    /* Channel-0 GPIO configure fails (OPEN_DRAIN -> -ENOTSUP). Both counter and
+     * GPIO are ready, so init runs and fails at boot. Two channels so the init
+     * loop's `&& (0 == rc)` guard exits early on the second iteration (channel
+     * 1 is never configured), exercising that short-circuit arm. */
+    sol_badcfg: sol-badcfg {
+        compatible = "quickrecon,solenoid-driver";
+        gpios = <&gpio0 3 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>,
+                <&gpio0 4 GPIO_ACTIVE_HIGH>;
+        counter = <&counter0>;
+        max-on-time-us = <100000>;
+    };
+};

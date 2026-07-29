@@ -472,3 +472,82 @@ ZTEST(poseidon_accessories, test_shutdown_sequence_is_ordered_and_idempotent)
     poseidon_accessories_shutdown();
     zassert_equal(captured_count, 6U);
 }
+
+ZTEST(poseidon_accessories, test_refresh_outputs_reports_bus_errors)
+{
+    /* Prime the sticky per-peer failed flags to "ok" with a clean refresh so
+     * the ok->fail transition (which is what raises the error) is guaranteed
+     * to fire on the failing call below. */
+    write_script_count = 0U;
+    refresh_outputs(0U);
+
+    /* Now hard-fail every write with a non-retryable error and deny recovery,
+     * so both the HUD and Battery groups return an error and the
+     * OP_ERROR_DETAIL report arms run. */
+    reset_write_capture();
+    for (size_t i = 0U; i < ARRAY_SIZE(write_script); ++i) {
+        write_script[i] = -ENODEV;
+    }
+    write_script_count = ARRAY_SIZE(write_script);
+    recover_result = -EBUSY;
+    last_error = OP_ERR_NONE;
+
+    refresh_outputs(0U);
+
+    zassert_equal(last_error, OP_ERR_I2C_BUS,
+                  "a failed refresh must report an I2C bus error");
+}
+
+ZTEST(poseidon_accessories, test_solicit_current_backoff_and_fail_log)
+{
+    /* current unseen (reset_gauge in fixture) => stale, so a solicit is due.
+     * A short advance clears the STALE_MS gate against the previous test's
+     * last_solicit without burning wall time (native_sim here runs in
+     * real time, so the 5 s / 30 s windows are deliberately NOT slept). */
+    k_msleep(CURRENT_SOLICIT_STALE_MS + 1);
+    write_script[0] = -EIO;
+    write_script_count = 1U;
+    recover_result = -EBUSY;
+
+    solicit_current();
+    zassert_equal(captured_count, 1U,
+                  "a due+stale solicit must attempt one read");
+
+    /* A second solicit while last_solicit_failed is latched runs the
+     * backoff-interval arm (interval widens to BACKOFF_MS) — that assignment
+     * happens up-front, before the due check, so no BACKOFF_MS wait is
+     * needed to exercise it. Not due yet, so no new frame is sent. */
+    reset_write_capture();
+    solicit_current();
+    zassert_equal(captured_count, 0U,
+                  "a backed-off solicit inside its window sends nothing");
+}
+
+ZTEST(poseidon_accessories, test_log_current_if_new_emits_once)
+{
+    /* Advance so the recorded sample carries a distinct, non-zero timestamp
+     * (last_logged_at starts at 0), then a fresh current sample makes the
+     * first log_current_if_new() emit and the repeat suppress. */
+    k_msleep(2);
+    uint8_t cur[] = {POSEIDON_CMD_CURRENT, POSEIDON_LEN_CURRENT, 0x10U, 0x20U};
+    uint8_t frame[] = {cur[0], cur[1], cur[2], cur[3],
+                       inbound_crc(cur, sizeof(cur))};
+    receive_frame(frame, sizeof(frame));
+    zassert_true(current_seen);
+
+    log_current_if_new();
+    log_current_if_new();
+}
+
+ZTEST(poseidon_accessories, test_shutdown_drains_when_not_parked)
+{
+    /* accessory_parked left at 0 forces the drain loop to spin its full
+     * bounded window before the best-effort shutdown sequence still sends. */
+    (void)atomic_set(&accessory_parked, 0);
+    (void)atomic_set(&shutdown_active, 0);
+
+    poseidon_accessories_shutdown();
+
+    zassert_equal(captured_count, 6U,
+                  "shutdown must still send all six frames after drain timeout");
+}

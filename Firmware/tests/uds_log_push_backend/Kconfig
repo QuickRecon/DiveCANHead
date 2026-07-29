@@ -1,0 +1,7 @@
+mainmenu "UDS Log Push Backend Tests"
+
+# Pull in LOG_PUSH_FORCE_INF_MODULES / LOG_PUSH_FORCE_INF_MAX (defined under
+# `if FLASH_LOG`) so the backend TU compiles and the force-list can be set.
+rsource "../../src/Kconfig.flash_log"
+
+source "Kconfig.zephyr"

@@ -22,6 +22,7 @@
 
 #include "factory_image.h"
 #include "factory_image_backend.h"
+#include "maintenance_arena.h"
 
 /* ---- Sizing ---- */
 
@@ -45,6 +46,31 @@ static const uint8_t IMAGE_MAGIC_LE[4] = {0x3DU, 0xB8U, 0xF3U, 0x96U};
 #define BACKUP_PROT_TLV   0U
 #define BACKUP_TLV_TOT    40U   /* bytes in the unprotected TLV area (incl. info hdr) */
 
+/* A payload larger than one CONFIG_FACTORY_IMAGE_CHUNK_SIZE (512) so the
+ * restore streaming loop takes both the full-chunk and final-partial-chunk
+ * arms. Total image = 32 + 1000 + 0 + 40 = 1072 B -> chunks 512/512/48. */
+#define BACKUP_IMG_SIZE_MULTI_CHUNK  1000U
+
+/* An ih_img_size that pushes the TLV offset past the backend capacity so
+ * factory_backup_image_size() refuses the header outright. */
+#define BACKUP_IMG_SIZE_OVERRANGE    16384U
+
+/* Async work-queue synchronisation: poll every ASYNC_POLL_MS up to
+ * ASYNC_WAIT_ITERS times (5 s of simulated time), then allow a settle
+ * period so the handler fully drains before the next fixture reset.
+ * Never spin without sleeping — simulated time freezes on native_sim. */
+#define ASYNC_WAIT_ITERS  500U
+#define ASYNC_POLL_MS     10
+#define ASYNC_SETTLE_MS   100
+
+#define WAIT_FOR(cond) do {                                        \
+    uint32_t wf_iter = 0U;                                         \
+    while ((!(cond)) && (wf_iter < ASYNC_WAIT_ITERS)) {            \
+        (void)k_msleep(ASYNC_POLL_MS);                             \
+        ++wf_iter;                                                 \
+    }                                                              \
+} while (false)
+
 /* ---- Mock flash universe ---- */
 
 static struct {
@@ -60,6 +86,18 @@ static struct {
     bool inject_slot1_read_mismatch;
     bool inject_slot1_write_error;
     bool inject_slot1_erase_error;
+
+    /* Scripted per-call failure counters (0 = never fire). Call numbers
+     * are 1-based and count only the affected slot's operations. */
+    bool     inject_slot0_open_error;
+    uint32_t slot1_open_calls;
+    uint32_t slot1_open_fail_at_call;
+    uint32_t slot1_read_calls;
+    uint32_t slot1_read_fail_at_call;
+    uint32_t slot1_read_corrupt_at_call;
+    uint32_t slot1_write_transient_fails;   /* fail the first N writes, then pass */
+    uint32_t slot1_erase_calls;
+    uint32_t slot1_erase_fail_from_call;    /* fail every erase from call N on */
 } flash_universe;
 
 /* ---- Mock backend state ---- */
@@ -85,6 +123,10 @@ static struct {
     bool inject_read_error;
     bool inject_size_error;
     uint32_t backend_size;
+
+    /* Scripted per-call failures (0 = never fire; 1-based call numbers). */
+    uint32_t read_fail_at_call;
+    uint32_t write_transient_fails;      /* fail the first N writes, then pass */
 } mock;
 
 /* ---- Reboot capture / boot_request_upgrade ---- */
@@ -95,6 +137,8 @@ static struct {
     int boot_upgrade_rc;
     int swap_type;
     int swap_type_calls;
+    int swap_type_none_first_n;   /* report BOOT_SWAP_TYPE_NONE for the first N reads */
+    int swap_type_none_at_call;   /* report BOOT_SWAP_TYPE_NONE on exactly this read */
     int page_info_calls;
     int page_info_rc;
     int reboot_calls;
@@ -122,11 +166,22 @@ int __wrap_flash_area_open(uint8_t id, const struct flash_area **out)
     int rc = -ENOENT;
 
     if (id == SLOT0_ID) {
-        *out = &flash_universe.slot0_fa;
-        rc = 0;
+        if (flash_universe.inject_slot0_open_error) {
+            rc = -EIO;
+        } else {
+            *out = &flash_universe.slot0_fa;
+            rc = 0;
+        }
     } else if (id == SLOT1_ID) {
-        *out = &flash_universe.slot1_fa;
-        rc = 0;
+        ++flash_universe.slot1_open_calls;
+        if ((0U != flash_universe.slot1_open_fail_at_call) &&
+            (flash_universe.slot1_open_calls ==
+             flash_universe.slot1_open_fail_at_call)) {
+            rc = -EIO;
+        } else {
+            *out = &flash_universe.slot1_fa;
+            rc = 0;
+        }
     } else {
         rc = -ENOENT;
     }
@@ -145,15 +200,25 @@ int __wrap_flash_area_read(const struct flash_area *fa, off_t offset,
                             void *dst, size_t len)
 {
     const uint8_t *src = NULL;
+    bool corrupt = false;
     if (fa == &flash_universe.slot0_fa) {
         if (flash_universe.inject_slot0_read_error) {
             return -EIO;
         }
         src = flash_universe.slot0;
     } else if (fa == &flash_universe.slot1_fa) {
+        ++flash_universe.slot1_read_calls;
         if (flash_universe.inject_slot1_read_error) {
             return -EIO;
         }
+        if ((0U != flash_universe.slot1_read_fail_at_call) &&
+            (flash_universe.slot1_read_calls ==
+             flash_universe.slot1_read_fail_at_call)) {
+            return -EIO;
+        }
+        corrupt = ((0U != flash_universe.slot1_read_corrupt_at_call) &&
+                   (flash_universe.slot1_read_calls ==
+                    flash_universe.slot1_read_corrupt_at_call));
         src = flash_universe.slot1;
     } else {
         return -ENOENT;
@@ -162,8 +227,8 @@ int __wrap_flash_area_read(const struct flash_area *fa, off_t offset,
         return -EINVAL;
     }
     (void)memcpy(dst, src + offset, len);
-    if ((fa == &flash_universe.slot1_fa) &&
-        flash_universe.inject_slot1_read_mismatch && (len > 0U)) {
+    if ((fa == &flash_universe.slot1_fa) && (len > 0U) &&
+        (flash_universe.inject_slot1_read_mismatch || corrupt)) {
         ((uint8_t *)dst)[0] ^= 0xFFU;
     }
     return 0;
@@ -175,6 +240,10 @@ int __wrap_flash_area_write(const struct flash_area *fa, off_t offset,
     uint8_t *dst = NULL;
     if (fa == &flash_universe.slot1_fa) {
         if (flash_universe.inject_slot1_write_error) {
+            return -EIO;
+        }
+        if (flash_universe.slot1_write_transient_fails > 0U) {
+            --flash_universe.slot1_write_transient_fails;
             return -EIO;
         }
         dst = flash_universe.slot1;
@@ -192,7 +261,13 @@ int __wrap_flash_area_erase(const struct flash_area *fa, off_t offset, size_t le
 {
     uint8_t *region = NULL;
     if (fa == &flash_universe.slot1_fa) {
+        ++flash_universe.slot1_erase_calls;
         if (flash_universe.inject_slot1_erase_error) {
+            return -EIO;
+        }
+        if ((0U != flash_universe.slot1_erase_fail_from_call) &&
+            (flash_universe.slot1_erase_calls >=
+             flash_universe.slot1_erase_fail_from_call)) {
             return -EIO;
         }
         region = flash_universe.slot1;
@@ -220,6 +295,13 @@ int __wrap_boot_request_upgrade(int permanent)
 int __wrap_mcuboot_swap_type(void)
 {
     hooks.swap_type_calls++;
+    if (hooks.swap_type_calls <= hooks.swap_type_none_first_n) {
+        return BOOT_SWAP_TYPE_NONE;
+    }
+    if ((0 != hooks.swap_type_none_at_call) &&
+        (hooks.swap_type_calls == hooks.swap_type_none_at_call)) {
+        return BOOT_SWAP_TYPE_NONE;
+    }
     return hooks.swap_type;
 }
 
@@ -277,6 +359,10 @@ static int mock_write(uint32_t offset, const void *buf, size_t len)
         (mock.write_calls > mock.write_fail_after_n_calls)) {
         return -EIO;
     }
+    if (mock.write_transient_fails > 0U) {
+        --mock.write_transient_fails;
+        return -EIO;
+    }
     if ((offset + len) > SLOT_SIZE) {
         return -EINVAL;
     }
@@ -289,6 +375,10 @@ static int mock_read(uint32_t offset, void *buf, size_t len)
 {
     mock.read_calls++;
     if (mock.inject_read_error) {
+        return -EIO;
+    }
+    if ((0U != mock.read_fail_at_call) &&
+        ((uint32_t)mock.read_calls == mock.read_fail_at_call)) {
         return -EIO;
     }
     if (mock.verify_should_mismatch) {
@@ -382,7 +472,7 @@ static void fill_slot0_with_pattern(void)
  * magic, parseable header + unprotected TLV info) so factory_backup_image_size()
  * can compute the exact image length. Body/padding is 0xCC so the copied region
  * is distinguishable from the erased (0xFF) trailer. Returns the image length. */
-static uint32_t build_valid_backup_image(void)
+static uint32_t build_backup_image(uint32_t img_size)
 {
     (void)memset(mock.data, 0xCCU, sizeof(mock.data));
 
@@ -396,19 +486,28 @@ static uint32_t build_valid_backup_image(void)
     mock.data[IMG_HDR_PROT_TLV_OFF + 0] = (uint8_t)(BACKUP_PROT_TLV & 0xFFU);
     mock.data[IMG_HDR_PROT_TLV_OFF + 1] = (uint8_t)((BACKUP_PROT_TLV >> 8) & 0xFFU);
     /* ih_img_size */
-    mock.data[IMG_HDR_IMG_SIZE_OFF + 0] = (uint8_t)(BACKUP_IMG_SIZE & 0xFFU);
-    mock.data[IMG_HDR_IMG_SIZE_OFF + 1] = (uint8_t)((BACKUP_IMG_SIZE >> 8) & 0xFFU);
-    mock.data[IMG_HDR_IMG_SIZE_OFF + 2] = 0x00U;
-    mock.data[IMG_HDR_IMG_SIZE_OFF + 3] = 0x00U;
+    mock.data[IMG_HDR_IMG_SIZE_OFF + 0] = (uint8_t)(img_size & 0xFFU);
+    mock.data[IMG_HDR_IMG_SIZE_OFF + 1] = (uint8_t)((img_size >> 8) & 0xFFU);
+    mock.data[IMG_HDR_IMG_SIZE_OFF + 2] = (uint8_t)((img_size >> 16) & 0xFFU);
+    mock.data[IMG_HDR_IMG_SIZE_OFF + 3] = (uint8_t)((img_size >> 24) & 0xFFU);
 
-    /* Unprotected image_tlv_info {magic, tot} at hdr + img + prot_tlv. */
-    uint32_t tlv_off = BACKUP_HDR_SIZE + BACKUP_IMG_SIZE + BACKUP_PROT_TLV;
-    mock.data[tlv_off + 0] = (uint8_t)(TLV_INFO_MAGIC_UNPROT & 0xFFU);
-    mock.data[tlv_off + 1] = (uint8_t)((TLV_INFO_MAGIC_UNPROT >> 8) & 0xFFU);
-    mock.data[tlv_off + 2] = (uint8_t)(BACKUP_TLV_TOT & 0xFFU);
-    mock.data[tlv_off + 3] = (uint8_t)((BACKUP_TLV_TOT >> 8) & 0xFFU);
+    /* Unprotected image_tlv_info {magic, tot} at hdr + img + prot_tlv.
+     * Skipped when the TLV offset lands outside the mock store (used by
+     * the over-range header test). */
+    uint32_t tlv_off = BACKUP_HDR_SIZE + img_size + BACKUP_PROT_TLV;
+    if ((tlv_off + 4U) <= SLOT_SIZE) {
+        mock.data[tlv_off + 0] = (uint8_t)(TLV_INFO_MAGIC_UNPROT & 0xFFU);
+        mock.data[tlv_off + 1] = (uint8_t)((TLV_INFO_MAGIC_UNPROT >> 8) & 0xFFU);
+        mock.data[tlv_off + 2] = (uint8_t)(BACKUP_TLV_TOT & 0xFFU);
+        mock.data[tlv_off + 3] = (uint8_t)((BACKUP_TLV_TOT >> 8) & 0xFFU);
+    }
 
     return tlv_off + BACKUP_TLV_TOT;
+}
+
+static uint32_t build_valid_backup_image(void)
+{
+    return build_backup_image(BACKUP_IMG_SIZE);
 }
 
 static void install_slot_fa(struct flash_area *fa, uint8_t id, uint32_t size)
@@ -810,4 +909,383 @@ ZTEST(factory_image, test_restore_boot_request_error_retries_without_swap_read)
     zassert_equal(hooks.swap_type_calls, 0);
     zassert_equal(hooks.page_info_calls, 4);
     zassert_equal(hooks.reboot_calls, 0);
+}
+
+/* ---- Maintenance-arena contention ---- */
+
+ZTEST(factory_image, test_capture_and_restore_refuse_when_arena_busy)
+{
+    void *arena = maint_arena_claim(MAINT_ARENA_OWNER_OTA);
+    zassert_not_null(arena, "test could not claim the arena");
+
+    zassert_equal(factory_image_capture_now_for_test(), -EBUSY);
+    zassert_equal(mock.erase_calls, 0, "no backend work while arena busy");
+
+    mock.captured = true;
+    zassert_equal(factory_image_restore_to_slot1(), -EBUSY);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+
+    maint_arena_release(MAINT_ARENA_OWNER_OTA);
+}
+
+/* ---- Init + backend accessor ---- */
+
+ZTEST(factory_image, test_init_with_backend_reports_and_recovers)
+{
+    zassert_equal_ptr(factory_image_get_backend(), &mock_backend,
+                      "accessor must return the installed backend");
+
+    /* Backend init failure is logged but not fatal. */
+    mock.inject_init_error = true;
+    factory_image_init();
+    zassert_equal(mock.init_calls, 1, "backend init attempted");
+
+    /* And a subsequent init with a healthy backend succeeds. */
+    mock.inject_init_error = false;
+    factory_image_init();
+    zassert_equal(mock.init_calls, 2, "backend init attempted again");
+}
+
+/* ---- Capture failure arms ---- */
+
+ZTEST(factory_image, test_capture_slot0_open_failure)
+{
+    flash_universe.inject_slot0_open_error = true;
+
+    zassert_equal(factory_image_capture_now_for_test(), -EIO);
+    zassert_equal(mock.erase_calls, 0, "no erase after slot0 open failure");
+    zassert_false(mock.captured);
+}
+
+ZTEST(factory_image, test_capture_verify_read_error_fails_capture)
+{
+    /* Backend reads only happen in the verify-after-write step during
+     * capture, so a backend read error exercises that arm specifically. */
+    mock.inject_read_error = true;
+
+    zassert_equal(factory_image_capture_now_for_test(), -EIO);
+    zassert_false(mock.captured);
+    zassert_true(mock.write_calls > 0, "write happened before verify failed");
+}
+
+ZTEST(factory_image, test_capture_partial_final_chunk)
+{
+    /* A slot0 smaller than the backend and not chunk-aligned takes the
+     * slot0-limited copy-size arm, the final partial chunk arm, and the
+     * partial verify step arm (700 = 512 + 188; 188 < 256 verify buf). */
+    const uint32_t small_slot0 = 700U;
+    flash_universe.slot0_fa.fa_size = small_slot0;
+
+    zassert_equal(factory_image_capture_now_for_test(), 0);
+    zassert_true(mock.captured);
+    zassert_equal(mock.total_bytes_written, small_slot0);
+    zassert_equal(memcmp(mock.data, flash_universe.slot0, small_slot0), 0,
+                  "copied region must match slot0");
+}
+
+ZTEST(factory_image, test_capture_transient_write_failure_retries_to_success)
+{
+    mock.write_transient_fails = 1U;
+
+    zassert_equal(factory_image_capture_now_for_test(), 0);
+    zassert_true(mock.captured);
+    zassert_equal(memcmp(mock.data, flash_universe.slot0, SLOT_SIZE), 0,
+                  "backend must match slot0 after the retried chunk");
+}
+
+/* ---- Restore failure arms ---- */
+
+ZTEST(factory_image, test_restore_slot1_open_failure_before_copy)
+{
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    flash_universe.slot1_open_fail_at_call = 1U;   /* copy stage open */
+
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_slot1_open_failure_at_verify_stage)
+{
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    flash_universe.slot1_open_fail_at_call = 2U;   /* verify stage open */
+
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+    zassert_equal(hooks.reboot_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_magic_read_failure_at_verify_stage)
+{
+    /* Default image is 328 B -> one streamed chunk with two verify reads;
+     * slot1 read #3 is the magic re-read in verify_and_stage_slot1(). */
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    flash_universe.slot1_read_fail_at_call = 3U;
+
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_corrupted_magic_at_verify_stage)
+{
+    /* Streaming verify passes (reads #1-#2), then the magic re-read (#3)
+     * returns a corrupted first byte -> -EBADF from verify_and_stage. */
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    flash_universe.slot1_read_corrupt_at_call = 3U;
+
+    zassert_equal(factory_image_restore_to_slot1(), -EBADF);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+    zassert_equal(hooks.reboot_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_multi_chunk_image_succeeds)
+{
+    mock.captured = true;
+    uint32_t image_size = build_backup_image(BACKUP_IMG_SIZE_MULTI_CHUNK);
+    zassert_true(image_size > 512U, "image must span multiple chunks");
+
+    (void)memset(flash_universe.slot1, 0x00U, sizeof(flash_universe.slot1));
+
+    hooks.reboot_active = true;
+    if (setjmp(hooks.reboot_escape) == 0) {
+        (void)factory_image_restore_to_slot1();
+    }
+    hooks.reboot_active = false;
+
+    zassert_equal(hooks.reboot_calls, 1, "restore must reboot on success");
+    zassert_equal(memcmp(flash_universe.slot1, mock.data, image_size), 0,
+                  "multi-chunk image region must mirror the backend");
+    for (uint32_t i = image_size; i < SLOT_SIZE; ++i) {
+        zassert_equal(flash_universe.slot1[i], 0xFFU,
+                      "trailer must stay erased at offset %u", (unsigned)i);
+    }
+}
+
+ZTEST(factory_image, test_restore_transient_write_failure_retries_to_success)
+{
+    mock.captured = true;
+    uint32_t image_size = build_valid_backup_image();
+    flash_universe.slot1_write_transient_fails = 1U;
+
+    hooks.reboot_active = true;
+    if (setjmp(hooks.reboot_escape) == 0) {
+        (void)factory_image_restore_to_slot1();
+    }
+    hooks.reboot_active = false;
+
+    zassert_equal(hooks.reboot_calls, 1, "restore succeeds after chunk retry");
+    zassert_equal(memcmp(flash_universe.slot1, mock.data, image_size), 0);
+}
+
+ZTEST(factory_image, test_restore_swap_registers_on_second_attempt)
+{
+    /* First mcuboot_swap_type() read reports NONE, so stage_pending_swap
+     * erases the trailer page and retries; the second attempt verifies
+     * TEST twice and the restore proceeds to reboot. */
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    hooks.swap_type_none_first_n = 1;
+
+    hooks.reboot_active = true;
+    if (setjmp(hooks.reboot_escape) == 0) {
+        (void)factory_image_restore_to_slot1();
+    }
+    hooks.reboot_active = false;
+
+    zassert_equal(hooks.reboot_calls, 1, "restore reboots once staged");
+    zassert_equal(hooks.boot_upgrade_calls, 2, "one retry of the staging");
+    zassert_equal(hooks.swap_type_calls, 3, "1 failed read + 2 verify reads");
+    zassert_equal(hooks.page_info_calls, 1, "trailer erased once between tries");
+}
+
+ZTEST(factory_image, test_restore_page_info_error_during_stage_retries)
+{
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    hooks.swap_type = BOOT_SWAP_TYPE_NONE;
+    hooks.page_info_rc = -EIO;
+
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 5);
+    zassert_equal(hooks.page_info_calls, 4, "page-info attempted per retry");
+    zassert_equal(hooks.reboot_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_trailer_erase_error_during_stage_retries)
+{
+    /* Erase #1 is the full-slot erase before streaming; every erase from
+     * call #2 on (the trailer-page erases between staging retries) fails.
+     * stage_pending_swap ignores the erase rc and keeps retrying. */
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    hooks.swap_type = BOOT_SWAP_TYPE_NONE;
+    flash_universe.slot1_erase_fail_from_call = 2U;
+
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 5);
+    zassert_equal(hooks.reboot_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_rejects_header_with_overrange_tlv_offset)
+{
+    /* ih_img_size pushes the TLV info past the backend capacity, so the
+     * size parse refuses the header before any TLV read. */
+    mock.captured = true;
+    (void)build_backup_image(BACKUP_IMG_SIZE_OVERRANGE);
+
+    zassert_equal(factory_image_restore_to_slot1(), -EBADF);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+}
+
+ZTEST(factory_image, test_restore_tlv_info_read_failure)
+{
+    /* Backend read #1 is the 32 B header; read #2 is the TLV info. */
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    mock.read_fail_at_call = 2U;
+
+    zassert_equal(factory_image_restore_to_slot1(), -EIO);
+    zassert_equal(hooks.boot_upgrade_calls, 0);
+}
+
+/* ---- Async work-queue paths ---- */
+
+ZTEST(factory_image, test_async_force_capture_success)
+{
+    factory_image_force_capture_async();
+
+    WAIT_FOR(mock.captured);
+    (void)k_msleep(ASYNC_SETTLE_MS);
+
+    zassert_true(mock.captured, "forced capture must complete");
+    zassert_equal(memcmp(mock.data, flash_universe.slot0, SLOT_SIZE), 0,
+                  "backend must match slot0 after async capture");
+}
+
+ZTEST(factory_image, test_async_force_capture_failure_reports_error)
+{
+    mock.inject_erase_error = true;
+
+    factory_image_force_capture_async();
+
+    WAIT_FOR(mock.erase_calls > 0);
+    (void)k_msleep(ASYNC_SETTLE_MS);
+
+    zassert_true(mock.erase_calls > 0, "capture attempt must have run");
+    zassert_false(mock.captured, "failed capture must not set the flag");
+}
+
+ZTEST(factory_image, test_async_maybe_capture_runs_when_uncaptured)
+{
+    factory_image_maybe_capture_async();
+
+    WAIT_FOR(mock.captured);
+    (void)k_msleep(ASYNC_SETTLE_MS);
+
+    zassert_true(mock.captured, "first-boot capture must complete");
+    zassert_equal(mock.mark_calls, 1);
+}
+
+ZTEST(factory_image, test_async_capture_noops_when_captured_at_run_time)
+{
+    /* Submit while uncaptured, then set the flag before yielding: the
+     * handler re-checks is_captured() at run time and takes the no-op arm. */
+    factory_image_maybe_capture_async();
+    mock.captured = true;
+
+    (void)k_msleep(ASYNC_SETTLE_MS);
+
+    zassert_equal(mock.erase_calls, 0, "no capture work performed");
+    zassert_equal(mock.write_calls, 0);
+}
+
+ZTEST(factory_image, test_async_capture_failure_reports_error)
+{
+    mock.inject_init_error = true;
+
+    factory_image_maybe_capture_async();
+
+    WAIT_FOR(mock.init_calls > 0);
+    (void)k_msleep(ASYNC_SETTLE_MS);
+
+    zassert_true(mock.init_calls > 0, "capture attempt must have run");
+    zassert_false(mock.captured);
+    zassert_equal(mock.erase_calls, 0, "init failure stops the sequence");
+}
+
+ZTEST(factory_image, test_async_restore_failure_reports_error)
+{
+    /* Backend content has no MCUBoot magic, so the async restore fails
+     * after the header read and the handler takes its error arm. */
+    mock.captured = true;
+    (void)memset(mock.data, 0x5AU, sizeof(mock.data));
+
+    factory_image_restore_async();
+
+    WAIT_FOR(mock.read_calls > 0);
+    (void)k_msleep(ASYNC_SETTLE_MS);
+
+    zassert_true(mock.read_calls > 0, "restore attempt must have run");
+    zassert_equal(hooks.boot_upgrade_calls, 0, "no staging on failure");
+    zassert_equal(hooks.reboot_calls, 0, "no reboot on failure");
+}
+
+ZTEST(factory_image, test_async_handlers_noop_when_backend_removed)
+{
+    /* Submit both capture work items while the backend is installed, then
+     * remove it before yielding: the handlers re-check the backend pointer
+     * at run time and take their guard arms. */
+    factory_image_maybe_capture_async();
+    factory_image_force_capture_async();
+    factory_image_set_backend_for_test(NULL);
+
+    (void)k_msleep(ASYNC_SETTLE_MS);
+
+    zassert_equal(mock.init_calls, 0, "no backend calls after removal");
+    zassert_equal(mock.erase_calls, 0);
+    zassert_false(mock.captured);
+}
+
+ZTEST(factory_image, test_restore_stream_read_failure_after_size_parse)
+{
+    /* Backend reads: #1 header, #2 TLV info, #3.. streaming chunks. A
+     * persistent failure from read #3 exercises the streaming loop's
+     * backend-read retry arm until the budget is exhausted. */
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    mock.read_fail_at_call = 3U;
+
+    /* read_fail_at_call fires once; the retry re-reads (#4) succeed, so the
+     * chunk recovers and the restore completes. Verify the retry engaged. */
+    hooks.reboot_active = true;
+    if (setjmp(hooks.reboot_escape) == 0) {
+        (void)factory_image_restore_to_slot1();
+    }
+    hooks.reboot_active = false;
+
+    zassert_equal(hooks.reboot_calls, 1, "restore succeeds after read retry");
+    zassert_true(mock.read_calls >= 4, "failed read must have been retried");
+}
+
+ZTEST(factory_image, test_restore_second_swap_confirmation_read_disagrees)
+{
+    /* First confirmation read reports TEST but the second disagrees, so
+     * stage_pending_swap treats the attempt as unregistered and retries;
+     * the next attempt sees TEST on both reads and the restore reboots. */
+    mock.captured = true;
+    (void)build_valid_backup_image();
+    hooks.swap_type_none_at_call = 2;
+
+    hooks.reboot_active = true;
+    if (setjmp(hooks.reboot_escape) == 0) {
+        (void)factory_image_restore_to_slot1();
+    }
+    hooks.reboot_active = false;
+
+    zassert_equal(hooks.reboot_calls, 1, "restore reboots once staged");
+    zassert_equal(hooks.boot_upgrade_calls, 2, "one retry of the staging");
+    zassert_equal(hooks.swap_type_calls, 4, "2 disagreeing + 2 agreeing reads");
 }

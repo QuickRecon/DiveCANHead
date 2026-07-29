@@ -1,0 +1,37 @@
+/*
+ * DTS overlay for the DiveO2 cell-thread native_sim test.
+ *
+ * Provides the two devices the cell thread's body dereferences at runtime so
+ * the whole thread (setup -> auto-detect -> poll/broadcast -> publish) can run
+ * as a host binary and its private static helpers get executed for coverage:
+ *
+ *   - usart1 (zephyr,uart-emul): the async UART the DiveO2 driver talks to.
+ *     The test scripts RX bytes with uart_emul_put_rx_data() and reads the
+ *     driver's TX with uart_emul_get_tx_data(). Mirrors the uart_cell1 node in
+ *     tests/integration/boards/native_sim.overlay (large latch buffer so a
+ *     whole frame arrives in one UART_RX_RDY, matching DMA semantics).
+ *
+ *   - power (test,diveo2-stub-power): exists only so
+ *     POWER_DEVICE = DEVICE_DT_GET(DT_NODELABEL(power)) resolves to a real
+ *     device ordinal. stub_power.c binds a minimal driver to it and overrides
+ *     power_get_vbus_voltage() so the thread's VBUS undervolt guard is
+ *     test-controllable. The compatible is intentionally unbound (no binding
+ *     shipped) — Zephyr just warns "unknown compatible" and still assigns the
+ *     node an ordinal, which is all DEVICE_DT_GET needs.
+ */
+
+/ {
+    usart1: uart_cell1 {
+        compatible = "zephyr,uart-emul";
+        current-speed = <19200>;
+        tx-fifo-size = <256>;
+        rx-fifo-size = <256>;
+        latch-buffer-size = <128>;
+        status = "okay";
+    };
+
+    power: stub-power {
+        compatible = "test,diveo2-stub-power";
+        status = "okay";
+    };
+};

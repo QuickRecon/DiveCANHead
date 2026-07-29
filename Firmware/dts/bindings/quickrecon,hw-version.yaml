@@ -19,6 +19,10 @@ description: |
 
 compatible: "quickrecon,hw-version"
 
+# Standard properties (status, zephyr,deferred-init, ...) — required so test
+# overlays can defer instances and initialise them under scripted GPIO state.
+include: base.yaml
+
 properties:
   detect-gpios:
     type: phandle-array

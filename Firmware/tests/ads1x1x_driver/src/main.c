@@ -24,6 +24,13 @@ static const struct adc_dt_spec ch1 = ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user
 #define EXPECT_CH0_AIN0_1 1000
 #define EXPECT_CH1_AIN2_3 4000
 
+/* Fault-injection hooks implemented in ads1115_emul.c — let the tests drive the
+ * driver's I2C-error and conversion-not-ready branches. */
+void ads1115_emul_fault_reset(void);
+void ads1115_emul_fail_writes(bool on);
+void ads1115_emul_fail_read_at(int nth);
+void ads1115_emul_os_busy_reads(int n);
+
 static int read_channel(const struct adc_dt_spec *spec, int16_t *out)
 {
 	/* Zero-initialise: adc_sequence_init_dt() only fills
@@ -261,6 +268,68 @@ ZTEST(ads1x1x_multichannel, test_extra_sampling_uses_full_buffer)
 	zassert_equal(read_sequence(BIT(0), 16, 0, sizeof(int16_t), &options),
 		      -ENOTSUP);
 	zassert_ok(read_sequence(BIT(0), 16, 0, 2 * sizeof(int16_t), &options));
+}
+
+/* A CONFIG write that fails must abort the read: exercises ads1x1x_write_reg's
+ * error branch and adc_context_start_sampling's immediate-complete path. */
+ZTEST(ads1x1x_multichannel, test_i2c_write_failure_propagates)
+{
+	int16_t v = 0;
+
+	zassert_ok(adc_channel_setup_dt(&ch0));
+	ads1115_emul_fault_reset();
+	ads1115_emul_fail_writes(true);
+
+	zassert_not_equal(read_channel(&ch0, &v), 0,
+			  "a failed CONFIG write must fail the read");
+
+	ads1115_emul_fault_reset();
+	zassert_ok(read_channel(&ch0, &v), "driver must recover after the fault clears");
+}
+
+/* A failed status read in wait_data_ready propagates: exercises
+ * ads1x1x_read_reg's error branch and the acquisition thread's error path. */
+ZTEST(ads1x1x_multichannel, test_i2c_read_failure_in_wait_ready)
+{
+	int16_t v = 0;
+
+	zassert_ok(adc_channel_setup_dt(&ch0));
+	ads1115_emul_fail_read_at(1);   /* first read = CONFIG status */
+
+	zassert_not_equal(read_channel(&ch0, &v), 0,
+			  "a failed status read must fail the read");
+
+	ads1115_emul_fault_reset();
+	zassert_ok(read_channel(&ch0, &v));
+}
+
+/* A failed conversion-register read propagates through adc_perform_read. */
+ZTEST(ads1x1x_multichannel, test_i2c_read_failure_in_conversion)
+{
+	int16_t v = 0;
+
+	zassert_ok(adc_channel_setup_dt(&ch0));
+	ads1115_emul_fail_read_at(2);   /* CONFIG ok, CONV read fails */
+
+	zassert_not_equal(read_channel(&ch0, &v), 0,
+			  "a failed conversion read must fail the read");
+
+	ads1115_emul_fault_reset();
+	zassert_ok(read_channel(&ch0, &v));
+}
+
+/* When the OS "ready" bit is not set on the first status read, the driver must
+ * poll: exercises the not-ready re-read branch of wait_data_ready. */
+ZTEST(ads1x1x_multichannel, test_conversion_not_immediately_ready)
+{
+	int16_t v = 0;
+
+	zassert_ok(adc_channel_setup_dt(&ch0));
+	ads1115_emul_os_busy_reads(2);  /* first two CONFIG reads report "converting" */
+
+	zassert_ok(read_channel(&ch0, &v), "driver must poll until conversion completes");
+	ads1115_emul_fault_reset();
+	zassert_equal(v, EXPECT_CH0_AIN0_1, "value still correct after polling");
 }
 
 ZTEST_SUITE(ads1x1x_multichannel, NULL, NULL, NULL, NULL, NULL);

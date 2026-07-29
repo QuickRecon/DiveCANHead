@@ -1,0 +1,10 @@
+mainmenu "O2S cell-thread native_sim test"
+
+# Pull in the full product-topology menu so oxygen_cell_o2s.c sees real Kconfig
+# symbols (CELL_COUNT, CELL_n_TYPE_*, POWER_MODE_*, BATTERY_CHEMISTRY_*) rather
+# than hand-maintained -D defines. prj.conf overrides CELL_COUNT=1 +
+# CELL_1_TYPE_O2S so exactly one O2S cell thread is defined; every other symbol
+# keeps its default, which is an internally consistent all-default topology.
+rsource "../../src/Kconfig"
+
+source "Kconfig.zephyr"

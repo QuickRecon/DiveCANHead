@@ -131,3 +131,22 @@ authoritative list).
 | Rule | File / Location | Justification |
 |------|------|---------------|
 | c:S813 / c:M23_058 | `src/heartbeat.c` `heartbeat_register`, `unsigned long bit_ul = BIT(id)` | Four rules form an unsatisfiable cycle on `atomic_or(mask, BIT(id))`: no cast → S845 (signed/unsigned mix), cast on `BIT(id)` → S851 (cast on composite), shift in `atomic_val_t` → S874 (shift on signed), and the intermediate `unsigned long` — the exact type `BIT()` yields — → S813/M23_058 (raw builtin). Zephyr's `atomic_val_t` is signed `long` and `BIT()` is `unsigned long` by API contract; `unsigned long` is the least-wrong resting point. Accepted 2026-07-28 (keys AZ-mYY46vl4caSOBYurf/-g). |
+
+## Coverage exclusions (2026-07-29)
+
+Coverage-only carve-outs added during the 90%-coverage uplift. Unlike rule
+suppressions, these remove structurally-untestable code from the coverage
+denominator; the files remain fully analyzed for code-quality rules.
+
+| Mechanism | Location | Justification |
+|-----------|----------|---------------|
+| `sonar.coverage.exclusions` | `Firmware/src/thread_analyzer_paced.c` | `thread_analyzer_run()` is `depends on !ARCH_POSIX` upstream — physically cannot execute on native_sim. Observability-only TU; exercised on the HIL rig every 30 s (see Firmware/CMakeLists.txt comment). |
+| `sonar.coverage.exclusions` | `Firmware/src/option_bytes.c` | Reads live STM32 FLASH option-byte registers via HAL/LL; a register-indirection mock would test only the mock. Verified at every hardware boot (logged). |
+| `sonar.coverage.exclusions` | `DiveCAN_bt/src/diagnostics/PlotManager.js`, `DiveCAN_bt/src/diagnostics/CellUIAdapter.js`, `DiveCAN_bt/src/DeviceManager.js` | Pure-DOM rendering glue with no protocol logic; jsdom tests would assert framework behavior, not ours. Protocol core is tested to >95 % lines. |
+| `GCOVR_EXCL` in-source | `Firmware/src/hw_version.c` (`blink_forever`, `halt_with_blink`) | Infinite pre-boot halt loops — a covered run would never terminate. Deliberate design: version mismatch must halt, not reboot. |
+| `GCOVR_EXCL` in-source | `Firmware/src/errors.c` (crash-replay arm in `errors_init`, true-arm of `errors_get_last_crash`) | Requires `CRASH_MAGIC` surviving a warm reset in noinit RAM; a native_sim process boots exactly once with the slot zeroed. Hardware-only path. |
+
+Unreachable-but-not-excluded remainders (documented in each test module's
+header instead of excluded): driver fault-injection arms the emulators cannot
+produce (gpio/uart/flash-sim never fail I/O), `FATAL_OP_ERROR` init arms that
+reboot before ztest gains control, and logging-macro internal branches.

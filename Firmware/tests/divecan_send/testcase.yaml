@@ -1,0 +1,4 @@
+tests:
+  divecan.send:
+    platform_allow: native_sim
+    tags: divecan can

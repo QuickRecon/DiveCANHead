@@ -1,0 +1,11 @@
+mainmenu "DiveO2 cell-thread native_sim test"
+
+# Pull in the full product-topology menu so oxygen_cell_diveo2.c and
+# runtime_settings.c see real Kconfig symbols (CELL_COUNT, CELL_n_TYPE_*,
+# POWER_MODE_*, BATTERY_CHEMISTRY_*) rather than hand-maintained -D defines.
+# prj.conf overrides CELL_COUNT=1 + CELL_1_TYPE_DIVEO2 so exactly one DiveO2
+# cell thread is defined; every other symbol keeps its default, which is an
+# internally consistent all-default topology (see tests/runtime_settings).
+rsource "../../src/Kconfig"
+
+source "Kconfig.zephyr"
