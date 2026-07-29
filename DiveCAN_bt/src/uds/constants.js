@@ -87,6 +87,8 @@ export const DID_SOLENOID_OVERRIDE = 0xF242;   // [channel, magic 0x5A] (HIL raw
 export const SOLENOID_OVERRIDE_MAGIC = 0x5A;
 export const DID_ERROR_HISTOGRAM = 0xF260;       // uint16[OP_ERR_MAX] LE (per-code counts)
 export const DID_ERROR_HISTOGRAM_CLEAR = 0xF261; // write any byte -> clear + persist
+export const DID_CRASH_HISTORY = 0xF255;          // version/count + 5 x 24-byte records
+export const DID_REBOOT_HISTORY = 0xF256;         // version/count + 5 x 8-byte records
 
 // ============================================================================
 // PID Autotune DIDs
@@ -433,6 +435,8 @@ export const EXTRA_READ_DIDS = {
   CRASH_PC:        { did: 0xF252, type: 'hex32',  label: 'Crash PC',          category: 'Diagnostics' },
   CRASH_LR:        { did: 0xF253, type: 'hex32',  label: 'Crash LR',          category: 'Diagnostics' },
   CRASH_CFSR:      { did: 0xF254, type: 'hex32',  label: 'Crash CFSR',        category: 'Diagnostics' },
+  CRASH_HISTORY:   { did: DID_CRASH_HISTORY, type: 'crash_history', label: 'Last 5 Crashes', category: 'Diagnostics' },
+  REBOOT_HISTORY:  { did: DID_REBOOT_HISTORY, type: 'reboot_history', label: 'Last 5 Reboots', category: 'Diagnostics' },
   ERROR_HISTOGRAM: { did: 0xF260, type: 'error_histogram', label: 'Error Histogram', category: 'Diagnostics' },
 
   MCUBOOT_STATUS:  { did: 0xF270, type: 'mcuboot', label: 'MCUBoot Status',   category: 'Firmware' },
@@ -576,6 +580,106 @@ function formatErrorHistogramDID(data) {
   return formatted;
 }
 
+/** Zephyr hwinfo reset-cause flags, in display order. */
+export const RESET_CAUSE_FLAGS = [
+  [0x00000001, 'pin'],
+  [0x00000002, 'software'],
+  [0x00000004, 'brownout'],
+  [0x00000008, 'power-on'],
+  [0x00000010, 'watchdog'],
+  [0x00000020, 'debug'],
+  [0x00000040, 'security'],
+  [0x00000080, 'low-power wake'],
+  [0x00000100, 'CPU lockup'],
+  [0x00000200, 'parity'],
+  [0x00000400, 'PLL'],
+  [0x00000800, 'clock'],
+  [0x00001000, 'hardware'],
+  [0x00002000, 'user'],
+  [0x00004000, 'temperature'],
+  [0x00008000, 'bootloader'],
+  [0x00010000, 'flash ECC']
+];
+
+/** Convert an OR'd Zephyr reset-cause mask into a readable label. */
+export function formatResetCause(cause) {
+  const names = RESET_CAUSE_FLAGS
+    .filter(([mask]) => (cause & mask) !== 0)
+    .map(([, name]) => name);
+  return names.length ? names.join(' + ') : 'unknown';
+}
+
+/**
+ * Decode DID 0xF255.
+ * @returns {{version:number, records:Array<Object>}|null}
+ */
+export function decodeCrashHistory(data) {
+  if (!data || data.length < 2) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const recordSize = 24;
+  const count = Math.min(data[1], 5, Math.floor((data.length - 2) / recordSize));
+  const records = [];
+  for (let i = 0; i < count; i++) {
+    const offset = 2 + (i * recordSize);
+    records.push({
+      rebootSequence: view.getUint32(offset, true),
+      reason: view.getUint32(offset + 4, true),
+      pc: view.getUint32(offset + 8, true),
+      lr: view.getUint32(offset + 12, true),
+      cfsr: view.getUint32(offset + 16, true),
+      thread: view.getUint32(offset + 20, true)
+    });
+  }
+  return { version: data[0], records };
+}
+
+/**
+ * Decode DID 0xF256.
+ * @returns {{version:number, records:Array<Object>}|null}
+ */
+export function decodeRebootHistory(data) {
+  if (!data || data.length < 2) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const recordSize = 8;
+  const count = Math.min(data[1], 5, Math.floor((data.length - 2) / recordSize));
+  const records = [];
+  for (let i = 0; i < count; i++) {
+    const offset = 2 + (i * recordSize);
+    const resetCause = view.getUint32(offset + 4, true);
+    records.push({
+      rebootSequence: view.getUint32(offset, true),
+      resetCause,
+      resetCauseText: formatResetCause(resetCause)
+    });
+  }
+  return { version: data[0], records };
+}
+
+function hex32(value) {
+  return `0x${value.toString(16).padStart(8, '0')}`;
+}
+
+/** DID-subscription one-line rendering for the full crash ring. @private */
+function formatCrashHistoryDID(data) {
+  const history = decodeCrashHistory(data);
+  if (!history) return 'n/a';
+  if (!history.records.length) return 'no persisted crashes';
+  return history.records.map(r =>
+    `#${r.rebootSequence} reason ${r.reason}, PC ${hex32(r.pc)}, LR ${hex32(r.lr)}, ` +
+    `CFSR ${hex32(r.cfsr)}, thread ${hex32(r.thread)}`
+  ).join(' | ');
+}
+
+/** DID-subscription one-line rendering for the full reboot ring. @private */
+function formatRebootHistoryDID(data) {
+  const history = decodeRebootHistory(data);
+  if (!history) return 'n/a';
+  if (!history.records.length) return 'no persisted reboots';
+  return history.records.map(r =>
+    `#${r.rebootSequence} ${r.resetCauseText} (${hex32(r.resetCause)})`
+  ).join(' | ');
+}
+
 /** DID type 'hex' (and the fallback for any unrecognised type). @private */
 function formatHexDID(data) {
   return Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ');
@@ -592,6 +696,8 @@ const EXTRA_DID_FORMATTERS = {
   poseidon_gauge: formatPoseidonGaugeDID,
   mcuboot: (view, data) => formatMcubootDID(data),
   error_histogram: (view, data) => formatErrorHistogramDID(data),
+  crash_history: (view, data) => formatCrashHistoryDID(data),
+  reboot_history: (view, data) => formatRebootHistoryDID(data),
   hex: (view, data) => formatHexDID(data)
 };
 

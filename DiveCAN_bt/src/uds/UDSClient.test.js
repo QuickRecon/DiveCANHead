@@ -378,6 +378,38 @@ describe('UDSClient', () => {
         const sent = transport.getLastSent();
         expect(Array.from(sent)).toEqual([0x2E, 0xF2, 0x61, 0x01]);
       });
+
+      it('reads and decodes crash and reboot histories', async () => {
+        const crash = new Uint8Array(26);
+        const crashView = new DataView(crash.buffer);
+        crash[0] = 1;
+        crash[1] = 1;
+        [7, 2, 0x08001234, 0x08005678, 0x10000, 0x20001000]
+          .forEach((value, index) => crashView.setUint32(2 + (index * 4), value, true));
+        const reboot = new Uint8Array(10);
+        const rebootView = new DataView(reboot.buffer);
+        reboot[0] = 1;
+        reboot[1] = 1;
+        rebootView.setUint32(2, 7, true);
+        rebootView.setUint32(6, 0x10, true);
+
+        transport.queueResponse(buildRDBIResponse(0xF255, crash));
+        transport.queueResponse(buildRDBIResponse(0xF256, reboot));
+
+        const crashes = await client.readCrashHistory();
+        const reboots = await client.readRebootHistory();
+
+        expect(crashes.records[0]).toMatchObject({
+          rebootSequence: 7,
+          reason: 2,
+          pc: 0x08001234
+        });
+        expect(reboots.records[0]).toMatchObject({
+          rebootSequence: 7,
+          resetCause: 0x10,
+          resetCauseText: 'watchdog'
+        });
+      });
     });
 
     describe('readVariantName', () => {

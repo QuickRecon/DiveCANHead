@@ -26,6 +26,7 @@
 #include "factory_image.h"
 #include "firmware_confirm.h"
 #include "errors.h"
+#include "boot_history.h"
 #include "common.h"
 #ifdef CONFIG_ALARM
 #include "alarm.h"
@@ -742,6 +743,84 @@ static void buildCrashFieldStatus(uint8_t *buf, uint16_t *len, CrashField_t fiel
 }
 
 /**
+ * @brief Serialise the persisted crash-history ring.
+ *
+ * Wire format is [version u8, count u8], followed by newest-first records:
+ * [reboot_sequence, reason, pc, lr, cfsr, thread], all uint32 little-endian.
+ */
+static bool buildCrashHistoryStatus(uint8_t *buf, uint16_t maxLen,
+                                    uint16_t *len)
+{
+    BootCrashRecord_t records[BOOT_HISTORY_DEPTH] = {0};
+    size_t count = boot_history_get_crashes(records, ARRAY_SIZE(records));
+    const size_t header_size = sizeof(uint8_t) * 2U;
+    const size_t record_size = sizeof(uint32_t) * 6U;
+    size_t required = header_size + (count * record_size);
+    bool result = false;
+
+    if (required <= maxLen) {
+        buf[0] = BOOT_HISTORY_WIRE_VERSION;
+        buf[1] = (uint8_t)count;
+        size_t offset = header_size;
+
+        for (size_t i = 0U; i < count; ++i) {
+            writeUint32(&buf[offset], records[i].reboot_sequence);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].reason);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].pc);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].lr);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].cfsr);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].thread);
+            offset += sizeof(uint32_t);
+        }
+        *len = (uint16_t)required;
+        result = true;
+    } else {
+        OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+    }
+    return result;
+}
+
+/**
+ * @brief Serialise the persisted reboot-history ring.
+ *
+ * Wire format is [version u8, count u8], followed by newest-first records:
+ * [reboot_sequence, reset_cause], both uint32 little-endian.
+ */
+static bool buildRebootHistoryStatus(uint8_t *buf, uint16_t maxLen,
+                                     uint16_t *len)
+{
+    BootRebootRecord_t records[BOOT_HISTORY_DEPTH] = {0};
+    size_t count = boot_history_get_reboots(records, ARRAY_SIZE(records));
+    const size_t header_size = sizeof(uint8_t) * 2U;
+    const size_t record_size = sizeof(uint32_t) * 2U;
+    size_t required = header_size + (count * record_size);
+    bool result = false;
+
+    if (required <= maxLen) {
+        buf[0] = BOOT_HISTORY_WIRE_VERSION;
+        buf[1] = (uint8_t)count;
+        size_t offset = header_size;
+
+        for (size_t i = 0U; i < count; ++i) {
+            writeUint32(&buf[offset], records[i].reboot_sequence);
+            offset += sizeof(uint32_t);
+            writeUint32(&buf[offset], records[i].reset_cause);
+            offset += sizeof(uint32_t);
+        }
+        *len = (uint16_t)required;
+        result = true;
+    } else {
+        OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, maxLen);
+    }
+    return result;
+}
+
+/**
  * @brief Serialise the error histogram DID payload.
  *
  * @param buf    Destination buffer
@@ -1000,6 +1079,14 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
 
     case UDS_DID_CRASH_CFSR:
         buildCrashFieldStatus(buf, len, CRASH_FIELD_CFSR);
+        break;
+
+    case UDS_DID_CRASH_HISTORY:
+        result = buildCrashHistoryStatus(buf, maxLen, len);
+        break;
+
+    case UDS_DID_REBOOT_HISTORY:
+        result = buildRebootHistoryStatus(buf, maxLen, len);
         break;
 
     case UDS_DID_ERROR_HISTOGRAM:

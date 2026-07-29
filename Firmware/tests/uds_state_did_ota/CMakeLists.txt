@@ -21,6 +21,8 @@ add_link_options(
     -Wl,--wrap=firmware_confirm_get_state
     -Wl,--wrap=firmware_confirm_get_pass_mask
     -Wl,--wrap=errors_get_last_crash
+    -Wl,--wrap=boot_history_get_crashes
+    -Wl,--wrap=boot_history_get_reboots
     -Wl,--wrap=ISOTP_Send
 )
 

@@ -134,6 +134,13 @@ in the flash log subsystem itself.
 | Boot marker             | One per boot                                  |
 | LOG_TEXT                | Subset of LOG_x output above runtime severity threshold |
 
+A recovered noinit crash is saved separately in the five-entry
+`bootdiag/crashes` NVS ring before the FCB mounts. After the text backend is
+ready, `main.c` emits the full recovered snapshot as `LOG_ERR`, so the same
+event also appears as an ordinary `LOG_TEXT` record. The dedicated ring is
+available through UDS DID `0xF255`; it does not depend on the much larger FCB
+ring retaining the relevant boot.
+
 ## Ingest pipeline
 
 ```
@@ -198,6 +205,20 @@ the existing NVS partition. Incremented on every successful
 `flash_log_init()` and emitted in the BOOT_MARKER payload. If the
 NVS read fails the boot_id is set to `0x80000000 | low_bits(uptime)`
 so the marker is still distinguishable but flagged as uncertain.
+
+## Dedicated boot diagnostics
+
+The NVS `bootdiag` subtree is intentionally independent from the FCB log:
+
+| Setting key | Retention | UDS DID | Contents |
+|-------------|-----------|---------|----------|
+| `bootdiag/crashes` | newest 5 crashes | `0xF255` | reboot sequence, reason, PC, LR, CFSR, thread |
+| `bootdiag/reboots` | newest 5 startups | `0xF256` | reboot sequence and Zephyr `hwinfo` reset-cause flags |
+
+`boot_history_init()` runs before `flash_log_init()`. It reads and clears the
+hardware reset flags immediately so causes do not accumulate across later
+resets. The captured value is passed into the FCB `BOOT_MARKER`; the boot
+marker no longer re-reads the cleared hardware register.
 
 ## Power-loss recovery
 

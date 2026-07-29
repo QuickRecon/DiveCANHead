@@ -23,6 +23,7 @@
 #include "runtime_settings.h"
 #include "error_histogram.h"
 #include "errors.h"
+#include "boot_history.h"
 #include "common.h"
 #include "firmware_confirm.h"
 #ifdef CONFIG_FACTORY_IMAGE
@@ -437,6 +438,11 @@ Status_t main(void)
      * reset loop = burst repeating at the reset period. */
     boot_indicator();
 
+    /* Persist the reset cause and any noinit crash before mounting the much
+     * larger FCB log rings. A successful crash write acknowledges the retained
+     * RAM slot; failures leave it intact so the next boot can retry. */
+    (void)boot_history_init();
+
 #ifdef CONFIG_FLASH_LOG
     /* Mount FCBs and bump the persisted boot counter. Record the boot
      * marker (with prior-crash details if any) as the first entry of
@@ -448,7 +454,15 @@ Status_t main(void)
     if (errors_get_last_crash(&prev_crash)) {
         prev = &prev_crash;
     }
-    flash_log_record_boot_marker(flash_log_get_boot_id(), prev);
+    flash_log_record_boot_marker(flash_log_get_boot_id(),
+                                 boot_history_current_reset_cause(), prev);
+    if (NULL != prev) {
+        /* This normal log message is intentionally emitted only after the
+         * flash-log backend is ready, duplicating the independently persisted
+         * crash record into the downloadable LOG_TEXT stream. */
+        LOG_ERR("Persisted crash: reason=%u pc=0x%08x lr=0x%08x cfsr=0x%08x thread=0x%08x",
+                prev->reason, prev->pc, prev->lr, prev->cfsr, prev->thread);
+    }
 #endif
 
     calibration_init();

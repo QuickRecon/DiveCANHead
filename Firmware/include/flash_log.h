@@ -172,9 +172,10 @@ Status_t flash_log_init(void);
  * record is read. The boot_id is the persisted counter (post-increment).
  *
  * @param boot_id Monotonic boot counter
+ * @param reset_cause Hardware reset-cause flags captured at startup
  * @param prev_crash Optional previous-boot crash info; may be NULL
  */
-void flash_log_record_boot_marker(uint32_t boot_id,
+void flash_log_record_boot_marker(uint32_t boot_id, uint32_t reset_cause,
                   const CrashInfo_t *prev_crash);
 
 /**

@@ -56,6 +56,8 @@
 #define UDS_DID_CRASH_PC            0xF252U  /**< uint32: program counter at fault */
 #define UDS_DID_CRASH_LR            0xF253U  /**< uint32: link register at fault */
 #define UDS_DID_CRASH_CFSR          0xF254U  /**< uint32: Cortex-M Configurable Fault Status Register */
+#define UDS_DID_CRASH_HISTORY       0xF255U  /**< 2 + N*24 B: version/count + up to 5 newest-first persisted crashes */
+#define UDS_DID_REBOOT_HISTORY      0xF256U  /**< 2 + N*8 B: version/count + up to 5 newest-first persisted reset causes */
 
 /* Error-histogram DIDs (0xF26x) — populated from error_histogram_snapshot() */
 #define UDS_DID_ERROR_HISTOGRAM       0xF260U  /**< uint16[OP_ERR_MAX]: per-code occurrence counts (saturated) */

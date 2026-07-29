@@ -43,6 +43,14 @@ typedef struct {
  */
 bool errors_get_last_crash(CrashInfo_t *out);
 
+/**
+ * @brief Mark the recovered noinit crash as durably persisted.
+ *
+ * Clears only the noinit magic. The normal-RAM snapshot remains readable for
+ * this boot so UDS and the flash-log boot marker can still report it.
+ */
+void errors_acknowledge_last_crash(void);
+
 /* ---- Tier 2: MUST_SUCCEED — init-time fatal check ----
  *
  * For kernel/driver API calls that return int and must return 0.

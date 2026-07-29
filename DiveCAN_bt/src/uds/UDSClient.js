@@ -384,6 +384,18 @@ export class UDSClient extends EventEmitter {
     this.logger.info('Cleared error histogram');
   }
 
+  /** Read the five-entry persisted crash ring (DID 0xF255). */
+  async readCrashHistory() {
+    const data = await this.readDataByIdentifier(constants.DID_CRASH_HISTORY);
+    return constants.decodeCrashHistory(data);
+  }
+
+  /** Read the five-entry persisted reboot-cause ring (DID 0xF256). */
+  async readRebootHistory() {
+    const data = await this.readDataByIdentifier(constants.DID_REBOOT_HISTORY);
+    return constants.decodeRebootHistory(data);
+  }
+
   // ============================================================
   // Generic UDS services (session / routine / transfer)
   // ============================================================

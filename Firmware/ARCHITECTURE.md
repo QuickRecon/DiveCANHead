@@ -186,12 +186,26 @@ ESP_ERROR_CHECK-style macro for kernel/driver API calls that must not fail. Logs
 Non-fatal runtime errors published to a zbus channel (`chan_error`). The `LOG_ERR` in the macro uses the caller's log module for attribution. Subscribers (DiveCAN status composer, flash logger, etc.) react independently. System continues operating with graceful degradation.
 
 ### Tier 4: FATAL_OP_ERROR — Fatal operational errors
-Unrecoverable runtime conditions. Persists error info to noinit RAM and reboots. On next boot, the crash info is logged and made available via `errors_get_last_crash()`, with each field exposed through dedicated UDS state DIDs (`0xF250` CRASH_VALID, `0xF251` REASON, `0xF252` PC, `0xF253` LR, `0xF254` CFSR) so the handset can read the post-mortem after a dive incident.
+Unrecoverable runtime conditions. Persists error info to noinit RAM and reboots.
+On the next boot, `boot_history_init()` runs before the large FCB mounts,
+appends the recovered snapshot to the independent `bootdiag/crashes` NVS ring,
+and acknowledges the noinit slot only after that write succeeds. A failed NVS
+write therefore leaves the RAM evidence available for another boot. The current
+snapshot remains exposed through `0xF250`–`0xF254`; DID `0xF255` exposes the
+five-entry persistent crash ring newest-first.
+
+Every startup also reads and clears the Zephyr `hwinfo` reset flags and appends
+them to the independent `bootdiag/reboots` five-entry ring, exposed by DID
+`0xF256`. Both wire histories carry a monotonic reboot sequence so a crash can
+be correlated with its recovering reboot. Once the text FCB is mounted, a
+recovered crash is emitted again as `LOG_ERR`, giving the post-mortem both a
+small dedicated rolling store and a normal downloadable `LOG_TEXT` record.
 
 ### Fatal Error Handler
 Overrides Zephyr's `k_sys_fatal_error_handler` (weak symbol). All fatal paths — CPU exceptions, stack canary corruption, `k_oops()`, `k_panic()` — route here. The handler:
 1. Writes crash context (reason, PC, LR, CFSR) to `__noinit` RAM
-2. Flushes log buffers (`LOG_PANIC()`)
+2. Prints directly to RTT and briefly spins for drain (the log backend is not
+   re-entered from fault context)
 3. Reboots (`sys_reboot(SYS_REBOOT_COLD)`)
 
 The system always reboots on fatal error — never halts. Transient faults may self-resolve on restart.
@@ -318,7 +332,10 @@ Currently registered slots:
 
 Slots not registered are ignored — variants without a given thread (e.g. cell 3 unconfigured, no solenoid) skip registration and the feeder doesn't expect a kick from them.
 
-A reset caused by missed feeds surfaces on the next boot through the existing crash-DID infrastructure: the IWDG reset flag in `RCC_CSR` is captured by `errors.c` and exposed via `UDS_DID_CRASH_REASON` (0xF251).
+A reset caused by missed feeds surfaces on the next boot through the reboot
+history: the IWDG flag becomes `RESET_WATCHDOG` in DID `0xF256`. This is kept
+separate from `CRASH_REASON` because a watchdog reset does not necessarily pass
+through the fatal handler or leave a noinit crash snapshot.
 
 ## Tank Pressure Transducers
 
@@ -496,6 +513,7 @@ Firmware/
 ├── include/
 │   ├── calibration.h               Calibration public API
 │   ├── errors.h                    Error handling tiers 2-4, OpError_t enum
+│   ├── boot_history.h              Five-entry persisted crash/reboot rings
 │   ├── power_management.h          Power API, BatteryStatus_t, voltage thresholds
 │   ├── oxygen_cell_channels.h      zbus channel declarations (cell, consensus, cal)
 │   ├── oxygen_cell_math.h          Pure math: consensus voting, ADC conversion, cal math
@@ -509,6 +527,7 @@ Firmware/
 │   ├── calibration.c               Calibration thread, atomic guard, settings, rollback
 │   ├── consensus_subscriber.c      zbus subscriber: cell channels → vote → consensus
 │   ├── errors.c                    Fatal handler, zbus channel, crash persistence
+│   ├── boot_history.c              Startup NVS persistence + reset-cause capture
 │   ├── i2c_bus_lock.c              Shared K_MUTEX serialising STM32 i2c1 masters
 │   ├── oxygen_cell_analog.c        Analog cell: ADS1115 ADC read, cal, zbus publish
 │   ├── oxygen_cell_channels.c      zbus channel definitions (6 channels)

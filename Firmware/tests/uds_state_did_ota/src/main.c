@@ -43,6 +43,7 @@
 #include "power_management.h"
 #include "error_histogram.h"
 #include "errors.h"
+#include "boot_history.h"
 #include "calibration.h"
 #include "tank_pressure.h"
 
@@ -83,6 +84,10 @@ static int32_t stub_current_ua;
 static uint32_t stub_current_age_ms;
 static bool stub_crash_valid;
 static CrashInfo_t stub_crash_info;
+static BootCrashRecord_t stub_crash_history[BOOT_HISTORY_DEPTH];
+static size_t stub_crash_history_count;
+static BootRebootRecord_t stub_reboot_history[BOOT_HISTORY_DEPTH];
+static size_t stub_reboot_history_count;
 
 Numeric_t power_get_vbus_voltage(const struct device *dev)
 {
@@ -157,6 +162,32 @@ bool __wrap_errors_get_last_crash(CrashInfo_t *out)
         *out = stub_crash_info;
     }
     return stub_crash_valid;
+}
+
+size_t __wrap_boot_history_get_crashes(BootCrashRecord_t *out,
+                                       size_t capacity)
+{
+    size_t count = stub_crash_history_count;
+    if (count > capacity) {
+        count = capacity;
+    }
+    if ((NULL != out) && (count > 0U)) {
+        (void)memcpy(out, stub_crash_history, count * sizeof(*out));
+    }
+    return count;
+}
+
+size_t __wrap_boot_history_get_reboots(BootRebootRecord_t *out,
+                                       size_t capacity)
+{
+    size_t count = stub_reboot_history_count;
+    if (count > capacity) {
+        count = capacity;
+    }
+    if ((NULL != out) && (count > 0U)) {
+        (void)memcpy(out, stub_reboot_history, count * sizeof(*out));
+    }
+    return count;
 }
 
 bool calibration_is_running(void) { return false; }
@@ -513,6 +544,10 @@ static void test_setup(void *fixture)
     stub_current_age_ms = 0U;
     stub_crash_valid = false;
     (void)memset(&stub_crash_info, 0, sizeof(stub_crash_info));
+    stub_crash_history_count = 0U;
+    (void)memset(stub_crash_history, 0, sizeof(stub_crash_history));
+    stub_reboot_history_count = 0U;
+    (void)memset(stub_reboot_history, 0, sizeof(stub_reboot_history));
     reboot_escape_armed = false;
 
     /* Default: bank header reads succeed for slot0 (idx 0), fail for slot1
@@ -1087,6 +1122,14 @@ static uint32_t captured_u32(void)
            ((uint32_t)fx.captured_response[6] << 24);
 }
 
+static uint32_t captured_le32_at(size_t offset)
+{
+    return (uint32_t)fx.captured_response[offset] |
+           ((uint32_t)fx.captured_response[offset + 1U] << 8) |
+           ((uint32_t)fx.captured_response[offset + 2U] << 16) |
+           ((uint32_t)fx.captured_response[offset + 3U] << 24);
+}
+
 ZTEST(uds_state_did_ota, test_control_state_scalars_and_cells_valid)
 {
     ConsensusMsg_t consensus = {
@@ -1237,6 +1280,55 @@ ZTEST(uds_state_did_ota, test_crash_dids_clean_and_populated)
         read_did(dids[i]);
         zassert_equal(captured_u32(), expected[i], "DID 0x%04x", dids[i]);
     }
+}
+
+ZTEST(uds_state_did_ota, test_persisted_crash_and_reboot_history_dids)
+{
+    stub_crash_history_count = 2U;
+    stub_crash_history[0] = (BootCrashRecord_t) {
+        .reboot_sequence = 12U,
+        .reason = 2U,
+        .pc = 0x08001234U,
+        .lr = 0x08005678U,
+        .cfsr = 0x00010000U,
+        .thread = 0x20001000U,
+    };
+    stub_crash_history[1] = (BootCrashRecord_t) {
+        .reboot_sequence = 9U,
+        .reason = 4U,
+        .pc = 0x0800ABCDU,
+        .lr = 0x0800DCBAU,
+        .cfsr = 0x00020000U,
+        .thread = 0x20002000U,
+    };
+
+    read_did(UDS_DID_CRASH_HISTORY);
+    zassert_equal(fx.captured_response_len, 3U + 2U + (2U * 24U));
+    zassert_equal(fx.captured_response[3], BOOT_HISTORY_WIRE_VERSION);
+    zassert_equal(fx.captured_response[4], 2U);
+    zassert_equal(captured_le32_at(5U), 12U);
+    zassert_equal(captured_le32_at(9U), 2U);
+    zassert_equal(captured_le32_at(13U), 0x08001234U);
+    zassert_equal(captured_le32_at(29U), 9U);
+
+    stub_reboot_history_count = 2U;
+    stub_reboot_history[0] = (BootRebootRecord_t) {
+        .reboot_sequence = 12U,
+        .reset_cause = RESET_WATCHDOG,
+    };
+    stub_reboot_history[1] = (BootRebootRecord_t) {
+        .reboot_sequence = 11U,
+        .reset_cause = RESET_SOFTWARE,
+    };
+
+    read_did(UDS_DID_REBOOT_HISTORY);
+    zassert_equal(fx.captured_response_len, 3U + 2U + (2U * 8U));
+    zassert_equal(fx.captured_response[3], BOOT_HISTORY_WIRE_VERSION);
+    zassert_equal(fx.captured_response[4], 2U);
+    zassert_equal(captured_le32_at(5U), 12U);
+    zassert_equal(captured_le32_at(9U), RESET_WATCHDOG);
+    zassert_equal(captured_le32_at(13U), 11U);
+    zassert_equal(captured_le32_at(17U), RESET_SOFTWARE);
 }
 
 ZTEST(uds_state_did_ota, test_error_histogram_available_empty_and_short)

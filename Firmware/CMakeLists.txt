@@ -159,6 +159,7 @@ project(divecan_jr)
 target_sources(app PRIVATE
     src/main.c
     src/errors.c
+    src/boot_history.c
     src/runtime_settings.c
     src/oxygen_cell_math.c
     src/oxygen_cell_channels.c

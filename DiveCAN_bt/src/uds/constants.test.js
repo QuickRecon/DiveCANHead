@@ -11,6 +11,9 @@ import {
   EXTRA_READ_DIDS,
   ALL_READ_DIDS,
   parseExtraDIDValue,
+  decodeCrashHistory,
+  decodeRebootHistory,
+  formatResetCause,
   decodeDeviceCurrent,
   CELL_TYPE_ANALOG,
   CELL_TYPE_DIVEO2,
@@ -302,6 +305,50 @@ describe('UDS constants', () => {
       ]);
       expect(parseExtraDIDValue({ type: 'mcuboot' }, d))
         .toBe('None · confirmed · run slot0 · s0 1.2.3 · s1 none');
+    });
+
+    it('decodes and formats persisted crash history newest first', () => {
+      const d = new Uint8Array(2 + 24);
+      const view = new DataView(d.buffer);
+      d[0] = 1;
+      d[1] = 1;
+      [12, 2, 0x08001234, 0x08005678, 0x00010000, 0x20001000]
+        .forEach((value, index) => view.setUint32(2 + (index * 4), value, true));
+
+      expect(decodeCrashHistory(d)).toEqual({
+        version: 1,
+        records: [{
+          rebootSequence: 12,
+          reason: 2,
+          pc: 0x08001234,
+          lr: 0x08005678,
+          cfsr: 0x00010000,
+          thread: 0x20001000
+        }]
+      });
+      expect(parseExtraDIDValue({ type: 'crash_history' }, d))
+        .toContain('#12 reason 2, PC 0x08001234');
+    });
+
+    it('decodes reboot causes and preserves combined flag names', () => {
+      const d = new Uint8Array(2 + 8);
+      const view = new DataView(d.buffer);
+      d[0] = 1;
+      d[1] = 1;
+      view.setUint32(2, 21, true);
+      view.setUint32(6, 0x12, true); // software + watchdog
+
+      expect(formatResetCause(0x12)).toBe('software + watchdog');
+      expect(decodeRebootHistory(d)).toEqual({
+        version: 1,
+        records: [{
+          rebootSequence: 21,
+          resetCause: 0x12,
+          resetCauseText: 'software + watchdog'
+        }]
+      });
+      expect(parseExtraDIDValue({ type: 'reboot_history' }, d))
+        .toBe('#21 software + watchdog (0x00000012)');
     });
   });
 

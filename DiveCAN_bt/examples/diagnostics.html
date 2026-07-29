@@ -1412,6 +1412,46 @@
     <!-- Errors Tab -->
     <div class="tab-content" id="tab-errors">
       <div class="tab-section">
+        <h2>Crash and Reboot History</h2>
+        <p style="color:#888;font-size:12px;margin:4px 0 12px;">
+          Independent NVS rolling buffers containing the five newest crash
+          snapshots (DID <code>0xF255</code>) and reboot causes
+          (DID <code>0xF256</code>). Sequence numbers correlate a recovered
+          crash with the reboot that persisted it.
+        </p>
+        <h3 style="color:#bbb;font-size:14px;">Crashes</h3>
+        <div style="overflow:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="text-align:left;color:#888;border-bottom:1px solid #3a3a3a;">
+              <th style="padding:6px 8px;">Sequence</th>
+              <th style="padding:6px 8px;">Reason</th>
+              <th style="padding:6px 8px;">PC</th>
+              <th style="padding:6px 8px;">LR</th>
+              <th style="padding:6px 8px;">CFSR</th>
+              <th style="padding:6px 8px;">Thread</th>
+            </tr></thead>
+            <tbody id="crashHistoryBody">
+              <tr><td colspan="6" style="padding:10px;color:#666;">(Connect and press Refresh)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3 style="color:#bbb;font-size:14px;margin-top:16px;">Reboots</h3>
+        <div style="overflow:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="text-align:left;color:#888;border-bottom:1px solid #3a3a3a;">
+              <th style="padding:6px 8px;">Sequence</th>
+              <th style="padding:6px 8px;">Cause</th>
+              <th style="padding:6px 8px;">Raw flags</th>
+            </tr></thead>
+            <tbody id="rebootHistoryBody">
+              <tr><td colspan="3" style="padding:10px;color:#666;">(Connect and press Refresh)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="bootHistoryStatus" style="margin-top:10px;color:#888;font-size:13px;"></div>
+      </div>
+
+      <div class="tab-section">
         <h2>Error Histogram</h2>
         <p style="color:#888;font-size:12px;margin:4px 0 12px;">
           Per-code occurrence counters (DID <code>0xF260</code>), saturating and
@@ -1560,7 +1600,7 @@
           // Auto-load the error histogram the first time the Errors tab is
           // opened while connected (cheap single read; manual Refresh re-reads).
           if (targetTab === 'errors' && stack && !errorHistogramLoaded) {
-            refreshErrorHistogram();
+            refreshErrors();
           }
         });
       });
@@ -2795,6 +2835,80 @@
     let errorHistogramLoaded = false;  // avoid re-reading every tab open
     let lastErrorEntries = [];         // cache so the filter toggle re-renders locally
 
+    const formatHistoryHex32 = (value) =>
+      `0x${value.toString(16).padStart(8, '0')}`;
+
+    const renderCrashHistory = (history) => {
+      const body = $('crashHistoryBody');
+      body.innerHTML = '';
+      const records = history?.records ?? [];
+      if (!records.length) {
+        body.innerHTML =
+          '<tr><td colspan="6" style="padding:10px;color:#4caf50;">No persisted crashes.</td></tr>';
+        return;
+      }
+      for (const record of records) {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #2a2a2a';
+        tr.innerHTML =
+          `<td style="padding:6px 8px;">#${record.rebootSequence}</td>` +
+          `<td style="padding:6px 8px;color:#ff8a8a;">${record.reason}</td>` +
+          `<td style="padding:6px 8px;font-family:monospace;">${formatHistoryHex32(record.pc)}</td>` +
+          `<td style="padding:6px 8px;font-family:monospace;">${formatHistoryHex32(record.lr)}</td>` +
+          `<td style="padding:6px 8px;font-family:monospace;">${formatHistoryHex32(record.cfsr)}</td>` +
+          `<td style="padding:6px 8px;font-family:monospace;">${formatHistoryHex32(record.thread)}</td>`;
+        body.appendChild(tr);
+      }
+    };
+
+    const renderRebootHistory = (history) => {
+      const body = $('rebootHistoryBody');
+      body.innerHTML = '';
+      const records = history?.records ?? [];
+      if (!records.length) {
+        body.innerHTML =
+          '<tr><td colspan="3" style="padding:10px;color:#666;">No persisted reboot records.</td></tr>';
+        return;
+      }
+      for (const record of records) {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #2a2a2a';
+        tr.innerHTML =
+          `<td style="padding:6px 8px;">#${record.rebootSequence}</td>` +
+          `<td style="padding:6px 8px;">${record.resetCauseText}</td>` +
+          `<td style="padding:6px 8px;font-family:monospace;">${formatHistoryHex32(record.resetCause)}</td>`;
+        body.appendChild(tr);
+      }
+    };
+
+    const refreshBootHistory = async () => {
+      if (!stack) { $('bootHistoryStatus').textContent = 'Not connected'; return; }
+      $('bootHistoryStatus').textContent = 'Reading histories…';
+      const [crashResult, rebootResult] = await Promise.allSettled([
+        stack.uds.readCrashHistory(),
+        stack.uds.readRebootHistory()
+      ]);
+
+      if (crashResult.status === 'fulfilled') {
+        renderCrashHistory(crashResult.value);
+      } else {
+        $('crashHistoryBody').innerHTML =
+          '<tr><td colspan="6" style="padding:10px;color:#ff8a8a;">Crash history unavailable.</td></tr>';
+      }
+      if (rebootResult.status === 'fulfilled') {
+        renderRebootHistory(rebootResult.value);
+      } else {
+        $('rebootHistoryBody').innerHTML =
+          '<tr><td colspan="3" style="padding:10px;color:#ff8a8a;">Reboot history unavailable.</td></tr>';
+      }
+
+      const failures = [crashResult, rebootResult]
+        .filter(result => result.status === 'rejected').length;
+      $('bootHistoryStatus').textContent = failures
+        ? `${failures} history DID${failures === 1 ? '' : 's'} unavailable (older firmware?)`
+        : '';
+    };
+
     // Render a decoded histogram into the table. Non-zero rows are highlighted;
     // zero-count rows are hidden unless "Show zero-count codes" is checked. The
     // NONE sentinel (index 0) is never shown.
@@ -2867,6 +2981,10 @@
       }
     };
 
+    const refreshErrors = async () => {
+      await Promise.all([refreshErrorHistogram(), refreshBootHistory()]);
+    };
+
     const clearErrorHistogramUI = async () => {
       if (!stack) return;
       if (!confirm('Clear all error-histogram counters? This persists to NVS and cannot be undone.')) {
@@ -2895,13 +3013,18 @@
       $('errorClearButton').disabled = true;
       $('errorStatus').textContent = '';
       $('errorSummary').textContent = '--';
+      $('bootHistoryStatus').textContent = '';
       errorHistogramLoaded = false;
       lastErrorEntries = [];
+      $('crashHistoryBody').innerHTML =
+        '<tr><td colspan="6" style="padding:10px;color:#666;">(Connect and press Refresh)</td></tr>';
+      $('rebootHistoryBody').innerHTML =
+        '<tr><td colspan="3" style="padding:10px;color:#666;">(Connect and press Refresh)</td></tr>';
       $('errorTableBody').innerHTML =
         '<tr><td colspan="5" style="padding:10px;color:#666;">(Connect and press Refresh)</td></tr>';
     };
 
-    $('errorRefreshButton').addEventListener('click', refreshErrorHistogram);
+    $('errorRefreshButton').addEventListener('click', refreshErrors);
     $('errorClearButton').addEventListener('click', clearErrorHistogramUI);
     $('errorShowAll').addEventListener('change', () => {
       // Filter toggle re-renders the cached read locally — no device round-trip.

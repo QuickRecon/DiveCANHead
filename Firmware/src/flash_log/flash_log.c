@@ -25,7 +25,6 @@
 #include <zephyr/fs/fcb.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/drivers/flash.h>
-#include <zephyr/drivers/hwinfo.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/logging/log.h>
 
@@ -1134,7 +1133,7 @@ void flash_log_resume(void)
 
 /* ---- Boot marker ---- */
 
-void flash_log_record_boot_marker(uint32_t boot_id,
+void flash_log_record_boot_marker(uint32_t boot_id, uint32_t reset_cause,
                   const CrashInfo_t *prev_crash)
 {
     fl_payload_boot_marker_t p = { 0 };
@@ -1148,9 +1147,7 @@ void flash_log_record_boot_marker(uint32_t boot_id,
     }
     (void)memcpy(p.fw_version, fw, fw_len);
 
-    uint32_t cause = 0U;
-    (void)hwinfo_get_reset_cause(&cause);
-    p.reset_cause = cause;
+    p.reset_cause = reset_cause;
 
     if (prev_crash != NULL) {
         p.prev_crash_magic = prev_crash->magic;

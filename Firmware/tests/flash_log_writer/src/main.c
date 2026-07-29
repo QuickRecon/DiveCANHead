@@ -591,7 +591,7 @@ ZTEST(flash_log_writer, test_boot_marker_mirrors_and_truncates_fw)
         .thread = 0U,
     };
 
-    flash_log_record_boot_marker(EXPECTED_BOOT_ID, &crash);
+    flash_log_record_boot_marker(EXPECTED_BOOT_ID, STUB_RESET_CAUSE, &crash);
     (void)k_msleep(SETTLE_MARKER_MS);
 
     zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_BOOT_MARKER), 1U);
@@ -617,7 +617,8 @@ ZTEST(flash_log_writer, test_boot_marker_mirrors_and_truncates_fw)
                       sizeof(marker.fw_version), "fw_version not truncated");
 
     /* NULL prev_crash arm. */
-    flash_log_record_boot_marker(EXPECTED_BOOT_ID + 1U, NULL);
+    flash_log_record_boot_marker(EXPECTED_BOOT_ID + 1U,
+                                 STUB_RESET_CAUSE, NULL);
     (void)k_msleep(SETTLE_MARKER_MS);
     zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_BOOT_MARKER), 2U);
     zassert_equal(count_type(FL_DEST_TEXT, FL_TYPE_BOOT_MARKER), 2U);

@@ -52,10 +52,12 @@ ZBUS_CHAN_DEFINE(chan_error,
 /* ---- Boot-time crash recovery ---- */
 
 /**
- * @brief SYS_INIT callback — read and clear any crash info left in noinit RAM
+ * @brief SYS_INIT callback — snapshot crash info left in noinit RAM
  *
  * If the noinit magic value is present this function copies the crash record
- * to a normal RAM snapshot, clears the magic, and logs the crash reason.
+ * to a normal RAM snapshot and logs the crash reason. The noinit magic remains
+ * set until boot_history persists the record and acknowledges it, allowing a
+ * failed startup flash write to retry on the next boot.
  * The snapshot is then accessible via errors_get_last_crash() for the rest of
  * this boot cycle.
  *
@@ -80,7 +82,6 @@ static Status_t errors_init(void)
         (void)memcpy(&last_crash, (const void *)&crash_noinit,
                      sizeof(last_crash));
         had_crash = true;
-        crash_noinit.magic = 0U;
 
         LOG_ERR("Previous crash: reason=%u pc=0x%08x lr=0x%08x cfsr=0x%08x thread=0x%08x",
             last_crash.reason, last_crash.pc,
@@ -114,6 +115,13 @@ bool errors_get_last_crash(CrashInfo_t *out)
     }
 
     return valid;
+}
+
+void errors_acknowledge_last_crash(void)
+{
+    if (had_crash) {
+        crash_noinit.magic = 0U;
+    }
 }
 
 /* ---- Tier 2: MUST_SUCCEED ---- */
@@ -194,6 +202,7 @@ FUNC_NORETURN void fatal_op_error(FatalOpError_t code, const char *file,
     crash_noinit.pc = 0U;
     crash_noinit.lr = 0U;
     crash_noinit.cfsr = 0U;
+    crash_noinit.thread = (uint32_t)(uintptr_t)k_current_get();
 
     /* Don't call LOG_PANIC() here — the RTT log backend's flush path
      * uses k_busy_wait which touches the systick spinlock. If we're
