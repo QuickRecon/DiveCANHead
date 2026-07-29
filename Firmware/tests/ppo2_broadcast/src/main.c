@@ -21,8 +21,10 @@ ZTEST(ppo2_broadcast, test_all_cells_ok_unchanged)
     PPO2_t ppo2[] = {98, 99, 100};
     CellStatus_t status[] = {CELL_OK, CELL_OK, CELL_OK};
 
-    divecan_set_failed_cells(ppo2, status, 3, false);
+    bool calibration_masked =
+        divecan_set_failed_cells(ppo2, status, 3, false);
 
+    zassert_false(calibration_masked);
     zassert_equal(ppo2[0], 98);
     zassert_equal(ppo2[1], 99);
     zassert_equal(ppo2[2], 100);
@@ -73,8 +75,10 @@ ZTEST(ppo2_broadcast, test_need_cal_not_calibrating_all_ff)
     PPO2_t ppo2[] = {98, 99, 100};
     CellStatus_t status[] = {CELL_OK, CELL_OK, CELL_NEED_CAL};
 
-    divecan_set_failed_cells(ppo2, status, 3, false);
+    bool calibration_masked =
+        divecan_set_failed_cells(ppo2, status, 3, false);
 
+    zassert_true(calibration_masked);
     zassert_equal(ppo2[0], PPO2_FAIL);
     zassert_equal(ppo2[1], PPO2_FAIL);
     zassert_equal(ppo2[2], PPO2_FAIL);
@@ -92,8 +96,10 @@ ZTEST(ppo2_broadcast, test_need_cal_while_calibrating)
     PPO2_t ppo2[] = {98, 99, 100};
     CellStatus_t status[] = {CELL_OK, CELL_OK, CELL_NEED_CAL};
 
-    divecan_set_failed_cells(ppo2, status, 3, true);
+    bool calibration_masked =
+        divecan_set_failed_cells(ppo2, status, 3, true);
 
+    zassert_false(calibration_masked);
     /* During calibration, only FAIL cells get FFed, not NEED_CAL */
     zassert_equal(ppo2[0], 98);
     zassert_equal(ppo2[1], 99);

@@ -24,8 +24,9 @@
  * @param status Array of cell statuses
  * @param count Number of cells
  * @param is_calibrating true if calibration is currently in progress
+ * @return true if the all-slots-0xFF "Need cal" mask was applied
  */
-void divecan_set_failed_cells(PPO2_t *ppo2, const CellStatus_t *status,
+bool divecan_set_failed_cells(PPO2_t *ppo2, const CellStatus_t *status,
                   uint8_t count, bool is_calibrating);
 
 #endif /* DIVECAN_PPO2_MATH_H */

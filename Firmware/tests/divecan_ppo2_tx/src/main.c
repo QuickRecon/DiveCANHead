@@ -11,8 +11,9 @@
  * chan_consensus mutex (zbus_chan_claim) and holds it across a full broadcast
  * period, forcing the thread's read to time out so it must substitute PPO2_FAIL
  * for every cell. The TX composers, calibration query, and error reporter are
- * stubbed so the thread's dependency graph stays small; the last consensus
- * value handed to txCellState is captured to prove which arm ran.
+ * stubbed so the thread's dependency graph stays small. The transmitted PPO2
+ * slots and cell-state fields are captured to prove the two-cell consensus-slot
+ * compatibility behavior as well as the fail-loud arm.
  *
  * chan_consensus is defined here (not linked from oxygen_cell_channels.c) so
  * the test owns the channel it contends on — mirroring how tests/calibration_sm
@@ -42,6 +43,8 @@ ZBUS_CHAN_DEFINE(chan_consensus,
 /* Last consensus PPO2 the thread handed to txCellState — updated from the
  * thread context, read from the test after a settle. */
 static volatile PPO2_t last_cellstate_ppo2 = 0U;
+static volatile bool last_cellstate_cell3 = false;
+static volatile PPO2_t last_ppo2[CELL_MAX_COUNT] = {0};
 
 /* ---- Stubs for the thread's collaborators ---- */
 
@@ -54,9 +57,9 @@ void op_error_publish(OpError_t code, uint32_t detail)
 void txPPO2(DiveCANType_t deviceType, PPO2_t cell1, PPO2_t cell2, PPO2_t cell3)
 {
     ARG_UNUSED(deviceType);
-    ARG_UNUSED(cell1);
-    ARG_UNUSED(cell2);
-    ARG_UNUSED(cell3);
+    last_ppo2[0] = cell1;
+    last_ppo2[1] = cell2;
+    last_ppo2[2] = cell3;
 }
 
 void txMillivolts(DiveCANType_t deviceType, Millivolts_t cell1,
@@ -74,17 +77,8 @@ void txCellState(DiveCANType_t deviceType, bool cell1, bool cell2, bool cell3,
     ARG_UNUSED(deviceType);
     ARG_UNUSED(cell1);
     ARG_UNUSED(cell2);
-    ARG_UNUSED(cell3);
+    last_cellstate_cell3 = cell3;
     last_cellstate_ppo2 = ppo2;
-}
-
-void divecan_set_failed_cells(PPO2_t *ppo2, const CellStatus_t *status,
-                              uint8_t count, bool is_calibrating)
-{
-    ARG_UNUSED(ppo2);
-    ARG_UNUSED(status);
-    ARG_UNUSED(count);
-    ARG_UNUSED(is_calibrating);
 }
 
 bool calibration_is_running(void)
@@ -96,29 +90,75 @@ bool calibration_is_running(void)
  * completes inside each wait. */
 static const int32_t SETTLE_MS = 650;
 static const PPO2_t VALID_PPO2 = 100U;
+static const PPO2_t CELL_1_PPO2 = 90U;
+static const PPO2_t CELL_2_PPO2 = 110U;
 
 /** @brief Suite: PPO2 broadcast thread read-success vs read-failure arms. */
 ZTEST_SUITE(divecan_ppo2_tx, NULL, NULL, NULL, NULL, NULL);
 
 /**
- * @brief The thread broadcasts published consensus normally, and all-fail when
+ * @brief The thread applies two-cell consensus-slot policy and fails loud when
  *        the consensus read is starved of the channel mutex.
  */
-ZTEST(divecan_ppo2_tx, test_read_failure_broadcasts_all_fail)
+ZTEST(divecan_ppo2_tx, test_consensus_slot_and_fail_safe_paths)
 {
-    /* ---- Success arm: publish a distinct valid consensus and confirm the
-     * thread broadcasts it (read returns 0). ---- */
+    /* ---- Healthy two-cell arm: the third PPO2 slot gets consensus, but the
+     * synthetic value does not become an included voter. ---- */
     ConsensusMsg_t good = {0};
     good.consensus_ppo2 = VALID_PPO2;
-    for (uint8_t i = 0U; i < CELL_MAX_COUNT; ++i) {
-        good.ppo2_array[i] = VALID_PPO2;
-        good.status_array[i] = CELL_OK;
-        good.include_array[i] = true;
-    }
+    good.ppo2_array[0] = CELL_1_PPO2;
+    good.ppo2_array[1] = CELL_2_PPO2;
+    good.status_array[0] = CELL_OK;
+    good.status_array[1] = CELL_OK;
+    good.status_array[2] = CELL_FAIL;
+    good.include_array[0] = true;
+    good.include_array[1] = true;
+    good.include_array[2] = false;
     zassert_ok(zbus_chan_pub(&chan_consensus, &good, K_MSEC(100)));
     (void)k_msleep(SETTLE_MS);
+    zassert_equal(last_ppo2[0], CELL_1_PPO2);
+    zassert_equal(last_ppo2[1], CELL_2_PPO2);
+    zassert_equal(last_ppo2[2], VALID_PPO2,
+                  "unused slot must carry consensus");
+    zassert_false(last_cellstate_cell3,
+                  "synthetic slot must not become an included voter");
     zassert_equal(last_cellstate_ppo2, VALID_PPO2,
                   "success path must broadcast the published consensus");
+
+    /* ---- One physical failure: its 0xFF extreme remains visible while the
+     * unused slot carries the surviving-cell consensus. ---- */
+    ConsensusMsg_t one_failed = good;
+    one_failed.status_array[0] = CELL_FAIL;
+    one_failed.include_array[0] = false;
+    one_failed.consensus_ppo2 = CELL_2_PPO2;
+    zassert_ok(zbus_chan_pub(&chan_consensus, &one_failed, K_MSEC(100)));
+    (void)k_msleep(SETTLE_MS);
+    zassert_equal(last_ppo2[0], PPO2_FAIL);
+    zassert_equal(last_ppo2[1], CELL_2_PPO2);
+    zassert_equal(last_ppo2[2], CELL_2_PPO2);
+
+    /* ---- Disagreement/no consensus: the synthetic slot is 0xFF, preserving
+     * the vote-failure indication. ---- */
+    ConsensusMsg_t disagreed = good;
+    disagreed.include_array[0] = false;
+    disagreed.include_array[1] = false;
+    disagreed.consensus_ppo2 = PPO2_FAIL;
+    zassert_ok(zbus_chan_pub(&chan_consensus, &disagreed, K_MSEC(100)));
+    (void)k_msleep(SETTLE_MS);
+    zassert_equal(last_ppo2[0], CELL_1_PPO2);
+    zassert_equal(last_ppo2[1], CELL_2_PPO2);
+    zassert_equal(last_ppo2[2], PPO2_FAIL);
+
+    /* ---- Need-cal arm: all three slots must remain 0xFF. In particular, the
+     * compatibility fill must not overwrite slot 3 after the global mask. ---- */
+    ConsensusMsg_t need_cal = good;
+    need_cal.status_array[0] = CELL_NEED_CAL;
+    zassert_ok(zbus_chan_pub(&chan_consensus, &need_cal, K_MSEC(100)));
+    (void)k_msleep(SETTLE_MS);
+    zassert_equal(last_ppo2[0], PPO2_FAIL);
+    zassert_equal(last_ppo2[1], PPO2_FAIL);
+    zassert_equal(last_ppo2[2], PPO2_FAIL,
+                  "Need cal must keep the all-three-FF handset signal");
 
     /* ---- Fail-loud arm: hold the channel mutex across a full broadcast
      * period so the thread's 10 ms read times out and it must substitute
@@ -130,4 +170,7 @@ ZTEST(divecan_ppo2_tx, test_read_failure_broadcasts_all_fail)
 
     zassert_equal(snapshot, PPO2_FAIL,
                   "read failure must broadcast all-fail (0xFF)");
+    zassert_equal(last_ppo2[0], PPO2_FAIL);
+    zassert_equal(last_ppo2[1], PPO2_FAIL);
+    zassert_equal(last_ppo2[2], PPO2_FAIL);
 }

@@ -16,6 +16,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 
 #include "divecan_types.h"
 #include "divecan_tx.h"
@@ -128,9 +129,19 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
          * Also check for fail and mark the cell value as fail. */
         PPO2_t ppo2[CELL_MAX_COUNT] = {0};
         (void)memcpy(ppo2, consensus.ppo2_array, sizeof(ppo2));
-        divecan_set_failed_cells(ppo2, consensus.status_array,
-                    CELL_MAX_COUNT,
-                    calibration_is_running());
+        bool calibration_masked = divecan_set_failed_cells(
+            ppo2, consensus.status_array, CELL_MAX_COUNT,
+            calibration_is_running());
+
+        /* A two-cell handset compatibility option may populate the otherwise
+         * unused third PPO2 slot with the exact consensus carried by the
+         * following PPO2_STATUS frame. Do this only after ordinary failed-cell
+         * masking, and never after the global all-0xFF "Need cal" mask: the
+         * handset recognises that three-FF pattern as its calibration prompt. */
+        if (IS_ENABLED(CONFIG_DIVECAN_PPO2_SLOT_3_CONSENSUS) &&
+            (!calibration_masked)) {
+            ppo2[CELL_IDX_2] = consensus.consensus_ppo2;
+        }
 
         txPPO2(dev_type, ppo2[CELL_IDX_0], ppo2[CELL_IDX_1], ppo2[CELL_IDX_2]);
         txMillivolts(dev_type, consensus.milli_array[CELL_IDX_0],

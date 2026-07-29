@@ -20,8 +20,9 @@
  * @param count          Number of cells to process
  * @param is_calibrating True while a calibration is in progress; suppresses the
  *                       needs-cal override so that live readings are still shown
+ * @return true if the all-slots-0xFF "Need cal" mask was applied
  */
-void divecan_set_failed_cells(PPO2_t *ppo2, const CellStatus_t *status,
+bool divecan_set_failed_cells(PPO2_t *ppo2, const CellStatus_t *status,
                   uint8_t count, bool is_calibrating)
 {
     /* First check if we need to go into "needs cal" state */
@@ -44,4 +45,6 @@ void divecan_set_failed_cells(PPO2_t *ppo2, const CellStatus_t *status,
             }
         }
     }
+
+    return needsCal && (!is_calibrating);
 }

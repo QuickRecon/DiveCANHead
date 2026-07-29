@@ -67,6 +67,12 @@ baseline. See the OTA design plan for the full state machine.
 Hardware topology is defined at compile time via Kconfig, applied through `EXTRA_CONF_FILE=variants/<name>.conf`. Each variant conf specifies:
 
 - **Cell topology**: Count (1-3) and per-cell type (Analog / DiveO2 / O2S)
+- **Handset PPO2 compatibility**: Two-cell variants may enable
+  `CONFIG_DIVECAN_PPO2_SLOT_3_CONSENSUS` to place consensus in the unused
+  third PPO2 broadcast slot. This is an outbound wire transformation only:
+  the synthetic slot never becomes a cell, voter, confidence input, UDS
+  state entry, or inclusion-mask bit, and the all-`0xFF` calibration prompt
+  takes precedence.
 - **Power mode**: Battery only, battery+CAN fallback, CAN only
 - **Battery chemistry**: 9V alkaline, 1S/2S/3S lithium
 - **Solenoid role mapping**: Which physical channel serves which function (O2 inject, O2 flush, dil flush, secondary inject). When a secondary inject is wired, the fire thread alternates fires between the two inject channels. `CONFIG_SOL_FLUSH_TIME` (ms, 0 = off) adds a flush on diver-commanded setpoint changes: O2 flush on an increase, dil flush on a decrease, fired for the configured time at the start of the next fire cycle (BUILD_ASSERT-bounded by the deadman window)
@@ -81,7 +87,7 @@ Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_set
 | `AP_Aren.conf` | AP-style single-solenoid head — 3× DiveO2, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery-only, 2S Li |
 | `AP_Paul.conf` | Copy of `eCCR_classic` with PID control and 1S Li — 3× analog, O2 inject on ch0 only, flush cal (via inject solenoid), depth comp; battery+CAN |
 | `eCCR_classic.conf` | Classic single-solenoid eCCR — 3× analog, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery+CAN, 9V |
-| `Poseidon_Aren.conf` | 2× DiveO2 head — all 4 solenoid channels (dual O2 inject alternation, O2/dil flush), PID control, flush cal, depth comp, setpoint-change flush (`CONFIG_SOL_FLUSH_TIME=3000`); battery-only, 1S Li; HP O2/dil tank transducers on the spare adc_ext1 channels (0.3–1.8 V ↔ 0–300 bar, `ADC_GAIN_1` set in the overlay) |
+| `Poseidon_Aren.conf` | 2× DiveO2 head — consensus duplicated into the unused third handset PPO2 slot; all 4 solenoid channels (dual O2 inject alternation, O2/dil flush), PID control, flush cal, depth comp, setpoint-change flush (`CONFIG_SOL_FLUSH_TIME=3000`); battery-only, 1S Li; HP O2/dil tank transducers on the spare adc_ext1 channels (0.3–1.8 V ↔ 0–300 bar, `ADC_GAIN_1` set in the overlay) |
 | `Sidewinder_Gabriel.conf` | 3× DiveO2 manual CCR. Intended solenoid and battery topology currently contradict the executable config; resolve before qualification. |
 
 The native_sim integration tests use their own all-features topology in

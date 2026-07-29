@@ -370,6 +370,27 @@ config DEPTH_COMPENSATION_DEFAULT
 
 endmenu # Runtime Setting Defaults
 
+# ---- DiveCAN PPO2 broadcast compatibility (per-variant) ----
+
+menu "DiveCAN PPO2 Broadcast"
+
+config DIVECAN_PPO2_SLOT_3_CONSENSUS
+	bool "Duplicate consensus into the unused third PPO2 slot"
+	depends on CELL_COUNT = 2
+	default n
+	help
+	  For two-cell heads, transmit the voted consensus PPO2 in the third
+	  per-cell slot of the DiveCAN PPO2 message. This prevents handsets that
+	  expect three populated slots from raising a nuisance missing-cell
+	  warning. The synthetic value is applied only to the outgoing PPO2
+	  message: it is not included in voting, confidence, calibration, UDS
+	  cell state, or the cell-inclusion mask.
+
+	  The existing all-slots-0xFF "Need cal" indication takes precedence;
+	  consensus is not inserted while that calibration mask is active.
+
+endmenu # DiveCAN PPO2 Broadcast
+
 # ---- Handset menu order (per-variant) ----
 
 menu "Handset Menu"
