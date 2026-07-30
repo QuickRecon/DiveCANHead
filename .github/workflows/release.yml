@@ -174,6 +174,8 @@ jobs:
             sudo "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
               --runner-temp "$RUNNER_TEMP" \
+              --run-id "$GITHUB_RUN_ID" \
+              --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
               --build-dir "$HIL_BUILD_DIR" \
               --preflight
@@ -181,6 +183,8 @@ jobs:
             "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
               --runner-temp "$RUNNER_TEMP" \
+              --run-id "$GITHUB_RUN_ID" \
+              --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
               --build-dir "$HIL_BUILD_DIR" \
               --preflight
@@ -196,12 +200,16 @@ jobs:
             sudo "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
               --runner-temp "$RUNNER_TEMP" \
+              --run-id "$GITHUB_RUN_ID" \
+              --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
               --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$outer_log"
           else
             "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
               --runner-temp "$RUNNER_TEMP" \
+              --run-id "$GITHUB_RUN_ID" \
+              --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
               --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$outer_log"
           fi
