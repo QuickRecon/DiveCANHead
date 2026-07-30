@@ -17,6 +17,7 @@ SPEC.loader.exec_module(release)
 class ReleaseScriptTests(unittest.TestCase):
     SOURCE_COMMIT = "a" * 40
     HARNESS_COMMIT = "b" * 40
+    TEST_SUITE_COMMIT = "c" * 40
 
     def _write_inputs(self, root: Path, version: str = "1.2.3"):
         major, minor, patch = version.split(".")
@@ -90,10 +91,58 @@ class ReleaseScriptTests(unittest.TestCase):
                     "output_root": root / "staging",
                     "run_url": "https://example.invalid/run",
                     "harness_commit": self.HARNESS_COMMIT,
+                    "test_suite_commit": self.TEST_SUITE_COMMIT,
                 },
             )()
             with self.assertRaises(release.ReleaseError):
                 release.stage_variant(args)
+
+    def test_stage_records_hil_test_suite_commit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            build = root / "build"
+            zephyr = build / "Firmware" / "zephyr"
+            zephyr.mkdir(parents=True)
+            (build / "merged_board.hex").write_bytes(b"hex")
+            (zephyr / "zephyr.signed.bin").write_bytes(b"ota")
+            (zephyr / "test_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "variant": "AP_Aren",
+                        "version": "1.2.3",
+                        "commit": self.SOURCE_COMMIT,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = type(
+                "Args",
+                (),
+                {
+                    "version": "1.2.3",
+                    "variant": "AP_Aren",
+                    "commit": self.SOURCE_COMMIT,
+                    "build_dir": build,
+                    "output_root": root / "staging",
+                    "run_url": "https://example.invalid/run",
+                    "harness_commit": self.HARNESS_COMMIT,
+                    "test_suite_commit": self.TEST_SUITE_COMMIT,
+                },
+            )()
+
+            release.stage_variant(args)
+
+            qualification = json.loads(
+                (
+                    root
+                    / "staging"
+                    / "AP_Aren"
+                    / "qualification.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                qualification["test_suite_commit"], self.TEST_SUITE_COMMIT
+            )
 
     def test_bundle_requires_every_production_variant(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -152,6 +201,7 @@ class ReleaseScriptTests(unittest.TestCase):
                             "commit": self.SOURCE_COMMIT,
                             "variant": variant,
                             "harness_commit": self.HARNESS_COMMIT,
+                            "test_suite_commit": self.TEST_SUITE_COMMIT,
                             "files": files,
                         }
                     ),

@@ -167,9 +167,12 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CI_EVENT_SHA"
 
       - name: Validate trusted HIL launcher
+        id: hil_identity
         run: |
           test -x "$HIL_HOST_CONTAINER_RUNNER"
           mkdir -p "$RUNNER_TEMP/divecan-hil"
+          preflight_log="$RUNNER_TEMP/divecan-hil/preflight-${HIL_VARIANT}.log"
+          set +e
           if [ "$HIL_HOST_CONTAINER_RUNNER_USE_SUDO" = "1" ]; then
             sudo "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
@@ -178,7 +181,7 @@ jobs:
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
               --build-dir "$HIL_BUILD_DIR" \
-              --preflight
+              --preflight 2>&1 | tee "$preflight_log"
           else
             "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
@@ -187,8 +190,25 @@ jobs:
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
               --build-dir "$HIL_BUILD_DIR" \
-              --preflight
+              --preflight 2>&1 | tee "$preflight_log"
           fi
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          harness_commit=$(awk '/^HIL harness commit: / { print $4; exit }' "$preflight_log")
+          test_suite_commit=$(awk '/^HIL test suite commit: / { print $5; exit }' "$preflight_log")
+          if [ -z "$harness_commit" ]; then
+            echo "::error title=Missing HIL harness identity::Could not parse HIL harness commit from $preflight_log."
+            exit 2
+          fi
+          if [ -z "$test_suite_commit" ]; then
+            echo "::error title=Missing HIL test identity::Could not parse HIL test suite commit from $preflight_log."
+            exit 2
+          fi
+          echo "harness_commit=$harness_commit" >> "$GITHUB_OUTPUT"
+          echo "test_suite_commit=$test_suite_commit" >> "$GITHUB_OUTPUT"
 
       - name: Build, flash, and run full HIL
         run: |
@@ -225,8 +245,17 @@ jobs:
       - name: Stage exact tested images
         env:
           RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
+          HIL_HARNESS_COMMIT: ${{ steps.hil_identity.outputs.harness_commit }}
+          HIL_TEST_SUITE_COMMIT: ${{ steps.hil_identity.outputs.test_suite_commit }}
         run: |
-          harness_commit=$(git -C "$HIL_HOST_TEST_RIG_DIR" rev-parse HEAD)
+          if [ -z "$HIL_HARNESS_COMMIT" ]; then
+            echo "::error title=Missing HIL harness identity::Preflight did not export a HIL harness commit."
+            exit 2
+          fi
+          if [ -z "$HIL_TEST_SUITE_COMMIT" ]; then
+            echo "::error title=Missing HIL test identity::Preflight did not export a HIL test suite commit."
+            exit 2
+          fi
           python3 Firmware/scripts/release.py stage-variant \
             --version "$RELEASE_VERSION" \
             --variant "$HIL_VARIANT" \
@@ -234,7 +263,8 @@ jobs:
             --build-dir "Firmware/$HIL_BUILD_DIR" \
             --output-root Firmware/release-staging \
             --run-url "$RELEASE_RUN_URL" \
-            --harness-commit "$harness_commit"
+            --harness-commit "$HIL_HARNESS_COMMIT" \
+            --test-suite-commit "$HIL_TEST_SUITE_COMMIT"
 
       - name: Upload qualified variant
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

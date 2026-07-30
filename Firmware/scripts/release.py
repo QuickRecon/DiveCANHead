@@ -191,6 +191,8 @@ def stage_variant(args: argparse.Namespace) -> None:
     _parse_semver(args.version)
     _validate_commit(args.commit, "source commit")
     _validate_commit(args.harness_commit, "HIL harness commit")
+    if args.test_suite_commit is not None:
+        _validate_commit(args.test_suite_commit, "HIL test suite commit")
     if args.variant not in PRODUCTION_VARIANTS:
         raise ReleaseError(f"not a production variant: {args.variant}")
 
@@ -242,6 +244,8 @@ def stage_variant(args: argparse.Namespace) -> None:
         "harness_commit": args.harness_commit,
         "files": files,
     }
+    if args.test_suite_commit is not None:
+        qualification["test_suite_commit"] = args.test_suite_commit
     (variant_dir / "qualification.json").write_text(
         json.dumps(qualification, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -281,6 +285,11 @@ def _validate_qualified_variant(
         str(qualification.get("harness_commit", "")),
         f"{variant} HIL harness commit",
     )
+    if "test_suite_commit" in qualification:
+        _validate_commit(
+            str(qualification.get("test_suite_commit", "")),
+            f"{variant} HIL test suite commit",
+        )
 
     recorded_hashes = qualification.get("files")
     if not isinstance(recorded_hashes, dict) or set(recorded_hashes) != payload_names:
@@ -315,7 +324,8 @@ For each variant:
 - *-full.hex is the complete MCUBoot + application image for SWD/factory flash.
 - *-ota.bin is the Zephyr zephyr.signed.bin image for UDS OTA.
 - test_manifest.json is the build topology used to select and configure HIL.
-- qualification.json identifies the tested commit, workflow, harness, and hashes.
+- qualification.json identifies the tested commit, workflow, HIL harness/test
+  suite, and hashes.
 
 Production variants:
 
@@ -476,6 +486,7 @@ def _build_parser() -> argparse.ArgumentParser:
     stage_parser.add_argument("--output-root", required=True, type=Path)
     stage_parser.add_argument("--run-url", required=True)
     stage_parser.add_argument("--harness-commit", required=True)
+    stage_parser.add_argument("--test-suite-commit")
 
     bundle_parser = subparsers.add_parser("bundle")
     bundle_parser.add_argument("--version", required=True)
