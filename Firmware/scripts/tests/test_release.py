@@ -42,7 +42,7 @@ class ReleaseScriptTests(unittest.TestCase):
         )
         return version_file, changelog
 
-    def test_validate_and_extract(self):
+    def test_validate_and_reads_release_notes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             version_file, changelog = self._write_inputs(root)

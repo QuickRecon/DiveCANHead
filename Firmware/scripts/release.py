@@ -63,15 +63,6 @@ def _repo_file(path: Path, expected_name: str, description: str) -> Path:
     return resolved
 
 
-def _output_text_file(path: Path, description: str) -> Path:
-    resolved_parent = path.parent.resolve(strict=True)
-    if path.name != "release-notes.txt" or path.suffix != ".txt":
-        raise ReleaseError(
-            f"{description} must be written as release-notes.txt: {path}"
-        )
-    return resolved_parent / path.name
-
-
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -503,11 +494,6 @@ def _build_parser() -> argparse.ArgumentParser:
     derive_parser.add_argument("--version-file", required=True, type=Path)
     derive_parser.add_argument("--changelog", required=True, type=Path)
 
-    extract_parser = subparsers.add_parser("extract")
-    extract_parser.add_argument("--version", required=True)
-    extract_parser.add_argument("--changelog", required=True, type=Path)
-    extract_parser.add_argument("--output", required=True, type=Path)
-
     stage_parser = subparsers.add_parser("stage-variant")
     stage_parser.add_argument("--version", required=True)
     stage_parser.add_argument("--variant", required=True)
@@ -538,12 +524,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"release inputs valid: v{version}")
         elif args.command == "derive-version":
             print(derive_release_version(args.version_file, args.changelog))
-        elif args.command == "extract":
-            output = _output_text_file(args.output, "release notes")
-            output.write_text(
-                read_changelog_release(args.changelog, args.version),
-                encoding="utf-8",
-            )
         elif args.command == "stage-variant":
             stage_variant(args)
         elif args.command == "bundle":
