@@ -23,10 +23,13 @@ static struct {
     MaintArenaOwner_t owner;
     MaintArenaOwner_t content_owner;
     uint32_t generation;
+    bool log_index_building;   /* pins LOG_INDEX against eviction while the
+                                * async index builder is writing the arena */
 } arena_state = {
     .owner = MAINT_ARENA_FREE,
     .content_owner = MAINT_ARENA_FREE,
     .generation = 0U,
+    .log_index_building = false,
 };
 
 void *maint_arena_claim(MaintArenaOwner_t owner)
@@ -38,9 +41,13 @@ void *maint_arena_claim(MaintArenaOwner_t owner)
 
         bool free_or_same = (MAINT_ARENA_FREE == arena_state.owner) ||
                             (owner == arena_state.owner);
-        /* The log-index cache is evictable by the exclusive owners. */
+        /* The log-index cache is evictable by the exclusive owners — UNLESS a
+         * build is in progress on the worker thread, in which case eviction
+         * would corrupt the arena it is mid-write into, so it is denied and the
+         * claimant retries (see maint_arena_log_index_set_building). */
         bool evictable = (MAINT_ARENA_OWNER_LOG_INDEX == arena_state.owner) &&
-                         (MAINT_ARENA_OWNER_LOG_INDEX != owner);
+                         (MAINT_ARENA_OWNER_LOG_INDEX != owner) &&
+                         (!arena_state.log_index_building);
 
         if (free_or_same || evictable) {
             if (owner != arena_state.content_owner) {
@@ -73,6 +80,13 @@ void maint_arena_release(MaintArenaOwner_t owner)
     (void)k_mutex_unlock(&arena_lock);
 }
 
+void maint_arena_log_index_set_building(bool building)
+{
+    (void)k_mutex_lock(&arena_lock, K_FOREVER);
+    arena_state.log_index_building = building;
+    (void)k_mutex_unlock(&arena_lock);
+}
+
 uint32_t maint_arena_generation(void)
 {
     return arena_state.generation;
@@ -84,5 +98,6 @@ void maint_arena_reset_for_test(void)
     arena_state.owner = MAINT_ARENA_FREE;
     arena_state.content_owner = MAINT_ARENA_FREE;
     arena_state.generation = 0U;
+    arena_state.log_index_building = false;
 }
 #endif

@@ -229,6 +229,7 @@ static const uint16_t RID_BY_BOOT      = 0xF101U;
 static const uint16_t RID_BY_DIVE      = 0xF102U;
 static const uint16_t RID_BY_RANGE     = 0xF100U;
 static const uint16_t RID_BEGIN_STREAM = 0xF105U;
+static const uint16_t RID_SELECT_ALL   = 0xF106U;
 static const uint8_t  LOG_HDR_MAGIC[4] = { 0x44U, 0x4CU, 0x43U, 0x47U };
 static const size_t   LOG_HEADER_BYTES = 16U;
 static const uint8_t  ADDR_LEN_FMT = 0x44U;
@@ -258,13 +259,39 @@ static void send_routine(uint16_t rid, const uint8_t *params, size_t params_len)
     UDS_LogDownload_HandleRoutine(&test_ctx, req, (uint16_t)len);
 }
 
+/* The index-backed selectors (latest/by boot/dive) resolve asynchronously on
+ * the worker thread and answer busyRepeatRequest until it publishes. Poll by
+ * re-issuing the identical selector, letting the worker run between attempts,
+ * until it settles on a real (non-busyRepeat) response. */
+#define NRC_BUSY_REPEAT 0x21U
+static void drive_selector(uint16_t rid, const uint8_t *params, size_t plen)
+{
+    for (int i = 0; i < 500; ++i) {
+        send_routine(rid, params, plen);
+        if (!(cap.is_negative && (cap.neg_nrc == NRC_BUSY_REPEAT))) {
+            return;
+        }
+        k_msleep(2);   /* let the (lower-priority) worker thread run */
+    }
+    zassert_unreachable("selector never left busyRepeat");
+}
+
 /* Select the latest boot on telemetry, asserting it resolved positively. */
 static void select_latest_boot(void)
 {
     uint8_t stream = (uint8_t)FL_DEST_TELEMETRY;
 
-    send_routine(RID_LATEST_BOOT, &stream, 1U);
+    drive_selector(RID_LATEST_BOOT, &stream, 1U);
     zassert_false(cap.is_negative, "latest-boot select must resolve");
+}
+
+/* Select the entire resident ring (walk-free download-all). */
+static void select_all(void)
+{
+    uint8_t stream = (uint8_t)FL_DEST_TELEMETRY;
+
+    send_routine(RID_SELECT_ALL, &stream, 1U);
+    zassert_false(cap.is_negative, "select-all must resolve");
 }
 
 static void begin_stream(void)
@@ -321,6 +348,7 @@ static void send_transfer_exit(uint16_t len)
 static void reset_sm(void *fixture)
 {
     ARG_UNUSED(fixture);
+    UDS_LogDownload_ResetForTest();   /* drop any async selector handshake state */
     (void)memset(&cap, 0, sizeof(cap));
     (void)memset(&test_ctx, 0, sizeof(test_ctx));
     test_ctx.isotp_context = &test_isotp_ctx;
@@ -390,9 +418,9 @@ ZTEST(logdl, test_routine_rid_out_of_range)
 {
     uint8_t stream = (uint8_t)FL_DEST_TELEMETRY;
 
-    /* RID above the log-management block (0xF105 begin-stream is the top). */
-    send_routine(0xF106U, &stream, 1U);
-    zassert_true(cap.is_negative, "0xF106 is unclaimed");
+    /* RID above the log-management block (0xF106 select-all is the top). */
+    send_routine(0xF107U, &stream, 1U);
+    zassert_true(cap.is_negative, "0xF107 is unclaimed");
     zassert_equal(cap.neg_nrc, UDS_NRC_REQUEST_OUT_OF_RANGE, "range NRC");
 
     /* RID below the selector block (below RID_SELECT_BY_RANGE 0xF100). */
@@ -429,30 +457,50 @@ ZTEST(logdl, test_selector_by_boot_and_dive)
     uint8_t boot_params[5] = { (uint8_t)FL_DEST_TELEMETRY, 10U, 0U, 0U, 0U };
     uint8_t dive_params[3] = { (uint8_t)FL_DEST_TELEMETRY, 7U, 0U };
 
-    /* Existing boot id resolves. */
-    send_routine(RID_BY_BOOT, boot_params, sizeof(boot_params));
+    /* Existing boot id resolves (async: poll until the worker publishes). */
+    drive_selector(RID_BY_BOOT, boot_params, sizeof(boot_params));
     zassert_false(cap.is_negative, "boot 10 must resolve");
 
     /* Unknown boot id -> -ENOENT -> conditions not correct. */
     boot_params[1] = 99U;
-    send_routine(RID_BY_BOOT, boot_params, sizeof(boot_params));
+    drive_selector(RID_BY_BOOT, boot_params, sizeof(boot_params));
     zassert_equal(cap.neg_nrc, UDS_NRC_CONDITIONS_NOT_CORRECT,
                   "missing boot -> ENOENT");
 
     /* Existing dive id resolves. */
-    send_routine(RID_BY_DIVE, dive_params, sizeof(dive_params));
+    drive_selector(RID_BY_DIVE, dive_params, sizeof(dive_params));
     zassert_false(cap.is_negative, "dive 7 must resolve");
 
     /* Unknown dive id -> -ENOENT. */
     dive_params[1] = 99U;
-    send_routine(RID_BY_DIVE, dive_params, sizeof(dive_params));
+    drive_selector(RID_BY_DIVE, dive_params, sizeof(dive_params));
     zassert_equal(cap.neg_nrc, UDS_NRC_CONDITIONS_NOT_CORRECT,
                   "missing dive -> ENOENT");
 
     /* latest-dive resolves too. */
     uint8_t stream = (uint8_t)FL_DEST_TELEMETRY;
-    send_routine(RID_LATEST_DIVE, &stream, 1U);
+    drive_selector(RID_LATEST_DIVE, &stream, 1U);
     zassert_false(cap.is_negative, "latest-dive must resolve");
+}
+
+/* The index-backed selector answers busyRepeatRequest while the worker builds
+ * the FCB index, then resolves once it publishes — the client just re-polls. */
+ZTEST(logdl, test_selector_async_busy_then_ready)
+{
+    uint8_t stream = (uint8_t)FL_DEST_TELEMETRY;
+
+    /* First hit kicks the worker and must NOT resolve inline. */
+    send_routine(RID_LATEST_BOOT, &stream, 1U);
+    zassert_true(cap.is_negative, "first selector must defer");
+    zassert_equal(cap.neg_nrc, NRC_BUSY_REPEAT,
+                  "deferred selector answers busyRepeatRequest");
+
+    /* Polling the identical selector eventually returns the resolved range. */
+    drive_selector(RID_LATEST_BOOT, &stream, 1U);
+    zassert_false(cap.is_negative, "selector resolves after the worker runs");
+    zassert_equal(cap.resp[0],
+                  UDS_SID_ROUTINE_CONTROL + UDS_RESPONSE_SID_OFFSET,
+                  "resolved selector is a positive RoutineControl response");
 }
 
 ZTEST(logdl, test_begin_stream_requires_selection)
@@ -557,6 +605,32 @@ ZTEST(logdl, test_full_download_flow)
                   "0x37 positive SID");
     zassert_equal(cap.resume_calls, 1, "exit resumes the writer");
     zassert_equal(cap.suspend_false_calls, 1, "exit resumes log-push");
+}
+
+/* Walk-free "download all": RID_SELECT_ALL resolves a cleared range (no marker
+ * index, no arena, no walk) and must stream every resident entry oldest→newest
+ * — i.e. the identical byte stream the whole-boot flow produces here, since the
+ * fixture holds a single boot. */
+ZTEST(logdl, test_select_all_streams_whole_ring)
+{
+    static uint8_t out[8 * 1024];
+
+    select_all();
+    begin_stream();
+
+    send_request_download(ADDR_LEN_FMT, SENTINEL_ADDR, 0U, 12U);
+    zassert_false(cap.is_negative, "0x34 accepted after select-all");
+
+    int chunks = 0;
+    size_t total = drain_stream(out, sizeof(out), &chunks);
+
+    zassert_equal(total, expected_len, "select-all streamed %zu, expected %zu",
+                  total, expected_len);
+    zassert_mem_equal(out, expected, expected_len, "select-all body mismatch");
+
+    send_transfer_exit(2U);
+    zassert_false(cap.is_negative, "0x37 after select-all");
+    zassert_equal(cap.resume_calls, 1, "select-all exit resumes the writer");
 }
 
 ZTEST(logdl, test_small_block_slicing)

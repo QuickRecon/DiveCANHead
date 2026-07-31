@@ -433,18 +433,6 @@ static void fl_range_clear(FlashLogRange_t *out, FlashLogDest_t dest)
     out->dest = dest;
 }
 
-static int fl_count_entry_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
-{
-    ARG_UNUSED(loc_ctx);
-    uint32_t *count = arg;
-
-    ++(*count);
-    if (0U == (*count % FL_INDEX_WALK_WDT_KICK)) {
-        watchdog_kick();
-    }
-    return 0;
-}
-
 Status_t flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out)
 {
     Status_t rc = 0;
@@ -456,20 +444,21 @@ Status_t flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out)
         if (fcb_p == NULL) {
             rc = -EINVAL;
         } else {
+            /* "Select all" streams the entire resident ring, oldest→newest.
+             * A cleared range (begin/end NULL) makes fcb_getnext start at the
+             * oldest entry and run to the natural end of the log — so this
+             * needs NO marker index, NO maintenance arena, and crucially NO
+             * walk. The selector returns in O(1) and never blocks the
+             * divecan_rx thread on a populated ring (this is the whole point of
+             * the walk-free download-all path).
+             *
+             * entry_count_estimate stays 0 = "unknown / streaming", mirroring
+             * the total_bytes=0 convention in the 0x36 stream header: a precise
+             * resident-entry count can only come from a full-ring walk (removed
+             * here) or a boot-time count (forbidden — it starves the
+             * lowest-priority watchdog feeder; see fl_populate_index_stats in
+             * flash_log.c). The client drives progress off received bytes. */
             fl_range_clear(out, dest);
-            /* begin = NULL ⇒ "start at the oldest entry" for fcb_getnext */
-            uint32_t count = 0U;
-            watchdog_kick();
-            Status_t walk_rc = external_flash_acquire(K_FOREVER);
-            if (0 == walk_rc) {
-                walk_rc = fcb_walk(fcb_p, NULL, fl_count_entry_cb, &count);
-                external_flash_release();
-            }
-            if (walk_rc < 0) {
-                rc = walk_rc;
-            } else {
-                out->entry_count_estimate = count;
-            }
         }
     }
 

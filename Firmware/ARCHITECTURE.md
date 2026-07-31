@@ -283,6 +283,23 @@ enqueue with `K_NO_WAIT` and never block or recurse into LOG_x. The
 writer is paused around OTA / factory-restore flash operations that
 contend for the SPI bus.
 
+**Log-download resolve worker.** The UDS log-download selectors that need the
+per-sector marker index (`0xF101`–`0xF104`) resolve on a dedicated
+lower-priority thread (`fl_resolve_worker_tid`, priority 10, in
+`uds_log_download.c`) rather than inline on the DiveCAN RX thread (priority 5).
+The first selection after boot builds the index with a full-ring `fcb_walk`
+that takes many seconds; running it inline would stall the CAN bus and blow the
+client's response timeout. Instead the selector kicks the worker and answers
+NRC 0x21 (busyRepeatRequest) until it publishes, and the client re-polls the
+identical selector. The walk-free "select all" (`0xF106`) needs no index and
+stays synchronous. The worker pins the shared maintenance arena
+(`maint_arena_log_index_set_building`) so a concurrent exclusive tenant
+(OTA/FACTORY/AUTOTUNE) cannot evict — and overwrite — the arena mid-build; that
+tenant is briefly denied (`-EBUSY`) and retries. This module is the **only**
+consumer of the reader's index state, so routing every index-backed resolve
+through the single worker means no cross-thread lock is needed inside the
+reader. See COMPROMISE.md for the arena-pin trade-off.
+
 Full subsystem details — partition map, on-flash TLV format, recovery
 semantics, UDS download protocol — live in `docs/FLASH_LOG.md`.
 

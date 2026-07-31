@@ -286,6 +286,23 @@ per logical sector — 192 for telemetry, 32 for text). Built by one
 `fcb_walk` that inspects only marker entries.
 Invalidated and rebuilt on entry to a UDS programming session.
 
+**The index build is asynchronous.** A cold index would take many seconds to
+walk on a populated ring, so the index-backed selectors (`0xF101`–`0xF104`)
+resolve on a dedicated lower-priority worker thread
+(`fl_resolve_worker_tid` in `uds_log_download.c`) rather than blocking the
+DiveCAN RX thread. While the worker builds the index the selector answers
+**NRC 0x21 (busyRepeatRequest)** and the client re-polls the identical
+selector until it resolves. The worker pins the shared maintenance arena
+against eviction for the walk's duration (`maint_arena_log_index_set_building`)
+so a concurrent OTA/factory/autotune op can't clobber the half-built index —
+that op is briefly denied (`-EBUSY`) and retries instead.
+
+**"Download all" bypasses the index entirely.** Selector `0xF106`
+(`flash_log_reader_resolve_all`) resolves a cleared range (begin/end NULL) that
+the streaming cursor walks oldest→newest with no marker index, no arena, and no
+walk — so it is O(1), never blocks, and never defers with `0x21`. It is the
+walk-free path for retrieving the whole log.
+
 ## Runtime knobs
 
 | Setting key       | UDS DID  | Default       | Purpose                                  |

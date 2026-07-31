@@ -408,14 +408,21 @@ ZTEST(flash_log_reader, test_text_large_ring_watchdog)
 
         (void)text_append(FL_TYPE_CONSENSUS, &small, sizeof(small));
     }
-    /* Each of these drives a full-ring fcb_walk that crosses the periodic
-     * watchdog-kick boundary: the index build, the resolve-all count, and the
-     * exact-marker scan on a miss. */
+    /* These drive a full-ring fcb_walk that crosses the periodic
+     * watchdog-kick boundary: the index build and the exact-marker scan on a
+     * miss. resolve_all is deliberately NOT one of them any more — it is now
+     * walk-free (cleared range, no index, no count), so it can never block the
+     * divecan_rx thread on a populated ring. */
     zassert_ok(flash_log_reader_index_summary(FL_DEST_TEXT, &summary));
     zassert_equal(summary.boot_id_latest, 500U);
     zassert_ok(flash_log_reader_resolve_all(FL_DEST_TEXT, &range));
-    zassert_true(range.entry_count_estimate >= entry_count,
-                 "counted %u entries", range.entry_count_estimate);
+    zassert_equal(range.entry_count_estimate, 0U,
+                  "select-all is walk-free: entry count is unknown (0)");
+    zassert_equal(range.dest, FL_DEST_TEXT, "select-all range carries the dest");
+    zassert_equal(range.begin.fe_sector, NULL,
+                  "select-all begin is NULL (oldest entry)");
+    zassert_equal(range.end.fe_sector, NULL,
+                  "select-all end is NULL (natural end of ring)");
     zassert_equal(flash_log_reader_resolve_boot_id(FL_DEST_TEXT, 9999U, &range),
                   -ENOENT);
 }

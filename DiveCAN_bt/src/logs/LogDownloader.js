@@ -1,10 +1,9 @@
 /**
  * Flash-log download + management over UDSClient.
  *
- * Mirrors the Test Rig reference (Test Rig/tests/test_dut_logs.py, dut.py:
- * 1268-1436). Download sequence:
+ * Download sequence (one per selection):
  *
- *   0x31 0x01 <selector RID> <params>   (resolve a boot/dive range)
+ *   0x31 0x01 <selector RID> <params>   (resolve a range: all / boot / dive)
  *   -> 0x31 0x01 0xF105                  (BeginStream)
  *   -> 0x34 RequestDownload, sentinel addr 0xFFFFFFFE, size = max_chunk (LE)
  *   -> 0x36 TransferData x N             (seq from 1, wrap SKIPPING 0)
@@ -12,11 +11,19 @@
  *
  * A chunk shorter than the negotiated block ends the stream. The result is a
  * 16-byte DCLG header + concatenated TLV records (parse with LogParser).
+ *
+ * "Download all" (downloadAll) uses the head's RID_SELECT_ALL selector, which
+ * resolves the entire resident ring in one WALK-FREE selection: the complete
+ * log streams in a single 0x34/0x36/0x37 session. The former per-boot
+ * enumeration (read stats -> loop oldest..current by-boot -> trim sector
+ * overlap -> re-encode a local DCLG stream) is gone — it existed only to work
+ * around firmware that had no "all" primitive and paid a full index-build walk
+ * per selector.
  */
 
 import * as constants from '../uds/constants.js';
 import { ByteUtils } from '../utils/ByteUtils.js';
-import { decodeBootMarker, makeRecordCounter, parseLogStream } from './LogParser.js';
+import { makeRecordCounter, parseLogStream } from './LogParser.js';
 
 class EventEmitter {
   constructor() { this.events = {}; }
@@ -36,9 +43,13 @@ class EventEmitter {
   }
 }
 
-/** Default timeouts (ms). The first selector after boot builds the FCB index (~24 s). */
+/** Default timeouts (ms). An index-backed selector (by-boot/dive/latest) that
+ * finds the FCB index cold is answered with busyRepeatRequest (NRC 0x21) while
+ * the head builds it on its worker thread; _runSelector polls every `poll` ms
+ * up to `selector` ms total. RID_SELECT_ALL is walk-free and never defers. */
 export const LOG_TIMEOUTS = {
   selector: 40000,
+  poll: 250,
   beginStream: 10000,
   block: 40000,
   read: 4000
@@ -54,46 +65,6 @@ function decodeFcbStats(b) {
     sectorsFree: ByteUtils.leToUint16(b.slice(20, 22)),
     sectorsTotal: ByteUtils.leToUint16(b.slice(22, 24))
   };
-}
-
-function writeU32LE(out, offset, value) {
-  const v = value >>> 0;
-  out[offset] = v & 0xFF;
-  out[offset + 1] = (v >>> 8) & 0xFF;
-  out[offset + 2] = (v >>> 16) & 0xFF;
-  out[offset + 3] = (v >>> 24) & 0xFF;
-}
-
-/** Build one parseable DCLG stream from records collected across boot downloads. */
-function encodeRecordStream(records, stream) {
-  const bodyLength = records.reduce((n, rec) => n + constants.FL_ENTRY_HDR_LEN + rec.payload.length, 0);
-  const raw = new Uint8Array(constants.LOG_DCLG_HEADER_LEN + bodyLength);
-  writeU32LE(raw, 0, constants.LOG_DOWNLOAD_MAGIC);
-  raw[4] = 1;
-  raw[6] = stream;
-  writeU32LE(raw, 8, bodyLength);
-  writeU32LE(raw, 12, records.length);
-
-  let offset = constants.LOG_DCLG_HEADER_LEN;
-  for (const rec of records) {
-    raw[offset] = rec.type;
-    raw[offset + 1] = rec.flags;
-    raw[offset + 2] = rec.payload.length & 0xFF;
-    raw[offset + 3] = (rec.payload.length >>> 8) & 0xFF;
-    let timestamp = BigInt(rec.tsUs);
-    for (let i = 0; i < 8; i++) {
-      raw[offset + 4 + i] = Number(timestamp & 0xFFn);
-      timestamp >>= 8n;
-    }
-    raw.set(rec.payload, offset + constants.FL_ENTRY_HDR_LEN);
-    offset += constants.FL_ENTRY_HDR_LEN + rec.payload.length;
-  }
-  return raw;
-}
-
-function bootMarkerId(record) {
-  if (record.type !== constants.FL_TYPE_BOOT_MARKER) return null;
-  return decodeBootMarker(record.payload)?.bootId ?? null;
 }
 
 export class LogDownloader extends EventEmitter {
@@ -185,122 +156,67 @@ export class LogDownloader extends EventEmitter {
       [stream], this.timeouts.selector);
   }
 
+  /**
+   * Select the entire resident ring (walk-free "download all"). The head
+   * resolves this with no marker-index build, so it returns immediately even
+   * on a full ring. See downloadAll().
+   */
+  selectAll(stream = constants.LOG_STREAM_TELEMETRY) {
+    return this.uds.routineControl(constants.LOG_RID_SELECT_ALL,
+      [stream], this.timeouts.selector);
+  }
+
   beginStream() {
     return this.uds.routineControl(constants.LOG_RID_BEGIN_STREAM, [], this.timeouts.beginStream);
   }
 
   /**
-   * Resolve + validate the oldest..current boot-id range from FCB stats.
-   * @private
-   */
-  _resolveBootRange(streamStats, maxBoots) {
-    const oldest = streamStats.bootIdOldest;
-    const current = streamStats.bootIdCurrent;
-    if (current < oldest) throw new Error('Wrapped boot-id ranges are not supported');
-    const totalBoots = current - oldest + 1;
-    if (totalBoots > maxBoots) {
-      throw new Error(`Refusing to scan ${totalBoots} boot ids (limit ${maxBoots})`);
-    }
-    return { oldest, current, totalBoots };
-  }
-
-  /**
-   * Find the record index one past the end of the boot range starting at `marker`
-   * (i.e. the next boot marker, or the end of the array).
-   * @private
-   */
-  _findBootRangeEnd(bootRecords, marker) {
-    let end = bootRecords.length;
-    for (let i = marker + 1; i < bootRecords.length; i++) {
-      if (bootMarkerId(bootRecords[i]) !== null) { end = i; break; }
-    }
-    return end;
-  }
-
-  /**
-   * Download one boot's range and trim it to the records that actually belong
-   * to `bootId` (boot ranges are sector-granular and can overlap).
-   * @returns {Promise<{result:Object, records:Array|null}|null>} null if the
-   *   boot id has no retained range (a gap, not a failure).
-   * @private
-   */
-  async _downloadOneBoot(bootId, oldest, stream, opts, progressCtx) {
-    let result = null;
-    try {
-      result = await this.downloadLog({
-        ...opts,
-        stream,
-        selector: (downloader) => downloader.selectByBoot(bootId, stream),
-        onProgress: ({ received, records: bootRecords, entryCount }) => {
-          opts.onProgress?.({
-            received: progressCtx.totalReceived + received,
-            records: progressCtx.recordsSoFar + bootRecords,
-            entryCount,
-            bootId,
-            bootsCompleted: progressCtx.bootsCompleted,
-            totalBoots: progressCtx.totalBoots
-          });
-        }
-      });
-    } catch (error) {
-      // Boot IDs are monotonic but gaps are possible. A missing boot is not a
-      // reason to lose every other retained range.
-      if (error?.nrc === constants.NRC_CONDITIONS_NOT_CORRECT) { return null; }
-      throw error;
-    }
-
-    const bootRecords = parseLogStream(result.raw);
-    const marker = bootRecords.findIndex(rec => bootMarkerId(rec) === bootId);
-    if (marker < 0) { return { result, records: null }; }
-    const start = bootId === oldest ? 0 : marker;
-    const end = this._findBootRangeEnd(bootRecords, marker);
-    return { result, records: bootRecords.slice(start, end) };
-  }
-
-  /**
-   * Download all records reachable through the frozen firmware's existing
-   * by-boot selector. Boot ranges are sector-granular and can overlap, so each
-   * response is trimmed at its exact boot markers before the records are
-   * merged into one locally-generated DCLG stream.
+   * Download every retained entry in one walk-free select-all session.
    *
-   * @param {Object} [opts] - downloadLog options plus optional pre-read `stats`
-   * @returns {Promise<{raw:Uint8Array, records:Array, downloads:Array, stats:Object}>}
+   * The head's RID_SELECT_ALL resolves the whole resident ring without a
+   * marker-index build, so this is a single 0x34/0x36/0x37 transfer of the
+   * complete DCLG stream — no per-boot enumeration, no local re-stitching.
+   * `raw` is the head's stream verbatim; `records` is it parsed.
+   *
+   * @param {Object} [opts] - downloadLog options (stream, maxChunk, maxBlocks,
+   *   onProgress, signal)
+   * @returns {Promise<{raw:Uint8Array, records:Array, negotiatedBlock:number,
+   *   chunkLens:number[], selector:Object|null}>}
    */
-  async downloadAllBoots(opts = {}) {
+  async downloadAll(opts = {}) {
     const stream = opts.stream ?? constants.LOG_STREAM_TELEMETRY;
-    const stats = opts.stats ?? await this.readStats();
-    const streamStats = stream === constants.LOG_STREAM_TEXT ? stats?.text : stats?.telemetry;
-    if (!streamStats) throw new Error('Flash-log stats are unavailable');
-
-    const { oldest, current, totalBoots } = this._resolveBootRange(streamStats, opts.maxBoots ?? 4096);
-
-    const downloads = [];
-    const records = [];
-    let totalReceived = 0;
-    for (let bootId = oldest; bootId <= current; bootId++) {
-      if (opts.signal?.aborted) throw new DOMException('Log download cancelled', 'AbortError');
-      const outcome = await this._downloadOneBoot(bootId, oldest, stream, opts, {
-        totalReceived, recordsSoFar: records.length, bootsCompleted: downloads.length, totalBoots
-      });
-      if (!outcome) continue;
-
-      downloads.push({ bootId, ...outcome.result });
-      totalReceived += outcome.result.raw.length;
-      if (outcome.records) records.push(...outcome.records);
-    }
-
-    if (downloads.length === 0) throw new Error('No retained boot ranges could be downloaded');
-    const raw = encodeRecordStream(records, stream);
-    this.emit('doneAllBoots', { raw, records, downloads, stats });
-    return { raw, records, downloads, stats };
+    const result = await this.downloadLog({
+      ...opts,
+      stream,
+      selector: (downloader) => downloader.selectAll(stream)
+    });
+    const records = parseLogStream(result.raw);
+    this.emit('doneAll', { raw: result.raw, records });
+    return { ...result, records };
   }
 
-  /** Resolve a boot/dive range via the caller's selector, or default to latest boot. @private */
+  /**
+   * Resolve a boot/dive range via the caller's selector (default: latest boot),
+   * transparently polling through busyRepeatRequest (NRC 0x21) while the head
+   * builds its FCB index. Re-issuing the identical selector is how the head
+   * hands back the result once its worker finishes. RID_SELECT_ALL never
+   * defers, so downloadAll passes straight through on the first attempt.
+   * @private
+   */
   async _runSelector(opts, stream) {
-    if (opts.selector) {
-      await opts.selector(this);
-    } else {
-      await this.selectLatestBoot(stream);
+    const runOnce = () => (opts.selector ? opts.selector(this) : this.selectLatestBoot(stream));
+    const deadline = Date.now() + this.timeouts.selector;
+    for (;;) {
+      try {
+        await runOnce();
+        return;
+      } catch (error) {
+        const building = error?.nrc === constants.NRC_BUSY_REPEAT_REQUEST;
+        if (!building || Date.now() >= deadline) throw error;
+        if (opts.signal?.aborted) throw new DOMException('Log download cancelled', 'AbortError');
+        this.emit('indexBuilding', { stream });
+        await new Promise(resolve => setTimeout(resolve, this.timeouts.poll));
+      }
     }
   }
 

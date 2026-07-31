@@ -1,0 +1,4 @@
+tests:
+  maintenance_arena.arena:
+    platform_allow: native_sim
+    tags: maintenance_arena arena

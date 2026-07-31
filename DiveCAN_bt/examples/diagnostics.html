@@ -2642,28 +2642,22 @@
         $('logMessage').textContent = 'Downloading...';
         const stream = Number($('logStreamSelect').value);
         const allBoots = $('logSelectorSelect').value === 'allBoots';
-        const progress = ({ received, records, entryCount, bootId, bootsCompleted, totalBoots }) => {
-          if (totalBoots) {
-            setLogProgress(Math.min(100, (bootsCompleted / totalBoots) * 100));
-            $('logMessage').textContent =
-              `Boot ${bootId} (${bootsCompleted + 1}/${totalBoots}), ${records} records, ${received} bytes...`;
-          } else {
-            if (entryCount > 0) setLogProgress(Math.min(100, (records / entryCount) * 100));
-            const estimateSuffix = entryCount ? ` / ~${entryCount}` : '';
-            $('logMessage').textContent =
-              `${records}${estimateSuffix} records, ${received} bytes...`;
-          }
+        const progress = ({ received, records, entryCount }) => {
+          // Walk-free select-all reports no entry-count estimate (total unknown),
+          // so drive the bar off bytes/records; a selective download may still
+          // carry an entry_count estimate.
+          if (entryCount > 0) setLogProgress(Math.min(100, (records / entryCount) * 100));
+          const estimateSuffix = entryCount ? ` / ~${entryCount}` : '';
+          $('logMessage').textContent = `${records}${estimateSuffix} records, ${received} bytes...`;
         };
         const result = allBoots
-          ? await stack.logs.downloadAllBoots({ stream, signal: logAbort.signal, onProgress: progress })
+          ? await stack.logs.downloadAll({ stream, signal: logAbort.signal, onProgress: progress })
           : await stack.logs.downloadLog({ stream, selector: currentSelector(), signal: logAbort.signal, onProgress: progress });
         logRaw = result.raw;
         logRecords = result.records || parseLogStream(logRaw);
         renderLogRecords();
         setLogProgress(100);
-        $('logMessage').textContent = allBoots
-          ? `Done: ${result.downloads.length} boots, ${logRaw.length} merged bytes, ${logRecords.length} records.`
-          : `Done: ${logRaw.length} bytes, ${logRecords.length} records.`;
+        $('logMessage').textContent = `Done: ${logRaw.length} bytes, ${logRecords.length} records.`;
         for (const id of ['logExportJson', 'logExportCsv', 'logExportBin']) $(id).disabled = false;
       } catch (e) {
         $('logMessage').textContent = `Download failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');

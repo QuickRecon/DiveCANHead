@@ -10,6 +10,7 @@ one path rather than mocking their boundaries.
 from __future__ import annotations
 
 import struct
+import time
 from typing import Final
 
 import can
@@ -43,6 +44,7 @@ RID_SELECT_BY_DIVE: Final[int] = 0xF102
 RID_SELECT_LATEST_BOOT: Final[int] = 0xF103
 RID_SELECT_LATEST_DIVE: Final[int] = 0xF104
 RID_BEGIN_STREAM: Final[int] = 0xF105
+RID_SELECT_ALL: Final[int] = 0xF106
 
 DID_LOG_STATS: Final[int] = 0xF280
 DID_LOG_SELECTOR_RESULT: Final[int] = 0xF281
@@ -55,6 +57,7 @@ FL_TYPE_BOOT_MARKER: Final[int] = 0x01
 FL_TYPE_BATCH: Final[int] = 0xFD
 
 NRC_INCORRECT_MSG_LEN: Final[int] = 0x13
+NRC_BUSY_REPEAT_REQUEST: Final[int] = 0x21
 NRC_CONDITIONS_NOT_CORRECT: Final[int] = 0x22
 NRC_REQUEST_SEQUENCE_ERROR: Final[int] = 0x24
 NRC_REQUEST_OUT_OF_RANGE: Final[int] = 0x31
@@ -97,6 +100,44 @@ def _routine(can_bus, rid: int, params: bytes = b"") -> None:
             rid & 0xFF,
         ]) + params,
     )
+
+
+def _is_busy_repeat(payload: bytes) -> bool:
+    return payload[:4] == bytes(
+        [0, UDS_NEGATIVE_RESPONSE_SID, SID_ROUTINE_CONTROL, NRC_BUSY_REPEAT_REQUEST]
+    )
+
+
+def _resolve_selector(can_bus, rid: int, params: bytes = b"") -> bytes:
+    """Issue an index-backed selector and poll through busyRepeatRequest.
+
+    The four index-backed selectors (latest/by boot/dive) resolve on the head's
+    worker thread and answer NRC 0x21 until it publishes; a real client re-polls
+    the identical selector. Returns the first non-0x21 response (positive or a
+    terminal NRC). Sync-rejected selectors (bad stream/length) never emit 0x21,
+    so callers that expect those keep using ``_routine`` + ``_expect_nrc``.
+    """
+    for _ in range(400):
+        _routine(can_bus, rid, params)
+        payload = _response(can_bus)
+        if not _is_busy_repeat(payload):
+            return payload
+        time.sleep(0.05)
+    pytest.fail("selector never left busyRepeatRequest")
+
+
+def _select_positive(can_bus, rid: int, params: bytes = b"") -> bytes:
+    payload = _resolve_selector(can_bus, rid, params)
+    assert payload[0] == 0
+    assert payload[1] == SID_ROUTINE_CONTROL + POSITIVE_OFFSET, payload.hex()
+    return payload
+
+
+def _select_nrc(can_bus, rid: int, nrc: int, params: bytes = b"") -> None:
+    payload = _resolve_selector(can_bus, rid, params)
+    assert payload[:4] == bytes(
+        [0, UDS_NEGATIVE_RESPONSE_SID, SID_ROUTINE_CONTROL, nrc]
+    ), payload.hex()
 
 
 def _request_download(can_bus, requested_block: int = 96) -> int:
@@ -173,12 +214,11 @@ def test_log_stats_and_runtime_controls(dut) -> None:
     assert int.from_bytes(stats[28 + 22:28 + 24], "little") == 2
     boot_id = int.from_bytes(stats[0:4], "little")
 
-    _routine(
+    _select_positive(
         can_bus,
         RID_SELECT_BY_BOOT,
         bytes([FL_DEST_TELEMETRY]) + struct.pack("<I", boot_id),
     )
-    _expect_positive(can_bus, SID_ROUTINE_CONTROL)
 
     _send_wdbi(can_bus, DID_LOG_VERBOSITY, b"\x04")
     response = _expect_positive(can_bus, UDS_SID_WRITE_DATA_BY_ID)
@@ -205,8 +245,8 @@ def test_latest_boot_round_trip_contains_writer_output(dut) -> None:
     # window; the boot marker itself is flushed immediately.
     helpers.sim_sleep(shim, 3.0)
 
-    _routine(can_bus, RID_SELECT_LATEST_BOOT, bytes([FL_DEST_TELEMETRY]))
-    selected = _expect_positive(can_bus, SID_ROUTINE_CONTROL)
+    selected = _select_positive(
+        can_bus, RID_SELECT_LATEST_BOOT, bytes([FL_DEST_TELEMETRY]))
     assert selected[-2:] == b"\xf1\x03"
 
     _send_rdbi(can_bus, DID_LOG_SELECTOR_RESULT)
@@ -214,6 +254,23 @@ def test_latest_boot_round_trip_contains_writer_output(dut) -> None:
     assert len(selector) == 20
     assert selector[0] == FL_DEST_TELEMETRY
     assert int.from_bytes(selector[16:20], "little", signed=True) == 0
+
+    stream = _download_selected(can_bus)
+    types = _top_level_types(stream)
+    assert FL_TYPE_BOOT_MARKER in types
+    assert FL_TYPE_BATCH in types
+
+
+def test_select_all_walk_free_round_trip(dut) -> None:
+    can_bus, shim = dut
+    helpers.sim_sleep(shim, 3.0)
+
+    # RID_SELECT_ALL is walk-free: it resolves in one shot with NO busyRepeat
+    # deferral (unlike the index-backed selectors), then streams the entire
+    # resident ring. Assert the FIRST response is already positive.
+    _routine(can_bus, RID_SELECT_ALL, bytes([FL_DEST_TELEMETRY]))
+    selected = _expect_positive(can_bus, SID_ROUTINE_CONTROL)
+    assert selected[-2:] == b"\xf1\x06", selected.hex()
 
     stream = _download_selected(can_bus)
     types = _top_level_types(stream)
@@ -246,8 +303,7 @@ def test_latest_and_specific_dive_round_trip(dut) -> None:
     publish_dive(False)
     helpers.sim_sleep(shim, 0.5)
 
-    _routine(can_bus, RID_SELECT_LATEST_DIVE, bytes([FL_DEST_TELEMETRY]))
-    _expect_positive(can_bus, SID_ROUTINE_CONTROL)
+    _select_positive(can_bus, RID_SELECT_LATEST_DIVE, bytes([FL_DEST_TELEMETRY]))
     latest_stream = _download_selected(can_bus)
     latest_types = _top_level_types(latest_stream)
     # The selected range may include the sector's leading boot marker before
@@ -257,12 +313,11 @@ def test_latest_and_specific_dive_round_trip(dut) -> None:
     assert 0x03 in latest_types
     assert latest_types.index(0x02) < latest_types.index(0x03)
 
-    _routine(
+    _select_positive(
         can_bus,
         RID_SELECT_BY_DIVE,
         bytes([FL_DEST_TELEMETRY]) + struct.pack("<H", dive_number),
     )
-    _expect_positive(can_bus, SID_ROUTINE_CONTROL)
     specific_stream = _download_selected(can_bus)
     specific_types = _top_level_types(specific_stream)
     assert 0x02 in specific_types
@@ -277,19 +332,22 @@ def test_selector_and_stream_rejection_paths(dut) -> None:
     _routine(can_bus, RID_BEGIN_STREAM)
     _expect_nrc(can_bus, SID_ROUTINE_CONTROL, NRC_REQUEST_SEQUENCE_ERROR)
 
+    # Bad stream / short payload are rejected synchronously (before the async
+    # worker path), so they answer immediately without a busyRepeat poll.
     _routine(can_bus, RID_SELECT_LATEST_BOOT, b"\xff")
     _expect_nrc(can_bus, SID_ROUTINE_CONTROL, NRC_REQUEST_OUT_OF_RANGE)
 
     _routine(can_bus, RID_SELECT_BY_BOOT, bytes([FL_DEST_TELEMETRY]))
     _expect_nrc(can_bus, SID_ROUTINE_CONTROL, NRC_INCORRECT_MSG_LEN)
 
-    _routine(can_bus, RID_SELECT_LATEST_DIVE, bytes([FL_DEST_TELEMETRY]))
-    _expect_nrc(can_bus, SID_ROUTINE_CONTROL, NRC_CONDITIONS_NOT_CORRECT)
+    # A well-formed selector with no matching marker resolves asynchronously to
+    # ENOENT -> conditionsNotCorrect (poll through the busyRepeat build phase).
+    _select_nrc(can_bus, RID_SELECT_LATEST_DIVE, NRC_CONDITIONS_NOT_CORRECT,
+                bytes([FL_DEST_TELEMETRY]))
 
     # Stage a valid text selection and begin streaming, then exercise wrong
     # sequence handling before completing a normal short transfer.
-    _routine(can_bus, RID_SELECT_LATEST_BOOT, bytes([FL_DEST_TEXT]))
-    _expect_positive(can_bus, SID_ROUTINE_CONTROL)
+    _select_positive(can_bus, RID_SELECT_LATEST_BOOT, bytes([FL_DEST_TEXT]))
     _routine(can_bus, RID_BEGIN_STREAM)
     _expect_positive(can_bus, SID_ROUTINE_CONTROL)
     _request_download(can_bus, 64)

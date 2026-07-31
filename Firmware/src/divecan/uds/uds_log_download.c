@@ -31,6 +31,7 @@
 #include "uds_log_push.h"
 #include "flash_log.h"
 #include "flash_log_reader.h"
+#include "maintenance_arena.h"
 #include "errors.h"
 
 LOG_MODULE_REGISTER(uds_log_download, LOG_LEVEL_INF);
@@ -81,6 +82,12 @@ static const uint8_t  ROUTINE_CONTROL_RESP_LEN = 4U;
 #define RID_SELECT_LATEST_BOOT 0xF103U
 #define RID_SELECT_LATEST_DIVE 0xF104U
 #define RID_BEGIN_STREAM      0xF105U
+/* Select the entire resident ring (walk-free "download all"). Streams every
+ * retained entry oldest→newest with no marker-index build — see
+ * flash_log_reader_resolve_all(). Numerically above BEGIN_STREAM, so the
+ * selector range check below runs to RID_SELECT_ALL and BEGIN_STREAM is
+ * diverted by its own earlier branch. */
+#define RID_SELECT_ALL        0xF106U
 
 static const size_t BYTE_SHIFT_8  = 8U;
 static const size_t BYTE_SHIFT_16 = 16U;
@@ -108,6 +115,16 @@ typedef struct {
     /* Max chunk size negotiated in 0x34 response — equals
      * UDS_MAX_RESPONSE_LENGTH minus the 0x36 response framing (2 B). */
     uint16_t max_block_length;
+    /* Async selector-resolution handshake (all guarded by fl_resolve_lock).
+     * The index-backed selectors are resolved on fl_resolve_worker_tid; the
+     * RoutineControl handler kicks the worker and answers busyRepeatRequest
+     * until resolve_done publishes a result. */
+    bool     resolve_active;      /* a request is queued or running */
+    bool     resolve_done;        /* worker published resolve_rc for it */
+    Status_t resolve_rc;          /* worker's resolve outcome */
+    uint16_t resolve_rid;         /* selector RID in flight */
+    uint8_t  resolve_params[8];   /* selector payload snapshot (stream + id) */
+    uint8_t  resolve_params_len;
 } LogDownloadSM_t;
 
 static LogDownloadSM_t *fl_sm(void)
@@ -247,98 +264,140 @@ void UDS_LogDownload_FillSelectorResult(uint8_t *buf, size_t buf_size)
 static const uint16_t LOG_SELECT_BOOT_MIN_LEN = 5U;
 static const uint16_t LOG_SELECT_DIVE_MIN_LEN = 3U;
 
-/**
- * @brief Parse and resolve a "select by boot id" selector payload.
+/* ---- Async selector resolution ----
  *
- * @param stream Destination stream the selector applies to.
- * @param data   Selector payload; data[1..4] carry the boot id (little-endian).
- * @param range  Output range populated on success.
- * @return 0 on success, negative errno from flash_log_reader_resolve_boot_id() otherwise.
- */
-static Status_t fl_resolve_by_boot(FlashLogDest_t stream, const uint8_t *data,
-                   FlashLogRange_t *range)
+ * The four index-backed selectors (latest boot/dive, by boot/dive) need a
+ * full-ring FCB index build the first time the index is cold. On a populated
+ * telemetry ring that walk runs well past the DiveCAN client's response
+ * timeout AND, run inline, would block the divecan_rx thread (which must keep
+ * servicing the bus) for its whole duration. So the walk runs on this
+ * dedicated, lower-priority worker thread: the RoutineControl handler kicks
+ * the worker and answers 0x21 busyRepeatRequest until the worker publishes a
+ * result, which the client polls for by re-issuing the identical selector.
+ *
+ * RID_SELECT_ALL is walk-free (O(1)) and stays synchronous — it never touches
+ * this path. flash_log_reader's index state has exactly one consumer (this
+ * module), so routing every index-backed resolve through this single worker
+ * means no other thread touches that state and it needs no lock of its own. */
+
+static K_SEM_DEFINE(fl_resolve_sem, 0, 1);
+static K_MUTEX_DEFINE(fl_resolve_lock);
+
+/* -EBUSY from a resolver means an OTA/factory/autotune op holds the shared
+ * maintenance arena. Retry a bounded number of times so a maintenance op that
+ * overlaps a download merely delays the resolve rather than failing it. */
+#define FL_RESOLVE_RETRY_MS  100U
+#define FL_RESOLVE_MAX_TRIES 300U   /* ~30 s worst-case wait for the arena */
+
+/* Parse the selector payload and call the matching (synchronous) reader
+ * resolver. Runs on the worker thread only. */
+static Status_t fl_call_resolver(uint16_t rid, const uint8_t *params,
+                 FlashLogRange_t *range)
 {
-    uint32_t boot_id =
-        (uint32_t)data[1] |
-        ((uint32_t)data[2] << BYTE_SHIFT_8) |
-        ((uint32_t)data[3] << BYTE_SHIFT_16) |
-        ((uint32_t)data[4] << BYTE_SHIFT_24);
+    FlashLogDest_t stream = (FlashLogDest_t)params[0];
+    Status_t rc;
 
-    return flash_log_reader_resolve_boot_id(stream, boot_id, range);
-}
+    if (rid == RID_SELECT_LATEST_BOOT) {
+        rc = flash_log_reader_resolve_latest_boot(stream, range);
+    } else if (rid == RID_SELECT_LATEST_DIVE) {
+        rc = flash_log_reader_resolve_latest_dive(stream, range);
+    } else if (rid == RID_SELECT_BY_BOOT) {
+        uint32_t boot_id =
+            (uint32_t)params[1] |
+            ((uint32_t)params[2] << BYTE_SHIFT_8) |
+            ((uint32_t)params[3] << BYTE_SHIFT_16) |
+            ((uint32_t)params[4] << BYTE_SHIFT_24);
 
-/**
- * @brief Parse and resolve a "select by dive id" selector payload.
- *
- * @param stream Destination stream the selector applies to.
- * @param data   Selector payload; data[1..2] carry the dive id (little-endian).
- * @param range  Output range populated on success.
- * @return 0 on success, negative errno from flash_log_reader_resolve_dive_id() otherwise.
- */
-static Status_t fl_resolve_by_dive(FlashLogDest_t stream, const uint8_t *data,
-                   FlashLogRange_t *range)
-{
-    uint16_t dive_id = (uint16_t)((uint16_t)data[1] |
-                   (uint16_t)((uint16_t)data[2] << BYTE_SHIFT_8));
+        rc = flash_log_reader_resolve_boot_id(stream, boot_id, range);
+    } else if (rid == RID_SELECT_BY_DIVE) {
+        uint16_t dive_id = (uint16_t)((uint16_t)params[1] |
+                   (uint16_t)((uint16_t)params[2] << BYTE_SHIFT_8));
 
-    return flash_log_reader_resolve_dive_id(stream, dive_id, range);
-}
-
-/**
- * @brief Validate payload length then resolve a "select by boot id" selector.
- *
- * Keeps the RID_SELECT_BY_BOOT switch case to a single call so it stays
- * within the switch-case line budget.
- *
- * @param stream   Destination stream the selector applies to
- * @param data     Selector payload
- * @param data_len Bytes available in data
- * @param range    Output range populated on success
- * @param rc_out   Out: flash_log_reader_resolve_boot_id() result, only set on length-OK
- * @return 0 if the length check passed (rc_out is meaningful), else UDS_NRC_INCORRECT_MSG_LEN
- */
-static uint8_t fl_resolve_by_boot_checked(FlashLogDest_t stream, const uint8_t *data,
-                      uint16_t data_len, FlashLogRange_t *range,
-                      Status_t *rc_out)
-{
-    uint8_t nrc = 0U;
-
-    if (data_len < LOG_SELECT_BOOT_MIN_LEN) {
-        nrc = UDS_NRC_INCORRECT_MSG_LEN;
+        rc = flash_log_reader_resolve_dive_id(stream, dive_id, range);
     } else {
-        *rc_out = fl_resolve_by_boot(stream, data, range);
+        rc = -EINVAL;
     }
-
-    return nrc;
+    return rc;
 }
 
-/**
- * @brief Validate payload length then resolve a "select by dive id" selector.
- *
- * Keeps the RID_SELECT_BY_DIVE switch case to a single call so it stays
- * within the switch-case line budget.
- *
- * @param stream   Destination stream the selector applies to
- * @param data     Selector payload
- * @param data_len Bytes available in data
- * @param range    Output range populated on success
- * @param rc_out   Out: flash_log_reader_resolve_dive_id() result, only set on length-OK
- * @return 0 if the length check passed (rc_out is meaningful), else UDS_NRC_INCORRECT_MSG_LEN
- */
-static uint8_t fl_resolve_by_dive_checked(FlashLogDest_t stream, const uint8_t *data,
-                      uint16_t data_len, FlashLogRange_t *range,
-                      Status_t *rc_out)
+/* Resolve one selector on the worker thread, pinning the log-index arena
+ * against eviction for the walk's duration and retrying the transient -EBUSY
+ * that a concurrent maintenance op produces. */
+static Status_t fl_worker_resolve(uint16_t rid, const uint8_t *params,
+                  FlashLogRange_t *range)
 {
-    uint8_t nrc = 0U;
+    Status_t rc = -EBUSY;
+    bool settled = false;
 
-    if (data_len < LOG_SELECT_DIVE_MIN_LEN) {
-        nrc = UDS_NRC_INCORRECT_MSG_LEN;
-    } else {
-        *rc_out = fl_resolve_by_dive(stream, data, range);
+    maint_arena_log_index_set_building(true);
+    for (uint16_t tries = 0U; (tries < FL_RESOLVE_MAX_TRIES) && !settled; ++tries) {
+        rc = fl_call_resolver(rid, params, range);
+        if (rc == -EBUSY) {
+            k_msleep((int32_t)FL_RESOLVE_RETRY_MS);
+        } else {
+            settled = true;
+        }
     }
-
-    return nrc;
+    maint_arena_log_index_set_building(false);
+    return rc;
 }
+
+static void fl_resolve_worker(void *a, void *b, void *c)
+{
+    ARG_UNUSED(a);
+    ARG_UNUSED(b);
+    ARG_UNUSED(c);
+    LogDownloadSM_t *sm = fl_sm();
+
+    for (;;) {
+        (void)k_sem_take(&fl_resolve_sem, K_FOREVER);
+
+        uint16_t rid = 0U;
+        uint8_t params[sizeof(sm->resolve_params)] = {0};
+        uint8_t plen = 0U;
+        bool run = false;
+
+        (void)k_mutex_lock(&fl_resolve_lock, K_FOREVER);
+        if (sm->resolve_active && !sm->resolve_done) {
+            rid = sm->resolve_rid;
+            plen = sm->resolve_params_len;
+            (void)memcpy(params, sm->resolve_params, plen);
+            run = true;
+        }
+        (void)k_mutex_unlock(&fl_resolve_lock);
+
+        if (run) {
+            FlashLogRange_t range = {0};
+            Status_t rc = fl_worker_resolve(rid, params, &range);
+
+            (void)k_mutex_lock(&fl_resolve_lock, K_FOREVER);
+            /* Publish only if this exact request is still the active one — a
+             * superseding selector may have replaced it while we walked. */
+            if (sm->resolve_active && !sm->resolve_done &&
+                (sm->resolve_rid == rid) &&
+                (sm->resolve_params_len == plen) &&
+                (0 == memcmp(sm->resolve_params, params, plen))) {
+                sm->range = range;
+                sm->resolve_rc = rc;
+                sm->resolve_done = true;
+            }
+            (void)k_mutex_unlock(&fl_resolve_lock);
+        }
+    }
+}
+
+/* Stack: 1024 B. The resolve walk (fcb_walk → flash_area_read → SPI-NOR reads)
+ * is the same depth class as the flash-log WRITER thread, which runs the
+ * heavier fcb_append/rotate + flash-write path on a proven
+ * CONFIG_FLASH_LOG_WRITER_STACK=1024 budget — reads are shallower than
+ * erase/rotate, so 1024 B carries margin here. The STM32L431 Poseidon build is
+ * ~100 % RAM-allocated (a 2048 B stack overflowed `noinit` by 960 B), so this
+ * cannot grow without reclaiming RAM elsewhere. Per CLAUDE.md's stack rule,
+ * confirm the runtime high-water mark (CONFIG_THREAD_ANALYZER) on hardware
+ * before trusting this near a boundary. Priority 10: below divecan_rx (5) so
+ * bus servicing always preempts the walk, above the watchdog feeder (14). */
+K_THREAD_DEFINE(fl_resolve_worker_tid, 1024, fl_resolve_worker,
+        NULL, NULL, NULL, 10, 0, 0);
 
 /**
  * @brief Map a selector-resolve outcome to an NRC and pack the selector-result DID payload.
@@ -375,12 +434,57 @@ static uint8_t fl_finish_selector(FlashLogDest_t stream, Status_t rc)
     return nrc;
 }
 
+/* Kick/poll the async worker for one index-backed selector. Returns
+ * busyRepeatRequest while the worker is running and, once it publishes,
+ * consumes the result via fl_finish_selector (sm->range is already populated).
+ * Runs on the divecan_rx thread. */
+static uint8_t fl_async_selector(uint16_t rid, const uint8_t *data,
+                 uint16_t data_len, FlashLogDest_t stream)
+{
+    LogDownloadSM_t *sm = fl_sm();
+    uint8_t nrc = UDS_NRC_BUSY_REPEAT_REQUEST;
+    uint8_t plen = (uint8_t)data_len;
+
+    if (data_len > sizeof(sm->resolve_params)) {
+        plen = (uint8_t)sizeof(sm->resolve_params);
+    }
+
+    (void)k_mutex_lock(&fl_resolve_lock, K_FOREVER);
+    bool same = sm->resolve_active &&
+            (sm->resolve_rid == rid) &&
+            (sm->resolve_params_len == plen) &&
+            (0 == memcmp(sm->resolve_params, data, plen));
+
+    if (same && sm->resolve_done) {
+        /* Worker finished this exact request — consume and answer for real. */
+        Status_t rc = sm->resolve_rc;
+
+        sm->resolve_active = false;
+        sm->resolve_done = false;
+        (void)k_mutex_unlock(&fl_resolve_lock);
+        nrc = fl_finish_selector(stream, rc);
+    } else {
+        if (!same) {
+            /* New or superseding request: stash the payload and kick. */
+            sm->resolve_rid = rid;
+            sm->resolve_params_len = plen;
+            (void)memcpy(sm->resolve_params, data, plen);
+            sm->resolve_active = true;
+            sm->resolve_done = false;
+            (void)k_sem_give(&fl_resolve_sem);
+        }
+        /* else same && !done → still running; keep the client polling. */
+        (void)k_mutex_unlock(&fl_resolve_lock);
+    }
+
+    return nrc;
+}
+
 static uint8_t fl_resolve_selector(uint16_t rid, const uint8_t *data,
                    uint16_t data_len)
 {
     LogDownloadSM_t *sm = fl_sm();
     uint8_t nrc = 0U;
-    Status_t rc = -EINVAL;
 
     if (data_len < 1U) {
         nrc = UDS_NRC_INCORRECT_MSG_LEN;
@@ -389,38 +493,31 @@ static uint8_t fl_resolve_selector(uint16_t rid, const uint8_t *data,
 
         if (stream >= FL_DEST_COUNT) {
             nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
+        } else if (rid == RID_SELECT_ALL) {
+            /* Walk-free whole-ring select — resolve inline on this thread. */
+            Status_t rc = flash_log_reader_resolve_all(stream, &sm->range);
+
+            nrc = fl_finish_selector(stream, rc);
+        } else if (rid == RID_SELECT_BY_BOOT) {
+            if (data_len < LOG_SELECT_BOOT_MIN_LEN) {
+                nrc = UDS_NRC_INCORRECT_MSG_LEN;
+            } else {
+                nrc = fl_async_selector(rid, data, data_len, stream);
+            }
+        } else if (rid == RID_SELECT_BY_DIVE) {
+            if (data_len < LOG_SELECT_DIVE_MIN_LEN) {
+                nrc = UDS_NRC_INCORRECT_MSG_LEN;
+            } else {
+                nrc = fl_async_selector(rid, data, data_len, stream);
+            }
+        } else if ((rid == RID_SELECT_LATEST_BOOT) ||
+               (rid == RID_SELECT_LATEST_DIVE)) {
+            nrc = fl_async_selector(rid, data, data_len, stream);
         } else {
-            switch (rid) {
-            case RID_SELECT_LATEST_BOOT:
-                rc = flash_log_reader_resolve_latest_boot(stream, &sm->range);
-                break;
-
-            case RID_SELECT_LATEST_DIVE:
-                rc = flash_log_reader_resolve_latest_dive(stream, &sm->range);
-                break;
-
-            case RID_SELECT_BY_BOOT:
-                nrc = fl_resolve_by_boot_checked(stream, data, data_len, &sm->range, &rc);
-                break;
-
-            case RID_SELECT_BY_DIVE:
-                nrc = fl_resolve_by_dive_checked(stream, data, data_len, &sm->range, &rc);
-                break;
-
-            case RID_SELECT_BY_RANGE:
-                /* Not implemented yet — explicit fcb-id pairs require exposing
-                 * fcb_entry internals to the wire which is fragile. Reject. */
-                rc = -ENOTSUP;
-                break;
-
-            default:
-                rc = -EINVAL;
-                break;
-            }
-
-            if (0U == nrc) {
-                nrc = fl_finish_selector(stream, rc);
-            }
+            /* RID_SELECT_BY_RANGE (explicit fcb-id pairs are unimplemented —
+             * exposing fcb_entry internals to the wire is fragile) and any
+             * other in-range RID map to out-of-range via -ENOTSUP. */
+            nrc = fl_finish_selector(stream, -ENOTSUP);
         }
     }
 
@@ -457,7 +554,7 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
                     fl_start_streaming();   /* pauses the writer for the capture */
                 }
             } else if ((rid >= RID_SELECT_BY_RANGE) &&
-                   (rid <= RID_SELECT_LATEST_DIVE)) {
+                   (rid <= RID_SELECT_ALL)) {
                 /* A fresh selector supersedes any live stream — resume the
                  * writer before re-resolving (the resolve below sets
                  * LD_SELECTED). */
@@ -474,7 +571,12 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
             }
 
             if (0U != nrc) {
-                OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
+                /* busyRepeatRequest is the normal "index still building, poll
+                 * again" answer, not a fault — don't log it to the error
+                 * histogram on every poll. */
+                if (nrc != UDS_NRC_BUSY_REPEAT_REQUEST) {
+                    OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
+                }
                 UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL, nrc);
             } else {
                 ctx->response_buffer[UDS_PAD_IDX] =
@@ -790,6 +892,18 @@ void UDS_LogDownload_Poll(void)
         }
     }
 }
+
+#ifdef CONFIG_ZTEST
+void UDS_LogDownload_ResetForTest(void)
+{
+    LogDownloadSM_t *sm = fl_sm();
+
+    (void)k_mutex_lock(&fl_resolve_lock, K_FOREVER);
+    sm->resolve_active = false;
+    sm->resolve_done = false;
+    (void)k_mutex_unlock(&fl_resolve_lock);
+}
+#endif
 
 /* ---- Top-level dispatch ---- */
 

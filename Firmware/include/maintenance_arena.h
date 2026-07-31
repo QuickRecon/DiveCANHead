@@ -94,6 +94,26 @@ void *maint_arena_claim(MaintArenaOwner_t owner);
 void maint_arena_release(MaintArenaOwner_t owner);
 
 /**
+ * @brief Pin/unpin the log-index cache against eviction during an async build.
+ *
+ * The log-index build now runs on a dedicated worker thread (see
+ * uds_log_download.c) instead of inline on the divecan_rx/UDS thread. That
+ * breaks the single-thread serialization which previously made LOG_INDEX
+ * eviction safe: an exclusive owner (OTA/FACTORY/AUTOTUNE) claiming from
+ * divecan_rx could otherwise evict — and then overwrite — an arena the worker
+ * is mid-write into. While pinned, an exclusive claim that would evict a
+ * LOG_INDEX holder is DENIED (returns NULL ⇒ the claimant sees -EBUSY and
+ * retries) rather than granted. The worker sets this true around its build and
+ * clears it afterwards; the cache reverts to normal evictable semantics.
+ *
+ * Claiming a FREE arena is unaffected — the pin only blocks eviction of an
+ * existing LOG_INDEX claim, never a fresh grant.
+ *
+ * @param building true to pin (build in progress), false to release the pin.
+ */
+void maint_arena_log_index_set_building(bool building);
+
+/**
  * @brief Content-clobber generation counter.
  *
  * Bumped on every ownership change. A cache tenant records the value

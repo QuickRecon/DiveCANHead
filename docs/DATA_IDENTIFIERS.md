@@ -414,15 +414,38 @@ log-download handler; all other `0x31`/transfer traffic routes to OTA.
 
 | RID | Routine | Description |
 |-----|---------|-------------|
-| 0xF100 | Select by range | Select log entries within an explicit range |
+| 0xF100 | Select by range | Select log entries within an explicit range (unimplemented → NRC 0x31) |
 | 0xF101 | Select by boot | Select entries for a given boot session |
 | 0xF102 | Select by dive | Select entries for a given dive |
 | 0xF103 | Select latest boot | Select the most recent boot session |
 | 0xF104 | Select latest dive | Select the most recent dive |
 | 0xF105 | Begin stream | Begin streaming the selected range |
+| 0xF106 | Select all | Select the entire resident ring, oldest→newest (walk-free, no index) |
+
+All selectors take a leading `stream` byte (0 = telemetry, 1 = text).
+
+### Async selectors and `busyRepeatRequest` (NRC 0x21)
+
+The four **index-backed** selectors — `0xF101`–`0xF104` — need the per-sector
+marker index. The first selection after boot (or after an index-relevant write)
+finds the index cold and must walk the whole FCB ring to build it. On a
+populated telemetry ring that walk runs for many seconds, so it executes on a
+dedicated lower-priority worker thread instead of blocking the DiveCAN bus:
+the selector returns **NRC 0x21 (requestCorrectlyReceived-ResponsePending /
+busyRepeatRequest)** while the build runs, and the client **polls by
+re-issuing the identical selector** until it resolves (positive response, or a
+terminal NRC such as 0x22 conditionsNotCorrect for an unknown id). Once built,
+the index is cached, so subsequent selectors in the same session resolve on the
+first try.
+
+**`0xF106` Select all is walk-free** — it needs no index (the reader streams
+the whole ring directly), so it resolves on the first request and never emits
+`0x21`. Prefer it for "download everything". Its stream header reports
+`entry_count = 0` ("unknown / streaming", mirroring `total_bytes = 0`), so
+drive progress off received bytes.
 
 See [ISOTP_TRANSPORT.md](ISOTP_TRANSPORT.md) and `uds_log_download.c` for the
-selector → stream state machine.
+selector → worker → stream state machine.
 
 ## Multi-DID Read
 

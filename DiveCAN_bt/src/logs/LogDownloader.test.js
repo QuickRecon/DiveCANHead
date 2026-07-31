@@ -76,89 +76,6 @@ function logResponder(streamBytes, { overrides = {} } = {}) {
   };
 }
 
-/** Serve sector-overlapping streams selected by boot id. */
-function multiBootResponder(streams) {
-  let selectedBoot = null;
-  let chunks = [];
-  let idx = 0;
-  return (req) => {
-    const sid = req[0];
-    if (sid === 0x31) {
-      const rid = (req[2] << 8) | req[3];
-      if (rid === 0xF101) {
-        selectedBoot = req[5] | (req[6] << 8) | (req[7] << 16) | (req[8] << 24);
-        if (!streams[selectedBoot]) return buildNegativeResponse(0x31, 0x22);
-      }
-      return buildRoutineResponse(rid);
-    }
-    if (sid === 0x22) {
-      const bytes = streams[selectedBoot] || new Uint8Array();
-      return buildRDBIResponse(0xF281, [
-        0, 0, 0, 0, 0, 0, 4, 0, 0, 0,
-        bytes.length & 0xFF, (bytes.length >> 8) & 0xFF, 0, 0, 0, 0, 0, 0, 0, 0
-      ]);
-    }
-    if (sid === 0x34) {
-      const requested = req[7] | (req[8] << 8) | (req[9] << 16) | (req[10] << 24);
-      const block = Math.min(Math.max(requested || 253, 32), 253);
-      chunks = chunkify(streams[selectedBoot], block);
-      idx = 0;
-      return buildRequestDownloadResponse(block);
-    }
-    if (sid === 0x36) return buildTransferResponse(req[1], chunks[idx++] || new Uint8Array());
-    if (sid === 0x37) return buildTransferExitResponse();
-    return null;
-  };
-}
-
-/** Serve boot streams but fail one boot's by-boot selector with a non-0x22 NRC. */
-function bootFaultResponder(streams, faultBoot, nrc) {
-  let selectedBoot = null;
-  let chunks = [];
-  let idx = 0;
-  return (req) => {
-    const sid = req[0];
-    if (sid === 0x31) {
-      const rid = (req[2] << 8) | req[3];
-      if (rid === 0xF101) {
-        selectedBoot = req[5] | (req[6] << 8) | (req[7] << 16) | (req[8] << 24);
-        if (selectedBoot === faultBoot) return buildNegativeResponse(0x31, nrc);
-      }
-      return buildRoutineResponse(rid);
-    }
-    if (sid === 0x22) {
-      const bytes = streams[selectedBoot] || new Uint8Array();
-      return buildRDBIResponse(0xF281, [
-        0, 0, 0, 0, 0, 0, 4, 0, 0, 0,
-        bytes.length & 0xFF, (bytes.length >> 8) & 0xFF, 0, 0, 0, 0, 0, 0, 0, 0
-      ]);
-    }
-    if (sid === 0x34) {
-      const requested = req[7] | (req[8] << 8) | (req[9] << 16) | (req[10] << 24);
-      const block = Math.min(Math.max(requested || 253, 32), 253);
-      chunks = chunkify(streams[selectedBoot], block);
-      idx = 0;
-      return buildRequestDownloadResponse(block);
-    }
-    if (sid === 0x36) return buildTransferResponse(req[1], chunks[idx++] || new Uint8Array());
-    if (sid === 0x37) return buildTransferExitResponse();
-    return null;
-  };
-}
-
-/** Wrap a responder so DID 0xF280 (stats) returns a 56-byte block with the given boot ids. */
-function withStats(inner, { bootIdCurrent, bootIdOldest }) {
-  return (req) => {
-    if (req[0] === 0x22 && ((req[1] << 8) | req[2]) === 0xF280) {
-      const b = new Uint8Array(56);
-      b[0] = bootIdCurrent & 0xFF;   // telemetry bootIdCurrent (LE32 @ 0)
-      b[4] = bootIdOldest & 0xFF;    // telemetry bootIdOldest  (LE32 @ 4)
-      return buildRDBIResponse(0xF280, b);
-    }
-    return inner(req);
-  };
-}
-
 describe('LogDownloader', () => {
   let transport;
   let uds;
@@ -219,53 +136,28 @@ describe('LogDownloader', () => {
     expect(Array.from(dl.slice(7, 11))).toEqual([61, 0, 0, 0]);
   });
 
-  it('downloads all retained boots and removes sector overlap locally', async () => {
-    const boot7 = buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(7, 'v2', 1), { tsUs: 10 });
-    const log7 = buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(3, 7, 'boot 7'), { tsUs: 20 });
-    const boot8 = buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(8, 'v2', 1), { tsUs: 10 });
-    const log8 = buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(3, 7, 'boot 8'), { tsUs: 20 });
-    // The firmware's by-boot selector begins at a sector boundary, so adjacent
-    // boot responses may contain the same records.
-    const overlapping = buildStream([boot7, log7, boot8, log8]);
-    transport.setResponder(multiBootResponder({ 7: overlapping, 8: overlapping }));
+  it('downloadAll streams the whole ring in one walk-free select-all session', async () => {
+    const stream = sampleStream();
+    transport.setResponder(logResponder(stream));
 
-    const result = await logs.downloadAllBoots({
-      stream: 0,
-      stats: {
-        telemetry: { bootIdOldest: 7, bootIdCurrent: 8 },
-        text: { bootIdOldest: 0, bootIdCurrent: 0 }
-      }
-    });
+    const result = await logs.downloadAll({ stream: 0 });
 
-    expect(result.downloads.map(d => d.bootId)).toEqual([7, 8]);
-    const records = parseLogStream(result.raw);
-    expect(records).toHaveLength(4);
-    expect(records.filter(r => r.type === FL_TYPE_BOOT_MARKER)
-      .map(r => r.payload[0])).toEqual([7, 8]);
-    expect(records.filter(r => r.type === FL_TYPE_LOG_TEXT)
-      .map(r => new TextDecoder().decode(r.payload.slice(3)))).toEqual(['boot 7', 'boot 8']);
+    // Exactly one SELECT_ALL (0xF106) then BEGIN_STREAM (0xF105) — NOT a
+    // per-boot loop, and no by-boot (0xF101) selectors at all.
+    const selects = transport.getAllSent().filter(s => s[0] === 0x31 && s[2] === 0xF1);
+    expect(selects.map(s => s[3])).toEqual([0x06, 0x05]);
+    expect(selects[0][4]).toBe(0); // select-all carries the telemetry stream byte
 
-    const selects = transport.getAllSent().filter(s => s[0] === 0x31 && s[2] === 0xF1 && s[3] === 0x01);
-    expect(selects.map(s => s[5])).toEqual([7, 8]);
+    // raw is the head's DCLG stream verbatim (no local re-encode), records parsed.
+    expect(result.records).toHaveLength(2);
+    expect(result.records[0].type).toBe(FL_TYPE_BOOT_MARKER);
+    expect(parseLogStream(result.raw)).toHaveLength(2);
   });
 
-  it('skips missing boot ids while downloading the retained range', async () => {
-    const boot7 = buildStream([
-      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(7, 'v2', 1), { tsUs: 10 })
-    ]);
-    const boot9 = buildStream([
-      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(9, 'v2', 1), { tsUs: 10 })
-    ]);
-    transport.setResponder(multiBootResponder({ 7: boot7, 9: boot9 }));
-
-    const result = await logs.downloadAllBoots({
-      stats: {
-        telemetry: { bootIdOldest: 7, bootIdCurrent: 9 },
-        text: { bootIdOldest: 0, bootIdCurrent: 0 }
-      }
-    });
-    expect(result.downloads.map(d => d.bootId)).toEqual([7, 9]);
-    expect(result.records).toHaveLength(2);
+  it('selectAll sends RID 0xF106 with the stream byte', async () => {
+    transport.setResponder(logResponder(sampleStream()));
+    await logs.selectAll(1);
+    expect(Array.from(transport.getLastSent())).toEqual([0x31, 0x01, 0xF1, 0x06, 1]);
   });
 
   it('rejects a selector with no match (NRC 0x22)', async () => {
@@ -273,6 +165,33 @@ describe('LogDownloader', () => {
       overrides: { select: (rid) => rid === 0xF103 ? buildNegativeResponse(0x31, 0x22) : undefined }
     }));
     await expect(logs.downloadLog()).rejects.toMatchObject({ nrc: 0x22 });
+  });
+
+  it('polls through busyRepeatRequest (NRC 0x21) while the head builds its index', async () => {
+    let selectAttempts = 0;
+    transport.setResponder(logResponder(sampleStream(), {
+      overrides: {
+        select: (rid) => {
+          if (rid === 0xF103) { // latest-boot selector defers twice, then resolves
+            selectAttempts++;
+            if (selectAttempts <= 2) return buildNegativeResponse(0x31, 0x21);
+          }
+          return undefined;
+        }
+      }
+    }));
+    const poller = new LogDownloader(uds, { timeouts: { poll: 1 } });
+    const result = await poller.downloadLog({ maxChunk: 253 });
+    expect(selectAttempts).toBe(3); // two 0x21 busy answers + one resolve
+    expect(parseLogStream(result.raw)).toHaveLength(2);
+  });
+
+  it('gives up polling busyRepeatRequest after the selector deadline', async () => {
+    transport.setResponder(logResponder(sampleStream(), {
+      overrides: { select: (rid) => rid === 0xF103 ? buildNegativeResponse(0x31, 0x21) : undefined }
+    }));
+    const poller = new LogDownloader(uds, { timeouts: { selector: 5, poll: 1 } });
+    await expect(poller.downloadLog()).rejects.toMatchObject({ nrc: 0x21 });
   });
 
   it('surfaces begin-stream-without-selection (NRC 0x24)', async () => {
@@ -323,84 +242,27 @@ describe('LogDownloader', () => {
     expect(Array.from(transport.getLastSent())).toEqual([0x2E, 0xF2, 0x82, 0x03, 0xA5]);
   });
 
-  it('rethrows a non-CONDITIONS_NOT_CORRECT selector fault from downloadAllBoots', async () => {
-    const boot7 = buildStream([
-      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(7, 'v2', 1), { tsUs: 10 })
-    ]);
-    // Boot 8's selector faults with 0x33 (security) — must propagate, not be skipped.
-    transport.setResponder(bootFaultResponder({ 7: boot7 }, 8, 0x33));
-    await expect(logs.downloadAllBoots({
-      stats: { telemetry: { bootIdOldest: 7, bootIdCurrent: 8 }, text: {} }
-    })).rejects.toMatchObject({ nrc: 0x33 });
+  it('downloadAll propagates a selector NRC instead of stitching around it', async () => {
+    transport.setResponder(logResponder(sampleStream(), {
+      overrides: { select: (rid) => rid === 0xF106 ? buildNegativeResponse(0x31, 0x22) : undefined }
+    }));
+    await expect(logs.downloadAll({ stream: 0 })).rejects.toMatchObject({ nrc: 0x22 });
   });
 
-  it('downloads the text stream range (stream = TEXT)', async () => {
-    const boot3 = buildStream([
-      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(3, 'v2', 1), { tsUs: 10 })
-    ]);
-    transport.setResponder(multiBootResponder({ 3: boot3 }));
-    const result = await logs.downloadAllBoots({
-      stream: 1,
-      stats: {
-        telemetry: { bootIdOldest: 0, bootIdCurrent: 0 },
-        text: { bootIdOldest: 3, bootIdCurrent: 3 }
-      }
-    });
-    expect(result.downloads.map(d => d.bootId)).toEqual([3]);
-    expect(result.records).toHaveLength(1);
-    // Locally-encoded stream tags the TEXT stream id in the DCLG header (byte 6).
-    expect(result.raw[6]).toBe(1);
+  it('downloadAll on the text stream selects RID_SELECT_ALL with stream = TEXT', async () => {
+    transport.setResponder(logResponder(sampleStream()));
+    await logs.downloadAll({ stream: 1 });
+    const selectAll = transport.getAllSent()
+      .find(s => s[0] === 0x31 && s[2] === 0xF1 && s[3] === 0x06);
+    expect(selectAll[4]).toBe(1); // TEXT stream byte in the select-all params
   });
 
-  it('reads stats itself when downloadAllBoots is called without a stats override', async () => {
-    const boot7 = buildStream([
-      buildRecord(FL_TYPE_BOOT_MARKER, bootMarkerPayload(7, 'v2', 1), { tsUs: 10 })
-    ]);
-    transport.setResponder(withStats(multiBootResponder({ 7: boot7 }),
-      { bootIdCurrent: 7, bootIdOldest: 7 }));
-    const result = await logs.downloadAllBoots({ stream: 0 });
-    expect(result.downloads.map(d => d.bootId)).toEqual([7]);
-    expect(result.stats.telemetry.bootIdCurrent).toBe(7);
-  });
-
-  it('keeps a boot download whose stream lacks a matching boot marker (no records merged)', async () => {
-    const orphan = buildStream([
-      buildRecord(FL_TYPE_LOG_TEXT, logTextPayload(1, 0, 'orphan'), { tsUs: 1 })
-    ]);
-    transport.setResponder(multiBootResponder({ 5: orphan }));
-    const result = await logs.downloadAllBoots({
-      stats: { telemetry: { bootIdOldest: 5, bootIdCurrent: 5 }, text: {} }
-    });
-    expect(result.downloads.map(d => d.bootId)).toEqual([5]);
-    expect(result.records).toHaveLength(0);
-  });
-
-  it('rejects a wrapped boot-id range', async () => {
-    await expect(logs.downloadAllBoots({
-      stats: { telemetry: { bootIdOldest: 8, bootIdCurrent: 7 }, text: {} }
-    })).rejects.toThrow(/Wrapped boot-id/);
-  });
-
-  it('refuses to scan more boots than the limit', async () => {
-    await expect(logs.downloadAllBoots({
-      maxBoots: 1,
-      stats: { telemetry: { bootIdOldest: 1, bootIdCurrent: 5 }, text: {} }
-    })).rejects.toThrow(/Refusing to scan/);
-  });
-
-  it('throws when stream stats are unavailable', async () => {
-    await expect(logs.downloadAllBoots({ stream: 0, stats: {} }))
-      .rejects.toThrow(/stats are unavailable/);
-  });
-
-  it('aborts downloadAllBoots when the signal is already aborted', async () => {
-    transport.setResponder(multiBootResponder({ 7: sampleStream() }));
+  it('downloadAll inherits downloadLog abort (already-aborted signal pulls no chunks)', async () => {
+    transport.setResponder(logResponder(sampleStream()));
     const controller = new AbortController();
     controller.abort();
-    await expect(logs.downloadAllBoots({
-      signal: controller.signal,
-      stats: { telemetry: { bootIdOldest: 7, bootIdCurrent: 7 }, text: {} }
-    })).rejects.toThrow(/cancelled/);
+    const result = await logs.downloadAll({ signal: controller.signal, maxChunk: 32 });
+    expect(result.chunkLens).toHaveLength(0);
   });
 
   it('stops pulling chunks when the download signal is already aborted', async () => {

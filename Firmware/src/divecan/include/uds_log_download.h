@@ -59,6 +59,18 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
  */
 void UDS_LogDownload_FillSelectorResult(uint8_t *buf, size_t buf_size);
 
+#ifdef CONFIG_ZTEST
+/**
+ * @brief Clear the async selector-resolution handshake state.
+ *
+ * Test-only. Drops any queued/completed worker result so each test starts from
+ * a clean async state (the SM is a process-global static). Does not stop an
+ * in-flight worker walk — that walk simply finds the request superseded and
+ * discards its result.
+ */
+void UDS_LogDownload_ResetForTest(void);
+#endif
+
 /**
  * @brief Periodic tick — aborts a stalled stream and RESUMES the flash-log
  *        writer if a live download goes idle past the inactivity timeout.

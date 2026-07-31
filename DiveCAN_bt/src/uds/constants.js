@@ -47,6 +47,7 @@ export const NRC_SERVICE_NOT_SUPPORTED = 0x11;
 export const NRC_SUBFUNCTION_NOT_SUPPORTED = 0x12;
 export const NRC_INCORRECT_MESSAGE_LENGTH = 0x13;
 export const NRC_RESPONSE_TOO_LONG = 0x14;
+export const NRC_BUSY_REPEAT_REQUEST = 0x21;
 export const NRC_CONDITIONS_NOT_CORRECT = 0x22;
 export const NRC_REQUEST_SEQUENCE_ERROR = 0x24;
 export const NRC_REQUEST_OUT_OF_RANGE = 0x31;
@@ -61,6 +62,7 @@ export const NRC_NAMES = {
   0x12: 'Sub-function Not Supported',
   0x13: 'Incorrect Message Length',
   0x14: 'Response Too Long',
+  0x21: 'Busy - Repeat Request (log index building; poll again)',
   0x22: 'Conditions Not Correct (dive gate / preconditions)',
   0x24: 'Request Sequence Error (out of state)',
   0x31: 'Request Out Of Range (unknown DID / bad value)',
@@ -174,6 +176,7 @@ export const LOG_RID_SELECT_BY_DIVE = 0xF102;     // params: stream(u8) + dive_i
 export const LOG_RID_SELECT_LATEST_BOOT = 0xF103; // params: stream(u8)
 export const LOG_RID_SELECT_LATEST_DIVE = 0xF104; // params: stream(u8)
 export const LOG_RID_BEGIN_STREAM = 0xF105;       // no params (needs prior selection)
+export const LOG_RID_SELECT_ALL = 0xF106;         // params: stream(u8); walk-free whole-ring select
 
 export const LOG_STREAM_TELEMETRY = 0;
 export const LOG_STREAM_TEXT = 1;

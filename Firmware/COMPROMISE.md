@@ -617,3 +617,43 @@ ADS1115 reads, and device-current replies.
 - Propose a public STM32 driver recovery operation that resets PE without
   removing target registration; the application-side register access can then
   be retired.
+
+## 14. Async log-index build briefly pins the maintenance arena
+
+**What changed**: The UDS log-index build (needed by the `0xF101`–`0xF104`
+download selectors) moved off the `divecan_rx` thread onto a dedicated
+lower-priority worker (`fl_resolve_worker_tid`, `uds_log_download.c`). While
+that worker walks the FCB ring to build the index it **pins the shared
+maintenance arena** (`maint_arena_log_index_set_building(true)`), so an
+exclusive tenant (OTA / FACTORY / AUTOTUNE) that tries to claim the arena
+during a build is denied `-EBUSY` and must retry, instead of evicting the
+half-built cache.
+
+**Why**: The single-`divecan_rx`-thread model previously made arena sharing
+safe by construction — no two tenants ran concurrently. Moving the build to its
+own thread breaks that: an exclusive owner claiming from `divecan_rx` could
+otherwise evict and then overwrite an arena the worker is mid-write into,
+corrupting both. The pin restores mutual exclusion for the build window only.
+
+**What still provides coverage**:
+
+- The pin is bounded to a single index build (one `fcb_walk`); it clears as
+  soon as the walk finishes. It never blocks a claim against a *free* arena —
+  only eviction of an in-flight build.
+- The denied tenant sees `-EBUSY`, which the UDS layer already surfaces as a
+  negative response its client retries — the existing contract for a busy
+  arena, not a new failure mode.
+- Downloading logs and running an OTA/factory/autotune at the same time is not
+  a real workflow, so the contention window is effectively never hit in the
+  field.
+- `tests/maintenance_arena/` unit-tests the pin (exclusive claim denied while
+  building, free claim still granted, reverts to evictable afterwards);
+  `tests/uds_log_transport/` exercises the worker path end to end.
+
+**Possible alternatives to investigate**:
+
+- Give the log index its own small dedicated buffer instead of sharing the
+  arena, removing the eviction interaction entirely (costs ~1.8 KB RAM on a
+  ~100%-full STM32L431 build — not currently affordable).
+- Persist the index across boots so the cold-build window (and thus the pin)
+  is hit far less often.
