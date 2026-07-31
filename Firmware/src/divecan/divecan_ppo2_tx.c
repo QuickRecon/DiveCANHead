@@ -138,9 +138,18 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
          * following PPO2_STATUS frame. Do this only after ordinary failed-cell
          * masking, and never after the global all-0xFF "Need cal" mask: the
          * handset recognises that three-FF pattern as its calibration prompt. */
+        bool cell3_included = consensus.include_array[CELL_IDX_2];
         if (IS_ENABLED(CONFIG_DIVECAN_PPO2_SLOT_3_CONSENSUS) &&
             (!calibration_masked)) {
             ppo2[CELL_IDX_2] = consensus.consensus_ppo2;
+            /* Mark the synthetic slot as included so the handset renders it as
+             * a healthy cell rather than highlighting the unused slot as
+             * excluded. This is an outbound wire transformation only — the
+             * slot never becomes a real voter, confidence input, or UDS state
+             * entry (see divecan_set_failed_cells / the voter). Leave it
+             * excluded when there is no valid consensus (0xFF), so a fail
+             * sentinel is never presented as an included, healthy cell. */
+            cell3_included = (PPO2_FAIL != consensus.consensus_ppo2);
         }
 
         txPPO2(dev_type, ppo2[CELL_IDX_0], ppo2[CELL_IDX_1], ppo2[CELL_IDX_2]);
@@ -149,7 +158,7 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
                  consensus.milli_array[CELL_IDX_2]);
         txCellState(dev_type, consensus.include_array[CELL_IDX_0],
                 consensus.include_array[CELL_IDX_1],
-                consensus.include_array[CELL_IDX_2],
+                cell3_included,
                 consensus.consensus_ppo2);
 
 #ifdef CONFIG_HAS_PRESSURE_TRANSDUCER

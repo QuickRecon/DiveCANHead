@@ -70,9 +70,12 @@ Hardware topology is defined at compile time via Kconfig, applied through `EXTRA
 - **Handset PPO2 compatibility**: Two-cell variants may enable
   `CONFIG_DIVECAN_PPO2_SLOT_3_CONSENSUS` to place consensus in the unused
   third PPO2 broadcast slot. This is an outbound wire transformation only:
-  the synthetic slot never becomes a cell, voter, confidence input, UDS
-  state entry, or inclusion-mask bit, and the all-`0xFF` calibration prompt
-  takes precedence.
+  the synthetic slot never becomes a cell, voter, confidence input, or UDS
+  state entry, and the all-`0xFF` calibration prompt takes precedence. The
+  outgoing `PPO2_STATUS` cell-state bit for that slot is set to included
+  (only when a valid consensus is present, not `0xFF`) so the handset
+  renders it as a healthy cell instead of highlighting the unused slot as
+  excluded; the internal voting inclusion mask is untouched.
 - **Power mode**: Battery only, battery+CAN fallback, CAN only
 - **Battery chemistry**: 9V alkaline, 1S/2S/3S lithium
 - **Solenoid role mapping**: Which physical channel serves which function (O2 inject, O2 flush, dil flush, secondary inject). When a secondary inject is wired, the fire thread alternates fires between the two inject channels. `CONFIG_SOL_FLUSH_TIME` (ms, 0 = off) adds a flush on diver-commanded setpoint changes: O2 flush on an increase, dil flush on a decrease, fired for the configured time at the start of the next fire cycle (BUILD_ASSERT-bounded by the deadman window)

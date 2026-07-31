@@ -382,9 +382,12 @@ config DIVECAN_PPO2_SLOT_3_CONSENSUS
 	  For two-cell heads, transmit the voted consensus PPO2 in the third
 	  per-cell slot of the DiveCAN PPO2 message. This prevents handsets that
 	  expect three populated slots from raising a nuisance missing-cell
-	  warning. The synthetic value is applied only to the outgoing PPO2
-	  message: it is not included in voting, confidence, calibration, UDS
-	  cell state, or the cell-inclusion mask.
+	  warning. The synthetic value is applied only to the outgoing PPO2 and
+	  PPO2_STATUS messages: it is not included in voting, confidence,
+	  calibration, or UDS cell state. The outbound cell-state bit for the
+	  slot is marked included (only when a valid consensus is present) so the
+	  handset shows a healthy cell rather than an excluded, highlighted slot;
+	  the internal voting inclusion mask is unaffected.
 
 	  The existing all-slots-0xFF "Need cal" indication takes precedence;
 	  consensus is not inserted while that calibration mask is active.

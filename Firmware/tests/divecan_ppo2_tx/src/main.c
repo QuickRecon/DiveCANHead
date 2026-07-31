@@ -102,8 +102,9 @@ ZTEST_SUITE(divecan_ppo2_tx, NULL, NULL, NULL, NULL, NULL);
  */
 ZTEST(divecan_ppo2_tx, test_consensus_slot_and_fail_safe_paths)
 {
-    /* ---- Healthy two-cell arm: the third PPO2 slot gets consensus, but the
-     * synthetic value does not become an included voter. ---- */
+    /* ---- Healthy two-cell arm: the third PPO2 slot gets consensus, and its
+     * cell-state bit is marked included so the handset renders it as a healthy
+     * cell rather than an excluded (yellow) slot. ---- */
     ConsensusMsg_t good = {0};
     good.consensus_ppo2 = VALID_PPO2;
     good.ppo2_array[0] = CELL_1_PPO2;
@@ -120,8 +121,8 @@ ZTEST(divecan_ppo2_tx, test_consensus_slot_and_fail_safe_paths)
     zassert_equal(last_ppo2[1], CELL_2_PPO2);
     zassert_equal(last_ppo2[2], VALID_PPO2,
                   "unused slot must carry consensus");
-    zassert_false(last_cellstate_cell3,
-                  "synthetic slot must not become an included voter");
+    zassert_true(last_cellstate_cell3,
+                 "synthetic slot must present as an included cell to the handset");
     zassert_equal(last_cellstate_ppo2, VALID_PPO2,
                   "success path must broadcast the published consensus");
 
@@ -148,6 +149,8 @@ ZTEST(divecan_ppo2_tx, test_consensus_slot_and_fail_safe_paths)
     zassert_equal(last_ppo2[0], CELL_1_PPO2);
     zassert_equal(last_ppo2[1], CELL_2_PPO2);
     zassert_equal(last_ppo2[2], PPO2_FAIL);
+    zassert_false(last_cellstate_cell3,
+                  "no-consensus slot must stay excluded, not shown as healthy");
 
     /* ---- Need-cal arm: all three slots must remain 0xFF. In particular, the
      * compatibility fill must not overwrite slot 3 after the global mask. ---- */
