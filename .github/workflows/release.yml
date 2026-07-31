@@ -386,7 +386,6 @@ jobs:
             --target "$RELEASE_COMMIT" \
             --title "DiveCANHead Firmware v${RELEASE_VERSION}" \
             --notes-file Firmware/release-output/release-notes.txt \
-            --fail-on-no-commits \
             --latest
 
           {
