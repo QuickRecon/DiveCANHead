@@ -167,7 +167,11 @@ static bool *getDepthCompEnabled(void)
     return &depthCompEnabled;
 }
 
-/** Latest computed duty cycle (mirror of chan_duty_cycle for snapshot). */
+/** Latest raw PID duty for the snapshot / duty DID 0xF210. Tracks
+ *  chan_duty_cycle except when the above-setpoint fire gate zeroes the
+ *  published command: this keeps reporting the raw signed PID intent so a
+ *  gated wound-up integrator stays visible in diagnostics (see the gate in
+ *  ppo2_pid_thread_fn). */
 static Numeric_t *getLatestDutyCycle(void)
 {
     static Numeric_t latestDutyCycle;
@@ -540,13 +544,42 @@ static void ppo2_pid_thread_fn(void *p1, void *p2, void *p3)
             }
 
             PIDNumeric_t duty = 0.0f;
+            bool suppress_fire = false;
             if (*getAutotuneDutyEnabled()) {
                 duty = (PIDNumeric_t)*getAutotuneDuty();
             } else {
                 duty = pid_update(d_setpoint, measurement, state);
+
+                /* One-directional-actuator safety gate: the O2 inject solenoid
+                 * can only ADD O2, so there is never a legitimate reason to fire
+                 * it while measured PPO2 is already above setpoint. We suppress
+                 * the FIRE COMMAND only (below), NOT the reported duty. pid_update()
+                 * has already run, so the integrator keeps unwinding toward its
+                 * true demand instead of dumping the stored equilibrium duty into
+                 * the loop when nothing is consuming it (e.g. unit on the surface,
+                 * off the diver: the learned in-water demand would otherwise keep
+                 * injecting for a long period because a gentle surface overshoot
+                 * never reaches the hard-reset threshold inside pid_update).
+                 * Integral state is left intact so the learned duty is available
+                 * again the instant PPO2 drops back below setpoint. PID-path only:
+                 * the autotune branch must stay free to drive PPO2 across setpoint
+                 * to characterise the plant. */
+                if (measurement > d_setpoint) {
+                    suppress_fire = true;
+                }
             }
+            /* latest_duty / duty DID 0xF210 report the raw signed pre-clamp PID
+             * intent (may rest negative above setpoint, exceed 1 when saturated).
+             * The gate deliberately does NOT alter it: diagnostics must still show
+             * the demand the controller is holding off, so a wound-up integrator
+             * suppressed by the gate is visible (positive duty, solenoid quiet)
+             * rather than masked as a phantom zero. */
             *latest_duty = (Numeric_t)duty;
             Numeric_t pub = (Numeric_t)duty;
+            if (suppress_fire) {
+                /* Gate the fire-thread command only — see above. */
+                pub = 0.0f;
+            }
             zbus_pub_checked(&chan_duty_cycle, &pub, K_MSEC(CHAN_OP_TIMEOUT_MS));
 #ifdef CONFIG_FLASH_LOG
             const FlashLogPidSnapshot_t snap = {

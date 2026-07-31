@@ -142,6 +142,47 @@ def test_solenoid_quiet_above_setpoint(calibrated_dut) -> None:
     )
 
 
+def test_wound_integrator_quiet_just_above_setpoint(calibrated_dut) -> None:
+    """Regression for the long-period windup fault.
+
+    ``test_solenoid_quiet_above_setpoint`` holds a *steady* high PPO2, so the
+    integrator has already relaxed to zero and the P term alone keeps the loop
+    quiet — it never exercises a wound-up integrator.  This test recreates the
+    real fault: a sustained below-setpoint period winds the integrator up, then
+    PPO2 rises to *just* above setpoint — 0.80 bar, only 0.10 bar over the 0.70
+    default, i.e. inside the 0.20 bar hard-reset band in ``pid_update``.  With a
+    wound integrator the raw PID duty stays positive there, so before the
+    above-setpoint fire gate the loop kept injecting O2 for a long period (unit
+    surfaced off the diver, PPO2 well above setpoint but never tripping the hard
+    reset).  The gate is the only thing that can suppress it in this band.
+    """
+    can_bus, shim = calibrated_dut
+
+    # Wind the integrator up: hold PPO2 well below the 0.70 bar setpoint for
+    # several PWM cycles so the integrator accumulates toward its limit.
+    helpers.configure_all_cells(shim, [50, 50, 50])
+    helpers.sim_sleep(shim, 20.0)
+
+    firing = _sample_solenoid_window(shim, OBSERVATION_WINDOW_S)
+    assert firing >= 4, (
+        f"precondition: loop should be firing below setpoint to wind the "
+        f"integrator up, saw only {firing} ON samples"
+    )
+
+    # Raise PPO2 to just above setpoint (0.80 bar) — 0.10 bar over, inside the
+    # 0.20 bar hard-reset band, so only the fire gate can quiet the loop.
+    helpers.configure_all_cells(shim, [80, 80, 80])
+    helpers.sim_sleep(shim, OBSERVATION_WINDOW_S)   # flush any in-progress fire
+
+    on_samples = _sample_solenoid_window(shim, OBSERVATION_WINDOW_S)
+    assert on_samples == 0, (
+        f"solenoid still firing at 0.80 bar (0.10 bar over the 0.70 setpoint, "
+        f"inside the 0.20 bar hard-reset band) with a wound-up integrator — the "
+        f"above-setpoint fire gate should have suppressed it; observed "
+        f"{on_samples} ON samples"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Setpoint change tracks through to fire decisions
 # ---------------------------------------------------------------------------

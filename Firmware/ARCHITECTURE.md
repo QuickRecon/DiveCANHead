@@ -417,6 +417,43 @@ DiveCAN uses a non-standard padding byte in Single Frame and First Frame message
 - **TX/composer split** — `divecan_send.c` (CAN driver glue) separated from `divecan_tx.c` (protocol byte layout) for testability
 - **Pure math extraction** — `divecan_ppo2_math.c` extracted from PPO2 TX thread for testability
 
+## PPO2 Control Loop
+
+Two cooperating threads (`src/ppo2_control.c`): `ppo2_pid_thread` runs the PID
+(`pid_update` in the OS-free `src/ppo2_control_math.c`) on a 100 ms cycle,
+publishing a duty to `chan_duty_cycle`; `solenoid_fire_thread` consumes that
+duty, applies quantisation/depth-compensation/deadman, and drives the O2 inject
+solenoid on a 5 s PWM cycle. The integrator stores the **equilibrium duty** —
+the steady injection that offsets metabolic O2 consumption. Depth compensation
+(`duty /= pressure_mbar/1000` in the fire thread) maps that demand from a molar
+quantity to a fire time, so the integrator is **depth-invariant**: it converges
+to the same value at every depth (see `docs/OXYGEN_SENSORS.md`).
+
+**Above-setpoint fire gate (one-directional-actuator invariant).** The O2 inject
+solenoid can only *add* O2, so there is never a legitimate reason to fire it
+while measured PPO2 is at/above setpoint. The PID thread therefore suppresses the
+**fire command** (`chan_duty_cycle`) whenever `measurement > setpoint`, on the
+PID path only — the autotune path is exempt so it can drive PPO2 across setpoint
+to characterise the plant. `pid_update` still runs, so the integrator keeps
+unwinding; only the actuation is gated.
+
+This replaced a fragile anti-windup scheme (a hard integral reset that fired only
+on a ≥0.20 bar overshoot). That scheme left a long-period windup fault: after a
+sustained below-setpoint period the integrator wound up, and a *gentle* overshoot
+(< 0.20 bar over setpoint) never tripped the reset — so with the integrator held
+high the loop kept injecting O2 well above setpoint for a long time (e.g. a unit
+surfaced off the diver). The gate closes this because suppression is keyed on the
+physical PPO2-vs-setpoint comparison, not on the integrator's slow unwind, so
+unwind speed is decoupled from hyperoxia safety. Regression-covered by
+`tests/integration/harness/test_ppo2_control.py::test_wound_integrator_quiet_just_above_setpoint`.
+
+**Diagnostics.** The gate suppresses the *fire command* only. `latest_duty` and
+duty DID `0xF210` continue to report the **raw signed pre-clamp PID output**
+(may rest negative above setpoint, exceed 1 when saturated), so a wound-up
+integrator held off by the gate stays visible (positive duty, solenoid quiet)
+rather than masked as a phantom zero. This preserves the documented `0xF210`
+contract (`docs/DATA_IDENTIFIERS.md`).
+
 ## PID Autotune
 
 An on-device setup routine (`src/ppo2_autotune.c`, gated on the same
