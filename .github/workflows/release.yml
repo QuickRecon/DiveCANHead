@@ -2,16 +2,6 @@ name: Firmware Release (HIL qualified)
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: SemVer from Firmware/VERSION, without a leading v
-        required: true
-        type: string
-
-# The physical bench and publisher receive only the permissions their jobs use.
-permissions:
-  actions: read
-  contents: read
 
 # Share the existing bench lock with ordinary full-HIL runs. A release owns the
 # bench for its whole five-variant qualification and is never cancelled midway.
@@ -20,7 +10,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RELEASE_VERSION: ${{ inputs.version }}
   HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig/tools/run_hil_host_container.sh' }}
   HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '0' }}
   HIL_HOST_TEST_RIG_DIR: ${{ vars.DIVECAN_HIL_TEST_RIG_DIR || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig' }}
@@ -30,8 +19,12 @@ jobs:
     name: Validate release request
     runs-on: [self-hosted, divecan-hil]
     timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
     outputs:
       commit: ${{ steps.identity.outputs.commit }}
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Require a master dispatch
@@ -71,12 +64,20 @@ jobs:
           command -v python3
           python3 -m unittest Firmware/scripts/tests/test_release.py
 
-      - name: Validate VERSION and changelog
+      - name: Derive and validate release version
+        id: version
         run: |
+          release_version=$(
+            python3 Firmware/scripts/release.py derive-version \
+              --version-file Firmware/VERSION \
+              --changelog Firmware/changelog.txt
+          )
           python3 Firmware/scripts/release.py validate \
-            --version "$RELEASE_VERSION" \
+            --version "$release_version" \
             --version-file Firmware/VERSION \
             --changelog Firmware/changelog.txt
+          echo "version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_VERSION=$release_version" >> "$GITHUB_ENV"
 
       - name: Reject an existing release tag
         run: |
@@ -142,6 +143,7 @@ jobs:
     env:
       HIL_VARIANT: ${{ matrix.variant }}
       HIL_BUILD_DIR: build-release-${{ github.run_id }}-${{ matrix.variant }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
       RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
     steps:
@@ -269,7 +271,7 @@ jobs:
       - name: Upload qualified variant
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: release-${{ inputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.variant }}
+          name: release-${{ needs.validate.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.variant }}
           path: Firmware/release-staging/
           if-no-files-found: error
           retention-days: 90
@@ -285,7 +287,7 @@ jobs:
           retention-days: 90
 
   publish:
-    name: Bundle and publish v${{ inputs.version }}
+    name: Bundle and publish v${{ needs.validate.outputs.version }}
     needs: [validate, hil]
     runs-on: [self-hosted, divecan-hil]
     timeout-minutes: 20
@@ -294,6 +296,7 @@ jobs:
       contents: write
     env:
       RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
       RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
     steps:
@@ -324,7 +327,7 @@ jobs:
           # Matrix jobs can be rerun individually. Keep the run id fixed but
           # accept every attempt so publish can combine variants that passed on
           # the original attempt with variants qualified by later reruns.
-          pattern: release-${{ inputs.version }}-${{ github.run_id }}-*-*
+          pattern: release-${{ needs.validate.outputs.version }}-${{ github.run_id }}-*-*
           path: Firmware/release-input
           merge-multiple: true
 
@@ -342,11 +345,11 @@ jobs:
       - name: Preserve final package as a workflow artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: firmware-release-package-${{ inputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: firmware-release-package-${{ needs.validate.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            Firmware/release-output/DiveCANHead-v${{ inputs.version }}.zip
-            Firmware/release-output/DiveCANHead-*-v${{ inputs.version }}.zip
-            Firmware/release-output/DiveCANHead-v${{ inputs.version }}-SHA256SUMS.txt
+            Firmware/release-output/DiveCANHead-v${{ needs.validate.outputs.version }}.zip
+            Firmware/release-output/DiveCANHead-*-v${{ needs.validate.outputs.version }}.zip
+            Firmware/release-output/DiveCANHead-v${{ needs.validate.outputs.version }}-SHA256SUMS.txt
             Firmware/release-output/changelog.txt
             Firmware/release-output/release-notes.txt
           if-no-files-found: error

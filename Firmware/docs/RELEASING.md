@@ -21,11 +21,12 @@ variants pass.
 3. Leave a new `## Unreleased` section at the top.
 4. Merge those changes to `master` and wait for ordinary software CI to pass.
 5. In GitHub, select **Actions → Firmware Release (HIL qualified) → Run
-   workflow**, choose `master`, and enter the version without a leading `v`.
+   workflow**, and choose `master`.
 
 The workflow refuses non-`master` dispatches, an existing version tag, a
-VERSION/changelog mismatch, an empty changelog section, or an incomplete
-variant bundle.
+missing VERSION/changelog release section, an empty changelog section, or an
+incomplete variant bundle. The release version is derived from `Firmware/VERSION`
+and validated against `Firmware/changelog.txt`.
 
 ## Release downloads
 

@@ -47,6 +47,10 @@ class ReleaseScriptTests(unittest.TestCase):
             root = Path(temporary)
             version_file, changelog = self._write_inputs(root)
             self.assertEqual(
+                release.derive_release_version(version_file, changelog),
+                "1.2.3",
+            )
+            self.assertEqual(
                 release.validate_release("1.2.3", version_file, changelog),
                 "1.2.3",
             )

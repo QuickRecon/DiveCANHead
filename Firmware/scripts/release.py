@@ -54,6 +54,24 @@ class ReleaseError(ValueError):
     """A release input or artifact violates the release contract."""
 
 
+def _repo_file(path: Path, expected_name: str, description: str) -> Path:
+    resolved = path.resolve(strict=True)
+    if resolved.name != expected_name or not resolved.is_file():
+        raise ReleaseError(
+            f"{description} must be an existing {expected_name} file: {path}"
+        )
+    return resolved
+
+
+def _output_text_file(path: Path, description: str) -> Path:
+    resolved_parent = path.parent.resolve(strict=True)
+    if path.name != "release-notes.txt" or path.suffix != ".txt":
+        raise ReleaseError(
+            f"{description} must be written as release-notes.txt: {path}"
+        )
+    return resolved_parent / path.name
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -83,6 +101,7 @@ def _validate_commit(raw: str, label: str) -> str:
 
 
 def read_version_file(path: Path) -> str:
+    path = _repo_file(path, "VERSION", "version file")
     values: dict[str, str] = {}
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         stripped = line.strip()
@@ -130,6 +149,7 @@ def read_version_file(path: Path) -> str:
 
 
 def read_changelog_release(path: Path, version: str) -> str:
+    path = _repo_file(path, "changelog.txt", "changelog")
     _parse_semver(version)
     lines = path.read_text(encoding="utf-8").splitlines()
     if "## Unreleased" not in lines:
@@ -176,6 +196,12 @@ def validate_release(version: str, version_file: Path, changelog: Path) -> str:
         )
     read_changelog_release(changelog, version)
     return file_version
+
+
+def derive_release_version(version_file: Path, changelog: Path) -> str:
+    version = read_version_file(version_file)
+    read_changelog_release(changelog, version)
+    return version
 
 
 def _single_file(paths: list[Path], description: str) -> Path:
@@ -473,6 +499,10 @@ def _build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--version-file", required=True, type=Path)
     validate_parser.add_argument("--changelog", required=True, type=Path)
 
+    derive_parser = subparsers.add_parser("derive-version")
+    derive_parser.add_argument("--version-file", required=True, type=Path)
+    derive_parser.add_argument("--changelog", required=True, type=Path)
+
     extract_parser = subparsers.add_parser("extract")
     extract_parser.add_argument("--version", required=True)
     extract_parser.add_argument("--changelog", required=True, type=Path)
@@ -506,8 +536,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "validate":
             version = validate_release(args.version, args.version_file, args.changelog)
             print(f"release inputs valid: v{version}")
+        elif args.command == "derive-version":
+            print(derive_release_version(args.version_file, args.changelog))
         elif args.command == "extract":
-            args.output.write_text(
+            output = _output_text_file(args.output, "release notes")
+            output.write_text(
                 read_changelog_release(args.changelog, args.version),
                 encoding="utf-8",
             )
