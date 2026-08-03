@@ -13,11 +13,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/settings/settings.h>
 #include <zephyr/smf.h>
 #include <zephyr/sys/atomic.h>
 
 #include "calibration.h"
+#include "calibration_store.h"
 #include "oxygen_cell_types.h"
 #include "solenoid_roles.h"
 #include "oxygen_cell_channels.h"
@@ -25,12 +25,8 @@
 #include "oxygen_cell_math.h"
 #include "errors.h"
 #include "common.h"
-#include "external_flash.h"
 
 #include <math.h>
-#include <zephyr/sys/printk.h>
-#include <stdlib.h>
-#include <string.h>
 
 LOG_MODULE_REGISTER(calibration, LOG_LEVEL_INF);
 
@@ -62,15 +58,13 @@ static CalResult_t cal_classify_coeff_error(CalCoeff_t coeff)
 #define CAL_FLUSH_MS        1000U       /* 1 second in milliseconds */
 #define CAL_SETTLE_MS       4000U       /* settle time before reading cells */
 #define CAL_CELL_SLOT_2     2U          /* cell index for third cell (0-based) */
-#define CAL_KEY_BUF_LEN     16U         /* settings key string buffer length */
-#define CAL_KEY_PREFIX_LEN  4U          /* strlen("cell") in a "cal/cellN" settings key */
 #define MILLIVOLTS_SCALE_DIVISOR 100U   /* Millivolts_t (0.01 mV units) -> ShortMillivolts_t (mV) */
 /* Raised 1024->2048 (HIT_LIST #5): at 1024 the cal thread overflowed its stack
  * during a calibration -> K_ERR_STACK_CHK_FAIL (reason 2) at k_sem_take,
  * rebooting the head mid-cal (confirmed by crash-record thread=cal_thread). The
- * deep path is cal_total_absolute -> cal_validate_and_save -> settings_save_one +
- * settings_load_subtree("cal") (the deliberate read-back-from-flash) on top of the
- * CalSmCtx_t local. 2048 clears the real depth. */
+ * deep path is cal_total_absolute -> cal_validate_and_save -> calibration_store_save
+ * (settings_save_one + settings_load_subtree("cal") read-back-from-flash) on top of
+ * the CalSmCtx_t local. 2048 clears the real depth. */
 #define CAL_THREAD_STACK    2048U       /* calibration thread stack size (bytes) */
 #define CAL_FO2_TO_PPO2_SCALE 1000.0f  /* scale factor: mbar -> centibar * fO2 */
 
@@ -177,149 +171,6 @@ void calibration_release(void)
         calibration_stop_all_solenoids();
         (void)atomic_clear(getCalRunning());
     }
-}
-
-/* ---- Settings persistence for calibration coefficients ---- */
-
-#define CAL_SETTINGS_KEY "cal/cell"
-
-/**
- * @brief Return a pointer to the module-static in-memory calibration cache.
- *
- * Backs the "cal" settings subtree. Populated by the settings handlers below
- * (called both by settings_load() at boot and by settings_load_subtree()
- * after writes). Cells and the validation readback both read from this
- * cache via settings_runtime_get.
- *
- * @return Pointer to the CELL_MAX_COUNT-element cache array.
- */
-static CalCoeff_t *getCalCache(void)
-{
-    static CalCoeff_t cal_cache[CELL_MAX_COUNT] = {0};
-    return cal_cache;
-}
-
-/* Parse "cellN" (N = 0..CELL_MAX_COUNT-1) and return the cell index,
- * or -1 if the key doesn't fit that pattern. */
-static int32_t cal_parse_cell_key(const char *name)
-{
-    int32_t result = -1;
-
-    if (0 == strncmp(name, "cell", CAL_KEY_PREFIX_LEN)) {
-        char *end = NULL;
-        /* strtol() returns long by C standard contract; int64_t safely
-         * holds a long on both 32- and 64-bit strtol() implementations. */
-        int64_t n = strtol(name + CAL_KEY_PREFIX_LEN, &end, 10);
-
-        if (((name + CAL_KEY_PREFIX_LEN) != end) && ('\0' == *end) &&
-            (0 <= n) && (n < (int64_t)CELL_MAX_COUNT)) {
-            result = (int32_t)n;
-        }
-    }
-
-    return result;
-}
-
-/* Settings handler set(): called by settings_load() / load_subtree() for
- * each "cal/cellN" key in NVS.  Updates the in-memory cache so cells and
- * validation readbacks see the persisted value. */
-static int cal_settings_set(const char *name, size_t len,
-                            settings_read_cb read_cb, void *cb_arg)
-{
-    Status_t result = 0;
-    int32_t cell = cal_parse_cell_key(name);
-
-    (void)len;
-
-    if (0 > cell) {
-        result = -ENOENT;
-    } else {
-        CalCoeff_t value = 0.0f;
-        ssize_t got = read_cb(cb_arg, &value, sizeof(value));
-
-        if ((ssize_t)sizeof(value) != got) {
-            result = -EIO;
-        } else {
-            getCalCache()[cell] = value;
-        }
-    }
-
-    return result;
-}
-
-/* Settings handler get(): used by settings_runtime_get("cal/cellN", ...).
- * Returns the cached value's length on success so the caller can size-check. */
-static int cal_settings_get(const char *name, char *val, int val_len_max)
-{
-    Status_t result = 0;
-    int32_t cell = cal_parse_cell_key(name);
-
-    if (0 > cell) {
-        result = -ENOENT;
-    } else if ((size_t)val_len_max < sizeof(CalCoeff_t)) {
-        result = -EINVAL;
-    } else {
-        (void)memcpy(val, &getCalCache()[cell], sizeof(CalCoeff_t));
-        result = (Status_t)sizeof(CalCoeff_t);
-    }
-
-    return result;
-}
-
-SETTINGS_STATIC_HANDLER_DEFINE(cal_handler, "cal",
-                               cal_settings_get,
-                               cal_settings_set,
-                               NULL, NULL);
-
-/**
- * @brief Persist a calibration coefficient to non-volatile settings storage.
- *
- * @param cell_num Zero-based cell index (0–2).
- * @param coeff    Calibration coefficient to store.
- * @return 0 on success, negative errno on settings write failure.
- */
-static Status_t cal_save_coefficient(uint8_t cell_num, CalCoeff_t coeff)
-{
-    char key[CAL_KEY_BUF_LEN] = {0};
-    Status_t result = 0;
-
-    (void)snprintk(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
-
-    result = external_flash_settings_save_one(key, &coeff, sizeof(coeff));
-
-    if (0 == result) {
-        /* Force the cache to reload from NVS so the validation readback in
-         * cal_validate_and_save() reflects what actually got persisted to
-         * flash, not what we just tried to write.  This catches a class of
-         * failures where NVS accepts the write but the backing flash is
-         * full/corrupt. */
-        result = external_flash_settings_load_subtree("cal");
-    }
-
-    return result;
-}
-
-/**
- * @brief Load a calibration coefficient from non-volatile settings storage.
- *
- * @param cell_num Zero-based cell index (0–2).
- * @param coeff    Output pointer; written with the loaded coefficient on success.
- * @return 0 on success, -ENOENT if the key is absent or the stored size does not match.
- */
-static Status_t cal_load_coefficient(uint8_t cell_num, CalCoeff_t *coeff)
-{
-    char key[CAL_KEY_BUF_LEN] = {0};
-    Status_t result = 0;
-
-    (void)snprintk(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
-
-    Status_t len = settings_runtime_get(key, coeff, sizeof(*coeff));
-
-    if (len != (Status_t)sizeof(*coeff)) {
-        result = -ENOENT;
-    }
-
-    return result;
 }
 
 /* ---- Per-cell read helpers (S1151: extracted from switch cases) ---- */
@@ -740,7 +591,7 @@ static CalResult_t cal_validate_and_save(uint8_t cell_num, Numeric_t new_coeff)
                 cell_num, reason, (double)new_coeff);
     }
     else {
-        Status_t save_err = cal_save_coefficient(cell_num, new_coeff);
+        Status_t save_err = calibration_store_save(cell_num, new_coeff);
         if (save_err != 0) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, cell_num);
             LOG_WRN("validate cell %u: save FAILED (coeff=%.6f save_ret=%d)",
@@ -751,7 +602,7 @@ static CalResult_t cal_validate_and_save(uint8_t cell_num, Numeric_t new_coeff)
             /* Verify round-trip: read back and compare */
             CalCoeff_t readback = 0.0f;
 
-            if (cal_load_coefficient(cell_num, &readback) != 0) {
+            if (calibration_store_load(cell_num, &readback) != 0) {
                 OP_ERROR_DETAIL(OP_ERR_FLASH, cell_num);
                 LOG_WRN("validate cell %u: readback FAILED", cell_num);
                 result = CAL_RESULT_FAILED;
@@ -1120,7 +971,7 @@ static void cal_backing_up_entry(void *obj)
     CalSmCtx_t *sm = (CalSmCtx_t *)obj;
 
     for (uint8_t i = 0; i < CONFIG_CELL_COUNT; ++i) {
-        if (cal_load_coefficient(i, &sm->previous_cals[i]) != 0) {
+        if (calibration_store_load(i, &sm->previous_cals[i]) != 0) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, i);
         }
     }
@@ -1214,7 +1065,7 @@ static void cal_restoring_on_fail_entry(void *obj)
     CalSmCtx_t *sm = (CalSmCtx_t *)obj;
 
     for (uint8_t i = 0; i < CONFIG_CELL_COUNT; ++i) {
-        if (cal_save_coefficient(i, sm->previous_cals[i]) != 0) {
+        if (calibration_store_save(i, sm->previous_cals[i]) != 0) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, i);
         } else {
             LOG_INF("Restored cal for cell %u", i);
@@ -1404,16 +1255,18 @@ K_THREAD_DEFINE(cal_thread, CAL_THREAD_STACK,
         6, 0, 0);
 
 /**
- * @brief Module initialisation hook (currently a no-op).
+ * @brief Module initialisation hook.
  *
- * Each cell driver (analog/diveo2/o2s) loads its own coefficient from
- * settings (`cal/cellN`) during its thread-init path, so no central
- * pre-load is required here. The calibration thread is started
- * automatically by K_THREAD_DEFINE. Kept as a hook in case a future
- * cross-cell orchestration is needed (e.g. a single transactional load
- * + integrity check across all cells before any cell publishes).
+ * Populates the coefficient cache from the "cal" NVS subtree so the persisted
+ * calibration is restored on boot. Each cell driver (analog/diveo2/o2s) also
+ * calls calibration_load_coefficients() from its thread-init path — the cell
+ * threads auto-start and typically reach their *_load_cal() before this runs,
+ * so they usually win the (load-once, guarded) race. This call covers the case
+ * where no cell thread has reached its load yet and documents that the cal
+ * cache is loaded at startup. The calibration thread is started automatically
+ * by K_THREAD_DEFINE.
  */
 void calibration_init(void)
 {
-    /* Intentionally empty — see header comment. */
+    calibration_load_coefficients();
 }

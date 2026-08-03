@@ -14,7 +14,10 @@
 /**
  * @brief Initialize the calibration subsystem.
  *
- * Call once at startup after settings are loaded.
+ * Loads persisted coefficients from the "cal" NVS subtree (via
+ * calibration_load_coefficients() in calibration_store.h) so a stored
+ * calibration is restored on boot. Call once at startup after settings are
+ * loaded.
  */
 void calibration_init(void);
 

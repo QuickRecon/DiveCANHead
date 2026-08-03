@@ -24,6 +24,7 @@
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_math.h"
 #include "power_management.h"
+#include "calibration_store.h"
 #include "errors.h"
 #include "heartbeat.h"
 
@@ -343,6 +344,10 @@ static void o2s_broadcast(struct o2s_cell_state *cell)
 static void o2s_load_cal(struct o2s_cell_state *cell)
 {
     char key[O2S_KEY_BUFFER_LEN] = {0};
+
+    /* Ensure the "cal" subtree has been read from NVS into the settings cache
+     * before we query it — nothing else loads it at boot. Load-once/guarded. */
+    calibration_load_coefficients();
 
     (void)snprintk(key, sizeof(key), "cal/cell%u", cell->cell_number);
 

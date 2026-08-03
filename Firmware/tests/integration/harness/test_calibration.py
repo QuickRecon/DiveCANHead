@@ -32,6 +32,8 @@ import divecan
 import helpers
 import uds as uds_helpers
 from helpers import CellType, configure_cell
+from conftest import relaunch_native_sim_firmware, stop_native_sim_firmware
+from sim_shim import SharedMemShim
 
 pytestmark = pytest.mark.rt_ratio(100)
 
@@ -294,3 +296,76 @@ def test_cal_duplicate_request_suppressed(dut) -> None:
             f"duplicate CAL_REQ triggered a second calibration "
             f"(result 0x{frame.data[0]:02X}); the guard should have dropped it"
         )
+
+
+# ---------------------------------------------------------------------------
+# Persistence across a reboot
+# ---------------------------------------------------------------------------
+
+# Cell topology (tests/integration/integration.conf): cells 1 & 2 are DiveO2
+# digital, cell 3 is analog.  Only the analog cell relies on the NVS-stored
+# coefficient being reloaded at boot — a digital cell falls back to its
+# factory default and self-reports a valid PPO2 regardless, so it would mask a
+# broken reload.  The analog cell is therefore the discriminator: its PPO2
+# broadcast byte is data[3] (data[1]=cell1, data[2]=cell2, data[3]=cell3).
+ANALOG_CELL_FRAME_IDX: int = 3
+
+
+def _await_analog_cell_byte(can_bus) -> int:
+    """Flush and read one PPO2 broadcast, returning the analog cell's byte."""
+    can_bus.flush_rx()
+    msg = can_bus.wait_for(divecan.PPO2_RESP_ID)
+    return msg.data[ANALOG_CELL_FRAME_IDX]
+
+
+def test_cal_persists_across_reboot(firmware_with_flash, can_bus) -> None:
+    """A calibration must survive a power cycle.
+
+    Regression test for the boot-load gap: the calibration coefficients are
+    written to the "cal" NVS subtree, but nothing loaded that subtree back
+    into the settings cache at boot (main() only loads "rt").  On a fresh boot
+    the analog cell therefore read a default coefficient and reported
+    CELL_NEED_CAL (0xFF) even though a valid coefficient was sitting in flash —
+    the calibration appeared not to persist.  The fix loads the "cal" subtree
+    from the cell drivers' load path; this test calibrates, reboots preserving
+    the flash backing, and asserts the analog cell comes back calibrated
+    WITHOUT re-calibrating.
+    """
+    proc, flash_path = firmware_with_flash
+
+    shim = SharedMemShim()
+    shim.wait_ready()
+    shim.set_bus_on()
+    try:
+        # --- Calibrate (all cells at 1.0 bar; digital-reference mode) -------
+        helpers.calibrate_board(can_bus, shim)
+        helpers.sim_sleep(shim, POST_CAL_SETTLE_S)
+
+        pre = _await_analog_cell_byte(can_bus)
+        assert pre != 0xFF, (
+            "precondition failed: analog cell still CELL_NEED_CAL (0xFF) "
+            "right after a successful calibration — cal never converged"
+        )
+
+        # --- Power cycle, preserving the flash backing ----------------------
+        shim.close()
+        stop_native_sim_firmware(proc)
+        proc = relaunch_native_sim_firmware(flash_path, rt_ratio=100)
+        shim = SharedMemShim()
+        shim.wait_ready()
+        shim.set_bus_on()
+
+        # Re-inject a live value on every cell (shim state is reset by the
+        # relaunch) so the analog channel has an ADC reading to publish.  We
+        # do NOT re-issue a calibration — the coefficient must come from NVS.
+        helpers.configure_all_cells(shim, [100, 100, 100])  # 1.00 bar each
+        helpers.sim_sleep(shim, POST_CAL_SETTLE_S)
+
+        post = _await_analog_cell_byte(can_bus)
+        assert post != 0xFF, (
+            "analog cell reports CELL_NEED_CAL (0xFF) after reboot: the stored "
+            "calibration coefficient was not reloaded from NVS at boot"
+        )
+    finally:
+        shim.close()
+        stop_native_sim_firmware(proc)

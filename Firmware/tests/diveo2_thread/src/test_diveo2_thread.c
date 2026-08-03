@@ -50,34 +50,34 @@
 
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
+#include "calibration_store.h"
 #include "runtime_settings.h"
 
 /* Overridden production symbol lives in stub_power.c */
 extern void stub_power_set_vbus(Numeric_t volts);
 
-/* ---- Test-controlled calibration settings handler ----------------------- *
- * diveo2_load_cal() reads "cal/cellN" via settings_runtime_get(). We register
- * a static handler for the "cal" subtree so both branches of load_cal are
- * reachable: g_cal_valid=true returns an in-range coefficient (-> CELL_OK),
- * false returns -ENOENT (-> default coefficient + CELL_FAIL).
+/* ---- Calibration coefficient seeding ------------------------------------ *
+ * diveo2_load_cal() reads "cal/cellN" via settings_runtime_get(), which is
+ * served by the real calibration_store handler (linked in). We drive the two
+ * load_cal branches by seeding the store's cache directly (no NVS backend):
+ * an in-range coefficient takes the CELL_OK path; an out-of-range value takes
+ * the default-coefficient path. (The store handler always returns a value for
+ * a valid cell key, so the "missing key" length-fail sub-branch is dead in
+ * production — the range check is the real discriminator.)
  */
-static bool g_cal_valid = true;
+#define CAL_CELL             0U
+#define CAL_COEFF_IN_RANGE   950000.0f /* within [DIVEO2_CAL_LOWER, UPPER] */
+#define CAL_COEFF_OUT_RANGE  0.0f      /* below DIVEO2_CAL_LOWER -> default path */
 
-static int cal_h_get(const char *key, char *val, int val_len_max)
+static void seed_cal(bool valid)
 {
-    int rc = -ENOENT;
+    CalCoeff_t coeff = CAL_COEFF_OUT_RANGE;
 
-    if ((key != NULL) && g_cal_valid &&
-        ((size_t)val_len_max >= sizeof(CalCoeff_t))) {
-        CalCoeff_t coeff = 950000.0f; /* within [DIVEO2_CAL_LOWER, UPPER] */
-
-        (void)memcpy(val, &coeff, sizeof(coeff));
-        rc = (int)sizeof(coeff);
+    if (valid) {
+        coeff = CAL_COEFF_IN_RANGE;
     }
-    return rc;
+    calibration_store_seed_cached(CAL_CELL, coeff);
 }
-
-SETTINGS_STATIC_HANDLER_DEFINE(caltest, "cal", cal_h_get, NULL, NULL, NULL);
 
 /* ---- Small UART/observation helpers ------------------------------------- */
 
@@ -230,7 +230,7 @@ ZTEST(diveo2_thread, test_01_cold_start_detect_and_enforce)
 {
     /* Healthy rail; valid stored cal so the boot load_cal took the OK path. */
     stub_power_set_vbus(5.0f);
-    g_cal_valid = true;
+    seed_cal(true);
 
     /* Enforce broadcast on cell 0 so detection (which finds a POLLED cell)
      * issues #BCST — exercising the enforce branch + set_cell_broadcast. */
@@ -388,16 +388,16 @@ ZTEST(diveo2_thread, test_09_load_cal_both_branches)
     resp.result = CAL_RESULT_OK;
 
     /* Valid stored coefficient -> load_cal takes the CELL_OK/coeff path. */
-    g_cal_valid = true;
+    seed_cal(true);
     (void)zbus_chan_pub(&chan_cal_response, &resp, K_MSEC(100));
     (void)k_msleep(POLL_STEP_MS);
 
     /* Missing/invalid coefficient -> default coeff + CELL_FAIL path. */
-    g_cal_valid = false;
+    seed_cal(false);
     (void)zbus_chan_pub(&chan_cal_response, &resp, K_MSEC(100));
     (void)k_msleep(POLL_STEP_MS);
 
-    g_cal_valid = true; /* restore */
+    seed_cal(true); /* restore */
     /* Reaching here means both load_cal branches ran without faulting. */
     zassert_true(true, "load_cal both branches executed");
 }

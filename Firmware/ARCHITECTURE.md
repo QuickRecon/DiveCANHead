@@ -143,6 +143,32 @@ measures 24–63 s, and holding the mutex throughout starved `divecan_rx` of
 ISO-TP flow control — observed as OTA 0x34 requests receiving no response at
 all.
 
+### Calibration coefficient boot-load (`cal` subtree)
+
+There is **no global `settings_load()`** in this firmware — each subsystem
+explicitly loads only its own subtree (`runtime_settings_load` loads `"rt"`,
+`flash_log` loads `"log"`, `error_histogram` loads `"errhist"`). The Zephyr
+settings subsystem never auto-replays stored values, so any subtree without an
+explicit boot-time load stays at its cache default. The `"cal"` subtree
+(per-cell coefficients `cal/cellN`) had this gap: it was only ever loaded as a
+side effect of the read-back inside a *save*, so on a fresh boot the coefficient
+cache stayed zero and every cell's `*_load_cal()` read a default. Analog cells
+(no other cal source) then reported `CELL_NEED_CAL` — a field-observed
+"calibration doesn't persist across reboots" on the analog `AP_Paul` variant,
+while digital cells masked it by falling back to their factory default.
+
+The store now owns an explicit `calibration_load_coefficients()`
+(`calibration_store.c`) that loads the `"cal"` subtree into the cache exactly
+once (mutex-guarded load-once). The cell drivers call it at the top of their
+`*_load_cal()` — the load has to be **consumer-driven** because the cell
+threads auto-start (`K_THREAD_DEFINE`) and run `*_load_cal()` during
+`main()`'s `boot_indicator()`, before `calibration_init()`; init ordering
+alone cannot win that race, but a load-once call from the reader itself always
+populates the cache before the read. Regression coverage:
+`tests/integration/harness/test_calibration.py::test_cal_persists_across_reboot`
+(calibrate → relaunch native_sim preserving flash → assert the analog cell is
+not `0xFF`).
+
 1. **Devicetree binding** (`quickrecon,solenoid-driver`): Declares GPIO pins, counter peripheral, and max-on-time-us. Hardware description only.
 
 2. **Driver** (`drivers/solenoid/`): Zephyr device driver using `DEVICE_DT_INST_DEFINE`. Manages GPIO outputs and TIM7 hardware counter. The counter ISR (deadman) forces all outputs low regardless of application state — hardware-enforced safety that the application cannot override.
@@ -622,7 +648,8 @@ Firmware/
 ├── drivers/solenoid/               Zephyr device driver (DT-driven)
 ├── dts/bindings/                   Custom DT bindings (solenoid, power-subsystem)
 ├── include/
-│   ├── calibration.h               Calibration public API
+│   ├── calibration.h               Calibration public API (init, guard, run-for-test)
+│   ├── calibration_store.h         Coefficient persistence: cal/cellN save/load, boot load-once
 │   ├── errors.h                    Error handling tiers 2-4, OpError_t enum
 │   ├── boot_history.h              Five-entry persisted crash/reboot rings
 │   ├── power_management.h          Power API, BatteryStatus_t, voltage thresholds
@@ -635,7 +662,8 @@ Firmware/
 │   └── tank_pressure.h             HP transducer types, chan_tank_pressure, mapping API
 ├── src/
 │   ├── main.c                      Entry point, heartbeat LED
-│   ├── calibration.c               Calibration thread, atomic guard, settings, rollback
+│   ├── calibration.c               Calibration thread, atomic guard, methods (SMF), rollback
+│   ├── calibration_store.c         "cal" settings handler + cache, save/load, boot load-once
 │   ├── consensus_subscriber.c      zbus subscriber: cell channels → vote → consensus
 │   ├── errors.c                    Fatal handler, zbus channel, crash persistence
 │   ├── boot_history.c              Startup NVS persistence + reset-cause capture

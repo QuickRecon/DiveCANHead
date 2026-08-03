@@ -65,42 +65,29 @@
 
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
+#include "calibration_store.h"
 
 /* Overridden production symbol lives in stub_power.c */
 extern void stub_power_set_vbus(Numeric_t volts);
 
-/* ---- Test-controlled calibration settings handler ----------------------- *
- * o2s_load_cal() reads "cal/cellN" via settings_runtime_get(). We register a
- * static handler for the "cal" subtree so both branches of load_cal are
- * reachable: g_cal_valid=true returns an in-range coefficient (-> CELL_OK),
- * false returns -ENOENT (-> default coefficient + CELL_FAIL).
+/* ---- Calibration coefficient seeding ------------------------------------ *
+ * o2s_load_cal() reads "cal/cellN" via settings_runtime_get(), served by the
+ * real calibration_store handler (linked in). We drive the load_cal branches
+ * by seeding the store's cache directly (no NVS backend): an in-range
+ * coefficient takes the CELL_OK path; a value below or above the valid
+ * envelope takes the default-coefficient path via the range check. (The store
+ * handler always returns a value for a valid cell key, so the "missing key"
+ * length-fail sub-branch is dead in production.)
  */
-static bool g_cal_valid = true;
-/* When true, the handler returns a coefficient OUTSIDE (O2S_CAL_LOWER,
- * O2S_CAL_UPPER) so o2s_load_cal()'s range check rejects it (exercises the
- * "right length, out-of-range value" false sub-branch, distinct from -ENOENT). */
-static bool g_cal_out_of_range = false;
+#define CAL_CELL             0U
+#define CAL_COEFF_IN_RANGE   1.05f /* within (O2S_CAL_LOWER, O2S_CAL_UPPER) = (0.8, 1.2) */
+#define CAL_COEFF_BELOW      0.0f  /* below the lower bound -> default path */
+#define CAL_COEFF_ABOVE      5.0f  /* above the upper bound -> default path */
 
-static int cal_h_get(const char *key, char *val, int val_len_max)
+static void seed_cal(CalCoeff_t coeff)
 {
-    int rc = -ENOENT;
-
-    if ((key != NULL) && g_cal_valid &&
-        ((size_t)val_len_max >= sizeof(CalCoeff_t))) {
-        /* In-range: within (O2S_CAL_LOWER, O2S_CAL_UPPER) == (0.8, 1.2).
-         * Out-of-range: 5.0, above the upper bound. */
-        CalCoeff_t coeff = 1.05f;
-
-        if (g_cal_out_of_range) {
-            coeff = 5.0f;
-        }
-        (void)memcpy(val, &coeff, sizeof(coeff));
-        rc = (int)sizeof(coeff);
-    }
-    return rc;
+    calibration_store_seed_cached(CAL_CELL, coeff);
 }
-
-SETTINGS_STATIC_HANDLER_DEFINE(caltest, "cal", cal_h_get, NULL, NULL, NULL);
 
 /* ---- Timing + stimulus constants ---------------------------------------- */
 
@@ -359,24 +346,22 @@ ZTEST(o2s_thread, test_08_load_cal_both_branches)
 
     resp.result = CAL_RESULT_OK;
 
-    /* Valid stored coefficient -> load_cal takes the in-range/coeff path. */
-    g_cal_valid = true;
+    /* In-range coefficient -> load_cal takes the CELL_OK/coeff path. */
+    seed_cal(CAL_COEFF_IN_RANGE);
     (void)zbus_chan_pub(&chan_cal_response, &resp, K_MSEC(100));
     pump(POLL_STEP_MS);
 
-    /* Missing coefficient (-ENOENT) -> default coeff + CELL_FAIL path. */
-    g_cal_valid = false;
+    /* Below the lower bound -> range check rejects -> default coeff path. */
+    seed_cal(CAL_COEFF_BELOW);
     (void)zbus_chan_pub(&chan_cal_response, &resp, K_MSEC(100));
     pump(POLL_STEP_MS);
 
-    /* Present but out-of-range coefficient -> same reject path via the range
-     * check rather than the length check (distinct false sub-branch). */
-    g_cal_valid = true;
-    g_cal_out_of_range = true;
+    /* Above the upper bound -> same reject path at the opposite end. */
+    seed_cal(CAL_COEFF_ABOVE);
     (void)zbus_chan_pub(&chan_cal_response, &resp, K_MSEC(100));
     pump(POLL_STEP_MS);
 
-    g_cal_out_of_range = false; /* restore */
+    seed_cal(CAL_COEFF_IN_RANGE); /* restore */
     /* Reaching here means all load_cal branches ran without faulting. */
     zassert_true(true, "load_cal both branches executed");
 }
@@ -390,7 +375,7 @@ ZTEST(o2s_thread, test_09_recovers_after_cal_reload)
     CalResponse_t resp = {0};
 
     resp.result = CAL_RESULT_OK;
-    g_cal_valid = true;
+    seed_cal(CAL_COEFF_IN_RANGE);
     stub_power_set_vbus(5.0f);
 
     (void)zbus_chan_pub(&chan_cal_response, &resp, K_MSEC(100));

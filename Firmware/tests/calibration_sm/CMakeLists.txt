@@ -32,6 +32,7 @@ project(test_calibration_sm)
 target_sources(app PRIVATE
     src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/calibration.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/calibration_store.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/external_flash.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/oxygen_cell_math.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/oxygen_cell_channels.c

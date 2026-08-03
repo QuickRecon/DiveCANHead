@@ -27,6 +27,7 @@
 #include "oxygen_cell_math.h"
 #include "power_management.h"
 #include "runtime_settings.h"
+#include "calibration_store.h"
 #include "errors.h"
 #include "heartbeat.h"
 
@@ -790,6 +791,10 @@ static void diveo2_broadcast(struct diveo2_cell_state *cell)
 static void diveo2_load_cal(struct diveo2_cell_state *cell)
 {
     char key[DIVEO2_KEY_BUFFER_LEN] = {0};
+
+    /* Ensure the "cal" subtree has been read from NVS into the settings cache
+     * before we query it — nothing else loads it at boot. Load-once/guarded. */
+    calibration_load_coefficients();
 
     (void)snprintk(key, sizeof(key), "cal/cell%u", cell->cell_number);
 

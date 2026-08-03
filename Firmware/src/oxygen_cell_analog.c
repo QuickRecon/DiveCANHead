@@ -17,6 +17,7 @@
 #include "oxygen_cell_types.h"
 #include "oxygen_cell_channels.h"
 #include "oxygen_cell_math.h"
+#include "calibration_store.h"
 #include "errors.h"
 #include "common.h"
 #include "heartbeat.h"
@@ -185,6 +186,10 @@ static Status_t analog_cell_init_adc(struct analog_cell_state *cell)
 static void analog_load_cal(struct analog_cell_state *cell)
 {
     char key[16] = {0};
+
+    /* Ensure the "cal" subtree has been read from NVS into the settings cache
+     * before we query it — nothing else loads it at boot. Load-once/guarded. */
+    calibration_load_coefficients();
 
     (void)snprintk(key, sizeof(key), "cal/cell%u", cell->cell_number);
 
