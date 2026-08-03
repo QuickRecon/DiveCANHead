@@ -146,10 +146,15 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
              * a healthy cell rather than highlighting the unused slot as
              * excluded. This is an outbound wire transformation only — the
              * slot never becomes a real voter, confidence input, or UDS state
-             * entry (see divecan_set_failed_cells / the voter). Leave it
-             * excluded when there is no valid consensus (0xFF), so a fail
-             * sentinel is never presented as an included, healthy cell. */
-            cell3_included = (PPO2_FAIL != consensus.consensus_ppo2);
+             * entry (see divecan_set_failed_cells / the voter). Gate on
+             * confidence (count of REAL voted-in cells), not merely a non-FF
+             * consensus: the voter's single-survivor path deliberately emits
+             * a valid consensus value with every cell voted OUT so the
+             * handset raises a vote-fail alarm — presenting the synthetic
+             * slot as healthy there would suppress that alarm and show a
+             * lone unvalidated sensor as a working 3-cell head. */
+            cell3_included = (PPO2_FAIL != consensus.consensus_ppo2) &&
+                     (consensus.confidence > 0U);
         }
 
         txPPO2(dev_type, ppo2[CELL_IDX_0], ppo2[CELL_IDX_1], ppo2[CELL_IDX_2]);

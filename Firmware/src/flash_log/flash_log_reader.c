@@ -44,6 +44,17 @@ LOG_MODULE_REGISTER(flash_log_reader, LOG_LEVEL_NONE);
  * mid-walk (confirmed on hardware: each selector call bumped the boot id). */
 #define FL_INDEX_WALK_WDT_KICK 256U
 
+/* How long the walk parks between mutex-hold chunks. Every WDT-kick cadence
+ * the walk RELEASES the external-flash mutex and sleeps this long before
+ * re-acquiring, so higher-priority flash users (divecan_rx serving an OTA
+ * 0x34 slot1 erase, the flash-log writer, settings saves) interleave instead
+ * of starving for the full walk (24-63 s measured on populated rings — long
+ * enough to stall ISO-TP flow control and present as total UDS silence in
+ * the 2026-08-01 HIL release run). Mid-chunk ring mutation is already
+ * tolerated: the epoch snapshot invalidates a maybe-incomplete index and
+ * unreadable entries are skipped. */
+#define FL_INDEX_WALK_YIELD_MS 5
+
 /* FlashLogIndexEntry_t, the FL_INDEX_FLAG_* / FL_INVALID_* sentinels, and
  * the per-FCB sector counts live in flash_log_internal.h so flash_log.c
  * (FCB geometry, stats path) and the reader share one source of truth.
@@ -147,7 +158,9 @@ static void fl_index_unclaim(void)
 typedef struct {
     FlashLogIndexEntry_t *index;
     const struct fcb *fcb_p;
-    uint32_t walked;   /* entries visited so far — drives periodic IWDG feed */
+    uint32_t walked;      /* entries visited so far — drives periodic IWDG feed */
+    uint32_t read_errors; /* header/payload reads that failed during the walk */
+    uint32_t marker_hits; /* marker entries successfully indexed */
 } fl_index_build_ctx_t;
 
 static size_t fl_sector_index(const struct fcb *fcb_p,
@@ -221,21 +234,29 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
     fl_entry_hdr_t hdr = {0};
     Status_t rc = 0;
 
-    /* Keep the IWDG fed across the (potentially very long) full-ring walk. */
+    /* Keep the IWDG fed across the (potentially very long) full-ring walk,
+     * and break the external-flash mutex hold into chunks at the same
+     * cadence so other flash users interleave (see FL_INDEX_WALK_YIELD_MS). */
     ctx->walked += 1U;
     if (0U == (ctx->walked % FL_INDEX_WALK_WDT_KICK)) {
         watchdog_kick();
+        external_flash_release();
+        k_msleep(FL_INDEX_WALK_YIELD_MS);
+        (void)external_flash_acquire(K_FOREVER);
     }
 
     rc = flash_area_read(loc_ctx->fap,
                  fl_entry_data_off(&loc_ctx->loc),
                  &hdr, sizeof(hdr));
 
-    /* Skip unreadable / non-marker entries — don't fail the whole walk. */
-    if ((0 == rc) &&
-        ((hdr.type == FL_TYPE_BOOT_MARKER) ||
+    /* Skip unreadable / non-marker entries — don't fail the whole walk, but
+     * COUNT the failures: an all-unreadable ring must not masquerade as a
+     * legitimately empty one (see fl_build_index). */
+    if (0 != rc) {
+        ctx->read_errors += 1U;
+    } else if ((hdr.type == FL_TYPE_BOOT_MARKER) ||
          (hdr.type == FL_TYPE_DIVE_START) ||
-         (hdr.type == FL_TYPE_DIVE_END))) {
+         (hdr.type == FL_TYPE_DIVE_END)) {
         size_t s_idx = fl_sector_index(ctx->fcb_p, loc_ctx->loc.fe_sector);
 
         if (s_idx < (size_t)ctx->fcb_p->f_sector_cnt) {
@@ -244,7 +265,10 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
                 fl_entry_data_off(&loc_ctx->loc) + (off_t)sizeof(hdr);
 
             fl_index_apply_marker(e, loc_ctx->fap, payload_off, hdr.type);
+            ctx->marker_hits += 1U;
         }
+    } else {
+        /* Readable non-marker entry — nothing to index. */
     }
 
     return 0;
@@ -272,13 +296,23 @@ static Status_t fl_build_index(FlashLogDest_t dest)
          * ensure then rebuilds again rather than trusting a
          * maybe-incomplete index. */
         uint32_t epoch = flash_log_internal_index_epoch();
-        fl_index_build_ctx_t ctx = { .index = index, .fcb_p = fcb_p, .walked = 0U };
+        fl_index_build_ctx_t ctx = { .index = index, .fcb_p = fcb_p,
+                         .walked = 0U, .read_errors = 0U,
+                         .marker_hits = 0U };
 
         watchdog_kick();   /* feed once before the walk begins */
         rc = external_flash_acquire(K_FOREVER);
         if (0 == rc) {
             rc = fcb_walk(fcb_p, NULL, fl_index_walk_cb, &ctx);
             external_flash_release();
+        }
+        if ((0 == rc) && (0U != ctx.read_errors) &&
+            (0U == ctx.marker_hits)) {
+            /* Every marker candidate was unreadable: a torn/degraded ring
+             * must fail the build (-EIO → NRC 0x31) instead of publishing
+             * an empty index that resolves to a misleading "no data"
+             * -ENOENT / NRC 0x22. */
+            rc = -EIO;
         }
         if (0 == rc) {
             fl_state()->built_epoch[dest] = epoch;
@@ -330,6 +364,10 @@ static int fl_marker_scan_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
     ctx->walked += 1U;
     if (0U == (ctx->walked % FL_INDEX_WALK_WDT_KICK)) {
         watchdog_kick();
+        /* Chunk the mutex hold — same rationale as fl_index_walk_cb. */
+        external_flash_release();
+        k_msleep(FL_INDEX_WALK_YIELD_MS);
+        (void)external_flash_acquire(K_FOREVER);
     }
 
     rc = flash_area_read(loc_ctx->fap,

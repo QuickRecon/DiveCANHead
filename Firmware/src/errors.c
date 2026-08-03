@@ -290,13 +290,23 @@ void k_sys_fatal_error_handler(uint32_t reason,
             CRASH_STACK_SOURCE_MSP : CRASH_STACK_SOURCE_PSP;
 #endif
     } else {
-        (void)printk("*** FATAL: reason %u  (no ESF) ***\n", reason);
         crash_noinit.pc = 0U;
         crash_noinit.lr = 0U;
         crash_noinit.sp = 0U;
+        /* No ESF (e.g. K_ERR_SPURIOUS_IRQ from z_irq_spurious): we are still
+         * executing in the offending exception's context, so IPSR identifies
+         * the vector that fired (external IRQn = IPSR - 16). Without this the
+         * record is all-zeros and the crash is undebuggable — bit us in the
+         * 2026-08-01 HIL release run (17 SPURIOUS_IRQ records, no vector). */
+#if defined(CONFIG_CPU_CORTEX_M)
+        crash_noinit.xpsr = __get_IPSR();
+#else
         crash_noinit.xpsr = 0U;
+#endif
         crash_noinit.exc_return = 0U;
         crash_noinit.stack_source = CRASH_STACK_SOURCE_UNKNOWN;
+        (void)printk("*** FATAL: reason %u  (no ESF) ipsr=%u ***\n", reason,
+                 crash_noinit.xpsr);
     }
 #else
     ARG_UNUSED(esf);

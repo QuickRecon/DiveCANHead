@@ -385,9 +385,12 @@ config DIVECAN_PPO2_SLOT_3_CONSENSUS
 	  warning. The synthetic value is applied only to the outgoing PPO2 and
 	  PPO2_STATUS messages: it is not included in voting, confidence,
 	  calibration, or UDS cell state. The outbound cell-state bit for the
-	  slot is marked included (only when a valid consensus is present) so the
-	  handset shows a healthy cell rather than an excluded, highlighted slot;
-	  the internal voting inclusion mask is unaffected.
+	  slot is marked included ONLY while at least one real cell is voted in
+	  (consensus confidence > 0), so the handset shows a healthy cell rather
+	  than an excluded, highlighted slot. When the voter is in its
+	  single-survivor state (valid value, all cells voted out to force the
+	  vote-fail alarm) the synthetic slot stays excluded so that alarm is
+	  never suppressed; the internal voting inclusion mask is unaffected.
 
 	  The existing all-slots-0xFF "Need cal" indication takes precedence;
 	  consensus is not inserted while that calibration mask is active.

@@ -73,6 +73,17 @@ void ppo2_control_get_snapshot(PPO2ControlSnapshot_t *out);
 PPO2ControlMode_t ppo2_control_get_active_mode(void);
 
 /**
+ * @brief True once `ppo2_control_init()` has latched the mode from NVS.
+ *
+ * Before init runs, `ppo2_control_get_active_mode()` returns the static OFF
+ * default which is NOT authoritative; the 0xF242 solenoid-override gate must
+ * refuse (NRC 0x21) rather than treat that pre-init OFF as permission to
+ * fire.  On a no-solenoid variant this is always true (OFF is compile-time
+ * truth there).
+ */
+bool ppo2_control_mode_latched(void);
+
+/**
  * @brief Apply PID gains directly to the live controller state — no reboot.
  *
  * The boot path latches Kp/Ki/Kd once in `ppo2_control_init()` and the PID

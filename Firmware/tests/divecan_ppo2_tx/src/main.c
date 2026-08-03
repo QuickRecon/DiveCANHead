@@ -115,6 +115,7 @@ ZTEST(divecan_ppo2_tx, test_consensus_slot_and_fail_safe_paths)
     good.include_array[0] = true;
     good.include_array[1] = true;
     good.include_array[2] = false;
+    good.confidence = 2U; /* the voter always derives this from include_array */
     zassert_ok(zbus_chan_pub(&chan_consensus, &good, K_MSEC(100)));
     (void)k_msleep(SETTLE_MS);
     zassert_equal(last_ppo2[0], CELL_1_PPO2);
@@ -126,23 +127,32 @@ ZTEST(divecan_ppo2_tx, test_consensus_slot_and_fail_safe_paths)
     zassert_equal(last_cellstate_ppo2, VALID_PPO2,
                   "success path must broadcast the published consensus");
 
-    /* ---- One physical failure: its 0xFF extreme remains visible while the
-     * unused slot carries the surviving-cell consensus. ---- */
+    /* ---- One physical failure → voter single-survivor state: the survivor's
+     * value is used as consensus but every cell is voted OUT (confidence 0)
+     * so the handset raises the vote-fail alarm. The synthetic slot must NOT
+     * be presented as an included healthy cell here — that would suppress the
+     * alarm and show a lone unvalidated sensor as a working 3-cell head. ---- */
     ConsensusMsg_t one_failed = good;
     one_failed.status_array[0] = CELL_FAIL;
     one_failed.include_array[0] = false;
+    one_failed.include_array[1] = false; /* survivor voted out by the voter */
+    one_failed.confidence = 0U;
     one_failed.consensus_ppo2 = CELL_2_PPO2;
     zassert_ok(zbus_chan_pub(&chan_consensus, &one_failed, K_MSEC(100)));
     (void)k_msleep(SETTLE_MS);
     zassert_equal(last_ppo2[0], PPO2_FAIL);
     zassert_equal(last_ppo2[1], CELL_2_PPO2);
     zassert_equal(last_ppo2[2], CELL_2_PPO2);
+    zassert_false(last_cellstate_cell3,
+                  "single-survivor (confidence 0) must keep the synthetic slot "
+                  "excluded so the vote-fail alarm is not suppressed");
 
     /* ---- Disagreement/no consensus: the synthetic slot is 0xFF, preserving
      * the vote-failure indication. ---- */
     ConsensusMsg_t disagreed = good;
     disagreed.include_array[0] = false;
     disagreed.include_array[1] = false;
+    disagreed.confidence = 0U;
     disagreed.consensus_ppo2 = PPO2_FAIL;
     zassert_ok(zbus_chan_pub(&chan_consensus, &disagreed, K_MSEC(100)));
     (void)k_msleep(SETTLE_MS);

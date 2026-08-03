@@ -374,12 +374,13 @@ static void emit_startup_preamble(void)
                   COMPILE_CAL_DEFAULT_STR,
                   depth_comp_default_flag);
 
-    /* Runtime config snapshot. Re-loading from NVS here (rather than
-     * reading a cached struct) is one extra settings_runtime_get per
-     * field — negligible at boot and keeps us decoupled from the
-     * ppo2_control / battery cache lifecycle. */
+    /* Runtime config snapshot from the live cache. Do NOT call
+     * runtime_settings_load() here: before it became idempotent that
+     * re-zeroed the cache to defaults mid-boot, re-opening a window
+     * where UDS reads answered compile defaults (HIL "NVS persistence
+     * broken" failures, 2026-08-01 release run). */
     RuntimeSettings_t rt = {0};
-    (void)runtime_settings_load(&rt);
+    runtime_settings_get(&rt);
     preamble_line("Runtime config:");
     preamble_line("  PPO2 mode: %s", ppo2_mode_name(rt.ppo2_control_mode));
     preamble_line("  Cal mode: %s", cal_mode_name(rt.calibration_mode));
@@ -437,6 +438,17 @@ Status_t main(void)
      * loop is obvious by eye: healthy boot = one burst then steady heartbeat;
      * reset loop = burst repeating at the reset period. */
     boot_indicator();
+
+    /* Populate the runtime-settings cache from NVS as the FIRST flash
+     * operation of the boot. The UDS server thread starts at scheduler
+     * start and refuses settings-value DIDs with NRC 0x21 until this
+     * lands (runtime_settings_is_loaded()); doing the load ahead of the
+     * boot-history / flash-log mounts keeps that busy window as short as
+     * possible so a client polling across a reboot reads stored values,
+     * never compile-time defaults. Later loads (ppo2_control_init) are
+     * idempotent cache copies. */
+    RuntimeSettings_t boot_settings = RUNTIME_SETTINGS_DEFAULT;
+    (void)runtime_settings_load(&boot_settings);
 
     /* Persist the reset cause and any noinit crash before mounting the much
      * larger FCB log rings. A successful crash write acknowledges the retained

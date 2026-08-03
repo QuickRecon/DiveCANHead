@@ -179,6 +179,17 @@ void flash_log_record_boot_marker(uint32_t boot_id, uint32_t reset_cause,
                   const CrashInfo_t *prev_crash);
 
 /**
+ * @brief True once this boot's boot marker has been flushed to the ring.
+ *
+ * Index-backed log-download selectors answer NRC 0x21 (busy) until then, so
+ * a client polling across a reboot can never resolve against a ring the
+ * current boot has not yet stamped (which would return a terminal "no data").
+ *
+ * @return true after the FL_TYPE_BOOT_MARKER entry has hit flash
+ */
+bool flash_log_boot_marker_flushed(void);
+
+/**
  * @brief Suspend FCB writes (queue keeps buffering).
  *
  * Call around long-running flash operations on the same SPI NOR (OTA

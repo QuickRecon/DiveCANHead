@@ -223,11 +223,25 @@ typedef struct {
  * @brief Load settings from NVS into *out.
  *
  * Falls back to RUNTIME_SETTINGS_DEFAULT if NVS is empty or corrupt.
+ * Idempotent: only the first call touches NVS; later calls copy the live
+ * cache (which may hold volatile edits) without re-zeroing it to defaults.
  *
  * @param out Destination for loaded settings (must not be NULL)
  * @return 0 on success, negative errno on NVS failure
  */
 Status_t runtime_settings_load(RuntimeSettings_t *out);
+
+/**
+ * @brief True once the first runtime_settings_load() has populated the cache.
+ *
+ * Until this returns true the cache holds compile-time defaults that do NOT
+ * reflect the stored configuration; UDS refuses settings-value DIDs with
+ * NRC 0x21 (busyRepeatRequest) so a booting head never presents defaults as
+ * persisted values.
+ *
+ * @return true once the settings cache is authoritative
+ */
+bool runtime_settings_is_loaded(void);
 
 /**
  * @brief Persist settings to NVS.

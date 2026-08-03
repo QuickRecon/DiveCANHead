@@ -426,6 +426,12 @@ static uint8_t fl_finish_selector(FlashLogDest_t stream, Status_t rc)
     } else if (rc == -ENOENT) {
         fl_pack_selector_result((uint8_t)stream, 0U, 0U, 0U, 0U, (int32_t)rc);
         nrc = UDS_NRC_CONDITIONS_NOT_CORRECT;
+    } else if (rc == -EBUSY) {
+        /* Arena still held by a maintenance op after the bounded retry —
+         * transient contention, not a request defect: report busy so the
+         * client keeps polling (0x31 here read as a hard refusal). */
+        fl_pack_selector_result((uint8_t)stream, 0U, 0U, 0U, 0U, (int32_t)rc);
+        nrc = UDS_NRC_BUSY_REPEAT_REQUEST;
     } else {
         fl_pack_selector_result((uint8_t)stream, 0U, 0U, 0U, 0U, (int32_t)rc);
         nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
@@ -498,6 +504,15 @@ static uint8_t fl_resolve_selector(uint16_t rid, const uint8_t *data,
             Status_t rc = flash_log_reader_resolve_all(stream, &sm->range);
 
             nrc = fl_finish_selector(stream, rc);
+        } else if (!flash_log_boot_marker_flushed()) {
+            /* Index-backed selectors must not walk a ring the current boot
+             * has not stamped yet: a resolve racing flash_log_init (or the
+             * boot-time recovery erase) finds zero markers and would publish
+             * a terminal "no data" -ENOENT (NRC 0x22) for a healthy head —
+             * seen as test_telemetry_log_captures_supplied_data's "log
+             * selector refused" in the 2026-08-01 HIL release run. Busy
+             * keeps the client polling until the marker lands. */
+            nrc = UDS_NRC_BUSY_REPEAT_REQUEST;
         } else if (rid == RID_SELECT_BY_BOOT) {
             if (data_len < LOG_SELECT_BOOT_MIN_LEN) {
                 nrc = UDS_NRC_INCORRECT_MSG_LEN;

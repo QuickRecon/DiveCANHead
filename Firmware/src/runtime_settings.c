@@ -304,38 +304,68 @@ SETTINGS_STATIC_HANDLER_DEFINE(runtime, SETTINGS_SUBTREE, NULL,
  * @return 0 on success or when defaults are used, negative errno if the
  *         settings subsystem itself could not be initialised
  */
+/** True once the first runtime_settings_load() has finished populating the
+ *  cache (from NVS, or deliberately from defaults on a load failure). UDS
+ *  gates settings-value DIDs on this so a client polling right after boot can
+ *  never observe the compile-time defaults as if they were the stored
+ *  configuration (NRC 0x21 until the load lands). Single-core target: the
+ *  flag is written after the cache in one thread; a context switch to the
+ *  UDS reader implies full ordering. */
+static bool *getLoadedFlag(void)
+{
+    static bool settingsLoaded;
+    return &settingsLoaded;
+}
+
+bool runtime_settings_is_loaded(void)
+{
+    return *getLoadedFlag();
+}
+
 Status_t runtime_settings_load(RuntimeSettings_t *out)
 {
     RuntimeSettings_t *cached = getCached();
     Status_t rc = 0;
 
-    *cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
-
-    rc = settings_subsys_init();
-    if (0 != rc) {
-        LOG_ERR("settings init failed: %d", rc);
+    if (*getLoadedFlag()) {
+        /* Idempotent: the cache is already authoritative (and may hold
+         * volatile 0x9130 edits) — a second load must not re-zero it to
+         * defaults and re-open the boot defaults window. */
         *out = *cached;
-    }
-    else
-    {
-        rc = external_flash_settings_load_subtree(SETTINGS_SUBTREE);
+    } else {
+        *cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+
+        rc = settings_subsys_init();
         if (0 != rc) {
-            LOG_WRN("settings load failed: %d, using defaults", rc);
+            LOG_ERR("settings init failed: %d", rc);
+            *out = *cached;
+        }
+        else
+        {
+            rc = external_flash_settings_load_subtree(SETTINGS_SUBTREE);
+            if (0 != rc) {
+                LOG_WRN("settings load failed: %d, using defaults", rc);
+            }
+
+            if (!runtime_settings_validate(cached)) {
+                LOG_WRN("stored settings invalid, reverting to defaults");
+                *cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
+            }
+
+            *out = *cached;
+            LOG_INF("ppo2=%d cal=%d depth=%d kp=%.4f ki=%.4f kd=%.4f bat=%d",
+                cached->ppo2_control_mode, cached->calibration_mode,
+                cached->depth_compensation,
+                (double)cached->pid_kp, (double)cached->pid_ki,
+                (double)cached->pid_kd,
+                cached->battery_type);
+            rc = 0;
         }
 
-        if (!runtime_settings_validate(cached)) {
-            LOG_WRN("stored settings invalid, reverting to defaults");
-            *cached = (RuntimeSettings_t)RUNTIME_SETTINGS_DEFAULT;
-        }
-
-        *out = *cached;
-        LOG_INF("ppo2=%d cal=%d depth=%d kp=%.4f ki=%.4f kd=%.4f bat=%d",
-            cached->ppo2_control_mode, cached->calibration_mode,
-            cached->depth_compensation,
-            (double)cached->pid_kp, (double)cached->pid_ki,
-            (double)cached->pid_kd,
-            cached->battery_type);
-        rc = 0;
+        /* Mark loaded in every outcome: on failure the cache deliberately
+         * holds the safe defaults (documented fallback), and the head must
+         * not refuse settings DIDs forever on a degraded flash. */
+        *getLoadedFlag() = true;
     }
 
     return rc;

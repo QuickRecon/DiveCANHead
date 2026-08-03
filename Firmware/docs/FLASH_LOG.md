@@ -297,6 +297,23 @@ against eviction for the walk's duration (`maint_arena_log_index_set_building`)
 so a concurrent OTA/factory/autotune op can't clobber the half-built index —
 that op is briefly denied (`-EBUSY`) and retries instead.
 
+Three hardening rules added after the 2026-08-01 HIL release run:
+
+- Index-backed selectors also answer **0x21 until this boot's boot marker has
+  been flushed** (`flash_log_boot_marker_flushed()`): a resolve racing
+  `flash_log_init` or the boot-time recovery erase would otherwise find zero
+  markers and publish a terminal "no data" `-ENOENT` (NRC 0x22) on a healthy
+  head.
+- The walk **releases/re-acquires the external-flash mutex every 256 entries**
+  (chunked hold, `FL_INDEX_WALK_YIELD_MS`): a full-ring walk is 24–63 s and a
+  continuous hold starved `divecan_rx` of every flash-touching request —
+  including ISO-TP flow control, seen as OTA 0x34 answering nothing at all.
+- A walk whose marker candidates were **all unreadable fails the build with
+  `-EIO`** (NRC 0x31) instead of producing an empty index that resolves to a
+  misleading "no data"; and a worker resolve that exhausts its ~30 s arena
+  `-EBUSY` retry now maps to **0x21**, not 0x31, since it is transient
+  contention rather than a request defect.
+
 **"Download all" bypasses the index entirely.** Selector `0xF106`
 (`flash_log_reader_resolve_all`) resolves a cleared range (begin/end NULL) that
 the streaming cursor walks oldest→newest with no marker index, no arena, and no

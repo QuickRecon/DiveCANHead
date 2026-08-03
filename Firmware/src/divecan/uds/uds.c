@@ -582,6 +582,36 @@ static const struct {
     { UDS_DID_SETTING_COUNT,    readSettingCountDID },
 };
 
+/**
+ * @brief True while `did` needs the runtime-settings cache and the cache is
+ *        not yet loaded from NVS.
+ *
+ * During the boot window the cache holds compile-time defaults; answering a
+ * settings-value read (or accepting a write that the pending load would
+ * clobber) would present those defaults as the stored configuration. Gated
+ * requests get NRC 0x21 (busyRepeatRequest) so a polling client simply
+ * retries until the load lands (~2-3 s after power-on). Info/label/count
+ * DIDs are compile-time data and stay available throughout boot.
+ *
+ * @param did              DID from the request
+ * @param includeSaveRange Also gate the persist (0x9350+) range — write path
+ * @return true when the request must be refused with NRC 0x21
+ */
+static bool settingDidBusy(uint16_t did, bool includeSaveRange)
+{
+    bool busy = false;
+
+    if (!runtime_settings_is_loaded()) {
+        busy = ((did >= UDS_DID_SETTING_VALUE_BASE) &&
+            (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())));
+        if (includeSaveRange && !busy) {
+            busy = ((did >= UDS_DID_SETTING_SAVE_BASE) &&
+                (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount())));
+        }
+    }
+    return busy;
+}
+
 static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
                uint16_t responseOffset, uint16_t *bytesWritten)
 {
@@ -670,7 +700,12 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx,
             requestOffset += UDS_DID_SIZE;
 
             uint16_t bytesWritten = 0U;
-            if (!ReadSingleDID(ctx, did, responseOffset, &bytesWritten)) {
+            if (settingDidBusy(did, false)) {
+                /* Settings cache not yet loaded from NVS — see settingDidBusy. */
+                OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_BUSY_REPEAT_REQUEST);
+                UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_BUSY_REPEAT_REQUEST);
+                processingOk = false;
+            } else if (!ReadSingleDID(ctx, did, responseOffset, &bytesWritten)) {
                 OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 UDS_SendNegativeResponse(ctx, UDS_SID_READ_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
                 processingOk = false;
@@ -972,6 +1007,14 @@ static bool writeSolenoidOverrideDID(UDSContext_t *ctx,
     } else if (SOLENOID_OVERRIDE_MAGIC != request_data[UDS_DATA_IDX + 1U]) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+    } else if (!ppo2_control_mode_latched()) {
+        /* Early-boot window: the mode accessor still returns its static OFF
+         * default, which is not authoritative. Refusing here means a client
+         * racing a (crash-)reboot can never fire a solenoid on a head whose
+         * persisted mode is MK15/PID (seen as a false-positive override
+         * acceptance in the 2026-08-01 HIL release run). */
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_BUSY_REPEAT_REQUEST);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_BUSY_REPEAT_REQUEST);
     } else if (PPO2CONTROL_OFF != ppo2_control_get_active_mode()) {
         /* Control loop owns the solenoid while running — refuse so the two can
          * never contend for the shared deadman timer / GPIOs. */
@@ -1747,7 +1790,13 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
             (void)writeCellBroadcastDID(ctx, did, request_data, request_length);
         }
 #endif
-        else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
+        else if (settingDidBusy(did, true)) {
+            /* Settings cache not yet loaded — a save would be raced by the
+             * pending NVS load, and a volatile write would be clobbered by
+             * it. NRC 0x21: retry once the load lands. */
+            OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_BUSY_REPEAT_REQUEST);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_BUSY_REPEAT_REQUEST);
+        } else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
                (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))) {
             (void)writeSettingSaveDID(ctx, did, request_data, request_length);
         } else if ((did >= UDS_DID_SETTING_VALUE_BASE) &&

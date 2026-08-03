@@ -160,6 +160,22 @@ PPO2ControlMode_t ppo2_control_get_active_mode(void)
     return *getActiveMode();
 }
 
+/** True once ppo2_control_init() has latched the mode from NVS. Before that
+ *  getActiveMode() returns the static OFF default, which must never be
+ *  treated as an authoritative "control is off" answer (e.g. by the 0xF242
+ *  solenoid-override gate — a client racing a reboot could otherwise fire a
+ *  solenoid on a head whose persisted mode is MK15/PID). */
+static bool *getModeLatched(void)
+{
+    static bool modeLatched;
+    return &modeLatched;
+}
+
+bool ppo2_control_mode_latched(void)
+{
+    return *getModeLatched();
+}
+
 /** Depth compensation enable, latched at init from runtime_settings. */
 static bool *getDepthCompEnabled(void)
 {
@@ -1002,6 +1018,9 @@ void ppo2_control_init(void)
         (double)settings.pid_kp, (double)settings.pid_ki,
         (double)settings.pid_kd);
 
+    /* Mode is now authoritative — the 0xF242 override gate may trust it. */
+    *getModeLatched() = true;
+
     /* Release the control threads now the mode/depth-comp/PID state are loaded;
      * before this they must not read the (still-default OFF) mode and suspend.
      * One give per waiting thread (max-count semaphore holds them if init runs
@@ -1015,6 +1034,7 @@ void ppo2_control_init(void)
 
 void ppo2_control_init(void) { /* No solenoid on this variant — nothing to init. */ }
 PPO2ControlMode_t ppo2_control_get_active_mode(void) { return PPO2CONTROL_OFF; }
+bool ppo2_control_mode_latched(void) { return true; /* OFF is compile-time truth here */ }
 void ppo2_control_get_snapshot(PPO2ControlSnapshot_t *out)
 {
     if (out != NULL) {

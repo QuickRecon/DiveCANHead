@@ -1,0 +1,77 @@
+name: KiCad ERC + DRC
+
+# Validates the EDA source (schematics and boards) with KiCad's own
+# Electrical Rules Check and Design Rules Check, headlessly via kicad-cli.
+#
+# Blocking: the job fails on any ERROR-severity violation. Checks the project
+# deliberately downgrades to "warning" (silk overlaps, courtyard notes, etc.)
+# do not fail the build; only real errors do. Zones are refilled before DRC so
+# the result reflects true geometry regardless of the stored fill, and
+# --schematic-parity asserts the board footprints still match the schematic.
+#
+# Reports (JSON) are always uploaded as artifacts, including on failure.
+
+on:
+  push:
+    branches: [master]
+    paths: ['EDA/**']
+  pull_request:
+    paths: ['EDA/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kicad-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  erc-drc:
+    name: ERC + DRC (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    # Board format is v20241229 with KiCad-10 library content; match locally
+    # validated kicad-cli 10.x. Bump the tag in lockstep with the design tool.
+    container:
+      image: kicad/kicad:10.0
+      options: --user root
+    env:
+      HOME: /tmp
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Main
+            dir: EDA/Main PCB
+            base: DiveCAN Head2
+          - name: Jr
+            dir: EDA/Jr PCB
+            base: Jr DiveCANHead
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ERC (schematic)
+        run: |
+          kicad-cli sch erc \
+            --severity-error --exit-code-violations \
+            --format json -o "erc-${{ matrix.name }}.json" \
+            "${{ matrix.dir }}/${{ matrix.base }}.kicad_sch"
+
+      - name: DRC (board)
+        run: |
+          kicad-cli pcb drc \
+            --schematic-parity --refill-zones --all-track-errors \
+            --severity-error --exit-code-violations \
+            --format json -o "drc-${{ matrix.name }}.json" \
+            "${{ matrix.dir }}/${{ matrix.base }}.kicad_pcb"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kicad-reports-${{ matrix.name }}
+          path: |
+            erc-${{ matrix.name }}.json
+            drc-${{ matrix.name }}.json
+          if-no-files-found: warn

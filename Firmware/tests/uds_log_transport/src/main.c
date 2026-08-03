@@ -104,6 +104,13 @@ void UDS_SendResponse(UDSContext_t *ctx)
     ++cap.send_calls;
 }
 
+bool flash_log_boot_marker_flushed(void)
+{
+    /* The transport tests exercise selector/stream framing on a pre-stamped
+     * test FCB; the boot-marker readiness gate is always satisfied here. */
+    return true;
+}
+
 void flash_log_pause(void)
 {
     ++cap.pause_calls;

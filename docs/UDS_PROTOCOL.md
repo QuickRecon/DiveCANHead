@@ -111,6 +111,7 @@ Address format: 4-byte address, 4-byte length (0x44)
 | 0x12 | subfunctionNotSupported | Invalid session type |
 | 0x13 | incorrectMessageLength | Request length invalid |
 | 0x14 | responseTooLong | Response exceeds buffer |
+| 0x21 | busyRepeatRequest | Transient boot/contention window — retry the identical request. Sent by settings-value DIDs until the NVS load lands, 0xF242 until the control mode is latched, and flash-log selectors until the boot marker is flushed / while the index worker walks |
 | 0x22 | conditionsNotCorrect | Wrong session for service |
 | 0x24 | requestSequenceError | Invalid transfer sequence |
 | 0x31 | requestOutOfRange | Invalid DID or value |

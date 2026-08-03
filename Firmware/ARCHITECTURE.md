@@ -112,7 +112,36 @@ of scope — all 4 solenoid channels, `CONFIG_SOL_FLUSH_TIME=3000`); the former
 
 Runtime settings are validated against compile-time tables — e.g., PID mode is only valid if `HAS_O2_SOLENOID` is set. The valid-value tables are const arrays gated by `#ifdef CONFIG_*`, so the compiler eliminates invalid options entirely.
 
-## Solenoid Abstraction (Three Layers)
+### Boot readiness gating (settings / mode / log selectors)
+
+The UDS server (`divecan_rx`) starts at scheduler start, before `main()` has
+run any flash work, so early requests used to be answered from caches still
+holding compile-time defaults. The 2026-08-01 HIL release run showed all
+three consequences on hardware: settings reads returning variant defaults
+("NVS persistence broken"), a 0xF242 solenoid override accepted because the
+control mode still read its static OFF default, and log selectors resolving a
+ring the current boot had not stamped yet. Three gates now close the window,
+each answering NRC 0x21 (busyRepeatRequest) so clients poll instead of
+consuming a wrong answer:
+
+- **Settings-value DIDs** (`0x9130+N` R/W, `0x9350+N` W) gate on
+  `runtime_settings_is_loaded()`. The load itself is now idempotent (only the
+  first call touches NVS) and runs as the first flash operation in `main()`,
+  so the window is tens of milliseconds; the boot preamble reads the cache
+  instead of re-loading (the old re-load re-zeroed the cache mid-boot).
+- **Solenoid override 0xF242** gates on `ppo2_control_mode_latched()` — the
+  boot-latched mode is only trusted once `ppo2_control_init()` has read it
+  from NVS.
+- **Index-backed flash-log selectors** (RoutineControl, except Select-All)
+  gate on `flash_log_boot_marker_flushed()` so a selector racing
+  `flash_log_init` (or the boot-time recovery erase) can never publish a
+  terminal "no data" for a healthy head.
+
+Additionally the log-index walk releases/re-acquires the shared external-
+flash mutex every 256 entries (`FL_INDEX_WALK_YIELD_MS`): a full-ring walk
+measures 24–63 s, and holding the mutex throughout starved `divecan_rx` of
+ISO-TP flow control — observed as OTA 0x34 requests receiving no response at
+all.
 
 1. **Devicetree binding** (`quickrecon,solenoid-driver`): Declares GPIO pins, counter peripheral, and max-on-time-us. Hardware description only.
 

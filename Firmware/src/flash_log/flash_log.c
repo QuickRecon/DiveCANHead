@@ -207,6 +207,17 @@ static bool fl_is_marker_type(uint8_t type)
  * bumping per batch would force a full-ring re-walk on nearly every selector. */
 static atomic_t fl_index_epoch = ATOMIC_INIT(0);
 
+/* Set once this boot's FL_TYPE_BOOT_MARKER has actually been flushed to the
+ * ring. Index-backed log-download selectors gate on it (NRC 0x21 while
+ * clear) so a selector racing boot can never walk a marker-less ring and
+ * publish a terminal "no data" -ENOENT for a perfectly healthy head. */
+static atomic_t fl_boot_marker_flushed = ATOMIC_INIT(0);
+
+bool flash_log_boot_marker_flushed(void)
+{
+    return (0 != atomic_get(&fl_boot_marker_flushed));
+}
+
 uint32_t flash_log_internal_index_epoch(void)
 {
     return (uint32_t)atomic_get(&fl_index_epoch);
@@ -874,6 +885,9 @@ static void fl_flush_marker_or_text(FlashLogDest_t dest, uint8_t type,
         /* A new boot/dive key is now on flash — any index built before
          * this point no longer resolves it. */
         fl_bump_index_epoch();
+        if (FL_TYPE_BOOT_MARKER == type) {
+            (void)atomic_set(&fl_boot_marker_flushed, 1);
+        }
     }
 }
 

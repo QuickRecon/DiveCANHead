@@ -368,6 +368,18 @@ Label DID range ends at `0x9200` (`UDS_DID_SETTING_LABEL_END`).
 A **write** to `0x9130 + N` stages the value in RAM (volatile, 8-byte BE
 payload). A write to `0x9350 + N` persists it to NVS.
 
+**Boot readiness:** reads and writes of `0x9130 + N`, and writes of
+`0x9350 + N`, answer NRC `0x21` (busyRepeatRequest) until the boot-time NVS
+load has populated the runtime-settings cache (~2-3 s after power-on). Before
+this gate existed, a client polling across a reboot could read the variant's
+compile-time defaults presented as stored values (2026-08-01 HIL release
+failures). Info (`0x9110`), label (`0x9150`) and count (`0x9100`) DIDs are
+compile-time data and stay readable throughout boot. The solenoid-override
+DID `0xF242` likewise answers `0x21` until `ppo2_control_init()` has latched
+the persisted control mode, and the flash-log range selectors (RoutineControl
+`0xF10x`, except Select-All) answer `0x21` until the current boot's boot
+marker has been flushed to the log ring.
+
 ### Setting Label DID Calculation (0x9150 + X)
 
 ```
