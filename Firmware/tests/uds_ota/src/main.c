@@ -190,6 +190,11 @@ CalibrationMode_t runtime_settings_get_calibration_mode(void)
     return CAL_ANALOG_ABSOLUTE;
 }
 
+bool runtime_settings_is_loaded(void)
+{
+    return true;
+}
+
 void ISOTP_TxQueue_Poll(uint32_t currentTime)
 {
     ARG_UNUSED(currentTime);

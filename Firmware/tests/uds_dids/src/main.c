@@ -337,6 +337,11 @@ PPO2ControlMode_t ppo2_control_get_active_mode(void)
     return stub.control_mode;
 }
 
+bool ppo2_control_mode_latched(void)
+{
+    return true;
+}
+
 Status_t ppo2_autotune_start(const AutotuneParams_t *params)
 {
     ++stub.autotune_start_calls;
@@ -360,6 +365,11 @@ bool calibration_is_running(void)
 CalibrationMode_t runtime_settings_get_calibration_mode(void)
 {
     return CAL_ANALOG_ABSOLUTE;
+}
+
+bool runtime_settings_is_loaded(void)
+{
+    return true;
 }
 
 /* ---- cell broadcast stand-in ---- */
