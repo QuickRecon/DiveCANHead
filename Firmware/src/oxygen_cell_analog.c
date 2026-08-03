@@ -21,6 +21,7 @@
 #include "errors.h"
 #include "common.h"
 #include "heartbeat.h"
+#include "runtime_settings.h"
 
 LOG_MODULE_REGISTER(cell_analog, LOG_LEVEL_INF);
 
@@ -40,10 +41,32 @@ LOG_MODULE_REGISTER(cell_analog, LOG_LEVEL_INF);
 
 /* Timeout for the zbus_pub_checked() calls in this file. */
 static const uint32_t ZBUS_PUB_TIMEOUT_MS = 100U;
+static const uint32_t RUNTIME_SETTINGS_BOOT_WAIT_TIMEOUT_MS = 10000U;
+static const uint32_t RUNTIME_SETTINGS_BOOT_WAIT_POLL_MS = 10U;
 
 /* Scale to render the calibration coefficient's fractional part as 6 decimal
  * digits in the "%d.%06d" log format. */
 static const Numeric_t CAL_COEFF_FRACTION_SCALE = 1000000.0f;
+
+/* Runtime settings must be the first settings subtree loaded at boot.  Analog
+ * cell threads can run during main()'s boot-indicator sleeps, so defer their
+ * calibration-store load until main has populated the runtime cache. */
+static bool analog_wait_runtime_settings_loaded(void)
+{
+    int64_t deadline = k_uptime_get() + RUNTIME_SETTINGS_BOOT_WAIT_TIMEOUT_MS;
+
+    while (!runtime_settings_is_loaded()) {
+        if (k_uptime_get() >= deadline) {
+            LOG_WRN("Runtime settings not loaded within %u ms; skipping analog cal load",
+                    RUNTIME_SETTINGS_BOOT_WAIT_TIMEOUT_MS);
+            return false;
+        }
+
+        (void)k_msleep(RUNTIME_SETTINGS_BOOT_WAIT_POLL_MS);
+    }
+
+    return true;
+}
 
 /*
  * ADC channel mapping now lives in devicetree, not here. The board DTS defines
@@ -232,8 +255,10 @@ static void analog_cell_thread(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    /* Load calibration coefficient from NVS */
-    analog_load_cal(cell);
+    if (analog_wait_runtime_settings_loaded()) {
+        /* Load calibration coefficient from NVS */
+        analog_load_cal(cell);
+    }
 
     /* We lodge a failure datapoint while we spool up, ADC takes an
      * indeterminate (hopefully smol) time to spool up and we might not
