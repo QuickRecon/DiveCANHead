@@ -19,10 +19,8 @@
 
 LOG_MODULE_REGISTER(uds_log_push, LOG_LEVEL_INF);
 
-/* Queue configuration. Depth 6 (256 B/item): trimmed from 10 to free 1 KiB
- * of RAM for the fixed libc malloc arena (see prj.conf) — overflow already
- * degrades gracefully by dropping the oldest queued push. */
-#define UDS_LOG_QUEUE_LENGTH 6U
+/* Queue configuration */
+#define UDS_LOG_QUEUE_LENGTH 10U
 
 /* Minimum idle time (ms) after the last addressed UDS-dialog activity before a
  * broadcast log push may be sent. A push that lands while the handset is still
