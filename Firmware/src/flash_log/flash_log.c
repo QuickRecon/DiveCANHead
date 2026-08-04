@@ -633,12 +633,23 @@ static void fl_emit_drop_marker_if_any(FlashLogDest_t dest)
  * accumulated in a packed RAM buffer and flushed to flash as a single burst
  * every FL_BATCH_WINDOW_MS (or sooner if the buffer fills, or immediately for
  * markers). Between bursts the flash idles into DPD. The buffer is packed by
- * actual entry size (not the 96 B fixed msgq slot) so 2 s of telemetry fits in
- * a few KB of the limited SRAM. Cost: up to ~2 s of routine telemetry can be
- * lost on a hard power-cut — acceptable for an after-action dive log; dive
- * start/end and boot markers are flushed immediately so they are never lost. */
+ * actual entry size (not the 96 B fixed msgq slot) so a burst of telemetry
+ * fits in a couple of KB of the limited SRAM. Cost: up to FL_BATCH_WINDOW_MS
+ * of routine telemetry can be lost on a hard power-cut — acceptable for an
+ * after-action dive log; dive start/end and boot markers are flushed
+ * immediately so they are never lost.
+ *
+ * Sized 2048 (halved from 4096) to reclaim SRAM on the fullest variant
+ * (Poseidon_Aren linked at 100.00% of the 64 KB RAM region — no headroom for
+ * any future static allocation). This is a staging buffer only, so the trim
+ * costs write batching, never data: a full buffer flushes early via
+ * fl_batch_append()'s bounds check, so the effect is more frequent NOR bursts
+ * under sustained load, not dropped entries. A single packed entry is at most
+ * FL_BATCH_HDR_BYTES + CONFIG_FLASH_LOG_MAX_ENTRY_BYTES (12 + 96 = 108 B), so
+ * the buffer still holds ~19 worst-case entries and no entry can ever be too
+ * large to stage. */
 #define FL_BATCH_WINDOW_MS  2000
-#define FL_BATCH_BUF_BYTES  4096
+#define FL_BATCH_BUF_BYTES  2048
 /* Packed entry: dest(1) type(1) length(2,LE) ts_us(8,LE) payload(length). */
 #define FL_BATCH_HDR_BYTES  12U
 static uint8_t fl_batch_buf[FL_BATCH_BUF_BYTES];
