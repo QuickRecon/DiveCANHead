@@ -26,6 +26,7 @@
 #include "boot_history.h"
 #include "common.h"
 #include "firmware_confirm.h"
+#include "watchdog_feeder.h"
 #ifdef CONFIG_FACTORY_IMAGE
 #include "factory_image.h"
 #endif
@@ -434,6 +435,27 @@ Status_t main(void)
 {
     Status_t ret = 0;
 
+    /* Re-arm the IWDG to the application's window BEFORE any flash work.
+     *
+     * MCUBoot arms the IWDG at CONFIG_BOOT_WATCHDOG_TIMEOUT_MS (8 s) and that
+     * programming survives the chainload — the IWDG sits outside the RCC reset
+     * domain and cannot be disabled, only re-programmed or fed. The boot path
+     * below then spends far longer than 8 s in synchronous, non-yielding SPI
+     * transfers against the external NOR (measured on Poseidon_Aren: 3.5 s in
+     * runtime_settings_load's NVS walk alone, plus boot_history_init and the
+     * flash-log FCB mount). The watchdog_feeder thread cannot rescue this: it
+     * runs at priority 14 while main runs at CONFIG_MAIN_THREAD_PRIORITY=0,
+     * so it can never pre-empt main, and main never blocks during polled SPI.
+     * The result was an 8 s IWDG reset loop that no amount of raising
+     * WDT_TIMEOUT_MS could fix, because the app never reached wdt_setup().
+     *
+     * This first kick installs the 32 s timeout, runs wdt_setup() (which
+     * re-programs PR/RLR and verifies them against silicon) and feeds once,
+     * so the whole boot sequence runs under the application's window rather
+     * than the bootloader's. Subsequent kicks below bound each long step
+     * individually; the feeder thread takes over from its first lap. */
+    watchdog_kick();
+
     /* Visual boot marker (fast LED burst) before any flash/FCB work, so a reset
      * loop is obvious by eye: healthy boot = one burst then steady heartbeat;
      * reset loop = burst repeating at the reset period. */
@@ -449,11 +471,16 @@ Status_t main(void)
      * idempotent cache copies. */
     RuntimeSettings_t boot_settings = RUNTIME_SETTINGS_DEFAULT;
     (void)runtime_settings_load(&boot_settings);
+    /* NVS walks the settings partition 8 bytes per SPI transaction and the
+     * cost scales with how full the partition is, so bound this step on its
+     * own rather than letting it share a window with the mounts below. */
+    watchdog_kick();
 
     /* Persist the reset cause and any noinit crash before mounting the much
      * larger FCB log rings. A successful crash write acknowledges the retained
      * RAM slot; failures leave it intact so the next boot can retry. */
     (void)boot_history_init();
+    watchdog_kick();
 
 #ifdef CONFIG_FLASH_LOG
     /* Mount FCBs and bump the persisted boot counter. Record the boot

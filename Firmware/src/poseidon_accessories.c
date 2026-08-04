@@ -342,9 +342,20 @@ static const struct i2c_target_callbacks target_cb = {
     .write_received = target_write_received,
     .read_processed = target_read_processed,
 #if defined(CONFIG_I2C_TARGET_BUFFER_MODE)
-    /* Not used by this driver (target_stop parses the raw byte buffer
-     * itself); explicit NULL so the initializer stays complete if buffer
-     * mode is ever enabled for this board. */
+    /* CONFIG_I2C_TARGET_BUFFER_MODE IS enabled on this board, but not by us —
+     * drivers/i2c/Kconfig.it8xxx2 re-declares the symbol with `default y`
+     * inside a bare `if I2C_TARGET` block with no ITE SoC guard, and Kconfig
+     * merges symbol definitions globally, so it leaks into every build that
+     * sets CONFIG_I2C_TARGET=y. (An earlier comment here assumed the opposite
+     * and described the option as "never enabled for this board".)
+     *
+     * NULL is nonetheless safe: none of the STM32 I2C drivers reference
+     * buf_write_received / buf_read_requested at all — buffer mode is simply
+     * unimplemented for this SoC, so unlike the byte-mode read callbacks
+     * above (which the driver DOES call without a NULL check) these can never
+     * be dereferenced. They stay listed only to keep the designated
+     * initializer complete under S6871. target_stop parses the raw byte
+     * buffer itself, so buffer mode would be unwanted even if it existed. */
     .buf_write_received = NULL,
     .buf_read_requested = NULL,
 #endif
