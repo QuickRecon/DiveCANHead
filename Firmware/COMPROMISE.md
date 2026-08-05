@@ -485,6 +485,39 @@ is the audit trail if anything ever drifts in the field.
   `BOOT_WATCHDOG_FEED` is verified to keep the hardware IWDG fed
   through the full slot0 SHA-256 walk + chainload sequence — on
   silicon with a stopwatch.
+
+  **2026-08-05 update — the original blocker was probably a config bug
+  that is now fixed.** `CONFIG_BOOT_WATCHDOG_FEED=y` landed in
+  `f7955aaf` (2026-05-13), but `CONFIG_BOOT_WATCHDOG_TIMEOUT_MS` was
+  added in `a0fbf8e1` (2026-05-14) — the *same commit* that wrote this
+  entry. So at the time of the `IWDG_SW=0` failure MCUBoot was still on
+  upstream's 300 000 ms default, which **cannot be installed** on the
+  L4 IWDG (max ~32 s); `wdt_install_timeout` returned `-22` and MCUBoot
+  ran with no watchdog protection whatsoever. The hardware IWDG's
+  ~410 ms default was therefore never fed during the SHA-256 walk,
+  which fully accounts for the bootloop.
+
+  That is now fixed: with `BOOT_WATCHDOG_TIMEOUT_MS=8000` the install
+  succeeds, confirmed on silicon 2026-08-05 by reading the IWDG
+  registers and finding MCUBoot's programming (`PR=4`, `RLR=3999`,
+  i.e. 8.0 s) still in place when the application had not yet reached
+  `wdt_setup()`.
+
+  Two things still need measuring before flipping the bit:
+  1. **Power-up → MCUBoot's `wdt_install_timeout`.** With `IWDG_SW=0`
+     the hardware IWDG is already counting from power-up at its
+     reset default (~410–512 ms depending on LSI trim). If MCUBoot's
+     watchdog init happens later than that, the part bricks in exactly
+     the old way. Reset-to-`main()` measured 1.76 s, but the install
+     point inside that is unmeasured.
+  2. **Low-power behaviour.** `IWDG_SW=0` means the IWDG can never be
+     stopped. The unit currently ships `IWDG_STDBY=1` (counter runs in
+     Standby), so a sleeping head could be reset by the watchdog
+     instead of staying asleep. NOTE this is already a live question
+     with `IWDG_SW=1`, since the application starts the IWDG and the
+     standby HIL probe only observes a 16 s window against a 32 s
+     timeout — a periodic wake would be invisible to it. Worth
+     resolving alongside the standby investigation.
 - Skip option bytes entirely and put the "asserted" config in a
   separate manufacturing-time script run from CI — same effect, less
   runtime risk.

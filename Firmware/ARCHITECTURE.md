@@ -399,7 +399,37 @@ Those PWR pull registers live in the always-on VDD domain. Because VCC never dro
 
 ### Watchdog
 
-The IWDG is enabled in DTS and fed by `src/watchdog_feeder.c` at priority 14 (lower than every safety-critical thread). The feeder only kicks the watchdog when **every registered thread** in the heartbeat module (`include/heartbeat.h`) has advanced its atomic counter since the previous check — a stalled thread → no feed → SoC reset within the IWDG timeout window (8 s, three feed attempts per window).
+The IWDG is enabled in DTS and fed by `src/watchdog_feeder.c` at priority 14 (lower than every safety-critical thread). The feeder only kicks the watchdog when **every registered thread** in the heartbeat module (`include/heartbeat.h`) has advanced its atomic counter since the previous check — a stalled thread → no feed → SoC reset within the IWDG timeout window (32 s, with a 2 s feed interval giving 16 attempts per window).
+
+#### Boot-time ownership of the IWDG
+
+The IWDG is **shared between MCUBoot and the application**, and the handover
+matters:
+
+- MCUBoot arms it at `CONFIG_BOOT_WATCHDOG_TIMEOUT_MS` (8 s,
+  `sysbuild/mcuboot.conf`). That programming **survives the chainload** — the
+  L4 IWDG sits outside the RCC reset domain and cannot be disabled, only
+  re-programmed or fed. The bootloader's window is deliberately tight so a
+  wedged bootloader still resets.
+- The application therefore boots under the *bootloader's* 8 s window until it
+  calls `wdt_setup()`. `main()` calls `watchdog_kick()` as its **first
+  statement** to widen the window to `WDT_TIMEOUT_MS` (32 s) before any flash
+  work, with further kicks after `runtime_settings_load()` and
+  `boot_history_init()`.
+- This ordering is load-bearing, not defensive. Poseidon_Aren spends >8 s in
+  `main()` on synchronous, non-yielding SPI against the external NOR
+  (`runtime_settings_load()`'s NVS walk alone measured 3.5 s; full boot to
+  preamble 11.3 s). Without the early kick the head reset-loops every 8 s and
+  never reaches the application at all. The feeder *thread* cannot cover this
+  gap: it runs at priority 14 while `main` is `CONFIG_MAIN_THREAD_PRIORITY=0`,
+  so it never pre-empts `main`, and `main` does not block during polled SPI.
+  Raising `WDT_TIMEOUT_MS` alone does nothing, because it only takes effect
+  once `wdt_setup()` has run.
+
+`IWDG_SW=1` (software start) is the current option-byte setting; see
+COMPROMISE.md #10 for why `IWDG_SW=0` — safer in principle, since it arms the
+watchdog from power-up — is not yet enabled, and what remains to be measured
+before it can be.
 
 Currently registered slots:
 

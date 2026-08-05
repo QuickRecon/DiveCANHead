@@ -94,9 +94,22 @@ if [[ "$RTT_ONLY" = false ]]; then
     # MCUBoot. nSWBOOT0=0 takes the boot decision from nBOOT0 (=1, main
     # flash) only. This is idempotent — re-running on an already-set
     # chip is a no-op. See COMPROMISE.md #9 for background.
-    echo "=== Ensuring boot-from-flash option bytes ==="
+    #
+    # BOR_LEV=1 raises the brown-out reset threshold to ~2.0 V. Parts ship at
+    # BOR_LEV=0 (~1.7 V), whose falling threshold (~1.66 V typ) is BELOW the
+    # 1.71 V minimum operating voltage, so the core can run below spec without
+    # ever resetting — the condition under which an in-flight flash write can
+    # be left half-completed. That matters more than usual here because there
+    # is no recovery from a corrupt slot0: MCUBoot only looks at the secondary
+    # slot when the trailer asks for a swap/revert, and CONFIG_BOOT_BOOTSTRAP
+    # is not set, so the unit needs an SWD reflash. Level 1 is the lowest
+    # setting that guarantees a reset while staying in the operating range;
+    # levels 3-4 (~2.5/2.8 V) are deliberately avoided because a solenoid can
+    # sag a 1S cell enough to push the 3.3 V LDO out of regulation and cause a
+    # nuisance reset mid-dive.
+    echo "=== Ensuring boot-from-flash + brown-out option bytes ==="
     STM32_Programmer_CLI -c port=SWD mode=UR reset=HWrst \
-                         -ob nSWBOOT0=0 nBOOT0=1 2>&1 \
+                         -ob nSWBOOT0=0 nBOOT0=1 BOR_LEV=1 2>&1 \
                          | tail -3 || true
 fi
 
