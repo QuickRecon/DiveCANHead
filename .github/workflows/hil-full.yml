@@ -30,8 +30,8 @@ jobs:
     timeout-minutes: 180
     env:
       HIL_HOST_ZEPHYR_SDK: ${{ vars.DIVECAN_HIL_ZEPHYR_SDK || '/home/aren/zephyr-sdk-1.0.1' }}
-      HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig/tools/run_hil_host_container.sh' }}
-      HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '0' }}
+      HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/usr/local/sbin/divecan-hil-runner' }}
+      HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '1' }}
       HIL_VARIANT: ${{ inputs.variant || 'Poseidon_Aren' }}
       HIL_BUILD_DIR: build-hil
       HIL_HOST_TEST_RIG_DIR: ${{ vars.DIVECAN_HIL_TEST_RIG_DIR || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig' }}
@@ -70,9 +70,12 @@ jobs:
           git clean -ffdx
 
       - name: Validate runner and trusted harness
+        id: hil_identity
         run: |
           test -x "$HIL_HOST_CONTAINER_RUNNER"
           mkdir -p "$RUNNER_TEMP/divecan-hil"
+          preflight_log="$RUNNER_TEMP/divecan-hil/preflight.log"
+          set +e
           if [ "$HIL_HOST_CONTAINER_RUNNER_USE_SUDO" = "1" ]; then
             sudo "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
@@ -81,7 +84,7 @@ jobs:
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
               --build-dir "$HIL_BUILD_DIR" \
-              --preflight
+              --preflight 2>&1 | tee "$preflight_log"
           else
             "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
@@ -90,8 +93,19 @@ jobs:
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
               --build-dir "$HIL_BUILD_DIR" \
-              --preflight
+              --preflight 2>&1 | tee "$preflight_log"
           fi
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          test_suite_commit=$(awk '/^HIL test suite commit: / { print $5; exit }' "$preflight_log")
+          if [ -z "$test_suite_commit" ]; then
+            echo "::error title=Missing HIL test identity::Could not parse HIL test suite commit from $preflight_log."
+            exit 2
+          fi
+          echo "test_suite_commit=$test_suite_commit" >> "$GITHUB_OUTPUT"
 
       - name: Build, flash, and run HIL inside Docker
         run: |
@@ -106,7 +120,8 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
-              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$log"
+              --build-dir "$HIL_BUILD_DIR" \
+              --test-suite-commit "${{ steps.hil_identity.outputs.test_suite_commit }}" 2>&1 | tee "$log"
           else
             "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
@@ -114,7 +129,8 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
-              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$log"
+              --build-dir "$HIL_BUILD_DIR" \
+              --test-suite-commit "${{ steps.hil_identity.outputs.test_suite_commit }}" 2>&1 | tee "$log"
           fi
           status=${PIPESTATUS[0]}
           set -e

@@ -10,8 +10,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig/tools/run_hil_host_container.sh' }}
-  HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '0' }}
+  HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/usr/local/sbin/divecan-hil-runner' }}
+  HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '1' }}
   HIL_HOST_TEST_RIG_DIR: ${{ vars.DIVECAN_HIL_TEST_RIG_DIR || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig' }}
 
 jobs:
@@ -236,7 +236,8 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
-              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$outer_log"
+              --build-dir "$HIL_BUILD_DIR" \
+              --test-suite-commit "${{ steps.hil_identity.outputs.test_suite_commit }}" 2>&1 | tee "$outer_log"
           else
             "$HIL_HOST_CONTAINER_RUNNER" \
               --workspace "$GITHUB_WORKSPACE" \
@@ -244,7 +245,8 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
-              --build-dir "$HIL_BUILD_DIR" 2>&1 | tee "$outer_log"
+              --build-dir "$HIL_BUILD_DIR" \
+              --test-suite-commit "${{ steps.hil_identity.outputs.test_suite_commit }}" 2>&1 | tee "$outer_log"
           fi
           status=${PIPESTATUS[0]}
           set -e
