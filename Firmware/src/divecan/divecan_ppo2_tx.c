@@ -40,8 +40,6 @@ LOG_MODULE_REGISTER(divecan_ppo2_tx, LOG_LEVEL_INF);
  * well under the 500 ms TX period. Matches firmware_confirm.c. */
 #define CONSENSUS_READ_TIMEOUT_MS 10
 
-static const DiveCANType_t dev_type = DIVECAN_SOLO;
-
 /* Cell array indices */
 static const uint8_t CELL_IDX_0 = 0U;
 static const uint8_t CELL_IDX_1 = 1U;
@@ -64,7 +62,7 @@ static const uint8_t CELL_IDX_2 = 2U;
  * TANK_PRESSURE_STALE_MS substitutes TANK_PRESSURE_FAIL so the handset shows
  * a sensor error instead of a stale value.
  */
-static void tx_tank_pressures(void)
+static void tx_tank_pressures(DiveCANType_t dev_type)
 {
     TankPressureMsg_t tank = {0};
     Status_t rc = zbus_chan_read(&chan_tank_pressure, &tank,
@@ -103,6 +101,12 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
     ARG_UNUSED(p1);
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
+
+    /* Latch the configured broadcast identity once for this boot. This thread
+     * is higher priority than the RX thread, so it may run first — latch here
+     * too rather than assume RX has (idempotent, see divecan_latch_dev_type). */
+    divecan_latch_dev_type();
+    const DiveCANType_t dev_type = divecan_get_dev_type();
 
     while (true) {
         ConsensusMsg_t consensus = {0};
@@ -167,7 +171,7 @@ static void divecan_ppo2_tx_thread(void *p1, void *p2, void *p3)
                 consensus.consensus_ppo2);
 
 #ifdef CONFIG_HAS_PRESSURE_TRANSDUCER
-        tx_tank_pressures();
+        tx_tank_pressures(dev_type);
 #endif
 
         (void)k_msleep(PPO2_TX_INTERVAL_MS);

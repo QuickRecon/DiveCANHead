@@ -109,6 +109,8 @@ of scope — all 4 solenoid channels, `CONFIG_SOL_FLUSH_TIME=3000`); the former
 | Calibration method | NVS settings | UDS write at runtime |
 | Depth compensation | NVS settings | UDS write at runtime |
 | PID Kp/Ki/Kd gains | NVS settings | UDS write at runtime |
+| Battery chemistry | NVS settings | UDS write at runtime |
+| DiveCAN broadcast identity (SOLO/OBOE) | NVS settings | UDS write, **applied on next boot** |
 
 Runtime settings are validated against compile-time tables — e.g., PID mode is only valid if `HAS_O2_SOLENOID` is set. The valid-value tables are const arrays gated by `#ifdef CONFIG_*`, so the compiler eliminates invalid options entirely.
 

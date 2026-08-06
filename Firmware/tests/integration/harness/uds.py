@@ -201,6 +201,11 @@ DID_SETTING_SAVE_BASE: int = 0x9350
 SETTING_INDEX_PPO2_MODE: int = 1
 SETTING_INDEX_CAL_MODE: int = 2
 SETTING_INDEX_DEPTH_COMP: int = 3
+# DiveCAN broadcast identity (SOLO/OBOE). Storage index 11; the integration
+# build uses the default menu order so the wire index matches the storage index.
+SETTING_INDEX_CAN_ID: int = 11
+CAN_ID_SOLO: int = 0
+CAN_ID_OBOE: int = 1
 
 PPO2_MODE_OFF: int = 0
 PPO2_MODE_PID: int = 1

@@ -593,9 +593,18 @@ Setting kinds:
 | 8   | C1 Bcst     | TEXT   | yes      | "Off" / "On"; enforce UART cell broadcast after protocol detection |
 | 9   | C2 Bcst     | TEXT   | yes      | "Off" / "On"; present when cell 2 is configured |
 | 10  | C3 Bcst     | TEXT   | yes      | "Off" / "On"; present when cell 3 is configured |
+| 11  | CAN ID      | TEXT   | yes      | "SOLO" / "OBOE"; DiveCAN broadcast identity — **boot-applied** (persists immediately, changes the announced device type on the next power cycle) |
 
 The table grows over time — query 0x9100 + 0x9110+i at runtime for the
 authoritative list.
+
+**CAN ID (idx 11)** selects the DiveCAN device type the head announces:
+SOLO (type 4) or OBOE (type 2). A monitor/HUD that only accepts an OBOE head
+errors on a SOLO; switching to OBOE lets it operate. Unlike the other settings
+this is *boot-applied*: the firmware latches the identity once at DiveCAN init
+(`divecan_latch_dev_type`) into the device-type nibble of every outgoing frame
+and the RX self-echo filter, so a saved change takes effect only after a reboot.
+Compile-time default is `CONFIG_DIVECAN_IDENTITY_*` (SOLO unless overridden).
 
 ### Log Push (0xA100)
 

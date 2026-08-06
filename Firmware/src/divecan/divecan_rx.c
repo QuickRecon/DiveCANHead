@@ -64,13 +64,42 @@ static const uint8_t DIVECAN_TYPE_MASK = 0x0FU;
 /* Timeout for the zbus publishes issued from this thread's dispatch handlers */
 static const uint32_t ZBUS_PUB_TIMEOUT_MS = 100U;
 
-/* Device identity — compile-time constants */
+/* Device identity — compile-time constants. The .type field is only the
+ * pre-latch fallback; the live device type comes from divecan_get_dev_type()
+ * (the persisted "CAN ID" setting, latched once at RX thread start). */
 static const DiveCANDevice_t device_spec = {
     .name = "DIVECAN",
     .type = DIVECAN_SOLO,
     .manufacturer_id = DIVECAN_MANUFACTURER_GEN,
     .firmware_version = 1,
 };
+
+/* Boot-latched DiveCAN device type (SOLO or OBOE). Encapsulated behind an
+ * accessor so it isn't a bare mutable file-scope global (c:M23_388). Written
+ * exactly once, at the top of the RX thread before the CAN callback/filters go
+ * live, then read-only for the session — no lock needed. */
+static DiveCANType_t *dev_type_slot(void)
+{
+    static DiveCANType_t dev_type = DIVECAN_SOLO;
+    return &dev_type;
+}
+
+DiveCANType_t divecan_get_dev_type(void)
+{
+    return *dev_type_slot();
+}
+
+void divecan_latch_dev_type(void)
+{
+    RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
+    (void)runtime_settings_load(&rs);
+
+    if (DIVECAN_IDENTITY_OBOE == runtime_settings_get_divecan_identity()) {
+        *dev_type_slot() = DIVECAN_OBOE;
+    } else {
+        *dev_type_slot() = DIVECAN_SOLO;
+    }
+}
 
 /* ---- RX message queue (CAN callback → thread) ---- */
 
@@ -218,7 +247,7 @@ static void can_rx_callback(const struct device *dev, struct can_frame *frame,
      * are CAN bus echoes that bxCAN drops in hardware but the
      * native-linux CAN driver delivers anyway.  Filtering here keeps
      * the behaviour consistent across both backends. */
-    if ((frame->id & BYTE_MASK) == (uint8_t)DIVECAN_SOLO) {
+    if ((frame->id & BYTE_MASK) == (uint8_t)divecan_get_dev_type()) {
         /* Echo of our own transmission; nothing to enqueue */
     } else {
         DiveCANMessage_t msg = {
@@ -372,6 +401,12 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
         return;
     }
 
+    /* Latch the configured broadcast identity for this boot before the RX
+     * callback (self-echo filter) or any TX (handshake below) reads it. The
+     * higher-priority ppo2_tx thread may have latched already; this is
+     * idempotent (see divecan_latch_dev_type). */
+    divecan_latch_dev_type();
+
     /* Initialize CAN TX layer */
     Status_t ret = divecan_tx_init(can_dev);
     if (0 != ret) {
@@ -414,7 +449,7 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
     InitializeUDSContexts();
 
     /* Send bus init handshake */
-    txStartDevice(DIVECAN_CONTROLLER, device_spec.type);
+    txStartDevice(DIVECAN_CONTROLLER, divecan_get_dev_type());
 
     LOG_INF("DiveCAN RX thread started");
     heartbeat_register(HEARTBEAT_DIVECAN_RX);
@@ -523,7 +558,7 @@ static void cal_response_cb(const struct zbus_channel *chan)
     CalRequest_t last_req = {0};
     (void)zbus_chan_read(&chan_cal_request, &last_req, K_NO_WAIT);
 
-    txCalResponse(device_spec.type, divecan_result,
+    txCalResponse(divecan_get_dev_type(), divecan_result,
               resp->cell_mv[0], resp->cell_mv[1], resp->cell_mv[CELL_IDX_2],
               last_req.fo2, last_req.pressure_mbar);
 }
@@ -554,7 +589,7 @@ static void RespBusInit(const DiveCANMessage_t *message)
  */
 static void RespPing(const DiveCANMessage_t *message)
 {
-    DiveCANType_t devType = device_spec.type;
+    DiveCANType_t devType = divecan_get_dev_type();
 
     /* We only want to reply to a ping from the handset */
     uint8_t sender = (uint8_t)(message->id & DIVECAN_TYPE_MASK);
@@ -632,7 +667,7 @@ static void RespCal(const DiveCANMessage_t *message)
         /* Acknowledge the calibration request to the handset immediately.
          * The ACK is unconditional (mirrors the STM32 firmware) — the handset
          * expects it even when we drop a duplicate below. */
-        txCalAck(device_spec.type);
+        txCalAck(divecan_get_dev_type());
 
         /* Claim the calibration slot synchronously, here in the RX thread,
          * BEFORE queueing the request. The Shearwater double-shots CAL_REQ
@@ -885,7 +920,7 @@ static bool ProcessMenuMessage(const DiveCANMessage_t *message)
         if (ISOTP_BROADCAST_ADDR == targetType) {
             targetType = (uint8_t)DIVECAN_CONTROLLER;
         }
-        ISOTP_Init(&udsState->isotp_context, device_spec.type,
+        ISOTP_Init(&udsState->isotp_context, divecan_get_dev_type(),
                (DiveCANType_t)targetType, MENU_ID);
         UDS_Init(&udsState->uds_context, &udsState->isotp_context);
         udsState->isotp_initialized = true;

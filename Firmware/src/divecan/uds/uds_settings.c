@@ -35,7 +35,11 @@ LOG_MODULE_REGISTER(uds_settings, LOG_LEVEL_INF);
  * cell-bcst entries. */
 #define SETTING_INDEX_CELL_BCST_END  (SETTING_INDEX_CELL_BCST_BASE + CELL_MAX_COUNT)
 
-#define SETTING_COUNT        SETTING_INDEX_CELL_BCST_END
+/* DiveCAN broadcast identity (SOLO/OBOE). Sits after the per-cell block; kept
+ * <= 15 so it still fits the option-label DID's high-nibble packing. */
+#define SETTING_INDEX_DIVECAN_IDENTITY  SETTING_INDEX_CELL_BCST_END
+
+#define SETTING_COUNT        (SETTING_INDEX_DIVECAN_IDENTITY + 1U)
 
 /* True if @p idx addresses a per-cell enforce-broadcast setting; if so, sets
  * *cell to the zero-based cell number. */
@@ -74,6 +78,7 @@ static bool setting_is_cell_bcst(uint8_t idx, uint8_t *cell)
 #define CAL_MODE_OPTION_COUNT    6U
 #define BOOL_OPTION_COUNT        3U
 #define BATTERY_TYPE_OPTION_COUNT 5U
+#define IDENTITY_OPTION_COUNT    3U
 
 static const char * const fwCommitOptions[FW_COMMIT_OPTION_COUNT] = {
     APP_BUILD_VERSION_STR,
@@ -108,6 +113,13 @@ static const char * const batteryTypeOptions[BATTERY_TYPE_OPTION_COUNT] = {
     "Li 1S",
     "Li 2S",
     "Li 3S",
+    NULL
+};
+
+/* Order MUST match DiveCANIdentity_t enum values (SOLO=0, OBOE=1). */
+static const char * const identityOptions[IDENTITY_OPTION_COUNT] = {
+    "SOLO",
+    "OBOE",
     NULL
 };
 
@@ -211,6 +223,17 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
         .options = boolOptions,
         .option_count = 2
     },
+    /* Index 11: DiveCAN broadcast identity (SOLO/OBOE). Boot-applied — the
+     * value persists immediately but the announced device type changes on the
+     * next power cycle (see runtime_settings_get_divecan_identity). */
+    {
+        .label = "CAN ID",
+        .kind = SETTING_KIND_TEXT,
+        .editable = true,
+        .max_value = (uint64_t)DIVECAN_IDENTITY_COUNT - 1U,
+        .options = identityOptions,
+        .option_count = (uint8_t)DIVECAN_IDENTITY_COUNT
+    },
 };
 
 /* The per-cell broadcast settings block above hard-codes one entry per cell. */
@@ -233,6 +256,7 @@ BUILD_ASSERT(SETTING_INDEX_PID_KI         == 5U, "PID Ki must be storage index 5
 BUILD_ASSERT(SETTING_INDEX_PID_KD         == 6U, "PID Kd must be storage index 6");
 BUILD_ASSERT(SETTING_INDEX_BATTERY_TYPE   == 7U, "Battery must be storage index 7");
 BUILD_ASSERT(SETTING_INDEX_CELL_BCST_BASE == 8U, "Cell-broadcast block must start at storage index 8");
+BUILD_ASSERT(SETTING_INDEX_DIVECAN_IDENTITY == 11U, "CAN ID must be storage index 11");
 
 /* ---- Handset menu order (per-variant, CONFIG_MENU_ORDER_n) ----
  * The handset renders only the first ~5 settings it enumerates. The Kconfig
@@ -450,6 +474,9 @@ uint64_t UDS_GetSettingValue(uint8_t index)
         case SETTING_INDEX_BATTERY_TYPE:
             result = (uint64_t)rs.battery_type;
             break;
+        case SETTING_INDEX_DIVECAN_IDENTITY:
+            result = (uint64_t)rs.divecan_identity;
+            break;
         default:
             OP_ERROR_DETAIL(OP_ERR_CONFIG, index);
             break;
@@ -515,6 +542,9 @@ bool UDS_SetSettingValue(uint8_t index, uint64_t value)
             case SETTING_INDEX_BATTERY_TYPE:
                 rs.battery_type = (BatteryType_t)value;
                 break;
+            case SETTING_INDEX_DIVECAN_IDENTITY:
+                rs.divecan_identity = (DiveCANIdentity_t)value;
+                break;
             default:
                 break;
             }
@@ -553,6 +583,7 @@ static bool setting_index_to_field(uint8_t index, RuntimeSettingField_t *field)
         case SETTING_INDEX_PID_KI:       *field = RT_FIELD_KI;      break;
         case SETTING_INDEX_PID_KD:       *field = RT_FIELD_KD;      break;
         case SETTING_INDEX_BATTERY_TYPE: *field = RT_FIELD_BATTERY; break;
+        case SETTING_INDEX_DIVECAN_IDENTITY: *field = RT_FIELD_IDENTITY; break;
         default:                         ok = false;                break;
         }
     }

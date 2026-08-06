@@ -169,6 +169,29 @@ typedef enum {
 #define BATTERY_TYPE_DEFAULT BATTERY_TYPE_LI2S
 #endif
 
+/* ---- DiveCAN broadcast identity ----
+ * Selects the DiveCAN device type the head announces on the bus. Defaults from
+ * CONFIG_DIVECAN_IDENTITY_* but is runtime-overridable via UDS so the same
+ * firmware works with monitors that only accept an OBOE head. Kept as a
+ * self-contained enum (0-based, contiguous) so this general settings module
+ * stays decoupled from the DiveCAN protocol's DiveCANType_t (the DiveCAN layer
+ * maps these to DIVECAN_SOLO / DIVECAN_OBOE at boot). The change is boot-applied:
+ * the identity is latched once at DiveCAN init, so a save takes effect on the
+ * next power cycle. */
+
+/** @brief DiveCAN broadcast identity (device type announced on the bus). */
+typedef enum {
+    DIVECAN_IDENTITY_SOLO = 0, /**< SOLenoid and Oxygen; DiveCAN device type 4 */
+    DIVECAN_IDENTITY_OBOE = 1, /**< Oxygen BOard and Electronics; device type 2 */
+    DIVECAN_IDENTITY_COUNT
+} DiveCANIdentity_t;
+
+#if defined(CONFIG_DIVECAN_IDENTITY_OBOE)
+#define DIVECAN_IDENTITY_DEFAULT DIVECAN_IDENTITY_OBOE
+#else
+#define DIVECAN_IDENTITY_DEFAULT DIVECAN_IDENTITY_SOLO
+#endif
+
 /* ---- PID Gain bounds ----
  * Used for both UDS write validation and post-load NVS validation.
  * The upper bound is a sanity guard against malformed / corrupted writes —
@@ -204,6 +227,7 @@ typedef struct {
     Numeric_t pid_kd;                   /**< PID derivative gain (HAS_O2_SOLENOID variants) */
     BatteryType_t battery_type;         /**< Battery chemistry, drives low-battery threshold */
     bool enforce_broadcast[CELL_MAX_COUNT]; /**< Per-cell: force the UART cell into broadcast at boot */
+    DiveCANIdentity_t divecan_identity; /**< DiveCAN device type announced on the bus (boot-applied) */
 } RuntimeSettings_t;
 
 #define RUNTIME_SETTINGS_DEFAULT {                                       \
@@ -215,6 +239,7 @@ typedef struct {
     .pid_kd = PID_DEFAULT_KD,                                         \
     .battery_type = BATTERY_TYPE_DEFAULT,                             \
     .enforce_broadcast = {0},                                        \
+    .divecan_identity = DIVECAN_IDENTITY_DEFAULT,                     \
 }
 
 /* ---- Validation ---- */
@@ -261,6 +286,7 @@ typedef enum {
     RT_FIELD_KD,        /**< pid_kd -> "rt/kd" */
     RT_FIELD_BATTERY,   /**< battery_type -> "rt/bat" */
     RT_FIELD_BCST,      /**< enforce_broadcast[] -> "rt/bcst" (whole array, one key) */
+    RT_FIELD_IDENTITY,  /**< divecan_identity -> "rt/ident" */
 } RuntimeSettingField_t;
 
 /**
@@ -337,5 +363,17 @@ BatteryType_t runtime_settings_get_battery_type(void);
  *         falls back to the default if the settings cache is uninitialised.
  */
 CalibrationMode_t runtime_settings_get_calibration_mode(void);
+
+/**
+ * @brief Return the currently-cached DiveCAN broadcast identity.
+ *
+ * Reads from the in-memory cache populated by runtime_settings_load(). The
+ * DiveCAN layer latches this once at init and maps it to DIVECAN_SOLO /
+ * DIVECAN_OBOE, so a runtime change takes effect on the next boot.
+ *
+ * @return Cached DiveCANIdentity_t; falls back to DIVECAN_IDENTITY_DEFAULT
+ *         if the settings cache has not been initialised yet.
+ */
+DiveCANIdentity_t runtime_settings_get_divecan_identity(void);
 
 #endif

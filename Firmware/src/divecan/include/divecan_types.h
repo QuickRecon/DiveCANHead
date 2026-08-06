@@ -183,6 +183,31 @@ typedef struct {
     uint8_t firmware_version;
 } DiveCANDevice_t;
 
+/**
+ * @brief Return the DiveCAN device type this head broadcasts as (SOLO/OBOE).
+ *
+ * Boot-latched: the DiveCAN RX thread captures the persisted "CAN ID" runtime
+ * setting once at init and maps it to DIVECAN_SOLO / DIVECAN_OBOE. Every
+ * outgoing frame's device-type nibble and the self-echo RX filter read this,
+ * so a runtime change takes effect on the next power cycle. Defaults to
+ * DIVECAN_SOLO before the latch runs.
+ *
+ * @return The active DiveCANType_t identity for this boot.
+ */
+DiveCANType_t divecan_get_dev_type(void);
+
+/**
+ * @brief Latch this boot's DiveCAN identity from the persisted runtime setting.
+ *
+ * Ensures the runtime-settings cache is populated (idempotent load) then maps
+ * the "CAN ID" setting onto the DiveCANType_t returned by divecan_get_dev_type().
+ * Must be called from thread context (it may perform the first NVS load) before
+ * any frame is transmitted or the RX self-echo filter runs. Safe to call from
+ * more than one thread: whichever of the ppo2_tx / rx threads runs first latches;
+ * later calls re-derive the same value. Idempotent.
+ */
+void divecan_latch_dev_type(void);
+
 /* ---- Bit width constants (for protocol byte assembly) ---- */
 
 /** @brief 8-bit shift for extracting/inserting the low byte of multi-byte fields. */

@@ -220,13 +220,13 @@ ZTEST(runtime_settings_logic, test_full_save_success_and_failure_paths)
     candidate.battery_type = BATTERY_TYPE_LI3S;
 
     zassert_ok(runtime_settings_save(&candidate));
-    zassert_equal(stub.save_calls, 8, "full save writes all eight keys");
+    zassert_equal(stub.save_calls, 9, "full save writes all nine keys");
 
     (void)memset(&stub, 0, sizeof(stub));
     stub.fail_on_call = 3;
     stub.fail_rc = -ENOSPC;
     zassert_equal(runtime_settings_save(&candidate), -ENOSPC);
-    zassert_equal(stub.save_calls, 8,
+    zassert_equal(stub.save_calls, 9,
               "the aggregate save records the first error after all writes");
 
     candidate.ppo2_control_mode = (PPO2ControlMode_t)UINT8_MAX;
@@ -247,6 +247,7 @@ ZTEST(runtime_settings_logic, test_single_field_save_dispatches_every_key)
         { RT_FIELD_KD, "kd" },
         { RT_FIELD_BATTERY, "bat" },
         { RT_FIELD_BCST, "bcst" },
+        { RT_FIELD_IDENTITY, "ident" },
     };
 
     for (size_t i = 0U; i < ARRAY_SIZE(cases); ++i) {
@@ -263,7 +264,7 @@ ZTEST(runtime_settings_logic, test_single_field_save_dispatches_every_key)
 
 ZTEST(runtime_settings_logic, test_uds_metadata_and_label_bounds)
 {
-    zassert_equal(UDS_GetSettingCount(), 11U);
+    zassert_equal(UDS_GetSettingCount(), 12U);
     for (uint8_t i = 0U; i < UDS_GetSettingCount(); ++i) {
         zassert_not_null(UDS_GetSettingInfo(i), "metadata %u", i);
     }

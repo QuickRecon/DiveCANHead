@@ -36,8 +36,10 @@
 #define IDX_KI       5U
 #define IDX_KD       6U
 #define IDX_BATTERY  7U
+#define IDX_IDENTITY 11U
 
 /* Battery enum values (BatteryType_t): 9V=0, LI1S=1, LI2S=2 (default), LI3S=3. */
+/* Identity enum values (DiveCANIdentity_t): SOLO=0 (default), OBOE=1. */
 
 /**
  * @brief Stub for op_error_publish() — keeps the error/zbus subsystem out of
@@ -86,6 +88,38 @@ ZTEST(runtime_settings, test_persist_battery_roundtrip)
     zassert_true(UDS_SaveSettingValue(IDX_BATTERY, 3U)); /* LI3S */
     reboot_sim();
     zassert_equal(UDS_GetSettingValue(IDX_BATTERY), 3U);
+}
+
+/** @brief The default DiveCAN identity is SOLO (0) on a clean baseline. */
+ZTEST(runtime_settings, test_identity_default_is_solo)
+{
+    zassert_equal(UDS_GetSettingValue(IDX_IDENTITY), 0U,
+              "default broadcast identity must be SOLO (0)");
+    zassert_equal((int)runtime_settings_get_divecan_identity(),
+              (int)DIVECAN_IDENTITY_SOLO);
+}
+
+/** @brief A saved OBOE identity survives a reboot and maps to the OBOE enum. */
+ZTEST(runtime_settings, test_persist_identity_roundtrip)
+{
+    zassert_true(UDS_SaveSettingValue(IDX_IDENTITY, 1U)); /* OBOE */
+    reboot_sim();
+    zassert_equal(UDS_GetSettingValue(IDX_IDENTITY), 1U);
+    zassert_equal((int)runtime_settings_get_divecan_identity(),
+              (int)DIVECAN_IDENTITY_OBOE);
+
+    /* Reverting to SOLO also persists. */
+    zassert_true(UDS_SaveSettingValue(IDX_IDENTITY, 0U));
+    reboot_sim();
+    zassert_equal(UDS_GetSettingValue(IDX_IDENTITY), 0U);
+}
+
+/** @brief An out-of-range identity value is rejected by both paths. */
+ZTEST(runtime_settings, test_identity_rejects_out_of_range)
+{
+    zassert_false(UDS_SetSettingValue(IDX_IDENTITY, 2U),
+              "identity only accepts 0 (SOLO) or 1 (OBOE)");
+    zassert_false(UDS_SaveSettingValue(IDX_IDENTITY, 2U));
 }
 
 /**

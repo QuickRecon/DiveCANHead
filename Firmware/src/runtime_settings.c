@@ -111,6 +111,19 @@ static bool battery_type_valid(BatteryType_t val)
 }
 
 /**
+ * @brief Check whether a DiveCANIdentity_t value is in the allowed set
+ *
+ * @param val Candidate DiveCAN identity value
+ * @return true if val is a recognised DiveCANIdentity_t
+ */
+static bool divecan_identity_valid(DiveCANIdentity_t val)
+{
+    /* Lower bound omitted: DiveCANIdentity_t is unsigned and
+     * DIVECAN_IDENTITY_SOLO==0 (compiler -Wtype-limits). */
+    return val < DIVECAN_IDENTITY_COUNT;
+}
+
+/**
  * @brief Check whether a candidate PID gain is finite and within bounds
  *
  * Used by both NVS-load validation and UDS-write validation. Bounds are
@@ -155,6 +168,9 @@ bool runtime_settings_validate(const RuntimeSettings_t *s)
         result = false;
     }
     else if (!battery_type_valid(s->battery_type)) {
+        result = false;
+    }
+    else if (!divecan_identity_valid(s->divecan_identity)) {
         result = false;
     }
     else
@@ -226,6 +242,16 @@ static void load_battery(settings_read_cb cb, void *arg, RuntimeSettings_t *cach
     }
 }
 
+static void load_identity(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
+{
+    uint8_t val = 0U;
+    ssize_t got = cb(arg, &val, sizeof(val));
+    if ((sizeof(val) == (size_t)got) &&
+        divecan_identity_valid((DiveCANIdentity_t)val)) {
+        cached->divecan_identity = (DiveCANIdentity_t)val;
+    }
+}
+
 static void load_bcst(settings_read_cb cb, void *arg, RuntimeSettings_t *cached)
 {
     bool vals[CELL_MAX_COUNT] = {0};
@@ -280,6 +306,9 @@ static Status_t settings_set(const char *name, size_t len,
     }
     else if (0 == strcmp(name, "bcst")) {
         load_bcst(read_cb, cb_arg, cached);
+    }
+    else if (0 == strcmp(name, "ident")) {
+        load_identity(read_cb, cb_arg, cached);
     }
     else
     {
@@ -353,12 +382,12 @@ Status_t runtime_settings_load(RuntimeSettings_t *out)
             }
 
             *out = *cached;
-            LOG_INF("ppo2=%d cal=%d depth=%d kp=%.4f ki=%.4f kd=%.4f bat=%d",
+            LOG_INF("ppo2=%d cal=%d depth=%d kp=%.4f ki=%.4f kd=%.4f bat=%d ident=%d",
                 cached->ppo2_control_mode, cached->calibration_mode,
                 cached->depth_compensation,
                 (double)cached->pid_kp, (double)cached->pid_ki,
                 (double)cached->pid_kd,
-                cached->battery_type);
+                cached->battery_type, cached->divecan_identity);
             rc = 0;
         }
 
@@ -394,8 +423,9 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
         uint8_t ppo2_val = (uint8_t)s->ppo2_control_mode;
         uint8_t cal_val = (uint8_t)s->calibration_mode;
         uint8_t bat_val = (uint8_t)s->battery_type;
+        uint8_t ident_val = (uint8_t)s->divecan_identity;
 
-        enum { SAVE_FIELD_COUNT = 8 };
+        enum { SAVE_FIELD_COUNT = 9 };
         const Status_t rc_codes[SAVE_FIELD_COUNT] = {
             external_flash_settings_save_one(SETTINGS_SUBTREE "/ppo2",
                              &ppo2_val, sizeof(ppo2_val)),
@@ -415,6 +445,8 @@ Status_t runtime_settings_save(const RuntimeSettings_t *s)
             external_flash_settings_save_one(SETTINGS_SUBTREE "/bcst",
                              s->enforce_broadcast,
                              sizeof(s->enforce_broadcast)),
+            external_flash_settings_save_one(SETTINGS_SUBTREE "/ident",
+                             &ident_val, sizeof(ident_val)),
         };
 
         Status_t first_err = 0;
@@ -487,6 +519,12 @@ Status_t runtime_settings_save_field(RuntimeSettingField_t field)
                                   cached->enforce_broadcast,
                                   sizeof(cached->enforce_broadcast));
             break;
+        case RT_FIELD_IDENTITY: {
+            uint8_t v = (uint8_t)cached->divecan_identity;
+            rc = external_flash_settings_save_one(SETTINGS_SUBTREE "/ident",
+                                  &v, sizeof(v));
+            break;
+        }
         default:
             rc = -EINVAL;
             break;
@@ -546,4 +584,19 @@ BatteryType_t runtime_settings_get_battery_type(void)
 CalibrationMode_t runtime_settings_get_calibration_mode(void)
 {
     return getCached()->calibration_mode;
+}
+
+/**
+ * @brief Return the currently-cached DiveCAN broadcast identity.
+ *
+ * Reads only from the in-memory cache; no NVS or settings-subsystem access.
+ * The DiveCAN RX thread latches this once at init (mapping it to a
+ * DiveCANType_t) so the identity is boot-applied — a UDS edit persists but
+ * only changes the announced device type on the next power cycle.
+ *
+ * @return Cached DiveCANIdentity_t value.
+ */
+DiveCANIdentity_t runtime_settings_get_divecan_identity(void)
+{
+    return getCached()->divecan_identity;
 }

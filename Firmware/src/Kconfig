@@ -112,6 +112,25 @@ config BATTERY_CHEMISTRY_LI3S
 
 endchoice
 
+choice DIVECAN_IDENTITY
+	prompt "DiveCAN broadcast identity"
+	default DIVECAN_IDENTITY_SOLO
+	help
+	  Selects the DiveCAN device type this head announces on the bus.
+	  SOLO (SOLenoid and Oxygen, device type 4) is the historical default.
+	  OBOE (Oxygen BOard and Electronics, device type 2) lets monitors/HUDs
+	  that only accept an OBOE head operate without error. This is only the
+	  compile-time default; it is overridable at runtime via the "CAN ID"
+	  UDS setting and takes effect on the next boot.
+
+config DIVECAN_IDENTITY_SOLO
+	bool "SOLO (device type 4)"
+
+config DIVECAN_IDENTITY_OBOE
+	bool "OBOE (device type 2)"
+
+endchoice
+
 endmenu # Product Topology
 
 config ALARM
@@ -411,7 +430,7 @@ menu "Handset Menu"
 # uds_settings.c (kept in lockstep via those asserts):
 #   0 FW Commit   1 PPO2 Mode   2 Cal Mode    3 DepthComp
 #   4 PID Kp      5 PID Ki      6 PID Kd      7 Battery
-#   8 C1 Bcst     9 C2 Bcst    10 C3 Bcst
+#   8 C1 Bcst     9 C2 Bcst    10 C3 Bcst    11 CAN ID
 #
 # -1 leaves a slot empty. A slot naming a setting absent from this build is
 # silently skipped. Defaults reproduce the historical order (0,1,2,3,4), so

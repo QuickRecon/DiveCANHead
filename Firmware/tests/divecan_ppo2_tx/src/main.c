@@ -54,6 +54,17 @@ void op_error_publish(OpError_t code, uint32_t detail)
     ARG_UNUSED(detail);
 }
 
+/* Identity accessors live in divecan_rx.c, which this unit test doesn't link.
+ * The broadcast thread latches and reads the device type; stub both to SOLO. */
+void divecan_latch_dev_type(void)
+{
+}
+
+DiveCANType_t divecan_get_dev_type(void)
+{
+    return DIVECAN_SOLO;
+}
+
 void txPPO2(DiveCANType_t deviceType, PPO2_t cell1, PPO2_t cell2, PPO2_t cell3)
 {
     ARG_UNUSED(deviceType);
