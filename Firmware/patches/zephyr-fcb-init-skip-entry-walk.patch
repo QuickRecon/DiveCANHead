@@ -1,0 +1,46 @@
+diff --git a/include/zephyr/fs/fcb.h b/include/zephyr/fs/fcb.h
+index 6e805b56977..f26f9f22740 100644
+--- a/include/zephyr/fs/fcb.h
++++ b/include/zephyr/fs/fcb.h
+@@ -83,6 +83,7 @@ struct fcb_entry_ctx {
+  * @brief Flag to disable CRC for the fcb_entries in flash.
+  */
+ #define FCB_FLAGS_CRC_DISABLED BIT(0)
++#define FCB_FLAGS_INIT_SKIP_WALK BIT(1)
+ 
+ /**
+  * @brief FCB instance structure
+diff --git a/subsys/fs/fcb/fcb.c b/subsys/fs/fcb/fcb.c
+index 3587bc94d69..4383c1f9ffe 100644
+--- a/subsys/fs/fcb/fcb.c
++++ b/subsys/fs/fcb/fcb.c
+@@ -157,14 +157,21 @@ int fcb_init(int f_area_id, struct fcb *fcbp)
+ 	fcbp->f_active.fe_elem_off = fcb_len_in_flash(fcbp, sizeof(struct fcb_disk_area));
+ 	fcbp->f_active_id = newest;
+ 
+-	while (1) {
+-		rc = fcb_getnext_in_sector(fcbp, &fcbp->f_active);
+-		if (rc == -ENOTSUP) {
+-			rc = 0;
+-			break;
+-		}
+-		if (rc != 0) {
+-			break;
++#if defined(CONFIG_FCB_ALLOW_FIXED_ENDMARKER)
++	if (fcbp->f_flags & FCB_FLAGS_INIT_SKIP_WALK) {
++		rc = 0;
++	} else
++#endif
++	{
++		while (1) {
++			rc = fcb_getnext_in_sector(fcbp, &fcbp->f_active);
++			if (rc == -ENOTSUP) {
++				rc = 0;
++				break;
++			}
++			if (rc != 0) {
++				break;
++			}
+ 		}
+ 	}
+ 	k_mutex_init(&fcbp->f_mtx);

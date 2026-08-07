@@ -96,8 +96,12 @@ static struct flash_sector fl_text_sectors[FL_TEXT_SECTOR_COUNT];
 
 /* f_flags is a const member of struct fcb, so the CRC-disabled / fixed-end-marker
  * mode must be set here at definition (see fl_mount_fcb for the rationale). */
-static struct fcb fl_telemetry_fcb = { .f_flags = FCB_FLAGS_CRC_DISABLED };
-static struct fcb fl_text_fcb = { .f_flags = FCB_FLAGS_CRC_DISABLED };
+static struct fcb fl_telemetry_fcb = {
+    .f_flags = FCB_FLAGS_CRC_DISABLED | FCB_FLAGS_INIT_SKIP_WALK
+};
+static struct fcb fl_text_fcb = {
+    .f_flags = FCB_FLAGS_CRC_DISABLED | FCB_FLAGS_INIT_SKIP_WALK
+};
 
 static atomic_t fl_drops_telemetry = ATOMIC_INIT(0);
 static atomic_t fl_drops_text      = ATOMIC_INIT(0);
@@ -1081,8 +1085,126 @@ static void fl_populate_sectors(struct flash_sector *arr, off_t base,
     }
 }
 
+/* Boot-time FCB mount diagnostics — readable via debugger after boot. */
+struct fl_mount_stats {
+    uint32_t sector_count;
+    uint32_t active_entries;
+    uint32_t active_bytes;
+    uint32_t bulk_reads;
+};
+volatile struct fl_mount_stats fl_mount_telemetry_stats;
+volatile struct fl_mount_stats fl_mount_text_stats;
+
+/**
+ * @brief Seek the FCB active-sector write cursor using bulk flash reads.
+ *
+ * fcb_init with FCB_FLAGS_INIT_SKIP_WALK leaves f_active.fe_elem_off at the
+ * sector header. This function reads the active sector in FL_BATCH_BUF_BYTES
+ * chunks into fl_batch_buf (idle at init time — repurposed for write batching
+ * only after init completes) and walks entry headers in RAM to find the write
+ * cursor. Cuts the ~1930 tiny SPI reads to ~35 bulk reads, eliminating the
+ * per-transaction framework overhead that dominated boot time.
+ *
+ * Entry format (FCB_FLAGS_CRC_DISABLED, f_align=1, erase_value=0xFF):
+ *   len_field (1 byte if <128, else 2 bytes) + data (len bytes) + 0xAB
+ *   End of entries: 0xFF 0xFF (erased flash).
+ */
+static void fl_fast_seek_active(struct fcb *fcb_p,
+                                volatile struct fl_mount_stats *stats)
+{
+    struct flash_sector *sector = fcb_p->f_active.fe_sector;
+    uint32_t sector_size = sector->fs_size;
+    uint32_t cursor = fcb_p->f_active.fe_elem_off;
+    const uint8_t ev = fcb_p->f_erase_value;
+    uint32_t entries = 0U;
+    uint32_t reads = 0U;
+
+    while (cursor < sector_size) {
+        uint32_t remain = sector_size - cursor;
+        uint32_t chunk = (remain < FL_BATCH_BUF_BYTES) ? remain : FL_BATCH_BUF_BYTES;
+        int rc = flash_area_read(fcb_p->fap, sector->fs_off + cursor,
+                                 fl_batch_buf, chunk);
+        reads++;
+        if (rc != 0) {
+            break;
+        }
+
+        uint32_t pos = 0;
+        while (pos + 2 <= chunk) {
+            uint8_t b0 = fl_batch_buf[pos];
+            if (b0 == ev) {
+                uint8_t b1 = (pos + 1 < chunk) ? fl_batch_buf[pos + 1] : ev;
+                if (b1 == ev) {
+                    goto done;
+                }
+            }
+            uint16_t data_len;
+            uint32_t len_sz;
+            uint8_t b0_xor = b0 ^ (uint8_t)(~(unsigned int)ev);
+            if (b0_xor & 0x80U) {
+                if (pos + 1 >= chunk) {
+                    break;
+                }
+                uint8_t b1_xor = fl_batch_buf[pos + 1] ^ (uint8_t)(~(unsigned int)ev);
+                data_len = (uint16_t)((uint16_t)(b0_xor & 0x7FU) |
+                                      (uint16_t)((uint16_t)b1_xor << 7U));
+                len_sz = 2U;
+            } else {
+                data_len = (uint16_t)b0_xor;
+                len_sz = 1U;
+            }
+            uint32_t entry_total = len_sz + data_len + 1U;
+            if (pos + entry_total > chunk) {
+                break;
+            }
+            pos += entry_total;
+            entries++;
+        }
+        cursor += pos;
+        if (pos < chunk) {
+            break;
+        }
+    }
+done:
+    fcb_p->f_active.fe_elem_off = cursor;
+
+    /* Validate + finish: the bulk parser may stop short at a chunk boundary.
+     * Walk from the bulk cursor using the public FCB API to catch any tail
+     * entries. On a correct parse this does 1–2 SPI reads (confirming erased
+     * flash); on an early stop it picks up the remaining entries. Uses a
+     * probe copy so fcb_getnext's sector-advance doesn't mutate f_active.
+     *
+     * fcb_getnext sets probe to each entry's START; f_active.fe_elem_off
+     * must point PAST the last entry (the next free position), so advance
+     * by the entry's total on-flash size after each hit. */
+    {
+        struct fcb_entry probe = fcb_p->f_active;
+        while (fcb_getnext(fcb_p, &probe) == 0
+               && probe.fe_sector == fcb_p->f_active.fe_sector) {
+            uint16_t aligned_len = probe.fe_data_len;
+            uint16_t aligned_crc = 1U;
+            if (fcb_p->f_align > 1U) {
+                aligned_len = (aligned_len + fcb_p->f_align - 1U) &
+                              ~(uint16_t)(fcb_p->f_align - 1U);
+                aligned_crc = (1U + fcb_p->f_align - 1U) &
+                              ~(uint16_t)(fcb_p->f_align - 1U);
+            }
+            fcb_p->f_active.fe_elem_off = probe.fe_data_off +
+                aligned_len + aligned_crc;
+            entries++;
+        }
+    }
+    if (stats != NULL) {
+        stats->sector_count = fcb_p->f_sector_cnt;
+        stats->active_entries = entries;
+        stats->active_bytes = fcb_p->f_active.fe_elem_off;
+        stats->bulk_reads = reads;
+    }
+}
+
 static Status_t fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
-            int area_id, off_t partition_offset, uint8_t sector_count)
+            int area_id, off_t partition_offset, uint8_t sector_count,
+            volatile struct fl_mount_stats *stats)
 {
     fl_populate_sectors(sectors, partition_offset, sector_count);
 
@@ -1091,27 +1213,15 @@ static Status_t fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
     fcb_p->f_sector_cnt = sector_count;
     fcb_p->f_scratch_cnt = 1U;
     fcb_p->f_sectors = sectors;
-    /* NOTE: f_flags = FCB_FLAGS_CRC_DISABLED is set at the static fcb definition
-     * (it is a const member). That makes fcb_init()'s per-boot active-sector walk
-     * read only the ~3-byte header+marker per entry instead of READING EVERY BYTE
-     * to recompute a CRC — which on a filled 256 KiB sector over 6 MHz SPI NOR
-     * grinds for tens of seconds and the board never reaches normal operation.
-     * Trade-off: entries are validated by the fixed end-marker, not a CRC (still
-     * catches truncated/torn writes). See the fcb defs + FL_FCB_MAGIC bump. */
     Status_t rc = external_flash_acquire(K_FOREVER);
     if (0 == rc) {
         rc = fcb_init(area_id, fcb_p);
+        if (0 == rc) {
+            fl_fast_seek_active(fcb_p, stats);
+        }
         external_flash_release();
     }
     if (0 != rc) {
-        /* One-shot recovery: erase the partition and retry. fcb_init bails fast
-         * here (sector-0 magic mismatch → -ENOMSG, no entry walk) on stale or
-         * foreign content, so we reach this point without starving the feeder.
-         * The erase itself is long on the 48 MB telemetry FCB, so assert long-op
-         * around it: heartbeat_check_all_alive() returns true and the feeder keeps
-         * feeding. The spi_nor driver k_sleeps while polling WIP
-         * (CONFIG_SPI_NOR_SLEEP_WHILE_WAITING_UNTIL_READY), so the low-prio feeder
-         * still gets scheduled during the erase. */
         const struct flash_area *fa = NULL;
 
         if (0 == flash_area_open((uint8_t)area_id, &fa)) {
@@ -1122,6 +1232,9 @@ static Status_t fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
             rc = external_flash_acquire(K_FOREVER);
             if (0 == rc) {
                 rc = fcb_init(area_id, fcb_p);
+                if (0 == rc) {
+                    fl_fast_seek_active(fcb_p, stats);
+                }
                 external_flash_release();
             }
         }
@@ -1131,6 +1244,12 @@ static Status_t fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
 }
 
 static const uint32_t FL_INIT_ERR_CODE_MASK = 0xFFFFU;
+
+volatile uint32_t fli_settings_ms;
+volatile uint32_t fli_log_subtree_ms;
+volatile uint32_t fli_telemetry_ms;
+volatile uint32_t fli_text_ms;
+volatile uint32_t fli_done_ms;
 
 Status_t flash_log_init(void)
 {
@@ -1142,19 +1261,25 @@ Status_t flash_log_init(void)
     } else {
         /* Settings subsystem may already be up (runtime_settings loaded
          * during calibration_init). settings_subsys_init is idempotent. */
+        fli_settings_ms = k_uptime_get_32();
         (void)settings_subsys_init();
         (void)external_flash_settings_load_subtree("log");
+        fli_log_subtree_ms = k_uptime_get_32();
 
         Status_t rc_telemetry = fl_mount_fcb(&fl_telemetry_fcb,
                         fl_telemetry_sectors,
                         PARTITION_ID(log_telemetry_partition),
                         PARTITION_OFFSET(log_telemetry_partition),
-                        FL_TELEMETRY_SECTOR_COUNT);
+                        FL_TELEMETRY_SECTOR_COUNT,
+                        &fl_mount_telemetry_stats);
+        fli_telemetry_ms = k_uptime_get_32();
         Status_t rc_text = fl_mount_fcb(&fl_text_fcb,
                        fl_text_sectors,
                        PARTITION_ID(log_text_partition),
                        PARTITION_OFFSET(log_text_partition),
-                       FL_TEXT_SECTOR_COUNT);
+                       FL_TEXT_SECTOR_COUNT,
+                       &fl_mount_text_stats);
+        fli_text_ms = k_uptime_get_32();
 
         if ((0 != rc_telemetry) || (0 != rc_text)) {
             /* Persistent failure — keep initialized=true so producers

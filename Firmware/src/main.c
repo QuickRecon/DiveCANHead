@@ -49,32 +49,30 @@ static const uint32_t BLINK_PERIOD_MS = 500U;
 /* Post-preamble-line drain delay (ms) — see preamble_line() header comment. */
 static const uint32_t PREAMBLE_LINE_DRAIN_MS = 50U;
 
-/* Boot indicator: a short, fast LED burst at the very top of main() — before
- * any flash/FCB work — so each boot is visually distinct from the steady ~1 Hz
- * heartbeat. A healthy boot shows the burst ONCE then the slow heartbeat; a
- * unit stuck resetting (e.g. a long flash op overrunning the watchdog) shows
- * the burst repeating at the reset period, making a boot loop obvious by eye. */
-#define BOOT_BLINK_COUNT   6U
-#define BOOT_BLINK_ON_MS   60U
-#define BOOT_BLINK_OFF_MS  60U
-
 /**
- * @brief Flash the heartbeat LED in a short burst to mark the start of a boot.
+ * @brief Toggle the heartbeat LED to mark forward progress through boot.
  *
- * Runs before flash_log_init so it fires on every (re)boot regardless of how
- * far boot gets. Safe to call before the main heartbeat loop reconfigures the
- * same LED.
+ * Called between each init phase so the blink pattern IS the boot sequence —
+ * each flash/NVS operation flips the LED, giving a visible cadence for free
+ * (no k_msleep). A healthy boot shows a quick asymmetric flicker (short
+ * phases flip fast, long phases hold longer) then the steady ~1 Hz heartbeat.
+ * A stuck boot holds one state indefinitely, and a reset loop repeats the
+ * same partial pattern, both obvious by eye.
  */
-static void boot_indicator(void)
+static bool boot_led_ready;
+
+static void boot_led_init(void)
 {
     if (device_is_ready(led.port)) {
-        (void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
-        for (uint32_t i = 0U; i < BOOT_BLINK_COUNT; ++i) {
-            (void)gpio_pin_set_dt(&led, 1);
-            (void)k_msleep(BOOT_BLINK_ON_MS);
-            (void)gpio_pin_set_dt(&led, 0);
-            (void)k_msleep(BOOT_BLINK_OFF_MS);
-        }
+        (void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+        boot_led_ready = true;
+    }
+}
+
+static void boot_led_toggle(void)
+{
+    if (boot_led_ready) {
+        (void)gpio_pin_toggle_dt(&led);
     }
 }
 
@@ -431,9 +429,19 @@ static void emit_startup_preamble(void)
  *
  * @return 0 on normal exit; negative errno if LED hardware is unavailable
  */
+/* Boot phase timestamps (ms) — readable via debugger or UDS after boot. */
+static volatile uint32_t bp_entry_ms;
+static volatile uint32_t bp_wdg_ms;
+static volatile uint32_t bp_settings_ms;
+static volatile uint32_t bp_history_ms;
+static volatile uint32_t bp_flashlog_ms;
+static volatile uint32_t bp_cal_ms;
+
 Status_t main(void)
 {
     Status_t ret = 0;
+
+    bp_entry_ms = k_uptime_get_32();
 
     /* Re-arm the IWDG to the application's window BEFORE any flash work.
      *
@@ -455,39 +463,24 @@ Status_t main(void)
      * than the bootloader's. Subsequent kicks below bound each long step
      * individually; the feeder thread takes over from its first lap. */
     watchdog_kick();
+    boot_led_init();
+    bp_wdg_ms = k_uptime_get_32();
 
-    /* Visual boot marker (fast LED burst) before any flash/FCB work, so a reset
-     * loop is obvious by eye: healthy boot = one burst then steady heartbeat;
-     * reset loop = burst repeating at the reset period. */
-    boot_indicator();
-
-    /* Populate the runtime-settings cache from NVS as the FIRST flash
-     * operation of the boot. The UDS server thread starts at scheduler
-     * start and refuses settings-value DIDs with NRC 0x21 until this
-     * lands (runtime_settings_is_loaded()); doing the load ahead of the
-     * boot-history / flash-log mounts keeps that busy window as short as
-     * possible so a client polling across a reboot reads stored values,
-     * never compile-time defaults. Later loads (ppo2_control_init) are
-     * idempotent cache copies. */
     RuntimeSettings_t boot_settings = RUNTIME_SETTINGS_DEFAULT;
     (void)runtime_settings_load(&boot_settings);
-    /* NVS walks the settings partition 8 bytes per SPI transaction and the
-     * cost scales with how full the partition is, so bound this step on its
-     * own rather than letting it share a window with the mounts below. */
+    bp_settings_ms = k_uptime_get_32();
+    boot_led_toggle();
     watchdog_kick();
 
-    /* Persist the reset cause and any noinit crash before mounting the much
-     * larger FCB log rings. A successful crash write acknowledges the retained
-     * RAM slot; failures leave it intact so the next boot can retry. */
     (void)boot_history_init();
+    bp_history_ms = k_uptime_get_32();
+    boot_led_toggle();
     watchdog_kick();
 
 #ifdef CONFIG_FLASH_LOG
-    /* Mount FCBs and bump the persisted boot counter. Record the boot
-     * marker (with prior-crash details if any) as the first entry of
-     * this session. Producer hooks (zbus listeners, CAN tap, custom
-     * log backend) will start emitting once their init runs. */
     (void)flash_log_init();
+    bp_flashlog_ms = k_uptime_get_32();
+    boot_led_toggle();
     CrashInfo_t prev_crash = {0};
     const CrashInfo_t *prev = NULL;
     if (errors_get_last_crash(&prev_crash)) {
@@ -505,10 +498,10 @@ Status_t main(void)
 #endif
 
     calibration_init();
-    /* Must run after runtime_settings has its NVS load wired (calibration_init
-     * does that today via runtime_settings_load) and before any consensus
-     * traffic so the controller's initial publishes win the race. */
+    bp_cal_ms = k_uptime_get_32();
+    boot_led_toggle();
     ppo2_control_init();
+    boot_led_toggle();
 
     /* Settings cache is populated by ppo2_control_init; safe to emit the
      * full boot preamble (firmware UID, compile-time topology, runtime

@@ -152,6 +152,25 @@ elseif(NOT BOARD MATCHES "native_sim")
                     "SPI-NOR patches — do not ship this build unverified.")
 endif()
 
+if(_zephyr_tree AND EXISTS "${_zephyr_tree}/subsys/fs/fcb/fcb.c")
+    file(READ "${_zephyr_tree}/include/zephyr/fs/fcb.h" _fcb_hdr)
+    string(FIND "${_fcb_hdr}" "FCB_FLAGS_INIT_SKIP_WALK" _fcb_marker)
+    if(_fcb_marker EQUAL -1)
+        set(_fcb_patch
+            ${CMAKE_CURRENT_SOURCE_DIR}/patches/zephyr-fcb-init-skip-entry-walk.patch)
+        execute_process(COMMAND git -C "${_zephyr_tree}" apply "${_fcb_patch}"
+                        RESULT_VARIABLE _fcb_rc ERROR_VARIABLE _fcb_err)
+        if(NOT _fcb_rc EQUAL 0)
+            message(FATAL_ERROR
+                "Zephyr FCB init-skip-walk patch is NOT applied and auto-apply "
+                "failed (${_fcb_err}). Without it the flash-log FCB mount does "
+                "thousands of tiny SPI reads at boot, scaling boot time with "
+                "log depth. Apply ${_fcb_patch} to ${_zephyr_tree}.")
+        endif()
+        message(STATUS "Applied Zephyr FCB init-skip-walk patch to ${_zephyr_tree}")
+    endif()
+endif()
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(divecan_jr)
 
