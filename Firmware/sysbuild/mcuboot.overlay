@@ -73,3 +73,26 @@
 &hw_version      { status = "disabled"; };
 &solenoids       { status = "disabled"; };
 &power           { status = "disabled"; };
+
+/* ---- Bootloader clock: run MCUBoot at 48 MHz ----
+ * The app runs at 12 MHz for power and boosts to 48 MHz only for its
+ * boot-path flash scans (see main.c boot_clock_boost). MCUBoot has no
+ * power budget — it exists for ~2 s to SHA256 slot0 and read swap
+ * trailers off the SPI NOR, all of it clock-bound. Same PLL (HSE 8 MHz
+ * x12 = 96 MHz VCO), R divider /2 instead of /8. The Zephyr clock
+ * driver sets flash wait states for the target frequency itself, and
+ * the app's own clock init reconfigures to the app DTS's 12 MHz at
+ * chainload. SPI NOR runs at 24 MHz here (spi-max-frequency, /2 of
+ * 48 MHz APB1) — well inside the W25Q512JV's 50 MHz limit. */
+&pll {
+	div-r = <2>;
+};
+
+&rcc {
+	clock-frequency = <DT_FREQ_M(48)>;
+};
+
+/* Kernel timebase: the app uses LPTIM (needs CONFIG_PM, app-only).
+ * MCUBoot keeps SysTick; its HW_CYCLES constant derives from the rcc
+ * clock-frequency above, so its timing stays consistent at 48 MHz. */
+&lptim1 { status = "disabled"; };

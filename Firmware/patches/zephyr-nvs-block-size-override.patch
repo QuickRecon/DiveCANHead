@@ -1,0 +1,14 @@
+diff --git a/subsys/kvss/nvs/nvs_priv.h b/subsys/kvss/nvs/nvs_priv.h
+index 5d9e9dcdaa6..706a94e2129 100644
+--- a/subsys/kvss/nvs/nvs_priv.h
++++ b/subsys/kvss/nvs/nvs_priv.h
+@@ -29,7 +29,9 @@ extern "C" {
+  */
+ #define NVS_STATUS_NOSPACE 1
+ 
++#ifndef NVS_BLOCK_SIZE
+ #define NVS_BLOCK_SIZE 32
++#endif
+ 
+ #define NVS_LOOKUP_CACHE_NO_ADDR 0xFFFFFFFF
+ 

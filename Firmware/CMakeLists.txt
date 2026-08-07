@@ -171,8 +171,37 @@ if(_zephyr_tree AND EXISTS "${_zephyr_tree}/subsys/fs/fcb/fcb.c")
     endif()
 endif()
 
+if(_zephyr_tree AND EXISTS "${_zephyr_tree}/subsys/kvss/nvs/nvs_priv.h")
+    file(READ "${_zephyr_tree}/subsys/kvss/nvs/nvs_priv.h" _nvs_hdr)
+    string(FIND "${_nvs_hdr}" "#ifndef NVS_BLOCK_SIZE" _nvs_marker)
+    if(_nvs_marker EQUAL -1)
+        set(_nvs_patch
+            ${CMAKE_CURRENT_SOURCE_DIR}/patches/zephyr-nvs-block-size-override.patch)
+        execute_process(COMMAND git -C "${_zephyr_tree}" apply "${_nvs_patch}"
+                        RESULT_VARIABLE _nvs_rc ERROR_VARIABLE _nvs_err)
+        if(NOT _nvs_rc EQUAL 0)
+            message(FATAL_ERROR
+                "Zephyr NVS block-size override patch is NOT applied and "
+                "auto-apply failed (${_nvs_err}). Without it the NVS sector "
+                "scans read 32 bytes per SPI transaction at boot. Apply "
+                "${_nvs_patch} to ${_zephyr_tree}.")
+        endif()
+        message(STATUS "Applied Zephyr NVS block-size override patch to ${_zephyr_tree}")
+    endif()
+endif()
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(divecan_jr)
+
+# Widen the NVS read/compare granule (default 32 B) so the boot-time sector
+# scans over external SPI NOR amortise the per-transaction SPI framework
+# overhead across 256 B reads (128 -> 16 reads per 4 KiB sector check).
+# Stack cost: one NVS_BLOCK_SIZE buffer per NVS read/compare/write frame
+# (+224 B vs the 32 B default) on main and the settings-writer threads —
+# the 1 KiB fl_writer thread never calls NVS. 512 was rejected as too much
+# stack for the margin it buys (~40 ms). Requires the nvs_priv.h #ifndef
+# guard patch above.
+zephyr_compile_definitions(NVS_BLOCK_SIZE=256)
 
 target_sources(app PRIVATE
     src/main.c
