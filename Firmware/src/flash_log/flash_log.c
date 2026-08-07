@@ -1161,36 +1161,12 @@ static void fl_fast_seek_active(struct fcb *fcb_p,
             entries++;
         }
         cursor += pos;
-        if (pos < chunk) {
+        if (pos == 0U && chunk > 0U) {
             break;
         }
     }
 done:
     fcb_p->f_active.fe_elem_off = cursor;
-
-    /* Finish: the standard per-entry walk from the bulk cursor to the true
-     * end guarantees the write cursor is authoritative. On a correct bulk
-     * parse this does 1–2 SPI reads (confirming erased flash); on an early
-     * stop it picks up the tail. Either way the final cursor is correct. */
-    {
-        uint32_t bulk_cursor = cursor;
-        struct fcb_entry probe = fcb_p->f_active;
-        while (fcb_getnext(fcb_p, &probe) == 0
-               && probe.fe_sector == fcb_p->f_active.fe_sector) {
-            uint16_t aligned_len = probe.fe_data_len;
-            uint16_t aligned_crc = 1U;
-            if (fcb_p->f_align > 1U) {
-                aligned_len = (aligned_len + fcb_p->f_align - 1U) &
-                              ~(uint16_t)(fcb_p->f_align - 1U);
-                aligned_crc = (1U + fcb_p->f_align - 1U) &
-                              ~(uint16_t)(fcb_p->f_align - 1U);
-            }
-            fcb_p->f_active.fe_elem_off = probe.fe_data_off +
-                aligned_len + aligned_crc;
-            entries++;
-        }
-        (void)bulk_cursor; /* available in debugger for diagnosis */
-    }
     if (stats != NULL) {
         stats->sector_count = fcb_p->f_sector_cnt;
         stats->active_entries = entries;
@@ -1217,6 +1193,7 @@ static Status_t fl_mount_fcb(struct fcb *fcb_p, struct flash_sector *sectors,
             fl_fast_seek_active(fcb_p, stats);
         }
         external_flash_release();
+        watchdog_kick();
     }
     if (0 != rc) {
         const struct flash_area *fa = NULL;
