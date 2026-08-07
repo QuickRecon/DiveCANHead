@@ -1168,16 +1168,12 @@ static void fl_fast_seek_active(struct fcb *fcb_p,
 done:
     fcb_p->f_active.fe_elem_off = cursor;
 
-    /* Validate + finish: the bulk parser may stop short at a chunk boundary.
-     * Walk from the bulk cursor using the public FCB API to catch any tail
-     * entries. On a correct parse this does 1–2 SPI reads (confirming erased
-     * flash); on an early stop it picks up the remaining entries. Uses a
-     * probe copy so fcb_getnext's sector-advance doesn't mutate f_active.
-     *
-     * fcb_getnext sets probe to each entry's START; f_active.fe_elem_off
-     * must point PAST the last entry (the next free position), so advance
-     * by the entry's total on-flash size after each hit. */
+    /* Finish: the standard per-entry walk from the bulk cursor to the true
+     * end guarantees the write cursor is authoritative. On a correct bulk
+     * parse this does 1–2 SPI reads (confirming erased flash); on an early
+     * stop it picks up the tail. Either way the final cursor is correct. */
     {
+        uint32_t bulk_cursor = cursor;
         struct fcb_entry probe = fcb_p->f_active;
         while (fcb_getnext(fcb_p, &probe) == 0
                && probe.fe_sector == fcb_p->f_active.fe_sector) {
@@ -1193,6 +1189,7 @@ done:
                 aligned_len + aligned_crc;
             entries++;
         }
+        (void)bulk_cursor; /* available in debugger for diagnosis */
     }
     if (stats != NULL) {
         stats->sector_count = fcb_p->f_sector_cnt;
