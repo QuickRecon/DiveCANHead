@@ -1130,11 +1130,13 @@ static void fl_fast_seek_active(struct fcb *fcb_p,
         }
 
         uint32_t pos = 0;
-        while (pos + 2 <= chunk) {
+        uint32_t hop = 0;
+        while (pos + 2U <= chunk) {
             uint8_t b0 = fl_batch_buf[pos];
             if (b0 == ev) {
-                uint8_t b1 = (pos + 1 < chunk) ? fl_batch_buf[pos + 1] : ev;
-                if (b1 == ev) {
+                /* Loop guard (pos + 2 <= chunk) guarantees pos+1 is in-buffer. */
+                if (fl_batch_buf[pos + 1U] == ev) {
+                    cursor += pos;   /* entries parsed this chunk count! */
                     goto done;
                 }
             }
@@ -1142,10 +1144,7 @@ static void fl_fast_seek_active(struct fcb *fcb_p,
             uint32_t len_sz;
             uint8_t b0_xor = b0 ^ (uint8_t)(~(unsigned int)ev);
             if (b0_xor & 0x80U) {
-                if (pos + 1 >= chunk) {
-                    break;
-                }
-                uint8_t b1_xor = fl_batch_buf[pos + 1] ^ (uint8_t)(~(unsigned int)ev);
+                uint8_t b1_xor = fl_batch_buf[pos + 1U] ^ (uint8_t)(~(unsigned int)ev);
                 data_len = (uint16_t)((uint16_t)(b0_xor & 0x7FU) |
                                       (uint16_t)((uint16_t)b1_xor << 7U));
                 len_sz = 2U;
@@ -1154,15 +1153,28 @@ static void fl_fast_seek_active(struct fcb *fcb_p,
                 len_sz = 1U;
             }
             uint32_t entry_total = len_sz + data_len + 1U;
-            if (pos + entry_total > chunk) {
+            if (entry_total > chunk - pos) {
+                /* Entry (or garbage decoded as one) extends past this chunk.
+                 * Stock fcb advances by the decoded length whether or not the
+                 * end marker validates (the EBADMSG path hops identically),
+                 * so hop the same distance and resume at the next boundary —
+                 * this is what keeps the cursor bit-exact with fcb_getnext on
+                 * rings that carry torn/garbage regions. */
+                hop = entry_total;
                 break;
             }
             pos += entry_total;
             entries++;
         }
-        cursor += pos;
-        if (pos == 0U && chunk > 0U) {
-            break;
+        cursor += pos + hop;
+        if (cursor > sector_size) {
+            cursor = sector_size;
+        }
+        if ((pos == 0U) && (hop == 0U) && (chunk <= 1U)) {
+            break;   /* <2 bytes left in sector — nothing more to decode */
+        }
+        if ((pos == 0U) && (hop == 0U)) {
+            break;   /* defensive: no progress (cannot occur; loop guard) */
         }
     }
 done:
@@ -1170,7 +1182,7 @@ done:
     if (stats != NULL) {
         stats->sector_count = fcb_p->f_sector_cnt;
         stats->active_entries = entries;
-        stats->active_bytes = fcb_p->f_active.fe_elem_off;
+        stats->active_bytes = cursor;
         stats->bulk_reads = reads;
     }
 }
