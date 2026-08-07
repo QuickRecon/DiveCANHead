@@ -120,6 +120,31 @@
 	apb2-prescaler = <1>;
 };
 
+/* ---- Kernel timebase: LPTIM1 on LSI (32 kHz) ----
+ * Decouples kernel timing from SYSCLK so main() can boost HCLK 12→48 MHz for
+ * the boot-path flash scans and restore it afterwards (SysTick, by contrast,
+ * counts HCLK — a runtime clock switch under it storms the tickless kernel).
+ * LSI is ±5%-ish; per-test timing tolerances absorb that. Tick rate becomes
+ * 4000/s via the SoC defconfig. */
+&clk_lsi {
+	status = "okay";
+};
+
+stm32_lp_tick_source: &lptim1 {
+	clocks = <&rcc STM32_CLOCK(APB1, 31)>,
+		 <&rcc STM32_SRC_LSI LPTIM1_SEL(1)>;
+	status = "okay";
+};
+
+/* CONFIG_PM is required by the LPTIM timer driver, but this rig/product must
+ * NOT enter STOP modes on idle: STOP kills SWD attach (rig flash/debug
+ * discipline) and gates the CAN peripheral (dropped DiveCAN frames while
+ * idle). Deleting the SoC-provided states leaves the PM policy with nothing
+ * to choose, so idle remains plain WFI exactly as before. */
+&cpu0 {
+	/delete-property/ cpu-power-states;
+};
+
 /* ---- CAN bus — DiveCAN @ 125 kbit/s ----
  * Jr at 80 MHz: prescaler and segments are derived from the Zephyr bitrate and
  * sample-point properties below.
@@ -295,7 +320,7 @@
 	spi_flash: w25q512@0 {
 		compatible = "jedec,spi-nor";
 		reg = <0>;
-		spi-max-frequency = <6000000>;
+		spi-max-frequency = <24000000>;
 		jedec-id = [ef 40 20];
 		/* W25Q512JV: 512 Mbit = 64 MB. Note: schematic and
 		 * ARCHITECTURE.md historically misstated this as GD25Q128

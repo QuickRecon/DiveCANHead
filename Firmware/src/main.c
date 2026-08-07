@@ -12,6 +12,9 @@
 #include <zephyr/version.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
+#include <stm32_ll_rcc.h>
+#include <stm32_ll_system.h>
+#include <stm32_ll_utils.h>
 
 #include <math.h>
 #include <stdarg.h>
@@ -437,11 +440,83 @@ static volatile uint32_t bp_history_ms;
 static volatile uint32_t bp_flashlog_ms;
 static volatile uint32_t bp_cal_ms;
 
+/**
+ * @brief Temporarily boost SYSCLK for boot-time flash operations.
+ *
+ * The DTS configures PLL-R=8 → 12 MHz SYSCLK for low runtime power. SPI NOR
+ * throughput is limited to 6 MHz (prescaler /2), and the Zephyr SPI framework
+ * overhead (~380 µs/transaction at 12 MHz) dominates the ~9 µs wire time for
+ * small reads. Switching PLL-R to 2 → 48 MHz SYSCLK / 24 MHz SPI cuts per-
+ * transaction overhead ~4x for the boot-path NVS and FCB scans, then we
+ * restore to 12 MHz before the heartbeat loop for normal-mode power.
+ *
+ * The PLL output (96 MHz) is unchanged — only the R divider changes. Flash
+ * wait states must be adjusted for the new HCLK (48 MHz needs 2 WS, 12 MHz
+ * needs 0 WS per STM32L4 reference manual Table 9).
+ */
+/**
+ * @brief Switch PLL-R divider and update the kernel's clock bookkeeping.
+ *
+ * Parks SYSCLK on HSI, reconfigures PLL-R, re-enables PLL, switches back.
+ * Updates SystemCoreClock (used by clock_control_get_subsys_rate) and
+ * recalibrates the SysTick so k_uptime / k_msleep stay correct.
+ */
+static void set_pll_r_and_recalibrate(uint32_t pllr_val, uint32_t new_hclk,
+                                      uint32_t flash_latency)
+{
+    unsigned int key = irq_lock();
+
+    if (new_hclk > SystemCoreClock) {
+        LL_FLASH_SetLatency(flash_latency);
+        while (LL_FLASH_GetLatency() != flash_latency) {
+        }
+    }
+
+    /* Park on HSE (8 MHz, already running as PLL source) while
+     * reconfiguring the PLL divider. */
+    LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_HSE);
+    while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSE) {
+    }
+    LL_RCC_PLL_Disable();
+    while (LL_RCC_PLL_IsReady()) {
+    }
+    MODIFY_REG(RCC->PLLCFGR, RCC_PLLCFGR_PLLR_Msk, pllr_val);
+    LL_RCC_PLL_EnableDomain_SYS();
+    LL_RCC_PLL_Enable();
+    while (!LL_RCC_PLL_IsReady()) {
+    }
+    LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL);
+    while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL) {
+    }
+
+    if (new_hclk < SystemCoreClock) {
+        LL_FLASH_SetLatency(flash_latency);
+        while (LL_FLASH_GetLatency() != flash_latency) {
+        }
+    }
+
+    SystemCoreClock = new_hclk;
+
+    irq_unlock(key);
+}
+
+static void boot_clock_boost(void)
+{
+    set_pll_r_and_recalibrate(LL_RCC_PLLR_DIV_2, 48000000U, LL_FLASH_LATENCY_2);
+}
+
+static void boot_clock_restore(void)
+{
+    set_pll_r_and_recalibrate(LL_RCC_PLLR_DIV_8, 12000000U, LL_FLASH_LATENCY_0);
+}
+
 Status_t main(void)
 {
     Status_t ret = 0;
 
     bp_entry_ms = k_uptime_get_32();
+
+    boot_clock_boost();
 
     /* Re-arm the IWDG to the application's window BEFORE any flash work.
      *
@@ -502,6 +577,7 @@ Status_t main(void)
     boot_led_toggle();
     ppo2_control_init();
     boot_led_toggle();
+    boot_clock_restore();
 
     /* Settings cache is populated by ppo2_control_init; safe to emit the
      * full boot preamble (firmware UID, compile-time topology, runtime
