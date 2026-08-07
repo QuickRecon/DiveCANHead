@@ -12,9 +12,11 @@
 #include <zephyr/version.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
+#ifdef CONFIG_SOC_FAMILY_STM32
 #include <stm32_ll_rcc.h>
 #include <stm32_ll_system.h>
 #include <stm32_ll_utils.h>
+#endif
 
 #include <math.h>
 #include <stdarg.h>
@@ -461,6 +463,7 @@ static volatile uint32_t bp_cal_ms;
  * Updates SystemCoreClock (used by clock_control_get_subsys_rate) and
  * recalibrates the SysTick so k_uptime / k_msleep stay correct.
  */
+#ifdef CONFIG_SOC_FAMILY_STM32
 static void set_pll_r_and_recalibrate(uint32_t pllr_val, uint32_t new_hclk,
                                       uint32_t flash_latency)
 {
@@ -509,6 +512,15 @@ static void boot_clock_restore(void)
 {
     set_pll_r_and_recalibrate(LL_RCC_PLLR_DIV_8, 12000000U, LL_FLASH_LATENCY_0);
 }
+#else /* !CONFIG_SOC_FAMILY_STM32 (native_sim) — no PLL to switch */
+static void boot_clock_boost(void)
+{
+}
+
+static void boot_clock_restore(void)
+{
+}
+#endif /* CONFIG_SOC_FAMILY_STM32 */
 
 Status_t main(void)
 {
