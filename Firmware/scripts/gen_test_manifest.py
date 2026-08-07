@@ -61,6 +61,7 @@ _SETTING_STORAGE_LABELS = [
     "C1 Bcst",     # 8  SETTING_INDEX_CELL_BCST_BASE + 0
     "C2 Bcst",     # 9  + 1
     "C3 Bcst",     # 10 + 2 (CELL_MAX_COUNT == 3)
+    "CAN ID",      # 11 SETTING_INDEX_DIVECAN_IDENTITY
 ]
 # Number of handset menu-order slots (CONFIG_MENU_ORDER_1..N). Mirrors
 # MENU_CONFIG_SLOTS in uds_settings.c.
