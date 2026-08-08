@@ -195,13 +195,15 @@ project(divecan_jr)
 
 # Widen the NVS read/compare granule (default 32 B) so the boot-time sector
 # scans over external SPI NOR amortise the per-transaction SPI framework
-# overhead across 256 B reads (128 -> 16 reads per 4 KiB sector check).
-# Stack cost: one NVS_BLOCK_SIZE buffer per NVS read/compare/write frame
-# (+224 B vs the 32 B default) on main and the settings-writer threads —
-# the 1 KiB fl_writer thread never calls NVS. 512 was rejected as too much
-# stack for the margin it buys (~40 ms). Requires the nvs_priv.h #ifndef
-# guard patch above.
-zephyr_compile_definitions(NVS_BLOCK_SIZE=256)
+# overhead (32 reads per 4 KiB sector check instead of 128). Stack cost: one
+# NVS_BLOCK_SIZE buffer per NVS read/compare/write frame (+96 B vs the 32 B
+# default) on every NVS caller — main, divecan_rx (UDS settings saves), and
+# the system workqueue (error-histogram periodic save). 256 was tried and
+# CRASHED both settings-heavy HIL tests with STACK_CHK_FAIL on divecan_rx /
+# sysworkq (run 31187089880); 128 halves the pressure and those two stacks
+# also gained +256 B headroom each. Requires the nvs_priv.h #ifndef guard
+# patch above.
+zephyr_compile_definitions(NVS_BLOCK_SIZE=128)
 
 target_sources(app PRIVATE
     src/main.c

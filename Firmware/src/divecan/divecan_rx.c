@@ -498,10 +498,12 @@ static void divecan_rx_thread(void *p1, void *p2, void *p3)
 }
 
 /* UDS/state DID paths hit enough Zephyr/logging/ISO-TP depth on hardware that
- * 1280 B tripped K_ERR_STACK_CHK_FAIL during HIL fault-injection setup. Keep
- * this at the architecture-documented 2048 B; do not trim without
- * INIT_STACKS-backed high-water data from the real rig. */
-K_THREAD_DEFINE(divecan_rx, 2048,
+ * 1280 B tripped K_ERR_STACK_CHK_FAIL during HIL fault-injection setup, and
+ * 2048 B tripped it again once NVS_BLOCK_SIZE grew the settings-save frames
+ * (256 B granule + 2048 stack = STACK_CHK_FAIL in the settings-heavy HIL
+ * tests, run 31187089880). Now 2304 alongside the granule reduced to 128;
+ * do not trim without INIT_STACKS-backed high-water data from the real rig. */
+K_THREAD_DEFINE(divecan_rx, 2304,
         divecan_rx_thread, NULL, NULL, NULL,
         5, 0, 0);
 
