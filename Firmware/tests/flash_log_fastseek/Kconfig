@@ -1,0 +1,3 @@
+mainmenu "Flash Log Fast-Seek Parity Tests"
+
+source "Kconfig.zephyr"

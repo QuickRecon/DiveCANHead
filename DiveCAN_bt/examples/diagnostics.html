@@ -3005,8 +3005,9 @@
 
       const failures = [crashResult, rebootResult]
         .filter(result => result.status === 'rejected').length;
+      const failurePlural = failures === 1 ? '' : 's';
       $('bootHistoryStatus').textContent = failures
-        ? `${failures} history DID${failures === 1 ? '' : 's'} unavailable (older firmware?)`
+        ? `${failures} history DID${failurePlural} unavailable (older firmware?)`
         : '';
     };
 

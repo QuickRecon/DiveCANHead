@@ -280,8 +280,22 @@ static const uint16_t LOG_SELECT_DIVE_MIN_LEN = 3U;
  * module), so routing every index-backed resolve through this single worker
  * means no other thread touches that state and it needs no lock of its own. */
 
-static K_SEM_DEFINE(fl_resolve_sem, 0, 1);
-static K_MUTEX_DEFINE(fl_resolve_lock);
+/* The two kernel objects live behind static accessors per the project's
+ * M23_388 (no mutable file-scope globals) pattern; K_SEM_DEFINE /
+ * K_MUTEX_DEFINE inside the accessor keeps the statically-initialised,
+ * section-iterable control block the kernel expects. */
+
+static struct k_sem *fl_resolve_sem(void)
+{
+    static K_SEM_DEFINE(sem, 0, 1);
+    return &sem;
+}
+
+static struct k_mutex *fl_resolve_lock(void)
+{
+    static K_MUTEX_DEFINE(lock);
+    return &lock;
+}
 
 /* -EBUSY from a resolver means an OTA/factory/autotune op holds the shared
  * maintenance arena. Retry a bounded number of times so a maintenance op that
@@ -295,7 +309,7 @@ static Status_t fl_call_resolver(uint16_t rid, const uint8_t *params,
                  FlashLogRange_t *range)
 {
     FlashLogDest_t stream = (FlashLogDest_t)params[0];
-    Status_t rc;
+    Status_t rc = -EINVAL;
 
     if (rid == RID_SELECT_LATEST_BOOT) {
         rc = flash_log_reader_resolve_latest_boot(stream, range);
@@ -329,16 +343,18 @@ static Status_t fl_worker_resolve(uint16_t rid, const uint8_t *params,
     Status_t rc = -EBUSY;
     bool settled = false;
 
-    maint_arena_log_index_set_building(true);
-    for (uint16_t tries = 0U; (tries < FL_RESOLVE_MAX_TRIES) && !settled; ++tries) {
+    maint_arena_set_index_building(true);
+    uint16_t tries = 0U;
+    while ((tries < FL_RESOLVE_MAX_TRIES) && (!settled)) {
         rc = fl_call_resolver(rid, params, range);
         if (rc == -EBUSY) {
-            k_msleep((int32_t)FL_RESOLVE_RETRY_MS);
+            (void)k_msleep((int32_t)FL_RESOLVE_RETRY_MS);
         } else {
             settled = true;
         }
+        ++tries;
     }
-    maint_arena_log_index_set_building(false);
+    maint_arena_set_index_building(false);
     return rc;
 }
 
@@ -350,38 +366,43 @@ static void fl_resolve_worker(void *a, void *b, void *c)
     LogDownloadSM_t *sm = fl_sm();
 
     for (;;) {
-        (void)k_sem_take(&fl_resolve_sem, K_FOREVER);
+        (void)k_sem_take(fl_resolve_sem(), K_FOREVER);
 
         uint16_t rid = 0U;
         uint8_t params[sizeof(sm->resolve_params)] = {0};
         uint8_t plen = 0U;
         bool run = false;
 
-        (void)k_mutex_lock(&fl_resolve_lock, K_FOREVER);
-        if (sm->resolve_active && !sm->resolve_done) {
+        (void)k_mutex_lock(fl_resolve_lock(), K_FOREVER);
+        if (sm->resolve_active && (!sm->resolve_done)) {
             rid = sm->resolve_rid;
             plen = sm->resolve_params_len;
             (void)memcpy(params, sm->resolve_params, plen);
             run = true;
         }
-        (void)k_mutex_unlock(&fl_resolve_lock);
+        (void)k_mutex_unlock(fl_resolve_lock());
 
         if (run) {
             FlashLogRange_t range = {0};
             Status_t rc = fl_worker_resolve(rid, params, &range);
 
-            (void)k_mutex_lock(&fl_resolve_lock, K_FOREVER);
+            (void)k_mutex_lock(fl_resolve_lock(), K_FOREVER);
             /* Publish only if this exact request is still the active one — a
-             * superseding selector may have replaced it while we walked. */
-            if (sm->resolve_active && !sm->resolve_done &&
-                (sm->resolve_rid == rid) &&
-                (sm->resolve_params_len == plen) &&
-                (0 == memcmp(sm->resolve_params, params, plen))) {
+             * superseding selector may have replaced it while we walked. The
+             * two-step split keeps the original short-circuit order: memcmp
+             * only runs once the cheap identity checks have passed. */
+            bool same_request = sm->resolve_active && (!sm->resolve_done) &&
+                        (sm->resolve_rid == rid);
+            bool same_params = same_request &&
+                       (sm->resolve_params_len == plen) &&
+                       (0 == memcmp(sm->resolve_params, params, plen));
+
+            if (same_params) {
                 sm->range = range;
                 sm->resolve_rc = rc;
                 sm->resolve_done = true;
             }
-            (void)k_mutex_unlock(&fl_resolve_lock);
+            (void)k_mutex_unlock(fl_resolve_lock());
         }
     }
 }
@@ -455,7 +476,7 @@ static uint8_t fl_async_selector(uint16_t rid, const uint8_t *data,
         plen = (uint8_t)sizeof(sm->resolve_params);
     }
 
-    (void)k_mutex_lock(&fl_resolve_lock, K_FOREVER);
+    (void)k_mutex_lock(fl_resolve_lock(), K_FOREVER);
     bool same = sm->resolve_active &&
             (sm->resolve_rid == rid) &&
             (sm->resolve_params_len == plen) &&
@@ -467,7 +488,7 @@ static uint8_t fl_async_selector(uint16_t rid, const uint8_t *data,
 
         sm->resolve_active = false;
         sm->resolve_done = false;
-        (void)k_mutex_unlock(&fl_resolve_lock);
+        (void)k_mutex_unlock(fl_resolve_lock());
         nrc = fl_finish_selector(stream, rc);
     } else {
         if (!same) {
@@ -477,10 +498,10 @@ static uint8_t fl_async_selector(uint16_t rid, const uint8_t *data,
             (void)memcpy(sm->resolve_params, data, plen);
             sm->resolve_active = true;
             sm->resolve_done = false;
-            (void)k_sem_give(&fl_resolve_sem);
+            (void)k_sem_give(fl_resolve_sem());
         }
         /* else same && !done → still running; keep the client polling. */
-        (void)k_mutex_unlock(&fl_resolve_lock);
+        (void)k_mutex_unlock(fl_resolve_lock());
     }
 
     return nrc;
@@ -541,6 +562,43 @@ static uint8_t fl_resolve_selector(uint16_t rid, const uint8_t *data,
 
 /* ---- 0x31 RoutineControl ---- */
 
+/* Run one start-routine RID: BeginStream arms the transfer, a selector RID
+ * resolves a new range (superseding any live stream). Returns 0 on success,
+ * else the NRC to answer with. */
+static uint8_t fl_start_routine(uint16_t rid, const uint8_t *request_data,
+                uint16_t request_length)
+{
+    LogDownloadSM_t *sm = fl_sm();
+    uint8_t nrc = 0U;
+
+    if (rid == RID_BEGIN_STREAM) {
+        if (sm->state != LD_SELECTED) {
+            nrc = UDS_NRC_REQUEST_SEQUENCE_ERR;
+        } else {
+            flash_log_reader_open(&sm->reader, &sm->range);
+            sm->header_sent = false;
+            fl_start_streaming();   /* pauses the writer for the capture */
+        }
+    } else if ((rid >= RID_SELECT_BY_RANGE) &&
+           (rid <= RID_SELECT_ALL)) {
+        /* A fresh selector supersedes any live stream — resume the
+         * writer before re-resolving (the resolve below sets
+         * LD_SELECTED). */
+        const uint8_t *params = &request_data[UDS_SID_IDX + 4U];
+        uint16_t params_len = 0U;
+
+        fl_stop_streaming(LD_IDLE);
+        if (request_length > ROUTINE_CONTROL_MIN_REQ_LEN) {
+            params_len = (uint16_t)(request_length - ROUTINE_CONTROL_MIN_REQ_LEN);
+        }
+        nrc = fl_resolve_selector(rid, params, params_len);
+    } else {
+        nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
+    }
+
+    return nrc;
+}
+
 void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
                    const uint8_t *request_data,
                    uint16_t request_length)
@@ -557,33 +615,7 @@ void UDS_LogDownload_HandleRoutine(UDSContext_t *ctx,
             UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
                          UDS_NRC_SUBFUNC_NOT_SUPPORTED);
         } else {
-            uint8_t nrc = 0U;
-            LogDownloadSM_t *sm = fl_sm();
-
-            if (rid == RID_BEGIN_STREAM) {
-                if (sm->state != LD_SELECTED) {
-                    nrc = UDS_NRC_REQUEST_SEQUENCE_ERR;
-                } else {
-                    flash_log_reader_open(&sm->reader, &sm->range);
-                    sm->header_sent = false;
-                    fl_start_streaming();   /* pauses the writer for the capture */
-                }
-            } else if ((rid >= RID_SELECT_BY_RANGE) &&
-                   (rid <= RID_SELECT_ALL)) {
-                /* A fresh selector supersedes any live stream — resume the
-                 * writer before re-resolving (the resolve below sets
-                 * LD_SELECTED). */
-                const uint8_t *params = &request_data[UDS_SID_IDX + 4U];
-                uint16_t params_len = 0U;
-
-                fl_stop_streaming(LD_IDLE);
-                if (request_length > ROUTINE_CONTROL_MIN_REQ_LEN) {
-                    params_len = (uint16_t)(request_length - ROUTINE_CONTROL_MIN_REQ_LEN);
-                }
-                nrc = fl_resolve_selector(rid, params, params_len);
-            } else {
-                nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
-            }
+            uint8_t nrc = fl_start_routine(rid, request_data, request_length);
 
             if (0U != nrc) {
                 /* busyRepeatRequest is the normal "index still building, poll
@@ -913,10 +945,10 @@ void UDS_LogDownload_ResetForTest(void)
 {
     LogDownloadSM_t *sm = fl_sm();
 
-    (void)k_mutex_lock(&fl_resolve_lock, K_FOREVER);
+    (void)k_mutex_lock(fl_resolve_lock(), K_FOREVER);
     sm->resolve_active = false;
     sm->resolve_done = false;
-    (void)k_mutex_unlock(&fl_resolve_lock);
+    (void)k_mutex_unlock(fl_resolve_lock());
 }
 #endif
 

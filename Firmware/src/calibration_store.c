@@ -75,8 +75,8 @@ static int32_t cal_parse_cell_key(const char *name)
 /* Settings handler set(): called by settings_load_subtree("cal") for
  * each "cal/cellN" key in NVS.  Updates the in-memory cache so cells and
  * validation readbacks see the persisted value. */
-static int cal_settings_set(const char *name, size_t len,
-                            settings_read_cb read_cb, void *cb_arg)
+static Status_t cal_settings_set(const char *name, size_t len,
+                                 settings_read_cb read_cb, void *cb_arg)
 {
     Status_t result = 0;
     int32_t cell = cal_parse_cell_key(name);
@@ -100,8 +100,14 @@ static int cal_settings_set(const char *name, size_t len,
 }
 
 /* Settings handler get(): used by settings_runtime_get("cal/cellN", ...).
- * Returns the cached value's length on success so the caller can size-check. */
-static int cal_settings_get(const char *name, char *val, int val_len_max)
+ * Returns the cached value's length on success so the caller can size-check.
+ *
+ * val_len_max stays a bare `int` per Zephyr's settings_handler_static.h_get
+ * contract (settings/settings.h): on the arm-zephyr-eabi toolchain int32_t is
+ * `long int`, so an int32_t parameter makes this an incompatible function
+ * pointer for the handler table. (Status_t is a typedef of int, so the return
+ * type carries no such constraint.) */
+static Status_t cal_settings_get(const char *name, char *val, int val_len_max)
 {
     Status_t result = 0;
     int32_t cell = cal_parse_cell_key(name);
@@ -130,7 +136,7 @@ Status_t calibration_store_save(uint8_t cell_num, CalCoeff_t coeff)
 
     (void)snprintk(key, sizeof(key), CAL_SETTINGS_KEY "%u", cell_num);
 
-    result = external_flash_settings_save_one(key, &coeff, sizeof(coeff));
+    result = ext_flash_settings_save_one(key, &coeff, sizeof(coeff));
 
     if (0 == result) {
         /* Force the cache to reload from NVS so the validation readback in
@@ -138,7 +144,7 @@ Status_t calibration_store_save(uint8_t cell_num, CalCoeff_t coeff)
          * flash, not what we just tried to write.  This catches a class of
          * failures where NVS accepts the write but the backing flash is
          * full/corrupt. */
-        result = external_flash_settings_load_subtree(CAL_SETTINGS_SUBTREE);
+        result = ext_flash_settings_load_subtree(CAL_SETTINGS_SUBTREE);
     }
 
     return result;
@@ -177,6 +183,10 @@ Status_t calibration_store_load(uint8_t cell_num, CalCoeff_t *coeff)
  * until it finishes, then skips; no cell ever reads a half-populated cache and
  * the flash cost is paid once.
  */
+/* Framework-mandated file-scope object: K_MUTEX_DEFINE places the control
+ * block in an iterable section for compile-time static initialisation, the
+ * same pattern SonarQube M23_388 accepts for K_THREAD_DEFINE (see
+ * src/i2c_bus_lock.c and docs/SONARQUBE_ACCEPTED_ISSUES.md). */
 static K_MUTEX_DEFINE(cal_load_mutex);
 
 /**
@@ -203,7 +213,7 @@ void calibration_load_coefficients(void)
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
         }
         else {
-            rc = external_flash_settings_load_subtree(CAL_SETTINGS_SUBTREE);
+            rc = ext_flash_settings_load_subtree(CAL_SETTINGS_SUBTREE);
             if (0 != rc) {
                 /* Leave the flag clear so a later caller retries; the cells
                  * degrade to their default coefficient in the meantime. */

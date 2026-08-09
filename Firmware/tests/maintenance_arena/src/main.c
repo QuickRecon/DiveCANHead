@@ -41,7 +41,7 @@ ZTEST(maintenance_arena, test_build_pin_blocks_eviction)
 {
     zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_LOG_INDEX), NULL);
 
-    maint_arena_log_index_set_building(true);
+    maint_arena_set_index_building(true);
 
     zassert_is_null(maint_arena_claim(MAINT_ARENA_OWNER_OTA),
                     "OTA denied while a build is in progress");
@@ -53,7 +53,7 @@ ZTEST(maintenance_arena, test_build_pin_blocks_eviction)
     zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_LOG_INDEX),
                      "the builder may re-claim its own arena while building");
 
-    maint_arena_log_index_set_building(false);
+    maint_arena_set_index_building(false);
     zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_OTA),
                      "OTA evicts again once the build clears the pin");
 }
@@ -62,7 +62,7 @@ ZTEST(maintenance_arena, test_build_pin_blocks_eviction)
  * fresh grant against a free arena. */
 ZTEST(maintenance_arena, test_pin_does_not_block_free_claim)
 {
-    maint_arena_log_index_set_building(true);
+    maint_arena_set_index_building(true);
     zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_OTA),
                      "a free arena stays claimable while pinned");
 }
@@ -71,7 +71,7 @@ ZTEST(maintenance_arena, test_pin_does_not_block_free_claim)
 ZTEST(maintenance_arena, test_reset_clears_pin)
 {
     zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_LOG_INDEX), NULL);
-    maint_arena_log_index_set_building(true);
+    maint_arena_set_index_building(true);
 
     maint_arena_reset_for_test();
 

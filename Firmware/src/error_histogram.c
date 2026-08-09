@@ -150,7 +150,7 @@ static void save_to_nvs(void)
 
     snapshot_to_u16(buf);
 
-    Status_t rc = external_flash_settings_save_one(HIST_SETTINGS_KEY, buf,
+    Status_t rc = ext_flash_settings_save_one(HIST_SETTINGS_KEY, buf,
                                                    sizeof(buf));
 
     if (0 == rc) {
@@ -209,7 +209,7 @@ Status_t error_histogram_clear(void)
      * otherwise overwrite NVS on its next tick, but we don't want to
      * rely on that being fast enough. */
     uint16_t zero_buf[ERROR_HISTOGRAM_COUNT] = {0};
-    Status_t rc = external_flash_settings_save_one(HIST_SETTINGS_KEY, zero_buf,
+    Status_t rc = ext_flash_settings_save_one(HIST_SETTINGS_KEY, zero_buf,
                                                    sizeof(zero_buf));
 
     if (0 == rc) {
@@ -223,7 +223,7 @@ Status_t error_histogram_clear(void)
 
 void error_histogram_init(void)
 {
-    Status_t rc = external_flash_settings_load_subtree(HIST_SETTINGS_SUBTREE);
+    Status_t rc = ext_flash_settings_load_subtree(HIST_SETTINGS_SUBTREE);
 
     if (0 != rc) {
         LOG_WRN("NVS load failed: %d", rc);

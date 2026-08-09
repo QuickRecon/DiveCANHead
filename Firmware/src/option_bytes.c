@@ -84,7 +84,13 @@ static uint32_t bor_level(uint32_t optr)
  * reset, and loop forever. That is failure mode 1 in COMPROMISE.md #10, and on
  * a life-support device an unbreakable bootloop is far worse than running at
  * the factory brown-out level. A unit that cannot accept the write just logs
- * the error and carries on. */
+ * the error and carries on.
+ *
+ * __noinit demands file-scope storage (the attribute places the object in the
+ * .noinit section, which a function-local static cannot participate in), so
+ * these two cannot move behind the usual accessor. Same carve-out as
+ * errors.c's crash_noinit — M23_388 is accepted per-issue on SonarCloud (see
+ * docs/SONARQUBE_ACCEPTED_ISSUES.md). */
 static __noinit uint32_t ob_attempt_magic;
 static __noinit uint32_t ob_attempted;
 
@@ -203,8 +209,8 @@ Status_t option_bytes_check_and_apply(void)
     /* Self-heal every asserted field so an OTA'd unit converges without a
      * visit to flash.sh — fielded heads never run it, so an assertion alone
      * would leave them wrong forever. */
-    if (!ok_nBOOT0 || !ok_nSWBOOT0 || !ok_bor) {
-        if (ob_attempt_magic == OB_ATTEMPT_MAGIC && ob_attempted != 0U) {
+    if ((!ok_nBOOT0) || (!ok_nSWBOOT0) || (!ok_bor)) {
+        if ((ob_attempt_magic == OB_ATTEMPT_MAGIC) && (ob_attempted != 0U)) {
             LOG_ERR("Option bytes still wrong after a programming attempt this "
                     "power cycle — not retrying (would bootloop). Reprovision "
                     "via STM32_Programmer_CLI -ob nSWBOOT0=%u nBOOT0=%u "

@@ -38,6 +38,25 @@ DEFAULT_IMGTOOL = (
 )
 
 
+def _python_from_shebang(west_path: str) -> str | None:
+    """Resolve the interpreter named in a script's #! line, if any."""
+    try:
+        first_line = Path(west_path).read_text(
+            encoding="utf-8", errors="replace"
+        ).splitlines()[0]
+        if first_line.startswith("#!"):
+            command = first_line[2:].strip().split()
+            if command and Path(command[0]).name == "env" and 1 < len(command):
+                resolved = shutil.which(command[1])
+                if resolved:
+                    return resolved
+            elif command and Path(command[0]).is_file():
+                return command[0]
+    except (OSError, IndexError):
+        pass
+    return None
+
+
 def _imgtool_python() -> str:
     """Use the interpreter behind the caller-selected West environment."""
     override = os.environ.get("DIVECAN_IMGTOOL_PYTHON")
@@ -46,20 +65,9 @@ def _imgtool_python() -> str:
 
     west = shutil.which("west")
     if west:
-        try:
-            first_line = Path(west).read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines()[0]
-            if first_line.startswith("#!"):
-                command = first_line[2:].strip().split()
-                if command and Path(command[0]).name == "env" and 1 < len(command):
-                    resolved = shutil.which(command[1])
-                    if resolved:
-                        return resolved
-                elif command and Path(command[0]).is_file():
-                    return command[0]
-        except (OSError, IndexError):
-            pass
+        resolved = _python_from_shebang(west)
+        if resolved:
+            return resolved
 
     return sys.executable
 

@@ -36,15 +36,15 @@ Status_t external_flash_acquire(k_timeout_t timeout);
 void external_flash_release(void);
 
 /** @brief Serialised settings_save_one() with bounded transient retry. */
-Status_t external_flash_settings_save_one(const char *name, const void *value,
+Status_t ext_flash_settings_save_one(const char *name, const void *value,
                                           size_t len);
 
 /** @brief Serialised settings_load_one(). */
-ssize_t external_flash_settings_load_one(const char *name, void *value,
+ssize_t ext_flash_settings_load_one(const char *name, void *value,
                                          size_t len);
 
 /** @brief Serialised settings_load_subtree(). */
-Status_t external_flash_settings_load_subtree(const char *subtree);
+Status_t ext_flash_settings_load_subtree(const char *subtree);
 
 /** @brief Serialised flash_area_read(). */
 Status_t external_flash_area_read(const struct flash_area *fa, off_t off,

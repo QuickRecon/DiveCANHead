@@ -241,7 +241,7 @@ static int fl_index_walk_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
     if (0U == (ctx->walked % FL_INDEX_WALK_WDT_KICK)) {
         watchdog_kick();
         external_flash_release();
-        k_msleep(FL_INDEX_WALK_YIELD_MS);
+        (void)k_msleep(FL_INDEX_WALK_YIELD_MS);
         (void)external_flash_acquire(K_FOREVER);
     }
 
@@ -366,7 +366,7 @@ static int fl_marker_scan_cb(struct fcb_entry_ctx *loc_ctx, void *arg)
         watchdog_kick();
         /* Chunk the mutex hold — same rationale as fl_index_walk_cb. */
         external_flash_release();
-        k_msleep(FL_INDEX_WALK_YIELD_MS);
+        (void)k_msleep(FL_INDEX_WALK_YIELD_MS);
         (void)external_flash_acquire(K_FOREVER);
     }
 
@@ -478,7 +478,7 @@ Status_t flash_log_reader_resolve_all(FlashLogDest_t dest, FlashLogRange_t *out)
     if ((out == NULL) || (dest >= FL_DEST_COUNT)) {
         rc = -EINVAL;
     } else {
-        struct fcb *fcb_p = flash_log_internal_get_fcb(dest);
+        const struct fcb *fcb_p = flash_log_internal_get_fcb(dest);
         if (fcb_p == NULL) {
             rc = -EINVAL;
         } else {
@@ -801,6 +801,87 @@ void flash_log_reader_open(FlashLogReader_t *r, const FlashLogRange_t *range)
     }
 }
 
+/**
+ * @brief Advance the cursor to the next FCB entry when none is in flight.
+ *
+ * Advance happens only once the current entry is fully emitted. A single FCB
+ * entry may span several next() calls (see have_entry).
+ *
+ * @return true if the walk stopped (end of ring or end of range).
+ */
+static bool fl_reader_advance(FlashLogReader_t *r, struct fcb *fcb_p)
+{
+    bool stopped = false;
+    Status_t rc = fcb_getnext(fcb_p, &r->cursor);
+
+    if (0 != rc) {
+        r->finished = true;
+        stopped = true;
+    } else {
+        r->started = true;
+
+        /* End test: if range.end is set and we walked past it, stop. */
+        if ((r->range.end.fe_sector != NULL) &&
+            (r->cursor.fe_sector == r->range.end.fe_sector) &&
+            (r->cursor.fe_elem_off >= r->range.end.fe_elem_off)) {
+            r->finished = true;
+            stopped = true;
+        } else {
+            r->have_entry = true;
+            r->emit_off = 0U;
+        }
+    }
+    return stopped;
+}
+
+/**
+ * @brief Emit up to buf_size bytes of the current entry's data.
+ *
+ * The clean wire entry is exactly the FCB entry's data: the writer stored
+ * [fl_entry_hdr_t | payload] as one fcb_append of fe_data_len bytes, which is
+ * precisely the TLV the client's parser expects — so stream those bytes
+ * verbatim (no separate header read; the old +sizeof(hdr) double-counted it).
+ * An entry larger than one download chunk is split across calls and
+ * reassembled by simple concatenation on the client.
+ *
+ * @return Bytes emitted (>=0), or a negative errno from the flash read.
+ */
+static Status_t fl_reader_emit_chunk(FlashLogReader_t *r,
+                                     const struct fcb *fcb_p,
+                                     uint8_t *buf, size_t buf_size)
+{
+    Status_t result;
+    size_t total = (size_t)r->cursor.fe_data_len;
+    size_t remaining = total - r->emit_off;
+    size_t n = buf_size;
+    Status_t read_rc = 0;
+
+    if (remaining < buf_size) {
+        n = remaining;
+    }
+
+    if (n > 0U) {
+        read_rc = flash_area_read(fcb_p->fap,
+                     fl_entry_data_off(&r->cursor) +
+                         (off_t)r->emit_off,
+                     buf, n);
+    }
+
+    if (0 != read_rc) {
+        result = read_rc;
+    } else {
+        r->emit_off += (uint32_t)n;
+        if (r->emit_off >= total) {
+            /* Whole entry emitted — next call advances to the
+             * following entry. */
+            r->have_entry = false;
+            r->emit_off = 0U;
+        }
+        result = (Status_t)n;
+    }
+    return result;
+}
+
 Status_t flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_size)
 {
     Status_t result = 0;
@@ -822,73 +903,14 @@ Status_t flash_log_reader_next(FlashLogReader_t *r, uint8_t *buf, size_t buf_siz
             } else {
                 bool stopped = false;
 
-                /* Advance to the next entry only once the current one is fully
-                 * emitted. A single FCB entry may span several next() calls
-                 * (see have_entry). */
                 if (!r->have_entry) {
-                    Status_t rc = fcb_getnext(fcb_p, &r->cursor);
-
-                    if (0 != rc) {
-                        r->finished = true;
-                        stopped = true;
-                    } else {
-                        r->started = true;
-
-                        /* End test: if range.end is set and we walked past it,
-                         * stop. */
-                        if ((r->range.end.fe_sector != NULL) &&
-                            (r->cursor.fe_sector == r->range.end.fe_sector) &&
-                            (r->cursor.fe_elem_off >= r->range.end.fe_elem_off)) {
-                            r->finished = true;
-                            stopped = true;
-                        } else {
-                            r->have_entry = true;
-                            r->emit_off = 0U;
-                        }
-                    }
+                    stopped = fl_reader_advance(r, fcb_p);
                 }
 
                 if (stopped) {
                     result = 0;
                 } else {
-                    /* The clean wire entry is exactly the FCB entry's data: the
-                     * writer stored [fl_entry_hdr_t | payload] as one
-                     * fcb_append of fe_data_len bytes, which is precisely the
-                     * TLV the client's parser expects — so stream those bytes
-                     * verbatim (no separate header read; the old +sizeof(hdr)
-                     * double-counted it). Emit at most buf_size of the
-                     * remaining entry; the rest follows on the next call, so
-                     * an entry larger than one download chunk is split across
-                     * chunks and reassembled by simple concatenation on the
-                     * client. */
-                    size_t total = (size_t)r->cursor.fe_data_len;
-                    size_t remaining = total - r->emit_off;
-                    size_t n = buf_size;
-                    Status_t read_rc = 0;
-
-                    if (remaining < buf_size) {
-                        n = remaining;
-                    }
-
-                    if (n > 0U) {
-                        read_rc = flash_area_read(fcb_p->fap,
-                                     fl_entry_data_off(&r->cursor) +
-                                         (off_t)r->emit_off,
-                                     buf, n);
-                    }
-
-                    if (0 != read_rc) {
-                        result = read_rc;
-                    } else {
-                        r->emit_off += (uint32_t)n;
-                        if (r->emit_off >= total) {
-                            /* Whole entry emitted — next call advances to the
-                             * following entry. */
-                            r->have_entry = false;
-                            r->emit_off = 0U;
-                        }
-                        result = (Status_t)n;
-                    }
+                    result = fl_reader_emit_chunk(r, fcb_p, buf, buf_size);
                 }
                 external_flash_release();
             }

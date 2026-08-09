@@ -37,8 +37,32 @@ typedef struct {
     BootRebootRecord_t records[BOOT_HISTORY_DEPTH];
 } RebootHistoryStore_t;
 
-static uint32_t current_reset_cause;
-static bool history_initialized;
+/* Module state lives behind static accessors per the project's M23_388
+ * pattern (no bare mutable file-scope globals — see src/heartbeat.c). Both
+ * are written once, inside boot_history_init(), which main() calls before any
+ * reader exists. */
+
+/**
+ * @brief Return a pointer to the module-static latched reset cause.
+ *
+ * @return Pointer to the hwinfo reset-cause bitmask captured at init.
+ */
+static uint32_t *get_current_reset_cause(void)
+{
+    static uint32_t current_reset_cause;
+    return &current_reset_cause;
+}
+
+/**
+ * @brief Return a pointer to the module-static "init has run" flag.
+ *
+ * @return Pointer to the bool guarding the one-time history record.
+ */
+static bool *get_history_initialized(void)
+{
+    static bool history_initialized;
+    return &history_initialized;
+}
 
 static bool crash_store_valid(const CrashHistoryStore_t *store)
 {
@@ -72,20 +96,20 @@ static void reset_reboot_store(RebootHistoryStore_t *store)
 
 static void load_crash_store(CrashHistoryStore_t *store)
 {
-    ssize_t got = external_flash_settings_load_one("bootdiag/crashes", store,
+    ssize_t got = ext_flash_settings_load_one("bootdiag/crashes", store,
                                                    sizeof(*store));
 
-    if (((ssize_t)sizeof(*store) != got) || !crash_store_valid(store)) {
+    if (((ssize_t)sizeof(*store) != got) || (!crash_store_valid(store))) {
         reset_crash_store(store);
     }
 }
 
 static void load_reboot_store(RebootHistoryStore_t *store)
 {
-    ssize_t got = external_flash_settings_load_one("bootdiag/reboots", store,
+    ssize_t got = ext_flash_settings_load_one("bootdiag/reboots", store,
                                                    sizeof(*store));
 
-    if (((ssize_t)sizeof(*store) != got) || !reboot_store_valid(store)) {
+    if (((ssize_t)sizeof(*store) != got) || (!reboot_store_valid(store))) {
         reset_reboot_store(store);
     }
 }
@@ -133,11 +157,11 @@ static Status_t record_reboot(RebootHistoryStore_t *store, uint32_t sequence)
 {
     const BootRebootRecord_t record = {
         .reboot_sequence = sequence,
-        .reset_cause = current_reset_cause,
+        .reset_cause = *get_current_reset_cause(),
     };
 
     append_reboot(store, &record);
-    return external_flash_settings_save_one("bootdiag/reboots", store,
+    return ext_flash_settings_save_one("bootdiag/reboots", store,
                                             sizeof(*store));
 }
 
@@ -161,7 +185,7 @@ static Status_t record_crash(CrashHistoryStore_t *store, uint32_t sequence)
         };
 
         append_crash(store, &record);
-        result = external_flash_settings_save_one("bootdiag/crashes", store,
+        result = ext_flash_settings_save_one("bootdiag/crashes", store,
                                                   sizeof(*store));
         if (0 == result) {
             errors_acknowledge_last_crash();
@@ -174,8 +198,8 @@ Status_t boot_history_init(void)
 {
     Status_t result = 0;
 
-    if (!history_initialized) {
-        history_initialized = true;
+    if (!*get_history_initialized()) {
+        *get_history_initialized() = true;
 
         Status_t settings_rc = settings_subsys_init();
         bool settings_ready = (0 == settings_rc);
@@ -183,9 +207,9 @@ Status_t boot_history_init(void)
             result = settings_rc;
         }
 
-        Status_t rc = hwinfo_get_reset_cause(&current_reset_cause);
+        Status_t rc = hwinfo_get_reset_cause(get_current_reset_cause());
         if (0 != rc) {
-            current_reset_cause = 0U;
+            *get_current_reset_cause() = 0U;
             if (0 == result) {
                 result = rc;
             }
@@ -221,9 +245,9 @@ Status_t boot_history_init(void)
     return result;
 }
 
-uint32_t boot_history_current_reset_cause(void)
+uint32_t boot_history_reset_cause(void)
 {
-    return current_reset_cause;
+    return *get_current_reset_cause();
 }
 
 size_t boot_history_get_crashes(BootCrashRecord_t *out, size_t capacity)

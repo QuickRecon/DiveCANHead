@@ -278,7 +278,7 @@ static bool ota_erase_and_init_download(OtaSmCtx_t *sm,
 #ifdef CONFIG_FLASH_LOG
     flash_log_pause();
 #endif
-    int rc = external_flash_area_erase(fa, 0U, fa->fa_size);
+    Status_t rc = external_flash_area_erase(fa, 0U, fa->fa_size);
 #ifdef CONFIG_FLASH_LOG
     flash_log_resume();
 #endif
@@ -451,7 +451,7 @@ static void ota_handle_transfer_data(OtaSmCtx_t *sm)
         } else {
             size_t dataLen = request_length - OTA_TRANSFER_OVERHEAD;
             const uint8_t *data = &request_data[UDS_SID_IDX + 2U];
-            int rc = external_flash_acquire(K_FOREVER);
+            Status_t rc = external_flash_acquire(K_FOREVER);
             if (0 == rc) {
                 rc = flash_img_buffered_write(sm->flash_ctx, data,
                                   dataLen, false);
@@ -497,7 +497,7 @@ static void ota_handle_transfer_exit(OtaSmCtx_t *sm)
         /* Flush any unwritten bytes from flash_img_buffered_write's
          * internal block buffer. Pass an empty data buffer so only
          * the flush flag has effect. */
-        int rc = external_flash_acquire(K_FOREVER);
+        Status_t rc = external_flash_acquire(K_FOREVER);
         if (0 == rc) {
             rc = flash_img_buffered_write(sm->flash_ctx, NULL, 0, true);
             external_flash_release();
@@ -776,8 +776,8 @@ static TlvWalkResult_e readOneTlvEntry(const struct flash_area *fa,
 {
     TlvWalkResult_e result = TLV_WALK_ERROR;
     uint8_t tlvHdr[TLV_HEADER_LEN] = {0};
-    int rc = external_flash_area_read(fa, (off_t)cursor, tlvHdr,
-                                      sizeof(tlvHdr));
+    Status_t rc = external_flash_area_read(fa, (off_t)cursor, tlvHdr,
+                                           sizeof(tlvHdr));
 
     if (0 != rc) {
         OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
@@ -877,7 +877,7 @@ static bool extractSlot1Sha256(const struct flash_area *fa,
     /* Read the fixed-size image_header. ih_hdr_size, ih_img_size and
      * ih_protect_tlv_size tell us where the TLV section starts. */
     uint8_t hdrRaw[IMG_HEADER_RAW_BYTES] = {0};
-    int rc = external_flash_area_read(fa, 0, hdrRaw, sizeof(hdrRaw));
+    Status_t rc = external_flash_area_read(fa, 0, hdrRaw, sizeof(hdrRaw));
     if (0 != rc) {
         OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
     } else {

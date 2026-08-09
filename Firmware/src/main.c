@@ -64,19 +64,24 @@ static const uint32_t PREAMBLE_LINE_DRAIN_MS = 50U;
  * A stuck boot holds one state indefinitely, and a reset loop repeats the
  * same partial pattern, both obvious by eye.
  */
-static bool boot_led_ready;
+static bool *boot_led_ready(void)
+{
+    /* Accessor-wrapped per the heartbeat.c M23_388 pattern. */
+    static bool ready;
+    return &ready;
+}
 
 static void boot_led_init(void)
 {
     if (device_is_ready(led.port)) {
         (void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-        boot_led_ready = true;
+        *boot_led_ready() = true;
     }
 }
 
 static void boot_led_toggle(void)
 {
-    if (boot_led_ready) {
+    if (*boot_led_ready()) {
         (void)gpio_pin_toggle_dt(&led);
     }
 }
@@ -434,13 +439,23 @@ static void emit_startup_preamble(void)
  *
  * @return 0 on normal exit; negative errno if LED hardware is unavailable
  */
-/* Boot phase timestamps (ms) — readable via debugger or UDS after boot. */
-static volatile uint32_t bp_entry_ms;
-static volatile uint32_t bp_wdg_ms;
-static volatile uint32_t bp_settings_ms;
-static volatile uint32_t bp_history_ms;
-static volatile uint32_t bp_flashlog_ms;
-static volatile uint32_t bp_cal_ms;
+/* Boot phase timestamps (ms) — written once during boot, read via debugger
+ * only. volatile so the stores survive optimization with no code consumer;
+ * accessor-wrapped per the heartbeat.c M23_388 pattern. */
+struct boot_phase_times {
+    uint32_t entry_ms;
+    uint32_t wdg_ms;
+    uint32_t settings_ms;
+    uint32_t history_ms;
+    uint32_t flashlog_ms;
+    uint32_t cal_ms;
+};
+
+static volatile struct boot_phase_times *boot_phase_times_get(void)
+{
+    static volatile struct boot_phase_times times;
+    return &times;
+}
 
 /**
  * @brief Temporarily boost SYSCLK for boot-time flash operations.
@@ -464,14 +479,20 @@ static volatile uint32_t bp_cal_ms;
  * recalibrates the SysTick so k_uptime / k_msleep stay correct.
  */
 #ifdef CONFIG_SOC_FAMILY_STM32
+
+/* HCLK targets for the two PLL-R operating points (see boost rationale above). */
+#define BOOT_HCLK_BOOST_HZ   48000000U
+#define RUNTIME_HCLK_HZ      12000000U
+
 static void set_pll_r_and_recalibrate(uint32_t pllr_val, uint32_t new_hclk,
                                       uint32_t flash_latency)
 {
-    unsigned int key = irq_lock();
+    uint32_t key = irq_lock();
 
     if (new_hclk > SystemCoreClock) {
         LL_FLASH_SetLatency(flash_latency);
         while (LL_FLASH_GetLatency() != flash_latency) {
+            /* Busy-wait: latency must be applied before raising HCLK. */
         }
     }
 
@@ -479,22 +500,27 @@ static void set_pll_r_and_recalibrate(uint32_t pllr_val, uint32_t new_hclk,
      * reconfiguring the PLL divider. */
     LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_HSE);
     while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSE) {
+        /* Busy-wait: hardware switch completes in a few cycles. */
     }
     LL_RCC_PLL_Disable();
-    while (LL_RCC_PLL_IsReady()) {
+    while (0U != LL_RCC_PLL_IsReady()) {
+        /* Busy-wait for PLL lock to drop before touching PLLCFGR. */
     }
     MODIFY_REG(RCC->PLLCFGR, RCC_PLLCFGR_PLLR_Msk, pllr_val);
     LL_RCC_PLL_EnableDomain_SYS();
     LL_RCC_PLL_Enable();
-    while (!LL_RCC_PLL_IsReady()) {
+    while (0U == LL_RCC_PLL_IsReady()) {
+        /* Busy-wait for PLL relock (~µs). */
     }
     LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL);
     while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL) {
+        /* Busy-wait: hardware switch completes in a few cycles. */
     }
 
     if (new_hclk < SystemCoreClock) {
         LL_FLASH_SetLatency(flash_latency);
         while (LL_FLASH_GetLatency() != flash_latency) {
+            /* Busy-wait: latency may only drop after lowering HCLK. */
         }
     }
 
@@ -505,12 +531,14 @@ static void set_pll_r_and_recalibrate(uint32_t pllr_val, uint32_t new_hclk,
 
 static void boot_clock_boost(void)
 {
-    set_pll_r_and_recalibrate(LL_RCC_PLLR_DIV_2, 48000000U, LL_FLASH_LATENCY_2);
+    set_pll_r_and_recalibrate(LL_RCC_PLLR_DIV_2, BOOT_HCLK_BOOST_HZ,
+                              LL_FLASH_LATENCY_2);
 }
 
 static void boot_clock_restore(void)
 {
-    set_pll_r_and_recalibrate(LL_RCC_PLLR_DIV_8, 12000000U, LL_FLASH_LATENCY_0);
+    set_pll_r_and_recalibrate(LL_RCC_PLLR_DIV_8, RUNTIME_HCLK_HZ,
+                              LL_FLASH_LATENCY_0);
 }
 #else /* !CONFIG_SOC_FAMILY_STM32 (native_sim) — no PLL to switch */
 static void boot_clock_boost(void)
@@ -525,8 +553,9 @@ static void boot_clock_restore(void)
 Status_t main(void)
 {
     Status_t ret = 0;
+    volatile struct boot_phase_times *bp = boot_phase_times_get();
 
-    bp_entry_ms = k_uptime_get_32();
+    bp->entry_ms = k_uptime_get_32();
 
     boot_clock_boost();
 
@@ -551,22 +580,22 @@ Status_t main(void)
      * individually; the feeder thread takes over from its first lap. */
     watchdog_kick();
     boot_led_init();
-    bp_wdg_ms = k_uptime_get_32();
+    bp->wdg_ms = k_uptime_get_32();
 
     RuntimeSettings_t boot_settings = RUNTIME_SETTINGS_DEFAULT;
     (void)runtime_settings_load(&boot_settings);
-    bp_settings_ms = k_uptime_get_32();
+    bp->settings_ms = k_uptime_get_32();
     boot_led_toggle();
     watchdog_kick();
 
     (void)boot_history_init();
-    bp_history_ms = k_uptime_get_32();
+    bp->history_ms = k_uptime_get_32();
     boot_led_toggle();
     watchdog_kick();
 
 #ifdef CONFIG_FLASH_LOG
     (void)flash_log_init();
-    bp_flashlog_ms = k_uptime_get_32();
+    bp->flashlog_ms = k_uptime_get_32();
     boot_led_toggle();
     CrashInfo_t prev_crash = {0};
     const CrashInfo_t *prev = NULL;
@@ -574,7 +603,7 @@ Status_t main(void)
         prev = &prev_crash;
     }
     flash_log_record_boot_marker(flash_log_get_boot_id(),
-                                 boot_history_current_reset_cause(), prev);
+                                 boot_history_reset_cause(), prev);
     if (NULL != prev) {
         /* This normal log message is intentionally emitted only after the
          * flash-log backend is ready, duplicating the independently persisted
@@ -585,7 +614,7 @@ Status_t main(void)
 #endif
 
     calibration_init();
-    bp_cal_ms = k_uptime_get_32();
+    bp->cal_ms = k_uptime_get_32();
     boot_led_toggle();
     ppo2_control_init();
     boot_led_toggle();

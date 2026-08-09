@@ -374,6 +374,6 @@ CalibrationMode_t runtime_settings_get_calibration_mode(void);
  * @return Cached DiveCANIdentity_t; falls back to DIVECAN_IDENTITY_DEFAULT
  *         if the settings cache has not been initialised yet.
  */
-DiveCANIdentity_t runtime_settings_get_divecan_identity(void);
+DiveCANIdentity_t runtime_settings_get_divecan_id(void);
 
 #endif

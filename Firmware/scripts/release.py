@@ -49,6 +49,10 @@ _CHANGELOG_RELEASE_RE = re.compile(
 )
 _GIT_COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 
+CHANGELOG_FILENAME = "changelog.txt"
+TEST_MANIFEST_FILENAME = "test_manifest.json"
+QUALIFICATION_FILENAME = "qualification.json"
+
 
 class ReleaseError(ValueError):
     """A release input or artifact violates the release contract."""
@@ -140,7 +144,7 @@ def read_version_file(path: Path) -> str:
 
 
 def read_changelog_release(path: Path, version: str) -> str:
-    path = _repo_file(path, "changelog.txt", "changelog")
+    path = _repo_file(path, CHANGELOG_FILENAME, "changelog")
     _parse_semver(version)
     lines = path.read_text(encoding="utf-8").splitlines()
     if "## Unreleased" not in lines:
@@ -220,7 +224,7 @@ def stage_variant(args: argparse.Namespace) -> None:
     zephyr_dir = build_dir / "Firmware" / "zephyr"
     ota_image = _single_file([zephyr_dir / "zephyr.signed.bin"], "signed OTA image")
     manifest_path = _single_file(
-        [zephyr_dir / "test_manifest.json"], "HIL test manifest"
+        [zephyr_dir / TEST_MANIFEST_FILENAME], "HIL test manifest"
     )
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -243,12 +247,12 @@ def stage_variant(args: argparse.Namespace) -> None:
     ota_name = f"DiveCANHead-{args.variant}-v{args.version}-ota.bin"
     shutil.copy2(full_image, variant_dir / full_name)
     shutil.copy2(ota_image, variant_dir / ota_name)
-    shutil.copy2(manifest_path, variant_dir / "test_manifest.json")
+    shutil.copy2(manifest_path, variant_dir / TEST_MANIFEST_FILENAME)
 
     files = {
         full_name: _sha256(variant_dir / full_name),
         ota_name: _sha256(variant_dir / ota_name),
-        "test_manifest.json": _sha256(variant_dir / "test_manifest.json"),
+        TEST_MANIFEST_FILENAME: _sha256(variant_dir / TEST_MANIFEST_FILENAME),
     }
     qualification = {
         "schema": 1,
@@ -263,7 +267,7 @@ def stage_variant(args: argparse.Namespace) -> None:
     }
     if args.test_suite_commit is not None:
         qualification["test_suite_commit"] = args.test_suite_commit
-    (variant_dir / "qualification.json").write_text(
+    (variant_dir / QUALIFICATION_FILENAME).write_text(
         json.dumps(qualification, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
@@ -274,8 +278,8 @@ def _validate_qualified_variant(
 ) -> dict:
     full_name = f"DiveCANHead-{variant}-v{version}-full.hex"
     ota_name = f"DiveCANHead-{variant}-v{version}-ota.bin"
-    payload_names = {full_name, ota_name, "test_manifest.json"}
-    expected_names = payload_names | {"qualification.json"}
+    payload_names = {full_name, ota_name, TEST_MANIFEST_FILENAME}
+    expected_names = payload_names | {QUALIFICATION_FILENAME}
 
     if not variant_dir.is_dir():
         raise ReleaseError(f"missing qualified variant directory: {variant_dir}")
@@ -289,7 +293,7 @@ def _validate_qualified_variant(
         )
 
     qualification = json.loads(
-        (variant_dir / "qualification.json").read_text(encoding="utf-8")
+        (variant_dir / QUALIFICATION_FILENAME).read_text(encoding="utf-8")
     )
     if (
         qualification.get("result") != "passed"
@@ -317,7 +321,7 @@ def _validate_qualified_variant(
             raise ReleaseError(f"qualification hash mismatch for {variant}/{name}")
 
     manifest = json.loads(
-        (variant_dir / "test_manifest.json").read_text(encoding="utf-8")
+        (variant_dir / TEST_MANIFEST_FILENAME).read_text(encoding="utf-8")
     )
     if (
         manifest.get("variant") != variant
@@ -420,7 +424,7 @@ def bundle_release(args: argparse.Namespace) -> None:
         destination = package_dir / variant
         shutil.copytree(source_variant, destination)
 
-    shutil.copy2(args.changelog, package_dir / "changelog.txt")
+    shutil.copy2(args.changelog, package_dir / CHANGELOG_FILENAME)
     (package_dir / "README.txt").write_text(
         _package_readme(args.version), encoding="utf-8"
     )
@@ -449,7 +453,7 @@ def bundle_release(args: argparse.Namespace) -> None:
         variant_package_dir.mkdir()
         for source_path in sorted(source_variants[variant].iterdir()):
             shutil.copy2(source_path, variant_package_dir / source_path.name)
-        shutil.copy2(args.changelog, variant_package_dir / "changelog.txt")
+        shutil.copy2(args.changelog, variant_package_dir / CHANGELOG_FILENAME)
         (variant_package_dir / "README.txt").write_text(
             _variant_package_readme(args.version, variant), encoding="utf-8"
         )
@@ -475,7 +479,7 @@ def bundle_release(args: argparse.Namespace) -> None:
         "".join(f"{_sha256(path)}  {path.name}\n" for path in zip_paths),
         encoding="utf-8",
     )
-    shutil.copy2(args.changelog, output_dir / "changelog.txt")
+    shutil.copy2(args.changelog, output_dir / CHANGELOG_FILENAME)
     (output_dir / "release-notes.txt").write_text(
         read_changelog_release(args.changelog, args.version), encoding="utf-8"
     )

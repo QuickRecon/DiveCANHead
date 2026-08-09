@@ -137,7 +137,7 @@ ZTEST(boot_history, test_rolls_both_rings_and_persists_crash_independently)
 
     zassert_equal(boot_history_init(), TEST_REBOOT_SAVE_ERR,
                   "reboot-ring failure must be reported");
-    zassert_equal(boot_history_current_reset_cause(), RESET_WATCHDOG);
+    zassert_equal(boot_history_reset_cause(), RESET_WATCHDOG);
     zassert_equal(observed.clear_reset_calls, 1U);
     zassert_equal(observed.reboot_save_calls, 1U);
     zassert_equal(observed.crash_save_calls, 1U);

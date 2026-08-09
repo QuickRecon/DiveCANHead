@@ -95,7 +95,7 @@ ZTEST(runtime_settings, test_identity_default_is_solo)
 {
     zassert_equal(UDS_GetSettingValue(IDX_IDENTITY), 0U,
               "default broadcast identity must be SOLO (0)");
-    zassert_equal((int)runtime_settings_get_divecan_identity(),
+    zassert_equal((int)runtime_settings_get_divecan_id(),
               (int)DIVECAN_IDENTITY_SOLO);
 }
 
@@ -105,7 +105,7 @@ ZTEST(runtime_settings, test_persist_identity_roundtrip)
     zassert_true(UDS_SaveSettingValue(IDX_IDENTITY, 1U)); /* OBOE */
     reboot_sim();
     zassert_equal(UDS_GetSettingValue(IDX_IDENTITY), 1U);
-    zassert_equal((int)runtime_settings_get_divecan_identity(),
+    zassert_equal((int)runtime_settings_get_divecan_id(),
               (int)DIVECAN_IDENTITY_OBOE);
 
     /* Reverting to SOLO also persists. */

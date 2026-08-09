@@ -80,7 +80,7 @@ static Status_t flash_backend_init(void)
 {
     Status_t result = 0;
     if (!get_state()->initialised) {
-        Status_t rc = external_flash_settings_load_subtree(FACTORY_FLAG_SUBTREE);
+        Status_t rc = ext_flash_settings_load_subtree(FACTORY_FLAG_SUBTREE);
         if (0 != rc) {
             LOG_WRN("Settings load (%s) failed: %d", FACTORY_FLAG_SUBTREE, rc);
             /* Treat as "not captured" and continue — the next capture
@@ -198,7 +198,7 @@ static Status_t flash_backend_mark_captured(bool captured)
     } else {
         value = 0U;
     }
-    rc = external_flash_settings_save_one(FACTORY_FLAG_KEY, &value,
+    rc = ext_flash_settings_save_one(FACTORY_FLAG_KEY, &value,
                                           sizeof(value));
 
     if (0 == rc) {

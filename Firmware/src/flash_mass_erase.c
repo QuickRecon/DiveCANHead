@@ -66,6 +66,66 @@ static Status_t erase_nvs_partition(const struct device *flash)
 }
 #endif
 
+/**
+ * @brief Erase one chunk, retrying transient WIP-poll timeouts.
+ *
+ * Erase is idempotent — retry a transient WIP-poll timeout (now bounded in
+ * the spi_nor driver) before giving up.
+ */
+static Status_t erase_chunk_with_retry(const struct device *flash, uint64_t off,
+                                       size_t chunk)
+{
+    Status_t crc = flash_erase(flash, (off_t)off, chunk);
+    uint8_t attempt = 1U;
+
+    while ((crc != 0) && (attempt < ERASE_RETRY_ATTEMPTS)) {
+        watchdog_kick();
+        crc = flash_erase(flash, (off_t)off, chunk);
+        ++attempt;
+    }
+    return crc;
+}
+
+/**
+ * @brief Linear chunked erase sweep over the whole chip.
+ *
+ * @param flash      Ready external-flash device.
+ * @param total      Chip size in bytes.
+ * @param first_err  In/out: first non-zero rc seen (NVS pre-erase may have
+ *                   already set it).
+ * @param fail_count In/out: failed-chunk counter.
+ */
+static void erase_sweep(const struct device *flash, uint64_t total,
+                        Status_t *first_err, uint32_t *fail_count)
+{
+    for (uint64_t off = 0; off < total; off += ERASE_CHUNK_BYTES) {
+        size_t chunk = (size_t)MIN((uint64_t)ERASE_CHUNK_BYTES, total - off);
+
+        /* Coarse progress log so a mid-sweep IWDG reset from a driver
+         * WIP hang leaves the last-reached region visible without
+         * spamming 256 lines. */
+        if ((off % (PROGRESS_LOG_CHUNK_INTERVAL * ERASE_CHUNK_BYTES)) == 0U) {
+            LOG_INF("MASS ERASE @0x%08x", (unsigned)off);
+        }
+
+        watchdog_kick();   /* feed before each chunk's (worst-case ~8 s) erase */
+
+        Status_t crc = erase_chunk_with_retry(flash, off, chunk);
+        if (crc != 0) {
+            /* Do NOT abort the sweep on a single bad chunk. NVS at the
+             * TOP of the chip is erased FIRST (before the sweep), so the
+             * factory-reset contract holds even if a later chunk fails. Log
+             * the offending region, keep going, and surface the first rc. */
+            LOG_ERR("erase @0x%08x (%u B) failed: %d — continuing",
+                (unsigned)off, (unsigned)chunk, crc);
+            if (*first_err == 0) {
+                *first_err = crc;
+            }
+            ++(*fail_count);
+        }
+    }
+}
+
 Status_t flash_mass_erase_external(void)
 {
     Status_t result = 0;
@@ -109,41 +169,7 @@ Status_t flash_mass_erase_external(void)
                 }
 #endif
 
-                for (uint64_t off = 0; off < total; off += ERASE_CHUNK_BYTES) {
-                    size_t chunk = (size_t)MIN((uint64_t)ERASE_CHUNK_BYTES,
-                                               total - off);
-
-                    /* Coarse progress log so a mid-sweep IWDG reset from a driver
-                     * WIP hang leaves the last-reached region visible without
-                     * spamming 256 lines. */
-                    if ((off % (PROGRESS_LOG_CHUNK_INTERVAL * ERASE_CHUNK_BYTES)) == 0U) {
-                        LOG_INF("MASS ERASE @0x%08x", (unsigned)off);
-                    }
-
-                    watchdog_kick();   /* feed before each chunk's (worst-case ~8 s) erase */
-
-                    Status_t crc = flash_erase(flash, (off_t)off, chunk);
-                    /* Erase is idempotent — retry a transient WIP-poll timeout
-                     * (now bounded in the spi_nor driver) before giving up. */
-                    uint8_t attempt = 1U;
-                    while ((crc != 0) && (attempt < ERASE_RETRY_ATTEMPTS)) {
-                        watchdog_kick();
-                        crc = flash_erase(flash, (off_t)off, chunk);
-                        ++attempt;
-                    }
-                    if (crc != 0) {
-                        /* Do NOT abort the sweep on a single bad chunk. NVS at the
-                         * TOP of the chip is erased FIRST (above), so the factory-
-                         * reset contract holds even if a later chunk fails. Log the
-                         * offending region, keep going, and surface the first rc. */
-                        LOG_ERR("erase @0x%08x (%u B) failed: %d — continuing",
-                            (unsigned)off, (unsigned)chunk, crc);
-                        if (first_err == 0) {
-                            first_err = crc;
-                        }
-                        ++fail_count;
-                    }
-                }
+                erase_sweep(flash, total, &first_err, &fail_count);
 
                 watchdog_kick();
                 if (first_err != 0) {

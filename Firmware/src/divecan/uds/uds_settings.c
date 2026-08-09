@@ -225,7 +225,7 @@ static const SettingDefinition_t settings[SETTING_COUNT] = {
     },
     /* Index 11: DiveCAN broadcast identity (SOLO/OBOE). Boot-applied — the
      * value persists immediately but the announced device type changes on the
-     * next power cycle (see runtime_settings_get_divecan_identity). */
+     * next power cycle (see runtime_settings_get_divecan_id). */
     {
         .label = "CAN ID",
         .kind = SETTING_KIND_TEXT,

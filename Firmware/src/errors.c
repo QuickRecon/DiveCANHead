@@ -47,6 +47,11 @@ static bool had_crash;
 
 static uint32_t fault_sp_from_esf(const struct arch_esf *esf)
 {
+    /* Recovering the faulting stack pointer means turning the ESF's address
+     * into a number; there is no pointer-typed form of the answer. The cast
+     * already goes through uintptr_t, which is the compliant spelling —
+     * M23_094 still fires and is accepted per-issue on SonarCloud (see
+     * docs/SONARQUBE_ACCEPTED_ISSUES.md). */
     uint32_t sp = (uint32_t)(uintptr_t)esf + sizeof(esf->basic);
 
     if (0U != (esf->basic.xpsr & XPSR_STACK_ALIGN_FLAG)) {
@@ -285,9 +290,11 @@ void k_sys_fatal_error_handler(uint32_t reason,
 #else
         crash_noinit.sp = fault_sp_from_esf(esf);
         crash_noinit.exc_return = 0U;
-        crash_noinit.stack_source =
-            (0U != (esf->basic.xpsr & XPSR_IPSR_MASK)) ?
-            CRASH_STACK_SOURCE_MSP : CRASH_STACK_SOURCE_PSP;
+        if (0U != (esf->basic.xpsr & XPSR_IPSR_MASK)) {
+            crash_noinit.stack_source = CRASH_STACK_SOURCE_MSP;
+        } else {
+            crash_noinit.stack_source = CRASH_STACK_SOURCE_PSP;
+        }
 #endif
     } else {
         crash_noinit.pc = 0U;

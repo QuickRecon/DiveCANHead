@@ -111,7 +111,7 @@ void maint_arena_release(MaintArenaOwner_t owner);
  *
  * @param building true to pin (build in progress), false to release the pin.
  */
-void maint_arena_log_index_set_building(bool building);
+void maint_arena_set_index_building(bool building);
 
 /**
  * @brief Content-clobber generation counter.

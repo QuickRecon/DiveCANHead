@@ -44,7 +44,7 @@ void *maint_arena_claim(MaintArenaOwner_t owner)
         /* The log-index cache is evictable by the exclusive owners — UNLESS a
          * build is in progress on the worker thread, in which case eviction
          * would corrupt the arena it is mid-write into, so it is denied and the
-         * claimant retries (see maint_arena_log_index_set_building). */
+         * claimant retries (see maint_arena_set_index_building). */
         bool evictable = (MAINT_ARENA_OWNER_LOG_INDEX == arena_state.owner) &&
                          (MAINT_ARENA_OWNER_LOG_INDEX != owner) &&
                          (!arena_state.log_index_building);
@@ -80,7 +80,7 @@ void maint_arena_release(MaintArenaOwner_t owner)
     (void)k_mutex_unlock(&arena_lock);
 }
 
-void maint_arena_log_index_set_building(bool building)
+void maint_arena_set_index_building(bool building)
 {
     (void)k_mutex_lock(&arena_lock, K_FOREVER);
     arena_state.log_index_building = building;

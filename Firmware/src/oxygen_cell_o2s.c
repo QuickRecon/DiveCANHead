@@ -575,15 +575,29 @@ __maybe_unused static void o2s_cell_thread(void *p1, void *p2, void *p3)
  * address at compile time. M23_388 is suppressed for these declarations.
  *
  * Cell → UART mapping: USART1 = Cell 1, USART2 = Cell 2, USART3 = Cell 3
+ *
+ * cell_sample/last_ppo2_ticks/last_message/rx_buf/tx_buf/rx_len below are all
+ * re-established by o2s_setup() before first use on every (re)start;
+ * zero-initialised here purely to satisfy explicit-struct-init (S6871).
+ * The embedded semaphore uses Zephyr's initializer (same 0/1 counts
+ * o2s_setup()'s k_sem_init applies) because its internal aggregate layout is
+ * configuration-dependent.
  */
 
 #if defined(CONFIG_CELL_1_TYPE_O2S)
 static struct o2s_cell_state o2s_cell_1 = {
     .cell_number = 0,
+    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart1)),
     .cal_coeff = O2S_CAL_DEFAULT,
     .status = CELL_FAIL,
+    .cell_sample = 0,
+    .last_ppo2_ticks = 0,
+    .last_message = {0},
+    .rx_buf = {0},
+    .tx_buf = {0},
+    .rx_sem = Z_SEM_INITIALIZER(o2s_cell_1.rx_sem, 0, 1),
+    .rx_len = 0U,
     .out_chan = &chan_cell_1,
-    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart1)),
 };
 K_THREAD_DEFINE(o2s_thread_1, 768,
         o2s_cell_thread, &o2s_cell_1, NULL, NULL,
@@ -593,10 +607,17 @@ K_THREAD_DEFINE(o2s_thread_1, 768,
 #if defined(CONFIG_CELL_2_TYPE_O2S) && CONFIG_CELL_COUNT >= 2
 static struct o2s_cell_state o2s_cell_2 = {
     .cell_number = 1,
+    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart2)),
     .cal_coeff = O2S_CAL_DEFAULT,
     .status = CELL_FAIL,
+    .cell_sample = 0,
+    .last_ppo2_ticks = 0,
+    .last_message = {0},
+    .rx_buf = {0},
+    .tx_buf = {0},
+    .rx_sem = Z_SEM_INITIALIZER(o2s_cell_2.rx_sem, 0, 1),
+    .rx_len = 0U,
     .out_chan = &chan_cell_2,
-    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart2)),
 };
 K_THREAD_DEFINE(o2s_thread_2, 768,
         o2s_cell_thread, &o2s_cell_2, NULL, NULL,
@@ -606,10 +627,17 @@ K_THREAD_DEFINE(o2s_thread_2, 768,
 #if defined(CONFIG_CELL_3_TYPE_O2S) && CONFIG_CELL_COUNT >= 3
 static struct o2s_cell_state o2s_cell_3 = {
     .cell_number = 2,
+    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart3)),
     .cal_coeff = O2S_CAL_DEFAULT,
     .status = CELL_FAIL,
+    .cell_sample = 0,
+    .last_ppo2_ticks = 0,
+    .last_message = {0},
+    .rx_buf = {0},
+    .tx_buf = {0},
+    .rx_sem = Z_SEM_INITIALIZER(o2s_cell_3.rx_sem, 0, 1),
+    .rx_len = 0U,
     .out_chan = &chan_cell_3,
-    .uart_dev = DEVICE_DT_GET(DT_NODELABEL(usart3)),
 };
 K_THREAD_DEFINE(o2s_thread_3, 768,
         o2s_cell_thread, &o2s_cell_3, NULL, NULL,

@@ -64,9 +64,23 @@ static const uint8_t BYTE_IDX_3 = 3U;
 
 /* UDS state DID handlers run synchronously on the single DiveCAN RX thread.
  * Keep history serialization scratch off that thread's stack; the expanded
- * crash record is large enough to trip hardware stack checks on HIL. */
-static BootCrashRecord_t crash_history_scratch[BOOT_HISTORY_DEPTH];
-static BootRebootRecord_t reboot_history_scratch[BOOT_HISTORY_DEPTH];
+ * crash record is large enough to trip hardware stack checks on HIL.
+ *
+ * The buffers live behind static accessors per the project's M23_388 (no
+ * mutable file-scope globals) pattern; the accessors compile to the same code
+ * as the bare globals would. */
+
+static BootCrashRecord_t *get_crash_history_scratch(void)
+{
+    static BootCrashRecord_t crash_history_scratch[BOOT_HISTORY_DEPTH];
+    return crash_history_scratch;
+}
+
+static BootRebootRecord_t *get_reboot_history_scratch(void)
+{
+    static BootRebootRecord_t reboot_history_scratch[BOOT_HISTORY_DEPTH];
+    return reboot_history_scratch;
+}
 
 /* ============================================================================
  * Helper Functions
@@ -254,7 +268,7 @@ static bool readBankSemVer(uint8_t area_id, struct mcuboot_img_sem_ver *out)
 {
     struct mcuboot_img_header hdr = {0};
     bool ok = false;
-    int rc = external_flash_acquire(K_FOREVER);
+    Status_t rc = external_flash_acquire(K_FOREVER);
 
     if (0 == rc) {
         rc = boot_read_bank_header(area_id, &hdr, sizeof(hdr));
@@ -780,9 +794,9 @@ static void buildCrashFieldStatus(uint8_t *buf, uint16_t *len, CrashField_t fiel
 static bool buildCrashHistoryStatus(uint8_t *buf, uint16_t maxLen,
                                     uint16_t *len)
 {
-    BootCrashRecord_t *records = crash_history_scratch;
+    BootCrashRecord_t *records = get_crash_history_scratch();
     size_t count = boot_history_get_crashes(records,
-                                            ARRAY_SIZE(crash_history_scratch));
+                                            (size_t)BOOT_HISTORY_DEPTH);
     const size_t header_size = sizeof(uint8_t) * 2U;
     const size_t record_size = sizeof(uint32_t) * 10U;
     size_t required = header_size + (count * record_size);
@@ -832,9 +846,9 @@ static bool buildCrashHistoryStatus(uint8_t *buf, uint16_t maxLen,
 static bool buildRebootHistoryStatus(uint8_t *buf, uint16_t maxLen,
                                      uint16_t *len)
 {
-    BootRebootRecord_t *records = reboot_history_scratch;
+    BootRebootRecord_t *records = get_reboot_history_scratch();
     size_t count = boot_history_get_reboots(records,
-                                            ARRAY_SIZE(reboot_history_scratch));
+                                            (size_t)BOOT_HISTORY_DEPTH);
     const size_t header_size = sizeof(uint8_t) * 2U;
     const size_t record_size = sizeof(uint32_t) * 2U;
     size_t required = header_size + (count * record_size);
@@ -951,6 +965,79 @@ static bool buildLogSelectorResultStatus(uint8_t *buf, uint16_t maxLen, uint16_t
     return result;
 }
 #endif
+
+/**
+ * @brief Handle a read request for a crash/reboot-history DID.
+ *
+ * Split out of handleControlStateDID's dispatch so that switch stays within
+ * the project's case-count limit; the two together form one DID table.
+ *
+ * @param did     DID value from the request
+ * @param buf     Response data buffer; caller must ensure sufficient space
+ * @param maxLen  Bytes available in buf
+ * @param len     Out: number of bytes written to buf
+ * @param claimed Out: true if did belongs to this family (len/buf then valid)
+ * @return true if the DID was serialised, false on a serialisation failure
+ */
+static bool handleCrashHistoryDID(uint16_t did, uint8_t *buf, uint16_t maxLen,
+                  uint16_t *len, bool *claimed)
+{
+    bool result = true;
+
+    *claimed = true;
+
+    switch (did) {
+    case UDS_DID_CRASH_VALID:
+        buildCrashValidStatus(buf, len);
+        break;
+
+    case UDS_DID_CRASH_REASON:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_REASON);
+        break;
+
+    case UDS_DID_CRASH_PC:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_PC);
+        break;
+
+    case UDS_DID_CRASH_LR:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_LR);
+        break;
+
+    case UDS_DID_CRASH_CFSR:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_CFSR);
+        break;
+
+    case UDS_DID_CRASH_SP:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_SP);
+        break;
+
+    case UDS_DID_CRASH_XPSR:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_XPSR);
+        break;
+
+    case UDS_DID_CRASH_EXC_RETURN:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_EXC_RETURN);
+        break;
+
+    case UDS_DID_CRASH_STACK_SOURCE:
+        buildCrashFieldStatus(buf, len, CRASH_FIELD_STACK_SOURCE);
+        break;
+
+    case UDS_DID_CRASH_HISTORY:
+        result = buildCrashHistoryStatus(buf, maxLen, len);
+        break;
+
+    case UDS_DID_REBOOT_HISTORY:
+        result = buildRebootHistoryStatus(buf, maxLen, len);
+        break;
+
+    default:
+        *claimed = false;
+        break;
+    }
+
+    return result;
+}
 
 /**
  * @brief Handle a read request for a PPO2 control state DID (0xF2xx)
@@ -1100,50 +1187,6 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         break;
 #endif
 
-    case UDS_DID_CRASH_VALID:
-        buildCrashValidStatus(buf, len);
-        break;
-
-    case UDS_DID_CRASH_REASON:
-        buildCrashFieldStatus(buf, len, CRASH_FIELD_REASON);
-        break;
-
-    case UDS_DID_CRASH_PC:
-        buildCrashFieldStatus(buf, len, CRASH_FIELD_PC);
-        break;
-
-    case UDS_DID_CRASH_LR:
-        buildCrashFieldStatus(buf, len, CRASH_FIELD_LR);
-        break;
-
-    case UDS_DID_CRASH_CFSR:
-        buildCrashFieldStatus(buf, len, CRASH_FIELD_CFSR);
-        break;
-
-    case UDS_DID_CRASH_SP:
-        buildCrashFieldStatus(buf, len, CRASH_FIELD_SP);
-        break;
-
-    case UDS_DID_CRASH_XPSR:
-        buildCrashFieldStatus(buf, len, CRASH_FIELD_XPSR);
-        break;
-
-    case UDS_DID_CRASH_EXC_RETURN:
-        buildCrashFieldStatus(buf, len, CRASH_FIELD_EXC_RETURN);
-        break;
-
-    case UDS_DID_CRASH_STACK_SOURCE:
-        buildCrashFieldStatus(buf, len, CRASH_FIELD_STACK_SOURCE);
-        break;
-
-    case UDS_DID_CRASH_HISTORY:
-        result = buildCrashHistoryStatus(buf, maxLen, len);
-        break;
-
-    case UDS_DID_REBOOT_HISTORY:
-        result = buildRebootHistoryStatus(buf, maxLen, len);
-        break;
-
     case UDS_DID_ERROR_HISTOGRAM:
         result = buildErrorHistogramStatus(buf, maxLen, len);
         break;
@@ -1171,11 +1214,18 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
 #endif
 
     default:
-        /* Fall through to the OTA/MCUBoot helper for 0xF270-0xF274.
-         * Unknown DIDs land back here returning false → caller emits
-         * REQUEST_OUT_OF_RANGE NRC. */
-        result = handleOtaStatusDID(did, buf, maxLen, len);
+    {
+        /* Crash/reboot-history DIDs first, then the OTA/MCUBoot helper for
+         * 0xF270-0xF274. Unknown DIDs land back here returning false →
+         * caller emits REQUEST_OUT_OF_RANGE NRC. */
+        bool crashDid = false;
+
+        result = handleCrashHistoryDID(did, buf, maxLen, len, &crashDid);
+        if (!crashDid) {
+            result = handleOtaStatusDID(did, buf, maxLen, len);
+        }
         break;
+    }
     }
 
     return result;

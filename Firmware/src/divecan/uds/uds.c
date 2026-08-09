@@ -70,9 +70,9 @@ static const uint8_t OTA_WRITE_MAGIC = 0x01U;
  * software fatal path; kinds 2 and 3 trigger thread-mode and timer-ISR CPU
  * exceptions so the saved ESF stack metadata can be validated on hardware. */
 static const uint8_t FAULT_INJECTION_MAGIC = 0xC5U;
-static const uint8_t FAULT_INJECTION_KIND_FATAL_OP = 0x01U;
-static const uint8_t FAULT_INJECTION_KIND_HARDFAULT = 0x02U;
-static const uint8_t FAULT_INJECTION_KIND_ISR_HARDFAULT = 0x03U;
+static const uint8_t FAULT_INJECT_KIND_FATAL_OP = 0x01U;
+static const uint8_t FAULT_INJECT_KIND_HARDFAULT = 0x02U;
+static const uint8_t FAULT_INJECT_KIND_ISR_HARDFAULT = 0x03U;
 
 #ifdef CONFIG_HAS_O2_SOLENOID
 /* Solenoid override (0xF242): HIL-only raw-channel fire. Fixed on-time with NO
@@ -135,10 +135,19 @@ static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did, const uint8_t
 static bool writeFaultInjectionDID(UDSContext_t *ctx, const uint8_t *request_data,
                                    uint16_t request_length);
 
+#if defined(CONFIG_ARM)
+/* Assembly kept isolated in a function of its own (S784): the undefined
+ * instruction is the entire body, with no C statement mixed in. */
+static void executeUndefinedInstruction(void)
+{
+    __asm__ volatile("udf #0");
+}
+#endif
+
 static void triggerCpuFault(void)
 {
 #if defined(CONFIG_ARM)
-    __asm__ volatile("udf #0");
+    executeUndefinedInstruction();
 #else
     k_oops();
 #endif
@@ -604,7 +613,7 @@ static bool settingDidBusy(uint16_t did, bool includeSaveRange)
     if (!runtime_settings_is_loaded()) {
         busy = ((did >= UDS_DID_SETTING_VALUE_BASE) &&
             (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())));
-        if (includeSaveRange && !busy) {
+        if (includeSaveRange && (!busy)) {
             busy = ((did >= UDS_DID_SETTING_SAVE_BASE) &&
                 (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount())));
         }
@@ -1346,7 +1355,7 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
     } else {
         struct mcuboot_img_header hdr = {0};
-        int rc = external_flash_acquire(K_FOREVER);
+        Status_t rc = external_flash_acquire(K_FOREVER);
         if (0 == rc) {
             rc = boot_read_bank_header(PARTITION_ID(slot1_partition),
                                        &hdr, sizeof(hdr));
@@ -1578,9 +1587,9 @@ static bool writeFaultInjectionDID(UDSContext_t *ctx,
         nrc = UDS_NRC_INCORRECT_MSG_LEN;
     } else if (FAULT_INJECTION_MAGIC != request_data[UDS_DATA_IDX + 1U]) {
         nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
-    } else if ((FAULT_INJECTION_KIND_FATAL_OP != request_data[UDS_DATA_IDX]) &&
-               (FAULT_INJECTION_KIND_HARDFAULT != request_data[UDS_DATA_IDX]) &&
-               (FAULT_INJECTION_KIND_ISR_HARDFAULT != request_data[UDS_DATA_IDX])) {
+    } else if ((FAULT_INJECT_KIND_FATAL_OP != request_data[UDS_DATA_IDX]) &&
+               (FAULT_INJECT_KIND_HARDFAULT != request_data[UDS_DATA_IDX]) &&
+               (FAULT_INJECT_KIND_ISR_HARDFAULT != request_data[UDS_DATA_IDX])) {
         nrc = UDS_NRC_REQUEST_OUT_OF_RANGE;
     } else if (UDS_SESSION_PROGRAMMING != ctx->session) {
         nrc = UDS_NRC_SERVICE_NOT_IN_SESSION;
@@ -1599,9 +1608,9 @@ static bool writeFaultInjectionDID(UDSContext_t *ctx,
         buildWriteDidPositiveResponse(ctx, request_data);
         UDS_SendResponse(ctx);
         flushWriteDidResponseTxQueue();
-        if (FAULT_INJECTION_KIND_FATAL_OP == kind) {
+        if (FAULT_INJECT_KIND_FATAL_OP == kind) {
             FATAL_OP_ERROR(FATAL_TEST_INJECTION);
-        } else if (FAULT_INJECTION_KIND_HARDFAULT == kind) {
+        } else if (FAULT_INJECT_KIND_HARDFAULT == kind) {
             triggerCpuFault();
         } else {
             k_timer_start(&fault_injection_timer, K_MSEC(1), K_NO_WAIT);

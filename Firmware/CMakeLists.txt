@@ -290,6 +290,7 @@ target_include_directories(app PRIVATE src)
 # zbus listeners + RTT capture backend + UDS download path.
 target_sources_ifdef(CONFIG_FLASH_LOG app PRIVATE
     src/flash_log/flash_log.c
+    src/flash_log/flash_log_fastseek.c
     src/flash_log/flash_log_listeners.c
     src/flash_log/flash_log_backend.c
     src/flash_log/flash_log_index.c

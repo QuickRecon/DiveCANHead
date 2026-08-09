@@ -94,7 +94,7 @@ void divecan_latch_dev_type(void)
     RuntimeSettings_t rs = RUNTIME_SETTINGS_DEFAULT;
     (void)runtime_settings_load(&rs);
 
-    if (DIVECAN_IDENTITY_OBOE == runtime_settings_get_divecan_identity()) {
+    if (DIVECAN_IDENTITY_OBOE == runtime_settings_get_divecan_id()) {
         *dev_type_slot() = DIVECAN_OBOE;
     } else {
         *dev_type_slot() = DIVECAN_SOLO;

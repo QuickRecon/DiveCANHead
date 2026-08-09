@@ -88,6 +88,10 @@ LOG_MODULE_REGISTER(cell_diveo2, LOG_LEVEL_INF);
  * DIGITAL_RESPONSE_TIMEOUT_MS staleness guard so a healthy stream never trips
  * it, while a stalled stream still fails the cell within ~1 s. */
 #define DIVEO2_BCST_INTERVAL_MS 250
+/* Extra settle added to one stream interval before a broadcast state is
+ * verified, so a frame already in flight when #BCST took effect lands (and is
+ * dropped by the verify's rx_sync) instead of inside the verify window. */
+#define DIVEO2_BCST_SETTLE_MARGIN_MS 50
 
 /* Timeouts */
 #define DIGITAL_RESPONSE_TIMEOUT_MS 1000
@@ -1084,7 +1088,7 @@ static void diveo2_apply_broadcast(struct diveo2_cell_state *cell, bool want_on)
      * and read as "still streaming", forcing a redundant flash-wearing write
      * on every clean OFF. Letting stragglers land first means the verify's
      * rx_sync drops them and the listen window reflects the settled state. */
-    (void)k_msleep(DIVEO2_BCST_INTERVAL_MS + 50);
+    (void)k_msleep(DIVEO2_BCST_INTERVAL_MS + DIVEO2_BCST_SETTLE_MARGIN_MS);
 
     /* Verify: the observation window for "streaming" only needs one frame;
      * for "stopped" it must outlast worst-case interval jitter, so re-use the

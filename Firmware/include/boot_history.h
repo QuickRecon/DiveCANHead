@@ -58,7 +58,7 @@ typedef struct {
 Status_t boot_history_init(void);
 
 /** @brief Hardware reset-cause flags captured for the current boot. */
-uint32_t boot_history_current_reset_cause(void);
+uint32_t boot_history_reset_cause(void);
 
 /**
  * @brief Copy the newest persisted crash records in newest-first order.

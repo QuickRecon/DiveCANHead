@@ -763,8 +763,8 @@ static Status_t stage_pending_swap(const struct flash_area *slot1_fa)
             (void)erase_slot1_trailer_page(slot1_fa);
         }
         Status_t rc = external_flash_acquire(K_FOREVER);
-        int swap_type_a = BOOT_SWAP_TYPE_NONE;
-        int swap_type_b = BOOT_SWAP_TYPE_NONE;
+        int32_t swap_type_a = BOOT_SWAP_TYPE_NONE;
+        int32_t swap_type_b = BOOT_SWAP_TYPE_NONE;
 
         if (0 == rc) {
             rc = boot_request_upgrade(BOOT_UPGRADE_TEST);

@@ -12,6 +12,10 @@
 #define EXT_FLASH_SAVE_RETRY_DELAY_MS 25
 #define EXT_FLASH_SAVE_RETRY_ATTEMPTS 40
 
+/* Framework-mandated file-scope object: K_MUTEX_DEFINE places the control
+ * block in an iterable section for compile-time static initialisation, the
+ * same pattern SonarQube M23_388 accepts for K_THREAD_DEFINE (see
+ * src/i2c_bus_lock.c and docs/SONARQUBE_ACCEPTED_ISSUES.md). */
 static K_MUTEX_DEFINE(external_flash_mutex);
 
 Status_t external_flash_acquire(k_timeout_t timeout)
@@ -25,26 +29,32 @@ void external_flash_release(void)
     (void)k_mutex_unlock(&external_flash_mutex);
 }
 
-Status_t external_flash_settings_save_one(const char *name, const void *value,
+Status_t ext_flash_settings_save_one(const char *name, const void *value,
                                           size_t len)
 {
     Status_t rc = external_flash_acquire(K_FOREVER);
 
     if (0 == rc) {
         rc = settings_save_one(name, value, len);
-        for (uint8_t attempt = 1U;
-             ((-EBUSY == rc) || (-EAGAIN == rc)) &&
-             (attempt < EXT_FLASH_SAVE_RETRY_ATTEMPTS);
-             ++attempt) {
-            k_msleep(EXT_FLASH_SAVE_RETRY_DELAY_MS);
+        /* A while loop, not a for: the exit is governed by the save result as
+         * much as by the counter, which is not a well-formed for-loop
+         * (SonarQube S886). Retry budget and semantics are unchanged —
+         * attempts 1..EXT_FLASH_SAVE_RETRY_ATTEMPTS-1 retry the transient
+         * busy/again cases, any other rc leaves immediately. */
+        uint8_t attempt = 1U;
+
+        while (((-EBUSY == rc) || (-EAGAIN == rc)) &&
+               (attempt < EXT_FLASH_SAVE_RETRY_ATTEMPTS)) {
+            (void)k_msleep(EXT_FLASH_SAVE_RETRY_DELAY_MS);
             rc = settings_save_one(name, value, len);
+            ++attempt;
         }
         external_flash_release();
     }
     return rc;
 }
 
-ssize_t external_flash_settings_load_one(const char *name, void *value,
+ssize_t ext_flash_settings_load_one(const char *name, void *value,
                                          size_t len)
 {
     ssize_t result = -EBUSY;
@@ -56,7 +66,7 @@ ssize_t external_flash_settings_load_one(const char *name, void *value,
     return result;
 }
 
-Status_t external_flash_settings_load_subtree(const char *subtree)
+Status_t ext_flash_settings_load_subtree(const char *subtree)
 {
     Status_t rc = external_flash_acquire(K_FOREVER);
 

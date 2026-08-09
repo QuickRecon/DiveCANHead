@@ -132,6 +132,23 @@ authoritative list).
 |------|------|---------------|
 | c:S813 / c:M23_058 | `src/heartbeat.c` `heartbeat_register`, `unsigned long bit_ul = BIT(id)` | Four rules form an unsatisfiable cycle on `atomic_or(mask, BIT(id))`: no cast → S845 (signed/unsigned mix), cast on `BIT(id)` → S851 (cast on composite), shift in `atomic_val_t` → S874 (shift on signed), and the intermediate `unsigned long` — the exact type `BIT()` yields — → S813/M23_058 (raw builtin). Zephyr's `atomic_val_t` is signed `long` and `BIT()` is `unsigned long` by API contract; `unsigned long` is the least-wrong resting point. Accepted 2026-07-28 (keys AZ-mYY46vl4caSOBYurf/-g). |
 
+## 2026-08-09 new-code sweep — structurally-required statics and API contracts
+
+Accepted during the post-v0.0.1 new-code cleanup (164-issue sweep). Everything
+fixable was fixed; the rows below are the residue where the "fix" would break a
+compile-time contract or replace the project's own blessed pattern.
+
+| Rule | File / Location | Justification |
+|------|-----------------|---------------|
+| c:M23_388 / c:S6871 | `src/flash_log/flash_log.c` `fl_telemetry_fcb` / `fl_text_fcb` | `struct fcb` embeds a `k_mutex` and Zephyr-internal state whose aggregate layout is configuration-dependent (same class as the diveo2/o2s semaphore note); the structs persist for the FCB API's lifetime and `.f_flags` is a `const` member that must be set at definition. |
+| c:M23_388 | `src/flash_log/flash_log.c` `fl_init_mutex`, `src/external_flash.c` L15, `src/calibration_store.c` L180 | `K_MUTEX_DEFINE` places a link-time-initialised control block; converting to a function-local static would need a racy run-time `k_mutex_init` once-guard — strictly worse than the flagged code. |
+| c:M23_388 | `src/option_bytes.c` L88-89 | `__noinit` variables must live at file scope (same carve-out as `errors.c` `crash_noinit`). |
+| c:M23_233 | `src/calibration_store.c` L50/L189, `src/divecan/divecan_rx.c` L83, `src/ppo2_control.c` L170, `src/runtime_settings.c` L345 | Each flagged local static IS the inner variable of the project's static-accessor pattern (heartbeat.c precedent, adopted to satisfy M23_388); flagging the accessor's own static is the rule chasing its tail. |
+| c:M23_094 | `src/errors.c` L50 | Crash recording must capture the fault stack pointer as an integer; already the compliant `(uint32_t)(uintptr_t)` two-step. |
+| c:S813 / c:M23_058 | `src/calibration_store.c` `cal_settings_get` `int val_len_max` parameter | Zephyr `settings_handler_static.h_get` function-pointer table: on arm-zephyr-eabi `int32_t` is `long int`, so an `int32_t` parameter makes the handler an incompatible pointer type. API contract; cannot change. |
+| c:S995 | `src/divecan/uds/uds.c` `faultInjectionTimerHandler` `struct k_timer *timer` | `K_TIMER_DEFINE` expiry callback — signature fixed by Zephyr `k_timer_expiry_t`; `const` makes the function-pointer type incompatible (same class as the UART/CAN callback rows above). |
+| c:S5536 | `include/calibration_store.h` L73 `calibration_store_seed_cached` | Used by `tests/diveo2_thread` and `tests/o2s_thread` ztests; `#ifdef CONFIG_ZTEST`-guarded so it does not exist in production builds. |
+
 ## Coverage exclusions (2026-07-29)
 
 Coverage-only carve-outs added during the 90%-coverage uplift. Unlike rule

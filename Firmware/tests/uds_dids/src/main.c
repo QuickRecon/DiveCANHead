@@ -53,7 +53,7 @@ static const uint8_t AUTOTUNE_CMD_ABORT = 0x02U;
 static const uint32_t SOL_OVERRIDE_ON_US = 1500000U;
 static const uint8_t OTA_WRITE_MAGIC = 0x01U;
 static const uint8_t FAULT_INJECTION_MAGIC = 0xC5U;
-static const uint8_t FAULT_INJECTION_KIND_FATAL_OP = 0x01U;
+static const uint8_t FAULT_INJECT_KIND_FATAL_OP = 0x01U;
 
 /* Ambient pressure fixtures (mbar). */
 static const uint16_t SURFACE_PRESSURE_MBAR = 1013U;
@@ -1423,7 +1423,7 @@ ZTEST(uds_dids_core, test_nvs_erase_open_erase_failures_and_success)
 ZTEST(uds_dids_core, test_fault_injection_guards)
 {
     uint8_t payload[3] = {
-        FAULT_INJECTION_KIND_FATAL_OP,
+        FAULT_INJECT_KIND_FATAL_OP,
         FAULT_INJECTION_MAGIC,
         0x00U,
     };
@@ -1446,7 +1446,7 @@ ZTEST(uds_dids_core, test_fault_injection_guards)
     send_write_did(UDS_DID_FAULT_INJECTION, payload, 2U);
     expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
 
-    payload[0] = FAULT_INJECTION_KIND_FATAL_OP;
+    payload[0] = FAULT_INJECT_KIND_FATAL_OP;
     arm_dive_after_session_check();
     send_write_did(UDS_DID_FAULT_INJECTION, payload, 2U);
     expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
@@ -1457,7 +1457,7 @@ ZTEST(uds_dids_core, test_fault_injection_guards)
 ZTEST(uds_dids_core, test_fault_injection_positive_acks_and_reboots)
 {
     uint8_t payload[2] = {
-        FAULT_INJECTION_KIND_FATAL_OP,
+        FAULT_INJECT_KIND_FATAL_OP,
         FAULT_INJECTION_MAGIC,
     };
 
