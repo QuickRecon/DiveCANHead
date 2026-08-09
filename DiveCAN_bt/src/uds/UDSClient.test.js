@@ -991,4 +991,52 @@ describe('UDSClient', () => {
       expect(result.dids.every(d => d >= 0xF400 && d <= 0xF40C)).toBe(true);
     });
   });
+
+  describe('abortPending', () => {
+    it('rejects the in-flight request and every queued request', async () => {
+      // No responder: requests hang until aborted.
+      const inFlight = client.readDataByIdentifier(0xF200);
+      const queued = client.readDataByIdentifier(0xF201);
+      // Let the first request dispatch and the second settle into the queue.
+      await new Promise(r => setTimeout(r, 0));
+
+      client.abortPending();
+
+      await expect(inFlight).rejects.toMatchObject({
+        details: { disconnected: true }
+      });
+      await expect(queued).rejects.toMatchObject({
+        details: { disconnected: true }
+      });
+    });
+
+    it('rejections carry a null NRC so retry logic treats them as transport errors', async () => {
+      const inFlight = client.readDataByIdentifier(0xF200);
+      await new Promise(r => setTimeout(r, 0));
+      client.abortPending();
+      await expect(inFlight).rejects.toMatchObject({ nrc: null });
+    });
+
+    it('leaves the client usable for the next request', async () => {
+      const inFlight = client.readDataByIdentifier(0xF200);
+      await new Promise(r => setTimeout(r, 0));
+      client.abortPending();
+      await expect(inFlight).rejects.toThrow();
+
+      transport.setResponder(() => buildRDBIResponse(0xF203, [0x07]));
+      const data = await client.readDataByIdentifier(0xF203);
+      expect(Array.from(data)).toEqual([0x07]);
+    });
+
+    it('is a no-op when nothing is pending', () => {
+      expect(() => client.abortPending()).not.toThrow();
+    });
+
+    it('uses a caller-supplied rejection reason', async () => {
+      const inFlight = client.readDataByIdentifier(0xF200);
+      await new Promise(r => setTimeout(r, 0));
+      client.abortPending(new Error('link went away'));
+      await expect(inFlight).rejects.toThrow('link went away');
+    });
+  });
 });

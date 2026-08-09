@@ -11,6 +11,7 @@ import { SLIPCodec } from './slip/SLIPCodec.js';
 import { DiveCANFramer, BT_CLIENT_ADDRESS, CONTROLLER_ADDRESS } from './divecan/DiveCANFramer.js';
 import { DirectTransport } from './transport/DirectTransport.js';
 import { UDSClient } from './uds/UDSClient.js';
+import { UDSError } from './errors/ProtocolErrors.js';
 import { OTAManager } from './firmware/OTAManager.js';
 import { LogDownloader } from './logs/LogDownloader.js';
 import { Logger } from './utils/Logger.js';
@@ -149,6 +150,13 @@ export class DiveCANProtocolStack extends EventEmitter {
 
     this._ble.on('disconnected', () => {
       this.logger.info('Protocol stack disconnected');
+
+      // Fail any in-flight / queued UDS exchange immediately so callers
+      // (e.g. an OTA block transfer) react now instead of waiting out
+      // their multi-second timeouts on a dead link.
+      this._uds.abortPending(
+        new UDSError('BLE link lost', 0, null, { disconnected: true }));
+
       this.emit('disconnected');
 
       // Reset layers
@@ -173,6 +181,9 @@ export class DiveCANProtocolStack extends EventEmitter {
     this._ota.on('progress', (p) => this.emit('otaProgress', p));
     this._ota.on('staged', (p) => this.emit('otaStaged', p));
     this._ota.on('sessionExpired', () => this.emit('otaSessionExpired'));
+    this._ota.on('blockRetry', (p) => this.emit('otaBlockRetry', p));
+    this._ota.on('stagingRetry', (p) => this.emit('otaStagingRetry', p));
+    this._ota.on('staleDownload', (p) => this.emit('otaStaleDownload', p));
     this._logs.on('progress', (p) => this.emit('logProgress', p));
     this._logs.on('done', (p) => this.emit('logDownloadDone', p));
   }

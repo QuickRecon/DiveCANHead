@@ -191,6 +191,34 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
+   * Abort the in-flight request and flush the queue, rejecting every waiter.
+   *
+   * Called by the protocol stack when the transport drops so callers fail
+   * fast instead of waiting out their timeouts. The rejection carries
+   * `details.disconnected` and a null NRC, which retry logic upstream
+   * (OTAManager) classifies as a transient transport error.
+   * @param {Error} [reason] - Rejection reason; defaults to a disconnect UDSError
+   */
+  abortPending(reason) {
+    const error = reason ?? new UDSError('Transport disconnected', 0, null, { disconnected: true });
+
+    const queued = this._requestQueue.splice(0, this._requestQueue.length);
+    for (const job of queued) {
+      job.reject(error);
+    }
+
+    this._clearPendingRequest();
+    if (this.pendingReject) {
+      const reject = this.pendingReject;
+      this.pendingRequest = null;
+      this.pendingResolve = null;
+      this.pendingReject = null;
+      this.logger.warn(`Aborting in-flight request: ${error.message}`);
+      reject(error);
+    }
+  }
+
+  /**
    * Handle UDS response
    * @private
    */

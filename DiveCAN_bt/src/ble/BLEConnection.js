@@ -160,10 +160,11 @@ export class BLEConnection extends EventEmitter {
     try {
       this.device = device;
 
-      // Set up disconnect handler
+      // Set up disconnect handler. One-shot: connect() re-registers on every
+      // (re)connection, so a persistent listener would stack duplicates.
       device.addEventListener('gattserverdisconnected', () => {
         this._handleDisconnect();
-      });
+      }, { once: true });
 
       // Connect to GATT server
       this.server = await device.gatt.connect();
@@ -357,6 +358,24 @@ export class BLEConnection extends EventEmitter {
    */
   get mtu() {
     return this.options.mtu;
+  }
+
+  /**
+   * Get the pacing gap between write-without-response fragments
+   * @returns {number} Gap in ms
+   */
+  get writeGapMs() {
+    return this.options.writeGapMs;
+  }
+
+  /**
+   * Set the pacing gap between write-without-response fragments. Takes
+   * effect on the next write; exposed so the UI can offer a user-adjustable
+   * transfer rate for flaky links.
+   * @param {number} ms - Gap in ms (0 disables pacing)
+   */
+  set writeGapMs(ms) {
+    this.options.writeGapMs = ms;
   }
 }
 

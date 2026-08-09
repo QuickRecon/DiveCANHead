@@ -198,10 +198,43 @@ const result = await ota.updateFirmware(fileBytes, {
   onProgress: (done, total) => {},              // staging progress
   onPhase: (phase) => {},                        // 'session'|'staging'|'activating'|
                                                  // 'polling'|'confirmed'|'reverted'|'timeout'
-  signal: abortController.signal                 // aborts up to (not through) activation
+  signal: abortController.signal,                // aborts up to (not through) activation
+  reconnect: async (cause) => {},                // restore the BLE link after a drop
+  blockSize: 128,                                // optional cap below the negotiated 256
+  recovery: { maxAttempts: 4 }                   // OTA_RECOVERY overrides
 });
 // result: { ...staged, ...activated, confirmed, reverted, timedOut, status }
 ```
+
+#### Staging recovery ladder
+
+Field OTA failures are dominated by the phone↔Petrel BLE link dropping
+mid-transfer, so `stageImage` retries rather than aborting. Only a genuine head
+refusal (NRC with a real cause: 0x22 diving, 0x31 image too big, 0x72 flash
+failure), a user abort, or exhausted attempts propagate as errors. The ladder,
+tuned by `OTA_RECOVERY` (`{ maxAttempts: 4, blockRetries: 2, retryDelayMs:
+1000, staleDownloadWaitMs: 35000 }`, overridable per manager or per call):
+
+1. **Lost reply** (0x36 timeout): re-send the same block up to `blockRetries`
+   times. A retry answered with NRC 0x73 (wrong block sequence) means the
+   original write landed and only the ack was lost — counted as delivered.
+2. **Link drop**: pending UDS requests are failed immediately by the stack
+   (`UDSClient.abortPending`, wired to the BLE `disconnected` event), the
+   `reconnect` callback restores the link, and the transfer **resumes** the
+   still-open download at the first unacked block — no re-erase.
+3. **Head state lost** (NRC 0x24 / 0x7F — the OTA state machine reset via the
+   30 s S3 session timeout): full **restart** from 0x34.
+4. **Stale download** (0x34 refused with NRC 0x24): a previous download is
+   still open head-side. An explicit session change does *not* reset the
+   head's OTA state machine — only S3 inactivity does — so the client stays
+   **silent** for `staleDownloadWaitMs` (> 30 s) and retries. Callers must not
+   poll the head during staging or this wait can never expire (the
+   diagnostics UI pauses DID polling for the duration of staging).
+
+Progress events: `progress` {done,total,percent}, `blockRetry`
+{block,total,seq,error}, `stagingRetry` {attempt,maxAttempts,resume,error},
+`staleDownload` {waitMs}, `staged` — forwarded by the stack as `otaProgress`,
+`otaBlockRetry`, `otaStagingRetry`, `otaStaleDownload`, `otaStaged`.
 
 The individual steps remain available for manual/step-through use (the diagnostics UI
 exposes them under a **Stages** expander behind the single **Update OTA** button):
@@ -415,6 +448,46 @@ this.requestDelay = options.requestDelay ?? 0;
 // fetchAllState() chunks multi-DID reads to fit the ~20-byte BLE MTU
 const DIDS_PER_REQUEST = 4;
 ```
+
+### Write pacing (user-adjustable transfer rate)
+
+Outbound payloads larger than the ~20-byte MTU are fragmented across
+sequential `writeValueWithoutResponse` packets, paced by
+`options.writeGapMs` (default 8 ms) so the Petrel's BLE-to-CAN re-framing
+isn't overrun. The gap is live-adjustable via the `writeGapMs`
+getter/setter on `BLEConnection` — the diagnostics UI exposes it (together
+with an OTA `blockSize` cap) as the **Transfer rate** selector on the
+Firmware tab: Max (unpaced), Fast (3 ms), Normal (8 ms — the historical
+default), Cautious (16 ms / 128 B blocks), Slow (30 ms / 64 B blocks). The
+choice persists in `localStorage['divecan.otaPacing']`. Lower rates trade
+staging time for headroom on flaky links; Max leans on the staging
+recovery ladder to absorb any fragments the bridge drops. Writes are
+`writeValueWithoutResponse`, so there is no per-packet ack to pace
+against — an acked write (`writeValueWithResponse`) would cost a full
+connection-interval round trip per ~20-byte packet and be far slower than
+any of these presets. Pacing applies only to the BLE bridge; a USB-CAN
+(CANable) link has no fragment pacing and always runs at ISO-TP
+flow-control speed, which is why it stages much faster.
+
+### Disconnect handling
+
+`DiveCANProtocolStack` fails all in-flight and queued UDS requests the
+moment the BLE `disconnected` event fires (`UDSClient.abortPending`), so
+callers see the loss immediately instead of waiting out multi-second
+timeouts. The rejection is a `UDSError` with `nrc: null` and
+`details.disconnected: true` — the shape OTA staging recovery classifies
+as a transient transport error.
+
+## Log sink ([WEB] terminal entries)
+
+`Logger.setSink(fn, level = 'info')` installs a global mirror: every
+logger forwards messages at or above `level` to `fn(level, name, msg)` in
+addition to the console, regardless of per-logger console levels. The
+diagnostics page uses it to write client-side logs into the same **Log
+Messages** terminal as the head's RTT push, prefixed `[WEB]` — so a field
+screenshot of that panel captures both sides of an incident (BLE drops,
+OTA retries, uncaught page errors) without devtools access on a phone.
+`window.onerror` / `unhandledrejection` are routed there too.
 
 ## Diagnostics UI Components
 

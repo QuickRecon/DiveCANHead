@@ -13,6 +13,11 @@ export class Logger {
   // Global minimum level - all loggers respect this
   static globalLevel = Logger.LEVELS.DEBUG;
 
+  // Optional global sink: mirrors log lines to an app-provided consumer
+  // (e.g. an on-page log terminal) in addition to the console.
+  static sink = null;
+  static sinkLevel = Logger.LEVELS.INFO;
+
   /**
    * Set global log level for all loggers
    * @param {string} level - Log level (debug, info, warn, error, none)
@@ -20,6 +25,33 @@ export class Logger {
   static setGlobalLevel(level) {
     const levelUpper = level.toUpperCase();
     Logger.globalLevel = Logger.LEVELS[levelUpper] ?? Logger.LEVELS.INFO;
+  }
+
+  /**
+   * Install a global log sink. Every logger mirrors messages at or above
+   * `level` to `fn` (in addition to the console), regardless of per-logger
+   * console levels. Pass null to remove.
+   * @param {(level: string, name: string, msg: string) => void} fn - Consumer
+   * @param {string} level - Minimum level to mirror (default: info)
+   */
+  static setSink(fn, level = 'info') {
+    Logger.sink = fn;
+    Logger.sinkLevel = Logger.LEVELS[level.toUpperCase()] ?? Logger.LEVELS.INFO;
+  }
+
+  /**
+   * Mirror a line to the sink, if one is installed. Sink failures are
+   * swallowed so a broken consumer can never take down the logging path.
+   * @private
+   */
+  static _toSink(levelName, loggerName, msg) {
+    if (Logger.sink && Logger.LEVELS[levelName] >= Logger.sinkLevel) {
+      try {
+        Logger.sink(levelName, loggerName, msg);
+      } catch (e) {
+        console.error('Log sink failed', e);
+      }
+    }
   }
 
   /**
@@ -72,6 +104,7 @@ export class Logger {
     if (this._effectiveLevel() <= Logger.LEVELS.DEBUG) {
       console.debug(this._format('DEBUG', msg, data), data);
     }
+    Logger._toSink('DEBUG', this.name, msg);
   }
 
   /**
@@ -87,6 +120,7 @@ export class Logger {
         console.info(this._format('INFO', msg, data), data);
       }
     }
+    Logger._toSink('INFO', this.name, msg);
   }
 
   /**
@@ -102,6 +136,7 @@ export class Logger {
         console.warn(this._format('WARN', msg, data), data);
       }
     }
+    Logger._toSink('WARN', this.name, msg);
   }
 
   /**
@@ -117,5 +152,6 @@ export class Logger {
         console.error(this._format('ERROR', msg, data), data);
       }
     }
+    Logger._toSink('ERROR', this.name, msg);
   }
 }

@@ -1270,6 +1270,23 @@
         <h2>Upload Image</h2>
         <input type="file" id="fwFileInput" accept=".bin,.hex,.img" disabled aria-label="Firmware image file">
         <div id="fwFileInfo" style="margin-top: 10px; color: #888; font-size: 13px;">No file selected</div>
+        <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px;">
+          <div>
+            <label for="fwPacingSelect" style="color:#888;font-size:13px;display:block;margin-bottom:4px;">Transfer rate</label>
+            <select id="fwPacingSelect" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+              <option value="max">Max (unpaced)</option>
+              <option value="fast">Fast</option>
+              <option value="normal" selected>Normal (default)</option>
+              <option value="cautious">Cautious</option>
+              <option value="slow">Slow (flaky link)</option>
+            </select>
+          </div>
+          <span id="fwPacingInfo" style="color:#666;font-size:12px;padding-bottom:8px;"></span>
+        </div>
+        <p style="color: #888; font-size: 12px; margin: 8px 0 0;">
+          Lower rates give the Petrel's BLE bridge more headroom. If updates keep
+          dropping partway through, step down a level and retry.
+        </p>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
           <button id="fwUpdateButton" class="danger" disabled>Update OTA</button>
           <button id="fwUpdateCancelButton" disabled>Cancel</button>
@@ -1736,6 +1753,24 @@
 
       elements.logMessages.scrollTop = elements.logMessages.scrollHeight;
     };
+
+    // Mirror app-side logs (INFO and up) into the same terminal as the head's
+    // RTT log push, prefixed [WEB], so a field screenshot of Log Messages
+    // captures client-side context (BLE drops, OTA retries) alongside the
+    // head's view of the same incident.
+    Logger.setSink((level, name, msg) => {
+      const t = new Date().toTimeString().slice(0, 8);
+      addToLogMessages(`[WEB] [${t}] <${level.toLowerCase()}> ${name}: ${msg}`, level === 'ERROR');
+    }, 'info');
+
+    // Uncaught failures land in the terminal too — on a phone there is no
+    // devtools console to check.
+    window.addEventListener('error', (e) => {
+      addToLogMessages(`[WEB] <error> Uncaught: ${e.message} (${e.filename?.split('/').pop() ?? '?'}:${e.lineno})`, true);
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      addToLogMessages(`[WEB] <error> Unhandled rejection: ${e.reason?.message ?? e.reason}`, true);
+    });
 
     // Helper to check if a DID is subscribed
     const isDIDSubscribed = (didKey) => activeSubscriptions.has(didKey);
@@ -2375,6 +2410,70 @@
     let fwImageBytes = null;
     let fwParsedImage = null;
     let fwAbort = null;
+    let otaBusy = false;        // suppresses DID polling / reconnect DID bursts mid-staging
+    let lastBleDevice = null;   // granted BluetoothDevice, reusable without a chooser prompt
+
+    // User-adjustable transfer rate. writeGapMs paces the ~20-byte BLE
+    // fragments; blockCap limits the 0x36 block below the head's negotiated
+    // 256 so each block spans fewer fragments. Both trade speed for headroom
+    // in the Petrel's BLE-to-CAN bridge. BLE writes are unacknowledged
+    // (write-without-response), so "max" means as fast as the browser's BLE
+    // stack accepts writes — the Petrel can drop fragments if its CAN
+    // re-framing falls behind, which staging recovery then has to absorb.
+    // Only applies to the BLE bridge: a USB-CAN (CANable) link is always
+    // unpaced (stack.ble is undefined there) and runs at ISO-TP speed.
+    const FW_PACING = {
+      max:      { writeGapMs: 0,  blockCap: null, label: 'unpaced, rely on retries' },
+      fast:     { writeGapMs: 3,  blockCap: null, label: '3 ms fragment gap' },
+      normal:   { writeGapMs: 8,  blockCap: null, label: '8 ms fragment gap' },
+      cautious: { writeGapMs: 16, blockCap: 128,  label: '16 ms gap, 128 B blocks' },
+      slow:     { writeGapMs: 30, blockCap: 64,   label: '30 ms gap, 64 B blocks' }
+    };
+
+    const fwPacing = () => FW_PACING[$('fwPacingSelect').value] ?? FW_PACING.normal;
+
+    const applyFwPacing = () => {
+      const p = fwPacing();
+      if (stack?.ble) stack.ble.writeGapMs = p.writeGapMs;
+      $('fwPacingInfo').textContent = p.label;
+      localStorage.setItem('divecan.otaPacing', $('fwPacingSelect').value);
+    };
+
+    $('fwPacingSelect').value = localStorage.getItem('divecan.otaPacing') ?? 'normal';
+    $('fwPacingSelect').addEventListener('change', () => {
+      applyFwPacing();
+      addToLogMessages(`[WEB] OTA transfer rate set to "${$('fwPacingSelect').value}" (${fwPacing().label})`);
+    });
+    applyFwPacing();
+
+    // Reconnect callback for OTAManager's staging recovery. Chrome allows
+    // gatt.connect() on an already-granted device without a new chooser
+    // gesture, so an OTA can ride out a BLE drop unattended.
+    const fwReconnect = async (cause) => {
+      if (!stack || stack.isConnected) return;
+      if (!lastBleDevice) throw cause ?? new Error('No BLE device available to reconnect');
+      addToLogMessages(`[WEB] OTA: BLE link lost — reconnecting to ${lastBleDevice.name || 'device'}...`);
+      await stack.connect(lastBleDevice);
+      stack.setTargetAddress(0x04);
+    };
+
+    // Staging shares the link with background DID polling; pause it for the
+    // duration. Also required for stale-download recovery, which needs total
+    // UDS silence to let the head's S3 session timeout expire.
+    const fwEnterTransfer = () => {
+      otaBusy = true;
+      applyFwPacing();
+      dataStore?.stopPolling();
+      updateStreamStatus('inactive', 'Paused for OTA');
+    };
+
+    const fwExitTransfer = () => {
+      otaBusy = false;
+      if (stack?.isConnected && dataStore?.udsClient) {
+        dataStore.startPolling();
+        updateStreamStatus('streaming');
+      }
+    };
 
     const setFwProgress = (pct) => { $('fwProgressFill').style.width = `${pct}%`; };
 
@@ -2445,9 +2544,12 @@
       $('fwCancelButton').disabled = false;
       $('fwActivateButton').disabled = true;
       setFwProgress(0);
+      fwEnterTransfer();
       try {
         await stack.ota.stageImage(fwImageBytes, {
           signal: fwAbort.signal,
+          blockSize: fwPacing().blockCap ?? undefined,
+          reconnect: fwReconnect,
           onProgress: (done, total) => {
             setFwProgress((done / total) * 100);
             $('fwMessage').textContent = `Staging block ${done}/${total}...`;
@@ -2458,6 +2560,7 @@
       } catch (e) {
         $('fwMessage').textContent = `Staging failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
       } finally {
+        fwExitTransfer();
         $('fwStageButton').disabled = false;
         $('fwCancelButton').disabled = true;
         fwAbort = null;
@@ -2510,9 +2613,12 @@
       $('fwUpdateButton').disabled = true;
       $('fwUpdateCancelButton').disabled = false;
       setFwProgress(0);
+      fwEnterTransfer();
       try {
         const result = await stack.ota.updateFirmware(fwImageBytes, {
           signal: fwAbort.signal,
+          blockSize: fwPacing().blockCap ?? undefined,
+          reconnect: fwReconnect,
           onProgress: (done, total) => {
             setFwProgress((done / total) * 100);
             $('fwMessage').textContent = `Staging block ${done}/${total}...`;
@@ -2531,6 +2637,7 @@
           $('fwMessage').textContent = `Update failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
         }
       } finally {
+        fwExitTransfer();
         $('fwUpdateButton').disabled = !stack;
         $('fwUpdateCancelButton').disabled = true;
         fwAbort = null;
@@ -3470,10 +3577,17 @@
           // Set target to SOLO (0x04)
           stack.setTargetAddress(0x04);
 
+          // Apply the user's transfer-rate preference to this connection.
+          applyFwPacing();
+
           // Initialize DID-based polling — the fetch burst can crash a handset
           // running firmware without the log-push quiescent gate, so it's
-          // gated behind an opt-out checkbox (default on).
-          if (document.getElementById('fetchDidsOnConnect').checked) {
+          // gated behind an opt-out checkbox (default on). Skipped entirely on
+          // a mid-OTA reconnect: staging recovery needs the link to itself,
+          // and a DID burst would interleave with the resumed transfer.
+          if (otaBusy) {
+            updateStreamStatus('inactive', 'Paused for OTA');
+          } else if (document.getElementById('fetchDidsOnConnect').checked) {
             await initDIDPolling();
           } else {
             updateStreamStatus('inactive', 'DID fetch skipped');
@@ -3513,6 +3627,20 @@
       });
 
       stack.on('logMessage', (message) => addToLogMessages(message));
+
+      // OTA staging recovery narration. The [WEB] terminal entries come from
+      // the OTA logger; these keep the firmware tab's status line honest so
+      // the visible state can't silently freeze mid-transfer.
+      stack.on('otaBlockRetry', ({ block, total }) => {
+        $('fwMessage').textContent = `Block ${block}/${total} didn't get through — retrying...`;
+      });
+      stack.on('otaStagingRetry', ({ attempt, maxAttempts, resume }) => {
+        const mode = resume ? 'resuming transfer' : 'restarting transfer';
+        $('fwMessage').textContent = `Connection hiccup — ${mode} (attempt ${attempt}/${maxAttempts})...`;
+      });
+      stack.on('otaStaleDownload', ({ waitMs }) => {
+        $('fwMessage').textContent = `Head is finishing an old download — waiting ${Math.ceil(waitMs / 1000)}s before retrying...`;
+      });
       stack.on('handsetEmulation', ({ active }) => {
         const mode = active ? 'supplying missing handset pings' : 'real handset detected';
         elements.deviceInfo.textContent = `Device: ${label} · ${mode}`;
@@ -3528,6 +3656,7 @@
         const devices = await deviceManager.scan();
         if (devices.length === 0) return;
         const currentDevice = devices[0].device;
+        lastBleDevice = currentDevice; // kept for unattended mid-OTA reconnects
         await connectStack(deviceManager.createStack(currentDevice), devices[0].name, currentDevice);
       } catch (error) {
         stack = null;

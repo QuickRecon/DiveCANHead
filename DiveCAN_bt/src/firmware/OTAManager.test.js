@@ -209,4 +209,166 @@ describe('OTAManager', () => {
     await expect(ota.updateFirmware(image, { pollInterval: 1 }))
       .rejects.toMatchObject({ nrc: 0x22 });
   });
+
+  describe('staging recovery', () => {
+    /** Fast recovery tuning so tests never sit in real backoffs. */
+    const FAST = { retryDelayMs: 1, staleDownloadWaitMs: 5 };
+
+    beforeEach(() => {
+      ota = new OTAManager(uds, { recovery: FAST });
+      ota.timeouts.transfer = 40; // lost replies time out quickly
+    });
+
+    /** Count sent requests by SID. */
+    const sids = () => transport.getAllSent().map(a => a[0]);
+
+    it('retries a block whose reply was lost and completes', async () => {
+      let dropped = false;
+      transport.setResponder((req) => {
+        if (req[0] === 0x36 && req[1] === 2 && !dropped) {
+          dropped = true;
+          return null; // swallow the reply once
+        }
+        return otaResponder({ maxBlock: 64 })(req);
+      });
+      const image = buildMcubootImage({ imageSize: 200, trailerSize: 0, headerSize: 32 });
+      const result = await ota.stageImage(image);
+
+      expect(result.blocks).toBe(4);
+      // Block 2 was sent twice; only one 0x34 (no restart, no re-erase)
+      const seqs = transport.getAllSent().filter(a => a[0] === 0x36).map(a => a[1]);
+      expect(seqs).toEqual([1, 2, 2, 3, 4]);
+      expect(sids().filter(s => s === 0x34)).toHaveLength(1);
+    });
+
+    it('treats NRC 0x73 on a retried block as delivered (lost ack)', async () => {
+      let sends = 0;
+      transport.setResponder((req) => {
+        if (req[0] === 0x36 && req[1] === 2) {
+          sends += 1;
+          if (sends === 1) return null;                       // ack lost
+          if (sends === 2) return buildNegativeResponse(0x36, 0x73); // head already advanced
+        }
+        return otaResponder({ maxBlock: 64 })(req);
+      });
+      const image = buildMcubootImage({ imageSize: 200, trailerSize: 0, headerSize: 32 });
+      const result = await ota.stageImage(image);
+
+      expect(result.blocks).toBe(4);
+      // All four blocks acked exactly once from the head's perspective
+      const seqs = transport.getAllSent().filter(a => a[0] === 0x36).map(a => a[1]);
+      expect(seqs).toEqual([1, 2, 2, 3, 4]);
+    });
+
+    it('resumes an open download after transport loss without re-erasing', async () => {
+      let dropped = false;
+      const reconnect = [];
+      transport.setResponder((req) => {
+        if (req[0] === 0x36 && req[1] === 2 && !dropped) {
+          dropped = true;
+          return null;
+        }
+        return otaResponder({ maxBlock: 64 })(req);
+      });
+      // blockRetries 0: the lost reply escalates straight to the outer
+      // resume path instead of being absorbed by the block-level retry.
+      const image = buildMcubootImage({ imageSize: 200, trailerSize: 0, headerSize: 32 });
+      const retryEvents = [];
+      ota.on('stagingRetry', (e) => retryEvents.push(e));
+      const result = await ota.stageImage(image, {
+        recovery: { ...FAST, blockRetries: 0 },
+        reconnect: async (cause) => { reconnect.push(cause); }
+      });
+
+      expect(result.blocks).toBe(4);
+      expect(reconnect).toHaveLength(1);
+      expect(retryEvents).toEqual([expect.objectContaining({ resume: true })]);
+      // Resume continues the same download: exactly one 0x34
+      expect(sids().filter(s => s === 0x34)).toHaveLength(1);
+      const seqs = transport.getAllSent().filter(a => a[0] === 0x36).map(a => a[1]);
+      expect(seqs).toEqual([1, 2, 2, 3, 4]);
+    });
+
+    it('restarts from 0x34 when the head lost the download (NRC 0x24)', async () => {
+      let rejected = false;
+      transport.setResponder((req) => {
+        if (req[0] === 0x36 && req[1] === 2 && !rejected) {
+          rejected = true;
+          return buildNegativeResponse(0x36, 0x24); // head OTA SM back in IDLE
+        }
+        return otaResponder({ maxBlock: 64 })(req);
+      });
+      const image = buildMcubootImage({ imageSize: 200, trailerSize: 0, headerSize: 32 });
+      const retryEvents = [];
+      ota.on('stagingRetry', (e) => retryEvents.push(e));
+      const result = await ota.stageImage(image);
+
+      expect(result.blocks).toBe(4);
+      expect(retryEvents).toEqual([expect.objectContaining({ resume: false })]);
+      // Full restart: two 0x34s, and the block sequence starts over
+      expect(sids().filter(s => s === 0x34)).toHaveLength(2);
+      const seqs = transport.getAllSent().filter(a => a[0] === 0x36).map(a => a[1]);
+      expect(seqs).toEqual([1, 2, 1, 2, 3, 4]);
+    });
+
+    it('waits out a stale head-side download (0x34 refused with NRC 0x24)', async () => {
+      let refusals = 0;
+      transport.setResponder((req) => {
+        if (req[0] === 0x34 && refusals === 0) {
+          refusals += 1;
+          return buildNegativeResponse(0x34, 0x24); // earlier download still open
+        }
+        return otaResponder({ maxBlock: 64 })(req);
+      });
+      const image = buildMcubootImage({ imageSize: 100 });
+      const stale = [];
+      ota.on('staleDownload', (e) => stale.push(e));
+      const result = await ota.stageImage(image);
+
+      expect(result.blocks).toBeGreaterThan(0);
+      expect(stale).toHaveLength(1);
+      expect(sids().filter(s => s === 0x34)).toHaveLength(2);
+    });
+
+    it('gives up after maxAttempts and surfaces the last error', async () => {
+      transport.setResponder((req) => {
+        if (req[0] === 0x36) return null; // every block reply lost
+        return otaResponder({ maxBlock: 64 })(req);
+      });
+      const image = buildMcubootImage({ imageSize: 100 });
+      await expect(ota.stageImage(image, {
+        recovery: { ...FAST, blockRetries: 0, maxAttempts: 2 }
+      })).rejects.toMatchObject({ details: { timeout: 40 } });
+
+      // Two staging passes, both stuck on block 1
+      const seqs = transport.getAllSent().filter(a => a[0] === 0x36).map(a => a[1]);
+      expect(seqs).toEqual([1, 1]);
+    });
+
+    it('a user abort cuts through the retry ladder immediately', async () => {
+      const controller = new AbortController();
+      transport.setResponder((req) => {
+        if (req[0] === 0x36) {
+          controller.abort();  // cancel while the block is in flight...
+          return null;         // ...and lose the reply so a retry would follow
+        }
+        return otaResponder({ maxBlock: 64 })(req);
+      });
+      const image = buildMcubootImage({ imageSize: 100 });
+      await expect(ota.stageImage(image, { signal: controller.signal }))
+        .rejects.toMatchObject({ details: { aborted: true } });
+
+      const seqs = transport.getAllSent().filter(a => a[0] === 0x36).map(a => a[1]);
+      expect(seqs).toEqual([1]); // no retry after the abort
+    });
+
+    it('still rejects a genuine head refusal without retrying (NRC 0x22)', async () => {
+      transport.setResponder(otaResponder({
+        overrides: { 0x34: () => buildNegativeResponse(0x34, 0x22) } // diving
+      }));
+      const image = buildMcubootImage({ imageSize: 100 });
+      await expect(ota.stageImage(image)).rejects.toMatchObject({ nrc: 0x22 });
+      expect(sids().filter(s => s === 0x34)).toHaveLength(1);
+    });
+  });
 });

@@ -156,4 +156,69 @@ describe('Logger', () => {
       expect(log._effectiveLevel()).toBe(Logger.LEVELS.ERROR);
     });
   });
+
+  describe('sink', () => {
+    let lines;
+
+    beforeEach(() => {
+      lines = [];
+    });
+
+    afterEach(() => {
+      Logger.setSink(null);
+    });
+
+    it('mirrors INFO and above by default, filtering DEBUG', () => {
+      Logger.setSink((level, name, msg) => lines.push([level, name, msg]));
+      const log = new Logger('BLE');
+
+      log.debug('chatty frame dump');
+      log.info('connected');
+      log.warn('slow reply');
+      log.error('link lost');
+
+      expect(lines).toEqual([
+        ['INFO', 'BLE', 'connected'],
+        ['WARN', 'BLE', 'slow reply'],
+        ['ERROR', 'BLE', 'link lost']
+      ]);
+    });
+
+    it('honours a custom sink level', () => {
+      Logger.setSink((level, name, msg) => lines.push(msg), 'error');
+      const log = new Logger('OTA');
+
+      log.info('staging block 3');
+      log.error('staging failed');
+
+      expect(lines).toEqual(['staging failed']);
+    });
+
+    it('mirrors regardless of per-logger console level', () => {
+      Logger.setSink((level, name, msg) => lines.push(msg));
+      const log = new Logger('UDS', 'none'); // console fully silenced
+
+      log.info('still reaches the sink');
+
+      expect(lines).toEqual(['still reaches the sink']);
+      expect(infoSpy).not.toHaveBeenCalled();
+    });
+
+    it('a throwing sink never breaks the logging path', () => {
+      Logger.setSink(() => { throw new Error('sink exploded'); });
+      const log = new Logger('BLE');
+
+      expect(() => log.info('message')).not.toThrow();
+    });
+
+    it('setSink(null) removes the sink', () => {
+      Logger.setSink((level, name, msg) => lines.push(msg));
+      const log = new Logger('BLE');
+      log.info('one');
+      Logger.setSink(null);
+      log.info('two');
+
+      expect(lines).toEqual(['one']);
+    });
+  });
 });
