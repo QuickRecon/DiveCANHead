@@ -1040,14 +1040,27 @@ static const char *diveo2_on_off_str(bool on)
 
 /**
  * @brief Drive the cell to the desired broadcast state, writing #BCST ONLY when
- *        the cell's OBSERVED state differs from desired.
+ *        the cell's OBSERVED state differs from desired — then VERIFY.
  *
  * #BCST persists to the cell's onboard flash, so re-issuing it when the cell is
  * already in the desired state needlessly wears that flash. We therefore observe
  * the real streaming state first and skip the write when it already matches —
  * rather than trusting cell->mode (which can be stale) or writing
- * unconditionally. cell->mode is updated to the desired state regardless, since
- * after this call the cell is (or already was) in that state.
+ * unconditionally.
+ *
+ * A single observation is a racy oracle, in both directions: a stale in-flight
+ * stream frame from a cell that JUST stopped reads as "already streaming" (the
+ * skip then silently strands a broadcast-ON request — HIL release run
+ * 31287793851, Sidewinder cells 2+3), and interval jitter past the listen
+ * window reads as "already stopped" (stranding a broadcast-OFF — the historic
+ * cell-1 flake). A #BCST lost on the wire fails the same way with the write
+ * taken. So after acting on the first observation, re-observe and — if reality
+ * still disagrees — write #BCST unconditionally. Wear cost is nil on the
+ * healthy path (the verify agrees, no extra write) and one redundant #BCST
+ * when an observation lied, in exchange for the command actually converging.
+ *
+ * cell->mode is updated to the desired state regardless, since after this call
+ * the cell is in that state (or the retry was our best effort at it).
  *
  * @param cell     Cell state.
  * @param want_on  Desired state: true = streaming, false = polled.
@@ -1060,9 +1073,28 @@ static void diveo2_apply_broadcast(struct diveo2_cell_state *cell, bool want_on)
         diveo2_set_cell_broadcast(cell, want_on);
     } else {
         /* Cell already in the desired streaming state — no #BCST, no flash
-         * write. */
-        LOG_DBG("Cell %u: broadcast already %s, skip #BCST",
+         * write. INF not DBG: a skip that misfires is invisible at the CAN
+         * layer (the DID was ACKed), so the decision must be in the RTT log. */
+        LOG_INF("Cell %u: broadcast observed %s, skip #BCST",
                 cell->cell_number, diveo2_on_off_str(want_on));
+    }
+
+    /* Settle one stream interval before verifying: a frame already in flight
+     * when #BCST 0 took effect would otherwise land inside the verify window
+     * and read as "still streaming", forcing a redundant flash-wearing write
+     * on every clean OFF. Letting stragglers land first means the verify's
+     * rx_sync drops them and the listen window reflects the settled state. */
+    (void)k_msleep(DIVEO2_BCST_INTERVAL_MS + 50);
+
+    /* Verify: the observation window for "streaming" only needs one frame;
+     * for "stopped" it must outlast worst-case interval jitter, so re-use the
+     * same DETECT_LISTEN_MS (≥4 stream intervals) for both. */
+    is_on = diveo2_observe_broadcasting(cell, DETECT_LISTEN_MS);
+    if (want_on != is_on) {
+        LOG_WRN("Cell %u: broadcast verify saw %s, want %s — forcing #BCST",
+                cell->cell_number, diveo2_on_off_str(is_on),
+                diveo2_on_off_str(want_on));
+        diveo2_set_cell_broadcast(cell, want_on);
     }
 
     if (want_on) {
