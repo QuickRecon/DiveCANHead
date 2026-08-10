@@ -572,7 +572,7 @@ static Status_t fl_program_entry(const struct fcb *fcb_p,
                                  const fl_entry_hdr_t *hdr,
                                  const void *payload, uint16_t length)
 {
-    Status_t rc;
+    Status_t rc = 0;
     size_t total = sizeof(*hdr) + length;
 
     if (total <= sizeof(fl_writer_scratch)) {
@@ -789,60 +789,62 @@ static void fl_batch_write_container(struct fcb *fcb_p, size_t total,
     Status_t rc = external_flash_acquire(K_FOREVER);
 
     if (0 != rc) {
-        return;
-    }
+        /* NOR unavailable — the staged batch stays in RAM for the next flush. */
+    } else {
+        /* Reserve one FCB entry for the whole batch (rotate once on a full
+         * ring). */
+        fl_entry_hdr_t bhdr = {
+            .type = FL_TYPE_BATCH,
+            .flags = 0U,
+            .length = (uint16_t)total,
+            .ts_boot_us = first_ts,
+        };
+        struct fcb_entry loc = {0};
 
-    /* Reserve one FCB entry for the whole batch (rotate once on a full ring). */
-    fl_entry_hdr_t bhdr = {
-        .type = FL_TYPE_BATCH,
-        .flags = 0U,
-        .length = (uint16_t)total,
-        .ts_boot_us = first_ts,
-    };
-    struct fcb_entry loc = {0};
-
-    rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
-    if (-ENOSPC == rc) {
-        rc = fcb_rotate(fcb_p);
-        if (0 == rc) {
-            rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
-        }
-    }
-    if (0 == rc) {
-        off_t woff = fl_entry_data_off(&loc);
-
-        rc = flash_area_write(fcb_p->fap, woff, &bhdr, sizeof(bhdr));
-        woff += (off_t)sizeof(bhdr);
-
-        /* Pass B: write each telemetry sub-record [fl_entry_hdr_t + payload],
-         * coalesced into one flash write per sub-record. */
-        size_t off = 0U;
-        bool truncated = false;
-
-        while ((0 == rc) && ((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) &&
-               (!truncated)) {
-            const uint8_t *p = &fl_batch_buf[off];
-            FlashLogDest_t dest = (FlashLogDest_t)p[0];
-            uint8_t type = p[1];
-            uint16_t length = fl_batch_decode_length(p);
-            size_t rec = FL_BATCH_HDR_BYTES + length;
-
-            if ((off + rec) > fl_batch_len) {
-                truncated = true;
-            } else {
-                if ((FL_DEST_TELEMETRY == dest) && (!fl_is_marker_type(type))) {
-                    rc = fl_write_batch_subrecord(fcb_p, &woff, type,
-                                      fl_batch_decode_ts(p),
-                                      &p[FL_BATCH_HDR_BYTES], length);
-                }
-                off += rec;
+        rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
+        if (-ENOSPC == rc) {
+            rc = fcb_rotate(fcb_p);
+            if (0 == rc) {
+                rc = fcb_append(fcb_p, (uint16_t)(sizeof(bhdr) + total), &loc);
             }
         }
         if (0 == rc) {
-            (void)fcb_append_finish(fcb_p, &loc);
+            off_t woff = fl_entry_data_off(&loc);
+
+            rc = flash_area_write(fcb_p->fap, woff, &bhdr, sizeof(bhdr));
+            woff += (off_t)sizeof(bhdr);
+
+            /* Pass B: write each telemetry sub-record [fl_entry_hdr_t +
+             * payload], coalesced into one flash write per sub-record. */
+            size_t off = 0U;
+            bool truncated = false;
+
+            while ((0 == rc) && ((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) &&
+                   (!truncated)) {
+                const uint8_t *p = &fl_batch_buf[off];
+                FlashLogDest_t dest = (FlashLogDest_t)p[0];
+                uint8_t type = p[1];
+                uint16_t length = fl_batch_decode_length(p);
+                size_t rec = FL_BATCH_HDR_BYTES + length;
+
+                if ((off + rec) > fl_batch_len) {
+                    truncated = true;
+                } else {
+                    if ((FL_DEST_TELEMETRY == dest) &&
+                        (!fl_is_marker_type(type))) {
+                        rc = fl_write_batch_subrecord(fcb_p, &woff, type,
+                                          fl_batch_decode_ts(p),
+                                          &p[FL_BATCH_HDR_BYTES], length);
+                    }
+                    off += rec;
+                }
+            }
+            if (0 == rc) {
+                (void)fcb_append_finish(fcb_p, &loc);
+            }
         }
+        external_flash_release();
     }
-    external_flash_release();
 }
 
 /* Write all TELEMETRY non-marker records staged in fl_batch_buf as ONE FCB entry

@@ -287,13 +287,17 @@ static const uint16_t LOG_SELECT_DIVE_MIN_LEN = 3U;
 
 static struct k_sem *fl_resolve_sem(void)
 {
-    static K_SEM_DEFINE(sem, 0, 1);
+    /* Z_SEM_INITIALIZER rather than K_SEM_DEFINE: the DEFINE macro's
+     * section-iterable expansion leaves a dangling empty statement at
+     * function scope (c:S1116), and section registration is irrelevant for a
+     * function-local static. Same static-init semantics. */
+    static struct k_sem sem = Z_SEM_INITIALIZER(sem, 0, 1);
     return &sem;
 }
 
 static struct k_mutex *fl_resolve_lock(void)
 {
-    static K_MUTEX_DEFINE(lock);
+    static struct k_mutex lock = Z_MUTEX_INITIALIZER(lock);
     return &lock;
 }
 

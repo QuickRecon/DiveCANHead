@@ -128,7 +128,7 @@ void fl_fast_seek_active(struct fcb *fcb_p,
         if (0 != rc) {
             done = true;
         } else {
-            struct fl_chunk_scan scan;
+            struct fl_chunk_scan scan = { 0 };
 
             fl_scan_chunk(scratch, chunk, ev, &scan);
             entries += scan.entries;

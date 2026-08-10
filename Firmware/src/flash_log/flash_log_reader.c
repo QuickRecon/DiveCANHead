@@ -850,7 +850,7 @@ static Status_t fl_reader_emit_chunk(FlashLogReader_t *r,
                                      const struct fcb *fcb_p,
                                      uint8_t *buf, size_t buf_size)
 {
-    Status_t result;
+    Status_t result = 0;
     size_t total = (size_t)r->cursor.fe_data_len;
     size_t remaining = total - r->emit_off;
     size_t n = buf_size;
