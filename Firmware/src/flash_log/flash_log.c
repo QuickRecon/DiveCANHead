@@ -783,6 +783,42 @@ static Status_t fl_write_batch_subrecord(const struct fcb *fcb_p, off_t *woff,
  * @param total    Total packed sub-record bytes (from the caller's Pass A).
  * @param first_ts Timestamp of the first sub-record, used as the entry's.
  */
+/**
+ * @brief Pass B: stream every staged telemetry sub-record into the reserved
+ *        container entry, one coalesced flash write per sub-record.
+ *
+ * @param fcb_p Telemetry FCB.
+ * @param woff  In/out: write offset inside the reserved entry.
+ * @return 0 when every sub-record landed, else the first write error.
+ */
+static Status_t fl_batch_write_subrecords(struct fcb *fcb_p, off_t *woff)
+{
+    Status_t rc = 0;
+    size_t off = 0U;
+    bool truncated = false;
+
+    while ((0 == rc) && ((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) &&
+           (!truncated)) {
+        const uint8_t *p = &fl_batch_buf[off];
+        FlashLogDest_t dest = (FlashLogDest_t)p[0];
+        uint8_t type = p[1];
+        uint16_t length = fl_batch_decode_length(p);
+        size_t rec = FL_BATCH_HDR_BYTES + length;
+
+        if ((off + rec) > fl_batch_len) {
+            truncated = true;
+        } else {
+            if ((FL_DEST_TELEMETRY == dest) && (!fl_is_marker_type(type))) {
+                rc = fl_write_batch_subrecord(fcb_p, woff, type,
+                                  fl_batch_decode_ts(p),
+                                  &p[FL_BATCH_HDR_BYTES], length);
+            }
+            off += rec;
+        }
+    }
+    return rc;
+}
+
 static void fl_batch_write_container(struct fcb *fcb_p, size_t total,
                                      uint64_t first_ts)
 {
@@ -813,31 +849,8 @@ static void fl_batch_write_container(struct fcb *fcb_p, size_t total,
 
             rc = flash_area_write(fcb_p->fap, woff, &bhdr, sizeof(bhdr));
             woff += (off_t)sizeof(bhdr);
-
-            /* Pass B: write each telemetry sub-record [fl_entry_hdr_t +
-             * payload], coalesced into one flash write per sub-record. */
-            size_t off = 0U;
-            bool truncated = false;
-
-            while ((0 == rc) && ((off + FL_BATCH_HDR_BYTES) <= fl_batch_len) &&
-                   (!truncated)) {
-                const uint8_t *p = &fl_batch_buf[off];
-                FlashLogDest_t dest = (FlashLogDest_t)p[0];
-                uint8_t type = p[1];
-                uint16_t length = fl_batch_decode_length(p);
-                size_t rec = FL_BATCH_HDR_BYTES + length;
-
-                if ((off + rec) > fl_batch_len) {
-                    truncated = true;
-                } else {
-                    if ((FL_DEST_TELEMETRY == dest) &&
-                        (!fl_is_marker_type(type))) {
-                        rc = fl_write_batch_subrecord(fcb_p, &woff, type,
-                                          fl_batch_decode_ts(p),
-                                          &p[FL_BATCH_HDR_BYTES], length);
-                    }
-                    off += rec;
-                }
+            if (0 == rc) {
+                rc = fl_batch_write_subrecords(fcb_p, &woff);
             }
             if (0 == rc) {
                 (void)fcb_append_finish(fcb_p, &loc);
