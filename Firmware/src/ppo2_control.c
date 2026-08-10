@@ -856,6 +856,10 @@ static PPO2_t read_cmd_setpoint(void)
  * the deadman window). The last-seen value updates unconditionally so an
  * absent or failed flush cannot re-trigger forever. A direction whose
  * solenoid is not wired on this variant (-ENODEV) is skipped silently.
+ * O2 flushes are additionally suppressed when measured ambient pressure is
+ * greater than 2000 mbar; an inhibited rise is consumed rather than deferred
+ * until ascent. Unavailable pressure preserves the prior behaviour because
+ * this nuisance-alarm mitigation is not a fail-safe interlock.
  * The handset-loss failsafe publishes only chan_setpoint, never
  * chan_setpoint_cmd, so it cannot trigger a flush.
  */
@@ -874,6 +878,19 @@ static void run_setpoint_flush_check(void)
          * delayed flush after calibration releases ownership. Calibration
          * methods may operate the same flush valves deliberately. */
         return;
+    }
+
+    if (SETPOINT_FLUSH_O2 == dir) {
+        uint16_t pressure_mbar = read_atmos_pressure();
+
+        if (!ppo2_setpoint_o2_flush_allowed(pressure_mbar)) {
+            /* Consume the setpoint transition without leaving a delayed O2
+             * flush armed for ascent. */
+            LOG_WRN("Setpoint %u->%u cb: O2 flush suppressed at %u mbar",
+                    (uint32_t)previous, (uint32_t)current,
+                    (uint32_t)pressure_mbar);
+            dir = SETPOINT_FLUSH_NONE;
+        }
     }
 
     if (SETPOINT_FLUSH_NONE != dir) {

@@ -533,3 +533,23 @@ ZTEST(flush_direction_suite, test_hypoxic_setpoint)
     zassert_equal(setpoint_flush_direction(19U, 130U),
               SETPOINT_FLUSH_O2, NULL);
 }
+
+/** @brief O2 flush is allowed through exactly 10 m ambient pressure. */
+ZTEST(flush_direction_suite, test_o2_flush_allowed_at_ten_metre_boundary)
+{
+    zassert_true(ppo2_setpoint_o2_flush_allowed(1000U),
+                 "surface pressure must allow O2 flush");
+    zassert_true(ppo2_setpoint_o2_flush_allowed(2000U),
+                 "exactly 2000 mbar must allow O2 flush");
+}
+
+/** @brief O2 flush is inhibited only below 10 m. */
+ZTEST(flush_direction_suite, test_o2_flush_inhibited_below_ten_metres)
+{
+    zassert_false(ppo2_setpoint_o2_flush_allowed(2001U),
+                  "pressure deeper than 10 m must inhibit O2 flush");
+    zassert_false(ppo2_setpoint_o2_flush_allowed(UINT16_MAX),
+                  "deep pressure must inhibit O2 flush");
+    zassert_true(ppo2_setpoint_o2_flush_allowed(0U),
+                 "unknown pressure must preserve existing flush behaviour");
+}

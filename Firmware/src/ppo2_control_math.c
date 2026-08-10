@@ -23,6 +23,9 @@ static const PIDNumeric_t FULL_DUTY = 1.0f;
  * discard it after a materially unsafe PPO2 overshoot. */
 static const PIDNumeric_t INTEGRAL_RESET_OVERSHOOT_BAR = 0.20f;
 static const PIDNumeric_t PPO2_COMPARE_EPSILON_BAR = 0.00001f;
+/* Setpoint-rise O2 flushes are suppressed below approximately 10 m. This is
+ * a PPO2-control policy, not a general restriction on explicit O2 commands. */
+static const uint16_t SETPOINT_O2_FLUSH_MAX_PRESSURE_MBAR = 2000U;
 
 void pid_state_init(PIDState_t *state, PIDNumeric_t kp,
             PIDNumeric_t ki, PIDNumeric_t kd)
@@ -265,4 +268,9 @@ SetpointFlushDirection_t setpoint_flush_direction(uint8_t previous_cb,
     }
 
     return direction;
+}
+
+bool ppo2_setpoint_o2_flush_allowed(uint16_t ambient_pressure_mbar)
+{
+    return ambient_pressure_mbar <= SETPOINT_O2_FLUSH_MAX_PRESSURE_MBAR;
 }

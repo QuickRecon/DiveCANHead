@@ -49,6 +49,10 @@ O2_INJECT_2_SOLENOID: int = 1
 O2_FLUSH_SOLENOID: int = 2
 DIL_FLUSH_SOLENOID: int = 3
 
+# DiveCAN PPO2_ATMOS_ID: target is the DUT and source is the handset.
+PPO2_ATMOS_BASE: int = 0x0D080000
+HOST_ID: int = 1
+
 # Both inject channels — PID/MK15 fires alternate between them, so any
 # "is the loop injecting O2" assertion must watch the pair.
 INJECT_SOLENOIDS: tuple[int, ...] = (O2_INJECT_SOLENOID, O2_INJECT_2_SOLENOID)
@@ -57,6 +61,18 @@ INJECT_SOLENOIDS: tuple[int, ...] = (O2_INJECT_SOLENOID, O2_INJECT_2_SOLENOID)
 def _setpoint_message(setpoint_centibar: int):
     """Build a DiveCAN setpoint frame with the host as src=1 (controller)."""
     return divecan.build_setpoint(src_id=1, setpoint=setpoint_centibar)
+
+
+def _send_ambient_pressure(can_bus, pressure_mbar: int) -> None:
+    """Publish absolute ambient pressure to the firmware over DiveCAN."""
+    import can
+
+    arbitration_id = PPO2_ATMOS_BASE | (divecan.DUT_ID << 8) | HOST_ID
+    data = bytearray(8)
+    data[2] = (pressure_mbar >> 8) & 0xFF
+    data[3] = pressure_mbar & 0xFF
+    can_bus.send(can.Message(arbitration_id=arbitration_id, data=bytes(data),
+                             is_extended_id=True))
 
 
 def _sample_solenoid_pins(shim, window_sim_s: float,
@@ -336,6 +352,7 @@ def test_setpoint_rise_fires_o2_flush(calibrated_dut) -> None:
     # PPO2 above the eventual duty target is irrelevant for the flush —
     # keep cells at the default setpoint so inject activity stays low.
     helpers.configure_all_cells(shim, [70, 70, 70])
+    _send_ambient_pressure(can_bus, 1000)
     helpers.sim_sleep(shim, 1.0)
 
     can_bus.send(_setpoint_message(150))
@@ -358,6 +375,40 @@ def test_setpoint_rise_fires_o2_flush(calibrated_dut) -> None:
     assert on_counts[DIL_FLUSH_SOLENOID] == 0, (
         f"diluent flush fired on a setpoint *rise*: "
         f"{on_counts[DIL_FLUSH_SOLENOID]} ON samples"
+    )
+
+
+def test_setpoint_rise_suppresses_o2_flush_below_ten_metres(
+        calibrated_dut) -> None:
+    """A setpoint increase deeper than 10 m must be consumed without firing
+    the O2 flush; the transition must not be deferred until ascent."""
+    can_bus, shim = calibrated_dut
+
+    helpers.configure_all_cells(shim, [70, 70, 70])
+    _send_ambient_pressure(can_bus, 2001)
+    helpers.sim_sleep(shim, 1.0)
+
+    can_bus.send(_setpoint_message(150))
+
+    on_counts, _ = _sample_solenoid_pins(
+        shim, FLUSH_AWARE_WINDOW_S,
+        (O2_FLUSH_SOLENOID, DIL_FLUSH_SOLENOID))
+
+    assert on_counts[O2_FLUSH_SOLENOID] == 0, (
+        f"O2 flush fired below 10 m: {on_counts[O2_FLUSH_SOLENOID]} samples"
+    )
+    assert on_counts[DIL_FLUSH_SOLENOID] == 0, (
+        f"suppressed O2 flush incorrectly operated diluent: "
+        f"{on_counts[DIL_FLUSH_SOLENOID]} samples"
+    )
+
+    # Ascending after the inhibited transition must not replay it.
+    _send_ambient_pressure(can_bus, 1000)
+    on_counts, _ = _sample_solenoid_pins(
+        shim, FLUSH_AWARE_WINDOW_S,
+        (O2_FLUSH_SOLENOID, DIL_FLUSH_SOLENOID))
+    assert on_counts[O2_FLUSH_SOLENOID] == 0, (
+        "deep setpoint-rise flush was deferred and replayed after ascent"
     )
 
 

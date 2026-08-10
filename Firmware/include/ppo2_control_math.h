@@ -167,4 +167,19 @@ FireTiming_t pid_compute_fire_timing(PIDNumeric_t duty,
 SetpointFlushDirection_t setpoint_flush_direction(uint8_t previous_cb,
                           uint8_t current_cb);
 
+/**
+ * @brief Gate only the PPO2 controller's setpoint-increase O2 flush by depth.
+ *
+ * Exactly 2000 mbar is allowed and a deeper measured pressure inhibits this
+ * automatic setpoint-change flush. Zero is the unavailable sentinel and
+ * preserves the pre-existing behaviour because this nuisance-alarm mitigation
+ * is not a fail-safe interlock. This helper is intentionally scoped to PPO2
+ * control; it is not a general restriction on handset-triggered calibration
+ * or other explicit solenoid commands.
+ *
+ * @param ambient_pressure_mbar Absolute ambient pressure in millibar.
+ * @return true when PPO2 control may fire its setpoint-increase O2 flush.
+ */
+bool ppo2_setpoint_o2_flush_allowed(uint16_t ambient_pressure_mbar);
+
 #endif /* PPO2_CONTROL_MATH_H */
