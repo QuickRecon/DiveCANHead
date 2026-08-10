@@ -137,9 +137,12 @@ void txCellState(DiveCANType_t deviceType, bool cell1, bool cell2,
  * designator (DIVECAN_TANK_O2 / DIVECAN_TANK_DIL), bytes 1-2 the pressure
  * in decibar, big-endian (0x0203 = 51.5 bar).
  *
+ * TANK_PRESSURE_FAIL is not transmitted; the receiver detects an absent/stale
+ * periodic pressure stream on its own timeout.
+ *
  * @param deviceType       Our device type
  * @param cylinder         Cylinder designator (DIVECAN_TANK_O2 / DIVECAN_TANK_DIL)
- * @param pressure_decibar Pressure in decibar (TANK_PRESSURE_FAIL = sensor error)
+ * @param pressure_decibar Valid pressure in decibar; TANK_PRESSURE_FAIL suppresses TX
  */
 void txTankPressure(DiveCANType_t deviceType, uint8_t cylinder,
             TankPressure_t pressure_decibar);

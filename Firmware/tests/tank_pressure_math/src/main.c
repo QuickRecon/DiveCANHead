@@ -4,8 +4,8 @@
  *
  * Pure host build — no Zephyr threads or hardware. Tests the linear
  * millivolts → decibar mapping in tank_pressure_math.c, including the
- * out-of-range and misconfiguration paths that must yield
- * TANK_PRESSURE_FAIL on the DiveCAN wire.
+ * out-of-range and misconfiguration paths that must yield the internal/UDS
+ * TANK_PRESSURE_FAIL sentinel (which periodic DiveCAN broadcasts omit).
  *
  * Reference configuration used throughout (the Poseidon_Aren transducers):
  * 300 mV = 0 bar, 1800 mV = 300 bar full scale, i.e. exactly

@@ -24,4 +24,7 @@ target_include_directories(app PRIVATE
 # does not import the complete product Kconfig topology.
 target_compile_definitions(app PRIVATE
     CONFIG_DIVECAN_PPO2_SLOT_3_CONSENSUS=1
+    CONFIG_HAS_PRESSURE_TRANSDUCER=1
+    CONFIG_O2_TRANSDUCER_CHANNEL=0
+    CONFIG_DIL_TRANSDUCER_CHANNEL=1
 )

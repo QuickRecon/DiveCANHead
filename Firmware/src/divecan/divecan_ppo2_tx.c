@@ -50,17 +50,20 @@ static const uint8_t CELL_IDX_2 = 2U;
 /* The tank pressure sampler publishes every 500 ms and deliberately carries
  * no watchdog heartbeat (a wedged pressure gauge must not reboot the PPO2
  * loop mid-dive), so staleness is policed here: 3 s of silence means the
- * sampler stopped, and stale pressure read as current is worse than an
- * explicit sensor-error value on the handset. */
+ * sampler stopped. Stale pressure read as current is worse than missing
+ * pressure, so an unreadable or stale sample suppresses pressure broadcasts
+ * until the sampler recovers. */
 #define TANK_PRESSURE_STALE_MS 3000
 
 /**
  * @brief Broadcast HP tank pressures from chan_tank_pressure.
  *
  * Reads the latest sampler message and transmits one TANK_PRESSURE_ID frame
- * per configured cylinder. A read failure or a message older than
- * TANK_PRESSURE_STALE_MS substitutes TANK_PRESSURE_FAIL so the handset shows
- * a sensor error instead of a stale value.
+ * per configured cylinder that has a valid reading. A read failure or a
+ * message older than TANK_PRESSURE_STALE_MS suppresses the complete pressure
+ * broadcast cycle. A per-cylinder TANK_PRESSURE_FAIL suppresses only that
+ * cylinder, allowing the other cylinder to continue reporting. The handset
+ * owns timeout/error presentation for omitted periodic pressure frames.
  */
 static void tx_tank_pressures(DiveCANType_t dev_type)
 {
@@ -71,15 +74,18 @@ static void tx_tank_pressures(DiveCANType_t dev_type)
 
     if ((0 != rc) ||
         ((k_uptime_ticks() - tank.timestamp_ticks) > stale_ticks)) {
-        tank.o2_decibar = (TankPressure_t)TANK_PRESSURE_FAIL;
-        tank.dil_decibar = (TankPressure_t)TANK_PRESSURE_FAIL;
+        return;
     }
 
 #if CONFIG_O2_TRANSDUCER_CHANNEL >= 0
-    txTankPressure(dev_type, DIVECAN_TANK_O2, tank.o2_decibar);
+    if (TANK_PRESSURE_FAIL != tank.o2_decibar) {
+        txTankPressure(dev_type, DIVECAN_TANK_O2, tank.o2_decibar);
+    }
 #endif
 #if CONFIG_DIL_TRANSDUCER_CHANNEL >= 0
-    txTankPressure(dev_type, DIVECAN_TANK_DIL, tank.dil_decibar);
+    if (TANK_PRESSURE_FAIL != tank.dil_decibar) {
+        txTankPressure(dev_type, DIVECAN_TANK_DIL, tank.dil_decibar);
+    }
 #endif
 }
 #endif /* CONFIG_HAS_PRESSURE_TRANSDUCER */

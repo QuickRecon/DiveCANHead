@@ -246,13 +246,21 @@ void txCellState(DiveCANType_t deviceType, bool cell1, bool cell2,
  * Byte 0 carries the cylinder designator, bytes 1-2 the pressure in
  * decibar big-endian (0x0203 = 51.5 bar), per DiveCAN Messaging/Pressure.md.
  *
+ * TANK_PRESSURE_FAIL is deliberately not emitted: omitted periodic frames let
+ * the receiving handset own pressure timeout/error handling without writing a
+ * bogus high pressure into its log.
+ *
  * @param deviceType the device type of this device
  * @param cylinder Cylinder designator (DIVECAN_TANK_O2 / DIVECAN_TANK_DIL)
- * @param pressure_decibar Pressure in decibar (TANK_PRESSURE_FAIL = sensor error)
+ * @param pressure_decibar Valid pressure in decibar; TANK_PRESSURE_FAIL suppresses TX
  */
 void txTankPressure(DiveCANType_t deviceType, uint8_t cylinder,
             TankPressure_t pressure_decibar)
 {
+    if (TANK_PRESSURE_FAIL == pressure_decibar) {
+        return;
+    }
+
     static const uint8_t TANK_PRESSURE_MSG_LEN = 3U;
     const DiveCANMessage_t message = {
         .id = TANK_PRESSURE_ID | (uint32_t)deviceType,

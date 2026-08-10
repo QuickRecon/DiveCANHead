@@ -30,6 +30,7 @@
 #include "oxygen_cell_types.h"
 #include "calibration.h"
 #include "errors.h"
+#include "tank_pressure.h"
 
 /* ---- Test-owned consensus channel (the thread reads this) ---- */
 ZBUS_CHAN_DEFINE(chan_consensus,
@@ -40,11 +41,24 @@ ZBUS_CHAN_DEFINE(chan_consensus,
                                .precision_consensus = 0.0,
                                .confidence = 0));
 
+/* Test-owned pressure channel. Both cylinder channels are enabled by this
+ * module's CMake definitions so the production periodic gating can be tested
+ * without the hardware sampler. */
+ZBUS_CHAN_DEFINE(chan_tank_pressure,
+                 TankPressureMsg_t,
+                 NULL, NULL,
+                 ZBUS_OBSERVERS_EMPTY,
+                 ZBUS_MSG_INIT(.o2_decibar = TANK_PRESSURE_FAIL,
+                               .dil_decibar = TANK_PRESSURE_FAIL,
+                               .timestamp_ticks = 0));
+
 /* Last consensus PPO2 the thread handed to txCellState — updated from the
  * thread context, read from the test after a settle. */
 static volatile PPO2_t last_cellstate_ppo2 = 0U;
 static volatile bool last_cellstate_cell3 = false;
 static volatile PPO2_t last_ppo2[CELL_MAX_COUNT] = {0};
+static atomic_t pressure_tx_count[2];
+static volatile TankPressure_t last_pressure[2] = {0};
 
 /* ---- Stubs for the thread's collaborators ---- */
 
@@ -90,6 +104,16 @@ void txCellState(DiveCANType_t deviceType, bool cell1, bool cell2, bool cell3,
     ARG_UNUSED(cell2);
     last_cellstate_cell3 = cell3;
     last_cellstate_ppo2 = ppo2;
+}
+
+void txTankPressure(DiveCANType_t deviceType, uint8_t cylinder,
+                    TankPressure_t pressure_decibar)
+{
+    ARG_UNUSED(deviceType);
+
+    size_t index = (DIVECAN_TANK_O2 == cylinder) ? 0U : 1U;
+    last_pressure[index] = pressure_decibar;
+    atomic_inc(&pressure_tx_count[index]);
 }
 
 bool calibration_is_running(void)
@@ -197,4 +221,74 @@ ZTEST(divecan_ppo2_tx, test_consensus_slot_and_fail_safe_paths)
     zassert_equal(last_ppo2[0], PPO2_FAIL);
     zassert_equal(last_ppo2[1], PPO2_FAIL);
     zassert_equal(last_ppo2[2], PPO2_FAIL);
+}
+
+/**
+ * @brief Valid pressure broadcasts continue independently, while a failed,
+ *        stale, or unreadable sample produces no corresponding HP frames.
+ */
+ZTEST(divecan_ppo2_tx, test_pressure_invalid_and_stale_samples_are_omitted)
+{
+    static const TankPressure_t O2_PRESSURE = 1234U;
+    static const TankPressure_t DIL_PRESSURE = 2345U;
+
+    TankPressureMsg_t tank = {
+        .o2_decibar = O2_PRESSURE,
+        .dil_decibar = DIL_PRESSURE,
+        .timestamp_ticks = k_uptime_ticks(),
+    };
+    zassert_ok(zbus_chan_pub(&chan_tank_pressure, &tank, K_MSEC(100)));
+    (void)k_msleep(SETTLE_MS);
+
+    zassert_true(atomic_get(&pressure_tx_count[0]) > 0,
+                 "fresh O2 pressure must be broadcast");
+    zassert_true(atomic_get(&pressure_tx_count[1]) > 0,
+                 "fresh dil pressure must be broadcast");
+    zassert_equal(last_pressure[0], O2_PRESSURE);
+    zassert_equal(last_pressure[1], DIL_PRESSURE);
+
+    /* A sensor failure affects only its cylinder. Let one broadcast period
+     * flush any sample already read by the TX thread, then observe a complete
+     * period in which only the healthy diluent pressure may advance. */
+    tank.o2_decibar = TANK_PRESSURE_FAIL;
+    tank.dil_decibar = DIL_PRESSURE;
+    tank.timestamp_ticks = k_uptime_ticks();
+    zassert_ok(zbus_chan_pub(&chan_tank_pressure, &tank, K_MSEC(100)));
+    (void)k_msleep(SETTLE_MS);
+    atomic_val_t o2_before = atomic_get(&pressure_tx_count[0]);
+    atomic_val_t dil_before = atomic_get(&pressure_tx_count[1]);
+    (void)k_msleep(SETTLE_MS);
+
+    zassert_equal(atomic_get(&pressure_tx_count[0]), o2_before,
+                  "failed O2 sentinel must not be broadcast");
+    zassert_true(atomic_get(&pressure_tx_count[1]) > dil_before,
+                 "healthy dil pressure must continue while O2 is failed");
+    zassert_equal(last_pressure[1], DIL_PRESSURE);
+
+    /* Timestamp the message well outside the 3-second freshness window. The
+     * first wait flushes any previously-read message; neither cylinder may
+     * advance during the following complete broadcast period. */
+    tank.o2_decibar = O2_PRESSURE;
+    tank.timestamp_ticks = k_uptime_ticks() - k_ms_to_ticks_ceil64(4000);
+    zassert_ok(zbus_chan_pub(&chan_tank_pressure, &tank, K_MSEC(100)));
+    (void)k_msleep(SETTLE_MS);
+    o2_before = atomic_get(&pressure_tx_count[0]);
+    dil_before = atomic_get(&pressure_tx_count[1]);
+    (void)k_msleep(SETTLE_MS);
+
+    zassert_equal(atomic_get(&pressure_tx_count[0]), o2_before,
+                  "stale sample must suppress O2 pressure");
+    zassert_equal(atomic_get(&pressure_tx_count[1]), dil_before,
+                  "stale sample must suppress dil pressure");
+
+    /* A channel read timeout has the same whole-cycle suppression policy. */
+    zassert_ok(zbus_chan_claim(&chan_tank_pressure, K_FOREVER));
+    o2_before = atomic_get(&pressure_tx_count[0]);
+    dil_before = atomic_get(&pressure_tx_count[1]);
+    (void)k_msleep(SETTLE_MS);
+    zassert_equal(atomic_get(&pressure_tx_count[0]), o2_before,
+                  "unreadable channel must suppress O2 pressure");
+    zassert_equal(atomic_get(&pressure_tx_count[1]), dil_before,
+                  "unreadable channel must suppress dil pressure");
+    (void)zbus_chan_finish(&chan_tank_pressure);
 }

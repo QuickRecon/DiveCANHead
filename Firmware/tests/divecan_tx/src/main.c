@@ -104,18 +104,14 @@ ZTEST(divecan_tx, test_txTankPressure_byte_layout)
     zassert_equal(f->length, 3);
 }
 
-/** @brief txTankPressure carries the diluent designator (0x10) and the
- *         0xFFFF sensor-error value unmangled. */
-ZTEST(divecan_tx, test_txTankPressure_dil_fail_value)
+/** @brief txTankPressure suppresses the failure sentinel so it cannot be
+ *         logged as a bogus 6553.5-bar reading by a receiver. */
+ZTEST(divecan_tx, test_txTankPressure_suppresses_fail_value)
 {
     txTankPressure(DIVECAN_SOLO, DIVECAN_TANK_DIL, TANK_PRESSURE_FAIL);
 
-    const DiveCANMessage_t *f = test_tx_last();
-    zassert_not_null(f);
-    zassert_equal(f->data[0], DIVECAN_TANK_DIL);
-    zassert_equal(f->data[1], 0xFF);
-    zassert_equal(f->data[2], 0xFF);
-    zassert_equal(f->length, 3);
+    zassert_equal(test_tx_get_count(), 0,
+                  "failure sentinel must not produce a pressure frame");
 }
 
 /** @brief txStatus places battery voltage in byte[0], setpoint in byte[5], error byte in byte[7]. */

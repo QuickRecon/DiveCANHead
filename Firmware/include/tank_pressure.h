@@ -29,7 +29,11 @@ typedef int32_t TransducerMv_t;
 /** @brief Full-scale transducer pressure in bar (Kconfig *_TRANSDUCER_LIMIT). */
 typedef uint32_t TransducerLimitBar_t;
 
-/** @brief Wire/channel sentinel for a failed or out-of-range reading. */
+/** @brief Channel/UDS sentinel for a failed or out-of-range reading.
+ *
+ * Periodic TANK_PRESSURE_ID broadcasts suppress this value rather than placing
+ * it on the CAN wire; UDS pressure DIDs retain the sentinel response.
+ */
 #define TANK_PRESSURE_FAIL 0xFFFFU
 
 /** @brief Tank pressures published on chan_tank_pressure.

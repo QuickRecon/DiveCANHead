@@ -11,14 +11,16 @@
  * so the cells' fixed COUNTS_TO_MILLIS constant does not apply here.
  *
  * Readings outside the configured [MIN, MAX] millivolt window, ADC errors,
- * and init failures all publish TANK_PRESSURE_FAIL so the DiveCAN TX side
- * reports an explicit error value instead of a plausible-but-wrong pressure.
+ * and init failures all publish TANK_PRESSURE_FAIL so consumers can reject
+ * the sample instead of reporting a plausible-but-wrong pressure. Periodic
+ * DiveCAN pressure broadcasts omit a failed cylinder rather than sending the
+ * sentinel as a numeric value.
  *
  * The thread deliberately does NOT register a heartbeat slot: tank pressure
  * is display-only information, and a wedged pressure sampler must not reboot
  * the head (and drop the PPO2 control loop) mid-dive. Staleness is handled
- * on the consumer side instead — divecan_ppo2_tx checks timestamp_ticks and
- * substitutes TANK_PRESSURE_FAIL when publishes stop arriving.
+ * at the broadcast boundary instead — divecan_ppo2_tx checks timestamp_ticks
+ * and omits HP pressure frames when publishes stop arriving.
  */
 
 #include "tank_pressure.h"
