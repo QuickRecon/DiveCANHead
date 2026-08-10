@@ -48,6 +48,9 @@ export class DataStore {
     this.cellTypes = [0, 0, 0];          // Cached cell types
     this.isPolling = false;
     this._pollInFlight = false;          // Guard against overlapping poll cycles
+    this._initializing = false;
+    this._pollingPaused = false;
+    this._idleWaiters = [];
 
     // Stamp the arrival of any head-initiated push so waitForLogQuiescence can
     // tell when the backlog has drained. Both event names carry pushed traffic.
@@ -163,18 +166,25 @@ export class DataStore {
       throw new Error('UDSClient required for pull mode');
     }
 
-    // Let the head flush any buffered log backlog before we start the fetch
-    // burst, so broadcast log pushes don't interleave with our multi-frame
-    // responses and clobber the handset's ISO-TP reassembly.
-    await this.waitForLogQuiescence();
+    this._initializing = true;
+    try {
+      // Let the head flush any buffered log backlog before we start the fetch
+      // burst, so broadcast log pushes don't interleave with our multi-frame
+      // responses and clobber the handset's ISO-TP reassembly.
+      await this.waitForLogQuiescence();
 
-    // Fetch all DIDs once
-    const state = await this.fetchAllDIDs(progressCallback);
+      // Fetch all DIDs once. pausePolling() waits for this finite initial fetch
+      // to finish before granting OTA exclusive use of the UDS link.
+      const state = await this.fetchAllDIDs(progressCallback);
 
-    // Start polling subscribed DIDs
-    this.startPolling();
-
-    return state;
+      if (!this._pollingPaused) {
+        this.startPolling();
+      }
+      return state;
+    } finally {
+      this._initializing = false;
+      this._resolveIdleWaiters();
+    }
   }
 
   /**
@@ -325,6 +335,7 @@ export class DataStore {
     if (this.isPolling) return;
 
     const interval = intervalMs ?? this.pollInterval;
+    this._pollingPaused = false;
     this.isPolling = true;
 
     this.pollTimer = setInterval(async () => {
@@ -343,6 +354,7 @@ export class DataStore {
         console.error('Poll error:', error);
       } finally {
         this._pollInFlight = false;
+        this._resolveIdleWaiters();
       }
     }, interval);
   }
@@ -356,6 +368,37 @@ export class DataStore {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+  }
+
+  /**
+   * Stop scheduling polls and resolve only once all already-started DID work,
+   * including connection-time initialization, has finished.
+   * @returns {Promise<void>}
+   */
+  async pausePolling() {
+    this._pollingPaused = true;
+    this.stopPolling();
+    await this.waitForIdle();
+  }
+
+  /** Resume periodic polling after pausePolling(). */
+  resumePolling(intervalMs = null) {
+    this.startPolling(intervalMs);
+  }
+
+  /** Resolve when no initialization or periodic poll cycle is active. */
+  waitForIdle() {
+    if (!this._initializing && !this._pollInFlight) {
+      return Promise.resolve();
+    }
+    return new Promise(resolve => this._idleWaiters.push(resolve));
+  }
+
+  /** @private */
+  _resolveIdleWaiters() {
+    if (this._initializing || this._pollInFlight) return;
+    const waiters = this._idleWaiters.splice(0, this._idleWaiters.length);
+    for (const resolve of waiters) resolve();
   }
 
   /**
@@ -412,6 +455,7 @@ export class DataStore {
    */
   async _pollSubscribedExtraDIDs(timestamp) {
     for (const { key, info } of this._collectSubscribedExtraDIDs()) {
+      if (this._pollingPaused) break;
       try {
         const data = await this.udsClient.readDataByIdentifier(info.did);
         const value = parseExtraDIDValue(info, data);
@@ -458,13 +502,16 @@ export class DataStore {
     // Max safe: (20 - 5 - 1) / 2 = 7 DIDs, use 4 to be conservative
     const DIDS_PER_REQUEST = 4;
     for (let i = 0; i < didsToRead.length; i += DIDS_PER_REQUEST) {
+      if (this._pollingPaused) break;
       const chunk = didsToRead.slice(i, i + DIDS_PER_REQUEST);
       const result = await this.udsClient.readDIDsParsed(chunk);
       this._updateDIDValues(result, timestamp);
     }
 
     // Extra (variable-length / struct) DIDs, read individually.
-    await this._pollSubscribedExtraDIDs(timestamp);
+    if (!this._pollingPaused) {
+      await this._pollSubscribedExtraDIDs(timestamp);
+    }
   }
 
   /**

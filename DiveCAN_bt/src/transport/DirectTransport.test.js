@@ -78,6 +78,14 @@ describe('DirectTransport', () => {
   });
 
   describe('send', () => {
+    it('awaits an installed physical sender and propagates its failure', async () => {
+      const sender = vi.fn().mockRejectedValue(new Error('link down'));
+      transport.setSender(sender);
+
+      await expect(transport.send([0x22, 0xF2, 0x00])).rejects.toThrow('link down');
+      expect(sender).toHaveBeenCalledWith(new Uint8Array([0x22, 0xF2, 0x00]));
+    });
+
     it('emits frame event with data', async () => {
       const handler = vi.fn();
       transport.on('frame', handler);

@@ -66,6 +66,42 @@ describe('CanableProtocolStack split addressing', () => {
 });
 
 describe('CanableProtocolStack lifecycle & accessors', () => {
+  it('forwards OTA recovery events', () => {
+    const stack = new CanableProtocolStack({ handsetEmulation: false });
+    const seen = [];
+    stack.on('otaBlockRetry', p => seen.push(['block', p]));
+    stack.on('otaStagingRetry', p => seen.push(['staging', p]));
+    stack.on('otaStaleDownload', p => seen.push(['stale', p]));
+
+    stack.ota.emit('blockRetry', { block: 2 });
+    stack.ota.emit('stagingRetry', { attempt: 2 });
+    stack.ota.emit('staleDownload', { waitMs: 10 });
+
+    expect(seen).toEqual([
+      ['block', { block: 2 }],
+      ['staging', { attempt: 2 }],
+      ['stale', { waitMs: 10 }]
+    ]);
+  });
+
+  it('aborts pending UDS work and resets both transports when the serial link drops', () => {
+    const stack = new CanableProtocolStack({ handsetEmulation: false });
+    const abort = vi.spyOn(stack.uds, 'abortPending');
+    const txReset = vi.spyOn(stack.transport, 'reset');
+    const logReset = vi.spyOn(stack.logTransport, 'reset');
+    const disconnected = vi.fn();
+    stack.on('disconnected', disconnected);
+
+    stack.canable.emit('disconnected');
+
+    expect(abort).toHaveBeenCalledWith(expect.objectContaining({
+      details: expect.objectContaining({ disconnected: true })
+    }));
+    expect(txReset).toHaveBeenCalledTimes(1);
+    expect(logReset).toHaveBeenCalledTimes(1);
+    expect(disconnected).toHaveBeenCalledTimes(1);
+  });
+
   it('connect() opens the CAN link', async () => {
     const stack = new CanableProtocolStack({ handsetEmulation: false });
     stack.canable.connect = vi.fn().mockResolvedValue(undefined);

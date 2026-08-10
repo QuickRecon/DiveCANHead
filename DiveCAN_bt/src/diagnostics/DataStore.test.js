@@ -542,6 +542,32 @@ describe('DataStore', () => {
       expect(s.isPolling).toBe(true);
       s.stopPolling();
     });
+
+    it('pausePolling waits for connection-time initialization and prevents polling from starting', async () => {
+      let finishFetch;
+      const fetchAllState = vi.fn(() => new Promise(resolve => { finishFetch = resolve; }));
+      const uds = makeUds({
+        readDIDsParsed: vi.fn().mockResolvedValue({ CELL0_TYPE: 0, CELL1_TYPE: 0, CELL2_TYPE: 0 }),
+        fetchAllState
+      });
+      const s = new DataStore({ udsClient: uds, logDrainQuietMs: 1, logDrainMaxMs: 20 });
+
+      const initialization = s.initialize();
+      while (!fetchAllState.mock.calls.length) await new Promise(r => setTimeout(r, 1));
+      let paused = false;
+      const pause = s.pausePolling().then(() => { paused = true; });
+      await Promise.resolve();
+      expect(paused).toBe(false);
+
+      finishFetch({ CONSENSUS_PPO2: 0.9 });
+      await initialization;
+      await pause;
+
+      expect(s.isPolling).toBe(false);
+      s.resumePolling();
+      expect(s.isPolling).toBe(true);
+      s.stopPolling();
+    });
   });
 
   describe('_collectSubscribedDIDs', () => {
@@ -715,6 +741,26 @@ describe('DataStore', () => {
       expect(error).toHaveBeenCalledWith('Poll error:', expect.any(Error));
       expect(s._pollInFlight).toBe(false);  // guard reset in finally
       s.stopPolling();
+    });
+
+    it('pausePolling waits for an active poll request to settle', async () => {
+      let finishRead;
+      const readDIDsParsed = vi.fn(() => new Promise(resolve => { finishRead = resolve; }));
+      const uds = makeUds({ readDIDsParsed });
+      const s = new DataStore({ udsClient: uds, pollInterval: 100 });
+      s.subscribe('CONSENSUS_PPO2', vi.fn());
+      s.startPolling();
+      await vi.advanceTimersByTimeAsync(100);
+
+      let paused = false;
+      const pause = s.pausePolling().then(() => { paused = true; });
+      await Promise.resolve();
+      expect(paused).toBe(false);
+
+      finishRead({ CONSENSUS_PPO2: 1.0 });
+      await pause;
+      expect(paused).toBe(true);
+      expect(s.isPolling).toBe(false);
     });
   });
 

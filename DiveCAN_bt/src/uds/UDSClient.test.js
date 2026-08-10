@@ -529,6 +529,16 @@ describe('UDSClient', () => {
       expect(Array.from(resp)).toEqual([0x76, 5, 0xAA, 0xBB]);
     });
 
+    it('ignores a late TransferData response for a different sequence', async () => {
+      const request = client.transferData(2, [0xAA], 100);
+      await new Promise(r => setTimeout(r, 0));
+
+      transport.injectMessage(buildTransferResponse(1));
+      transport.injectMessage(buildTransferResponse(2));
+
+      await expect(request).resolves.toEqual(buildTransferResponse(2));
+    });
+
     it('requestTransferExit sends 0x37', async () => {
       transport.queueResponse(buildTransferExitResponse());
       const resp = await client.requestTransferExit();

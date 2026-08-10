@@ -88,6 +88,10 @@ export class BLEConnection extends EventEmitter {
     this.service = null;
     this.characteristic = null;
     this._isConnected = false;
+    this._notificationCharacteristic = null;
+    this._notificationHandler = (event) => this._handleData(event.target.value);
+    this._disconnectDevice = null;
+    this._disconnectHandler = () => this._handleDisconnect();
   }
 
   /**
@@ -160,11 +164,11 @@ export class BLEConnection extends EventEmitter {
     try {
       this.device = device;
 
-      // Set up disconnect handler. One-shot: connect() re-registers on every
-      // (re)connection, so a persistent listener would stack duplicates.
-      device.addEventListener('gattserverdisconnected', () => {
-        this._handleDisconnect();
-      }, { once: true });
+      // Keep exactly one disconnect listener even on implementations or test
+      // doubles that do not honour the EventListener `once` option.
+      this._detachDisconnectHandler();
+      this._disconnectDevice = device;
+      device.addEventListener('gattserverdisconnected', this._disconnectHandler);
 
       // Connect to GATT server
       this.server = await device.gatt.connect();
@@ -180,9 +184,9 @@ export class BLEConnection extends EventEmitter {
 
       // Start notifications
       await this.characteristic.startNotifications();
-      this.characteristic.addEventListener('characteristicvaluechanged', (event) => {
-        this._handleData(event.target.value);
-      });
+      this._detachNotificationHandler();
+      this._notificationCharacteristic = this.characteristic;
+      this.characteristic.addEventListener('characteristicvaluechanged', this._notificationHandler);
       this.logger.debug('Notifications started');
 
       // Try to read model number (optional)
@@ -202,6 +206,8 @@ export class BLEConnection extends EventEmitter {
       this.logger.info('Connected successfully');
 
     } catch (error) {
+      this._detachNotificationHandler();
+      this._detachDisconnectHandler();
       this._isConnected = false;
       this.device = null;
       this.server = null;
@@ -311,6 +317,8 @@ export class BLEConnection extends EventEmitter {
   _handleDisconnect() {
     const wasConnected = this._isConnected;
 
+    this._detachNotificationHandler();
+    this._detachDisconnectHandler();
     this._isConnected = false;
     this.characteristic = null;
     this.service = null;
@@ -328,6 +336,24 @@ export class BLEConnection extends EventEmitter {
           });
         }, 1000);
       }
+    }
+  }
+
+  /** @private */
+  _detachNotificationHandler() {
+    if (this._notificationCharacteristic) {
+      this._notificationCharacteristic.removeEventListener(
+        'characteristicvaluechanged', this._notificationHandler);
+      this._notificationCharacteristic = null;
+    }
+  }
+
+  /** @private */
+  _detachDisconnectHandler() {
+    if (this._disconnectDevice) {
+      this._disconnectDevice.removeEventListener(
+        'gattserverdisconnected', this._disconnectHandler);
+      this._disconnectDevice = null;
     }
   }
 

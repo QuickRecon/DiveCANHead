@@ -65,6 +65,19 @@ export class DirectTransport extends EventEmitter {
     this.sourceAddress = sourceAddress;
     this.targetAddress = targetAddress;
     this.options = options;
+    this.sender = null;
+  }
+
+  /**
+   * Install an awaitable physical-layer sender.
+   *
+   * The legacy `frame` event remains the fallback for standalone users, but a
+   * protocol stack should use this hook so send() does not resolve until the
+   * BLE write has completed (and can propagate write failures to UDS).
+   * @param {(data: Uint8Array) => Promise<void>} sender
+   */
+  setSender(sender) {
+    this.sender = sender;
   }
 
   /**
@@ -79,7 +92,13 @@ export class DirectTransport extends EventEmitter {
       data: ByteUtils.toHexString(dataArray)
     });
 
-    // Emit the raw UDS payload - the stack will wrap it in DiveCAN
+    if (this.sender) {
+      await this.sender(dataArray);
+      return;
+    }
+
+    // Backwards-compatible standalone path: emit the raw UDS payload and let
+    // an external stack wrap it in DiveCAN.
     this.emit('frame', dataArray);
   }
 

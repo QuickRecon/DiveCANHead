@@ -62,6 +62,8 @@ export class UDSClient extends EventEmitter {
     this.pendingResolve = null;
     this.pendingReject = null;
     this.pendingTimer = null;
+    this.pendingResponseMatcher = null;
+    this.lastResponseTime = 0;
 
     // Serialization queue. Concurrent callers (background DID polling +
     // user-driven settings reads / manual solenoid fire) take turns on the
@@ -83,10 +85,12 @@ export class UDSClient extends EventEmitter {
     this.transport.on('message', (data) => this._handleResponse(data));
     this.transport.on('error', (error) => {
       if (this.pendingReject) {
+        this._clearPendingRequest();
         this.pendingReject(error);
         this.pendingResolve = null;
         this.pendingReject = null;
         this.pendingRequest = null;
+        this.pendingResponseMatcher = null;
       }
       this.emit('error', error);
     });
@@ -96,15 +100,17 @@ export class UDSClient extends EventEmitter {
    * Send UDS request and wait for response
    * @param {Array|Uint8Array} request - UDS request
    * @param {number} timeout - Timeout in ms (default: 5000)
+   * @param {(response: Uint8Array) => boolean} [responseMatcher] - Optional
+   *   service-specific positive-response correlation guard
    * @returns {Promise<Uint8Array>} Response data
    * @private
    */
-  _sendRequest(request, timeout = 5000) {
+  _sendRequest(request, timeout = 5000, responseMatcher = null) {
     // Enqueue and pump. Callers are serialized rather than rejected: a
     // background poll and a user action can be issued at the same time and
     // simply take turns on the single ISO-TP context.
     return new Promise((resolve, reject) => {
-      this._requestQueue.push({ request, timeout, resolve, reject });
+      this._requestQueue.push({ request, timeout, responseMatcher, resolve, reject });
       this._pumpRequestQueue();
     });
   }
@@ -125,7 +131,7 @@ export class UDSClient extends EventEmitter {
       return;
     }
     this._requestBusy = true;
-    this._dispatchRequest(job.request, job.timeout).then(job.resolve, job.reject).then(
+    this._dispatchRequest(job.request, job.timeout, job.responseMatcher).then(job.resolve, job.reject).then(
       () => {
         this._requestBusy = false;
         this._pumpRequestQueue();
@@ -143,7 +149,7 @@ export class UDSClient extends EventEmitter {
    * flight.
    * @private
    */
-  async _dispatchRequest(request, timeout) {
+  async _dispatchRequest(request, timeout, responseMatcher = null) {
     if (this.pendingRequest) {
       // Should be unreachable now that _sendRequest serializes access; treated
       // as an assertion against a future serialization regression.
@@ -168,6 +174,7 @@ export class UDSClient extends EventEmitter {
       this.pendingRequest = requestArray;
       this.pendingResolve = resolve;
       this.pendingReject = reject;
+      this.pendingResponseMatcher = responseMatcher;
 
       // Set timeout
       this.pendingTimer = setTimeout(() => {
@@ -175,6 +182,7 @@ export class UDSClient extends EventEmitter {
         this.pendingRequest = null;
         this.pendingResolve = null;
         this.pendingReject = null;
+        this.pendingResponseMatcher = null;
         reject(new UDSError('Request timeout', sid, null, { timeout }));
       }, timeout);
 
@@ -185,6 +193,7 @@ export class UDSClient extends EventEmitter {
         this.pendingRequest = null;
         this.pendingResolve = null;
         this.pendingReject = null;
+        this.pendingResponseMatcher = null;
         reject(new UDSError('Failed to send request', sid, null, { cause: error }));
       });
     });
@@ -213,6 +222,7 @@ export class UDSClient extends EventEmitter {
       this.pendingRequest = null;
       this.pendingResolve = null;
       this.pendingReject = null;
+      this.pendingResponseMatcher = null;
       this.logger.warn(`Aborting in-flight request: ${error.message}`);
       reject(error);
     }
@@ -224,6 +234,7 @@ export class UDSClient extends EventEmitter {
    */
   _handleResponse(data) {
     const sid = data[0];
+    this.lastResponseTime = Date.now();
 
     this.logger.debug(`UDS response: SID=0x${sid.toString(16).padStart(2, '0')}`, {
       response: ByteUtils.toHexString(data)
@@ -273,6 +284,11 @@ export class UDSClient extends EventEmitter {
     const requestedSid = data[1];
     const nrc = data[2];
 
+    if (requestedSid !== this.pendingRequest[0]) {
+      this.logger.warn(`Ignoring stale negative response for SID 0x${requestedSid.toString(16)}`);
+      return;
+    }
+
     this.logger.warn(`Negative response: SID=0x${requestedSid.toString(16)}, NRC=0x${nrc.toString(16)}`);
 
     const error = new UDSError('Negative response', requestedSid, nrc);
@@ -285,6 +301,7 @@ export class UDSClient extends EventEmitter {
       this.pendingResolve = null;
       this.pendingReject = null;
       this.pendingRequest = null;
+      this.pendingResponseMatcher = null;
     }
   }
 
@@ -303,7 +320,13 @@ export class UDSClient extends EventEmitter {
         this.pendingResolve = null;
         this.pendingReject = null;
         this.pendingRequest = null;
+        this.pendingResponseMatcher = null;
       }
+      return;
+    }
+
+    if (this.pendingResponseMatcher && !this.pendingResponseMatcher(data)) {
+      this.logger.warn(`Ignoring stale or mismatched positive response for SID 0x${sid.toString(16)}`);
       return;
     }
 
@@ -316,7 +339,49 @@ export class UDSClient extends EventEmitter {
       this.pendingResolve = null;
       this.pendingReject = null;
       this.pendingRequest = null;
+      this.pendingResponseMatcher = null;
     }
+  }
+
+  /**
+   * Wait until the receive side has been quiet for a full interval.
+   *
+   * OTA calls this after a timed-out request so a response that was merely
+   * late is consumed while no new request is pending, rather than being
+   * mistaken for the retry or the following block.
+   * @param {number} quietMs
+   * @param {AbortSignal} [signal]
+   */
+  async waitForResponseQuiescence(quietMs, signal = null) {
+    let lastActivity = Math.max(this.lastResponseTime, Date.now());
+    for (;;) {
+      if (signal?.aborted) {
+        throw new UDSError('Response quiet wait aborted', 0, null, { aborted: true });
+      }
+      const remaining = quietMs - (Date.now() - lastActivity);
+      if (remaining <= 0) return;
+      await this._abortableDelay(remaining, signal);
+      if (this.lastResponseTime > lastActivity) {
+        lastActivity = this.lastResponseTime;
+      }
+    }
+  }
+
+  /** @private */
+  _abortableDelay(ms, signal = null) {
+    return new Promise((resolve, reject) => {
+      let timer = null;
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        reject(new UDSError('Response quiet wait aborted', 0, null, { aborted: true }));
+      };
+      timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
   }
 
   /**
@@ -492,11 +557,13 @@ export class UDSClient extends EventEmitter {
    * @returns {Promise<Uint8Array>} Positive response [0x76, seq, ...body]
    */
   async transferData(seq, data = [], timeout = 15000) {
+    const expectedSeq = seq & 0xFF;
     const request = ByteUtils.concat(
-      [constants.SID_TRANSFER_DATA, seq & 0xFF],
+      [constants.SID_TRANSFER_DATA, expectedSeq],
       ByteUtils.toUint8Array(data.length ? data : [])
     );
-    return await this._sendRequest(request, timeout);
+    return await this._sendRequest(request, timeout,
+      response => response.length >= 2 && response[1] === expectedSeq);
   }
 
   /**

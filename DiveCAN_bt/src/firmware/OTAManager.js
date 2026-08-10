@@ -195,7 +195,7 @@ export class OTAManager extends EventEmitter {
    */
   async _stageAttempt(bytes, image, opts, recovery, progress) {
     if (!progress.active) {
-      const negotiated = await this._requestDownloadRecovered(bytes.length, recovery);
+      const negotiated = await this._requestDownloadRecovered(bytes.length, recovery, opts);
 
       const cap = opts.blockSize ?? this.options.blockSize ?? negotiated;
       const block = Math.min(cap, negotiated) - constants.OTA_REQ_OVERHEAD;
@@ -279,7 +279,7 @@ export class OTAManager extends EventEmitter {
    * past it and retry once. The caller must not poll the head meanwhile.
    * @private
    */
-  async _requestDownloadRecovered(length, recovery) {
+  async _requestDownloadRecovered(length, recovery, opts = {}) {
     const request = () => this._withSession(() =>
       this.uds.requestDownload(0, length, { sizeEndian: 'BE' }, this.timeouts.download));
     try {
@@ -291,7 +291,8 @@ export class OTAManager extends EventEmitter {
       const waitS = Math.ceil(recovery.staleDownloadWaitMs / 1000);
       this.logger.warn(`Head has a stale download open; staying silent ${waitS}s so its session expires`);
       this.emit('staleDownload', { waitMs: recovery.staleDownloadWaitMs });
-      await this._delay(recovery.staleDownloadWaitMs);
+      await this._delay(recovery.staleDownloadWaitMs, opts.signal);
+      this._throwIfAborted(opts);
       return await request();
     }
   }
@@ -351,10 +352,19 @@ export class OTAManager extends EventEmitter {
    * @private
    */
   async _recoverLink(opts, recovery, cause) {
-    await this._delay(recovery.retryDelayMs);
+    // A timed-out response can still be in flight. Require a complete quiet
+    // window before arming the retry so that late responses are consumed while
+    // no request is pending and cannot satisfy the following OTA block.
+    if (typeof this.uds.waitForResponseQuiescence === 'function') {
+      await this.uds.waitForResponseQuiescence(recovery.retryDelayMs, opts.signal);
+    } else {
+      await this._delay(recovery.retryDelayMs, opts.signal);
+    }
+    this._throwIfAborted(opts);
     if (opts.reconnect) {
       await opts.reconnect(cause);
     }
+    this._throwIfAborted(opts);
   }
 
   /** @private */
@@ -365,8 +375,24 @@ export class OTAManager extends EventEmitter {
   }
 
   /** @private */
-  _delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  _delay(ms, signal = null) {
+    return new Promise((resolve, reject) => {
+      let timer = null;
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        reject(new ValidationError('OTA staging aborted', 'OTA', { aborted: true }));
+      };
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+      timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
   }
 
   /**

@@ -235,7 +235,9 @@ describe('CanableConnection.connect / disconnect', () => {
     const port = new MockSerialPort();
     const c = new CanableConnection();
     const errors = [];
+    const disconnected = vi.fn();
     c.on('error', e => errors.push(e));
+    c.on('disconnected', disconnected);
     await c.connect(port);
 
     // Force the in-flight read() to reject
@@ -245,10 +247,12 @@ describe('CanableConnection.connect / disconnect', () => {
     port.reader.read = () => Promise.reject(new Error('device unplugged'));
     pending({ value: new TextEncoder().encode(''), done: false });
     await flush();
+    await flush();
 
     expect(errors.some(e => /device unplugged/.test(e.message))).toBe(true);
-
-    await c.disconnect();
+    expect(disconnected).toHaveBeenCalledTimes(1);
+    expect(c.isConnected).toBe(false);
+    expect(port.closed).toBe(true);
   });
 
   it('disconnect is idempotent and always emits disconnected', async () => {

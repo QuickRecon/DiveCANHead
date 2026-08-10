@@ -2244,6 +2244,12 @@
           pollInterval: 200
         });
 
+        // Publish the initializing store immediately. OTA's pause gate can
+        // then see and await this connection-time fetch instead of stopping the
+        // previous connection's already-idle store.
+        dataStore = newDataStore;
+        plotManager.setDataStore(dataStore);
+
         // Show initializing status. initialize() first drains the head's log
         // backlog (waitForLogQuiescence) before the DID-fetch burst so log
         // pushes don't interleave with our responses on the handset.
@@ -2253,10 +2259,6 @@
         await newDataStore.initialize((current, total) => {
           updateStreamStatus('initializing', `Fetching DIDs... ${current}/${total}`);
         });
-
-        // Update dataStore reference
-        dataStore = newDataStore;
-        plotManager.setDataStore(dataStore);
 
         elements.refreshDIDs.disabled = false;
 
@@ -2412,6 +2414,7 @@
     let fwAbort = null;
     let otaBusy = false;        // suppresses DID polling / reconnect DID bursts mid-staging
     let lastBleDevice = null;   // granted BluetoothDevice, reusable without a chooser prompt
+    let lastSerialPort = null;  // granted SerialPort, reusable without another chooser gesture
 
     // User-adjustable transfer rate. writeGapMs paces the ~20-byte BLE
     // fragments; blockCap limits the 0x36 block below the head's negotiated
@@ -2436,41 +2439,67 @@
       const p = fwPacing();
       if (stack?.ble) stack.ble.writeGapMs = p.writeGapMs;
       $('fwPacingInfo').textContent = p.label;
-      localStorage.setItem('divecan.otaPacing', $('fwPacingSelect').value);
+      try {
+        localStorage.setItem('divecan.otaPacing', $('fwPacingSelect').value);
+      } catch {
+        // Storage can be unavailable under restricted/private browsing.
+      }
     };
 
-    $('fwPacingSelect').value = localStorage.getItem('divecan.otaPacing') ?? 'normal';
+    let savedFwPacing = 'normal';
+    try {
+      savedFwPacing = localStorage.getItem('divecan.otaPacing') ?? 'normal';
+    } catch {
+      // Keep the safe default when storage access is blocked.
+    }
+    $('fwPacingSelect').value = FW_PACING[savedFwPacing] ? savedFwPacing : 'normal';
     $('fwPacingSelect').addEventListener('change', () => {
       applyFwPacing();
       addToLogMessages(`[WEB] OTA transfer rate set to "${$('fwPacingSelect').value}" (${fwPacing().label})`);
     });
     applyFwPacing();
 
-    // Reconnect callback for OTAManager's staging recovery. Chrome allows
-    // gatt.connect() on an already-granted device without a new chooser
-    // gesture, so an OTA can ride out a BLE drop unattended.
+    // Reconnect callback for OTAManager's staging recovery. Both Web Bluetooth
+    // and Web Serial can reuse an already-granted device/port without another
+    // chooser gesture.
     const fwReconnect = async (cause) => {
       if (!stack || stack.isConnected) return;
-      if (!lastBleDevice) throw cause ?? new Error('No BLE device available to reconnect');
-      addToLogMessages(`[WEB] OTA: BLE link lost — reconnecting to ${lastBleDevice.name || 'device'}...`);
-      await stack.connect(lastBleDevice);
+      if (stack.ble) {
+        if (!lastBleDevice) throw cause ?? new Error('No BLE device available to reconnect');
+        addToLogMessages(`[WEB] OTA: BLE link lost — reconnecting to ${lastBleDevice.name || 'device'}...`);
+        await stack.connect(lastBleDevice);
+      } else if (stack.canable) {
+        const port = stack.canable.port ?? lastSerialPort;
+        if (!port) throw cause ?? new Error('No serial port available to reconnect');
+        addToLogMessages('[WEB] OTA: USB-CAN link lost — reopening the granted serial port...');
+        await stack.connect(port);
+        lastSerialPort = stack.canable.port;
+      } else {
+        throw cause ?? new Error('This transport cannot reconnect');
+      }
       stack.setTargetAddress(0x04);
     };
 
     // Staging shares the link with background DID polling; pause it for the
     // duration. Also required for stale-download recovery, which needs total
     // UDS silence to let the head's S3 session timeout expire.
-    const fwEnterTransfer = () => {
+    const fwEnterTransfer = async () => {
       otaBusy = true;
       applyFwPacing();
-      dataStore?.stopPolling();
+      updateStreamStatus('inactive', 'Waiting for diagnostics traffic to stop...');
+      if (dataStore?.pausePolling) {
+        await dataStore.pausePolling();
+      } else {
+        dataStore?.stopPolling();
+      }
       updateStreamStatus('inactive', 'Paused for OTA');
     };
 
     const fwExitTransfer = () => {
       otaBusy = false;
       if (stack?.isConnected && dataStore?.udsClient) {
-        dataStore.startPolling();
+        if (dataStore.resumePolling) dataStore.resumePolling();
+        else dataStore.startPolling();
         updateStreamStatus('streaming');
       }
     };
@@ -2544,7 +2573,7 @@
       $('fwCancelButton').disabled = false;
       $('fwActivateButton').disabled = true;
       setFwProgress(0);
-      fwEnterTransfer();
+      await fwEnterTransfer();
       try {
         await stack.ota.stageImage(fwImageBytes, {
           signal: fwAbort.signal,
@@ -2613,7 +2642,7 @@
       $('fwUpdateButton').disabled = true;
       $('fwUpdateCancelButton').disabled = false;
       setFwProgress(0);
-      fwEnterTransfer();
+      await fwEnterTransfer();
       try {
         const result = await stack.ota.updateFirmware(fwImageBytes, {
           signal: fwAbort.signal,
@@ -2625,6 +2654,7 @@
           },
           onPhase: (phase) => {
             if (FW_PHASE_MESSAGES[phase]) $('fwMessage').textContent = FW_PHASE_MESSAGES[phase];
+            if (phase === 'activating') $('fwUpdateCancelButton').disabled = true;
           }
         });
         if (result.confirmed) setFwProgress(100);
@@ -3648,6 +3678,7 @@
         addToLogMessages(`USB-CAN handset heartbeat: ${mode}`);
       });
       await stack.connect(connectArgument);
+      if (stack.canable?.port) lastSerialPort = stack.canable.port;
     };
 
     // Scan and connect over the existing Bluetooth bridge.

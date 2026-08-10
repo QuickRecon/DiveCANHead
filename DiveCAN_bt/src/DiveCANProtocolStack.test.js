@@ -122,8 +122,8 @@ describe('DiveCANProtocolStack layer wiring', () => {
     const errors = [];
     stack.on('error', (e) => errors.push(e));
 
-    await stack.transport.send(new Uint8Array([0x3E, 0x00]));
-    await flushAsync();
+    await expect(stack.transport.send(new Uint8Array([0x3E, 0x00])))
+      .rejects.toThrow('GATT write failed');
 
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toBe('GATT write failed');
@@ -186,12 +186,18 @@ describe('DiveCANProtocolStack layer wiring', () => {
     stack.on('otaProgress', (p) => seen.push(['otaProgress', p]));
     stack.on('otaStaged', (p) => seen.push(['otaStaged', p]));
     stack.on('otaSessionExpired', () => seen.push(['otaSessionExpired']));
+    stack.on('otaBlockRetry', (p) => seen.push(['otaBlockRetry', p]));
+    stack.on('otaStagingRetry', (p) => seen.push(['otaStagingRetry', p]));
+    stack.on('otaStaleDownload', (p) => seen.push(['otaStaleDownload', p]));
     stack.on('logProgress', (p) => seen.push(['logProgress', p]));
     stack.on('logDownloadDone', (p) => seen.push(['logDownloadDone', p]));
 
     stack.ota.emit('progress', { sent: 1 });
     stack.ota.emit('staged', { ok: true });
     stack.ota.emit('sessionExpired');
+    stack.ota.emit('blockRetry', { block: 2 });
+    stack.ota.emit('stagingRetry', { attempt: 2 });
+    stack.ota.emit('staleDownload', { waitMs: 10 });
     stack.logs.emit('progress', { pct: 50 });
     stack.logs.emit('done', { bytes: 128 });
 
@@ -199,6 +205,9 @@ describe('DiveCANProtocolStack layer wiring', () => {
       ['otaProgress', { sent: 1 }],
       ['otaStaged', { ok: true }],
       ['otaSessionExpired'],
+      ['otaBlockRetry', { block: 2 }],
+      ['otaStagingRetry', { attempt: 2 }],
+      ['otaStaleDownload', { waitMs: 10 }],
       ['logProgress', { pct: 50 }],
       ['logDownloadDone', { bytes: 128 }]
     ]);

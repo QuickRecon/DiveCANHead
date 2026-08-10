@@ -39,14 +39,22 @@ export class CanableConnection {
   }
   async _readLoop() {
     const decoder = new TextDecoder();
+    let linkLost = false;
     try {
       while (this.reader) {
         const { value, done } = await this.reader.read();
-        if (done) { break; }
+        if (done) { linkLost = this.reader !== null; break; }
         this._consume(decoder.decode(value, { stream: true }));
       }
     } catch (e) {
-      if (this.reader) { this.emit('error', e); }
+      if (this.reader) { this.emit('error', e); linkLost = true; }
+    } finally {
+      // A spontaneous EOF/read failure is a real transport disconnect. Defer
+      // cleanup until this read task has settled so disconnect() never waits on
+      // itself; explicit disconnect sets reader=null first and skips this path.
+      if (linkLost) {
+        setTimeout(() => this.disconnect().catch(error => this.emit('error', error)), 0);
+      }
     }
   }
   // '\x07' is the slcan BEL error byte; JS has no '\a' escape (it would just be the letter 'a').

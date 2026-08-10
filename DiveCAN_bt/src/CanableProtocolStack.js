@@ -3,6 +3,7 @@ import { IsoTpCanTransport } from './transport/IsoTpCanTransport.js';
 import { UDSClient } from './uds/UDSClient.js';
 import { OTAManager } from './firmware/OTAManager.js';
 import { LogDownloader } from './logs/LogDownloader.js';
+import { UDSError } from './errors/ProtocolErrors.js';
 
 /** Protocol stack for direct USB-CAN access through an slcan CANable. */
 export class CanableProtocolStack {
@@ -23,6 +24,7 @@ export class CanableProtocolStack {
     this._uds = new UDSClient(this._transport, options.uds);
     this._ota = new OTAManager(this._uds, options.ota);
     this._logs = new LogDownloader(this._uds, options.logs);
+    this._disconnectCount = 0;
     this._handset = {
       enabled: options.handsetEmulation !== false,
       missingAfterMs: options.handsetMissingAfterMs ?? 2500,
@@ -32,7 +34,9 @@ export class CanableProtocolStack {
       timer: null
     };
     this._can.on('frame', frame => this._observeHandsetFrame(frame));
-    for (const event of ['connected', 'disconnected', 'error']) this._can.on(event, (...a) => this.emit(event, ...a));
+    this._can.on('connected', (...a) => this.emit('connected', ...a));
+    this._can.on('disconnected', (...a) => this._handleCanDisconnect(...a));
+    this._can.on('error', (...a) => this.emit('error', ...a));
     this._transport.on('error', e => this.emit('error', e));
     this._logTransport.on('error', e => this.emit('error', e));
     this._logTransport.on('message', message => this._uds.processUnsolicited(message));
@@ -44,6 +48,9 @@ export class CanableProtocolStack {
     this._ota.on('progress', p => this.emit('otaProgress', p));
     this._ota.on('staged', p => this.emit('otaStaged', p));
     this._ota.on('sessionExpired', () => this.emit('otaSessionExpired'));
+    this._ota.on('blockRetry', p => this.emit('otaBlockRetry', p));
+    this._ota.on('stagingRetry', p => this.emit('otaStagingRetry', p));
+    this._ota.on('staleDownload', p => this.emit('otaStaleDownload', p));
     this._logs.on('progress', p => this.emit('logProgress', p));
     this._logs.on('done', p => this.emit('logDownloadDone', p));
   }
@@ -58,7 +65,13 @@ export class CanableProtocolStack {
   }
   emit(e, ...a) { for (const cb of this.events[e] || []) { try { cb(...a); } catch (error) { console.error(`Handler for ${e} failed`, error); } } }
   async connect(port = null) { await this._can.connect(port); this._startHandsetGuardian(); }
-  async disconnect() { this._stopHandsetGuardian(); this._transport.reset(); this._logTransport.reset(); await this._can.disconnect(); }
+  async disconnect() {
+    const before = this._disconnectCount;
+    await this._can.disconnect();
+    // Test doubles or alternative connection implementations may not emit the
+    // lifecycle event; still guarantee teardown for an explicit disconnect.
+    if (this._disconnectCount === before) this._handleCanDisconnect();
+  }
   setTargetAddress(address) { this._transport.setTargetAddress(address); this._logTransport.setTargetAddress(address); }
   get targetAddress() { return this._transport.targetAddress; }
   get isConnected() { return this._can.isConnected; }
@@ -69,6 +82,16 @@ export class CanableProtocolStack {
   async readFirmwareVersion() { return this._uds.readFirmwareVersion(); }
   async readVariantName() { return this._uds.readVariantName(); }
   async readHardwareVersion() { return this._uds.readHardwareVersion(); }
+
+  _handleCanDisconnect(...args) {
+    this._disconnectCount += 1;
+    this._stopHandsetGuardian();
+    this._transport.reset();
+    this._logTransport.reset();
+    this._uds.abortPending(
+      new UDSError('USB-CAN link lost', 0, null, { disconnected: true }));
+    this.emit('disconnected', ...args);
+  }
 
   _observeHandsetFrame({ id, extended = true, remote = false }) {
     // Controller BUS_ID: base 0x0D000000, sender in the low nibble = 1.

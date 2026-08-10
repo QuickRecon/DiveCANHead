@@ -260,6 +260,31 @@ describe('OTAManager', () => {
       expect(seqs).toEqual([1, 2, 2, 3, 4]);
     });
 
+    it('drains a late block ack before retrying so it cannot poison the next block', async () => {
+      ota.timeouts.transfer = 10;
+      let seq1Sends = 0;
+      transport.setResponder((req) => {
+        if (req[0] === 0x36 && req[1] === 1) {
+          seq1Sends += 1;
+          if (seq1Sends === 1) {
+            setTimeout(() => transport.injectMessage(buildTransferResponse(1)), 15);
+            return null;
+          }
+          return buildNegativeResponse(0x36, 0x73);
+        }
+        return otaResponder({ maxBlock: 64 })(req);
+      });
+
+      const image = buildMcubootImage({ imageSize: 100 });
+      const result = await ota.stageImage(image, {
+        recovery: { ...FAST, retryDelayMs: 10 }
+      });
+
+      expect(result.blocks).toBe(3);
+      const seqs = transport.getAllSent().filter(a => a[0] === 0x36).map(a => a[1]);
+      expect(seqs).toEqual([1, 1, 2, 3]);
+    });
+
     it('resumes an open download after transport loss without re-erasing', async () => {
       let dropped = false;
       const reconnect = [];
@@ -328,6 +353,22 @@ describe('OTAManager', () => {
       expect(result.blocks).toBeGreaterThan(0);
       expect(stale).toHaveLength(1);
       expect(sids().filter(s => s === 0x34)).toHaveLength(2);
+    });
+
+    it('cancels immediately during the stale-download silence window', async () => {
+      const controller = new AbortController();
+      transport.setResponder((req) => {
+        if (req[0] === 0x34) return buildNegativeResponse(0x34, 0x24);
+        return otaResponder({ maxBlock: 64 })(req);
+      });
+      ota.on('staleDownload', () => controller.abort());
+
+      await expect(ota.stageImage(buildMcubootImage({ imageSize: 100 }), {
+        signal: controller.signal,
+        recovery: { ...FAST, staleDownloadWaitMs: 1000 }
+      })).rejects.toMatchObject({ details: { aborted: true } });
+
+      expect(sids().filter(s => s === 0x34)).toHaveLength(1);
     });
 
     it('gives up after maxAttempts and surfaces the last error', async () => {

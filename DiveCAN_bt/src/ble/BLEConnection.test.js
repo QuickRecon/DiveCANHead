@@ -267,6 +267,22 @@ describe('BLEConnection.connect / disconnect', () => {
     expect(conn._isConnected).toBe(false);
   });
 
+  it('keeps exactly one notification listener across reconnects', async () => {
+    conn = new BLEConnection();
+    const device = new MockBluetoothDevice();
+    const data = vi.fn();
+    conn.on('data', data);
+
+    await conn.connect(device);
+    device.dispatchEvent('gattserverdisconnected');
+    await conn.connect(device);
+    conn.characteristic.simulateNotification(new Uint8Array([0x01, 0x00, 0x42]));
+
+    expect(data).toHaveBeenCalledTimes(1);
+    expect(conn.characteristic.events.characteristicvaluechanged).toHaveLength(1);
+    expect(device.events.gattserverdisconnected).toHaveLength(1);
+  });
+
   it('disconnect() tears down the GATT server and emits disconnected', async () => {
     conn = new BLEConnection();
     const device = new MockBluetoothDevice();

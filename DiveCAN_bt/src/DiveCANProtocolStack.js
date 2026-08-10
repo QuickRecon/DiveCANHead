@@ -118,8 +118,10 @@ export class DiveCANProtocolStack extends EventEmitter {
       }
     });
 
-    // Transport -> DiveCAN -> SLIP -> BLE
-    this._transport.on('frame', async (udsPayload) => {
+    // Transport -> DiveCAN -> SLIP -> BLE. DirectTransport awaits this sender,
+    // so UDS cannot arm the next exchange while a fragmented BLE write is still
+    // in progress, and GATT failures reject the active request immediately.
+    this._transport.setSender(async (udsPayload) => {
       try {
         this.logger.debug(`Transport TX: ${ByteUtils.toHexString(udsPayload)}`);
 
@@ -139,6 +141,7 @@ export class DiveCANProtocolStack extends EventEmitter {
       } catch (error) {
         this.logger.error('Error sending frame', error);
         this.emit('error', error);
+        throw error;
       }
     });
 
