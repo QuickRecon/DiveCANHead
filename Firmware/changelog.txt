@@ -16,37 +16,14 @@ and includes this complete file in the downloadable package.
 
 ### Added
 
-- Crash records with no exception frame (e.g. spurious IRQ) now capture the
-  active IPSR in the xpsr field, identifying the offending vector (or, when
-  zero, a corrupted function pointer called from thread context).
+
 
 ### Changed
 
-- UDS boot readiness: settings-value DIDs (0x9130/0x9350), the solenoid
-  override (0xF242), and index-backed flash-log selectors answer NRC 0x21
-  (busyRepeatRequest) until their backing state is loaded from NVS /
-  flushed to flash, instead of serving compile-time defaults or resolving a
-  not-yet-stamped log ring during the boot window.
-- The flash-log index walk releases the shared external-flash mutex every
-  256 entries so concurrent UDS flash operations (OTA 0x34, settings saves,
-  MCUBoot status reads) interleave instead of stalling for the full walk.
+- Inhibit O2 flushing onto cells when depth is below 10m
+- Change HP sensors to not broadcast on errors, rather than broadcast an error sentinel
 
 ### Fixed
-
-- Settings and battery-chemistry values read immediately after a reboot
-  could return the variant's compile-time defaults ("NVS persistence
-  broken" HIL failures) — the runtime-settings load is now idempotent, runs
-  as the first flash operation of the boot, and the boot preamble no longer
-  re-zeroes the live cache.
-- A solenoid override written in the early-boot window could be accepted
-  while the persisted control mode was MK15/PID.
-- A log range selector racing boot (or the boot-time recovery erase) could
-  return a terminal "no data" refusal on a healthy head; an all-unreadable
-  ring now fails the index build loudly (-EIO) rather than reading as empty.
-- Two-cell consensus slot-3 (Poseidon): the synthetic third cell is no
-  longer presented as included/healthy while the voter is in its
-  single-survivor vote-fail state — the include bit now requires at least
-  one genuinely voted-in cell.
 
 ## 0.0.1 - 2026-07-29
 
