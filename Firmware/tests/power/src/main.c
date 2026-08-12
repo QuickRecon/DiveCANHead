@@ -13,6 +13,7 @@
 #include <zephyr/ztest.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/gpio/gpio_emul.h>
+#include <zephyr/drivers/hwinfo.h>
 #include <zephyr/drivers/adc/adc_emul.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/sys/reboot.h>
@@ -130,7 +131,11 @@ static void can_en_cb_handler(const struct device *port, struct gpio_callback *c
 {
     ARG_UNUSED(cb);
     if (can_en_script.forced && (0U != (pins & BIT(PIN_CAN_EN)))) {
-        (void)gpio_emul_input_set(port, PIN_CAN_EN, can_en_script.level);
+        gpio_flags_t flags = 0U;
+        if ((0 == gpio_emul_flags_get(port, PIN_CAN_EN, &flags)) &&
+            (0U != (flags & GPIO_INPUT))) {
+            (void)gpio_emul_input_set(port, PIN_CAN_EN, can_en_script.level);
+        }
     }
 }
 
@@ -146,14 +151,22 @@ static void can_en_force(int32_t physical_level)
     }
     can_en_script.level = physical_level;
     can_en_script.forced = true;
-    (void)gpio_emul_input_set(gpio_dev, PIN_CAN_EN, physical_level);
+    gpio_flags_t flags = 0U;
+    if ((0 == gpio_emul_flags_get(gpio_dev, PIN_CAN_EN, &flags)) &&
+        (0U != (flags & GPIO_INPUT))) {
+        (void)gpio_emul_input_set(gpio_dev, PIN_CAN_EN, physical_level);
+    }
 }
 
 /** @brief Stop scripting CAN_EN; the driver's pull-up resumes control (idle). */
 static void can_en_release(void)
 {
     can_en_script.forced = false;
-    (void)gpio_emul_input_set(gpio_dev, PIN_CAN_EN, CAN_EN_PHYS_BUS_IDLE);
+    gpio_flags_t flags = 0U;
+    if ((0 == gpio_emul_flags_get(gpio_dev, PIN_CAN_EN, &flags)) &&
+        (0U != (flags & GPIO_INPUT))) {
+        (void)gpio_emul_input_set(gpio_dev, PIN_CAN_EN, CAN_EN_PHYS_BUS_IDLE);
+    }
 }
 
 /* ---- VCC sense sensor stub ----
@@ -721,6 +734,55 @@ ZTEST(can_detect_scripted, test_inactive_without_pin)
 }
 
 /* ============================================================================
+ * CAN_EN ownership and startup reset gating
+ * ============================================================================ */
+
+/** @brief Suite: running-lifetime CAN_EN hold/release and wake-source classification. */
+ZTEST_SUITE(can_enable_ownership, NULL, NULL, NULL, NULL, NULL);
+
+/** @brief Assert drives the active-low line physically low; release restores high-Z input. */
+ZTEST(can_enable_ownership, test_assert_and_release)
+{
+    gpio_flags_t flags = 0U;
+
+    zassert_ok(power_can_enable_assert(power_dev));
+    zassert_equal(gpio_emul_output_get(gpio_dev, PIN_CAN_EN), 0,
+                  "asserted active-low CAN_EN must be physically LOW");
+    zassert_ok(gpio_emul_flags_get(gpio_dev, PIN_CAN_EN, &flags));
+    zassert_not_equal(flags & GPIO_OUTPUT, 0U,
+                      "asserted CAN_EN must be configured as an output");
+
+    zassert_ok(power_can_enable_release(power_dev));
+    zassert_ok(gpio_emul_flags_get(gpio_dev, PIN_CAN_EN, &flags));
+    zassert_not_equal(flags & GPIO_INPUT, 0U,
+                      "released CAN_EN must be configured as an input");
+    zassert_equal(flags & (GPIO_PULL_UP | GPIO_PULL_DOWN), 0U,
+                  "released CAN_EN must be high impedance with no pull");
+}
+
+/** @brief Instances without CAN_EN reject ownership operations. */
+ZTEST(can_enable_ownership, test_absent_pin_reports_enodev)
+{
+    zassert_equal(power_can_enable_assert(power_bare_dev), -ENODEV);
+    zassert_equal(power_can_enable_release(power_bare_dev), -ENODEV);
+}
+
+/** @brief Only low-power wake invokes the startup anti-glitch validation. */
+ZTEST(can_enable_ownership, test_only_low_power_wake_requires_startup_check)
+{
+    zassert_true(power_reset_requires_can_enable_check(RESET_LOW_POWER_WAKE));
+    zassert_true(power_reset_requires_can_enable_check(RESET_LOW_POWER_WAKE |
+                                                       RESET_PIN));
+
+    zassert_false(power_reset_requires_can_enable_check(0U));
+    zassert_false(power_reset_requires_can_enable_check(RESET_POR));
+    zassert_false(power_reset_requires_can_enable_check(RESET_BROWNOUT));
+    zassert_false(power_reset_requires_can_enable_check(RESET_WATCHDOG));
+    zassert_false(power_reset_requires_can_enable_check(RESET_SOFTWARE));
+    zassert_false(power_reset_requires_can_enable_check(RESET_PIN));
+}
+
+/* ============================================================================
  * Battery monitor thread (chan_battery_status publications)
  * ============================================================================ */
 
@@ -846,6 +908,8 @@ ZTEST(z_shutdown_flow, test_b_held_active_aborts)
 
     zassert_equal(reboot_hook.calls, before,
                   "an active bus must veto the shutdown");
+    zassert_equal(gpio_emul_output_get(gpio_dev, PIN_CAN_EN), 0,
+                  "an aborted shutdown must reassert active-low CAN_EN");
 }
 
 /** @brief Bus goes quiet then re-asserts inside the window: request dropped. */
@@ -864,6 +928,8 @@ ZTEST(z_shutdown_flow, test_c_reassert_aborts)
 
     zassert_equal(reboot_hook.calls, before,
                   "a re-asserted bus must veto the shutdown");
+    zassert_equal(gpio_emul_output_get(gpio_dev, PIN_CAN_EN), 0,
+                  "a reassert-aborted shutdown must reclaim CAN_EN");
 }
 
 /** @brief Suite: the committed shutdown — MUST run last (parks the shutdown thread). */

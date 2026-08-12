@@ -15,8 +15,7 @@ and includes this complete file in the downloadable package.
 ## Unreleased
 
 ### Added
-
-
+- Automatically start handset when board boots up
 
 ### Changed
 
@@ -24,6 +23,7 @@ and includes this complete file in the downloadable package.
 - Change HP sensors to not broadcast on errors, rather than broadcast an error sentinel
 
 ### Fixed
+- Added inhibit to prevent spurious power on if the BUS EN line remains low after boot checks are complete
 
 ## 0.0.1 - 2026-07-29
 

@@ -54,9 +54,9 @@ properties:
   can-enable-gpios:
     type: phandle-array
     description: |
-      CAN bus active indicator input. When active, the DiveCAN bus is
-      powered and the dive computer is communicating. Used for wake/sleep
-      decisions and bus-active detection.
+      Shared active-low CAN enable line. It starts as an input for wake-source
+      validation, is driven low while this device is running, and returns to a
+      high-impedance input while validating and committing shutdown.
 
   can-shutdown-gpios:
     type: phandle-array

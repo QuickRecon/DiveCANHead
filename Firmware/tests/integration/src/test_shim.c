@@ -1,10 +1,17 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/hwinfo.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/init.h>
+#include <nsi_host_trampolines.h>
 
+#include <errno.h>
+#include <string.h>
+
+#include "common.h"
 #include "gpio_sim.h"
+#include "test_shim_gpio.h"
 
 LOG_MODULE_REGISTER(test_shim, LOG_LEVEL_INF);
 
@@ -37,13 +44,46 @@ static int shim_gpio_bootstrap(void)
     (void)gpio_sim_drive(gpio, HW_VER_PIN_0, 0);
     (void)gpio_sim_drive(gpio, HW_VER_PIN_1, 0);
     (void)gpio_sim_drive(gpio, HW_VER_PIN_2, 0);
-    (void)gpio_sim_drive(gpio, CAN_EN_PIN, 0);
+    (void)gpio_sim_drive(gpio, CAN_EN_PIN,
+                         shim_gpio_initial_bus_active() ? 0 : 1);
 
     return 0;
 }
 
 /* Run before hw_version_init (POST_KERNEL priority 30) */
 SYS_INIT(shim_gpio_bootstrap, POST_KERNEL, 20);
+
+Status_t test_shim_get_reset_cause(uint32_t *cause)
+{
+    const char *value = nsi_host_getenv("DIVECAN_SIM_RESET_CAUSE");
+    Status_t result = 0;
+
+    if (NULL == value) {
+        result = hwinfo_get_reset_cause(cause);
+    } else if (0 == strcmp(value, "LOW_POWER_WAKE")) {
+        *cause = RESET_LOW_POWER_WAKE;
+    } else if (0 == strcmp(value, "POR")) {
+        *cause = RESET_POR;
+    } else if (0 == strcmp(value, "BROWNOUT")) {
+        *cause = RESET_BROWNOUT;
+    } else if (0 == strcmp(value, "WATCHDOG")) {
+        *cause = RESET_WATCHDOG;
+    } else if (0 == strcmp(value, "CPU_LOCKUP")) {
+        *cause = RESET_CPU_LOCKUP;
+    } else if (0 == strcmp(value, "SOFTWARE")) {
+        *cause = RESET_SOFTWARE;
+    } else if (0 == strcmp(value, "PIN")) {
+        *cause = RESET_PIN;
+    } else if (0 == strcmp(value, "UNKNOWN")) {
+        *cause = 0U;
+    } else if (0 == strcmp(value, "ERROR")) {
+        result = -EIO;
+    } else {
+        result = -EINVAL;
+    }
+
+    return result;
+}
 
 static void shim_thread(void *p1, void *p2, void *p3)
 {

@@ -12,6 +12,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/logging/log.h>
+#include <nsi_host_trampolines.h>
+
+#include <string.h>
 
 #include "gpio_sim.h"
 #include "test_shim_gpio.h"
@@ -27,6 +30,19 @@ LOG_MODULE_REGISTER(test_shim_gpio, LOG_LEVEL_INF);
 
 static const struct device *const gpio_dev =
     DEVICE_DT_GET(DT_NODELABEL(gpio_sim0));
+
+bool shim_gpio_initial_bus_active(void)
+{
+    const char *value = nsi_host_getenv("DIVECAN_SIM_INITIAL_BUS_ACTIVE");
+    bool active = true;
+
+    if ((NULL != value) &&
+        ((0 == strcmp(value, "0")) || (0 == strcmp(value, "false")))) {
+        active = false;
+    }
+
+    return active;
+}
 
 void shim_gpio_set_bus_active(bool active)
 {

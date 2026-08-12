@@ -13,7 +13,7 @@ native_sim build.  Covers:
   firmware's response to ``BUS_OFF`` shutdown requests:
 
   On real hardware the SoC enters SHUTDOWN mode and the
-  ``PWR_WAKEUP_PIN2`` (CAN_EN) line drives a power-on reset when the
+  ``PWR_WAKEUP_PIN2`` (CAN_EN) line drives a low-power wake reset when the
   bus re-asserts.  ``power_shutdown()`` falls back to ``sys_reboot()``
   on non-STM32 targets, which on native_sim terminates the firmware
   process — a faithful proxy for the SoC dropping to its dormant
@@ -34,6 +34,7 @@ import time
 import pytest
 
 from conftest import (
+    launch_native_sim_firmware,
     relaunch_native_sim_firmware,
     stop_native_sim_firmware,
 )
@@ -217,6 +218,89 @@ def _expect_firmware_exit(proc, deadline_s: float) -> None:
         )
 
 
+NON_WAKE_RESET_CAUSES = (
+    "POR",
+    "BROWNOUT",
+    "WATCHDOG",
+    "CPU_LOCKUP",
+    "SOFTWARE",
+    "PIN",
+    "UNKNOWN",
+    "ERROR",
+)
+
+
+@pytest.mark.parametrize("reset_cause", NON_WAKE_RESET_CAUSES)
+def test_non_wake_reset_bypasses_inactive_can_en(
+    reset_cause: str, tmp_path, can_bus,
+) -> None:
+    """Cold, brownout, crash, software, pin, unknown, and hwinfo-error boots
+    must not apply the anti-piezo gate. Start with externally inactive CAN_EN
+    and require the application to stay alive and broadcast."""
+    flash_path = str(tmp_path / f"{reset_cause.lower()}-flash.bin")
+    can_bus.flush_rx()
+    proc = launch_native_sim_firmware(
+        rt_ratio=10,
+        flash_file=flash_path,
+        flash_erase=True,
+        reset_cause=reset_cause,
+        initial_bus_active=False,
+    )
+    try:
+        msg = can_bus.wait_for(divecan.PPO2_RESP_ID, timeout=3.0)
+        assert msg.arbitration_id == divecan.PPO2_RESP_ID
+        assert proc.poll() is None, (
+            f"firmware exited on {reset_cause} with inactive CAN_EN; "
+            "only LOW_POWER_WAKE may run the startup validation"
+        )
+    finally:
+        stop_native_sim_firmware(proc)
+
+
+def test_low_power_wake_requires_sustained_can_en(tmp_path, can_bus) -> None:
+    """A low-power wake whose external CAN_EN has already released is the
+    piezo/knock case: the one-second validation must return to shutdown before
+    normal application traffic begins."""
+    flash_path = str(tmp_path / "low-power-glitch-flash.bin")
+    can_bus.flush_rx()
+    proc = launch_native_sim_firmware(
+        rt_ratio=10,
+        flash_file=flash_path,
+        flash_erase=True,
+        reset_cause="LOW_POWER_WAKE",
+        initial_bus_active=False,
+    )
+    try:
+        _expect_firmware_exit(proc, SHUTDOWN_DEADLINE_S)
+        can_bus.flush_rx()
+        assert can_bus.wait_no_response(divecan.PPO2_RESP_ID, timeout=1.0), (
+            "unsustained low-power wake reached normal PPO2 broadcasting"
+        )
+    finally:
+        stop_native_sim_firmware(proc)
+
+
+def test_low_power_wake_with_active_can_en_boots(tmp_path, can_bus) -> None:
+    """A real sustained CAN_EN wake survives the pull-up validation and enters
+    normal operation, proving that the anti-glitch gate does not inhibit a
+    legitimate handset startup."""
+    flash_path = str(tmp_path / "low-power-active-flash.bin")
+    can_bus.flush_rx()
+    proc = launch_native_sim_firmware(
+        rt_ratio=10,
+        flash_file=flash_path,
+        flash_erase=True,
+        reset_cause="LOW_POWER_WAKE",
+        initial_bus_active=True,
+    )
+    try:
+        msg = can_bus.wait_for(divecan.PPO2_RESP_ID, timeout=3.0)
+        assert msg.arbitration_id == divecan.PPO2_RESP_ID
+        assert proc.poll() is None, "sustained low-power wake did not stay up"
+    finally:
+        stop_native_sim_firmware(proc)
+
+
 @pytest.mark.skipif(
     "build-coverage" in os.environ.get("DIVECAN_FW_BIN", "")
     or os.environ.get("DIVECAN_RT_RATIO_MAX") is not None,
@@ -277,8 +361,8 @@ def test_power_cycle_bus_on_recovery(dut, firmware) -> None:
     _expect_firmware_exit(proc, SHUTDOWN_DEADLINE_S)
     shim.close()
 
-    # Now play the role of the silicon's WKUP→POR mechanism: relaunch
-    # the firmware as if a fresh power-on reset had occurred.
+    # Now play the role of the silicon's wake boundary. Native relaunches as
+    # POR here; the dedicated reset-source cases above exercise LOW_POWER_WAKE.
     new_proc = relaunch_native_sim_firmware(flash_path, rt_ratio=10)
     new_shim = SharedMemShim()
     try:
@@ -355,10 +439,12 @@ def test_power_aborts_on_bus_reasserted(dut, firmware) -> None:
     can_bus, shim = dut
     proc = firmware
 
-    # Bus goes quiet and the shutdown request arrives — the head should be
-    # part-way through its observation window...
-    shim.set_bus_off()
+    # BUS_OFF must arrive while the bus is live. The line then goes quiet while
+    # the shutdown worker is part-way through its observation window...
+    shim.set_bus_on()
     can_bus.send(divecan.build_shutdown())
+    helpers.sim_sleep(shim, 0.3)
+    shim.set_bus_off()
     helpers.sim_sleep(shim, 0.5)  # let it observe "quiet" for part of the window
 
     # ...then the bus re-asserts before the window expires → abort.

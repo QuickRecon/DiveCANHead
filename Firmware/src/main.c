@@ -2,13 +2,14 @@
  * @file main.c
  * @brief Application entry point — hardware init and heartbeat LED loop
  *
- * Initialises calibration, performs a deferred CAN-bus activity check to
- * guard against transient power-on glitches, then drives the heartbeat LED.
+ * Validates CAN_EN after low-power wake, claims the shared enable line,
+ * initialises calibration, then drives the heartbeat LED.
  * Cell threads and the consensus subscriber are auto-started via K_THREAD_DEFINE.
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/hwinfo.h>
 #include <zephyr/version.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
@@ -40,6 +41,13 @@
 #endif
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
+
+#ifdef CONFIG_INTEGRATION_TEST_SHIM
+/* Native-only seam implemented by tests/integration/src/test_shim.c. It lets
+ * the integration harness exercise the real main() reset-source decision;
+ * production images continue to read the SoC's hwinfo driver directly. */
+Status_t test_shim_get_reset_cause(uint32_t *cause);
+#endif
 
 #define LED0_NODE DT_ALIAS(led0)
 
@@ -557,6 +565,35 @@ Status_t main(void)
 
     bp->entry_ms = k_uptime_get_32();
 
+    /* The legacy STM32 firmware's canonical anti-piezo check waited one
+     * second, temporarily pulled CAN_EN high, then required an external LOW
+     * before continuing. Apply that check only after the low-power reset
+     * produced by SHUTDOWN waking through WKUP2_LOW (CAN_EN). POR, BOR,
+     * watchdog/crash, software, pin, and unknown resets deliberately skip it.
+     * Do this before asserting CAN_EN ourselves or the check would always
+     * read active. boot_history_init() reads the same uncleared flags later. */
+    uint32_t reset_cause = 0U;
+#ifdef CONFIG_INTEGRATION_TEST_SHIM
+    Status_t reset_rc = test_shim_get_reset_cause(&reset_cause);
+#else
+    Status_t reset_rc = hwinfo_get_reset_cause(&reset_cause);
+#endif
+    if ((0 == reset_rc) && power_reset_requires_can_enable_check(reset_cause)) {
+        (void)k_msleep(STARTUP_DELAY_MS);
+        if (!power_is_can_active(POWER_DEVICE)) {
+            LOG_WRN("CAN_EN wake was not sustained — entering shutdown");
+            (void)power_shutdown(POWER_DEVICE);
+        }
+    }
+
+    /* Once boot indication begins, hold the shared enable line physically LOW
+     * for the entire running lifetime. The shutdown worker releases it before
+     * validating BUS_OFF and reasserts it if that shutdown is aborted. */
+    ret = power_can_enable_assert(POWER_DEVICE);
+    if (0 != ret) {
+        LOG_ERR("Failed to assert CAN_EN: %d", ret);
+    }
+
     boot_clock_boost();
 
     /* Re-arm the IWDG to the application's window BEFORE any flash work.
@@ -663,27 +700,6 @@ Status_t main(void)
         if (ret < 0) {
             LOG_ERR("Failed to configure LED: %d", ret);
         } else {
-            /* Deferred bus-active check: wait 1 second for peripherals and
-             * logging to start, then verify the CAN bus is actually active.
-             * If the bus is NOT active, shut down immediately — this guards
-             * against the case where the device powered on from a transient
-             * glitch ("blip on in the dead of night").
-             *
-             * Disabled until final release: on a bench unit with no CAN
-             * partner, this path puts the SoC into STM32 SHUTDOWN mode
-             * within 1 s of boot, which kills the debug interface and
-             * makes everything past PPO2 control init impossible to
-             * develop on. Re-enable for production builds (consider
-             * gating on a Kconfig such as CONFIG_DIVECAN_REQUIRE_CAN_TRAFFIC).
-             */
-            (void)k_msleep(STARTUP_DELAY_MS);
-#if 0
-            if (!power_is_can_active(POWER_DEVICE)) {
-                LOG_WRN("CAN bus not active — entering shutdown");
-                (void)power_shutdown(POWER_DEVICE);
-            }
-#endif
-
             /* Cell threads, consensus subscriber, and calibration listener are
              * all auto-started by K_THREAD_DEFINE — no manual init needed.
              * Main thread blinks the heartbeat LED. */

@@ -115,6 +115,42 @@ Numeric_t power_get_can_voltage(const struct device *dev);
 bool power_is_can_active(const struct device *dev);
 
 /**
+ * @brief Hold the shared active-low CAN enable line asserted.
+ *
+ * Drives the CAN_EN GPIO physically low for the running lifetime. The pin is
+ * released again only while validating a shutdown request or entering
+ * shutdown.
+ *
+ * @param dev Power management device (use POWER_DEVICE)
+ * @return 0 on success, negative errno if the GPIO is absent or cannot be configured
+ */
+Status_t power_can_enable_assert(const struct device *dev);
+
+/**
+ * @brief Release the shared active-low CAN enable line.
+ *
+ * Returns CAN_EN to a high-impedance input with no internal pull so the
+ * handset can de-assert the shared line and the wake-up pull can own it in
+ * SHUTDOWN.
+ *
+ * @param dev Power management device (use POWER_DEVICE)
+ * @return 0 on success, negative errno if the GPIO is absent or cannot be configured
+ */
+Status_t power_can_enable_release(const struct device *dev);
+
+/**
+ * @brief Decide whether a reset cause requires validating CAN_EN at startup.
+ *
+ * RESET_LOW_POWER_WAKE is the reset produced when STM32 SHUTDOWN exits via
+ * WKUP2_LOW on CAN_EN. Other reset causes intentionally bypass the anti-glitch
+ * startup check.
+ *
+ * @param reset_cause Zephyr hwinfo reset-cause bitmask
+ * @return true only for a low-power wake reset
+ */
+bool power_reset_requires_can_enable_check(uint32_t reset_cause);
+
+/**
  * @brief Enter low-power shutdown mode.
  *
  * Disables VBUS, silences the CAN transceiver, configures wakeup source,

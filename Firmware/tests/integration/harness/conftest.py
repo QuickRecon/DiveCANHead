@@ -134,6 +134,8 @@ def launch_native_sim_firmware(append_log: bool = False,
                                 rt_ratio: float | None = None,
                                 flash_file: str | None = None,
                                 flash_erase: bool = False,
+                                reset_cause: str | None = None,
+                                initial_bus_active: bool | None = None,
                                 ) -> subprocess.Popen[bytes]:
     """Spawn the native_sim binary and return the Popen handle.
 
@@ -165,6 +167,11 @@ def launch_native_sim_firmware(append_log: bool = False,
     defaults to ``cwd/flash.bin`` which collides across parallel test
     invocations.  Set ``flash_erase=True`` to wipe it on launch (used
     for the first launch of a test that wants a clean slate).
+
+    ``reset_cause`` and ``initial_bus_active`` are integration-only boot
+    controls consumed by the compiled test shim before ``main()`` runs. They
+    let power tests exercise reset-source gating without changing production
+    images or racing a post-launch shared-memory write.
     """
     if not NATIVE_SIM_BIN.exists():
         pytest.skip(f"native_sim binary not found at {NATIVE_SIM_BIN}")
@@ -188,11 +195,22 @@ def launch_native_sim_firmware(append_log: bool = False,
         if flash_erase:
             cmdline.append("-flash_erase")
 
+    child_env = os.environ.copy()
+    child_env.pop("DIVECAN_SIM_RESET_CAUSE", None)
+    child_env.pop("DIVECAN_SIM_INITIAL_BUS_ACTIVE", None)
+    if reset_cause is not None:
+        child_env["DIVECAN_SIM_RESET_CAUSE"] = reset_cause
+    if initial_bus_active is not None:
+        child_env["DIVECAN_SIM_INITIAL_BUS_ACTIVE"] = (
+            "1" if initial_bus_active else "0"
+        )
+
     proc = subprocess.Popen(
         cmdline,
         stdout=log_file,
         stderr=subprocess.STDOUT,
         cwd=str(FIRMWARE_ROOT),
+        env=child_env,
     )
 
     # Brief delay for the firmware process to start and bind to vcan0.

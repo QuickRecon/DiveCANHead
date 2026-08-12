@@ -102,7 +102,7 @@ static int shim_shared_init(void)
         shared->analog_millis[i] = 0.21f * 50.0f; /* 2 mV/cb convention */
     }
     shared->battery_voltage = 7.4f;
-    shared->bus_active = 1;
+    shared->bus_active = shim_gpio_initial_bus_active() ? 1U : 0U;
 
     LOG_INF("shared memory " SHIM_SHM_NAME " mapped (%zu bytes)",
             sizeof(struct shim_shared_state));

@@ -389,9 +389,11 @@ Per design decision, **low-battery does not auto-trigger shutdown** — the warn
 
 ### Shutdown
 
-On boot, the firmware waits 1 second for peripherals to stabilize, then checks if the CAN bus is active. If not, `power_shutdown()` runs — this guards against transient power glitches ("blip on in the dead of night").
+After a CAN_EN low-power wake, the firmware waits one second and confirms that the line is still externally active before beginning the normal boot sequence. If not, `power_shutdown()` runs — this guards against transient piezoelectric/capacitive wake glitches ("blip on in the dead of night"). Other reset sources begin boot immediately.
 
-`power_shutdown()` enters STM32 SHUTDOWN mode via direct HAL calls (`HAL_PWREx_EnterSHUTDOWNMode()`), draws < 1 µA, and arms `PWR_WAKEUP_PIN2_LOW` (PC13 = CAN_EN, active-low). When CAN traffic re-asserts CAN_EN low, the wakeup is a power-on reset — execution restarts at the reset vector and the boot path re-evaluates whether to stay up. Zephyr's STM32L4 PM layer doesn't expose SHUTDOWN, so the HAL is called directly (see COMPROMISE.md).
+`power_shutdown()` enters STM32 SHUTDOWN mode via direct HAL calls (`HAL_PWREx_EnterSHUTDOWNMode()`), draws < 1 µA, and arms `PWR_WAKEUP_PIN2_LOW` (PC13 = CAN_EN, active-low). When CAN traffic re-asserts CAN_EN low, the wakeup is a low-power reset — execution restarts at the reset vector. Only that `RESET_LOW_POWER_WAKE` path runs the legacy one-second anti-piezo validation: CAN_EN is temporarily pulled high and must still be held low externally. POR, BOR, watchdog/crash, software, pin, and unknown resets bypass the test. Zephyr's STM32L4 PM layer doesn't expose SHUTDOWN, so the HAL is called directly (see COMPROMISE.md).
+
+After the wake validation passes (or is bypassed for a non-wake reset), the firmware drives the shared active-low CAN_EN line low throughout boot and normal operation. A BUS_OFF request releases the head's contribution before the two-second abort window samples the handset's state. If the shutdown is rejected, the head asserts CAN_EN again; if it commits, CAN_EN remains high impedance before the Poseidon accessory shutdown commands and final STM32 SHUTDOWN entry.
 
 ### CAN transceiver control and warm-start recovery
 

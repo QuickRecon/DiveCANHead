@@ -15,6 +15,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/hwinfo.h>
 #include <zephyr/drivers/regulator.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/logging/log.h>
@@ -383,6 +384,44 @@ bool power_is_can_active(const struct device *dev)
     return active;
 }
 
+bool power_reset_requires_can_enable_check(uint32_t reset_cause)
+{
+    return (0U != (reset_cause & RESET_LOW_POWER_WAKE));
+}
+
+Status_t power_can_enable_assert(const struct device *dev)
+{
+    const struct power_config *cfg = dev->config;
+    Status_t result = -ENODEV;
+
+    if (cfg->has_can_en) {
+        /* can_en is GPIO_ACTIVE_LOW, so logical ACTIVE drives physical LOW.
+         * We never drive the shared line high: release changes it back to an
+         * input, avoiding contention with the handset. */
+        result = gpio_pin_configure_dt(&cfg->can_en, GPIO_OUTPUT_ACTIVE);
+        if (0 != result) {
+            OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-result));
+        }
+    }
+
+    return result;
+}
+
+Status_t power_can_enable_release(const struct device *dev)
+{
+    const struct power_config *cfg = dev->config;
+    Status_t result = -ENODEV;
+
+    if (cfg->has_can_en) {
+        result = gpio_pin_configure_dt(&cfg->can_en, GPIO_INPUT);
+        if (0 != result) {
+            OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-result));
+        }
+    }
+
+    return result;
+}
+
 #if defined(CONFIG_SOC_FAMILY_STM32)
 /**
  * @brief Suspend a UART device if it's bound and ready.
@@ -409,7 +448,8 @@ __maybe_unused static void suspend_uart_if_ready(const struct device *dev)
  * configures GPIO pulls for minimal leakage, then enters STM32 SHUTDOWN
  * with PWR_WAKEUP_PIN2 (PC13 = CAN_EN, active-low) armed. From SHUTDOWN
  * the SoC draws <1 µA on the L431; CAN traffic re-asserting CAN_EN low
- * triggers a power-on reset and the firmware boots normally.
+ * triggers a low-power wake reset and the firmware validates that wake before
+ * continuing the normal boot sequence.
  *
  * Falls back to sys_reboot() if the HAL entry returns or on non-STM32
  * targets (so native_sim test fixtures don't fault).
@@ -422,6 +462,12 @@ Status_t power_shutdown(const struct device *dev)
     const struct power_config *cfg = dev->config;
 
     LOG_INF("Entering shutdown");
+
+    /* CAN_EN is held physically low while the application is running. It
+     * must be high impedance before the SHUTDOWN pull-up and WKUP2_LOW take
+     * ownership. This is idempotent when the shutdown worker already released
+     * it before sending accessory shutdown commands. */
+    (void)power_can_enable_release(dev);
 
     /* Step 1: put the CAN transceiver into listen-only before doing anything
      * else so the bus sees a clean idle state. Assert the silent line (drives
@@ -939,7 +985,14 @@ static void shutdown_thread_fn(void *p1, void *p2, void *p3)
             if (req) {
                 LOG_INF("Shutdown requested — entering abort window");
 
-                if (scan_shutdown_abort_window(dev)) {
+                /* The running head holds the shared CAN_EN line low. Release
+                 * our contribution before sampling so the abort window sees
+                 * the handset's actual state. A rejected shutdown reasserts
+                 * the line below; a committed one keeps it released before
+                 * any accessory shutdown command is sent. */
+                Status_t release_rc = power_can_enable_release(dev);
+
+                if ((0 == release_rc) && scan_shutdown_abort_window(dev)) {
                     LOG_INF("Bus went quiet and stayed quiet — committing to shutdown");
 #if defined(CONFIG_POSEIDON_ACCESSORIES)
                     /* Send the Poseidon HUD/Battery their documented low-power
@@ -954,6 +1007,8 @@ static void shutdown_thread_fn(void *p1, void *p2, void *p3)
                      * it does (e.g. HAL refused to enter SHUTDOWN), fall through
                      * to the next iteration so the system is responsive to bus
                      * traffic rather than spinning here. */
+                } else {
+                    (void)power_can_enable_assert(dev);
                 }
             }
         } else {

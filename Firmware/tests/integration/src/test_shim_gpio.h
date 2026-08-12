@@ -11,6 +11,13 @@
 void shim_gpio_set_bus_active(bool active);
 
 /**
+ * Return the externally driven CAN_EN state requested for initial boot.
+ * Defaults to active; the integration harness can override it through the
+ * native-simulator process environment before Zephyr starts.
+ */
+bool shim_gpio_initial_bus_active(void);
+
+/**
  * Read the firmware-driven output state of each solenoid channel.
  * Caller provides a 4-element int array; on return each element is 1
  * (firing) or 0 (off).
