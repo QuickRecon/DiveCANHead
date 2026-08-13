@@ -8,6 +8,7 @@
  */
 
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/version.h>
@@ -39,6 +40,9 @@
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
 #endif
+#ifdef CONFIG_POSEIDON_ACCESSORIES
+#include "poseidon_accessories.h"
+#endif
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -61,6 +65,36 @@ static const uint32_t BLINK_PERIOD_MS = 500U;
 
 /* Post-preamble-line drain delay (ms) — see preamble_line() header comment. */
 static const uint32_t PREAMBLE_LINE_DRAIN_MS = 50U;
+
+/* Run before application threads are scheduled. The PPO2 broadcaster is an
+ * auto-start thread, so doing this in main() is too late: an unsustained
+ * WKUP2/CAN_EN pulse can otherwise emit a normal PPO2 frame before the legacy
+ * one-second validation sends the head back to SHUTDOWN.
+ */
+static int startup_can_wake_guard(void)
+{
+    uint32_t reset_cause = 0U;
+#ifdef CONFIG_INTEGRATION_TEST_SHIM
+    Status_t reset_rc = test_shim_get_reset_cause(&reset_cause);
+#else
+    Status_t reset_rc = hwinfo_get_reset_cause(&reset_cause);
+#endif
+
+    if ((0 == reset_rc) && power_reset_requires_can_enable_check(reset_cause)) {
+        k_busy_wait(STARTUP_DELAY_MS * 1000U);
+        if (!power_is_can_active(POWER_DEVICE)) {
+            LOG_WRN("CAN_EN wake was not sustained — entering shutdown");
+#ifdef CONFIG_POSEIDON_ACCESSORIES
+            poseidon_accessories_shutdown();
+#endif
+            (void)power_shutdown(POWER_DEVICE);
+        }
+    }
+
+    return 0;
+}
+
+SYS_INIT(startup_can_wake_guard, APPLICATION, 1);
 
 /**
  * @brief Toggle the heartbeat LED to mark forward progress through boot.
@@ -564,27 +598,6 @@ Status_t main(void)
     volatile struct boot_phase_times *bp = boot_phase_times_get();
 
     bp->entry_ms = k_uptime_get_32();
-
-    /* The legacy STM32 firmware's canonical anti-piezo check waited one
-     * second, temporarily pulled CAN_EN high, then required an external LOW
-     * before continuing. Apply that check only after the low-power reset
-     * produced by SHUTDOWN waking through WKUP2_LOW (CAN_EN). POR, BOR,
-     * watchdog/crash, software, pin, and unknown resets deliberately skip it.
-     * Do this before asserting CAN_EN ourselves or the check would always
-     * read active. boot_history_init() reads the same uncleared flags later. */
-    uint32_t reset_cause = 0U;
-#ifdef CONFIG_INTEGRATION_TEST_SHIM
-    Status_t reset_rc = test_shim_get_reset_cause(&reset_cause);
-#else
-    Status_t reset_rc = hwinfo_get_reset_cause(&reset_cause);
-#endif
-    if ((0 == reset_rc) && power_reset_requires_can_enable_check(reset_cause)) {
-        (void)k_msleep(STARTUP_DELAY_MS);
-        if (!power_is_can_active(POWER_DEVICE)) {
-            LOG_WRN("CAN_EN wake was not sustained — entering shutdown");
-            (void)power_shutdown(POWER_DEVICE);
-        }
-    }
 
     /* Once boot indication begins, hold the shared enable line physically LOW
      * for the entire running lifetime. The shutdown worker releases it before

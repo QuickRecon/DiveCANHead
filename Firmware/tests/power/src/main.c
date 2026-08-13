@@ -767,16 +767,17 @@ ZTEST(can_enable_ownership, test_absent_pin_reports_enodev)
     zassert_equal(power_can_enable_release(power_bare_dev), -ENODEV);
 }
 
-/** @brief Only low-power wake invokes the startup anti-glitch validation. */
+/** @brief SHUTDOWN wake signatures invoke startup anti-glitch validation. */
 ZTEST(can_enable_ownership, test_only_low_power_wake_requires_startup_check)
 {
     zassert_true(power_reset_requires_can_enable_check(RESET_LOW_POWER_WAKE));
     zassert_true(power_reset_requires_can_enable_check(RESET_LOW_POWER_WAKE |
                                                        RESET_PIN));
-
     zassert_false(power_reset_requires_can_enable_check(0U));
     zassert_false(power_reset_requires_can_enable_check(RESET_POR));
     zassert_false(power_reset_requires_can_enable_check(RESET_BROWNOUT));
+    zassert_false(power_reset_requires_can_enable_check(RESET_PIN |
+                                                        RESET_BROWNOUT));
     zassert_false(power_reset_requires_can_enable_check(RESET_WATCHDOG));
     zassert_false(power_reset_requires_can_enable_check(RESET_SOFTWARE));
     zassert_false(power_reset_requires_can_enable_check(RESET_PIN));

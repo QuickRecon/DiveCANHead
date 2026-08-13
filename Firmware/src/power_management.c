@@ -25,6 +25,9 @@
 
 #if defined(CONFIG_SOC_FAMILY_STM32)
 #include <stm32l4xx_hal_pwr_ex.h>
+#include <stm32l4xx_hal_rcc.h>
+#include <stm32_ll_pwr.h>
+#include <stm32_ll_rtc.h>
 #endif
 
 #include "divecan_channels.h"
@@ -83,6 +86,16 @@ static const uint16_t BATTERY_DIVIDER_FRACTION_SCALE = 10U;
 
 /* zbus publish timeout for the periodic battery status message. */
 static const uint32_t BATTERY_PUBLISH_TIMEOUT_MS = 100U;
+
+#if defined(CONFIG_SOC_FAMILY_STM32)
+/* STM32L4 reports a CAN_EN SHUTDOWN wake on this rig as PIN|BROWNOUT rather
+ * than RESET_LOW_POWER_WAKE. A backup-domain marker set immediately before
+ * SHUTDOWN lets startup distinguish that intentional wake from an ordinary
+ * cold/reset boot with the same hwinfo signature.
+ */
+#define SHUTDOWN_WAKE_MARKER_REG LL_RTC_BKP_DR31
+#define SHUTDOWN_WAKE_MARKER     0x5152574bU /* "QRWK" */
+#endif
 
 /* ---- ADC voltage sampling ---- */
 
@@ -384,9 +397,70 @@ bool power_is_can_active(const struct device *dev)
     return active;
 }
 
+#if defined(CONFIG_SOC_FAMILY_STM32)
+static void stm32_backup_domain_access_begin(bool *rtcapb_was_enabled,
+                         bool *backup_was_enabled)
+{
+    *rtcapb_was_enabled = (0U != __HAL_RCC_RTCAPB_IS_CLK_ENABLED());
+    *backup_was_enabled = (0U != LL_PWR_IsEnabledBkUpAccess());
+
+    __HAL_RCC_RTCAPB_CLK_ENABLE();
+    LL_PWR_EnableBkUpAccess();
+}
+
+static void stm32_backup_domain_access_end(bool rtcapb_was_enabled,
+                       bool backup_was_enabled)
+{
+    if (!backup_was_enabled) {
+        LL_PWR_DisableBkUpAccess();
+    }
+    if (!rtcapb_was_enabled) {
+        __HAL_RCC_RTCAPB_CLK_DISABLE();
+    }
+}
+
+static void stm32_shutdown_wake_marker_set(void)
+{
+    bool rtcapb_was_enabled = false;
+    bool backup_was_enabled = false;
+
+    stm32_backup_domain_access_begin(&rtcapb_was_enabled, &backup_was_enabled);
+    LL_RTC_BAK_SetRegister(RTC, SHUTDOWN_WAKE_MARKER_REG,
+                   SHUTDOWN_WAKE_MARKER);
+    stm32_backup_domain_access_end(rtcapb_was_enabled, backup_was_enabled);
+}
+
+static bool stm32_shutdown_wake_marker_consume(void)
+{
+    bool rtcapb_was_enabled = false;
+    bool backup_was_enabled = false;
+
+    stm32_backup_domain_access_begin(&rtcapb_was_enabled, &backup_was_enabled);
+    bool marker_present =
+        (SHUTDOWN_WAKE_MARKER ==
+         LL_RTC_BAK_GetRegister(RTC, SHUTDOWN_WAKE_MARKER_REG));
+    if (marker_present) {
+        LL_RTC_BAK_SetRegister(RTC, SHUTDOWN_WAKE_MARKER_REG, 0U);
+    }
+    stm32_backup_domain_access_end(rtcapb_was_enabled, backup_was_enabled);
+
+    return marker_present;
+}
+#endif
+
 bool power_reset_requires_can_enable_check(uint32_t reset_cause)
 {
-    return (0U != (reset_cause & RESET_LOW_POWER_WAKE));
+    bool requires_check = (0U != (reset_cause & RESET_LOW_POWER_WAKE));
+
+#if defined(CONFIG_SOC_FAMILY_STM32)
+    if (!requires_check &&
+        ((RESET_PIN | RESET_BROWNOUT) ==
+         (reset_cause & (RESET_PIN | RESET_BROWNOUT)))) {
+        requires_check = stm32_shutdown_wake_marker_consume();
+    }
+#endif
+
+    return requires_check;
 }
 
 Status_t power_can_enable_assert(const struct device *dev)
@@ -552,6 +626,7 @@ Status_t power_shutdown(const struct device *dev)
 
     HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN2_LOW);
     HAL_PWREx_DisableInternalWakeUpLine();
+    stm32_shutdown_wake_marker_set();
 
     /* Step 6: SHUTDOWN. Does not return on success — wakeup is a reset. */
     HAL_PWREx_EnterSHUTDOWNMode();
