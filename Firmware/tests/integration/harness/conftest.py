@@ -16,6 +16,7 @@ import os
 import signal
 import subprocess
 import time
+import zlib
 from pathlib import Path
 from typing import Generator
 
@@ -44,6 +45,24 @@ NATIVE_SIM_BIN: Path = Path(
             / "zephyr" / "zephyr.exe"),
     )
 )
+
+# Generated native_sim layout for build-native/integration:
+#   flash0             0x000000..0x1fffff (2 MiB), erase-block-size 0x1000
+#   storage_partition  0x0fc000..0x0fffff (16 KiB)
+#
+# Production Jr hardware keeps settings/NVS in the external NOR
+# storage_partition at 0x03ff8000 with size 0x8000 (32 KiB). Retained-state
+# regression tests that seed production storage captures into native_sim must
+# therefore choose an explicit slice; native_sim can only exercise the first
+# four 4 KiB NVS sectors unless its DTS layout is expanded.
+NATIVE_FLASH_SIZE: int = 0x200000
+NATIVE_STORAGE_OFFSET: int = 0x0FC000
+NATIVE_STORAGE_SIZE: int = 0x004000
+PRODUCTION_NOR_SIZE: int = 0x04000000
+PRODUCTION_NOR_STORAGE_OFFSET: int = 0x03FF8000
+PRODUCTION_NOR_CRC32: int = 0x3805C8E7
+PRODUCTION_STORAGE_SIZE: int = 0x008000
+PRODUCTION_STORAGE_CRC32: int = 0x14ABF9B0
 # Termination grace period before escalating to SIGKILL.  Coverage builds
 # need a longer window so libgcov's atexit hook can flush every .gcda
 # before SIGKILL truncates it — set ``DIVECAN_TERMINATE_GRACE_S=5`` (or
@@ -51,6 +70,61 @@ NATIVE_SIM_BIN: Path = Path(
 TERMINATE_GRACE_S: float = float(
     os.environ.get("DIVECAN_TERMINATE_GRACE_S", "1.0")
 )
+
+
+def crc32_bytes(data: bytes) -> int:
+    """Return the unsigned CRC32 used to identify captured flash images."""
+    return zlib.crc32(data) & 0xFFFFFFFF
+
+
+def seed_native_flash_from_partition_image(
+    *,
+    flash_path: Path,
+    partition_image: Path,
+    dest_offset: int,
+    dest_size: int,
+    expected_image_size: int | None = None,
+    expected_image_crc32: int | None = None,
+    source_offset: int = 0,
+) -> Path:
+    """Create a native_sim flash backing file seeded from a partition image.
+
+    The source image is read-only. The returned file lives at ``flash_path`` and
+    is filled as erased flash (0xff) before the selected image slice is copied
+    into ``dest_offset``. Callers must pass explicit offsets/sizes so production
+    captures cannot be silently misinterpreted as whole native flash images.
+    """
+    image = partition_image.read_bytes()
+    if expected_image_size is not None and len(image) != expected_image_size:
+        raise AssertionError(
+            f"{partition_image} size {len(image)} != {expected_image_size}"
+        )
+    if expected_image_crc32 is not None:
+        actual = crc32_bytes(image)
+        if actual != expected_image_crc32:
+            raise AssertionError(
+                f"{partition_image} crc32 0x{actual:08x} "
+                f"!= 0x{expected_image_crc32:08x}"
+            )
+    if source_offset < 0 or dest_offset < 0 or dest_size < 0:
+        raise AssertionError("offsets and sizes must be non-negative")
+    if source_offset + dest_size > len(image):
+        raise AssertionError(
+            f"source slice 0x{source_offset:x}+0x{dest_size:x} exceeds "
+            f"{partition_image} size 0x{len(image):x}"
+        )
+    if dest_offset + dest_size > NATIVE_FLASH_SIZE:
+        raise AssertionError(
+            f"destination slice 0x{dest_offset:x}+0x{dest_size:x} exceeds "
+            f"native flash size 0x{NATIVE_FLASH_SIZE:x}"
+        )
+
+    flash = bytearray([0xFF]) * NATIVE_FLASH_SIZE
+    flash[dest_offset:dest_offset + dest_size] = (
+        image[source_offset:source_offset + dest_size]
+    )
+    flash_path.write_bytes(flash)
+    return flash_path
 
 
 def _clamp_rt_ratio(rt_ratio: float | None) -> float | None:
