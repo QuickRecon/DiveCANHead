@@ -14,26 +14,38 @@
  *   - Log read:  the per-sector dive/boot index the UDS log-download
  *                selectors use — rebuilt lazily; contents are a pure cache
  *                of what is on flash.
+ *   - Log stream: no scratch storage, but an exclusive reservation spanning
+ *                 the external-flash download.
+ *   - Flash ops: no scratch storage, but an exclusive reservation for short
+ *                UDS maintenance operations such as log erase / force revert.
  *   - Autotune:  paired 80-sample effective-duty/PPO2 response traces, held
  *                only for one surface identification run.
  *
  * They now share this single arena. Exclusion is by explicit claim/release
- * with a fail-fast -EBUSY contract (never blocking): OTA, FACTORY and AUTOTUNE
- * are exclusive owners; LOG_INDEX is an evictable cache tenant that claims
- * around each resolver call. Cache invalidation is generation-based — every
- * successful claim by a different owner than the previous one bumps a
- * generation counter, and the log reader treats a generation change as
+ * with a fail-fast -EBUSY contract (never blocking): OTA, FACTORY, LOG_STREAM,
+ * FLASH and AUTOTUNE are exclusive owners; LOG_INDEX is an evictable cache
+ * tenant that claims around each resolver call. Cache invalidation is
+ * generation-based — every successful claim by a different scratch-writing
+ * owner bumps a generation counter, and the log reader treats a change as
  * "index contents gone, rebuild" (it never trusts arena memory it did not
- * just write). This keeps the arena free of any dependency on its tenants.
+ * just write). Reservation-only LOG_STREAM and FLASH owners do not invalidate
+ * the untouched cache. This keeps the arena free of any dependency on its
+ * tenants.
  *
- * Sizing: MAINT_ARENA_SIZE is the max of the three tenants' needs. Each
+ * Sizing: MAINT_ARENA_SIZE is the max of the scratch tenants' needs. Each
  * tenant BUILD_ASSERTs its own requirement fits, so growing e.g.
  * CONFIG_IMG_BLOCK_BUF_SIZE past the arena trips the build, not the runtime.
  *
- * Threading: claims come from the divecan_rx thread (OTA, log reader,
- * factory restore) and the factory work queue (capture). A short-held mutex
- * guards the owner word only — it is never held across the actual flash
- * work.
+ * Histogram persistence follows arena ownership: the first claim of a free
+ * arena pauses periodic NVS saves, and the matching release back to FREE
+ * resumes them. An ownership handoff (evictable LOG_INDEX -> exclusive owner)
+ * keeps the existing hold continuously. This makes the arena the single
+ * maintenance/flash exclusion boundary.
+ *
+ * Threading: claims come from the divecan_rx thread (OTA, log reader and UDS
+ * flash operations), the log-index worker, and the factory work queue. A
+ * short-held mutex guards the owner word and histogram hold transition; it is
+ * never held across the actual maintenance work.
  */
 #ifndef MAINTENANCE_ARENA_H
 #define MAINTENANCE_ARENA_H
@@ -64,6 +76,8 @@ typedef enum {
     MAINT_ARENA_OWNER_OTA,       /**< Exclusive; held across UDS requests */
     MAINT_ARENA_OWNER_FACTORY,   /**< Exclusive; held for capture/restore */
     MAINT_ARENA_OWNER_LOG_INDEX, /**< Evictable cache; claimed per call */
+    MAINT_ARENA_OWNER_LOG_STREAM, /**< Exclusive; held across log download */
+    MAINT_ARENA_OWNER_FLASH,     /**< Exclusive; short UDS flash operation */
     MAINT_ARENA_OWNER_AUTOTUNE,  /**< Exclusive; held across identification */
 } MaintArenaOwner_t;
 
@@ -78,7 +92,8 @@ typedef enum {
  *                     same-owner case above).
  *  - held by an exclusive owner → denied to everyone else.
  *
- * Every grant that changes the owner bumps the generation counter.
+ * A grant to a different scratch-writing owner bumps the generation counter;
+ * reservation-only owners leave cached contents and generation untouched.
  *
  * @param owner Claimant identity (not MAINT_ARENA_FREE)
  * @return Arena base pointer (8-byte aligned) or NULL if denied.

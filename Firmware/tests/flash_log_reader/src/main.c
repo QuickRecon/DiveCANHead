@@ -68,6 +68,9 @@ static bool text_fcb_ready;
 static size_t text_last_sector;
 
 /* ---- stubs the reader links against (real ones live in flash_log.c) ---- */
+void error_histogram_pause(void) {}
+void error_histogram_resume(void) {}
+
 struct fcb *flash_log_internal_get_fcb(FlashLogDest_t dest)
 {
     struct fcb *fcb_p = NULL;

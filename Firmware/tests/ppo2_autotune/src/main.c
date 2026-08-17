@@ -66,6 +66,9 @@ static const Numeric_t PULSE_DUTY = 0.50f;   /* baseline + 0.20 step */
 static const uint16_t PULSE_SAMPLES = 20U;
 
 /* ---- ppo2_control / UDS / settings stubs the routine links against ---- */
+void error_histogram_pause(void) {}
+void error_histogram_resume(void) {}
+
 PPO2ControlMode_t ppo2_control_get_active_mode(void)
 {
     return g_mode;

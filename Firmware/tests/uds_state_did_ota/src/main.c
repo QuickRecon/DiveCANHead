@@ -46,6 +46,7 @@
 #include "boot_history.h"
 #include "calibration.h"
 #include "tank_pressure.h"
+#include "maintenance_arena.h"
 
 /* The production channel normally lives in tank_pressure.c, which is omitted
  * from this native test because it requires real ADC devicetree nodes. Define
@@ -155,6 +156,13 @@ ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
 }
 
 int error_histogram_clear(void) { return 0; }
+void *maint_arena_claim(MaintArenaOwner_t owner)
+{
+    static uint8_t arena_token;
+    ARG_UNUSED(owner);
+    return &arena_token;
+}
+void maint_arena_release(MaintArenaOwner_t owner) { ARG_UNUSED(owner); }
 
 bool __wrap_errors_get_last_crash(CrashInfo_t *out)
 {

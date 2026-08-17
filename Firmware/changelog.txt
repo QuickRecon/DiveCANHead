@@ -24,6 +24,7 @@ and includes this complete file in the downloadable package.
 
 ### Fixed
 - Added inhibit to prevent spurious power on if the BUS EN line remains low after boot checks are complete
+- Fix an issue where the board could crash when downloading large amounts of log data due to an error histogram write occuring at the same time
 
 ## 0.0.1 - 2026-07-29
 

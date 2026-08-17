@@ -145,7 +145,10 @@ static LogDownloadSM_t *fl_sm(void)
  * abort never fires here — instead fl_maybe_abort_stale() (driven by
  * UDS_LogDownload_Poll from the divecan_rx loop) resumes logging if no 0x36
  * arrives for LOG_STREAM_INACTIVITY_MS. Every transition OUT of LD_STREAMING
- * goes through fl_stop_streaming() so the resume can't be missed. */
+ * goes through fl_stop_streaming() so neither release can be missed. The
+ * exclusive LOG_STREAM arena claim also holds off periodic histogram NVS
+ * persistence for the whole download; that deep system-workqueue path was
+ * observed overflowing during a multi-hour v0.0.1 download. */
 #define LOG_STREAM_INACTIVITY_MS 10000U
 
 static uint32_t *fl_stream_activity_ms(void)
@@ -154,15 +157,20 @@ static uint32_t *fl_stream_activity_ms(void)
     return &last_activity_ms;
 }
 
-static void fl_start_streaming(void)
+static bool fl_start_streaming(void)
 {
     LogDownloadSM_t *sm = fl_sm();
+
+    if (NULL == maint_arena_claim(MAINT_ARENA_OWNER_LOG_STREAM)) {
+        return false;
+    }
     flash_log_pause();
     /* Silence the broadcast log-push while the download stream owns the bridge
      * so it doesn't collide with the transfer on the handset's ISO-TP RX. */
     UDS_LogPush_SetSuspended(true);
     sm->state = LD_STREAMING;
     *fl_stream_activity_ms() = k_uptime_get_32();
+    return true;
 }
 
 /* Leave LD_STREAMING for ``next_state`` (SELECTED on a fresh selector, IDLE on
@@ -174,6 +182,7 @@ static void fl_stop_streaming(LogDownloadState_t next_state)
     if (sm->state == LD_STREAMING) {
         flash_log_resume();
         UDS_LogPush_SetSuspended(false);
+        maint_arena_release(MAINT_ARENA_OWNER_LOG_STREAM);
     }
     sm->state = next_state;
 }
@@ -578,10 +587,11 @@ static uint8_t fl_start_routine(uint16_t rid, const uint8_t *request_data,
     if (rid == RID_BEGIN_STREAM) {
         if (sm->state != LD_SELECTED) {
             nrc = UDS_NRC_REQUEST_SEQUENCE_ERR;
+        } else if (!fl_start_streaming()) {
+            nrc = UDS_NRC_CONDITIONS_NOT_CORRECT;
         } else {
             flash_log_reader_open(&sm->reader, &sm->range);
             sm->header_sent = false;
-            fl_start_streaming();   /* pauses the writer for the capture */
         }
     } else if ((rid >= RID_SELECT_BY_RANGE) &&
            (rid <= RID_SELECT_ALL)) {

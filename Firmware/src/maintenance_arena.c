@@ -7,6 +7,7 @@
 #include <zephyr/logging/log.h>
 
 #include "maintenance_arena.h"
+#include "error_histogram.h"
 
 LOG_MODULE_REGISTER(maint_arena, LOG_LEVEL_INF);
 
@@ -18,7 +19,8 @@ static K_MUTEX_DEFINE(arena_lock);
  * content_owner is distinct from owner: releasing leaves contents in place
  * (owner FREE, content owner unchanged), so a cache tenant re-claiming
  * after its own release finds its data warm and skips the rebuild. Only a
- * claim by a DIFFERENT tenant moves content_owner and bumps generation. */
+ * claim by a different scratch-writing tenant moves content_owner and bumps
+ * generation; reservation-only owners leave the bytes untouched. */
 static struct {
     MaintArenaOwner_t owner;
     MaintArenaOwner_t content_owner;
@@ -31,6 +33,14 @@ static struct {
     .generation = 0U,
     .log_index_building = false,
 };
+
+static bool owner_writes_scratch(MaintArenaOwner_t owner)
+{
+    return (MAINT_ARENA_OWNER_OTA == owner) ||
+           (MAINT_ARENA_OWNER_FACTORY == owner) ||
+           (MAINT_ARENA_OWNER_LOG_INDEX == owner) ||
+           (MAINT_ARENA_OWNER_AUTOTUNE == owner);
+}
 
 void *maint_arena_claim(MaintArenaOwner_t owner)
 {
@@ -50,7 +60,14 @@ void *maint_arena_claim(MaintArenaOwner_t owner)
                          (!arena_state.log_index_building);
 
         if (free_or_same || evictable) {
-            if (owner != arena_state.content_owner) {
+            /* The transition out of FREE owns the one histogram hold. A
+             * same-owner idempotent claim does not nest it, and LOG_INDEX ->
+             * exclusive handoff keeps the existing hold continuously. */
+            if (MAINT_ARENA_FREE == arena_state.owner) {
+                error_histogram_pause();
+            }
+            if (owner_writes_scratch(owner) &&
+                (owner != arena_state.content_owner)) {
                 ++arena_state.generation;
                 if (MAINT_ARENA_OWNER_LOG_INDEX == arena_state.content_owner) {
                     LOG_INF("arena: owner %d takes over log-index cache",
@@ -76,6 +93,7 @@ void maint_arena_release(MaintArenaOwner_t owner)
     (void)k_mutex_lock(&arena_lock, K_FOREVER);
     if (owner == arena_state.owner) {
         arena_state.owner = MAINT_ARENA_FREE;
+        error_histogram_resume();
     }
     (void)k_mutex_unlock(&arena_lock);
 }
@@ -95,6 +113,9 @@ uint32_t maint_arena_generation(void)
 #ifdef CONFIG_ZTEST
 void maint_arena_reset_for_test(void)
 {
+    if (MAINT_ARENA_FREE != arena_state.owner) {
+        error_histogram_resume();
+    }
     arena_state.owner = MAINT_ARENA_FREE;
     arena_state.content_owner = MAINT_ARENA_FREE;
     arena_state.generation = 0U;

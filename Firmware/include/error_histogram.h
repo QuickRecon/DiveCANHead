@@ -67,9 +67,16 @@ Status_t error_histogram_clear(void);
  * the histogram to NVS; the dirty flag is preserved so a pending save is
  * flushed on the next tick after resume. Used to keep the deep
  * settings/NVS/spi_nor write chain (which runs on the system workqueue)
- * off the shared SPI-NOR while an OTA firmware update streams to it —
- * that contention otherwise overflows the 1024 B system-workqueue stack.
- * Idempotent and safe to call before error_histogram_init().
+ * off the shared SPI-NOR while firmware maintenance reads, writes, copies,
+ * or erases it. That overlap can drive the already-deep persistence path into
+ * a system-workqueue stack overflow. Calls are nestable: every successful
+ * pause call owns one hold and must be paired with one resume call. Safe to
+ * call before error_histogram_init(). The call waits for an already-running
+ * periodic save to finish before returning.
+ *
+ * Ownership rule: production maintenance paths must claim the maintenance
+ * arena instead of calling this directly. The arena is the sole coordinator
+ * of these pause/resume transitions.
  *
  * @return None.
  */
@@ -78,8 +85,9 @@ void error_histogram_pause(void);
 /**
  * @brief Resume the periodic NVS save after error_histogram_pause().
  *
- * If the histogram was dirtied while paused, the next periodic tick flushes
- * it. Idempotent.
+ * Releases one maintenance hold. If the histogram was dirtied while paused,
+ * the next periodic tick after the final hold is released flushes it. An
+ * unmatched call is logged and leaves the depth at zero.
  *
  * @return None.
  */

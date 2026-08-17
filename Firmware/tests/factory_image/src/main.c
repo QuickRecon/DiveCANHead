@@ -144,7 +144,19 @@ static struct {
     int reboot_calls;
     bool reboot_active;
     jmp_buf reboot_escape;
+    int histogram_pause_calls;
+    int histogram_resume_calls;
 } hooks;
+
+void error_histogram_pause(void)
+{
+    ++hooks.histogram_pause_calls;
+}
+
+void error_histogram_resume(void)
+{
+    ++hooks.histogram_resume_calls;
+}
 
 /* ---- Wraps ---- */
 
@@ -537,7 +549,15 @@ static void reset_fixture(void *unused)
     factory_image_reset_for_test();
 }
 
-ZTEST_SUITE(factory_image, NULL, NULL, reset_fixture, NULL, NULL);
+static void assert_maintenance_guard_balanced(void *unused)
+{
+    ARG_UNUSED(unused);
+    zassert_equal(hooks.histogram_pause_calls, hooks.histogram_resume_calls,
+                  "factory flash maintenance must release every histogram hold");
+}
+
+ZTEST_SUITE(factory_image, NULL, NULL, reset_fixture,
+            assert_maintenance_guard_balanced, NULL);
 
 /* ---- Capture tests ---- */
 

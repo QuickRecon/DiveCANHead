@@ -31,6 +31,7 @@
 #include "factory_image.h"
 #include "flash_mass_erase.h"
 #include "external_flash.h"
+#include "maintenance_arena.h"
 #include "isotp_tx_queue.h"
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
@@ -1304,6 +1305,18 @@ static uint8_t checkOtaWritePrecondition(const UDSContext_t *ctx,
     return nrc;
 }
 
+/** Claim the exclusive arena reservation used by short UDS flash commands. */
+static bool claimFlashMaintenance(UDSContext_t *ctx)
+{
+    if (NULL == maint_arena_claim(MAINT_ARENA_OWNER_FLASH)) {
+        OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+        UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                                 UDS_NRC_CONDITIONS_NOT_CORRECT);
+        return false;
+    }
+    return true;
+}
+
 static void flushWriteDidResponseTxQueue(void)
 {
     uint32_t flushPolls = 0U;
@@ -1353,7 +1366,7 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
-    } else {
+    } else if (claimFlashMaintenance(ctx)) {
         struct mcuboot_img_header hdr = {0};
         Status_t rc = external_flash_acquire(K_FOREVER);
         if (0 == rc) {
@@ -1361,12 +1374,8 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
                                        &hdr, sizeof(hdr));
             external_flash_release();
         }
-        if (0 != rc) {
-            LOG_WRN("Force-revert refused: slot1 header read failed %d", rc);
-            OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
-            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
-                                     UDS_NRC_CONDITIONS_NOT_CORRECT);
-        } else {
+        bool header_ok = (0 == rc);
+        if (header_ok) {
 #ifdef CONFIG_FLASH_LOG
             flash_log_pause();
 #endif
@@ -1378,17 +1387,24 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
 #ifdef CONFIG_FLASH_LOG
             flash_log_resume();
 #endif
-            if (0 != rc) {
-                OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
-                UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
-                                         UDS_NRC_GENERAL_PROG_FAIL);
-            } else {
-                LOG_INF("Force-revert: slot1 re-staged, rebooting");
-                buildWriteDidPositiveResponse(ctx, request_data);
-                UDS_SendResponse(ctx);
-                (void)k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
-                sys_reboot(SYS_REBOOT_COLD);
-            }
+        }
+        maint_arena_release(MAINT_ARENA_OWNER_FLASH);
+
+        if (!header_ok) {
+            LOG_WRN("Force-revert refused: slot1 header read failed %d", rc);
+            OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                                     UDS_NRC_CONDITIONS_NOT_CORRECT);
+        } else if (0 != rc) {
+            OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
+            UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,
+                                     UDS_NRC_GENERAL_PROG_FAIL);
+        } else {
+            LOG_INF("Force-revert: slot1 re-staged, rebooting");
+            buildWriteDidPositiveResponse(ctx, request_data);
+            UDS_SendResponse(ctx);
+            (void)k_msleep(OTA_WRITE_REBOOT_DELAY_MS);
+            sys_reboot(SYS_REBOOT_COLD);
         }
     }
     return true;
@@ -1413,7 +1429,7 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
-    } else {
+    } else if (claimFlashMaintenance(ctx)) {
         LOG_WRN("Factory flash erase: wiping external NOR (~minutes), then reboot");
         /* ACK now. The ISO-TP TX queue is normally drained by the divecan_rx
          * poll loop — which THIS handler is about to block for minutes in the
@@ -1469,7 +1485,7 @@ static bool writeNvsEraseDID(UDSContext_t *ctx,
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
-    } else {
+    } else if (claimFlashMaintenance(ctx)) {
         LOG_WRN("NVS erase: wiping settings (storage) partition, then reboot");
         /* ACK before the erase + reboot and pump the ISO-TP TX queue so the
          * response is physically on the bus first — same reason as the
@@ -1650,9 +1666,10 @@ static bool writeLogEraseDID(UDSContext_t *ctx,
     if (0U != nrc) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
-    } else {
+    } else if (claimFlashMaintenance(ctx)) {
         uint8_t stream_mask = request_data[UDS_DATA_IDX] & 0x03U;
         Status_t rc = flash_log_erase(stream_mask);
+        maint_arena_release(MAINT_ARENA_OWNER_FLASH);
         if (0 != rc) {
             OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)rc);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,

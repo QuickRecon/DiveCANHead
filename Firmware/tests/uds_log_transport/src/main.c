@@ -80,6 +80,8 @@ static struct {
     int      neg_calls;
     int      pause_calls;
     int      resume_calls;
+    int      histogram_pause_calls;
+    int      histogram_resume_calls;
     int      suspend_true_calls;
     int      suspend_false_calls;
 } cap;
@@ -119,6 +121,16 @@ void flash_log_pause(void)
 void flash_log_resume(void)
 {
     ++cap.resume_calls;
+}
+
+void error_histogram_pause(void)
+{
+    ++cap.histogram_pause_calls;
+}
+
+void error_histogram_resume(void)
+{
+    ++cap.histogram_resume_calls;
 }
 
 void UDS_LogPush_SetSuspended(bool suspended)
@@ -517,6 +529,23 @@ ZTEST(logdl, test_begin_stream_requires_selection)
     zassert_equal(cap.neg_nrc, UDS_NRC_REQUEST_SEQUENCE_ERR,
                   "begin-stream without a selection is a sequence error");
     zassert_equal(cap.pause_calls, 0, "writer must not pause");
+    zassert_equal(cap.histogram_pause_calls, 0,
+                  "histogram must not pause without a stream");
+}
+
+ZTEST(logdl, test_begin_stream_refuses_busy_maintenance_arena)
+{
+    select_all();
+    zassert_not_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY),
+                     "fixture occupies the exclusive arena");
+
+    send_routine(RID_BEGIN_STREAM, NULL, 0U);
+    zassert_equal(cap.neg_nrc, UDS_NRC_CONDITIONS_NOT_CORRECT,
+                  "stream cannot overlap another maintenance owner");
+    zassert_equal(cap.pause_calls, 0,
+                  "writer stays live when stream reservation is denied");
+
+    maint_arena_release(MAINT_ARENA_OWNER_FACTORY);
 }
 
 ZTEST(logdl, test_selector_supersedes_live_stream)
@@ -525,10 +554,16 @@ ZTEST(logdl, test_selector_supersedes_live_stream)
     select_latest_boot();
     begin_stream();
     zassert_equal(cap.pause_calls, 1, "stream armed -> writer paused");
+    zassert_equal(cap.histogram_pause_calls,
+                  cap.histogram_resume_calls + 1,
+                  "stream adds one live histogram hold after selector cleanup");
 
     (void)memset(&cap, 0, sizeof(cap));
     select_latest_boot();
     zassert_equal(cap.resume_calls, 1, "new selector must resume writer");
+    zassert_equal(cap.histogram_resume_calls,
+                  cap.histogram_pause_calls + 1,
+                  "new selector releases the stream hold and balances its own hold");
     zassert_equal(cap.suspend_false_calls, 1, "log-push resumed");
     zassert_false(cap.is_negative, "re-select must succeed");
 }
@@ -611,6 +646,8 @@ ZTEST(logdl, test_full_download_flow)
                   UDS_SID_REQUEST_TRANSFER_EXIT + UDS_RESPONSE_SID_OFFSET,
                   "0x37 positive SID");
     zassert_equal(cap.resume_calls, 1, "exit resumes the writer");
+    zassert_equal(cap.histogram_resume_calls, cap.histogram_pause_calls,
+                  "exit balances selector and stream histogram holds");
     zassert_equal(cap.suspend_false_calls, 1, "exit resumes log-push");
 }
 
@@ -835,6 +872,9 @@ ZTEST(logdl, test_poll_aborts_idle_stream)
     select_latest_boot();
     begin_stream();
     zassert_equal(cap.pause_calls, 1, "streaming -> paused");
+    zassert_equal(cap.histogram_pause_calls,
+                  cap.histogram_resume_calls + 1,
+                  "stream leaves one live histogram hold after selector cleanup");
 
     /* Not yet idle: a poll right away is a no-op. */
     (void)memset(&cap, 0, sizeof(cap));
@@ -845,6 +885,8 @@ ZTEST(logdl, test_poll_aborts_idle_stream)
     k_sleep(K_MSEC(10001));
     UDS_LogDownload_Poll();
     zassert_equal(cap.resume_calls, 1, "idle stream aborts and resumes writer");
+    zassert_equal(cap.histogram_resume_calls, 1,
+                  "idle abort resumes histogram persistence");
     zassert_equal(cap.suspend_false_calls, 1, "log-push resumed on abort");
 
     /* Idempotent: a second poll after the abort does nothing. */

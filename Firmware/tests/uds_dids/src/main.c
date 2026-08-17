@@ -40,6 +40,7 @@
 #include "flash_log.h"
 #include "solenoid_roles.h"
 #include "errors.h"
+#include "maintenance_arena.h"
 
 /* ---- Wire constants mirrored from uds.c ----
  *
@@ -110,6 +111,9 @@ static struct {
     /* misc plumbing */
     ssize_t device_id_rc;
     int histogram_clear_rc;
+    int arena_claim_calls;
+    int arena_release_calls;
+    bool arena_claim_denied;
     bool factory_image_captured;
     uint32_t txq_busy_polls;    /* first N polls report a busy TX queue */
     uint32_t txq_pending_polls; /* first N polls report a pending frame */
@@ -386,6 +390,19 @@ void diveo2_request_broadcast(uint8_t cell_number, bool on)
 int error_histogram_clear(void)
 {
     return stub.histogram_clear_rc;
+}
+
+void *maint_arena_claim(MaintArenaOwner_t owner)
+{
+    ARG_UNUSED(owner);
+    ++stub.arena_claim_calls;
+    return stub.arena_claim_denied ? NULL : &stub;
+}
+
+void maint_arena_release(MaintArenaOwner_t owner)
+{
+    ARG_UNUSED(owner);
+    ++stub.arena_release_calls;
 }
 
 void ISOTP_TxQueue_Poll(uint32_t currentTime)
@@ -725,10 +742,26 @@ ZTEST(uds_dids_log, test_log_erase_success_and_flash_failure)
     zassert_equal(stub.log_erase_calls, 1, "erase must run once");
     zassert_equal(stub.log_erase_mask, 0x03U,
                   "stream mask must be truncated to bits 0-1");
+    zassert_equal(stub.arena_claim_calls, 1,
+                  "log erase claims the maintenance arena");
+    zassert_equal(stub.arena_release_calls, 1,
+                  "successful log erase releases the arena");
 
     stub.log_erase_rc = -EIO;
     send_write_did(UDS_DID_LOG_ERASE, payload, sizeof(payload));
     expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+    zassert_equal(stub.arena_claim_calls, 2,
+                  "failed log erase still claims the arena");
+    zassert_equal(stub.arena_release_calls, 2,
+                  "failed log erase releases the arena");
+
+    stub.arena_claim_denied = true;
+    send_write_did(UDS_DID_LOG_ERASE, payload, sizeof(payload));
+    expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_CONDITIONS_NOT_CORRECT);
+    zassert_equal(stub.log_erase_calls, 2,
+                  "busy maintenance arena prevents the flash operation");
+    zassert_equal(stub.arena_release_calls, 2,
+                  "a denied claim owns nothing to release");
 }
 
 ZTEST(uds_dids_log, test_log_verbosity_write)
@@ -1280,6 +1313,10 @@ ZTEST(uds_dids_core, test_force_revert_arms)
     send_write_did(UDS_DID_OTA_FORCE_REVERT, &magic, 1U);
     expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_GENERAL_PROG_FAIL);
     zassert_equal(stub.sys_reboot_calls, 0, "no reboot on failure");
+    zassert_equal(stub.arena_claim_calls, 2,
+                  "both force-revert attempts claimed the arena");
+    zassert_equal(stub.arena_release_calls, 2,
+                  "both failure paths released their claims");
 
     /* Success re-stages slot1 and reboots. */
     stub.boot_request_upgrade_rc = 0;
@@ -1290,6 +1327,10 @@ ZTEST(uds_dids_core, test_force_revert_arms)
     }
     reboot_escape_armed = false;
     zassert_equal(stub.sys_reboot_calls, 1, "reboot fired");
+    zassert_equal(stub.arena_claim_calls, 3,
+                  "successful force-revert claimed the arena");
+    zassert_equal(stub.arena_release_calls, 3,
+                  "force-revert released before reboot");
     expect_write_positive(UDS_DID_OTA_FORCE_REVERT);
 }
 

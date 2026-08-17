@@ -77,6 +77,7 @@ static void reset_histogram(void *fixture)
 {
     ARG_UNUSED(fixture);
     memset(&stub, 0, sizeof(stub));
+    (void)atomic_set(&save_pause_depth, 0);
     (void)error_histogram_clear();
     memset(&stub, 0, sizeof(stub));
 }
@@ -293,6 +294,35 @@ ZTEST(error_histogram, test_periodic_save_skips_when_paused)
     save_work_handler(NULL);
     zassert_equal(stub.save_calls, 1, "resume lets the next tick flush");
     zassert_equal(atomic_get(&dirty), 0, "flush after resume clears dirty");
+}
+
+ZTEST(error_histogram, test_periodic_save_waits_for_all_nested_holds)
+{
+    error_histogram_pause();
+    error_histogram_pause();
+    publish_error(OP_ERR_FLASH);
+
+    error_histogram_resume();
+    save_work_handler(NULL);
+    zassert_equal(stub.save_calls, 0,
+                  "one remaining maintenance hold must keep NVS paused");
+    zassert_equal(atomic_get(&save_pause_depth), 1,
+                  "one nested hold remains");
+
+    error_histogram_resume();
+    save_work_handler(NULL);
+    zassert_equal(stub.save_calls, 1,
+                  "the final release lets the next save flush");
+    zassert_equal(atomic_get(&save_pause_depth), 0,
+                  "all holds released");
+}
+
+ZTEST(error_histogram, test_unmatched_resume_does_not_underflow)
+{
+    error_histogram_resume();
+
+    zassert_equal(atomic_get(&save_pause_depth), 0,
+                  "unmatched resume must leave the depth at zero");
 }
 
 ZTEST(error_histogram, test_periodic_save_retries_on_backend_failure)

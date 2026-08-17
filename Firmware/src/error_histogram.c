@@ -51,10 +51,15 @@ static const atomic_val_t HIST_MAX_COUNT = (atomic_val_t)UINT16_MAX;
 
 static atomic_t histogram[ERROR_HISTOGRAM_COUNT];
 static atomic_t dirty;
-/* When non-zero the periodic save is suspended (set during an OTA update
- * so the deep NVS/spi_nor write chain stays off the system workqueue while
- * the OTA streams to the shared SPI-NOR). See error_histogram_pause(). */
-static atomic_t save_paused;
+/* Balanced hold depth for the maintenance arena's occupied/free transition.
+ * Production code has one coordinator (maintenance_arena.c); retaining a
+ * depth instead of a boolean also makes the low-level API fail safe under a
+ * future nested coordinator and lets tests detect unbalanced releases. */
+static atomic_t save_pause_depth;
+/* Serialises the save decision with pause/resume transitions. A maintenance
+ * caller therefore cannot return from pause while a periodic save is still in
+ * flight, and the worker cannot start a save after that pause takes effect. */
+K_MUTEX_DEFINE(save_gate);
 
 /**
  * @brief Copy the live atomic counters into a saturated uint16 buffer.
@@ -164,25 +169,40 @@ static void save_to_nvs(void)
 static void save_work_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
-    /* Skip the NVS write while paused (during an OTA): the settings ->
-     * NVS -> flash_area_write -> spi_nor chain runs here on the system
-     * workqueue and, contending with the OTA stream on the same SPI-NOR,
-     * overflows the 1024 B workqueue stack (K_ERR_STACK_CHK_FAIL). The
-     * dirty flag is left set so the flush happens on the next tick after
-     * error_histogram_resume(). */
-    if ((0 == atomic_get(&save_paused)) && (0 != atomic_get(&dirty))) {
+    /* Skip the NVS write while the maintenance arena is owned: the settings
+     * -> NVS -> flash_area_write -> spi_nor chain runs here on the system
+     * workqueue and, contending with maintenance on the same SPI-NOR, can
+     * exhaust that workqueue stack (K_ERR_STACK_CHK_FAIL). The dirty flag is
+     * left set so the flush happens on a later tick after the arena is
+     * released. */
+    (void)k_mutex_lock(&save_gate, K_FOREVER);
+    if ((0 == atomic_get(&save_pause_depth)) && (0 != atomic_get(&dirty))) {
         save_to_nvs();
     }
+    (void)k_mutex_unlock(&save_gate);
 }
 
 void error_histogram_pause(void)
 {
-    (void)atomic_set(&save_paused, 1);
+    (void)k_mutex_lock(&save_gate, K_FOREVER);
+    (void)atomic_inc(&save_pause_depth);
+    (void)k_mutex_unlock(&save_gate);
 }
 
 void error_histogram_resume(void)
 {
-    (void)atomic_set(&save_paused, 0);
+    (void)k_mutex_lock(&save_gate, K_FOREVER);
+    atomic_val_t depth = atomic_get(&save_pause_depth);
+
+    /* A mismatched resume must not underflow to a negative value, which would
+     * leave persistence disabled forever. The gate makes the read/decrement
+     * atomic as a pair even when different maintenance threads release. */
+    if (depth > 0) {
+        (void)atomic_dec(&save_pause_depth);
+    } else {
+        LOG_ERR("unbalanced error-histogram resume");
+    }
+    (void)k_mutex_unlock(&save_gate);
 }
 
 static K_WORK_DELAYABLE_DEFINE(save_work, save_work_handler);

@@ -41,7 +41,6 @@
 #include "isotp.h"
 #include "uds_log_push.h"
 #include "errors.h"
-#include "error_histogram.h"
 #include "common.h"
 #include "heartbeat.h"
 #include "maintenance_arena.h"
@@ -250,11 +249,10 @@ static void ota_idle_entry(void *obj)
  * the watchdog (same pattern as factory_image restore). Without this, a
  * slot1 holding prior content makes the streamed writes land on un-erased
  * NOR and the upload stalls/corrupts (the first such write stalled >30 s
- * on HW). Also holds off the periodic error-histogram NVS save (its
- * settings/NVS/spi_nor write chain runs on the system workqueue and would
- * both contend on the SPI-NOR and overflow the 1024 B workqueue stack) and,
- * with CONFIG_FLASH_LOG, the flash-log writer (would otherwise block behind
- * the erase / contend for the bus).
+ * on HW). The maintenance-arena claim already holds off periodic histogram
+ * NVS persistence for the entire OTA transaction. With CONFIG_FLASH_LOG, the
+ * flash-log writer is also paused around the erase so it cannot contend for
+ * the bus.
  *
  * Closes @p fa unconditionally before returning. On success, populates
  * sm->bytes_expected/bytes_received/next_seq for the new transfer. Sends a UDS
@@ -274,7 +272,6 @@ static bool ota_erase_and_init_download(OtaSmCtx_t *sm,
     bool ok = false;
 
     heartbeat_set_long_op(true);
-    error_histogram_pause();
 #ifdef CONFIG_FLASH_LOG
     flash_log_pause();
 #endif
@@ -282,7 +279,6 @@ static bool ota_erase_and_init_download(OtaSmCtx_t *sm,
 #ifdef CONFIG_FLASH_LOG
     flash_log_resume();
 #endif
-    error_histogram_resume();
     heartbeat_set_long_op(false);
     (void)flash_area_close(fa);
 
@@ -547,11 +543,8 @@ static void ota_handle_transfer_exit(OtaSmCtx_t *sm)
 static void ota_downloading_entry(void *obj)
 {
     ARG_UNUSED(obj);
-    /* Suspend the periodic error-histogram NVS save for the whole block
-     * transfer: its settings/NVS/spi_nor chain runs on the system
-     * workqueue and, landing mid-upload, overflows the 1024 B workqueue
-     * stack while contending with the OTA writes on the same SPI-NOR. */
-    error_histogram_pause();
+    /* The OTA maintenance-arena claim remains held for this entire state, so
+     * periodic histogram NVS persistence is already suspended. */
 #ifdef CONFIG_FLASH_LOG
     flash_log_pause();
 #endif
@@ -566,7 +559,6 @@ static void ota_downloading_exit(void *obj)
 #ifdef CONFIG_FLASH_LOG
     flash_log_resume();
 #endif
-    error_histogram_resume();
     UDS_LogPush_SetSuspended(false);
 }
 
@@ -635,6 +627,8 @@ static void ota_handle_routine_control(OtaSmCtx_t *sm)
             UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
                          UDS_NRC_CONDITIONS_NOT_CORRECT);
         } else {
+            /* The OTA arena claim still owns the histogram hold while this
+             * full-image validation and trailer staging access slot1. */
             Status_t rc = validateSlot1();
             if (0 != rc) {
                 LOG_ERR("OTA activate: slot1 validate failed %d", rc);
@@ -643,7 +637,6 @@ static void ota_handle_routine_control(OtaSmCtx_t *sm)
                 UDS_SendNegativeResponse(ctx, UDS_SID_ROUTINE_CONTROL,
                              UDS_NRC_CONDITIONS_NOT_CORRECT);
             } else {
-                error_histogram_pause();
 #ifdef CONFIG_FLASH_LOG
                 /* boot_request_upgrade writes MCUBoot trailer sectors;
                  * holding the log writer off prevents SPI contention
@@ -660,7 +653,6 @@ static void ota_handle_routine_control(OtaSmCtx_t *sm)
 #ifdef CONFIG_FLASH_LOG
                 flash_log_resume();
 #endif
-                error_histogram_resume();
                 if (0 != rc) {
                     OP_ERROR_DETAIL(OP_ERR_FLASH, (uint32_t)(-rc));
                     UDS_SendNegativeResponse(

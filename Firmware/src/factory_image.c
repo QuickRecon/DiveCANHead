@@ -417,9 +417,7 @@ static Status_t do_capture(void)
     } else {
         get_state()->capture_in_progress = true;
         set_long_op(true);
-
         result = capture_sequence();
-
         set_long_op(false);
         get_state()->capture_in_progress = false;
         get_state()->chunk = NULL;
@@ -845,7 +843,6 @@ Status_t factory_image_restore_to_slot1(void)
     } else {
         get_state()->capture_in_progress = true;
         set_long_op(true);
-
         Status_t rc = copy_backend_to_slot1();
         if (0 != rc) {
             result = rc;
