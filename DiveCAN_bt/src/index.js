@@ -27,7 +27,17 @@ export {
 export {
   OP_ERRORS, OP_ERROR_COUNT, decodeErrorHistogram, summarizeErrorHistogram
 } from './errors/ErrorHistogram.js';
-export { LogDownloader, LOG_TIMEOUTS } from './logs/LogDownloader.js';
+export {
+  LogDownloader,
+  LogDownloadIncompleteError,
+  LogResumeMismatchError,
+  LOG_DOWNLOAD_MAX_BYTES,
+  LOG_PROGRESS_INTERVAL_MS,
+  LOG_PROGRESS_MIN_BYTES,
+  LOG_RETRY_DEFAULTS,
+  LOG_TIMEOUTS
+} from './logs/LogDownloader.js';
+export { MemoryLogDownloadStore, OPFSLogDownloadStore } from './logs/LogDownloadStore.js';
 export {
   parseLogStream, parseDclgHeader, decodeRecord, makeRecordCounter,
   decodeBootMarker, decodeDiveMarker, decodeCanFrame, decodeLogText, decodeConsensus

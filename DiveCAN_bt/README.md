@@ -115,9 +115,8 @@ await stack.ota.activate();
 // Download a flash log
 const { raw } = await stack.logs.downloadLog({ selector: (d) => d.selectLatestBoot(0) });
 
-// Download every telemetry boot still retained in the circular flash log and
-// merge the overlapping boot ranges locally. No firmware update is required.
-const { raw: allRaw, records } = await stack.logs.downloadAllBoots({ stream: 0 });
+// Download every telemetry record still retained in one walk-free stream.
+const { raw: allRaw, records } = await stack.logs.downloadAll({ stream: 0 });
 ```
 
 ### CANable over Web Serial
@@ -131,9 +130,14 @@ ISO-TP variant in the browser; it does not use SLIP or the Petrel bridge.
 ```javascript
 import { CanableProtocolStack } from './src/index.js';
 
-// Defaults: serial 115200 baud, CAN 125 kbit/s, dialog client 0xFE,
+// Defaults: Web Serial line-coding value 115200, CAN 125 kbit/s, dialog client 0xFE,
 // broadcast-log client 0xFF, head 0x04.
 const stack = new CanableProtocolStack();
+
+// The diagnostics page exposes 115200/1M/2M/3M for benchmarking. It is also
+// configurable here. On a native USB CDC ACM CANable this value may be ignored
+// by the device rather than controlling a physical UART.
+const benchmarkStack = new CanableProtocolStack({ canable: { baudRate: 1000000 } });
 
 stack.on('logMessage', message => console.log('HEAD:', message));
 stack.on('error', error => console.error(error));
@@ -148,6 +152,52 @@ const result = await stack.ota.updateFirmware(imageBytes, {
 });
 console.log(result);
 ```
+
+Direct USB-CAN log downloads request the head's full 253-byte response body;
+the 61-byte limit remains the default only for the Petrel BLE bridge. For a
+large/full-ring browser download, stream into the Origin Private File System
+instead of accumulating the log in the JavaScript heap:
+
+```javascript
+import { OPFSLogDownloadStore } from './src/index.js';
+
+const selection = { stream: 0, mode: 'allBoots', id: null };
+const resumeKey = JSON.stringify(selection);
+const store = await OPFSLogDownloadStore.create({ selection, resumeKey });
+
+const result = await stack.logs.downloadAllResumable({
+  stream: 0,
+  store,
+  resumeKey,
+  expectedBytes: 48 * 1024 * 1024,
+  onProgress: ({
+    saved, transferred, replayed, resumeBytes, rateKiBps, averageKiBps, etaSeconds
+  }) => {
+    console.log({
+      saved, transferred, replayed, resumeBytes,
+      rateKiBps, averageKiBps, etaSeconds
+    });
+  },
+  onRetry: ({ nextAttempt, delayMs, partialBytes }) => {
+    console.log(`retry ${nextAttempt} in ${delayMs} ms; ${partialBytes} bytes saved`);
+  }
+});
+console.log(await result.store.getFile());
+console.log(result.metrics); // final elapsed time, smoothed rate, average rate
+```
+
+After a transient failure the selector restarts at byte zero (the protocol has
+no offset request). The client verifies the retransmitted bytes against the
+saved disk prefix. If a full ring advanced during a head reboot, it can resume
+only after finding a unique overlap and verifying continuity through the saved
+boundary. Missing, ambiguous, or changed overlap aborts with
+`LOG_RESUME_MISMATCH`; the partial file is left untouched for inspection or
+export. The diagnostics page lists these complete and partial OPFS artifacts
+and provides explicit Inspect, Resume, and Export controls. It displays the
+smoothed transfer rate in KiB/s and, for select-all downloads, an ETA to the
+48 MiB telemetry or 8 MiB text ring capacity. The final average rate and the
+selected Web Serial baud value are retained in the artifact metadata and the
+diagnostics message log for comparison between benchmark runs.
 
 Web Serial requires a secure context; `http://localhost` is accepted for local
 development. Disconnect any other active CAN controller/diagnostic client

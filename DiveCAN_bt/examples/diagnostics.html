@@ -904,6 +904,15 @@
     <div class="button-group">
       <button id="scanButton">Scan & Connect</button>
       <button id="usbConnectButton">Connect USB-CAN</button>
+      <label style="display:inline-flex;align-items:center;gap:6px;color:#ccc;font-size:13px;">
+        USB baud
+        <select id="usbBaudSelect" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+          <option value="115200" selected>115,200</option>
+          <option value="1000000">1,000,000</option>
+          <option value="2000000">2,000,000</option>
+          <option value="3000000">3,000,000</option>
+        </select>
+      </label>
       <button id="disconnectButton" disabled>Disconnect</button>
       <span class="status disconnected" id="connectionStatus">Disconnected</span>
       <span id="streamStatusDetail" style="color: #888; font-size: 13px;"></span>
@@ -1390,6 +1399,21 @@
           <button id="logExportCsv" class="small" disabled>Export CSV</button>
           <button id="logExportBin" class="small" disabled>Export .bin</button>
         </div>
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #444;">
+          <div style="color:#ccc;font-size:13px;margin-bottom:7px;">Saved and partial downloads (browser disk storage)</div>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <select id="logStoredSelect" disabled
+              style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;min-width:360px;max-width:100%;">
+              <option>No saved downloads</option>
+            </select>
+            <button id="logInspectStored" class="small" disabled>Inspect saved</button>
+            <button id="logResumeStored" class="small" disabled>Resume partial</button>
+            <button id="logExportStoredBin" class="small" disabled>Export saved .bin</button>
+          </div>
+          <div id="logStoredInfo" style="margin-top:7px;color:#888;font-size:13px;">
+            Partial data remains available after cancellation, a timeout, or a head restart.
+          </div>
+        </div>
       </div>
 
       <div class="tab-section">
@@ -1565,11 +1589,11 @@
   </div>
 
   <script type="module">
-    import { DeviceManager, CanableProtocolStack, Logger } from '../src/index.js';
+    import { DeviceManager, CanableProtocolStack, Logger, OPFSLogDownloadStore } from '../src/index.js';
     import { DataStore } from '../src/diagnostics/DataStore.js';
     import { PlotManager } from '../src/diagnostics/PlotManager.js';
     import { CellUIAdapter } from '../src/diagnostics/CellUIAdapter.js';
-    import { ALL_READ_DIDS, EXTRA_READ_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT, UDS_SESSION_PROGRAMMING, AUTOTUNE_STATE_DONE, AUTOTUNE_STATE_ABORTED } from '../src/uds/constants.js';
+    import { ALL_READ_DIDS, EXTRA_READ_DIDS, getControlStateDIDs, getCellDIDs, CELL_STATUS_NAMES, SETTING_KIND_TEXT, UDS_SESSION_PROGRAMMING, AUTOTUNE_STATE_DONE, AUTOTUNE_STATE_ABORTED, FL_TYPE_DIVE_START, LOG_STREAM_TELEMETRY } from '../src/uds/constants.js';
     import { parseMcubootImage, formatVersion } from '../src/firmware/McubootImage.js';
     import { parseLogStream, decodeRecord } from '../src/logs/LogParser.js';
     import { toJSON as logToJSON, toCSV as logToCSV, toRawBin as logToRawBin, triggerDownload } from '../src/logs/LogExport.js';
@@ -1627,6 +1651,7 @@
     const elements = {
       scanButton: document.getElementById('scanButton'),
       usbConnectButton: document.getElementById('usbConnectButton'),
+      usbBaudSelect: document.getElementById('usbBaudSelect'),
       disconnectButton: document.getElementById('disconnectButton'),
       connectionStatus: document.getElementById('connectionStatus'),
       deviceInfo: document.getElementById('deviceInfo'),
@@ -1690,6 +1715,7 @@
     const updateUIState = (connected) => {
       elements.scanButton.disabled = connected;
       elements.usbConnectButton.disabled = connected;
+      elements.usbBaudSelect.disabled = connected;
       elements.disconnectButton.disabled = !connected;
 
       if (connected) {
@@ -2711,57 +2737,180 @@
     let logRaw = null;
     let logRecords = [];
     let logAbort = null;
+    let logStats = null;
+    let retainedDiveCount = null;
+    let logStore = null;
+    let logInspectionComplete = false;
+    let storedLogDownloads = [];
+    const LOG_RING_CAPACITY_BYTES = {
+      0: 48 * 1024 * 1024,
+      1: 8 * 1024 * 1024
+    };
 
     const setLogProgress = (pct) => { $('logProgressFill').style.width = `${pct}%`; };
+
+    const formatLogBytes = (bytes) => {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
+    };
+
+    const formatLogDuration = (seconds) => {
+      if (!Number.isFinite(seconds) || seconds < 0) return 'unknown';
+      const rounded = Math.ceil(seconds);
+      const hours = Math.floor(rounded / 3600);
+      const minutes = Math.floor((rounded % 3600) / 60);
+      const secs = rounded % 60;
+      return hours > 0
+        ? `${hours}h ${String(minutes).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`
+        : `${minutes}m ${String(secs).padStart(2, '0')}s`;
+    };
+
+    const formatLogRate = (rateKiBps) => Number.isFinite(rateKiBps)
+      ? `${rateKiBps.toFixed(2)} KiB/s`
+      : 'measuring rate';
+
+    const selectedStoredDownload = () => storedLogDownloads.find(
+      entry => entry.store.id === $('logStoredSelect').value) || null;
+
+    const updateStoredLogButtons = () => {
+      const selected = selectedStoredDownload();
+      $('logStoredSelect').disabled = storedLogDownloads.length === 0;
+      $('logInspectStored').disabled = !selected;
+      $('logExportStoredBin').disabled = !selected;
+      $('logResumeStored').disabled = !selected || selected.metadata.complete || !stack || Boolean(logAbort);
+      if (selected) {
+        const state = selected.metadata.complete ? 'Complete' : 'Partial';
+        const attempts = selected.metadata.attempts ? `, ${selected.metadata.attempts} attempt(s)` : '';
+        const metrics = selected.metadata.transferMetrics;
+        const benchmark = Number.isFinite(metrics?.averageKiBps)
+          ? `, avg ${formatLogRate(metrics.averageKiBps)}`
+          : '';
+        const baud = selected.metadata.serialBaud ? ` @ ${Number(selected.metadata.serialBaud).toLocaleString()} baud` : '';
+        $('logStoredInfo').textContent = `${state}: ${formatLogBytes(selected.metadata.bytes || 0)}` +
+          `${attempts}${benchmark}${baud}. ` +
+          (selected.metadata.complete
+            ? 'Inspect to parse records, or export the disk file directly.'
+            : 'Resume safely replays and verifies this prefix before appending; inspect/export remain available now.');
+      } else {
+        $('logStoredInfo').textContent = OPFSLogDownloadStore.isSupported()
+          ? 'Partial data remains available after cancellation, a timeout, or a head restart.'
+          : 'Browser disk storage (OPFS) is unavailable; resumable full-log downloads are disabled.';
+      }
+    };
+
+    const refreshStoredLogDownloads = async (preferredId = null) => {
+      storedLogDownloads = await OPFSLogDownloadStore.list();
+      const select = $('logStoredSelect');
+      const previous = preferredId || select.value;
+      select.innerHTML = '';
+      if (storedLogDownloads.length === 0) {
+        const option = document.createElement('option');
+        option.textContent = 'No saved downloads';
+        select.appendChild(option);
+      } else {
+        for (const { store, metadata } of storedLogDownloads) {
+          const option = document.createElement('option');
+          option.value = store.id;
+          const selection = metadata.selection || {};
+          const streamName = selection.stream === 1 ? 'text' : 'telemetry';
+          const state = metadata.complete ? 'complete' : 'PARTIAL';
+          option.textContent = `${state} - ${streamName}/${selection.mode || 'unknown'} - ` +
+            `${formatLogBytes(metadata.bytes || 0)} - ${metadata.updatedAt || metadata.createdAt || store.id}`;
+          select.appendChild(option);
+        }
+        if (storedLogDownloads.some(entry => entry.store.id === previous)) select.value = previous;
+      }
+      updateStoredLogButtons();
+    };
+
+    const renderLogStats = () => {
+      if (!logStats) {
+        if (retainedDiveCount == null) {
+          $('logStatsGrid').innerHTML = '<div class="field-inactive">(no stats)</div>';
+        } else {
+          renderKV($('logStatsGrid'), [
+            ['Exact retained-dive count', String(retainedDiveCount)]
+          ]);
+        }
+        return;
+      }
+      renderKV($('logStatsGrid'), [
+        ['Telemetry boot ID', String(logStats.telemetry.bootIdCurrent)],
+        ['Latest retained dive ID', logStats.telemetry.diveIdLatest == null
+          ? 'Unknown (0xF280 index value unavailable)'
+          : String(logStats.telemetry.diveIdLatest)],
+        ['Exact retained-dive count', retainedDiveCount == null
+          ? 'Unavailable (complete telemetry download required)'
+          : String(retainedDiveCount)],
+        ['Telemetry sectors', `${logStats.telemetry.sectorsFree}/${logStats.telemetry.sectorsTotal} free`],
+        ['Telemetry drops', String(logStats.telemetry.dropsSinceBoot)],
+        ['Text boot ID', String(logStats.text.bootIdCurrent)],
+        ['Text sectors', `${logStats.text.sectorsFree}/${logStats.text.sectorsTotal} free`]
+      ]);
+    };
 
     const logRefreshStats = async () => {
       try {
         $('logMessage').textContent = 'Reading stats...';
-        const stats = await stack.logs.readStats();
-        if (!stats) { $('logStatsGrid').innerHTML = '<div class="field-inactive">(no stats)</div>'; return; }
-        renderKV($('logStatsGrid'), [
-          ['Telemetry boot id', String(stats.telemetry.bootIdCurrent)],
-          ['Telemetry dive', String(stats.telemetry.diveIdLatest)],
-          ['Telemetry sectors', `${stats.telemetry.sectorsFree}/${stats.telemetry.sectorsTotal} free`],
-          ['Telemetry drops', String(stats.telemetry.dropsSinceBoot)],
-          ['Text boot id', String(stats.text.bootIdCurrent)],
-          ['Text sectors', `${stats.text.sectorsFree}/${stats.text.sectorsTotal} free`]
-        ]);
+        retainedDiveCount = null;
+        logStats = await stack.logs.readStats();
+        renderLogStats();
         $('logMessage').textContent = '';
       } catch (e) { $('logMessage').textContent = 'Stats failed: ' + e.message; }
     };
 
-    const currentSelector = () => {
-      const stream = Number($('logStreamSelect').value);
-      const mode = $('logSelectorSelect').value;
-      const id = Number($('logSelectorId').value);
+    const currentLogSelection = () => ({
+      stream: Number($('logStreamSelect').value),
+      mode: $('logSelectorSelect').value,
+      id: Number($('logSelectorId').value)
+    });
+
+    const selectorFor = ({ stream, mode, id }) => {
+      if (mode === 'allBoots') return (d) => d.selectAll(stream);
       if (mode === 'latestBoot') return (d) => d.selectLatestBoot(stream);
       if (mode === 'latestDive') return (d) => d.selectLatestDive(stream);
       if (mode === 'byBoot') return (d) => d.selectByBoot(id, stream);
       return (d) => d.selectByDive(id, stream);
     };
 
+    const currentSelector = () => selectorFor(currentLogSelection());
+
+    const logResumeKey = ({ stream, mode, id }) => JSON.stringify({
+      stream,
+      mode,
+      id: ['byBoot', 'byDive'].includes(mode) ? id : null
+    });
+
+    const applyLogSelection = (selection) => {
+      $('logStreamSelect').value = String(selection.stream);
+      $('logSelectorSelect').value = selection.mode;
+      $('logSelectorId').value = String(selection.id ?? 0);
+      $('logSelectorId').disabled = !stack || !['byBoot', 'byDive'].includes(selection.mode);
+    };
+
     const logResolve = async () => {
       try {
-        if ($('logSelectorSelect').value === 'allBoots') {
-          $('logMessage').textContent = 'Reading retained boot range...';
-          const stats = await stack.logs.readStats();
-          const stream = Number($('logStreamSelect').value);
-          const s = stream === 1 ? stats?.text : stats?.telemetry;
-          $('logSelectorInfo').textContent = s
-            ? `boot ids ${s.bootIdOldest}-${s.bootIdCurrent}; downloads each retained boot and merges locally`
-            : 'Stats unavailable';
-          $('logMessage').textContent = '';
-          return;
-        }
+        const mode = $('logSelectorSelect').value;
+        const stream = Number($('logStreamSelect').value);
         $('logMessage').textContent = 'Resolving (first selector builds the index, up to ~40s)...';
-        await currentSelector()(stack.logs);
-        const sel = await stack.logs.readSelectorResult();
+        const sel = mode === 'latestDive'
+          ? await stack.logs.resolveLatestDive(stream)
+          : await stack.logs.resolveSelection({ stream, selector: currentSelector() });
         if (!sel || sel.status < 0) {
           $('logSelectorInfo').textContent = `No match (status ${sel ? sel.status : '?'})`;
+        } else if (mode === 'latestDive') {
+          const latestId = sel.latestRetainedDiveId;
+          const estimate = sel.entryCount > 0 ? ` Selection contains approximately ${sel.entryCount} records.` : '';
+          $('logSelectorInfo').textContent = latestId == null
+            ? `Latest retained dive ID: unavailable (0xF281 returned no ID).${estimate}`
+            : `Latest retained dive ID: ${latestId}.${estimate}`;
+        } else if (mode === 'allBoots') {
+          $('logSelectorInfo').textContent =
+            'All retained records selected. Exact retained-dive count remains unknown until a complete telemetry download.';
         } else {
           $('logSelectorInfo').textContent =
-            `stream ${sel.stream}: ids ${sel.startId}-${sel.endId}, ${sel.entryCount} entries, ${sel.totalBytes} bytes`;
+            `Selection resolved for stream ${sel.stream}; approximately ${sel.entryCount} records (${sel.totalBytes} byte estimate).`;
         }
         $('logMessage').textContent = '';
       } catch (e) {
@@ -2770,39 +2919,195 @@
       }
     };
 
-    const logDownload = async () => {
+    const inspectStoredLog = async () => {
+      const selected = selectedStoredDownload();
+      if (!selected) return;
+      try {
+        $('logMessage').textContent = 'Reading the saved file from browser disk storage...';
+        logStore = selected.store;
+        logRaw = await selected.store.getBytes();
+        logRecords = parseLogStream(logRaw);
+        logInspectionComplete = Boolean(selected.metadata.complete);
+        retainedDiveCount = null;
+        if (logInspectionComplete && selected.metadata.selection?.mode === 'allBoots' &&
+            selected.metadata.selection?.stream === LOG_STREAM_TELEMETRY) {
+          retainedDiveCount = logRecords.filter(record => record.type === FL_TYPE_DIVE_START).length;
+          renderLogStats();
+        }
+        renderLogRecords();
+        for (const id of ['logExportJson', 'logExportCsv', 'logExportBin']) $(id).disabled = false;
+        const prefix = logInspectionComplete ? 'Complete download' : 'PARTIAL download';
+        const suffix = logInspectionComplete
+          ? ''
+          : ' Only complete records are shown; an incomplete trailing record is retained in the .partial.bin file.';
+        $('logMessage').textContent = `${prefix}: ${formatLogBytes(logRaw.length)}, ` +
+          `${logRecords.length} complete records.${suffix}`;
+      } catch (e) {
+        $('logMessage').textContent = `Saved-log inspection failed: ${e.message}`;
+      }
+    };
+
+    const exportStoredLogBin = async (entry = selectedStoredDownload()) => {
+      if (!entry) return;
+      const complete = Boolean(entry.metadata.complete);
+      const stream = entry.metadata.selection?.stream === 1 ? 'text' : 'telemetry';
+      const suffix = complete ? '.bin' : '.partial.bin';
+      triggerDownload(`divecan-${stream}-log${suffix}`, await entry.store.getFile());
+    };
+
+    const logDownload = async (resumeStore = null) => {
+      if (!stack) {
+        $('logMessage').textContent = 'Connect over USB-CAN before starting or resuming a download.';
+        return;
+      }
       logAbort = new AbortController();
       $('logDownloadButton').disabled = true;
       $('logCancelButton').disabled = false;
+      $('logResumeStored').disabled = true;
       setLogProgress(0);
+      logRaw = null;
+      logRecords = [];
+      logStore = null;
+      logInspectionComplete = false;
+      retainedDiveCount = null;
+      renderLogStats();
+      renderLogRecords();
+      for (const id of ['logExportJson', 'logExportCsv', 'logExportBin']) $(id).disabled = true;
+      let store = resumeStore;
+      let benchmarkBaud = null;
+      let latestProgress = null;
       try {
-        $('logMessage').textContent = 'Downloading...';
-        const stream = Number($('logStreamSelect').value);
-        const allBoots = $('logSelectorSelect').value === 'allBoots';
-        const progress = ({ received, records, entryCount }) => {
-          // Walk-free select-all reports no entry-count estimate (total unknown),
-          // so drive the bar off bytes/records; a selective download may still
-          // carry an entry_count estimate.
-          if (entryCount > 0) setLogProgress(Math.min(100, (records / entryCount) * 100));
-          const estimateSuffix = entryCount ? ` / ~${entryCount}` : '';
-          $('logMessage').textContent = `${records}${estimateSuffix} records, ${received} bytes...`;
+        if (!OPFSLogDownloadStore.isSupported()) {
+          throw new Error('This browser does not provide origin-private file storage (OPFS)');
+        }
+        let selection;
+        let metadata = null;
+        const serialBaud = stack.canable?.options?.baudRate ?? null;
+        benchmarkBaud = serialBaud;
+        let expectedBytes = null;
+        if (store) {
+          metadata = await store.getMetadata();
+          selection = metadata.selection;
+          if (!selection) throw new Error('Saved partial has no selector metadata');
+          expectedBytes = metadata.expectedBytes || null;
+          applyLogSelection(selection);
+        } else {
+          selection = currentLogSelection();
+          expectedBytes = selection.mode === 'allBoots'
+            ? LOG_RING_CAPACITY_BYTES[selection.stream]
+            : null;
+          store = await OPFSLogDownloadStore.create({
+            selection,
+            resumeKey: logResumeKey(selection),
+            transport: serialBaud === null ? 'ble' : 'usb-can',
+            serialBaud,
+            expectedBytes,
+            requestedBlock: stack.logs.maxChunk
+          });
+          await refreshStoredLogDownloads(store.id);
+        }
+        if (expectedBytes === null && selection.mode === 'allBoots') {
+          expectedBytes = LOG_RING_CAPACITY_BYTES[selection.stream];
+        }
+        await store.setMetadata({
+          serialBaud,
+          expectedBytes,
+          benchmarkStartedAt: new Date().toISOString()
+        });
+        logStore = store;
+        const allBoots = selection.mode === 'allBoots';
+        const progress = (sample) => {
+          latestProgress = sample;
+          const {
+            saved, transferred, replayed, resumeBytes, attempt, rateKiBps, etaSeconds
+          } = sample;
+          const performance = ` · ${formatLogRate(rateKiBps)}` +
+            (etaSeconds == null ? '' : ` · capacity ETA ${formatLogDuration(etaSeconds)}`);
+          if (expectedBytes) setLogProgress(Math.min(100, (saved / expectedBytes) * 100));
+          if (resumeBytes > 0 && replayed < resumeBytes) {
+            $('logMessage').textContent = `Attempt ${attempt}: verifying saved prefix ` +
+              `${formatLogBytes(replayed)} / ${formatLogBytes(resumeBytes)}${performance}`;
+          } else {
+            $('logMessage').textContent = `Attempt ${attempt}: ${formatLogBytes(saved)} saved to disk ` +
+              `(${formatLogBytes(transferred)} received this attempt)${performance}`;
+          }
+        };
+        const onRetry = ({ nextAttempt, delayMs, partialBytes, error }) => {
+          $('logMessage').textContent = `Transfer interrupted (${error.message}). ` +
+            `${formatLogBytes(partialBytes)} remains saved; retry ${nextAttempt} starts in ` +
+            `${Math.ceil(delayMs / 1000)}s and will verify it before appending.`;
         };
         const result = allBoots
-          ? await stack.logs.downloadAll({ stream, signal: logAbort.signal, onProgress: progress })
-          : await stack.logs.downloadLog({ stream, selector: currentSelector(), signal: logAbort.signal, onProgress: progress });
-        logRaw = result.raw;
-        logRecords = result.records || parseLogStream(logRaw);
-        renderLogRecords();
+          ? await stack.logs.downloadAllResumable({
+            stream: selection.stream, store, resumeKey: logResumeKey(selection),
+            signal: logAbort.signal, expectedBytes, onProgress: progress, onRetry
+          })
+          : await stack.logs.downloadLogResumable({
+            stream: selection.stream, selector: selectorFor(selection), store,
+            resumeKey: logResumeKey(selection), signal: logAbort.signal,
+            expectedBytes, onProgress: progress, onRetry
+          });
+        logStore = result.store;
+        logInspectionComplete = true;
         setLogProgress(100);
-        $('logMessage').textContent = `Done: ${logRaw.length} bytes, ${logRecords.length} records.`;
-        for (const id of ['logExportJson', 'logExportCsv', 'logExportBin']) $(id).disabled = false;
+        const averageRate = formatLogRate(result.metrics?.averageKiBps);
+        $('logMessage').textContent = `Complete: ${formatLogBytes(result.bytes)} saved to browser disk ` +
+          `in ${result.attempts} attempt(s), average ${averageRate}. ` +
+          `Inspect it to parse records, or export the .bin directly.`;
+        addToLogMessages(`[WEB] Log download complete: ${formatLogBytes(result.bytes)}, ` +
+          `average ${averageRate}` +
+          (serialBaud === null ? '' : `, Web Serial setting ${Number(serialBaud).toLocaleString()} baud`));
+        $('logExportBin').disabled = false;
+        await refreshStoredLogDownloads(store.id);
       } catch (e) {
-        $('logMessage').textContent = `Download failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '');
+        const partialStore = e?.partial?.store || store;
+        let partialBytes = e?.partial?.bytes ?? 0;
+        if (partialStore) {
+          logStore = partialStore;
+          partialBytes = await partialStore.size();
+          if (latestProgress?.averageKiBps != null) {
+            const partialMetrics = {
+              elapsedMs: latestProgress.elapsedMs,
+              expectedBytes: latestProgress.expectedBytes,
+              rateKiBps: latestProgress.rateKiBps,
+              averageKiBps: latestProgress.averageKiBps,
+              etaSeconds: latestProgress.etaSeconds,
+              transferred: latestProgress.transferred
+            };
+            await partialStore.setMetadata({
+              transferMetrics: partialMetrics,
+              benchmarkEndedAt: new Date().toISOString()
+            });
+            addToLogMessages(`[WEB] Log download partial: ${formatLogBytes(partialBytes)} saved, ` +
+              `average ${formatLogRate(partialMetrics.averageKiBps)}` +
+              (benchmarkBaud === null ? '' :
+                `, Web Serial setting ${Number(benchmarkBaud).toLocaleString()} baud`));
+          }
+          await refreshStoredLogDownloads(partialStore.id);
+          $('logExportBin').disabled = partialBytes === 0;
+        }
+        const saved = `${formatLogBytes(partialBytes)} remains saved and can be inspected or exported`;
+        if (e?.name === 'AbortError') {
+          $('logMessage').textContent = `Download cancelled; ${saved}.`;
+        } else if (e?.code === 'LOG_RESUME_MISMATCH') {
+          $('logMessage').textContent = `Resume stopped safely: ${e.message}. ${saved}; incompatible bytes were not appended.`;
+        } else if (e?.code === 'LOG_DOWNLOAD_INCOMPLETE') {
+          $('logMessage').textContent = `Download incomplete: ${e.message}. ${saved}.`;
+        } else {
+          $('logMessage').textContent = `Download failed after automatic retry: ${e.message}` +
+            (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : '') + `. ${saved}.`;
+        }
       } finally {
-        $('logDownloadButton').disabled = false;
+        $('logDownloadButton').disabled = !stack;
         $('logCancelButton').disabled = true;
         logAbort = null;
+        updateStoredLogButtons();
       }
+    };
+
+    const resumeStoredLog = async () => {
+      const selected = selectedStoredDownload();
+      if (selected && !selected.metadata.complete) await logDownload(selected.store);
     };
 
     const formatDetailValue = (v) => {
@@ -2835,15 +3140,18 @@
       }
       $('logSelectorId').disabled = !on || !['byBoot', 'byDive'].includes($('logSelectorSelect').value);
       if (!on) {
-        for (const id of ['logExportJson', 'logExportCsv', 'logExportBin', 'logCancelButton']) $(id).disabled = true;
+        $('logCancelButton').disabled = true;
         $('logStatsGrid').innerHTML = '<div class="field-inactive">(Connect to read log stats)</div>';
         $('logSelectorInfo').textContent = '';
-        $('logMessage').textContent = '';
-        $('logRecordBody').innerHTML = '';
-        $('logRecordCount').textContent = '0';
-        setLogProgress(0);
-        logRaw = null; logRecords = [];
+        logStats = null;
+        retainedDiveCount = null;
       }
+      // Inspection and export are deliberately independent of the live link:
+      // a partial artifact must remain useful while the head is rebooting.
+      $('logExportJson').disabled = logRaw === null;
+      $('logExportCsv').disabled = logRaw === null;
+      $('logExportBin').disabled = logRaw === null && logStore === null;
+      updateStoredLogButtons();
     };
 
 
@@ -3701,15 +4009,28 @@
     elements.usbConnectButton.addEventListener('click', async () => {
       try {
         if (!navigator.serial) throw new Error('Web Serial is not available in this browser');
+        const serialBaud = Number(elements.usbBaudSelect.value);
         const usbStack = new CanableProtocolStack({
           sourceAddress: 0xFE,
           logAddress: 0xFF,
-          targetAddress: 0x04
+          targetAddress: 0x04,
+          canable: { baudRate: serialBaud, verifyConnection: true }
         });
-        await connectStack(usbStack, 'CANable USB (dialog 0xFE, logs 0xFF)');
+        await connectStack(
+          usbStack,
+          `CANable USB @ ${serialBaud.toLocaleString()} baud (dialog 0xFE, logs 0xFF)`
+        );
       } catch (error) {
         stack = null;
         updateUIState(false);
+        const attemptedBaud = Number(elements.usbBaudSelect.value);
+        const fallback = attemptedBaud === 115200
+          ? 'Unplug/replug the CANable, then reconnect.'
+          : 'The selector has been reset to 115,200; reconnect to retry at the conservative setting.';
+        if (attemptedBaud !== 115200) elements.usbBaudSelect.value = '115200';
+        elements.deviceInfo.textContent = `USB-CAN connection failed: ${error.message}. ${fallback}`;
+        addToLogMessages(`[WEB] USB-CAN connection failed at ${attemptedBaud.toLocaleString()} baud: ` +
+          `${error.message}. ${fallback}`, true);
         console.error('USB-CAN connection failed:', error);
       }
     });
@@ -3776,8 +4097,12 @@
     // Logs tab
     $('logStatsButton').addEventListener('click', logRefreshStats);
     $('logResolveButton').addEventListener('click', logResolve);
-    $('logDownloadButton').addEventListener('click', logDownload);
+    $('logDownloadButton').addEventListener('click', () => logDownload());
     $('logCancelButton').addEventListener('click', () => logAbort?.abort());
+    $('logStoredSelect').addEventListener('change', updateStoredLogButtons);
+    $('logInspectStored').addEventListener('click', inspectStoredLog);
+    $('logResumeStored').addEventListener('click', resumeStoredLog);
+    $('logExportStoredBin').addEventListener('click', () => exportStoredLogBin());
     $('logSelectorSelect').addEventListener('change', () => {
       $('logSelectorId').disabled = !['byBoot', 'byDive'].includes($('logSelectorSelect').value) || !stack;
     });
@@ -3795,9 +4120,18 @@
       try { await stack.logs.eraseLog(mask); $('logMessage').textContent = 'Log erased.'; await logRefreshStats(); }
       catch (e) { $('logMessage').textContent = `Erase failed: ${e.message}` + (e.nrc != null ? ` (NRC 0x${e.nrc.toString(16)})` : ''); }
     });
-    $('logExportJson').addEventListener('click', () => triggerDownload('divecan-log.json', logToJSON(logRecords), 'application/json'));
-    $('logExportCsv').addEventListener('click', () => triggerDownload('divecan-log.csv', logToCSV(logRecords), 'text/csv'));
-    $('logExportBin').addEventListener('click', () => logRaw && triggerDownload('divecan-log.bin', logToRawBin(logRaw)));
+    $('logExportJson').addEventListener('click', () => triggerDownload(
+      logInspectionComplete ? 'divecan-log.json' : 'divecan-log.partial.json',
+      logToJSON(logRecords), 'application/json'));
+    $('logExportCsv').addEventListener('click', () => triggerDownload(
+      logInspectionComplete ? 'divecan-log.csv' : 'divecan-log.partial.csv',
+      logToCSV(logRecords), 'text/csv'));
+    $('logExportBin').addEventListener('click', async () => {
+      const stored = storedLogDownloads.find(entry => entry.store.id === logStore?.id);
+      if (stored) await exportStoredLogBin(stored);
+      else if (logRaw) triggerDownload(
+        logInspectionComplete ? 'divecan-log.bin' : 'divecan-log.partial.bin', logToRawBin(logRaw));
+    });
 
     // Control tab buttons
     elements.triggerCalButton.addEventListener('click', triggerCalibration);
@@ -3841,6 +4175,9 @@
 
     // Initialize tabs
     initTabs();
+    refreshStoredLogDownloads().catch(error => {
+      $('logStoredInfo').textContent = `Saved-download storage unavailable: ${error.message}`;
+    });
 
     // Initialize
     if (checkBrowserSupport()) {

@@ -97,6 +97,19 @@ describe('IsoTpCanTransport', () => {
     expect(t.isIdle).toBe(true);
   });
 
+  it('reset() rejects a send waiting for flow control and leaves the transport reusable', async () => {
+    const can = new Can(), t = new IsoTpCanTransport(can);
+    const pending = t.send(new Uint8Array(12).fill(0x36));
+    while (can.sent.length === 0) await new Promise(r => setTimeout(r, 0));
+
+    t.reset();
+
+    await expect(pending).rejects.toThrow(/transport reset/);
+    expect(t.isIdle).toBe(true);
+    await t.send([0x10, 0x03]);
+    expect(can.sent.at(-1).data[0]).toBe(3);
+  });
+
   it('ignores frames from a non-target source once a target is fixed', () => {
     const can = new Can(), t = new IsoTpCanTransport(can, { targetAddress: 0x04 }), got = vi.fn();
     t.on('message', got);

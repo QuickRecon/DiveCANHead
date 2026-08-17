@@ -40,7 +40,8 @@ export class IsoTpCanTransport extends Emitter {
   _handleFlowControl(data, source) {
     if (this.fcWaiter && (source === this.targetAddress || source === 0xFF)) {
       const w = this.fcWaiter, status = data[0] & 15;
-      this._clearFC();
+      clearTimeout(w.timer);
+      this.fcWaiter = null;
       if (status === 0) { w.resolve({ blockSize: data[1], stmin: data[2] }); }
       else { w.reject(new Error(`ISO-TP flow control status ${status}`)); }
     }
@@ -72,12 +73,26 @@ export class IsoTpCanTransport extends Emitter {
     }
   }
   _waitFC() {
-    if (this.fcWaiter) { this.fcWaiter.reject(new Error('Flow-control waiter replaced')); }
-    return new Promise((resolve, reject) => { const timer = setTimeout(() => { this.fcWaiter = null; reject(new Error('ISO-TP flow-control timeout')); }, this.fcTimeout); this.fcWaiter = { resolve, reject, timer }; });
+    this._clearFC(new Error('Flow-control waiter replaced'));
+    const promise = new Promise((resolve, reject) => {
+      const waiter = { resolve, reject, timer: null };
+      waiter.timer = setTimeout(() => {
+        if (this.fcWaiter === waiter) this.fcWaiter = null;
+        reject(new Error('ISO-TP flow-control timeout'));
+      }, this.fcTimeout);
+      this.fcWaiter = waiter;
+    });
+    // sendFrame() is awaited before _send() awaits this promise. Attach a
+    // rejection observer immediately so a concurrent disconnect/reset cannot
+    // surface as an unhandled promise rejection in that small window.
+    promise.catch(() => {});
+    return promise;
   }
-  _clearFC() {
-    if (this.fcWaiter) { clearTimeout(this.fcWaiter.timer); }
+  _clearFC(error = null) {
+    const waiter = this.fcWaiter;
+    if (waiter) { clearTimeout(waiter.timer); }
     this.fcWaiter = null;
+    if (waiter && error) waiter.reject(error);
   }
   _armRx() { clearTimeout(this.rxTimer); this.rxTimer = setTimeout(() => this._resetRx(new Error('ISO-TP receive timeout')), this.rxTimeout); }
   _resetRx(error) { clearTimeout(this.rxTimer); this.rx = null; if (error) this.emit('error', error); }
@@ -88,5 +103,5 @@ export class IsoTpCanTransport extends Emitter {
     return result;
   }
   _delay(ms) { return ms ? new Promise(r => setTimeout(r, ms)) : Promise.resolve(); }
-  reset() { this._resetRx(); this._clearFC(); } get state() { return this.rx ? 'RECEIVING' : 'IDLE'; } get isIdle() { return !this.rx && !this.fcWaiter; }
+  reset() { this._resetRx(); this._clearFC(new Error('ISO-TP transport reset')); this.sendChain = null; } get state() { return this.rx ? 'RECEIVING' : 'IDLE'; } get isIdle() { return !this.rx && !this.fcWaiter; }
 }

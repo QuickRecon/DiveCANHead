@@ -4,6 +4,7 @@ import { UDSClient } from './uds/UDSClient.js';
 import { OTAManager } from './firmware/OTAManager.js';
 import { LogDownloader } from './logs/LogDownloader.js';
 import { UDSError } from './errors/ProtocolErrors.js';
+import { LOG_DOWNLOAD_DEFAULT_BLOCK } from './uds/constants.js';
 
 /** Protocol stack for direct USB-CAN access through an slcan CANable. */
 export class CanableProtocolStack {
@@ -23,7 +24,18 @@ export class CanableProtocolStack {
     });
     this._uds = new UDSClient(this._transport, options.uds);
     this._ota = new OTAManager(this._uds, options.ota);
-    this._logs = new LogDownloader(this._uds, options.logs);
+    const logOptions = options.logs || {};
+    // Direct ISO-TP/CAN can receive the firmware's full 253-byte log body.
+    // The 61-byte default exists only for the Petrel BLE bridge's reassembly
+    // limit and otherwise multiplies full-ring UDS round trips by ~4. A block
+    // should arrive in well under a second on 125-kbit/s CAN; use a conservative
+    // 10-second direct-link timeout so a reboot is detected 30 seconds sooner
+    // than the BLE-oriented default and automatic recovery can begin.
+    this._logs = new LogDownloader(this._uds, {
+      ...logOptions,
+      maxChunk: logOptions.maxChunk ?? LOG_DOWNLOAD_DEFAULT_BLOCK,
+      timeouts: { ...logOptions.timeouts, block: logOptions.timeouts?.block ?? 10000 }
+    });
     this._disconnectCount = 0;
     this._handset = {
       enabled: options.handsetEmulation !== false,
@@ -34,7 +46,10 @@ export class CanableProtocolStack {
       timer: null
     };
     this._can.on('frame', frame => this._observeHandsetFrame(frame));
-    this._can.on('connected', (...a) => this.emit('connected', ...a));
+    this._can.on('connected', (...a) => {
+      this._uds.setTransportAvailable(true);
+      this.emit('connected', ...a);
+    });
     this._can.on('disconnected', (...a) => this._handleCanDisconnect(...a));
     this._can.on('error', (...a) => this.emit('error', ...a));
     this._transport.on('error', e => this.emit('error', e));
@@ -52,6 +67,7 @@ export class CanableProtocolStack {
     this._ota.on('stagingRetry', p => this.emit('otaStagingRetry', p));
     this._ota.on('staleDownload', p => this.emit('otaStaleDownload', p));
     this._logs.on('progress', p => this.emit('logProgress', p));
+    this._logs.on('retry', p => this.emit('logRetry', p));
     this._logs.on('done', p => this.emit('logDownloadDone', p));
   }
   on(e, cb) {
@@ -75,7 +91,13 @@ export class CanableProtocolStack {
   setTargetAddress(address) { this._transport.setTargetAddress(address); this._logTransport.setTargetAddress(address); }
   get targetAddress() { return this._transport.targetAddress; }
   get isConnected() { return this._can.isConnected; }
-  get connectionInfo() { return this.isConnected ? { device: 'CANable (Web Serial)', transportState: this._transport.state } : null; }
+  get connectionInfo() {
+    return this.isConnected ? {
+      device: 'CANable (Web Serial)',
+      serialBaud: this._can.options.baudRate,
+      transportState: this._transport.state
+    } : null;
+  }
   get canable() { return this._can; } get transport() { return this._transport; } get logTransport() { return this._logTransport; } get uds() { return this._uds; }
   get ota() { return this._ota; } get logs() { return this._logs; }
   async readSerialNumber() { return this._uds.readSerialNumber(); }
@@ -88,7 +110,7 @@ export class CanableProtocolStack {
     this._stopHandsetGuardian();
     this._transport.reset();
     this._logTransport.reset();
-    this._uds.abortPending(
+    this._uds.setTransportAvailable(false,
       new UDSError('USB-CAN link lost', 0, null, { disconnected: true }));
     this.emit('disconnected', ...args);
   }

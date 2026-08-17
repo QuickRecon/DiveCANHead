@@ -6,6 +6,14 @@ describe('CanableProtocolStack split addressing', () => {
     const stack = new CanableProtocolStack();
     expect(stack.transport.sourceAddress).toBe(0xFE);
     expect(stack.logTransport.sourceAddress).toBe(0xFF);
+    expect(stack.logs.maxChunk).toBe(253);
+    expect(stack.logs.timeouts.block).toBe(10000);
+  });
+
+  it('allows explicit CANable log block and timeout overrides', () => {
+    const stack = new CanableProtocolStack({ logs: { maxChunk: 128, timeouts: { block: 1234 } } });
+    expect(stack.logs.maxChunk).toBe(128);
+    expect(stack.logs.timeouts.block).toBe(1234);
   });
 
   it('routes FF log pushes without presenting them to the dialog context', () => {
@@ -138,6 +146,7 @@ describe('CanableProtocolStack lifecycle & accessors', () => {
     expect(stack.isConnected).toBe(true);
     expect(stack.connectionInfo).toEqual({
       device: 'CANable (Web Serial)',
+      serialBaud: 115200,
       transportState: 'IDLE'
     });
   });

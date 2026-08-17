@@ -23,6 +23,7 @@ import {
   BOOL_VECTORS
 } from '../../tests/fixtures/did-test-vectors.js';
 import { STATE_DIDS, getDIDInfo } from './constants.js';
+import { UDSError } from '../errors/ProtocolErrors.js';
 
 describe('UDSClient', () => {
   let client;
@@ -527,6 +528,21 @@ describe('UDSClient', () => {
       const resp = await client.transferData(5, [0x01, 0x02]);
       expect(Array.from(transport.getLastSent())).toEqual([0x36, 5, 0x01, 0x02]);
       expect(Array.from(resp)).toEqual([0x76, 5, 0xAA, 0xBB]);
+    });
+
+    it('throttles repetitive TransferData request and response debug logs', async () => {
+      const throttled = new UDSClient(transport, { transferLogEvery: 3 });
+      const debug = vi.spyOn(throttled.logger, 'debug');
+      for (let seq = 1; seq <= 5; seq++) {
+        transport.queueResponse(buildTransferResponse(seq, [seq]));
+        await throttled.transferData(seq);
+      }
+
+      const requestLogs = debug.mock.calls.filter(([message]) => message.includes('SID=0x36'));
+      const responseLogs = debug.mock.calls.filter(([message]) => message.includes('SID=0x76'));
+      expect(requestLogs).toHaveLength(2); // blocks 1 and 4
+      expect(responseLogs).toHaveLength(2);
+      expect(requestLogs.map(([, details]) => details.transferBlock)).toEqual([1, 4]);
     });
 
     it('ignores a late TransferData response for a different sequence', async () => {
@@ -1047,6 +1063,33 @@ describe('UDSClient', () => {
       await new Promise(r => setTimeout(r, 0));
       client.abortPending(new Error('link went away'));
       await expect(inFlight).rejects.toThrow('link went away');
+    });
+
+    it('rejects new requests while unavailable and permits them after reconnect', async () => {
+      client.setTransportAvailable(false,
+        new UDSError('USB-CAN link lost', 0, null, { disconnected: true }));
+      const sendsBefore = transport.sentData.length;
+
+      await expect(client.readDataByIdentifier(0xF203)).rejects.toMatchObject({
+        message: 'USB-CAN link lost',
+        details: { disconnected: true }
+      });
+      expect(transport.sentData).toHaveLength(sendsBefore);
+
+      client.setTransportAvailable(true);
+      transport.setResponder(() => buildRDBIResponse(0xF203, [0x09]));
+      await expect(client.readDataByIdentifier(0xF203)).resolves.toEqual(new Uint8Array([0x09]));
+    });
+
+    it('does not dispatch a request if the link drops during requestDelay', async () => {
+      client.requestDelay = 50;
+      client.lastRequestTime = Date.now();
+      const pending = client.readDataByIdentifier(0xF203);
+      await new Promise(r => setTimeout(r, 0));
+      client.setTransportAvailable(false);
+
+      await expect(pending).rejects.toMatchObject({ details: { disconnected: true } });
+      expect(transport.sentData).toHaveLength(0);
     });
   });
 });

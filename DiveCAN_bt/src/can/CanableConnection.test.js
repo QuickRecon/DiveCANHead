@@ -185,6 +185,59 @@ describe('CanableConnection.connect / disconnect', () => {
     await c.disconnect();
   });
 
+  it('verifies the adapter before opening CAN and reporting connected', async () => {
+    const port = new MockSerialPort();
+    const c = new CanableConnection({ verifyConnection: true, verifySettleMs: 0 });
+    const connected = vi.fn();
+    c.on('connected', connected);
+
+    const pending = c.connect(port);
+    await flush();
+    expect(port.writer.writtenText()).toBe('\rC\rS4\rV\r');
+    port.reader.push(new TextEncoder().encode('16e0746\r'));
+    await pending;
+
+    expect(port.writer.writtenText()).toBe('\rC\rS4\rV\rO\r');
+    expect(connected).toHaveBeenCalledTimes(1);
+    await c.disconnect();
+  });
+
+  it('does not open CAN or report connected when adapter verification times out', async () => {
+    const port = new MockSerialPort();
+    const c = new CanableConnection({
+      verifyConnection: true,
+      verifyTimeoutMs: 5,
+      verifySettleMs: 0,
+      baudRate: 3000000
+    });
+    const connected = vi.fn();
+    c.on('connected', connected);
+
+    await expect(c.connect(port)).rejects.toThrow(/3000000 baud/);
+
+    expect(port.writer.writtenText()).toBe('\rC\rS4\rV\r');
+    expect(connected).not.toHaveBeenCalled();
+    expect(c.isConnected).toBe(false);
+    expect(port.closed).toBe(true);
+  });
+
+  it('does not report connected if the serial read fails during verification', async () => {
+    const port = new MockSerialPort();
+    const c = new CanableConnection({ verifyConnection: true, verifyTimeoutMs: 100 });
+    const connected = vi.fn();
+    c.on('connected', connected);
+
+    const pendingConnect = c.connect(port);
+    await flush();
+    const pendingRead = port.reader.pending.shift();
+    port.reader.read = () => Promise.reject(new Error('device lost during connect'));
+    pendingRead({ value: new Uint8Array(), done: false });
+
+    await expect(pendingConnect).rejects.toThrow(/device lost during connect/);
+    expect(connected).not.toHaveBeenCalled();
+    expect(c.isConnected).toBe(false);
+  });
+
   it('acquires a port via requestPort when none is passed', async () => {
     const serial = new MockSerial();
     setSerial(serial);
@@ -270,5 +323,22 @@ describe('CanableConnection.connect / disconnect', () => {
     // Second disconnect: no port/reader/writer left, still emits
     await c.disconnect();
     expect(disconnected).toHaveBeenCalledTimes(2);
+  });
+
+  it('still clears state and emits disconnected when a lost port rejects close()', async () => {
+    const port = new MockSerialPort();
+    const c = new CanableConnection();
+    const disconnected = vi.fn();
+    c.on('disconnected', disconnected);
+    await c.connect(port);
+    port.close = vi.fn().mockRejectedValue(new DOMException('The device has been lost.', 'NetworkError'));
+
+    await expect(c.disconnect()).resolves.toBeUndefined();
+
+    expect(c.isConnected).toBe(false);
+    expect(c.port).toBeNull();
+    expect(c.reader).toBeNull();
+    expect(c.writer).toBeNull();
+    expect(disconnected).toHaveBeenCalledTimes(1);
   });
 });

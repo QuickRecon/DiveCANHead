@@ -148,6 +148,7 @@ export class DiveCANProtocolStack extends EventEmitter {
     // Forward connection events
     this._ble.on('connected', () => {
       this.logger.info('Protocol stack connected');
+      this._uds.setTransportAvailable(true);
       this.emit('connected');
     });
 
@@ -157,7 +158,7 @@ export class DiveCANProtocolStack extends EventEmitter {
       // Fail any in-flight / queued UDS exchange immediately so callers
       // (e.g. an OTA block transfer) react now instead of waiting out
       // their multi-second timeouts on a dead link.
-      this._uds.abortPending(
+      this._uds.setTransportAvailable(false,
         new UDSError('BLE link lost', 0, null, { disconnected: true }));
 
       this.emit('disconnected');

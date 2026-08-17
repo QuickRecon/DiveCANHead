@@ -65,6 +65,15 @@ export class UDSClient extends EventEmitter {
     this.pendingResponseMatcher = null;
     this.lastResponseTime = 0;
 
+    // TransferData is intentionally much chattier than ordinary diagnostics.
+    // Formatting two full hex dumps for every log block can dominate the main
+    // thread during a multi-megabyte download, so retain useful breadcrumbs
+    // without generating one UI/log entry per block.  At the USB log block
+    // size (253 bytes), 256 exchanges is approximately 64 KiB.
+    this.transferLogEvery = Math.max(1, options.transferLogEvery ?? 256);
+    this._transferRequestLogCount = 0;
+    this._transferResponseLogCount = 0;
+
     // Serialization queue. Concurrent callers (background DID polling +
     // user-driven settings reads / manual solenoid fire) take turns on the
     // single ISO-TP context instead of colliding. Overlapping sends clobber
@@ -76,6 +85,8 @@ export class UDSClient extends EventEmitter {
     // wait its turn.
     this._requestQueue = [];
     this._requestBusy = false;
+    this.transportAvailable = true;
+    this.transportUnavailableError = null;
 
     // Inter-request delay (ms) - allows Petrel ISO-TP layer to settle
     this.requestDelay = options.requestDelay ?? 0;
@@ -106,6 +117,10 @@ export class UDSClient extends EventEmitter {
    * @private
    */
   _sendRequest(request, timeout = 5000, responseMatcher = null) {
+    if (!this.transportAvailable) {
+      return Promise.reject(this._transportUnavailableReason());
+    }
+
     // Enqueue and pump. Callers are serialized rather than rejected: a
     // background poll and a user action can be issued at the same time and
     // simply take turns on the single ISO-TP context.
@@ -150,6 +165,7 @@ export class UDSClient extends EventEmitter {
    * @private
    */
   async _dispatchRequest(request, timeout, responseMatcher = null) {
+    if (!this.transportAvailable) throw this._transportUnavailableReason();
     if (this.pendingRequest) {
       // Should be unreachable now that _sendRequest serializes access; treated
       // as an assertion against a future serialization regression.
@@ -162,13 +178,27 @@ export class UDSClient extends EventEmitter {
     if (elapsed < this.requestDelay) {
       await new Promise(r => setTimeout(r, this.requestDelay - elapsed));
     }
+    // The link can disappear during the inter-request quiet period, after this
+    // job has left the visible queue but before it has armed pendingRequest.
+    if (!this.transportAvailable) throw this._transportUnavailableReason();
 
     const requestArray = ByteUtils.toUint8Array(request);
     const sid = requestArray[0];
 
-    this.logger.debug(`UDS request: SID=0x${sid.toString(16).padStart(2, '0')}`, {
-      request: ByteUtils.toHexString(requestArray)
-    });
+    if (sid === constants.SID_REQUEST_DOWNLOAD) {
+      this._transferRequestLogCount = 0;
+      this._transferResponseLogCount = 0;
+    }
+    const logRequest = sid !== constants.SID_TRANSFER_DATA ||
+      this._transferRequestLogCount++ % this.transferLogEvery === 0;
+    if (logRequest) {
+      this.logger.debug(`UDS request: SID=0x${sid.toString(16).padStart(2, '0')}`, {
+        request: ByteUtils.toHexString(requestArray),
+        ...(sid === constants.SID_TRANSFER_DATA
+          ? { transferBlock: this._transferRequestLogCount }
+          : {})
+      });
+    }
 
     return new Promise((resolve, reject) => {
       this.pendingRequest = requestArray;
@@ -229,6 +259,28 @@ export class UDSClient extends EventEmitter {
   }
 
   /**
+   * Gate new work when the physical transport is down. Unlike abortPending(),
+   * this state persists until the owning protocol stack reports a successful
+   * reconnect, preventing fallback/polling code from immediately starting a
+   * fresh ISO-TP exchange on a dead link.
+   * @param {boolean} available
+   * @param {Error} [reason]
+   */
+  setTransportAvailable(available, reason = null) {
+    this.transportAvailable = Boolean(available);
+    this.transportUnavailableError = this.transportAvailable ? null :
+      (reason ?? new UDSError('Transport unavailable', 0, null, { disconnected: true }));
+    if (!this.transportAvailable) {
+      this.abortPending(this.transportUnavailableError);
+    }
+  }
+
+  _transportUnavailableReason() {
+    return this.transportUnavailableError ??
+      new UDSError('Transport unavailable', 0, null, { disconnected: true });
+  }
+
+  /**
    * Handle UDS response
    * @private
    */
@@ -236,9 +288,17 @@ export class UDSClient extends EventEmitter {
     const sid = data[0];
     this.lastResponseTime = Date.now();
 
-    this.logger.debug(`UDS response: SID=0x${sid.toString(16).padStart(2, '0')}`, {
-      response: ByteUtils.toHexString(data)
-    });
+    const transferResponseSid = constants.SID_TRANSFER_DATA + 0x40;
+    const logResponse = sid !== transferResponseSid ||
+      this._transferResponseLogCount++ % this.transferLogEvery === 0;
+    if (logResponse) {
+      this.logger.debug(`UDS response: SID=0x${sid.toString(16).padStart(2, '0')}`, {
+        response: ByteUtils.toHexString(data),
+        ...(sid === transferResponseSid
+          ? { transferBlock: this._transferResponseLogCount }
+          : {})
+      });
+    }
 
     // Check for unsolicited WDBI (push from Head) - handle BEFORE checking pending
     if (sid === constants.SID_WRITE_DATA_BY_ID) {
