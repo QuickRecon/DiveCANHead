@@ -287,7 +287,10 @@ def test_latest_and_specific_dive_round_trip(dut) -> None:
         can_bus.send(can.Message(
             arbitration_id=DIVING_ID | 1,
             data=bytes([
-                0 if diving else 1,
+                # Field-observed DIVING_ID polarity: 1 = begin, 0 = end.
+                # Keep this literal wire fixture independent of the firmware
+                # decoder so a polarity regression fails the round-trip test.
+                1 if diving else 0,
                 (dive_number >> 8) & 0xFF,
                 dive_number & 0xFF,
                 (timestamp >> 24) & 0xFF,

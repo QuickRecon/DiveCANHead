@@ -753,7 +753,8 @@ static void RespShutdown(void)
 /**
  * @brief Handle DIVING_ID — publish dive state (number, timestamp, on/off) to chan_dive_state
  *
- * @param message Received DiveCAN message; byte 0 = diving flag, bytes 1-2 = dive number,
+ * @param message Received DiveCAN message; byte 0 = 1 for begin / 0 for end,
+ *                bytes 1-2 = dive number,
  *                bytes 3-6 = Unix timestamp (big-endian)
  */
 static void RespDiving(const DiveCANMessage_t *message)
@@ -766,10 +767,12 @@ static void RespDiving(const DiveCANMessage_t *message)
         ((uint32_t)message->data[5] << DIVECAN_BYTE_WIDTH) |
         (uint32_t)message->data[6];
 
-    /* Per the DiveCAN spec (QuickRecon/DiveCAN, Messaging/Device Metadata.md) byte 0:
-     * 0x00 = Begin (diving), 0x01 = End. (Was inverted — read 0x01 as begin.) */
+    /* Field testing overrides the reverse-engineered QuickRecon/DiveCAN
+     * Device Metadata.md table here: byte 0 is 0x01 for Begin and 0x00 for
+     * End.  Commit 388dc2d followed that table and inverted the observed wire
+     * meaning, which in turn swapped the flash-log DIVE_START/DIVE_END types. */
     DiveState_t state = {
-        .diving = (0U == message->data[0]),
+        .diving = (1U == message->data[0]),
         .dive_number = diveNumber,
         .unix_timestamp = unixTimestamp,
     };
