@@ -207,7 +207,7 @@ typedef enum {
  * HAS_O2_SOLENOID; otherwise the gains live in the struct as inert
  * placeholders so the layout stays variant-independent. */
 /** @brief Default PID proportional gain. */
-#define PID_DEFAULT_KP 1.0f
+#define PID_DEFAULT_KP 0.4f
 /** @brief Default PID integral gain. */
 #define PID_DEFAULT_KI 0.01f
 /** @brief Default PID derivative gain. */
