@@ -154,9 +154,11 @@ export function decimateChannel(time, values, n, t0, t1, buckets, gapS) {
     let any = false;
     while (cursor < to && time[cursor] < edge) {
       const v = values[cursor];
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
-      any = true;
+      if (Number.isFinite(v)) {
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+        any = true;
+      }
       ++cursor;
     }
     if (any) {
@@ -172,11 +174,13 @@ export function decimateChannel(time, values, n, t0, t1, buckets, gapS) {
   // bridging, so a channel whose nearest sample sits off-screen still reaches
   // the plot edge and the bridging pass can run all the way out to it.
   const last = buckets - 1;
-  if (out[0] === null && from > 0 && (t0 - time[from - 1]) <= gapS) {
+  if (out[0] === null && from > 0 && Number.isFinite(values[from - 1])
+      && (t0 - time[from - 1]) <= gapS) {
     out[0] = values[from - 1];
     out[1] = values[from - 1];
   }
-  if (out[last * 2] === null && to < n && (time[to] - t1) <= gapS) {
+  if (out[last * 2] === null && to < n && Number.isFinite(values[to])
+      && (time[to] - t1) <= gapS) {
     out[last * 2] = values[to];
     out[last * 2 + 1] = values[to];
   }

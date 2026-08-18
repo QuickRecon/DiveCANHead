@@ -67,6 +67,8 @@ ZTEST(flash_log_types, test_telemetry_type_codes)
     zassert_equal(FL_TYPE_PID_SNAPSHOT,    0x11);
     zassert_equal(FL_TYPE_SOLENOID_FIRE,   0x12);
     zassert_equal(FL_TYPE_SOLENOID_CURRENT, 0x13);
+    zassert_equal(FL_TYPE_ATMOS_PRESSURE,  0x14);
+    zassert_equal(FL_TYPE_POWER_SNAPSHOT,  0x15);
     zassert_equal(FL_TYPE_CELL_RAW_DIVEO2, 0x20);
     zassert_equal(FL_TYPE_CELL_RAW_O2S,    0x21);
     zassert_equal(FL_TYPE_CELL_RAW_ANALOG, 0x22);
@@ -115,6 +117,17 @@ ZTEST(flash_log_payloads, test_solenoid_fire_payload_size)
 {
     /* kind u8 + requested_on_us u32 + off_us u32 = 9 bytes packed. */
     zassert_equal(sizeof(fl_payload_solenoid_fire_t), 9U);
+}
+
+ZTEST(flash_log_payloads, test_atmos_pressure_payload_size)
+{
+    zassert_equal(sizeof(fl_payload_atmos_pressure_t), 2U);
+}
+
+ZTEST(flash_log_payloads, test_power_snapshot_payload_size)
+{
+    /* 5 x f32 + i32 + u32 + u16 + u8 + u8 = 32 bytes packed. */
+    zassert_equal(sizeof(fl_payload_power_snapshot_t), 32U);
 }
 
 ZTEST(flash_log_payloads, test_cell_diveo2_payload_size)

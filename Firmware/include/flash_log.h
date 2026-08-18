@@ -53,6 +53,8 @@ typedef enum {
     FL_TYPE_PID_SNAPSHOT        = 0x11, /* T */
     FL_TYPE_SOLENOID_FIRE       = 0x12, /* T */
     FL_TYPE_SOLENOID_CURRENT    = 0x13, /* T */
+    FL_TYPE_ATMOS_PRESSURE      = 0x14, /* T */
+    FL_TYPE_POWER_SNAPSHOT      = 0x15, /* T */
     FL_TYPE_CELL_RAW_DIVEO2     = 0x20, /* T */
     FL_TYPE_CELL_RAW_O2S        = 0x21, /* T */
     FL_TYPE_CELL_RAW_ANALOG     = 0x22, /* T */
@@ -150,6 +152,34 @@ typedef struct {
     int32_t  delta_ua;          /* fire_ua - baseline_ua (µA) */
 } FlashLogSolenoidCurrent_t;
 
+/* ---- Periodic power snapshot payload ----
+ *
+ * The voltage fields retain the power driver's float representation. Optional
+ * measurements use flags instead of overloading a numeric sentinel so log
+ * consumers can render a gap without losing the raw value that was observed.
+ */
+#define FL_POWER_BATTERY_VALID          (1U << 0)
+#define FL_POWER_VBUS_VALID             (1U << 1)
+#define FL_POWER_VCC_VALID              (1U << 2)
+#define FL_POWER_CAN_VALID              (1U << 3)
+#define FL_POWER_CURRENT_VALID          (1U << 4)
+#define FL_POWER_POSEIDON_PERCENT_VALID (1U << 5)
+#define FL_POWER_POSEIDON_PERCENT_FRESH (1U << 6)
+#define FL_POWER_LOW_BATTERY            (1U << 7)
+
+typedef struct {
+    Numeric_t vbus_voltage;
+    Numeric_t vcc_voltage;
+    Numeric_t battery_voltage;
+    Numeric_t can_voltage;
+    Numeric_t battery_threshold;
+    int32_t current_ua;          /**< Whole-device current, positive = draw */
+    uint32_t current_age_ms;
+    uint16_t poseidon_age_seconds;
+    uint8_t poseidon_percent;    /**< 0..100, or 0xFF when unavailable */
+    uint8_t flags;               /**< FL_POWER_* bitmask */
+} FlashLogPowerSnapshot_t;
+
 /* ---- Lifecycle ---- */
 
 /**
@@ -234,6 +264,12 @@ void flash_log_enqueue_solenoid_fire(const SolenoidFireEvent_t *evt);
 
 /** @brief Enqueue a closed-loop solenoid current-check result. */
 void flash_log_enqueue_solenoid_current(const FlashLogSolenoidCurrent_t *rec);
+
+/** @brief Enqueue atmospheric pressure received from the handset, in mbar. */
+void flash_log_enqueue_atmos_pressure(uint16_t pressure_mbar);
+
+/** @brief Enqueue the periodic rail/current/battery status snapshot. */
+void flash_log_enqueue_power_snapshot(const FlashLogPowerSnapshot_t *snapshot);
 
 /** @brief Enqueue a per-cell raw sample. */
 void flash_log_enqueue_cell_raw(const OxygenCellMsg_t *cell);

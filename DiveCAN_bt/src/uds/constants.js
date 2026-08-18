@@ -191,6 +191,8 @@ export const FL_TYPE_CONSENSUS = 0x10;
 export const FL_TYPE_PID_SNAPSHOT = 0x11;
 export const FL_TYPE_SOLENOID_FIRE = 0x12;
 export const FL_TYPE_SOLENOID_CURRENT = 0x13;
+export const FL_TYPE_ATMOS_PRESSURE = 0x14;
+export const FL_TYPE_POWER_SNAPSHOT = 0x15;
 export const FL_TYPE_CELL_RAW_DIVEO2 = 0x20;
 export const FL_TYPE_CELL_RAW_O2S = 0x21;
 export const FL_TYPE_CELL_RAW_ANALOG = 0x22;
@@ -215,6 +217,8 @@ export const FL_TYPE_NAMES = {
   0x11: 'PID Snapshot',
   0x12: 'Solenoid Fire',
   0x13: 'Solenoid Current',
+  0x14: 'Atmospheric Pressure',
+  0x15: 'Power Snapshot',
   0x20: 'Cell Raw (DiveO2)',
   0x21: 'Cell Raw (O2S)',
   0x22: 'Cell Raw (Analog)',
@@ -224,6 +228,16 @@ export const FL_TYPE_NAMES = {
   0xFE: 'Drop Marker',
   0xFF: 'End Of Stream'
 };
+
+/** POWER_SNAPSHOT validity/status bits (firmware FL_POWER_*). */
+export const FL_POWER_BATTERY_VALID = 1 << 0;
+export const FL_POWER_VBUS_VALID = 1 << 1;
+export const FL_POWER_VCC_VALID = 1 << 2;
+export const FL_POWER_CAN_VALID = 1 << 3;
+export const FL_POWER_CURRENT_VALID = 1 << 4;
+export const FL_POWER_POSEIDON_PERCENT_VALID = 1 << 5;
+export const FL_POWER_POSEIDON_PERCENT_FRESH = 1 << 6;
+export const FL_POWER_LOW_BATTERY = 1 << 7;
 
 /** Text-log verbosity levels (DID 0xF283). */
 export const LOG_LEVEL_NAMES = { 1: 'ERROR', 2: 'WARN', 3: 'INFO', 4: 'DEBUG' };

@@ -383,7 +383,7 @@ VBUS is modeled as a `regulator-fixed` device — the idiomatic Zephyr way to re
 
 ### Battery monitoring
 
-A dedicated thread samples battery voltage every 2 seconds and publishes `BatteryStatus_t` to `chan_battery_status` (voltage, threshold, low_battery flag). The low-battery threshold is **runtime-configurable**: the `BATTERY_CHEMISTRY_*` Kconfig is the boot default, but the active value comes from `RuntimeSettings_t.batteryType` (NVS-persisted under `rt/bat`, exposed as UDS settings index 7 — `9V` / `Li 1S` / `Li 2S` / `Li 3S`). The thread re-reads the threshold every iteration so a runtime change takes effect within one sample interval.
+A dedicated thread samples battery voltage every 2 seconds and publishes `BatteryStatus_t` to `chan_battery_status` (voltage, threshold, low_battery flag). When flash logging is enabled, the same thread records a combined power snapshot containing the available VBUS, VCC, battery and CAN voltages, whole-device current, and Poseidon gauge percentage. The low-battery threshold is **runtime-configurable**: the `BATTERY_CHEMISTRY_*` Kconfig is the boot default, but the active value comes from `RuntimeSettings_t.batteryType` (NVS-persisted under `rt/bat`, exposed as UDS settings index 7 — `9V` / `Li 1S` / `Li 2S` / `Li 3S`). The thread re-reads the threshold every iteration so a runtime change takes effect within one sample interval.
 
 Per design decision, **low-battery does not auto-trigger shutdown** — the warning is published to zbus and logged; the dive computer / surface tooling chooses the response.
 

@@ -10,11 +10,13 @@ import { describe, it, expect } from 'vitest';
 import {
   buildRecord, buildStream, bootMarkerPayload, diveMarkerPayload,
   consensusPayload, pidPayload, solenoidFirePayload, solenoidCurrentPayload,
+  atmosPressurePayload, powerSnapshotPayload,
   cellDiveO2Payload, cellO2SPayload, cellAnalogPayload, errorEventPayload,
   dropMarkerPayload
 } from '../../tests/fixtures/log-streams.js';
 import {
   decodeConsensus, decodePidSnapshot, decodeSolenoidFire, decodeSolenoidCurrent,
+  decodeAtmosPressure, decodePowerSnapshot,
   decodeCellDiveO2, decodeCellO2S, decodeCellAnalog, decodeErrorEvent,
   decodeDropMarker, decodeBootMarker, decodeRecord, unpackConsensusStatus,
   consensusStatusArray, consensusIncludeArray
@@ -29,8 +31,11 @@ import {
   FL_TYPE_BOOT_MARKER, FL_TYPE_DIVE_START, FL_TYPE_DIVE_END,
   FL_TYPE_CONSENSUS, FL_TYPE_PID_SNAPSHOT, FL_TYPE_SOLENOID_FIRE,
   FL_TYPE_SOLENOID_CURRENT, FL_TYPE_CELL_RAW_DIVEO2, FL_TYPE_CELL_RAW_O2S,
+  FL_TYPE_ATMOS_PRESSURE, FL_TYPE_POWER_SNAPSHOT,
   FL_TYPE_CELL_RAW_ANALOG, FL_TYPE_ERROR_EVENT, FL_TYPE_DROP_MARKER,
-  FL_CRASH_MAGIC
+  FL_CRASH_MAGIC, FL_POWER_BATTERY_VALID, FL_POWER_VBUS_VALID,
+  FL_POWER_VCC_VALID, FL_POWER_CURRENT_VALID,
+  FL_POWER_POSEIDON_PERCENT_VALID, FL_POWER_POSEIDON_PERCENT_FRESH
 } from '../uds/constants.js';
 
 const U8 = (arr) => new Uint8Array(arr);
@@ -89,6 +94,30 @@ describe('payload decoders', () => {
       .toEqual({ role: 1, classification: 2, baselineUa: -500, fireUa: 120000, deltaUa: 120500 });
   });
 
+  it('decodes atmospheric pressure and the validity-qualified power snapshot', () => {
+    expect(decodeAtmosPressure(U8(atmosPressurePayload(1234))))
+      .toEqual({ pressureMbar: 1234 });
+
+    const flags = FL_POWER_BATTERY_VALID | FL_POWER_VBUS_VALID |
+      FL_POWER_VCC_VALID | FL_POWER_CURRENT_VALID |
+      FL_POWER_POSEIDON_PERCENT_VALID | FL_POWER_POSEIDON_PERCENT_FRESH;
+    const d = decodePowerSnapshot(U8(powerSnapshotPayload({
+      vbusVoltage: 3.31, vccVoltage: 3.30, batteryVoltage: 8.2,
+      canVoltage: -1, batteryThreshold: 6, currentUa: 125000,
+      currentAgeMs: 87, poseidonAgeSeconds: 2, poseidonPercent: 73, flags
+    })));
+    expect(d.vbusVoltage).toBeCloseTo(3.31, 5);
+    expect(d.valid).toEqual({
+      battery: true, vbus: true, vcc: true, can: false,
+      current: true, poseidonPercent: true
+    });
+    expect(d.currentMa).toBe(125);
+    expect(d.powerW).toBeCloseTo(1.025, 5);
+    expect(d.poseidonPercent).toBe(73);
+    expect(d.poseidonFresh).toBe(true);
+    expect(d.lowBattery).toBe(false);
+  });
+
   it('decodes CELL_RAW_DIVEO2 raw fields and SI conversions', () => {
     const d = decodeCellDiveO2(U8(cellDiveO2Payload({
       cellIndex: 1, ppo2: 69, temperatureDc: 22921, errCode: 0, phase: 8832,
@@ -135,6 +164,8 @@ describe('payload decoders', () => {
     expect(decodePidSnapshot(U8(new Array(10).fill(0)))).toBeNull();
     expect(decodeSolenoidFire(U8(new Array(8).fill(0)))).toBeNull();
     expect(decodeSolenoidCurrent(U8(new Array(13).fill(0)))).toBeNull();
+    expect(decodeAtmosPressure(U8(new Array(1).fill(0)))).toBeNull();
+    expect(decodePowerSnapshot(U8(new Array(31).fill(0)))).toBeNull();
     expect(decodeCellDiveO2(U8(new Array(29).fill(0)))).toBeNull();
     expect(decodeCellO2S(U8(new Array(2).fill(0)))).toBeNull();
     expect(decodeCellAnalog(U8(new Array(7).fill(0)))).toBeNull();
@@ -147,6 +178,8 @@ describe('payload decoders', () => {
       [FL_TYPE_PID_SNAPSHOT, pidPayload()],
       [FL_TYPE_SOLENOID_FIRE, solenoidFirePayload(0, 1, 2)],
       [FL_TYPE_SOLENOID_CURRENT, solenoidCurrentPayload(0, 0, 0, 0, 0)],
+      [FL_TYPE_ATMOS_PRESSURE, atmosPressurePayload(1013)],
+      [FL_TYPE_POWER_SNAPSHOT, powerSnapshotPayload()],
       [FL_TYPE_CELL_RAW_DIVEO2, cellDiveO2Payload()],
       [FL_TYPE_CELL_RAW_O2S, cellO2SPayload(0, 0, 0)],
       [FL_TYPE_CELL_RAW_ANALOG, cellAnalogPayload(0, 0, 0, 0)],
@@ -221,6 +254,29 @@ describe('buildTelemetry', () => {
     expect(m.meta.surfaceMbar).toBeCloseTo(1013.0, 3);
     expect(c0.channels.depth.data[0]).toBeCloseTo(0, 3);
     expect(m.tables.diveo2_c1.channels.depth.data[0]).toBeCloseTo(6.0, 3);
+  });
+
+  it('plots handset pressure and power data while hiding unavailable fields', () => {
+    const flags = FL_POWER_BATTERY_VALID | FL_POWER_VBUS_VALID |
+      FL_POWER_VCC_VALID | FL_POWER_CURRENT_VALID |
+      FL_POWER_POSEIDON_PERCENT_VALID | FL_POWER_POSEIDON_PERCENT_FRESH;
+    const m = buildTelemetry(buildStream([
+      buildRecord(FL_TYPE_ATMOS_PRESSURE, atmosPressurePayload(1013), { tsUs: 1 * S }),
+      buildRecord(FL_TYPE_ATMOS_PRESSURE, atmosPressurePayload(1613), { tsUs: 2 * S }),
+      buildRecord(FL_TYPE_POWER_SNAPSHOT, powerSnapshotPayload({
+        vbusVoltage: 3.31, vccVoltage: 3.30, batteryVoltage: 8.2,
+        canVoltage: -1, batteryThreshold: 6, currentUa: 125000,
+        currentAgeMs: 87, poseidonAgeSeconds: 2, poseidonPercent: 73, flags
+      }), { tsUs: 2 * S })
+    ]));
+
+    expect(m.tables.atmos.channels.pressureMbar.data[0]).toBeCloseTo(1013, 3);
+    expect(m.tables.atmos.channels.depth.data[1]).toBeCloseTo(6, 3);
+    expect(m.tables.power.channels.batteryVoltage.data[0]).toBeCloseTo(8.2, 5);
+    expect(m.tables.power.channels.currentMa.data[0]).toBeCloseTo(125, 5);
+    expect(m.tables.power.channels.powerW.data[0]).toBeCloseTo(1.025, 5);
+    expect(m.tables.power.channels.poseidonPercent.data[0]).toBe(73);
+    expect(Number.isNaN(m.tables.power.channels.canVoltage.data[0])).toBe(true);
   });
 
   it('re-datums depth when the surface reference is overridden', () => {
@@ -458,6 +514,14 @@ describe('viewport decimation', () => {
     const out = decimateChannel(new Float64Array(0), new Float32Array(0), 0, 0, 10, 8, 1);
     expect(out).toHaveLength(16);
     expect(out.every((v) => v === null)).toBe(true);
+  });
+
+  it('renders invalid optional measurements as gaps, never infinities', () => {
+    const out = decimateChannel(
+      Float64Array.from([0, 1, 2]), Float32Array.from([NaN, 2, NaN]),
+      3, 0, 3, 3, 0
+    );
+    expect(out).toEqual([null, null, 2, 2, null, null]);
   });
 
   it('clamps the bucket count for degenerate widths', () => {

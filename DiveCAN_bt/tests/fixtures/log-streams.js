@@ -81,6 +81,20 @@ export function solenoidCurrentPayload(role, classification, baselineUa, fireUa,
   return [role, classification, ...i32le(baselineUa), ...i32le(fireUa), ...i32le(deltaUa)];
 }
 
+export function atmosPressurePayload(pressureMbar) {
+  return u16le(pressureMbar);
+}
+
+export function powerSnapshotPayload({
+  vbusVoltage = -1, vccVoltage = -1, batteryVoltage = -1, canVoltage = -1,
+  batteryThreshold = 0, currentUa = 0, currentAgeMs = 0xFFFFFFFF,
+  poseidonAgeSeconds = 0xFFFF, poseidonPercent = 0xFF, flags = 0
+} = {}) {
+  return [...f32le(vbusVoltage), ...f32le(vccVoltage), ...f32le(batteryVoltage),
+    ...f32le(canVoltage), ...f32le(batteryThreshold), ...i32le(currentUa),
+    ...u32le(currentAgeMs), ...u16le(poseidonAgeSeconds), poseidonPercent, flags];
+}
+
 export function cellDiveO2Payload({
   cellIndex = 0, ppo2 = 0, temperatureDc = 0, errCode = 0, phase = 0,
   intensity = 0, ambientLight = 0, pressureUhpa = 0, humidityMrh = 0

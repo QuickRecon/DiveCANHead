@@ -386,6 +386,19 @@ export function applySurfaceReference(model, surfaceMbar) {
   if (model.meta) model.meta.surfaceMbar = surfaceMbar;
 }
 
+/** Fill POWER_SNAPSHOT's derived watts channel from validity-filtered inputs. */
+function derivePowerChannels(tables) {
+  for (const table of Object.values(tables)) {
+    const watts = table.channels.powerW;
+    const volts = table.channels.batteryVoltage;
+    const milliamps = table.channels.currentMa;
+    if (!watts || !volts || !milliamps) continue;
+    for (let i = 0; i < table.n; ++i) {
+      watts.data[i] = volts.data[i] * milliamps.data[i] / 1000;
+    }
+  }
+}
+
 /**
  * Pair SOLENOID_FIRE start/end records into spans.
  *
@@ -594,7 +607,12 @@ export function buildTelemetry(input, opts = {}) {
           if (f.derived) continue; // filled after the surface datum is known
           let raw = READERS[f.read](bytes, off + f.off);
           if (f.bits) raw = (raw >> f.bits.shift) & f.bits.mask;
-          table.channels[f.key].data[i] = raw * f.scale;
+          let valid = true;
+          if (f.validBit !== undefined) {
+            valid = (bytes[off + decl.flagsOff] & f.validBit) !== 0;
+          }
+          if (f.validWhen === 'positive') valid = valid && raw > 0;
+          table.channels[f.key].data[i] = valid ? raw * f.scale : NaN;
         }
       }
     }
@@ -607,6 +625,8 @@ export function buildTelemetry(input, opts = {}) {
   report(0.88, 'Ordering samples…');
   let resorted = 0;
   for (const table of Object.values(tables)) resorted += sortTableByTime(table);
+
+  derivePowerChannels(tables);
 
   report(0.93, 'Deriving depth…');
   const surfaceMbar = estimateSurfaceMbar(tables);

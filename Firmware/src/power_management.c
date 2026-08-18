@@ -34,6 +34,10 @@
 #include "power_management.h"
 #include "errors.h"
 #include "common.h"
+#if defined(CONFIG_FLASH_LOG)
+#include "device_current.h"
+#include "flash_log.h"
+#endif
 #if defined(CONFIG_POSEIDON_ACCESSORIES)
 #include "poseidon_accessories.h"
 #endif
@@ -86,6 +90,67 @@ static const uint16_t BATTERY_DIVIDER_FRACTION_SCALE = 10U;
 
 /* zbus publish timeout for the periodic battery status message. */
 static const uint32_t BATTERY_PUBLISH_TIMEOUT_MS = 100U;
+
+#if defined(CONFIG_FLASH_LOG)
+/**
+ * @brief Capture the periodic voltage/current/gauge state in one log record.
+ *
+ * Runs from the battery-monitor thread, where the additional sensor reads are
+ * safe to perform. Keeping them out of a synchronous zbus listener prevents a
+ * slow ADC or sensor transaction from delaying every chan_battery_status
+ * publisher.
+ */
+static void enqueue_power_snapshot(const struct device *dev,
+                                   const BatteryStatus_t *battery)
+{
+    FlashLogPowerSnapshot_t snapshot = {
+        .vbus_voltage = power_get_vbus_voltage(dev),
+        .vcc_voltage = power_get_vcc_voltage(dev),
+        .battery_voltage = battery->voltage,
+        .can_voltage = power_get_can_voltage(dev),
+        .battery_threshold = battery->threshold,
+        .current_ua = 0,
+        .current_age_ms = UINT32_MAX,
+        .poseidon_age_seconds = UINT16_MAX,
+        .poseidon_percent = UINT8_MAX,
+        .flags = 0U,
+    };
+
+    if (snapshot.battery_voltage >= 0.0f) {
+        snapshot.flags |= FL_POWER_BATTERY_VALID;
+    }
+    if (snapshot.vbus_voltage >= 0.0f) {
+        snapshot.flags |= FL_POWER_VBUS_VALID;
+    }
+    if (snapshot.vcc_voltage >= 0.0f) {
+        snapshot.flags |= FL_POWER_VCC_VALID;
+    }
+    if (snapshot.can_voltage >= 0.0f) {
+        snapshot.flags |= FL_POWER_CAN_VALID;
+    }
+    if (battery->low_battery) {
+        snapshot.flags |= FL_POWER_LOW_BATTERY;
+    }
+    if (device_current_read(&snapshot.current_ua, &snapshot.current_age_ms)) {
+        snapshot.flags |= FL_POWER_CURRENT_VALID;
+    }
+
+#if defined(CONFIG_POSEIDON_ACCESSORIES)
+    PoseidonGaugeStatus_t gauge = {0};
+    poseidon_gauge_status(&gauge);
+    snapshot.poseidon_age_seconds = gauge.age_seconds;
+    if (gauge.ever_received) {
+        snapshot.poseidon_percent = gauge.percent;
+        snapshot.flags |= FL_POWER_POSEIDON_PERCENT_VALID;
+    }
+    if (gauge.fresh) {
+        snapshot.flags |= FL_POWER_POSEIDON_PERCENT_FRESH;
+    }
+#endif
+
+    flash_log_enqueue_power_snapshot(&snapshot);
+}
+#endif
 
 #if defined(CONFIG_SOC_FAMILY_STM32)
 /* STM32L4 reports a CAN_EN SHUTDOWN wake on this rig as PIN|BROWNOUT rather
@@ -930,6 +995,10 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
 
         zbus_pub_checked(&chan_battery_status, &status,
                  K_MSEC(BATTERY_PUBLISH_TIMEOUT_MS));
+
+#if defined(CONFIG_FLASH_LOG)
+        enqueue_power_snapshot(dev, &status);
+#endif
 
         if (status.low_battery) {
             /* Integer millivolts: whole = mv/1000, fraction = mv%1000.

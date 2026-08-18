@@ -64,6 +64,8 @@ and cell 1 keep their own sample times instead of being interleaved.
 |-------|----------|------|
 | Consensus (`0x10`) | Consensus PPO2, Setpoint, Confidence, Cell 0/1/2 PPO2 (voted), Cell 0/1/2 output, Cell 0/1/2 status, Cell 0/1/2 included | bar, mV, code |
 | PID (`0x11`) | Solenoid duty, PID integral, Saturation count, Setpoint | 0-1, counts, bar |
+| Atmospheric pressure (`0x14`) | Ambient pressure, **Depth** | mbar, m |
+| Power (`0x15`) | VBUS, VCC, battery and CAN voltage; low-battery threshold; device current and derived power; sample ages; Poseidon battery percentage/freshness; low-battery state | V, mA, W, s, %, code |
 | DiveO2 raw (`0x20`, per cell) | PPO2, Temperature, Error code, Phase, Intensity, Ambient light, Ambient pressure, Humidity, **Depth** | bar, °C, counts, mbar, %RH, m |
 | O2S raw (`0x21`, per cell) | PPO2, Status | bar, code |
 | Analog raw (`0x22`, per cell) | PPO2, Raw ADC, Cell output | bar, counts, mV |
@@ -90,8 +92,10 @@ If those field names are ever corrected in the firmware, update
 
 ### Derived depth
 
-`pressure_uhpa` is the ambient-pressure signal, and is the most useful derived
-channel:
+The dedicated `ATMOS_PRESSURE` record is the preferred ambient-pressure signal
+and makes depth available on analog and O2S heads too. DiveO2
+`pressure_uhpa` remains a second sensor-local pressure source. Both use the same
+derived channel:
 
 ```
 depth_m = (pressure_mbar - surface_mbar) / 100
@@ -168,10 +172,11 @@ Draw cost is therefore bounded by plot width, not by log length.
 ## Axes
 
 Series are grouped onto one scale per unit (PPO2/bar, duty, depth, pressure,
-temperature, humidity, mV, raw counts, status codes), alternating left and right
-so the gutters stay balanced. Depth is inverted. Any series can be reassigned to
-a different axis from the *Series* panel. Past four axis groups the text labels
-are dropped and the tick colour carries the association instead.
+temperature, humidity, cell mV, supply V/mA/W, battery %, sample age, raw counts,
+status codes), alternating left and right so the gutters stay balanced. Depth is
+inverted. Any series can be reassigned to a different axis from the *Series*
+panel. Past four axis groups the text labels are dropped and the tick colour
+carries the association instead.
 
 ## CLI companion
 

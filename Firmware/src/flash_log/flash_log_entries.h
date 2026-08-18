@@ -94,6 +94,25 @@ typedef struct {
     int32_t  delta_ua;          /* fire_ua - baseline_ua (µA) */
 } __packed fl_payload_solenoid_current_t;
 
+/** @brief Payload for FL_TYPE_ATMOS_PRESSURE. */
+typedef struct {
+    uint16_t pressure_mbar;
+} __packed fl_payload_atmos_pressure_t;
+
+/** @brief Payload for FL_TYPE_POWER_SNAPSHOT. */
+typedef struct {
+    Numeric_t vbus_voltage;
+    Numeric_t vcc_voltage;
+    Numeric_t battery_voltage;
+    Numeric_t can_voltage;
+    Numeric_t battery_threshold;
+    int32_t current_ua;
+    uint32_t current_age_ms;
+    uint16_t poseidon_age_seconds;
+    uint8_t poseidon_percent;
+    uint8_t flags;
+} __packed fl_payload_power_snapshot_t;
+
 /** @brief Payload for FL_TYPE_CELL_RAW_DIVEO2. */
 typedef struct {
     uint8_t  cell_index;

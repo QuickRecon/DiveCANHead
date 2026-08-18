@@ -19,9 +19,17 @@
 import {
   FL_TYPE_CONSENSUS,
   FL_TYPE_PID_SNAPSHOT,
+  FL_TYPE_ATMOS_PRESSURE,
+  FL_TYPE_POWER_SNAPSHOT,
   FL_TYPE_CELL_RAW_DIVEO2,
   FL_TYPE_CELL_RAW_O2S,
-  FL_TYPE_CELL_RAW_ANALOG
+  FL_TYPE_CELL_RAW_ANALOG,
+  FL_POWER_BATTERY_VALID,
+  FL_POWER_VBUS_VALID,
+  FL_POWER_VCC_VALID,
+  FL_POWER_CAN_VALID,
+  FL_POWER_CURRENT_VALID,
+  FL_POWER_POSEIDON_PERCENT_VALID
 } from '../uds/constants.js';
 import {
   PPO2_CBAR_PER_BAR,
@@ -48,6 +56,11 @@ export const AXES = {
   temperature: { key: 'temperature', label: 'Temperature', unit: '°C', side: 1, colour: '#ff7b72' },
   humidity: { key: 'humidity', label: 'Humidity', unit: '%RH', side: 1, colour: '#d2a8ff' },
   millivolts: { key: 'millivolts', label: 'Cell output', unit: 'mV', side: 1, colour: '#f0883e' },
+  voltage: { key: 'voltage', label: 'Supply voltage', unit: 'V', side: 1, colour: '#56d4dd' },
+  current: { key: 'current', label: 'Supply current', unit: 'mA', side: 1, colour: '#ff9ec6' },
+  power: { key: 'power', label: 'Supply power', unit: 'W', side: 1, colour: '#e3b341' },
+  percent: { key: 'percent', label: 'Battery', unit: '%', side: 1, colour: '#a2d2a0' },
+  age: { key: 'age', label: 'Sample age', unit: 's', side: 1, colour: '#c9a0ff' },
   counts: { key: 'counts', label: 'Raw counts', unit: 'counts', side: 1, colour: '#8b949e' },
   code: { key: 'code', label: 'Status / code', unit: '', side: 1, colour: '#a5a5a5' }
 };
@@ -244,6 +257,84 @@ const PID_FIELDS = [
   }
 ];
 
+/** Channel definitions for ATMOS_PRESSURE (0x14). */
+const ATMOS_FIELDS = [
+  {
+    key: 'pressureMbar', label: 'Atmospheric pressure', unit: 'mbar', axis: 'pressure',
+    off: 0, read: 'u16', scale: 1, validWhen: 'positive',
+    desc: 'Ambient pressure from chan_atmos_pressure (handset PPO2_ATMOS frame).'
+  },
+  {
+    key: 'depth', label: 'Depth', unit: 'm', axis: 'depth',
+    off: 0, read: 'u16', scale: 1, derived: 'depth',
+    desc: 'Derived from atmospheric pressure and the selected surface reference.'
+  }
+];
+
+/** Channel definitions for POWER_SNAPSHOT (0x15); validity bits live at byte 31. */
+const POWER_FIELDS = [
+  {
+    key: 'vbusVoltage', label: 'VBUS voltage', unit: 'V', axis: 'voltage',
+    off: 0, read: 'f32', scale: 1, validBit: FL_POWER_VBUS_VALID,
+    desc: 'Peripheral-bus rail voltage; unavailable readings render as gaps.'
+  },
+  {
+    key: 'vccVoltage', label: 'VCC voltage', unit: 'V', axis: 'voltage',
+    off: 4, read: 'f32', scale: 1, validBit: FL_POWER_VCC_VALID,
+    desc: 'MCU supply-rail voltage.'
+  },
+  {
+    key: 'batteryVoltage', label: 'Battery voltage', unit: 'V', axis: 'voltage',
+    off: 8, read: 'f32', scale: 1, validBit: FL_POWER_BATTERY_VALID,
+    desc: 'Primary battery measurement.'
+  },
+  {
+    key: 'canVoltage', label: 'CAN voltage', unit: 'V', axis: 'voltage',
+    off: 12, read: 'f32', scale: 1, validBit: FL_POWER_CAN_VALID,
+    desc: 'CAN-side supply voltage where sensing hardware is present.'
+  },
+  {
+    key: 'batteryThreshold', label: 'Low-battery threshold', unit: 'V', axis: 'voltage',
+    off: 16, read: 'f32', scale: 1,
+    desc: 'Threshold selected by the active battery chemistry setting.'
+  },
+  {
+    key: 'currentMa', label: 'Device current', unit: 'mA', axis: 'current',
+    off: 20, read: 'i32', scale: 1 / 1000, validBit: FL_POWER_CURRENT_VALID,
+    desc: 'Whole-device current; positive means draw from the supply.'
+  },
+  {
+    key: 'powerW', label: 'Battery power', unit: 'W', axis: 'power',
+    off: 20, read: 'i32', scale: 1, derived: 'power',
+    desc: 'Derived from battery voltage × whole-device current.'
+  },
+  {
+    key: 'currentAge', label: 'Current sample age', unit: 's', axis: 'age',
+    off: 24, read: 'u32', scale: 1 / 1000, validBit: FL_POWER_CURRENT_VALID,
+    desc: 'Age of the whole-device current sample when this snapshot was logged.'
+  },
+  {
+    key: 'poseidonAge', label: 'Poseidon gauge age', unit: 's', axis: 'age',
+    off: 28, read: 'u16', scale: 1, validBit: FL_POWER_POSEIDON_PERCENT_VALID,
+    desc: 'Age of the latest Poseidon battery-percentage frame.'
+  },
+  {
+    key: 'poseidonPercent', label: 'Poseidon battery', unit: '%', axis: 'percent',
+    off: 30, read: 'u8', scale: 1, validBit: FL_POWER_POSEIDON_PERCENT_VALID,
+    desc: 'Poseidon DS2782 fuel percentage when a gauge frame has been received.'
+  },
+  {
+    key: 'lowBattery', label: 'Low battery', unit: '', axis: 'code',
+    off: 31, read: 'u8', scale: 1, bits: { shift: 7, mask: 1 },
+    desc: '1 when battery voltage is below the configured threshold.'
+  },
+  {
+    key: 'poseidonFresh', label: 'Poseidon gauge fresh', unit: '', axis: 'code',
+    off: 31, read: 'u8', scale: 1, bits: { shift: 6, mask: 1 },
+    desc: '1 while the Poseidon percentage sample is within its freshness window.'
+  }
+];
+
 /**
  * Table declarations. `perCell` tables are split into one table per observed
  * cell index at build time; `cellOff` is the payload offset of the cell index.
@@ -256,6 +347,14 @@ export const TABLES = [
   {
     id: 'pid', type: FL_TYPE_PID_SNAPSHOT, label: 'PID',
     payloadLen: 11, fields: PID_FIELDS
+  },
+  {
+    id: 'atmos', type: FL_TYPE_ATMOS_PRESSURE, label: 'Atmospheric pressure',
+    payloadLen: 2, fields: ATMOS_FIELDS
+  },
+  {
+    id: 'power', type: FL_TYPE_POWER_SNAPSHOT, label: 'Power',
+    payloadLen: 32, flagsOff: 31, fields: POWER_FIELDS
   },
   {
     id: 'diveo2', type: FL_TYPE_CELL_RAW_DIVEO2, label: 'DiveO2 raw',

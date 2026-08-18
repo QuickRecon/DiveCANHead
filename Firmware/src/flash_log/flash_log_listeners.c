@@ -13,6 +13,7 @@
  *   - chan_dive_state     → FL_TYPE_DIVE_START / FL_TYPE_DIVE_END (mirrored)
  *   - chan_error          → FL_TYPE_ERROR_EVENT (telemetry)
  *   - chan_solenoid_fire  → FL_TYPE_SOLENOID_FIRE (telemetry)
+ *   - chan_atmos_pressure → FL_TYPE_ATMOS_PRESSURE (telemetry)
  *
  * chan_dive_state has an initial publish at zbus startup with dive_number = 0;
  * we filter it out so it doesn't show up as a spurious DIVE_END.
@@ -123,3 +124,17 @@ static void solenoid_fire_listener_cb(const struct zbus_channel *chan)
 
 ZBUS_LISTENER_DEFINE(fl_solenoid_fire_listener, solenoid_fire_listener_cb);
 ZBUS_CHAN_ADD_OBS(chan_solenoid_fire, fl_solenoid_fire_listener, 4);
+
+/* ---- chan_atmos_pressure ---- */
+
+static void atmos_pressure_listener_cb(const struct zbus_channel *chan)
+{
+    const uint16_t *pressure_mbar = zbus_chan_const_msg(chan);
+
+    if (pressure_mbar != NULL) {
+        flash_log_enqueue_atmos_pressure(*pressure_mbar);
+    }
+}
+
+ZBUS_LISTENER_DEFINE(fl_atmos_pressure_listener, atmos_pressure_listener_cb);
+ZBUS_CHAN_ADD_OBS(chan_atmos_pressure, fl_atmos_pressure_listener, 4);

@@ -732,6 +732,26 @@ ZTEST(flash_log_writer, test_telemetry_types_roundtrip_through_batch)
     };
     flash_log_enqueue_solenoid_current(&current);
     flash_log_enqueue_solenoid_current(NULL);
+
+    flash_log_enqueue_atmos_pressure(1234U);
+
+    FlashLogPowerSnapshot_t power = {
+        .vbus_voltage = 3.31f,
+        .vcc_voltage = 3.30f,
+        .battery_voltage = 8.15f,
+        .can_voltage = -1.0f,
+        .battery_threshold = 6.0f,
+        .current_ua = 125000,
+        .current_age_ms = 87U,
+        .poseidon_age_seconds = 2U,
+        .poseidon_percent = 73U,
+        .flags = FL_POWER_BATTERY_VALID | FL_POWER_VBUS_VALID |
+                 FL_POWER_VCC_VALID | FL_POWER_CURRENT_VALID |
+                 FL_POWER_POSEIDON_PERCENT_VALID |
+                 FL_POWER_POSEIDON_PERCENT_FRESH,
+    };
+    flash_log_enqueue_power_snapshot(&power);
+    flash_log_enqueue_power_snapshot(NULL);
     (void)k_msleep(BULK_ENQUEUE_GAP_MS);
 
     /* Three cell shapes: DiveO2 (ancillary fields), analog (raw_sample),
@@ -793,10 +813,33 @@ ZTEST(flash_log_writer, test_telemetry_types_roundtrip_through_batch)
     zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_PID_SNAPSHOT), 1U);
     zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_SOLENOID_FIRE), 1U);
     zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_SOLENOID_CURRENT), 1U);
+    zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_ATMOS_PRESSURE), 1U);
+    zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_POWER_SNAPSHOT), 1U);
     zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_DIVEO2), 4U);
     zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_ANALOG), 1U);
     zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_O2S), 1U);
     zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_ERROR_EVENT), 1U);
+
+    WalkQuery_t pressure_q = {.type = FL_TYPE_ATMOS_PRESSURE};
+    wq_run(FL_DEST_TELEMETRY, &pressure_q);
+    zassert_equal(pressure_q.last_len, sizeof(fl_payload_atmos_pressure_t));
+    fl_payload_atmos_pressure_t pressure_decoded = {0};
+    (void)memcpy(&pressure_decoded, pressure_q.last_payload,
+                 sizeof(pressure_decoded));
+    zassert_equal(pressure_decoded.pressure_mbar, 1234U);
+
+    WalkQuery_t power_q = {.type = FL_TYPE_POWER_SNAPSHOT};
+    wq_run(FL_DEST_TELEMETRY, &power_q);
+    zassert_equal(power_q.last_len, sizeof(fl_payload_power_snapshot_t));
+    fl_payload_power_snapshot_t power_decoded = {0};
+    (void)memcpy(&power_decoded, power_q.last_payload, sizeof(power_decoded));
+    zassert_within(power_decoded.battery_voltage, 8.15f, 0.001f);
+    zassert_within(power_decoded.vbus_voltage, 3.31f, 0.001f);
+    zassert_equal(power_decoded.current_ua, 125000);
+    zassert_equal(power_decoded.current_age_ms, 87U);
+    zassert_equal(power_decoded.poseidon_percent, 73U);
+    zassert_equal(power_decoded.poseidon_age_seconds, 2U);
+    zassert_equal(power_decoded.flags, power.flags);
 
     /* Field-level readback of the consensus record: the status/include
      * packing is a wire contract shared with the client decoder. */

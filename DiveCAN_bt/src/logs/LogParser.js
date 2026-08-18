@@ -26,11 +26,21 @@ import {
   FL_TYPE_PID_SNAPSHOT,
   FL_TYPE_SOLENOID_FIRE,
   FL_TYPE_SOLENOID_CURRENT,
+  FL_TYPE_ATMOS_PRESSURE,
+  FL_TYPE_POWER_SNAPSHOT,
   FL_TYPE_CELL_RAW_DIVEO2,
   FL_TYPE_CELL_RAW_O2S,
   FL_TYPE_CELL_RAW_ANALOG,
   FL_TYPE_ERROR_EVENT,
   FL_TYPE_DROP_MARKER,
+  FL_POWER_BATTERY_VALID,
+  FL_POWER_VBUS_VALID,
+  FL_POWER_VCC_VALID,
+  FL_POWER_CAN_VALID,
+  FL_POWER_CURRENT_VALID,
+  FL_POWER_POSEIDON_PERCENT_VALID,
+  FL_POWER_POSEIDON_PERCENT_FRESH,
+  FL_POWER_LOW_BATTERY,
   FL_CRASH_MAGIC,
   FL_TYPE_NAMES
 } from '../uds/constants.js';
@@ -46,6 +56,8 @@ const LEN_CONSENSUS = 14;
 const LEN_PID = 11;
 const LEN_SOLENOID_FIRE = 9;
 const LEN_SOLENOID_CURRENT = 14;
+const LEN_ATMOS_PRESSURE = 2;
+const LEN_POWER_SNAPSHOT = 32;
 const LEN_CELL_DIVEO2 = 30;
 const LEN_CELL_O2S = 3;
 const LEN_CELL_ANALOG = 8;   // packed: u8 + u8 + i32 + u16
@@ -406,6 +418,48 @@ export function decodeSolenoidCurrent(payload) {
   };
 }
 
+/** Decode ATMOS_PRESSURE -> the raw chan_atmos_pressure value in mbar. */
+export function decodeAtmosPressure(payload) {
+  const p = toBytes(payload);
+  if (p.length < LEN_ATMOS_PRESSURE) return null;
+  return { pressureMbar: readU16LE(p, 0) };
+}
+
+/** Decode the periodic voltage/current/Poseidon battery snapshot. */
+export function decodePowerSnapshot(payload) {
+  const p = toBytes(payload);
+  if (p.length < LEN_POWER_SNAPSHOT) return null;
+  const flags = p[31];
+  const currentUa = readI32LE(p, 20);
+  const batteryVoltage = readF32LE(p, 8);
+  const valid = {
+    battery: (flags & FL_POWER_BATTERY_VALID) !== 0,
+    vbus: (flags & FL_POWER_VBUS_VALID) !== 0,
+    vcc: (flags & FL_POWER_VCC_VALID) !== 0,
+    can: (flags & FL_POWER_CAN_VALID) !== 0,
+    current: (flags & FL_POWER_CURRENT_VALID) !== 0,
+    poseidonPercent: (flags & FL_POWER_POSEIDON_PERCENT_VALID) !== 0
+  };
+  return {
+    vbusVoltage: readF32LE(p, 0),
+    vccVoltage: readF32LE(p, 4),
+    batteryVoltage,
+    canVoltage: readF32LE(p, 12),
+    batteryThreshold: readF32LE(p, 16),
+    currentUa,
+    currentAgeMs: readU32LE(p, 24),
+    poseidonAgeSeconds: readU16LE(p, 28),
+    poseidonPercent: valid.poseidonPercent ? p[30] : null,
+    flags,
+    valid,
+    poseidonFresh: (flags & FL_POWER_POSEIDON_PERCENT_FRESH) !== 0,
+    lowBattery: (flags & FL_POWER_LOW_BATTERY) !== 0,
+    currentMa: valid.current ? currentUa / 1000 : null,
+    powerW: valid.current && valid.battery
+      ? batteryVoltage * currentUa / 1000000 : null
+  };
+}
+
 /**
  * Decode a CELL_RAW_DIVEO2 payload.
  *
@@ -500,6 +554,8 @@ export function decodeRecord(record) {
     case FL_TYPE_PID_SNAPSHOT: return decodePidSnapshot(record.payload);
     case FL_TYPE_SOLENOID_FIRE: return decodeSolenoidFire(record.payload);
     case FL_TYPE_SOLENOID_CURRENT: return decodeSolenoidCurrent(record.payload);
+    case FL_TYPE_ATMOS_PRESSURE: return decodeAtmosPressure(record.payload);
+    case FL_TYPE_POWER_SNAPSHOT: return decodePowerSnapshot(record.payload);
     case FL_TYPE_CELL_RAW_DIVEO2: return decodeCellDiveO2(record.payload);
     case FL_TYPE_CELL_RAW_O2S: return decodeCellO2S(record.payload);
     case FL_TYPE_CELL_RAW_ANALOG: return decodeCellAnalog(record.payload);

@@ -416,6 +416,33 @@ void flash_log_enqueue_solenoid_current(const FlashLogSolenoidCurrent_t *rec)
     }
 }
 
+void flash_log_enqueue_atmos_pressure(uint16_t pressure_mbar)
+{
+    fl_payload_atmos_pressure_t p = {
+        .pressure_mbar = pressure_mbar,
+    };
+    fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_ATMOS_PRESSURE, &p, sizeof(p));
+}
+
+void flash_log_enqueue_power_snapshot(const FlashLogPowerSnapshot_t *snapshot)
+{
+    if (snapshot != NULL) {
+        fl_payload_power_snapshot_t p = {
+            .vbus_voltage = snapshot->vbus_voltage,
+            .vcc_voltage = snapshot->vcc_voltage,
+            .battery_voltage = snapshot->battery_voltage,
+            .can_voltage = snapshot->can_voltage,
+            .battery_threshold = snapshot->battery_threshold,
+            .current_ua = snapshot->current_ua,
+            .current_age_ms = snapshot->current_age_ms,
+            .poseidon_age_seconds = snapshot->poseidon_age_seconds,
+            .poseidon_percent = snapshot->poseidon_percent,
+            .flags = snapshot->flags,
+        };
+        fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_POWER_SNAPSHOT, &p, sizeof(p));
+    }
+}
+
 void flash_log_enqueue_cell_raw(const OxygenCellMsg_t *cell)
 {
     /* DiveO2 cells fill the temp/err/phase/intensity/ambient/pressure/

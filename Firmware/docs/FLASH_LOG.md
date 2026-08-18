@@ -56,7 +56,7 @@ match the per-FCB sector counts in `flash_log.c`.
 
 | Stream    | What goes in                                                                          |
 |-----------|---------------------------------------------------------------------------------------|
-| Telemetry | Consensus snapshots, cell raw samples, PID snapshots, solenoid fire events, errors    |
+| Telemetry | Consensus/cell/PID, solenoid events, ambient pressure, power snapshots, errors         |
 | Text      | LOG_x messages (formatted via `log_output`)                                            |
 | Both      | BOOT_MARKER, DIVE_START, DIVE_END (mirrored so either stream can be partitioned alone) |
 
@@ -100,6 +100,8 @@ Followed by `length` bytes of type-specific payload (see
 | `0x10` | CONSENSUS         | telem   | 3× ppo2, 3× mV, packed status+include, confidence, setpoint |
 | `0x11` | PID_SNAPSHOT      | telem   | integral f32, saturation_count u16, duty f32, setpoint u8|
 | `0x12` | SOLENOID_FIRE     | telem   | kind u8 (0=start, 1=end), requested_on_us, off_us        |
+| `0x14` | ATMOS_PRESSURE    | telem   | pressure_mbar u16 (raw `chan_atmos_pressure` value)       |
+| `0x15` | POWER_SNAPSHOT    | telem   | rail/battery volts, threshold, current/age, Poseidon percent/age, validity flags |
 | `0x20` | CELL_RAW_DIVEO2   | telem   | idx, ppo2, temp_dC, err_code, phase, intensity, ambient, pressure_uhpa, humidity_mRH |
 | `0x21` | CELL_RAW_O2S      | telem   | idx, ppo2, status                                        |
 | `0x22` | CELL_RAW_ANALOG   | telem   | idx, ppo2, raw_adc i32, millivolts u16                   |
@@ -129,10 +131,23 @@ in the flash log subsystem itself.
 | Cell raw                | One per `chan_cell_N` publish (driver-determined; DiveO2/O2S ≈1 Hz, analog higher) |
 | PID                     | One per PID iteration (≈0.2 Hz)               |
 | Solenoid fire start/end | Two per fire cycle (≈0.4 Hz peak)             |
+| Atmospheric pressure    | One per `chan_atmos_pressure` publish          |
+| Power snapshot          | One per battery-monitor iteration (0.5 Hz)     |
 | Errors                  | One per `chan_error` publish                  |
 | Dive markers            | One per `DIVING_ID` CAN frame                 |
 | Boot marker             | One per boot                                  |
 | LOG_TEXT                | Subset of LOG_x output above runtime severity threshold |
+
+`POWER_SNAPSHOT` is a packed 32-byte payload in this order: VBUS, VCC,
+battery, CAN and low-battery-threshold `float32` values; whole-device current
+`int32` in µA (positive = draw); current age `uint32` in ms; Poseidon gauge age
+`uint16` in seconds; percentage `uint8`; and a `uint8` flags field. Flags bits
+0..7 respectively mean battery valid, VBUS valid, VCC valid, CAN valid,
+current valid, Poseidon percentage available, Poseidon percentage fresh, and
+low battery. Unavailable voltage fields retain the power driver's numeric
+sentinel but have their validity bit clear; consumers must use the bit rather
+than plotting the sentinel. A missing Poseidon percentage is `0xFF` with both
+Poseidon bits clear.
 
 A recovered noinit crash is saved separately in the five-entry
 `bootdiag/crashes` NVS ring before the FCB mounts. After the text backend is
