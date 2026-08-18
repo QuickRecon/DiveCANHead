@@ -266,6 +266,7 @@ Documentation should stay in sync with the implementation to reduce future explo
 | [docs/CONFIGURATION_SYSTEM.md](docs/CONFIGURATION_SYSTEM.md) | Configuration_t bitfield, settings via UDS, flash persistence |
 | [docs/TESTING_ARCHITECTURE.md](docs/TESTING_ARCHITECTURE.md) | DiveCANpy, pytest fixtures, HWShim commands, PSU control |
 | [docs/DIVECAN_BT.md](docs/DIVECAN_BT.md) | Browser JS client, SLIP encoding, UDSClient API |
+| [docs/TELEMETRY_VIEWER.md](docs/TELEMETRY_VIEWER.md) | Browser flash-log telemetry viewer: channels, units, depth derivation, event overlay, `telemetry_log.py` |
 
 ### External References
 

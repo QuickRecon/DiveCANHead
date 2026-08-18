@@ -281,6 +281,27 @@ Bulk download is over UDS. The protocol — RoutineControl selectors,
 stream framing — is documented in `UDS.md` under
 [Flash Log Download Protocol](../UDS.md#flash-log-download-protocol-0xf1xx--0x340x360x37).
 
+### Reading a downloaded log
+
+Once a stream is on disk, two tools decode it against the layouts above:
+
+- **`../../docs/TELEMETRY_VIEWER.md`** — the browser viewer
+  (`DiveCAN_bt/examples/telemetry-viewer.html`). Graphs every decoded channel
+  with solenoid fires, errors, reboots and drop-marker gaps overlaid.
+- **`scripts/telemetry_log.py`** — CLI: `summary` (counts, boot epochs,
+  per-channel statistics, error and gap breakdowns), `validate` (cross-check a
+  `.bin` against its CSV export), `tobin` (rebuild a `.bin` from a CSV).
+
+Both segment the stream at `BOOT_MARKER` boundaries, because `ts_boot_us`
+restarts on every reboot and a wrapped ring begins part-way through an epoch —
+raw timestamps are not a monotonic axis across a multi-boot download.
+
+Two DiveO2 field names in `fl_payload_cell_diveo2_t` do not match their units:
+`temperature_dc` holds **milli**-°C and `pressure_uhpa` holds **milli**-hPa
+(the latter confirmed by `src/calibration.c`, which divides it by 1000 to get
+mbar). Anything decoding these records must use the milli scale; see the units
+table in `docs/TELEMETRY_VIEWER.md`.
+
 The reader uses a lazy per-FCB sector index (one `FlashLogIndexEntry_t`
 per logical sector — 192 for telemetry, 32 for text). Built by one
 `fcb_walk` that inspects only marker entries.

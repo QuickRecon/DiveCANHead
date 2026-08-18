@@ -25,6 +25,7 @@ The DiveCAN_bt client provides a protocol stack for communicating with the DiveC
 | `src/logs/LogDownloader.js` | Flash-log selector + chunked download |
 | `src/logs/LogParser.js` | DCLG/TLV stream parser + record decoders |
 | `src/logs/LogExport.js` | JSON/CSV/raw-bin export |
+| `src/telemetry/*.js` | Telemetry viewer: channel model, decode-to-typed-arrays, decimation, event overlay ([TELEMETRY_VIEWER.md](TELEMETRY_VIEWER.md)) |
 | `src/diagnostics/*.js` | UI adapters and parsers |
 
 > **Firmware target:** this client speaks to the **Zephyr** firmware under `/Firmware`.

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiveCANHead Telemetry Viewer</title>
+
+  <!-- uPlot: chosen over Chart.js/Plotly because it renders the ~270k-point
+       series in a full dive log at interactive framerates. Pinned + SRI, same
+       convention as diagnostics.html. -->
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css"
+        integrity="sha256-32MMao1vjur/JktQ9zzlsRT2Rv/ZoLt08EmwoAE1+gQ="
+        crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"
+          integrity="sha256-GcjUxq2Ikpp59K5J1vcWFWbf0Lo9FcxJXpdPeH63jx8="
+          crossorigin="anonymous"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1a1a1a;
+      --panel: #242428;
+      --panel-2: #2c2c31;
+      --line: #3a3a40;
+      --fg: #e0e0e0;
+      --dim: #8b8b93;
+      --accent: #00bcd4;
+      --warn: #ffb454;
+      --err: #ff6b60;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 { color: var(--accent); font-size: 17px; white-space: nowrap; }
+    h2 { color: var(--accent); font-size: 13px; text-transform: uppercase;
+         letter-spacing: 0.06em; margin: 14px 0 6px; }
+    h2:first-child { margin-top: 0; }
+    h3 { color: var(--fg); font-size: 12px; margin: 14px 0 5px; opacity: 0.85; }
+
+    button, select, input[type=number] {
+      background: var(--panel-2);
+      color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); color: #10171a; border-color: var(--accent);
+                     font-weight: 600; }
+    button.link { background: none; border: none; color: var(--dim); padding: 2px 5px; }
+    button.link:hover { color: var(--err); }
+
+    #drop-zone {
+      border: 1.5px dashed var(--line);
+      border-radius: 6px;
+      padding: 6px 14px;
+      color: var(--dim);
+      transition: border-color .15s, color .15s;
+    }
+    #drop-zone.over { border-color: var(--accent); color: var(--accent); }
+    #drop-zone.loaded { border-style: solid; }
+
+    #status { flex: 1; min-width: 220px; }
+    #status-text { display: block; color: var(--dim); }
+    #status-text.error { color: var(--err); }
+    #progress-track { height: 3px; background: var(--panel-2); border-radius: 2px;
+                      margin-top: 4px; overflow: hidden; }
+    #progress-bar { height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+    #progress-bar.hidden { opacity: 0; }
+
+    main { flex: 1; display: grid; grid-template-columns: 300px 1fr 340px;
+           min-height: 0; }
+    main.busy { opacity: 0.5; pointer-events: none; }
+
+    aside {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      overflow-y: auto;
+      padding: 14px;
+    }
+    aside.right { border-right: none; border-left: 1px solid var(--line); }
+
+    .center { display: flex; flex-direction: column; min-width: 0; }
+    #plot { flex: 1; min-height: 0; padding: 8px 14px; }
+    #plot-toolbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 8px 14px; border-bottom: 1px solid var(--line);
+    }
+    #view-scope { max-width: 390px; }
+    .toolbar-label { display: flex; align-items: center; gap: 5px; color: var(--dim); }
+    #draw-stats { color: var(--dim); font-family: ui-monospace, monospace; font-size: 11px; }
+    #hint { color: var(--dim); font-size: 11px; padding: 2px 14px 10px; }
+
+    #overlay-legend {
+      display: flex; flex-wrap: wrap; gap: 4px 16px;
+      padding: 6px 14px 2px; color: var(--dim); font-size: 11px;
+    }
+    #overlay-legend span { display: flex; align-items: center; gap: 5px; }
+    #overlay-legend .key { width: 11px; height: 11px; border-radius: 2px; flex: none; }
+    #overlay-legend .drop { background: rgb(255, 90, 90); }
+    #overlay-legend .inject { background: rgb(120, 200, 255); }
+    #overlay-legend .flush { background: rgb(255, 190, 90); }
+    #overlay-legend .errors {
+      background: linear-gradient(90deg, hsl(141,70%,58%), hsl(47,70%,58%), hsl(282,70%,58%));
+    }
+    #overlay-legend .marker { background: #7ee787; }
+    #overlay-legend .boot { background: #ff7b72; }
+    #overlay-legend .epoch { background: rgb(120, 120, 150); }
+
+    .chan-group { border-bottom: 1px solid var(--line); padding: 6px 0; }
+    .chan-group > summary { cursor: pointer; padding: 4px 0; font-weight: 600;
+                            display: flex; justify-content: space-between; gap: 8px; }
+    .chan { display: flex; align-items: center; gap: 7px; padding: 3px 0 3px 12px;
+            cursor: pointer; }
+    .chan:hover { background: rgba(255,255,255,0.03); }
+    .chan-name { flex: 1; }
+    .chan-unit { color: var(--dim); font-size: 11px; font-family: ui-monospace, monospace; }
+
+    .series-row { display: flex; align-items: center; gap: 7px; padding: 3px 0; }
+    .series-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .axis-select { padding: 2px 4px; font-size: 11px; max-width: 110px; }
+
+    .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; display: inline-block; }
+
+    .dim { color: var(--dim); }
+
+    .summary-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+    .kv { display: contents; }
+    .kv .k { color: var(--dim); }
+    .kv .v { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+
+    table.mini { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+    table.mini th { text-align: left; color: var(--dim); font-weight: 500;
+                    border-bottom: 1px solid var(--line); padding: 3px 4px; }
+    table.mini td { padding: 2px 4px; border-bottom: 1px solid rgba(255,255,255,0.04);
+                    font-family: ui-monospace, monospace; }
+    table.mini tr.warn td { color: var(--warn); }
+    table.mini tr.total td { color: var(--dim); border-top: 1px solid var(--line); }
+
+    #readout { font-family: ui-monospace, monospace; font-size: 11.5px; }
+    .readout-time { display: flex; justify-content: space-between; gap: 8px;
+                    border-bottom: 1px solid var(--line); padding-bottom: 4px;
+                    margin-bottom: 5px; font-size: 13px; }
+    .readout-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+    .readout-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .readout-val { text-align: right; }
+    .readout-val.stale { color: var(--dim); }
+    .readout-event { margin-top: 5px; padding: 4px 6px; border-radius: 3px;
+                     border-left: 3px solid var(--dim); background: rgba(255,255,255,0.03);
+                     line-height: 1.4; }
+    .readout-event.marker { border-left-color: #7ee787; }
+    .readout-event.solenoid { border-left-color: #78c8ff; }
+    .readout-event.drop { border-left-color: var(--err); }
+    .readout-event.error { border-left-color: var(--warn); }
+
+    .u-legend { display: none; }
+    .uplot { font-family: inherit; }
+
+    .field { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+    .field label { color: var(--dim); }
+    .field input[type=number] { width: 90px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Telemetry Viewer</h1>
+  <label id="drop-zone">
+    <input type="file" id="file-input" accept=".bin,.csv" hidden>
+    Drop a <code>.bin</code> or <code>.csv</code> log here, or click to pick
+  </label>
+  <div id="status">
+    <span id="status-text">No log loaded.</span>
+    <div id="progress-track"><div id="progress-bar" class="hidden"></div></div>
+  </div>
+</header>
+
+<main id="workspace">
+  <aside class="left">
+    <h2>Channels</h2>
+    <div id="channels"><p class="dim">Load a log to list channels.</p></div>
+
+    <h2>Overlays</h2>
+    <div id="overlays"></div>
+
+    <h2>Depth reference</h2>
+    <div class="field">
+      <label for="surface-input">Surface</label>
+      <input type="number" id="surface-input" step="0.1" placeholder="mbar">
+      <button id="surface-apply">Apply</button>
+    </div>
+    <p class="dim">Depth is derived as (ambient&nbsp;&minus;&nbsp;surface)&nbsp;/&nbsp;100&nbsp;mbar
+      from the DiveO2 pressure field. The default is the 2nd&nbsp;percentile of
+      observed pressure.</p>
+  </aside>
+
+  <section class="center">
+    <div id="plot-toolbar">
+      <button id="reset-zoom" class="primary">Reset zoom</button>
+      <label class="toolbar-label" for="view-scope">View
+        <select id="view-scope" title="Restrict zoom and pan to one dive or one boot within it" disabled>
+          <option value="all">Whole log</option>
+        </select>
+      </label>
+      <select id="time-mode" title="Time axis mode">
+        <option value="elapsed">Elapsed (h:mm:ss)</option>
+        <option value="absolute">Absolute (from dive marker)</option>
+      </select>
+      <span id="draw-stats"></span>
+    </div>
+    <div id="plot"></div>
+    <div id="overlay-legend">
+      <span><i class="key drop"></i>Drop markers (top strip &mdash; data lost)</span>
+      <span><i class="key inject"></i>Solenoid inject (bottom band)</span>
+      <span><i class="key flush"></i>Setpoint flush</span>
+      <span><i class="key errors"></i>Error events (rug, colour = code)</span>
+      <span><i class="key marker"></i>Dive marker (* reversed recorded type corrected)</span>
+      <span><i class="key boot"></i>Boot marker</span>
+      <span><i class="key epoch"></i>Reboot gap (synthetic time)</span>
+    </div>
+    <p id="hint">Drag to zoom · shift-drag or middle-drag to pan · wheel to zoom
+      at the cursor · double-click to reset.</p>
+  </section>
+
+  <aside class="right">
+    <h2>Cursor</h2>
+    <div id="readout"><p class="dim">Hover the plot for values.</p></div>
+
+    <h2>Series</h2>
+    <div id="series-list"><p class="dim">No channels selected.</p></div>
+
+    <h2>Log summary</h2>
+    <div id="summary"><p class="dim">Load a log to see a summary.</p></div>
+  </aside>
+</main>
+
+<script type="module">
+  import { TelemetryViewer } from '../src/telemetry/TelemetryViewer.js';
+  const viewer = new TelemetryViewer();
+  viewer.init();
+  window.telemetryViewer = viewer; // handy from the console
+</script>
+
+</body>
+</html>

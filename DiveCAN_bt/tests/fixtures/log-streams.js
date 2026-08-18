@@ -44,10 +44,65 @@ export function buildStream(records, headerOpts = {}) {
 
 // --- payload encoders (mirror the decode_* helpers) ---
 
-export function bootMarkerPayload(bootId, fwVersion, resetCause) {
+export function bootMarkerPayload(bootId, fwVersion, resetCause, prevCrash = null) {
   const ver = new Uint8Array(16);
   ver.set(new TextEncoder().encode(fwVersion).slice(0, 16));
-  return [...u32le(bootId), ...ver, ...u32le(resetCause)];
+  const head = [...u32le(bootId), ...ver, ...u32le(resetCause)];
+  if (prevCrash === null) return head;
+  return [...head, ...u32le(prevCrash.magic), ...u32le(prevCrash.reason),
+    ...u32le(prevCrash.pc), ...u32le(prevCrash.lr)];
+}
+
+function i32le(v) { return u32le(v >>> 0); }
+
+function f32le(v) {
+  const b = new Uint8Array(4);
+  new DataView(b.buffer).setFloat32(0, v, true);
+  return [...b];
+}
+
+export function consensusPayload({
+  consensusPpo2 = 0, ppo2 = [0, 0, 0], millivolts = [0, 0, 0],
+  statusPacked = 0, confidence = 0, setpoint = 0
+} = {}) {
+  return [consensusPpo2, ...ppo2, ...u16le(millivolts[0]), ...u16le(millivolts[1]),
+    ...u16le(millivolts[2]), ...u16le(statusPacked), confidence, setpoint];
+}
+
+export function pidPayload({ integral = 0, saturationCount = 0, duty = 0, setpoint = 0 } = {}) {
+  return [...f32le(integral), ...u16le(saturationCount), ...f32le(duty), setpoint];
+}
+
+export function solenoidFirePayload(kind, requestedOnUs, offUs) {
+  return [kind, ...u32le(requestedOnUs), ...u32le(offUs)];
+}
+
+export function solenoidCurrentPayload(role, classification, baselineUa, fireUa, deltaUa) {
+  return [role, classification, ...i32le(baselineUa), ...i32le(fireUa), ...i32le(deltaUa)];
+}
+
+export function cellDiveO2Payload({
+  cellIndex = 0, ppo2 = 0, temperatureDc = 0, errCode = 0, phase = 0,
+  intensity = 0, ambientLight = 0, pressureUhpa = 0, humidityMrh = 0
+} = {}) {
+  return [cellIndex, ppo2, ...i32le(temperatureDc), ...u32le(errCode), ...i32le(phase),
+    ...i32le(intensity), ...i32le(ambientLight), ...u32le(pressureUhpa), ...i32le(humidityMrh)];
+}
+
+export function cellO2SPayload(cellIndex, ppo2, status) {
+  return [cellIndex, ppo2, status];
+}
+
+export function cellAnalogPayload(cellIndex, ppo2, rawAdc, millivolts) {
+  return [cellIndex, ppo2, ...i32le(rawAdc), ...u16le(millivolts)];
+}
+
+export function errorEventPayload(code, detail) {
+  return [...u32le(code), ...u32le(detail)];
+}
+
+export function dropMarkerPayload(count, lastDroppedType) {
+  return [...u32le(count), lastDroppedType];
 }
 
 export function diveMarkerPayload(diveNumber, unixTimestamp) {

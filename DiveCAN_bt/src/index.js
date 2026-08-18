@@ -40,9 +40,31 @@ export {
 export { MemoryLogDownloadStore, OPFSLogDownloadStore } from './logs/LogDownloadStore.js';
 export {
   parseLogStream, parseDclgHeader, decodeRecord, makeRecordCounter,
-  decodeBootMarker, decodeDiveMarker, decodeCanFrame, decodeLogText, decodeConsensus
+  decodeBootMarker, decodeDiveMarker, decodeCanFrame, decodeLogText, decodeConsensus,
+  decodePidSnapshot, decodeSolenoidFire, decodeSolenoidCurrent,
+  decodeCellDiveO2, decodeCellO2S, decodeCellAnalog,
+  decodeErrorEvent, decodeDropMarker,
+  unpackConsensusStatus, consensusStatusArray, consensusIncludeArray,
+  PPO2_CBAR_PER_BAR, MILLIVOLT_LSB_PER_MV, DIVEO2_TEMP_LSB_PER_DEGC,
+  DIVEO2_PRESSURE_LSB_PER_MBAR, DIVEO2_HUMIDITY_LSB_PER_PCT, MBAR_PER_METRE
 } from './logs/LogParser.js';
 export { toJSON as logToJSON, toCSV as logToCSV, toRawBin as logToRawBin, triggerDownload } from './logs/LogExport.js';
+
+// Telemetry viewer: channel model, decode-to-typed-arrays, decimation, overlay
+export { AXES, TABLES, CELL_COUNT, SERIES_COLOURS, formatElapsed } from './telemetry/TelemetryModel.js';
+export {
+  buildTelemetry, buildDiveWindows, applySurfaceReference, transferablesOf, EPOCH_GAP_S
+} from './telemetry/TelemetryBuilder.js';
+export {
+  buildDrawData, decimateChannel, buildGrid, annotateIntervals,
+  medianInterval, lowerBound, nearestIndex, bucketCountFor
+} from './telemetry/TelemetrySeries.js';
+export {
+  eventOverlayPlugin, hitTest, hitToleranceS, errorColour, errorName,
+  errorDescription, markerLabel, pxRatioOf
+} from './telemetry/EventOverlay.js';
+export { csvToStream } from './telemetry/CsvSource.js';
+export { TelemetryViewer } from './telemetry/TelemetryViewer.js';
 
 // Utilities
 export { ByteUtils } from './utils/ByteUtils.js';

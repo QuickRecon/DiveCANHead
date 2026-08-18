@@ -15,6 +15,7 @@ This directory contains detailed subsystem documentation for the DiveCANHead fir
 | [TESTING_ARCHITECTURE.md](TESTING_ARCHITECTURE.md) | DiveCANpy, pytest fixtures, HWShim |
 | [HIL_GITHUB_ACTIONS.md](HIL_GITHUB_ACTIONS.md) | Self-hosted GitHub Actions gate for the out-of-tree HIL bench |
 | [DIVECAN_BT.md](DIVECAN_BT.md) | Browser JS client, SLIP, UDSClient |
+| [TELEMETRY_VIEWER.md](TELEMETRY_VIEWER.md) | Flash-log telemetry viewer + `telemetry_log.py` CLI |
 | [FLASHING_FIRMWARE.md](FLASHING_FIRMWARE.md) | SWD flashing via STM32CubeProgrammer |
 
 ## External References

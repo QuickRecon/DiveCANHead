@@ -29,19 +29,29 @@ export function buildExportRows(records) {
   });
 }
 
-/** Format a decoded field value: arrays as "[a,b,c]", everything else as-is. */
+/**
+ * Format a decoded field value: arrays as "[a,b,c]", nested objects as compact
+ * JSON (BOOT_MARKER's prevCrash), everything else as-is.
+ */
 function formatFieldValue(v) {
   let formatted = v;
   if (Array.isArray(v)) {
     const joined = v.join(',');
     formatted = `[${joined}]`;
+  } else if (v !== null && typeof v === 'object') {
+    formatted = JSON.stringify(v);
   }
   return formatted;
 }
 
-/** Serialise a decoded object into a compact "k=v" summary string. */
+/**
+ * Serialise a decoded object into a compact "k=v" summary string. Null-valued
+ * fields are dropped so an absent optional (e.g. prevCrash on a clean boot)
+ * does not clutter the column.
+ */
 function summarise(decoded) {
   return Object.entries(decoded)
+    .filter(([, v]) => v !== null)
     .map(([k, v]) => `${k}=${formatFieldValue(v)}`)
     .join(' ');
 }

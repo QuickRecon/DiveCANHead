@@ -190,6 +190,7 @@ export const FL_TYPE_CAN_TX = 0x05;
 export const FL_TYPE_CONSENSUS = 0x10;
 export const FL_TYPE_PID_SNAPSHOT = 0x11;
 export const FL_TYPE_SOLENOID_FIRE = 0x12;
+export const FL_TYPE_SOLENOID_CURRENT = 0x13;
 export const FL_TYPE_CELL_RAW_DIVEO2 = 0x20;
 export const FL_TYPE_CELL_RAW_O2S = 0x21;
 export const FL_TYPE_CELL_RAW_ANALOG = 0x22;
@@ -213,6 +214,7 @@ export const FL_TYPE_NAMES = {
   0x10: 'Consensus',
   0x11: 'PID Snapshot',
   0x12: 'Solenoid Fire',
+  0x13: 'Solenoid Current',
   0x20: 'Cell Raw (DiveO2)',
   0x21: 'Cell Raw (O2S)',
   0x22: 'Cell Raw (Analog)',
@@ -225,6 +227,29 @@ export const FL_TYPE_NAMES = {
 
 /** Text-log verbosity levels (DID 0xF283). */
 export const LOG_LEVEL_NAMES = { 1: 'ERROR', 2: 'WARN', 3: 'INFO', 4: 'DEBUG' };
+
+/** Entry-header flag bits (fl_entry_hdr_t.flags). */
+export const FL_ENTRY_FLAG_DROP_PRECEDED = 1 << 0;
+
+/** SolenoidFireEvent_t.kind values (SOL_FIRE_EVT_* in firmware flash_log.h). */
+export const SOL_FIRE_EVT_INJECT_START = 0;
+export const SOL_FIRE_EVT_INJECT_END = 1;
+export const SOL_FIRE_EVT_FLUSH_START = 2;
+export const SOL_FIRE_EVT_FLUSH_END = 3;
+
+/** Human-readable names for SolenoidFireEvent_t.kind. */
+export const SOL_FIRE_EVT_NAMES = {
+  0: 'Inject Start',
+  1: 'Inject End',
+  2: 'Flush Start',
+  3: 'Flush End'
+};
+
+/**
+ * Crash magic written by firmware `errors.c` when a previous boot faulted.
+ * Mirrors `CRASH_MAGIC` in `include/errors.h`.
+ */
+export const FL_CRASH_MAGIC = 0xDEADC0DE;
 
 // ============================================================================
 // Settings DIDs

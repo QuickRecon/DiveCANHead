@@ -38,7 +38,7 @@ describe('LogParser', () => {
     expect(records[0].type).toBe(FL_TYPE_BOOT_MARKER);
     expect(records[0].tsUs).toBe(1000n);
     expect(decodeBootMarker(records[0].payload)).toEqual({
-      bootId: 42, fwVersion: 'v1.0.0', resetCause: 3
+      bootId: 42, fwVersion: 'v1.0.0', resetCause: 3, prevCrash: null
     });
     expect(decodeDiveMarker(records[1].payload)).toEqual({
       diveNumber: 7, unixTimestamp: 1700000000
@@ -92,7 +92,9 @@ describe('LogParser', () => {
 
     it('dispatches BOOT_MARKER', () => {
       const rec = { type: FL_TYPE_BOOT_MARKER, payload: new Uint8Array(bootMarkerPayload(5, 'v', 2)) };
-      expect(decodeRecord(rec)).toEqual({ bootId: 5, fwVersion: 'v', resetCause: 2 });
+      expect(decodeRecord(rec)).toEqual({
+        bootId: 5, fwVersion: 'v', resetCause: 2, prevCrash: null
+      });
     });
 
     it('dispatches DIVE_START and DIVE_END to the dive-marker decoder', () => {
