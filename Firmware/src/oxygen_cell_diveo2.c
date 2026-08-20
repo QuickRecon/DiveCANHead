@@ -3,9 +3,9 @@
  * @brief Driver for DiveO2 fluorescence-based digital oxygen cells over UART.
  *
  * Polls each cell using the "#DRAW" detailed command (falling back to "#DOXY"
- * simple format).  Calibration is stored as a scale factor relative to the
- * nominal 1,000,000 count-per-bar output.  Publishes OxygenCellMsg_t including
- * pressure and temperature ancillary data to the per-cell zbus channel.
+ * simple format). Calibration is stored relative to the nominal 1,000,000
+ * milli-hPa-per-bar output. Publishes OxygenCellMsg_t including the #DRAW
+ * physical-unit ancillary data on the per-cell zbus channel.
  * One thread is spawned per cell enabled via CONFIG_CELL_n_TYPE_DIVEO2.
  */
 
@@ -136,14 +136,14 @@ static const k_timeout_t ZBUS_PUB_TIMEOUT_MS = K_MSEC(100);
 /* ---- Detailed reading aggregate (replaces an over-long parameter list) ---- */
 
 typedef struct {
-    int32_t ppo2;
-    int32_t temperature;
+    int32_t raw_ppo2_millihpa;
+    int32_t temperature_mc;
     int32_t err_code;
-    int32_t phase;
-    int32_t intensity;
-    int32_t ambient_light;
-    int32_t pressure;
-    int32_t humidity;
+    int32_t phase_mdeg;
+    int32_t signal_intensity_uv;
+    int32_t ambient_light_uv;
+    int32_t ambient_pressure_ubar;
+    int32_t housing_humidity_mpercent_rh;
     CellStatus_t status;
 } DiveO2DetailedReading_t;
 
@@ -373,18 +373,20 @@ CellProtocol_t diveo2_detect_protocol(const char *message)
  * @brief Parse a DiveO2 "#DOXY <ppo2> <temp> <errcode>" simple response.
  *
  * @param message      Cleaned, null-terminated message string.
- * @param ppo2         Output: raw PPO2 in units of 10^-3 hPa (DiveO2 native counts).
- * @param temperature  Output: cell temperature in tenths of a degree Celsius.
+ * @param raw_ppo2_millihpa Output: raw PPO2 in units of 10^-3 hPa.
+ * @param temperature_mc Output: cell temperature in milli-degrees Celsius
+ *                       (10^-3 degC).
  * @param status       Output: cell status derived from the error code field.
  * @return true if parsing succeeded and all outputs are valid.
  */
-bool diveo2_parse_simple_response(const char *message, int32_t *ppo2,
-                                  int32_t *temperature, CellStatus_t *status)
+bool diveo2_parse_simple_response(const char *message,
+                                  int32_t *raw_ppo2_millihpa,
+                                  int32_t *temperature_mc, CellStatus_t *status)
 {
     bool success = false;
 
-    if ((message != NULL) && (ppo2 != NULL) &&
-        (temperature != NULL) && (status != NULL)) {
+    if ((message != NULL) && (raw_ppo2_millihpa != NULL) &&
+        (temperature_mc != NULL) && (status != NULL)) {
         char msgCopy[DIVEO2_RX_BUFFER_LEN] = {0};
 
         (void)strncpy(msgCopy, message, sizeof(msgCopy) - 1U);
@@ -409,8 +411,8 @@ bool diveo2_parse_simple_response(const char *message, int32_t *ppo2,
                 diveo2_parse_i32(fields[FIELD_IDX_PPO2], &p) &&
                 diveo2_parse_i32(fields[FIELD_IDX_TEMPERATURE], &t) &&
                 diveo2_parse_i32(fields[FIELD_IDX_ERR_CODE], &e)) {
-                *ppo2 = p;
-                *temperature = t;
+                *raw_ppo2_millihpa = p;
+                *temperature_mc = t;
                 *status = diveo2_parse_error_code(fields[FIELD_IDX_ERR_CODE]);
                 success = true;
             } else {
@@ -477,14 +479,14 @@ bool diveo2_parse_detailed_response(const char *message,
             }
 
             if (all_numeric) {
-                out->ppo2 = vals[FIELD_IDX_PPO2];
-                out->temperature = vals[FIELD_IDX_TEMPERATURE];
+                out->raw_ppo2_millihpa = vals[FIELD_IDX_PPO2];
+                out->temperature_mc = vals[FIELD_IDX_TEMPERATURE];
                 out->err_code = vals[FIELD_IDX_ERR_CODE];
-                out->phase = vals[FIELD_IDX_PHASE];
-                out->intensity = vals[FIELD_IDX_INTENSITY];
-                out->ambient_light = vals[FIELD_IDX_AMBIENT];
-                out->pressure = vals[FIELD_IDX_PRESSURE];
-                out->humidity = vals[FIELD_IDX_HUMIDITY];
+                out->phase_mdeg = vals[FIELD_IDX_PHASE];
+                out->signal_intensity_uv = vals[FIELD_IDX_INTENSITY];
+                out->ambient_light_uv = vals[FIELD_IDX_AMBIENT];
+                out->ambient_pressure_ubar = vals[FIELD_IDX_PRESSURE];
+                out->housing_humidity_mpercent_rh = vals[FIELD_IDX_HUMIDITY];
                 out->status = diveo2_parse_error_code(fields[FIELD_IDX_ERR_CODE]);
                 success = true;
             } else {
@@ -540,14 +542,14 @@ struct diveo2_cell_state {
     atomic_t broadcast_req;      /**< Live UDS mailbox: BCST_REQ_NONE/OFF/ON */
     CalCoeff_t cal_coeff;
     CellStatus_t status;
-    int32_t cell_sample;
-    int32_t temperature;
+    int32_t raw_ppo2_millihpa;
+    int32_t temperature_mc;
     uint32_t err_code;
-    int32_t phase;
-    int32_t intensity;
-    int32_t ambient_light;
-    int32_t pressure;
-    int32_t humidity;
+    int32_t phase_mdeg;
+    int32_t signal_intensity_uv;
+    int32_t ambient_light_uv;
+    int32_t ambient_pressure_ubar;
+    int32_t housing_humidity_mpercent_rh;
     int64_t last_ppo2_ticks;
     char last_message[DIVEO2_RX_BUFFER_LEN];
     /* Continuous RX with CR line accumulation. RX stays enabled for the cell's
@@ -722,8 +724,8 @@ static void diveo2_send_command(struct diveo2_cell_state *cell,
  * @brief Apply calibration to the last DiveO2 sample and publish to zbus.
  *
  * Checks for stale data and low VBUS before computing PPO2.  The DiveO2
- * calibration coefficient represents the nominal count-per-bar scale factor;
- * PPO2 = cell_sample / cal_coeff (inverted compared to analog).
+ * calibration coefficient represents the nominal milli-hPa-per-bar scale;
+ * PPO2 = raw_ppo2_millihpa / cal_coeff (inverted compared to analog).
  *
  * @param cell  Cell state with the most recent sample and calibration data.
  */
@@ -756,8 +758,9 @@ static void diveo2_broadcast(struct diveo2_cell_state *cell)
      * the current PPO2. Yes this is backwards compared to the analog cell,
      * but it makes more intuitive sense when looking at the values to see
      * how deviated the cell is from OEM spec */
-    PrecisionPPO2_t precision_ppo2 = (PrecisionPPO2_t)cell->cell_sample /
-                                     (PrecisionPPO2_t)cell->cal_coeff;
+    PrecisionPPO2_t precision_ppo2 =
+        (PrecisionPPO2_t)cell->raw_ppo2_millihpa /
+        (PrecisionPPO2_t)cell->cal_coeff;
     PrecisionPPO2_t temp_ppo2 = precision_ppo2 * CENTIBAR_PER_BAR_D;
 
     if (temp_ppo2 > PPO2_OVERRANGE_LIMIT) {
@@ -773,14 +776,15 @@ static void diveo2_broadcast(struct diveo2_cell_state *cell)
         .millivolts = 0U,
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
-        .raw_sample = cell->cell_sample,
-        .temperature_dc = cell->temperature,
+        .raw_sample = cell->raw_ppo2_millihpa,
+        .temperature_mc = cell->temperature_mc,
         .err_code = cell->err_code,
-        .phase = cell->phase,
-        .intensity = cell->intensity,
-        .ambient_light = cell->ambient_light,
-        .pressure_uhpa = (uint32_t)cell->pressure,
-        .humidity_mrh = cell->humidity,
+        .phase_mdeg = cell->phase_mdeg,
+        .signal_intensity_uv = cell->signal_intensity_uv,
+        .ambient_light_uv = cell->ambient_light_uv,
+        .ambient_pressure_ubar = cell->ambient_pressure_ubar,
+        .housing_humidity_mpercent_rh =
+            cell->housing_humidity_mpercent_rh,
     };
 
     zbus_pub_checked(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
@@ -829,42 +833,44 @@ static void diveo2_load_cal(struct diveo2_cell_state *cell)
  * @brief Copy all fields from a detailed reading into the cell state.
  *
  * @param cell  Cell state to update.
- * @param r     Parsed detailed reading (ppo2, temperature, pressure, humidity, status).
+ * @param r Parsed detailed reading in the native units documented by #DRAW.
  */
 static void diveo2_apply_detailed(struct diveo2_cell_state *cell,
                                   const DiveO2DetailedReading_t *r)
 {
-    cell->cell_sample = r->ppo2;
-    cell->temperature = r->temperature;
+    cell->raw_ppo2_millihpa = r->raw_ppo2_millihpa;
+    cell->temperature_mc = r->temperature_mc;
     cell->err_code = (uint32_t)r->err_code;
-    cell->phase = r->phase;
-    cell->intensity = r->intensity;
-    cell->ambient_light = r->ambient_light;
-    cell->pressure = r->pressure;
-    cell->humidity = r->humidity;
+    cell->phase_mdeg = r->phase_mdeg;
+    cell->signal_intensity_uv = r->signal_intensity_uv;
+    cell->ambient_light_uv = r->ambient_light_uv;
+    cell->ambient_pressure_ubar = r->ambient_pressure_ubar;
+    cell->housing_humidity_mpercent_rh =
+        r->housing_humidity_mpercent_rh;
     cell->status = r->status;
     cell->last_ppo2_ticks = k_uptime_ticks();
 }
 
 /**
- * @brief Copy ppo2, temperature, and status from a simple response into the cell state.
+ * @brief Copy PPO2, temperature, and status from a simple response into cell state.
  *
  * @param cell    Cell state to update.
- * @param ppo2    Raw PPO2 counts from the simple response.
- * @param temp    Temperature in tenths of a degree Celsius.
+ * @param raw_ppo2_millihpa Raw PPO2 in 10^-3 hPa from the simple response.
+ * @param temp_mc Temperature in milli-degrees Celsius (10^-3 degC).
  * @param status  Cell status derived from the simple response error field.
  */
-static void diveo2_apply_simple(struct diveo2_cell_state *cell, int32_t ppo2,
-                                int32_t temp, CellStatus_t status)
+static void diveo2_apply_simple(struct diveo2_cell_state *cell,
+                                int32_t raw_ppo2_millihpa,
+                                int32_t temp_mc, CellStatus_t status)
 {
-    cell->cell_sample = ppo2;
-    cell->temperature = temp;
+    cell->raw_ppo2_millihpa = raw_ppo2_millihpa;
+    cell->temperature_mc = temp_mc;
     cell->err_code = 0U;
-    cell->phase = 0;
-    cell->intensity = 0;
-    cell->ambient_light = 0;
-    cell->pressure = 0;
-    cell->humidity = 0;
+    cell->phase_mdeg = 0;
+    cell->signal_intensity_uv = 0;
+    cell->ambient_light_uv = 0;
+    cell->ambient_pressure_ubar = 0;
+    cell->housing_humidity_mpercent_rh = 0;
     cell->status = status;
     cell->last_ppo2_ticks = k_uptime_ticks();
 }
@@ -888,8 +894,8 @@ static bool diveo2_process_rx(struct diveo2_cell_state *cell)
         cell->last_message, msgArray, sizeof(msgArray));
 
     DiveO2DetailedReading_t reading = {0};
-    int32_t ppo2 = 0;
-    int32_t temp = 0;
+    int32_t raw_ppo2_millihpa = 0;
+    int32_t temp_mc = 0;
     CellStatus_t rx_status = CELL_FAIL;
     bool valid = false;
 
@@ -897,16 +903,17 @@ static bool diveo2_process_rx(struct diveo2_cell_state *cell)
     if (diveo2_parse_detailed_response(msgArray, &reading)) {
         diveo2_apply_detailed(cell, &reading);
         valid = true;
-    } else if (diveo2_parse_simple_response(msgArray, &ppo2, &temp,
+    } else if (diveo2_parse_simple_response(msgArray, &raw_ppo2_millihpa,
+                                            &temp_mc,
                                             &rx_status)) {
-        diveo2_apply_simple(cell, ppo2, temp, rx_status);
+        diveo2_apply_simple(cell, raw_ppo2_millihpa, temp_mc, rx_status);
         valid = true;
     } else if (diveo2_is_measurement(msgArray)) {
         /* Right measurement header (#?RAW / #?OXY) but neither parser accepted
          * it: a field is missing, non-numeric, or truncated. This is a genuine
          * reception fault — surface it as CELL_FAIL for THIS cycle rather than
          * latching a misleading value or letting strtol's silent 0 reach the
-         * bus. We deliberately do NOT touch cell_sample or last_ppo2_ticks, so
+         * bus. We deliberately do NOT touch raw PPO2 or last_ppo2_ticks, so
          * the next good frame promotes the cell straight back to CELL_OK (and a
          * persistent fault also trips the diveo2_broadcast staleness timeout).
          * A parsing problem must be VISIBLE as a fail, never a wrong reading. */
@@ -1250,13 +1257,13 @@ static bool diveo2_setup(struct diveo2_cell_state *cell)
             .status = cell->status,
             .timestamp_ticks = k_uptime_ticks(),
             .raw_sample = 0,
-            .temperature_dc = 0,
+            .temperature_mc = 0,
             .err_code = 0U,
-            .phase = 0,
-            .intensity = 0,
-            .ambient_light = 0,
-            .pressure_uhpa = 0U,
-            .humidity_mrh = 0,
+            .phase_mdeg = 0,
+            .signal_intensity_uv = 0,
+            .ambient_light_uv = 0,
+            .ambient_pressure_ubar = 0,
+            .housing_humidity_mpercent_rh = 0,
         };
         zbus_pub_checked(cell->out_chan, &init_msg, ZBUS_PUB_TIMEOUT_MS);
 
@@ -1389,14 +1396,14 @@ static struct diveo2_cell_state diveo2_cell_1 = {
     .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
     .cal_coeff = DIVEO2_CAL_DEFAULT,
     .status = CELL_FAIL,
-    .cell_sample = 0,
-    .temperature = 0,
+    .raw_ppo2_millihpa = 0,
+    .temperature_mc = 0,
     .err_code = 0U,
-    .phase = 0,
-    .intensity = 0,
-    .ambient_light = 0,
-    .pressure = 0,
-    .humidity = 0,
+    .phase_mdeg = 0,
+    .signal_intensity_uv = 0,
+    .ambient_light_uv = 0,
+    .ambient_pressure_ubar = 0,
+    .housing_humidity_mpercent_rh = 0,
     .last_ppo2_ticks = 0,
     .last_message = {0},
     .rx_buf = {{0}, {0}},
@@ -1424,14 +1431,14 @@ static struct diveo2_cell_state diveo2_cell_2 = {
     .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
     .cal_coeff = DIVEO2_CAL_DEFAULT,
     .status = CELL_FAIL,
-    .cell_sample = 0,
-    .temperature = 0,
+    .raw_ppo2_millihpa = 0,
+    .temperature_mc = 0,
     .err_code = 0U,
-    .phase = 0,
-    .intensity = 0,
-    .ambient_light = 0,
-    .pressure = 0,
-    .humidity = 0,
+    .phase_mdeg = 0,
+    .signal_intensity_uv = 0,
+    .ambient_light_uv = 0,
+    .ambient_pressure_ubar = 0,
+    .housing_humidity_mpercent_rh = 0,
     .last_ppo2_ticks = 0,
     .last_message = {0},
     .rx_buf = {{0}, {0}},
@@ -1459,14 +1466,14 @@ static struct diveo2_cell_state diveo2_cell_3 = {
     .broadcast_req = ATOMIC_INIT(BCST_REQ_NONE),
     .cal_coeff = DIVEO2_CAL_DEFAULT,
     .status = CELL_FAIL,
-    .cell_sample = 0,
-    .temperature = 0,
+    .raw_ppo2_millihpa = 0,
+    .temperature_mc = 0,
     .err_code = 0U,
-    .phase = 0,
-    .intensity = 0,
-    .ambient_light = 0,
-    .pressure = 0,
-    .humidity = 0,
+    .phase_mdeg = 0,
+    .signal_intensity_uv = 0,
+    .ambient_light_uv = 0,
+    .ambient_pressure_ubar = 0,
+    .housing_humidity_mpercent_rh = 0,
     .last_ppo2_ticks = 0,
     .last_message = {0},
     .rx_buf = {{0}},

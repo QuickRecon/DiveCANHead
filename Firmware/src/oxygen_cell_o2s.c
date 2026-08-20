@@ -323,13 +323,13 @@ static void o2s_broadcast(struct o2s_cell_state *cell)
         .status = cell->status,
         .timestamp_ticks = k_uptime_ticks(),
         .raw_sample = 0,
-        .temperature_dc = 0,
+        .temperature_mc = 0,
         .err_code = 0U,
-        .phase = 0,
-        .intensity = 0,
-        .ambient_light = 0,
-        .pressure_uhpa = 0U,
-        .humidity_mrh = 0,
+        .phase_mdeg = 0,
+        .signal_intensity_uv = 0,
+        .ambient_light_uv = 0,
+        .ambient_pressure_ubar = 0,
+        .housing_humidity_mpercent_rh = 0,
     };
 
     zbus_pub_checked(cell->out_chan, &msg, ZBUS_PUB_TIMEOUT_MS);
@@ -497,13 +497,13 @@ static bool o2s_setup(struct o2s_cell_state *cell)
             .status = cell->status,
             .timestamp_ticks = k_uptime_ticks(),
             .raw_sample = 0,
-            .temperature_dc = 0,
+            .temperature_mc = 0,
             .err_code = 0U,
-            .phase = 0,
-            .intensity = 0,
-            .ambient_light = 0,
-            .pressure_uhpa = 0U,
-            .humidity_mrh = 0,
+            .phase_mdeg = 0,
+            .signal_intensity_uv = 0,
+            .ambient_light_uv = 0,
+            .ambient_pressure_ubar = 0,
+            .housing_humidity_mpercent_rh = 0,
         };
         zbus_pub_checked(cell->out_chan, &init_msg, ZBUS_PUB_TIMEOUT_MS);
 

@@ -102,7 +102,7 @@ Followed by `length` bytes of type-specific payload (see
 | `0x12` | SOLENOID_FIRE     | telem   | kind u8 (0=start, 1=end), requested_on_us, off_us        |
 | `0x14` | ATMOS_PRESSURE    | telem   | pressure_mbar u16 (raw `chan_atmos_pressure` value)       |
 | `0x15` | POWER_SNAPSHOT    | telem   | rail/battery volts, threshold, current/age, Poseidon percent/age, validity flags |
-| `0x20` | CELL_RAW_DIVEO2   | telem   | idx, ppo2, temp_dC, err_code, phase, intensity, ambient, pressure_uhpa, humidity_mRH |
+| `0x20` | CELL_RAW_DIVEO2   | telem   | idx, ppo2, temperature_mc, err_code, phase_mdeg, signal_intensity_uv, ambient_light_uv, ambient_pressure_ubar, housing_humidity_mpercent_rh |
 | `0x21` | CELL_RAW_O2S      | telem   | idx, ppo2, status                                        |
 | `0x22` | CELL_RAW_ANALOG   | telem   | idx, ppo2, raw_adc i32, millivolts u16                   |
 | `0x30` | ERROR_EVENT       | telem   | code u32 + detail u32                                    |
@@ -311,11 +311,12 @@ Both segment the stream at `BOOT_MARKER` boundaries, because `ts_boot_us`
 restarts on every reboot and a wrapped ring begins part-way through an epoch —
 raw timestamps are not a monotonic axis across a multi-boot download.
 
-Two DiveO2 field names in `fl_payload_cell_diveo2_t` do not match their units:
-`temperature_dc` holds **milli**-°C and `pressure_uhpa` holds **milli**-hPa
-(the latter confirmed by `src/calibration.c`, which divides it by 1000 to get
-mbar). Anything decoding these records must use the milli scale; see the units
-table in `docs/TELEMETRY_VIEWER.md`.
+The DiveO2 fields use the physical units specified for the sensor's `#DRAW`
+response: `temperature_mc` is milli-°C, `phase_mdeg` is millidegrees,
+`signal_intensity_uv` and `ambient_light_uv` are microvolts,
+`ambient_pressure_ubar` is backside pressure in microbar, and
+`housing_humidity_mpercent_rh` is milli-%RH. The explicit field names do not
+alter the packed payload's byte order, field widths, or record size.
 
 The reader uses a lazy per-FCB sector index (one `FlashLogIndexEntry_t`
 per logical sector — 192 for telemetry, 32 for text). Built by one

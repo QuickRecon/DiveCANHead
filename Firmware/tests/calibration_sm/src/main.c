@@ -234,7 +234,8 @@ static void seed_previous_coefficients(CalCoeff_t baseline)
  * the cell is read as a digital reference) and analog millivolts (used when the
  * same slot is later re-read as an analog cell to be calibrated). */
 static void publish_ref_cell(const struct zbus_channel *chan, uint8_t cell_num,
-                             PPO2_t ppo2, uint32_t pressure_uhpa, Millivolts_t mv)
+                             PPO2_t ppo2, int32_t ambient_pressure_ubar,
+                             Millivolts_t mv)
 {
     OxygenCellMsg_t msg = {
         .cell_number = cell_num,
@@ -242,7 +243,7 @@ static void publish_ref_cell(const struct zbus_channel *chan, uint8_t cell_num,
         .precision_ppo2 = (PrecisionPPO2_t)ppo2 / 100.0f,
         .millivolts = mv,
         .status = CELL_OK,
-        .pressure_uhpa = pressure_uhpa,
+        .ambient_pressure_ubar = ambient_pressure_ubar,
         .timestamp_ticks = k_uptime_ticks(),
     };
     extern int __real_zbus_chan_pub(const struct zbus_channel *chan,
@@ -654,7 +655,7 @@ ZTEST(calibration_sm, test_restore_save_failure_still_fails)
 ZTEST(calibration_sm, test_digital_reference_happy_path)
 {
     /* cal_digital_reference reads chan_cell_1 as the DiveO2 reference:
-     * ppo2 = 21 cbar, pressure = 1000 mbar (1,000,000 uhPa). It then calibrates
+     * ppo2 = 21 cbar, pressure = 1000 mbar (1,000,000 µbar). It then calibrates
      * every analog cell against that reference. millivolts=1000 on each cell
      * yields an in-range analog coefficient (~0.021). */
     publish_ref_cell(&chan_cell_1, 0, 21U, 1000000U, 1000U);
@@ -703,7 +704,7 @@ ZTEST(calibration_sm, test_digital_reference_bad_status_rejected)
         .precision_ppo2 = 0.21f,
         .millivolts = 1000U,
         .status = CELL_FAIL,
-        .pressure_uhpa = 1000000U,
+        .ambient_pressure_ubar = 1000000,
         .timestamp_ticks = k_uptime_ticks(),
     };
     extern int __real_zbus_chan_pub(const struct zbus_channel *chan,
@@ -763,6 +764,25 @@ ZTEST(calibration_sm, test_digital_reference_zero_pressure_rejected)
     zassert_true(g.response_seen, "must publish a response");
     zassert_equal(g.last_response.result, CAL_RESULT_REJECTED,
                   "zero reference pressure must produce CAL_RESULT_REJECTED");
+}
+
+ZTEST(calibration_sm, test_digital_reference_negative_pressure_rejected)
+{
+    /* DiveO2 defines backside pressure as signed. A negative protocol value
+     * is invalid and must not wrap through the uint16_t calibration request. */
+    seed_previous_coefficients(0.02f);
+    publish_ref_cell(&chan_cell_1, 0, 21U, -1000, 1000U);
+
+    CalRequest_t req = {
+        .method = CAL_DIGITAL_REFERENCE,
+        .fo2 = 0U,
+        .pressure_mbar = 0U,
+    };
+    calibration_run_for_test(&req);
+
+    zassert_true(g.response_seen, "must publish a response");
+    zassert_equal(g.last_response.result, CAL_RESULT_REJECTED,
+                  "negative reference pressure must be rejected");
 }
 
 ZTEST(calibration_sm, test_calibration_guard_acquire_release)

@@ -706,7 +706,7 @@ static CalResult_t cal_digital_reference_cell(uint8_t i, PPO2_t ppo2,
  *             with values derived from the digital reference cell.
  * @param resp Calibration response; resp->cell_mv[] is populated for each analog cell.
  * @return CAL_RESULT_OK on success, CAL_RESULT_REJECTED if no DiveO2 cell is found or
- *         if the pressure reading is zero.
+ *         if its pressure reading is non-positive.
  */
 static CalResult_t cal_digital_reference(CalRequest_t *req,
                                           CalResponse_t *resp)
@@ -737,14 +737,18 @@ static CalResult_t cal_digital_reference(CalRequest_t *req,
     }
     else {
         PPO2_t ppo2 = ref_data.ppo2;
-        /* Pressure from DiveO2 is in units of 10^-3 hPa, convert to mbar */
-        uint16_t pressure_mbar = (uint16_t)(ref_data.pressure_uhpa / 1000U);
+        /* DiveO2 reports backside pressure in microbar. Convert to mbar only
+         * after rejecting the signed protocol's invalid non-positive range. */
+        int32_t pressure_mbar_i32 = ref_data.ambient_pressure_ubar / 1000;
 
-        if (0U == pressure_mbar) {
+        if ((pressure_mbar_i32 <= 0) ||
+            (pressure_mbar_i32 > (int32_t)UINT16_MAX)) {
             OP_ERROR(OP_ERR_CAL_METHOD);
             result = CAL_RESULT_REJECTED;
         }
         else {
+            uint16_t pressure_mbar = (uint16_t)pressure_mbar_i32;
+
             LOG_INF("Digital ref cal: PPO2=%u pressure=%u mbar", ppo2,
                     pressure_mbar);
 

@@ -102,11 +102,11 @@
 #define CELL_DID_MILLIVOLTS         0x05U
 #define CELL_DID_TEMPERATURE        0x06U
 #define CELL_DID_ERROR              0x07U
-#define CELL_DID_PHASE              0x08U
-#define CELL_DID_INTENSITY          0x09U
-#define CELL_DID_AMBIENT_LIGHT      0x0AU
-#define CELL_DID_PRESSURE           0x0BU
-#define CELL_DID_HUMIDITY           0x0CU
+#define CELL_DID_PHASE_MDEG         0x08U
+#define CELL_DID_SIGNAL_INTENSITY_UV 0x09U
+#define CELL_DID_AMBIENT_LIGHT_UV   0x0AU
+#define CELL_DID_AMBIENT_PRESSURE_UBAR 0x0BU
+#define CELL_DID_HOUSING_HUMIDITY_MPERCENT_RH 0x0CU
 /* Highest READABLE cell offset; CELL_DID_BROADCAST below is write-only and is
  * handled by the WDBI dispatcher, not the read path. */
 #define CELL_DID_MAX_OFFSET         0x0CU

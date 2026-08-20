@@ -37,7 +37,7 @@ static OxygenCellMsg_t make_cell(uint8_t num, PPO2_t ppo2, double prec,
         .millivolts = 0,
         .status = status,
         .timestamp_ticks = k_uptime_ticks(),
-        .pressure_uhpa = 0,
+        .ambient_pressure_ubar = 0,
     };
 }
 

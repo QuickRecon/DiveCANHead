@@ -131,14 +131,15 @@ int16_t cal_compute_target_ppo2(FO2_t fo2, uint16_t pressure_mbar);
 CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2);
 
 /**
- * @brief Compute DiveO2 calibration coefficient from raw cell sample and target PPO2.
+ * @brief Compute DiveO2 calibration coefficient from raw PPO2 and target PPO2.
  *
- * @param cell_sample Raw DiveO2 sensor reading at calibration gas
+ * @param raw_ppo2_millihpa Raw DiveO2 PPO2 in 10^-3 hPa at calibration gas
  * @param target_ppo2 Expected PPO2 in centibar at calibration conditions
  * @return Calibration coefficient, CAL_COEFF_ERR_MATH on zero target/sample,
  *         or CAL_COEFF_ERR_RANGE on coefficient outside DIVEO2_CAL_LOWER..UPPER.
  */
-CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2);
+CalCoeff_t diveo2_cal_coefficient(int32_t raw_ppo2_millihpa,
+                                  PPO2_t target_ppo2);
 
 /**
  * @brief Compute O2S calibration coefficient from cell reading and target PPO2.

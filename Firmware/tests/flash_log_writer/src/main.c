@@ -760,10 +760,10 @@ ZTEST(flash_log_writer, test_telemetry_types_roundtrip_through_batch)
 
     cell.cell_number = 0U;
     cell.ppo2 = 100U;
-    cell.phase = 12345;
-    cell.temperature_dc = 251;
-    cell.pressure_uhpa = 1013250U;
-    cell.humidity_mrh = 45000;
+    cell.phase_mdeg = 12345;
+    cell.temperature_mc = 251;
+    cell.ambient_pressure_ubar = 1013250;
+    cell.housing_humidity_mpercent_rh = 45000;
     flash_log_enqueue_cell_raw(&cell);
 
     (void)memset(&cell, 0, sizeof(cell));
@@ -784,15 +784,15 @@ ZTEST(flash_log_writer, test_telemetry_types_roundtrip_through_batch)
      * ancillary-field conditions alone must classify as DiveO2. */
     (void)memset(&cell, 0, sizeof(cell));
     cell.cell_number = 0U;
-    cell.temperature_dc = 100;
+    cell.temperature_mc = 100;
     flash_log_enqueue_cell_raw(&cell);
     (void)memset(&cell, 0, sizeof(cell));
     cell.cell_number = 1U;
-    cell.pressure_uhpa = 5U;
+    cell.ambient_pressure_ubar = 5;
     flash_log_enqueue_cell_raw(&cell);
     (void)memset(&cell, 0, sizeof(cell));
     cell.cell_number = 2U;
-    cell.humidity_mrh = 7;
+    cell.housing_humidity_mpercent_rh = 7;
     flash_log_enqueue_cell_raw(&cell);
     (void)k_msleep(BULK_ENQUEUE_GAP_MS);
 

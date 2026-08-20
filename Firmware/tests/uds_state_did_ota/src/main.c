@@ -1403,13 +1403,13 @@ ZTEST(uds_state_did_ota, test_digital_and_analog_cell_dids)
         .ppo2 = 88U,
         .precision_ppo2 = 0.876,
         .status = CELL_DEGRADED,
-        .temperature_dc = -123,
+        .temperature_mc = -123,
         .err_code = 0x10203040U,
-        .phase = -456,
-        .intensity = 789,
-        .ambient_light = -1011,
-        .pressure_uhpa = 0x50607080U,
-        .humidity_mrh = -1213,
+        .phase_mdeg = -456,
+        .signal_intensity_uv = 789,
+        .ambient_light_uv = -1011,
+        .ambient_pressure_ubar = -1415,
+        .housing_humidity_mpercent_rh = -1213,
     };
     OxygenCellMsg_t analog = {
         .cell_number = 2U,
@@ -1434,15 +1434,18 @@ ZTEST(uds_state_did_ota, test_digital_and_analog_cell_dids)
     zassert_equal(fx.captured_response[3], CELL_DEGRADED);
 
     const uint8_t digital_offsets[] = {
-        CELL_DID_TEMPERATURE, CELL_DID_ERROR, CELL_DID_PHASE,
-        CELL_DID_INTENSITY, CELL_DID_AMBIENT_LIGHT,
-        CELL_DID_PRESSURE, CELL_DID_HUMIDITY,
+        CELL_DID_TEMPERATURE, CELL_DID_ERROR, CELL_DID_PHASE_MDEG,
+        CELL_DID_SIGNAL_INTENSITY_UV, CELL_DID_AMBIENT_LIGHT_UV,
+        CELL_DID_AMBIENT_PRESSURE_UBAR,
+        CELL_DID_HOUSING_HUMIDITY_MPERCENT_RH,
     };
     const uint32_t digital_values[] = {
-        (uint32_t)digital.temperature_dc, digital.err_code,
-        (uint32_t)digital.phase, (uint32_t)digital.intensity,
-        (uint32_t)digital.ambient_light, digital.pressure_uhpa,
-        (uint32_t)digital.humidity_mrh,
+        (uint32_t)digital.temperature_mc, digital.err_code,
+        (uint32_t)digital.phase_mdeg,
+        (uint32_t)digital.signal_intensity_uv,
+        (uint32_t)digital.ambient_light_uv,
+        (uint32_t)digital.ambient_pressure_ubar,
+        (uint32_t)digital.housing_humidity_mpercent_rh,
     };
     for (size_t i = 0U; i < ARRAY_SIZE(digital_offsets); ++i) {
         read_did(UDS_DID_CELL_BASE + digital_offsets[i]);

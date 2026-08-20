@@ -18,14 +18,14 @@
  * Layout must match oxygen_cell_diveo2.c.
  */
 typedef struct {
-    int32_t ppo2;
-    int32_t temperature;
+    int32_t raw_ppo2_millihpa;
+    int32_t temperature_mc;
     int32_t err_code;
-    int32_t phase;
-    int32_t intensity;
-    int32_t ambient_light;
-    int32_t pressure;
-    int32_t humidity;
+    int32_t phase_mdeg;
+    int32_t signal_intensity_uv;
+    int32_t ambient_light_uv;
+    int32_t ambient_pressure_ubar;
+    int32_t housing_humidity_mpercent_rh;
     CellStatus_t status;
 } DiveO2DetailedReading_t;
 
@@ -34,8 +34,9 @@ extern CellStatus_t diveo2_parse_error_code(const char *err_str);
 extern size_t diveo2_prepare_message_buffer(const char *rawBuffer,
                                             char *outBuffer,
                                             size_t outBufferLen);
-extern bool diveo2_parse_simple_response(const char *message, int32_t *ppo2,
-                                         int32_t *temperature,
+extern bool diveo2_parse_simple_response(const char *message,
+                                         int32_t *raw_ppo2_millihpa,
+                                         int32_t *temperature_mc,
                                          CellStatus_t *status);
 extern bool diveo2_parse_detailed_response(const char *message,
                                            DiveO2DetailedReading_t *out);
@@ -241,98 +242,100 @@ ZTEST_SUITE(diveo2_simple, NULL, NULL, NULL, NULL, NULL);
 /** @brief Valid #DOXY message is parsed and PPO2, temperature, and CELL_OK status are populated. */
 ZTEST(diveo2_simple, test_valid_message)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_true(diveo2_parse_simple_response(
-        "#DOXY 12340 2500 0", &ppo2, &temp, &status));
-    zassert_equal(12340, ppo2);
-    zassert_equal(2500, temp);
+        "#DOXY 12340 2500 0", &raw_ppo2_millihpa, &temp_mc, &status));
+    zassert_equal(12340, raw_ppo2_millihpa);
+    zassert_equal(2500, temp_mc);
     zassert_equal(CELL_OK, status);
 }
 
 /** @brief Non-zero error code in the message is parsed and reflected in the returned status. */
 ZTEST(diveo2_simple, test_error_code)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_true(diveo2_parse_simple_response(
-        "#DOXY 10000 2300 2", &ppo2, &temp, &status));
+        "#DOXY 10000 2300 2", &raw_ppo2_millihpa, &temp_mc, &status));
     zassert_equal(CELL_FAIL, status);
 }
 
 /** @brief A message missing the error-code field returns false (parse failed). */
 ZTEST(diveo2_simple, test_missing_field)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_false(diveo2_parse_simple_response(
-        "#DOXY 12340 2500", &ppo2, &temp, &status));
+        "#DOXY 12340 2500", &raw_ppo2_millihpa, &temp_mc, &status));
 }
 
 /** @brief A #DRAW message is rejected by the simple parser (wrong command prefix). */
 ZTEST(diveo2_simple, test_wrong_command)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_false(diveo2_parse_simple_response(
-        "#DRAW 12340 2500 0", &ppo2, &temp, &status));
+        "#DRAW 12340 2500 0", &raw_ppo2_millihpa, &temp_mc, &status));
 }
 
 /** @brief Empty string returns false without crashing. */
 ZTEST(diveo2_simple, test_empty_message)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
-    zassert_false(diveo2_parse_simple_response("", &ppo2, &temp, &status));
+    zassert_false(diveo2_parse_simple_response(
+        "", &raw_ppo2_millihpa, &temp_mc, &status));
 }
 
 /** @brief NULL message pointer returns false without crashing. */
 ZTEST(diveo2_simple, test_null_message)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_false(diveo2_parse_simple_response(
-        NULL, &ppo2, &temp, &status));
+        NULL, &raw_ppo2_millihpa, &temp_mc, &status));
 }
 
 /** @brief NULL ppo2 output pointer returns false without crashing. */
 ZTEST(diveo2_simple, test_null_output)
 {
-    int32_t temp;
+    int32_t temp_mc;
     CellStatus_t status;
 
     zassert_false(diveo2_parse_simple_response(
-        "#DOXY 12340 2500 0", NULL, &temp, &status));
+        "#DOXY 12340 2500 0", NULL, &temp_mc, &status));
 }
 
 /** @brief Negative numeric fields (cold temperature, flooded cell) are parsed correctly. */
 ZTEST(diveo2_simple, test_negative_values)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_true(diveo2_parse_simple_response(
-        "#DOXY -100 -500 0", &ppo2, &temp, &status));
-    zassert_equal(-100, ppo2);
-    zassert_equal(-500, temp);
+        "#DOXY -100 -500 0", &raw_ppo2_millihpa, &temp_mc, &status));
+    zassert_equal(-100, raw_ppo2_millihpa);
+    zassert_equal(-500, temp_mc);
 }
 
 /** @brief Very large values (up to INT32_MAX) are parsed without overflow. */
 ZTEST(diveo2_simple, test_large_values)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_true(diveo2_parse_simple_response(
-        "#DOXY 2147483647 1000000 0", &ppo2, &temp, &status));
-    zassert_equal(2147483647, ppo2);
-    zassert_equal(1000000, temp);
+        "#DOXY 2147483647 1000000 0", &raw_ppo2_millihpa,
+        &temp_mc, &status));
+    zassert_equal(2147483647, raw_ppo2_millihpa);
+    zassert_equal(1000000, temp_mc);
 }
 
 /** @brief A genuine zero PPO2 in a well-formed frame is PRESERVED (not a fault).
@@ -340,12 +343,12 @@ ZTEST(diveo2_simple, test_large_values)
  *  0/CELL_OK, only corrupt frames may become FAIL. */
 ZTEST(diveo2_simple, test_zero_ppo2_preserved)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_true(diveo2_parse_simple_response(
-        "#DOXY 0 2500 0", &ppo2, &temp, &status));
-    zassert_equal(0, ppo2);
+        "#DOXY 0 2500 0", &raw_ppo2_millihpa, &temp_mc, &status));
+    zassert_equal(0, raw_ppo2_millihpa);
     zassert_equal(CELL_OK, status);
 }
 
@@ -353,31 +356,31 @@ ZTEST(diveo2_simple, test_zero_ppo2_preserved)
  *  Pre-fix, strtol("12x40") returned 0 and the frame parsed as a valid zero. */
 ZTEST(diveo2_simple, test_garbage_ppo2_rejected)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_false(diveo2_parse_simple_response(
-        "#DOXY 12x40 2500 0", &ppo2, &temp, &status));
+        "#DOXY 12x40 2500 0", &raw_ppo2_millihpa, &temp_mc, &status));
 }
 
 /** @brief A PPO2 field with trailing garbage ("1234abc") is rejected. */
 ZTEST(diveo2_simple, test_trailing_garbage_ppo2_rejected)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_false(diveo2_parse_simple_response(
-        "#DOXY 1234abc 2500 0", &ppo2, &temp, &status));
+        "#DOXY 1234abc 2500 0", &raw_ppo2_millihpa, &temp_mc, &status));
 }
 
 /** @brief A non-numeric error-code field is rejected (would otherwise read 0=OK). */
 ZTEST(diveo2_simple, test_garbage_errcode_rejected)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_false(diveo2_parse_simple_response(
-        "#DOXY 12340 2500 x", &ppo2, &temp, &status));
+        "#DOXY 12340 2500 x", &raw_ppo2_millihpa, &temp_mc, &status));
 }
 
 /* ============================================================================
@@ -395,14 +398,14 @@ ZTEST(diveo2_detailed, test_valid_message)
     zassert_true(diveo2_parse_detailed_response(
         "#DRAW 12340 2500 0 1000 5000 200 1013250 45000", &r));
 
-    zassert_equal(12340, r.ppo2);
-    zassert_equal(2500, r.temperature);
+    zassert_equal(12340, r.raw_ppo2_millihpa);
+    zassert_equal(2500, r.temperature_mc);
     zassert_equal(0, r.err_code);
-    zassert_equal(1000, r.phase);
-    zassert_equal(5000, r.intensity);
-    zassert_equal(200, r.ambient_light);
-    zassert_equal(1013250, r.pressure);
-    zassert_equal(45000, r.humidity);
+    zassert_equal(1000, r.phase_mdeg);
+    zassert_equal(5000, r.signal_intensity_uv);
+    zassert_equal(200, r.ambient_light_uv);
+    zassert_equal(1013250, r.ambient_pressure_ubar);
+    zassert_equal(45000, r.housing_humidity_mpercent_rh);
     zassert_equal(CELL_OK, r.status);
 }
 
@@ -459,14 +462,14 @@ ZTEST(diveo2_detailed, test_real_world_message)
     zassert_true(diveo2_parse_detailed_response(
         "#DRAW 209800 24500 0 38250 12340 45 1013250 42000", &r));
 
-    zassert_equal(209800, r.ppo2);
-    zassert_equal(24500, r.temperature);
+    zassert_equal(209800, r.raw_ppo2_millihpa);
+    zassert_equal(24500, r.temperature_mc);
     zassert_equal(0, r.err_code);
-    zassert_equal(38250, r.phase);
-    zassert_equal(12340, r.intensity);
-    zassert_equal(45, r.ambient_light);
-    zassert_equal(1013250, r.pressure);
-    zassert_equal(42000, r.humidity);
+    zassert_equal(38250, r.phase_mdeg);
+    zassert_equal(12340, r.signal_intensity_uv);
+    zassert_equal(45, r.ambient_light_uv);
+    zassert_equal(1013250, r.ambient_pressure_ubar);
+    zassert_equal(42000, r.housing_humidity_mpercent_rh);
     zassert_equal(CELL_OK, r.status);
 }
 
@@ -572,13 +575,13 @@ ZTEST_SUITE(diveo2_pyro, NULL, NULL, NULL, NULL, NULL);
 /** @brief A #MOXY simple frame parses identically to #DOXY (only the prefix differs). */
 ZTEST(diveo2_pyro, test_moxy_simple)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_true(diveo2_parse_simple_response(
-        "#MOXY 12340 2500 0", &ppo2, &temp, &status));
-    zassert_equal(12340, ppo2);
-    zassert_equal(2500, temp);
+        "#MOXY 12340 2500 0", &raw_ppo2_millihpa, &temp_mc, &status));
+    zassert_equal(12340, raw_ppo2_millihpa);
+    zassert_equal(2500, temp_mc);
     zassert_equal(CELL_OK, status);
 }
 
@@ -589,22 +592,22 @@ ZTEST(diveo2_pyro, test_mraw_detailed)
 
     zassert_true(diveo2_parse_detailed_response(
         "#MRAW 12340 2500 0 1000 5000 200 1013250 45000", &r));
-    zassert_equal(12340, r.ppo2);
-    zassert_equal(2500, r.temperature);
-    zassert_equal(1000, r.phase);
-    zassert_equal(45000, r.humidity);
+    zassert_equal(12340, r.raw_ppo2_millihpa);
+    zassert_equal(2500, r.temperature_mc);
+    zassert_equal(1000, r.phase_mdeg);
+    zassert_equal(45000, r.housing_humidity_mpercent_rh);
     zassert_equal(CELL_OK, r.status);
 }
 
 /** @brief The simple parser still rejects a detailed (#MRAW) frame — wrong suffix. */
 ZTEST(diveo2_pyro, test_mraw_rejected_by_simple)
 {
-    int32_t ppo2, temp;
+    int32_t raw_ppo2_millihpa, temp_mc;
     CellStatus_t status;
 
     zassert_false(diveo2_parse_simple_response(
         "#MRAW 12340 2500 0 1000 5000 200 1013250 45000",
-        &ppo2, &temp, &status));
+        &raw_ppo2_millihpa, &temp_mc, &status));
 }
 
 /** @brief A foreign prefix (#XRAW) is rejected by the detailed parser. */
@@ -623,7 +626,7 @@ ZTEST(diveo2_detailed, test_zero_ppo2_preserved)
 
     zassert_true(diveo2_parse_detailed_response(
         "#DRAW 0 2500 0 1000 5000 200 1013250 45000", &r));
-    zassert_equal(0, r.ppo2);
+    zassert_equal(0, r.raw_ppo2_millihpa);
     zassert_equal(CELL_OK, r.status);
 }
 

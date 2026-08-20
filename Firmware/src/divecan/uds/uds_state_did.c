@@ -1367,31 +1367,31 @@ static bool handleDigitalCellDID(uint8_t offset,
 
     switch (offset) {
     case CELL_DID_TEMPERATURE:
-        writeUint32(buf, (uint32_t)cellMsg->temperature_dc);
+        writeUint32(buf, (uint32_t)cellMsg->temperature_mc);
         *len = sizeof(uint32_t);
         break;
     case CELL_DID_ERROR:
         writeUint32(buf, cellMsg->err_code);
         *len = sizeof(uint32_t);
         break;
-    case CELL_DID_PHASE:
-        writeUint32(buf, (uint32_t)cellMsg->phase);
+    case CELL_DID_PHASE_MDEG:
+        writeUint32(buf, (uint32_t)cellMsg->phase_mdeg);
         *len = sizeof(uint32_t);
         break;
-    case CELL_DID_INTENSITY:
-        writeUint32(buf, (uint32_t)cellMsg->intensity);
+    case CELL_DID_SIGNAL_INTENSITY_UV:
+        writeUint32(buf, (uint32_t)cellMsg->signal_intensity_uv);
         *len = sizeof(uint32_t);
         break;
-    case CELL_DID_AMBIENT_LIGHT:
-        writeUint32(buf, (uint32_t)cellMsg->ambient_light);
+    case CELL_DID_AMBIENT_LIGHT_UV:
+        writeUint32(buf, (uint32_t)cellMsg->ambient_light_uv);
         *len = sizeof(uint32_t);
         break;
-    case CELL_DID_PRESSURE:
-        writeUint32(buf, cellMsg->pressure_uhpa);
+    case CELL_DID_AMBIENT_PRESSURE_UBAR:
+        writeUint32(buf, (uint32_t)cellMsg->ambient_pressure_ubar);
         *len = sizeof(uint32_t);
         break;
-    case CELL_DID_HUMIDITY:
-        writeUint32(buf, (uint32_t)cellMsg->humidity_mrh);
+    case CELL_DID_HOUSING_HUMIDITY_MPERCENT_RH:
+        writeUint32(buf, (uint32_t)cellMsg->housing_humidity_mpercent_rh);
         *len = sizeof(uint32_t);
         break;
     default:

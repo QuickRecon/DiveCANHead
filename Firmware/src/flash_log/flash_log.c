@@ -453,19 +453,21 @@ void flash_log_enqueue_cell_raw(const OxygenCellMsg_t *cell)
      * analog payload, digital via either DiveO2 or O2S based on which
      * ancillary fields are populated. */
     if (cell != NULL) {
-        if ((cell->phase != 0) || (cell->temperature_dc != 0) ||
-            (cell->pressure_uhpa != 0U) || (cell->humidity_mrh != 0)) {
+        if ((cell->phase_mdeg != 0) || (cell->temperature_mc != 0) ||
+            (cell->ambient_pressure_ubar != 0) ||
+            (cell->housing_humidity_mpercent_rh != 0)) {
             /* DiveO2 */
             fl_payload_cell_diveo2_t p = {
                 .cell_index = cell->cell_number,
                 .ppo2 = cell->ppo2,
-                .temperature_dc = cell->temperature_dc,
+                .temperature_mc = cell->temperature_mc,
                 .err_code = cell->err_code,
-                .phase = cell->phase,
-                .intensity = cell->intensity,
-                .ambient_light = cell->ambient_light,
-                .pressure_uhpa = cell->pressure_uhpa,
-                .humidity_mrh = cell->humidity_mrh,
+                .phase_mdeg = cell->phase_mdeg,
+                .signal_intensity_uv = cell->signal_intensity_uv,
+                .ambient_light_uv = cell->ambient_light_uv,
+                .ambient_pressure_ubar = cell->ambient_pressure_ubar,
+                .housing_humidity_mpercent_rh =
+                    cell->housing_humidity_mpercent_rh,
             };
             fl_enqueue(FL_DEST_TELEMETRY, FL_TYPE_CELL_RAW_DIVEO2,
                    &p, sizeof(p));

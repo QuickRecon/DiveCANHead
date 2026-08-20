@@ -89,7 +89,7 @@ static int build_oxy_response(struct cell_state *cell, const char *hdr,
                               char *out, size_t out_size)
 {
     /* O = ppO2 in 10^-3 hPa. At 1 atm, ppO2_bar * 1013250 ~ pPa = (bar * 1000) hPa
-     * = bar * 1e6 mhPa. So O = ppo2_bar * 1e6. */
+     * = bar * 1e6 units of 10^-3 hPa. So O = ppo2_bar * 1e6. */
     int32_t o = (int32_t)(cell->ppo2_bar * 1000000.0f);
     return snprintf(out, out_size, "%s %d %d %u\r",
                     hdr, o, DIVEO2_DEFAULT_TEMP_MC,

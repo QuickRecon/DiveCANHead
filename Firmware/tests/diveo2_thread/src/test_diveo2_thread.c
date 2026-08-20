@@ -264,6 +264,14 @@ ZTEST(diveo2_thread, test_02_detailed_reading_published)
     (void)read_cell_status(&msg);
     zassert_equal(CELL_OK, msg.status, "status");
     zassert_equal(210000, msg.raw_sample, "raw sample latched from #MRAW");
+    zassert_equal(2500, msg.temperature_mc, "temperature in milli-degC");
+    zassert_equal(1000, msg.phase_mdeg, "phase in millidegrees");
+    zassert_equal(5000, msg.signal_intensity_uv, "signal intensity in microvolts");
+    zassert_equal(200, msg.ambient_light_uv, "ambient light in microvolts");
+    zassert_equal(1013250, msg.ambient_pressure_ubar,
+                  "backside pressure in microbar");
+    zassert_equal(45000, msg.housing_humidity_mpercent_rh,
+                  "housing humidity in milli-percent RH");
     zassert_equal(0U, msg.cell_number, "cell number");
     zassert_true(msg.ppo2 > 0U, "ppo2 wire value populated");
 }
@@ -333,7 +341,7 @@ ZTEST(diveo2_thread, test_06_overrange_fails)
 {
     stub_power_set_vbus(5.0f);
 
-    /* cal_coeff default = 1e6 counts/bar; 9,000,000 counts -> 9.0 bar -> 900
+    /* cal_coeff default = 1e6 milli-hPa/bar; 9,000,000 milli-hPa -> 9.0 bar -> 900
      * centibar, well over the 255 overrange limit. */
     bool failed = feed_until_status(
         "#MOXY 9000000 2500 0\r", CELL_FAIL, 4000);

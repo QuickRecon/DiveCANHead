@@ -524,11 +524,11 @@ DiveO2-cell-only offsets (analog/O2S leave these zero):
 |--------|-------|----------|------------------------|
 | 0x06   | 4     | int32    | Temperature (m°C)      |
 | 0x07   | 4     | uint32   | Error code             |
-| 0x08   | 4     | int32    | Phase                  |
-| 0x09   | 4     | int32    | Intensity              |
-| 0x0A   | 4     | int32    | Ambient light          |
-| 0x0B   | 4     | uint32   | Pressure (µhPa)        |
-| 0x0C   | 4     | int32    | Humidity (m-RH)        |
+| 0x08   | 4     | int32    | Phase shift (m°)                       |
+| 0x09   | 4     | int32    | Oxygen-sensor signal intensity (µV)   |
+| 0x0A   | 4     | int32    | Detector ambient light (µV)           |
+| 0x0B   | 4     | int32    | Backside ambient pressure (µbar)      |
+| 0x0C   | 4     | int32    | Housing relative humidity (m%RH)      |
 
 DiveO2-configured UART cells also expose write-only offset `0x0D`.
 Writing one byte sends a transient command to the physical cell:

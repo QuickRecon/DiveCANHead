@@ -443,17 +443,18 @@ CalCoeff_t analog_cal_coefficient(int16_t adc_counts, PPO2_t target_ppo2)
 /**
  * @brief Derive a DiveO2 calibration coefficient from a known-good reading.
  *
- * newCal = abs(cell_sample) / (target_ppo2 / 100.0).  The DiveO2 cell reports
- * counts proportional to bar; the coefficient is the nominal counts-per-bar,
- * expected near 1,000,000.  Rejects results outside DIVEO2_CAL_LOWER..UPPER.
+ * newCal = abs(raw_ppo2_millihpa) / (target_ppo2 / 100.0). The coefficient is
+ * the nominal milli-hPa-per-bar scale, expected near 1,000,000. Rejects
+ * results outside DIVEO2_CAL_LOWER..UPPER.
  *
- * @param cell_sample  Raw DiveO2 count at calibration time (integer, units: ~counts/bar).
+ * @param raw_ppo2_millihpa Raw DiveO2 PPO2 at calibration time in 10^-3 hPa.
  * @param target_ppo2  Known PPO2 at calibration in centibar.
  * @return CalCoeff_t coefficient, CAL_COEFF_ERR_MATH if target is zero or
  *         sample is near-zero, or CAL_COEFF_ERR_RANGE if the coefficient
  *         is out of the valid calibration envelope.
  */
-CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
+CalCoeff_t diveo2_cal_coefficient(int32_t raw_ppo2_millihpa,
+                                  PPO2_t target_ppo2)
 {
     CalCoeff_t result = CAL_COEFF_ERR_MATH;
 
@@ -464,11 +465,11 @@ CalCoeff_t diveo2_cal_coefficient(int32_t cell_sample, PPO2_t target_ppo2)
         result = CAL_COEFF_ERR_MATH;
     } else {
         Numeric_t ppo2_bar = (Numeric_t)target_ppo2 / CENTIBAR_PER_BAR_F;
-        Numeric_t sample_abs = fabsf((Numeric_t)cell_sample);
+        Numeric_t sample_abs = fabsf((Numeric_t)raw_ppo2_millihpa);
 
         if (sample_abs < MIN_ANALOG_SAMPLE) {
 #ifdef CONFIG_ZBUS
-            OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)cell_sample);
+            OP_ERROR_DETAIL(OP_ERR_MATH, (uint32_t)raw_ppo2_millihpa);
 #endif
             result = CAL_COEFF_ERR_MATH;
         } else {
