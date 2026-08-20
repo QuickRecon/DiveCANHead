@@ -25,6 +25,8 @@ and includes this complete file in the downloadable package.
 ### Fixed
 - Added inhibit to prevent spurious power on if the BUS EN line remains low after boot checks are complete
 - Fix an issue where the board could crash when downloading large amounts of log data due to an error histogram write occuring at the same time
+- Fix repeated reboots (seen as unresponsive handset communication) caused by the new periodic power logging overflowing the battery monitor's stack
+- Record a failed battery current read in the persistent error counters instead of only a log message
 
 ## 0.0.1 - 2026-07-29
 

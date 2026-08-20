@@ -100,11 +100,11 @@ static const size_t POSEIDON_OFF_CURRENT_CRC = 4U;    /* CRC after 2 data bytes 
  * 0x5B read reply) has landed within this window; also rate-limits the poll. */
 static const int64_t CURRENT_SOLICIT_STALE_MS = 500;
 /* After a solicit WRITE fails (battery absent / bus fault) back the poll off to
- * this interval so a dead peer isn't hammered at 2 Hz forever, and rate-limit
- * the failure log (WRN — with the force-INF CAN push a per-attempt INF line
- * would stream a broadcast push every poll for as long as the fault lasts). */
+ * this interval so a dead peer isn't hammered at 2 Hz forever. The failure is
+ * reported edge-triggered (see solicit_current) rather than per attempt — with
+ * the force-INF CAN push, a line per poll would stream a broadcast push for as
+ * long as the fault lasts. */
 static const int64_t CURRENT_SOLICIT_BACKOFF_MS = 5000;
-static const int64_t CURRENT_SOLICIT_FAIL_LOG_MS = 30000;
 /* DS2782 CURRENT register LSB = 1.5625 µV across the sense resistor. With the
  * shunt in µΩ this gives I(µA) = counts × 1.5625e6 / shunt_µΩ, i.e. the
  * numerator below. See device_current.h for the unit/sign convention. */
@@ -609,7 +609,6 @@ static void solicit_current(void)
 {
     static int64_t last_solicit;
     static bool last_solicit_failed;
-    static int64_t last_fail_log;
     /* Alternate the two CURRENT halves so both refresh; the reply's register echo
      * tells the parser which half it is. Toggled only on a successful send, so a
      * failed read is retried on the same register rather than skipped. */
@@ -634,23 +633,28 @@ static void solicit_current(void)
          * (locks, quiet-waits, notes activity, recovers) rather than the group
          * lock path. This is the hot, collision-prone periodic read. */
         Status_t rc = send_frame(BATTERY_ADDR, POSEIDON_CMD_DS2782_READ, solicit_reg);
-        last_solicit_failed = (rc != 0);
-        if (rc == 0) {
+        bool failed_now = (rc != 0);
+        if (!failed_now) {
             if (DS2782_REG_CURRENT == solicit_reg) {
                 solicit_reg = DS2782_REG_CURRENT_LSB;
             } else {
                 solicit_reg = DS2782_REG_CURRENT;
             }
             LOG_INF("DS2782 current stale — solicited read; awaiting reply");
-        } else if ((now - last_fail_log) >= CURRENT_SOLICIT_FAIL_LOG_MS) {
-            /* Rate-limited: one WRN per fault window, not one line per poll
-             * (with the force-INF CAN push this would otherwise broadcast a
-             * multi-frame push every attempt for as long as the fault lasts). */
-            last_fail_log = now;
-            LOG_WRN("DS2782 current solicit failing (rc=%d); backing off", rc);
+        } else if (!last_solicit_failed) {
+            /* Tier-3 on the FAULT EDGE, not per attempt: this counts in the
+             * error histogram (UDS 0xF260) so a stalled pack-current feed is
+             * evidence after the fact instead of a log line nobody captured.
+             * Edge-triggered for the same reason refresh_outputs latches its
+             * peer failures — a persistent fault must not stream one push per
+             * poll on force-INF builds. Same detail encoding as that path. */
+            OP_ERROR_DETAIL(OP_ERR_I2C_BUS, ((uint32_t)BATTERY_ADDR << 24) |
+                            (uint32_t)((-rc) & 0xFFFF));
         } else {
-            /* No action required — within the fail-log rate-limit window. */
+            /* No action required — already latched failing; the backoff
+             * interval below keeps the retry cadence bounded. */
         }
+        last_solicit_failed = failed_now;
     }
 }
 

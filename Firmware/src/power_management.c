@@ -1016,13 +1016,20 @@ static void battery_monitor_thread(void *p1, void *p2, void *p3)
     }
 }
 
-/* Restored to 512 after 384 caused K_ERR_STACK_CHK_FAIL on hardware.
- * Boot-time runtime analyzer reported 208/384 (54%) but steady-state
- * ADC-poll path under load pushed past 384 B and tripped the canary.
- * The static WCS (232 B) missed the deeper ADC/LOG_x paths the
- * runtime exercises after boot — same pattern as divecan_ppo2_tx.
- * Use INIT_STACKS + thread_analyzer high-water for any future trim. */
-K_THREAD_DEFINE(battery_monitor, 512,
+/* 512 was sized to the pre-telemetry worst case and had almost no margin:
+ * 384 caused K_ERR_STACK_CHK_FAIL on hardware, boot-time analyzer reported
+ * 208/384 (54%), and the steady-state ADC-poll path under load pushed past
+ * 384 B. The static WCS (232 B) missed the deeper ADC/LOG_x paths the runtime
+ * exercises after boot — same pattern as divecan_ppo2_tx.
+ *
+ * Raised to 1024 when the periodic power snapshot was added: enqueue_power_snapshot
+ * nests FlashLogPowerSnapshot_t (~32 B) -> fl_payload_power_snapshot_t (~32 B) ->
+ * LogIngestSlot_t (CONFIG_FLASH_LOG_MAX_ENTRY_BYTES, 96 B) on THIS stack, i.e.
+ * ~180 B of new depth on top of a path that already had none to spare. At 512 that
+ * overflowed into the MPU stack guard every sample interval and rebooted the head,
+ * which presents as pervasive UDS timeouts rather than an obvious crash.
+ * Use INIT_STACKS + thread_analyzer high-water before any future trim. */
+K_THREAD_DEFINE(battery_monitor, 1024,
         battery_monitor_thread, NULL, NULL, NULL,
         10, 0, 0);
 

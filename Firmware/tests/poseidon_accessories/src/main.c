@@ -498,29 +498,42 @@ ZTEST(poseidon_accessories, test_refresh_outputs_reports_bus_errors)
                   "a failed refresh must report an I2C bus error");
 }
 
-ZTEST(poseidon_accessories, test_solicit_current_backoff_and_fail_log)
+ZTEST(poseidon_accessories, test_solicit_current_backoff_and_fail_report)
 {
     /* current unseen (reset_gauge in fixture) => stale, so a solicit is due.
      * A short advance clears the STALE_MS gate against the previous test's
      * last_solicit without burning wall time (native_sim here runs in
-     * real time, so the 5 s / 30 s windows are deliberately NOT slept). */
+     * real time, so the 5 s window is deliberately NOT slept). */
     k_msleep(CURRENT_SOLICIT_STALE_MS + 1);
     write_script[0] = -EIO;
     write_script_count = 1U;
     recover_result = -EBUSY;
+    last_error = OP_ERR_NONE;
+    last_error_detail = 0U;
 
     solicit_current();
     zassert_equal(captured_count, 1U,
                   "a due+stale solicit must attempt one read");
+    /* The fault EDGE reports tier-3 so the stall lands in the error histogram
+     * rather than only in a log line. Detail carries the peer address and the
+     * positive errno, matching refresh_outputs' encoding. */
+    zassert_equal(last_error, OP_ERR_I2C_BUS,
+                  "a failed solicit must report an I2C bus error");
+    zassert_equal(last_error_detail,
+                  ((uint32_t)BATTERY_ADDR << 24) | (uint32_t)EIO,
+                  "solicit failure detail must carry the battery address and errno");
 
     /* A second solicit while last_solicit_failed is latched runs the
      * backoff-interval arm (interval widens to BACKOFF_MS) — that assignment
      * happens up-front, before the due check, so no BACKOFF_MS wait is
      * needed to exercise it. Not due yet, so no new frame is sent. */
     reset_write_capture();
+    last_error = OP_ERR_NONE;
     solicit_current();
     zassert_equal(captured_count, 0U,
                   "a backed-off solicit inside its window sends nothing");
+    zassert_equal(last_error, OP_ERR_NONE,
+                  "a suppressed retry must not re-report the latched fault");
 }
 
 ZTEST(poseidon_accessories, test_log_current_if_new_emits_once)
