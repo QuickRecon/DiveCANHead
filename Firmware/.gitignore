@@ -8,3 +8,6 @@ tests/integration/harness/control-response-data
 # Everything under proprietary/ is ignored except the tracked pointer doc.
 /proprietary/*
 !/proprietary/README.md
+# Ignore divecan log dumps
+divecan-telemetry-log.partial.bin
+divecan-telemetry-log.partial.csv
