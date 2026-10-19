@@ -24,6 +24,20 @@ A browser-based JavaScript API for communicating with DiveCAN-compatible devices
 - HTTPS (required for Web Bluetooth API)
 - User gesture to initiate connection (button click)
 
+## Development and tests
+
+The Node-based test tooling requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`.
+CI uses Node **24.22.0**. From `DiveCAN_bt/`:
+
+```bash
+npm ci --ignore-scripts
+npm run test:run
+npm run test:coverage
+```
+
+The test runner is Vitest with jsdom and V8 coverage. This Node requirement
+applies to development tooling; the client itself runs in the browser.
+
 ## Quick Start
 
 ### 1. Start a local HTTPS server
