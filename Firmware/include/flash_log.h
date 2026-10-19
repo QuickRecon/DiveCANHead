@@ -2,7 +2,7 @@
  * @file flash_log.h
  * @brief Persistent flash-backed dive log — public producer + stats API.
  *
- * Two parallel FCB instances on external SPI NOR:
+ * Two parallel FCB instances on the board's external flash-compatible device:
  *   - **Telemetry FCB** — structured records: consensus, cell raw samples,
  *     PID snapshots, solenoid fire events, errors, dive/boot markers.
  *   - **Text FCB** — Zephyr LOG_x capture (via the custom backend), plus
@@ -222,7 +222,7 @@ bool flash_log_boot_marker_flushed(void);
 /**
  * @brief Suspend FCB writes (queue keeps buffering).
  *
- * Call around long-running flash operations on the same SPI NOR (OTA
+ * Call around long-running operations on the same external device (OTA
  * upgrade, factory restore) to prevent contention. Producers continue to
  * enqueue; the writer waits at the head of its loop. Pair with
  * flash_log_resume().

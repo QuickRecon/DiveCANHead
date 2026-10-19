@@ -49,6 +49,13 @@ foreach(module_manifest ${proprietary_module_manifests})
     list(APPEND EXTRA_ZEPHYR_MODULES ${module_dir})
 endforeach()
 
+# The raw SD-to-flash adapter is shared by the application and MCUBoot on the
+# DiveCAN MainPCB.  Keep it as a regular Zephyr module so each image gets the
+# same flash semantics and devicetree binding; its Kconfig symbol remains off
+# on boards without a quickrecon,sd-flash node.
+list(APPEND EXTRA_ZEPHYR_MODULES
+     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/sd_flash)
+
 # Required patches to the west-managed Zephyr tree, applied at configure time
 # (idempotent, content-checked). The I2C patch backports the upstream STM32
 # combined controller/target race handling to the pinned 4.4.1 release. The
@@ -191,7 +198,7 @@ if(_zephyr_tree AND EXISTS "${_zephyr_tree}/subsys/kvss/nvs/nvs_priv.h")
 endif()
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(divecan_jr)
+project(divecan_firmware)
 
 # Widen the NVS read/compare granule (default 32 B) so the boot-time sector
 # scans over external SPI NOR amortise the per-transaction SPI framework

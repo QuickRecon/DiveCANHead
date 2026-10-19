@@ -1,0 +1,6 @@
+board:
+  name: divecan_main
+  full_name: DiveCAN MainPCB Head
+  vendor: quickrecon
+  socs:
+    - name: stm32l431xx

@@ -1,6 +1,9 @@
-# Architecture — DiveCAN Jr (Zephyr Port)
+# Architecture — DiveCAN Firmware (Zephyr Port)
 
-This document captures the design decisions made during the port from the FreeRTOS-based STM32 firmware to Zephyr RTOS, targeting the same STM32L431RCTx on the new Jr PCB.
+This document captures the design decisions made during the port from the
+FreeRTOS-based STM32 firmware to Zephyr RTOS. The same application targets the
+STM32L431RCTx on both DiveCAN Jr and DiveCAN MainPCB; board devicetree selects
+the physical storage and power topology.
 
 ## Motivations for Porting
 
@@ -17,15 +20,17 @@ This document captures the design decisions made during the port from the FreeRT
 - **CAN**: DiveCAN @ 125 kbit/s (CAN1, PB8/PB9)
 - **ADC**: Dual ADS1115 on I2C1 (0x48, 0x49) for oxygen cell voltage
 - **UARTs**: 3x at 19200 baud for digital oxygen sensors
-- **Flash**: Winbond W25Q512JV SPI NOR (64MB) replacing SD card — used for OTA secondary slot, scratch, factory image backup, NVS settings, and data logging
+- **External storage**: 64 MiB W25Q512JV SPI NOR on Jr, or the first 64 MiB of
+  the raw SDMMC card on MainPCB. Both provide the same OTA secondary slot,
+  scratch, factory backup, NVS settings, and data-log partitions.
 - **Console**: Segger RTT over ST-Link (no UART consumed)
 
 ## Flash Partitions
 
 Internal flash (STM32L431RC, 256 KB) is dedicated to MCUBoot + the
 primary application slot. All operational storage (secondary slot,
-swap scratch, factory image backup, NVS settings, future log space)
-lives on the external W25Q512JV NOR.
+swap scratch, factory image backup, NVS settings, and log space) lives on the
+board's 64 MiB external flash-compatible device.
 
 ### Internal flash
 
@@ -34,12 +39,14 @@ lives on the external W25Q512JV NOR.
 | Bootloader | `boot_partition` | `mcuboot` | 0x00000000 – 0x00009000 | 36 KB |
 | Primary slot | `slot0_partition` | `image-0` | 0x00009000 – 0x00040000 | 220 KB |
 
-MCUBoot is built with `BOOT_SIGNATURE_TYPE_NONE` (SHA-256 integrity
-only, no asymmetric crypto). The sysbuild MCUBoot overlay disables
-application-only peripherals; the image is approximately 32 KB in a 36 KB
-partition. Monitor this narrow margin after Zephyr/MCUBoot upgrades.
+MCUBoot is built with `BOOT_SIGNATURE_TYPE_NONE` (SHA-256 integrity only, no
+asymmetric crypto). The sysbuild MCUBoot overlay disables application-only
+peripherals. MainPCB additionally removes all boot text/log output and links at
+33,920 bytes with the pinned toolchain, leaving 2,944 bytes in the unchanged
+36 KiB boot partition. Jr retains its existing RTT boot log configuration.
+Monitor both images after Zephyr/MCUBoot upgrades.
 
-### External NOR (W25Q512JV, 64 MB)
+### External storage (64 MiB flash-compatible range)
 
 | Region | Node | Label | Range | Size |
 |--------|------|-------|-------|------|
@@ -55,6 +62,24 @@ partition. Monitor this narrow margin after Zephyr/MCUBoot upgrades.
 The log partitions use 256 KiB logical FCB sectors to fit the descriptor
 budget. At the measured high-rate capture cadence the 48 MB telemetry ring holds
 about 4.9 hours before wrapping. NVS remains at the top of the chip.
+
+The physical backend is board-specific while this table is deliberately not:
+
+- Jr exposes its W25Q512JV through Zephyr's SPI-NOR flash driver with 4 KiB
+  logical erase pages.
+- MainPCB uses Zephyr's standard STM32 SDMMC disk driver in 1-bit mode and a
+  small `drivers/sd_flash` adapter which presents byte-addressed flash
+  operations. The range starts at SD LBA 0, has no MBR/GPT or filesystem, and
+  must not be mounted by firmware or prepared as a PC-readable card. The card
+  must provide at least 64 MiB. Erase writes `0xff`, and writes enforce the
+  same erase-before-write (1-to-0 only) contract expected by MCUboot, NVS, and
+  FCB.
+
+Consequently, an existing filesystem or partition table in the first 64 MiB is
+firmware data and will be overwritten. Card insertion/removal while the system
+is running is outside the storage contract. All labels, offsets, and sizes are
+identical across the two boards; changing the internal boot/slot0 geometry or
+the external slot1/scratch geometry breaks OTA compatibility.
 
 The factory partition holds a permanent known-good copy of the
 first-confirmed image, captured automatically on first boot after a
@@ -369,7 +394,11 @@ semantics, UDS download protocol — live in `docs/FLASH_LOG.md`.
 
 The power subsystem uses a custom DT binding (`quickrecon,power-subsystem`) that describes the board's power architecture. Required properties specify the VBUS regulator and battery voltage ADC. Optional properties describe Rev2-specific features (bus-select mux, dual source indicators, VBUS/CAN voltage sensing).
 
-VBUS is modeled as a `regulator-fixed` device — the idiomatic Zephyr way to represent a power rail with an enable GPIO. Application code uses `regulator_enable()` / `regulator_disable()` through the standard API.
+VBUS is modeled as a `regulator-fixed` device and application code uses
+`regulator_enable()` / `regulator_disable()` through Zephyr's standard API. On
+Jr the regulator owns a physical enable GPIO. On MainPCB VBUS is the output of
+the dual-source mux, so the regulator is `boot-on`/`always-on` and has no fake
+enable pin.
 
 ### Jr power topology
 
@@ -380,6 +409,26 @@ VBUS is modeled as a `regulator-fixed` device — the idiomatic Zephyr way to re
   - Battery voltage via ADC1 channel 4 (PC3) through a 7.25x external resistor divider — reads the unregulated battery rail.
   - VCC (= VBUS, shared regulator) via the STM32 internal VBAT sensor on ADC1 channel 18, which applies the chip's internal 1/3 divider. Wired into the `power-subsystem` node via `vcc-sense = <&vbat>;` and consumed through the Zephyr sensor API (`SENSOR_CHAN_VOLTAGE`) so the divider is handled by the upstream driver.
 - **On Jr, VBUS == VCC** physically because they share the regulator. `power_get_vbus_voltage()` and `power_get_vcc_voltage()` therefore both read the VBAT sensor on this board; the Rev2 driver path will read a dedicated VBUS ADC channel once implemented.
+
+### MainPCB power and SD boot topology
+
+- **Dual input mux**: PA6 (`BUS_SEL1`) and PA5 (`BUS_SEL2`) control the
+  TPS2114/2115 source mux. Generic Zephyr GPIO hogs establish `10`
+  (`SEL1=1`, `SEL2=0`, battery with CAN fallback) during board initialisation,
+  before SDMMC probes. This can produce VBUS from either fitted input without
+  a MainPCB-only power driver.
+- **Load rail**: the SD socket is physically tied to VBUS. MCUboot therefore
+  keeps the generic VBUS regulator enabled and must never select mux-off (`11`)
+  before it has inspected or completed the secondary-slot swap.
+- **Application handoff**: `power_init()` reconfigures those same mux GPIOs
+  directly to the variant's `CONFIG_POWER_MODE_*` selection rather than
+  momentarily returning them to `00`. Normal shutdown remains the only path
+  that selects `11`.
+- **SD bus**: SDMMC1 uses PC12 clock, PD2 command, PC8 DAT0, and active-low
+  card detect on PC6. The HSI48 domain clock is enabled by the board DTS.
+- **Sensing/control**: PA1 is the active-low battery-disable signal; PA4/PA7
+  report the selected VCC/VBUS source; ADC1 channels 5 and 3 measure VBUS and
+  CAN respectively.
 
 ### Battery monitoring
 
@@ -642,15 +691,18 @@ in OS-free `src/ppo2_autotune_math.c` and are host-tested under
 
 ## Build System
 
-Zephyr west workspace. Board definition at `boards/quickrecon/divecan_jr/`. Custom DTS bindings at `dts/bindings/`. Solenoid driver built as an `add_subdirectory` rather than a Zephyr module.
+Zephyr west workspace. Board definitions live at
+`boards/quickrecon/divecan_jr/` and `boards/quickrecon/divecan_main/`.
+Application DTS bindings live at `dts/bindings/`. The raw-SD flash adapter is a
+small Zephyr module because both the application and the separately configured
+MCUboot image need the same driver and binding. The solenoid driver remains an
+application `add_subdirectory`.
 
-Build command:
+MainPCB build command (substitute `divecan_jr/stm32l431xx` for Jr):
 ```bash
-NCS=/home/aren/ncs/toolchains/927563c840
-PATH=$NCS/usr/local/bin:$PATH \
-LD_LIBRARY_PATH=$NCS/usr/local/lib:$LD_LIBRARY_PATH \
-ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk \
-west build -d build -b divecan_jr/stm32l431xx . --sysbuild \
+ZEPHYR_TOOLCHAIN_VARIANT=zephyr \
+ZEPHYR_SDK_INSTALL_DIR=/home/aren/zephyr-sdks/zephyr-sdk-1.0.1 \
+west build -d /tmp/divecan-main -b divecan_main/stm32l431xx . --sysbuild \
   -- -DBOARD_ROOT=. -DEXTRA_CONF_FILE=variants/Poseidon_Aren.conf \
      -DEXTRA_DTC_OVERLAY_FILE=variants/Poseidon_Aren.overlay
 ```
@@ -678,7 +730,9 @@ tags the tested commit, and publishes a GitHub Release. See
 
 ```
 Firmware/
-├── boards/quickrecon/divecan_jr/   Board definition (DTS, defconfig, Kconfig)
+├── boards/quickrecon/divecan_jr/   Jr board definition (SPI NOR)
+├── boards/quickrecon/divecan_main/ MainPCB board definition (raw SDMMC)
+├── drivers/sd_flash/               Raw Disk Access-to-flash adapter (app + MCUboot)
 ├── drivers/solenoid/               Zephyr device driver (DT-driven)
 ├── dts/bindings/                   Custom DT bindings (solenoid, power-subsystem)
 ├── include/

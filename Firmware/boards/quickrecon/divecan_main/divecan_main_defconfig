@@ -1,0 +1,59 @@
+# MPU and stack protection
+CONFIG_ARM_MPU=y
+CONFIG_HW_STACK_PROTECTION=y
+
+# GPIO
+CONFIG_GPIO=y
+
+# Console via RTT (no UART consumed)
+CONFIG_CONSOLE=y
+CONFIG_USE_SEGGER_RTT=y
+CONFIG_RTT_CONSOLE=y
+
+# CAN
+CONFIG_CAN=y
+
+# I2C
+CONFIG_I2C=y
+
+# UART (sensor cells — DMA-backed async API for receive-to-idle)
+CONFIG_SERIAL=y
+CONFIG_UART_ASYNC_API=y
+CONFIG_DMA=y
+
+# External ADC (ADS1115)
+CONFIG_ADC=y
+CONFIG_ADC_ADS1X1X=y
+
+# Sensor subsystem is used by variant-selected battery/current monitors.
+CONFIG_SENSOR=y
+
+# Raw SD-backed flash
+CONFIG_FLASH=y
+CONFIG_DISK_ACCESS=y
+CONFIG_DISK_DRIVERS=y
+CONFIG_DISK_DRIVER_SDMMC=y
+CONFIG_SDMMC_STM32=y
+CONFIG_QUICKRECON_SD_FLASH=y
+
+# Counter (solenoid deadman timer)
+CONFIG_COUNTER=y
+
+# Regulator (VBUS is selected before SDMMC initialises)
+CONFIG_REGULATOR=y
+CONFIG_REGULATOR_FIXED_INIT_PRIORITY=45
+
+# Watchdog
+CONFIG_WATCHDOG=y
+
+# Power management — needed by power_management.c::power_shutdown() to
+# suspend the cell UARTs before entering STM32 SHUTDOWN.
+CONFIG_PM_DEVICE=y
+
+# Settings subsystem (NVS-backed runtime config)
+CONFIG_NVS=y
+CONFIG_SETTINGS=y
+CONFIG_SETTINGS_NVS=y
+CONFIG_SETTINGS_RUNTIME=y
+CONFIG_FLASH_MAP=y
+CONFIG_FLASH_PAGE_LAYOUT=y

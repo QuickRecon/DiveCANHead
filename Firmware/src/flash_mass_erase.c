@@ -1,6 +1,6 @@
 /**
  * @file flash_mass_erase.c
- * @brief Whole-chip erase of the external SPI-NOR (see flash_mass_erase.h).
+ * @brief Whole-range erase of external storage (see flash_mass_erase.h).
  */
 
 #include <zephyr/kernel.h>
@@ -20,12 +20,11 @@ LOG_MODULE_REGISTER(flash_mass_erase, LOG_LEVEL_INF);
 
 #if DT_NODE_EXISTS(EXT_FLASH_NODE)
 
-/* Erase in chunks so the IWDG is fed between them. Each 256 KiB chunk is
- * 4 x 64 KiB block erases; at the W25Q512JV's ~2 s worst-case per 64 KiB block
- * that is <= ~8 s, comfortably inside the 32 s IWDG window. We feed the dog
- * DIRECTLY here rather than via heartbeat_set_long_op(), because this runs in
- * the divecan_rx thread (the UDS factory-erase path), which preempts the
- * lowest-priority feeder thread — long_op alone would not save us. */
+/* Erase in chunks so the IWDG is fed between them. On Jr each 256 KiB chunk is
+ * 4 x 64 KiB NOR block erases and remains inside the 32 s IWDG window. On
+ * MainPCB the raw-SD adapter writes erase-value sectors over the same range.
+ * Feed directly here because this runs in divecan_rx (the UDS factory-erase
+ * path), which preempts the lowest-priority feeder thread. */
 #define ERASE_CHUNK_BYTES   (256U * 1024U)
 
 /* Progress log cadence: one line every 16 chunks (~4 MB). */
@@ -40,10 +39,9 @@ LOG_MODULE_REGISTER(flash_mass_erase, LOG_LEVEL_INF);
  * @brief Erase the NVS/"storage" partition (top of chip) before the bulk sweep.
  *
  * The factory-reset contract (settings + cal defaults + the boot counter) lives
- * there. The full linear sweep occasionally HANGS mid-way in the SPI NOR
- * driver's no-timeout WIP poll — HW-observed as an IWDG reset at a RANDOM deep
- * offset, always long before reaching NVS. Doing NVS up front guarantees the
- * reset even if the bulk sweep is later cut short.
+ * there. On Jr, the full linear sweep historically hung mid-way in the SPI-NOR
+ * WIP poll and reset under the IWDG before reaching NVS. Doing NVS up front
+ * preserves the reset contract if either backend later fails mid-sweep.
  *
  * @param flash Ready external-flash device.
  * @return 0 on success, negative errno on erase failure.
@@ -67,10 +65,10 @@ static Status_t erase_nvs_partition(const struct device *flash)
 #endif
 
 /**
- * @brief Erase one chunk, retrying transient WIP-poll timeouts.
+ * @brief Erase one chunk, retrying transient storage errors.
  *
- * Erase is idempotent — retry a transient WIP-poll timeout (now bounded in
- * the spi_nor driver) before giving up.
+ * Erase is idempotent, so a bounded retry is safe for either backend. On Jr it
+ * specifically covers the now-bounded SPI-NOR WIP timeout.
  */
 static Status_t erase_chunk_with_retry(const struct device *flash, uint64_t off,
                                        size_t chunk)
@@ -148,7 +146,7 @@ Status_t flash_mass_erase_external(void)
                     result = -EIO;
                 }
             } else {
-                LOG_WRN("MASS ERASE: wiping %u KiB of external NOR in %u KiB chunks "
+                LOG_WRN("MASS ERASE: wiping %u KiB of external storage in %u KiB chunks "
                     "(slot1/OTA, factory, flash-log, NVS) — takes minutes, IWDG-fed",
                     (unsigned)(total / 1024U), (unsigned)(ERASE_CHUNK_BYTES / 1024U));
 
@@ -177,7 +175,7 @@ Status_t flash_mass_erase_external(void)
                         fail_count, first_err);
                     result = first_err;
                 } else {
-                    LOG_WRN("MASS ERASE complete — external NOR is blank");
+                    LOG_WRN("MASS ERASE complete — external storage is blank");
                 }
             }
             external_flash_release();
@@ -186,7 +184,7 @@ Status_t flash_mass_erase_external(void)
     return result;
 }
 
-#else  /* !DT_NODE_EXISTS(spi_flash) — e.g. native_sim has no external NOR */
+#else  /* !DT_NODE_EXISTS(spi_flash) — e.g. native_sim has no external storage */
 
 Status_t flash_mass_erase_external(void)
 {

@@ -1,12 +1,12 @@
 /**
  * @file external_flash.h
- * @brief Process-wide gate for blocking external SPI-NOR operations.
+ * @brief Process-wide gate for blocking external storage operations.
  *
- * The W25Q512 hosts MCUBoot slot1/scratch, the factory backup, flash-log FCBs,
- * and Zephyr's NVS/settings partition. Any operation that touches those areas
- * can stall on the same SPI bus/device. Life-critical threads must not call this
- * API directly; they should publish to RAM queues/channels and let service
- * threads perform flash work.
+ * The board's external device hosts MCUBoot slot1/scratch, the factory backup,
+ * flash-log FCBs, and Zephyr's NVS/settings partition. Any operation that
+ * touches those areas can stall on the same physical device. Life-critical
+ * threads must not call this API directly; they should publish to RAM
+ * queues/channels and let service threads perform storage work.
  */
 #ifndef EXTERNAL_FLASH_H
 #define EXTERNAL_FLASH_H

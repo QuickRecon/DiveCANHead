@@ -1,6 +1,6 @@
 /**
  * @file external_flash.c
- * @brief Shared external SPI-NOR coordination.
+ * @brief Shared external flash-compatible storage coordination.
  */
 
 #include "external_flash.h"

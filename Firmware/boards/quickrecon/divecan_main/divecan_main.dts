@@ -1,0 +1,157 @@
+/*
+ * QuickRecon DiveCAN MainPCB.
+ *
+ * The MainPCB shares the STM32L431, clocking, CAN, cell interfaces, ADCs and
+ * internal OTA layout with DiveCAN Jr.  The board-specific differences below
+ * replace SPI NOR with the native 1-bit SDMMC socket, describe the Rev2 power
+ * mux, and correct the LEDs, solenoid output and hardware-version pattern.
+ */
+#include "../divecan_jr/divecan_jr.dts"
+
+/* Remove Jr's SPI-NOR node and its fixed partitions before reusing the same
+ * labels for MainPCB's raw SD flash device. */
+/delete-node/ &spi_flash;
+
+/ {
+    model = "QuickRecon DiveCAN MainPCB";
+    compatible = "quickrecon,divecan-main";
+
+    leds {
+        led_1: led_1 {
+            gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>;
+        };
+        led_2: led_2 {
+            gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;
+        };
+        led_3: led_3 {
+            gpios = <&gpiob 10 GPIO_ACTIVE_HIGH>;
+        };
+        led_4: led_4 {
+            gpios = <&gpiob 11 GPIO_ACTIVE_HIGH>;
+        };
+        led_6: led_6 {
+            gpios = <&gpiob 13 GPIO_ACTIVE_HIGH>;
+        };
+        led_7: led_7 {
+            gpios = <&gpiob 14 GPIO_ACTIVE_HIGH>;
+        };
+    };
+
+    /* The first 64 MiB of the SD card is firmware-owned raw storage.  Keeping
+     * the existing partition labels and offsets means OTA, factory restore,
+     * flash logging and NVS continue to use flash_area without a filesystem. */
+    spi_flash: sd-flash {
+        compatible = "quickrecon,sd-flash";
+        disk-name = "SD";
+        size = <DT_SIZE_M(64)>;
+        erase-block-size = <4096>;
+        write-block-size = <8>;
+        status = "okay";
+
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <1>;
+            #size-cells = <1>;
+
+            slot1_partition: partition@0 {
+                label = "image-1";
+                reg = <0x00000000 DT_SIZE_K(220)>;
+            };
+            scratch_partition: partition@37000 {
+                label = "image-scratch";
+                reg = <0x00037000 DT_SIZE_K(64)>;
+            };
+            factory_partition: partition@47000 {
+                label = "factory-image";
+                reg = <0x00047000 DT_SIZE_K(220)>;
+            };
+            log_telemetry_partition: partition@80000 {
+                label = "log-telemetry";
+                reg = <0x00080000 DT_SIZE_M(48)>;
+            };
+            log_text_partition: partition@3080000 {
+                label = "log-text";
+                reg = <0x03080000 DT_SIZE_M(8)>;
+            };
+            storage_partition: partition@3ff8000 {
+                label = "storage";
+                reg = <0x03ff8000 DT_SIZE_K(32)>;
+            };
+        };
+    };
+};
+
+/* The included Jr definition places a W25Q512 under SPI2.  Those pins are
+ * LEDs on MainPCB, so remove the child entirely before disabling the bus. */
+&spi2 {
+    status = "disabled";
+};
+
+/* MainPCB SD socket: PC12=CK, PD2=CMD, PC8=DAT0, PC6=active-low detect. */
+&sdmmc1 {
+    pinctrl-0 = <&sdmmc1_ck_pc12 &sdmmc1_cmd_pd2 &sdmmc1_d0_pc8>;
+    pinctrl-names = "default";
+    disk-name = "SD";
+    bus-width = <1>;
+    cd-gpios = <&gpioc 6 GPIO_ACTIVE_LOW>;
+    status = "okay";
+};
+
+/* SDMMC1 uses HSI48 as its domain clock on STM32L431. */
+&clk_hsi48 {
+    status = "okay";
+};
+
+/* GPIO hogs are standard Zephyr board initialisation, not a storage or power
+ * driver.  They make VBUS available before the SD disk initialises at priority
+ * 90.  The application power driver subsequently owns and may reconfigure the
+ * same pins according to CONFIG_POWER_MODE_* and drives 11 on shutdown. */
+&gpioa {
+    vbus_sel1_boot: vbus-sel1-boot {
+        gpio-hog;
+        gpios = <6 GPIO_ACTIVE_HIGH>;
+        output-high;
+    };
+
+    vbus_sel2_boot: vbus-sel2-boot {
+        gpio-hog;
+        gpios = <5 GPIO_ACTIVE_HIGH>;
+        output-low;
+    };
+};
+
+/* Rev2.3/2.4: VER_DET_1 grounded, VER_DET_2/3 floating. */
+&hw_version {
+    expected-pattern = <0 2 2>;
+};
+
+/* MainPCB has one solenoid drive input on PC1.  PB4, PC11, PB5 and PA7 are
+ * source-disable/status signals on this board rather than solenoid channels. */
+&solenoids {
+    gpios = <&gpioc 1 GPIO_ACTIVE_HIGH>;
+};
+
+/* VBUS is the output of the dual-source mux rather than PA1 directly. */
+&vbus_reg {
+    /delete-property/ enable-gpios;
+    regulator-always-on;
+};
+
+&power {
+    /delete-property/ vcc-sense;
+    bus-select-gpios = <&gpioa 6 GPIO_ACTIVE_HIGH>,
+                       <&gpioa 5 GPIO_ACTIVE_HIGH>;
+    battery-enable-gpios = <&gpioa 1 GPIO_ACTIVE_LOW>;
+    vcc-source-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
+    vbus-source-gpios = <&gpioa 7 GPIO_ACTIVE_HIGH>;
+    vbus-sense-io-channels = <&adc1 5>;
+    vbus-divider-ratio = <11000>;
+    can-sense-io-channels = <&adc1 3>;
+    can-divider-ratio = <11000>;
+};
+
+/* MainPCB has dedicated VBUS/CAN ADC channels; the Jr VBAT sensor does not
+ * represent either rail on this power topology. */
+&vbat {
+    status = "disabled";
+};

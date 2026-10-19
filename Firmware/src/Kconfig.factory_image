@@ -26,15 +26,16 @@ config FACTORY_IMAGE_BACKEND_FLASH
 	depends on FLASH_MAP
 	help
 	  Store the factory image in a dedicated flash partition labelled
-	  factory-image. Required for the divecan_jr hardware (external
-	  W25Q512JV NOR).
+	  factory-image. Used by Jr's W25Q512JV and MainPCB's raw-SD flash
+	  adapter.
 
 config FACTORY_IMAGE_BACKEND_FS
 	bool "File on a mounted filesystem (SD card)"
 	depends on FILE_SYSTEM
 	help
 	  Store the factory image as ``factory.img`` on a mounted
-	  filesystem volume. The captured-flag is signalled by the presence
+	  filesystem volume. This is not used by MainPCB's raw-SD board variant.
+	  The captured-flag is signalled by the presence
 	  of a ``factory.ok`` sidecar file written only after fs_sync
 	  succeeds. For older hardware variants that host slot1 + the
 	  factory backup on an SD card instead of dedicated NOR.

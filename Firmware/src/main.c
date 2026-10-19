@@ -502,12 +502,12 @@ static volatile struct boot_phase_times *boot_phase_times_get(void)
 /**
  * @brief Temporarily boost SYSCLK for boot-time flash operations.
  *
- * The DTS configures PLL-R=8 → 12 MHz SYSCLK for low runtime power. SPI NOR
- * throughput is limited to 6 MHz (prescaler /2), and the Zephyr SPI framework
- * overhead (~380 µs/transaction at 12 MHz) dominates the ~9 µs wire time for
- * small reads. Switching PLL-R to 2 → 48 MHz SYSCLK / 24 MHz SPI cuts per-
- * transaction overhead ~4x for the boot-path NVS and FCB scans, then we
- * restore to 12 MHz before the heartbeat loop for normal-mode power.
+ * The DTS configures PLL-R=8 → 12 MHz SYSCLK for low runtime power. External
+ * storage framework overhead dominates the many small boot-path NVS and FCB
+ * reads (measured at ~380 us per SPI transaction on Jr). Switching PLL-R to 2
+ * gives a 48 MHz CPU and, on Jr, 24 MHz SPI; MainPCB's SDMMC domain remains on
+ * HSI48 but still benefits from lower CPU-side overhead. Restore 12 MHz before
+ * the heartbeat loop for normal-mode power.
  *
  * The PLL output (96 MHz) is unchanged — only the R divider changes. Flash
  * wait states must be adjusted for the new HCLK (48 MHz needs 2 WS, 12 MHz
@@ -614,12 +614,13 @@ Status_t main(void)
      * MCUBoot arms the IWDG at CONFIG_BOOT_WATCHDOG_TIMEOUT_MS (8 s) and that
      * programming survives the chainload — the IWDG sits outside the RCC reset
      * domain and cannot be disabled, only re-programmed or fed. The boot path
-     * below then spends far longer than 8 s in synchronous, non-yielding SPI
-     * transfers against the external NOR (measured on Poseidon_Aren: 3.5 s in
+     * below can then spend longer than 8 s in synchronous external-storage
+     * transfers (measured on Jr/Poseidon_Aren: 3.5 s in
      * runtime_settings_load's NVS walk alone, plus boot_history_init and the
      * flash-log FCB mount). The watchdog_feeder thread cannot rescue this: it
      * runs at priority 14 while main runs at CONFIG_MAIN_THREAD_PRIORITY=0,
-     * so it can never pre-empt main, and main never blocks during polled SPI.
+     * so it can never pre-empt main, and the Jr path never blocks during polled
+     * SPI.
      * The result was an 8 s IWDG reset loop that no amount of raising
      * WDT_TIMEOUT_MS could fix, because the app never reached wdt_setup().
      *

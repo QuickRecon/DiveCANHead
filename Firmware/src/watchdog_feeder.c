@@ -41,11 +41,11 @@ LOG_MODULE_REGISTER(watchdog_feeder, LOG_LEVEL_INF);
 
 /* IWDG window-max (ms). Set to the STM32L4 IWDG hardware maximum (~32 s at
  * the /256 LSI prescaler). Raised from 8000 because the boot path blocks in
- * synchronous, non-yielding SPI transfers against the external NOR for far
- * longer than 8 s: the flash-log FCB mount can do a one-shot full-partition
+ * synchronous external-storage transfers for longer than 8 s: the flash-log
+ * FCB mount can do a one-shot full-partition
  * recovery erase of the 48 MB telemetry region, and runtime_settings_load's
  * NVS walk costs ~3.5 s on its own once the settings partition fills (it
- * reads 8 bytes per SPI transaction). The slowest registered steady-state
+ * reads 8 bytes per transaction on Jr). The slowest registered steady-state
  * thread is the battery monitor at 2 s, so 32 s is still a valid liveness
  * bound in normal operation; the long window only matters during boot.
  *
@@ -55,7 +55,8 @@ LOG_MODULE_REGISTER(watchdog_feeder, LOG_LEVEL_INF);
  * watchdog_kick() as its very first statement — raising this number alone
  * does nothing for code that runs before the first kick. The feeder thread
  * below cannot serve that role: at priority 14 it never pre-empts main
- * (CONFIG_MAIN_THREAD_PRIORITY=0), which does not block during polled SPI. */
+ * (CONFIG_MAIN_THREAD_PRIORITY=0), which does not block during Jr's polled
+ * SPI path. */
 #define WDT_TIMEOUT_MS       32000U
 
 /* How often the feeder wakes and decides whether to feed. With a 32 s

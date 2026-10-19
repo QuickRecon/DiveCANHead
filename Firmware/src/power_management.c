@@ -794,6 +794,14 @@ static void setup_battery_adc(const struct power_config *cfg, struct power_data 
 static Status_t configure_can_gpios(const struct power_config *cfg)
 {
     Status_t result = 0;
+    gpio_flags_t bus_sel1_flags = GPIO_OUTPUT_INACTIVE;
+    gpio_flags_t bus_sel2_flags = GPIO_OUTPUT_INACTIVE;
+
+#if defined(CONFIG_POWER_MODE_BATTERY_THEN_CAN)
+    bus_sel1_flags = GPIO_OUTPUT_ACTIVE;
+#elif defined(CONFIG_POWER_MODE_CAN)
+    bus_sel2_flags = GPIO_OUTPUT_ACTIVE;
+#endif
 
     if (cfg->has_can_en) {
         result = gpio_pin_configure_dt(&cfg->can_en, GPIO_INPUT);
@@ -821,11 +829,14 @@ static Status_t configure_can_gpios(const struct power_config *cfg)
         }
     }
 
-    /* Configure bus select mux GPIOs if present (Rev2 only) */
+    /* Configure the Rev2 power mux directly into the selected operating mode.
+     * MainPCB's SD card is powered from VBUS, so leaving both pins merely
+     * inactive until a later enable call would make storage availability
+     * depend on reset-state GPIO levels. */
     if ((0 == result) && cfg->has_bus_select) {
-        result = gpio_pin_configure_dt(&cfg->bus_sel[0], GPIO_OUTPUT_INACTIVE);
+        result = gpio_pin_configure_dt(&cfg->bus_sel[0], bus_sel1_flags);
         if (0 == result) {
-            result = gpio_pin_configure_dt(&cfg->bus_sel[1], GPIO_OUTPUT_INACTIVE);
+            result = gpio_pin_configure_dt(&cfg->bus_sel[1], bus_sel2_flags);
         }
     }
 

@@ -6,7 +6,8 @@
  * driver code+data for it in the bootloader image. The bootloader
  * doesn't talk CAN, doesn't read oxygen cells, doesn't drive
  * solenoids, doesn't need an ADC; it only needs to read/write
- * internal flash and the external SPI NOR to do its swap dance.
+ * internal flash and the board's external flash-compatible device to perform
+ * an OTA swap.
  *
  * Without this overlay MCUBoot drags in ~18 KB of application-layer
  * peripheral drivers (uart_stm32, adc_ads1x1x, can_stm32_bxcan,
@@ -16,7 +17,8 @@
  * authoritative for exact boundaries.
  *
  * What MCUBoot actually needs to keep:
- *   - spi2 + spi_flash (W25Q on SPI2 — slot1/scratch/factory live there)
+ *   - spi_flash label (W25Q on Jr or raw SD adapter on MainPCB)
+ *   - its backing bus (SPI2 on Jr or SDMMC1 on MainPCB)
  *   - iwdg (watchdog must keep being fed)
  *   - rcc/clock controller (implicit; can't disable)
  *   - gpio banks for spi CS pin and any wake/reset signals
@@ -77,13 +79,13 @@
 /* ---- Bootloader clock: run MCUBoot at 48 MHz ----
  * The app runs at 12 MHz for power and boosts to 48 MHz only for its
  * boot-path flash scans (see main.c boot_clock_boost). MCUBoot has no
- * power budget — it exists for ~2 s to SHA256 slot0 and read swap
- * trailers off the SPI NOR, all of it clock-bound. Same PLL (HSE 8 MHz
+ * power budget — it exists briefly to SHA256 slot0 and inspect the external
+ * swap trailers, all of it clock-bound. Same PLL (HSE 8 MHz
  * x12 = 96 MHz VCO), R divider /2 instead of /8. The Zephyr clock
- * driver sets flash wait states for the target frequency itself, and
- * the app's own clock init reconfigures to the app DTS's 12 MHz at
- * chainload. SPI NOR runs at 24 MHz here (spi-max-frequency, /2 of
- * 48 MHz APB1) — well inside the W25Q512JV's 50 MHz limit. */
+ * driver sets flash wait states for the target frequency itself, and the
+ * app's own clock init reconfigures to the app DTS's 12 MHz at chainload. On
+ * Jr, SPI NOR runs at 24 MHz here (spi-max-frequency, /2 of 48 MHz APB1), well
+ * inside the W25Q512JV's 50 MHz limit. MainPCB's SDMMC1 domain uses HSI48. */
 &pll {
 	div-r = <2>;
 };

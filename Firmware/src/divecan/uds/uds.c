@@ -1413,7 +1413,7 @@ static bool writeForceRevertDID(UDSContext_t *ctx,
 /**
  * @brief Handle a WDBI write to UDS_DID_FACTORY_FLASH_ERASE (0xF278).
  *
- * Chip-erases the entire external SPI-NOR (slot1/OTA, image-scratch, factory
+ * Erases the entire external storage range (slot1/OTA, image-scratch, factory
  * backup, flash log, NVS/settings) and reboots into a clean state. The internal
  * flash — MCUboot and the running slot0 image — is untouched, so the unit keeps
  * executing through the erase. Destructive recovery tool, gated on the
@@ -1430,7 +1430,7 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, nrc);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, nrc);
     } else if (claimFlashMaintenance(ctx)) {
-        LOG_WRN("Factory flash erase: wiping external NOR (~minutes), then reboot");
+        LOG_WRN("Factory flash erase: wiping external storage (~minutes), then reboot");
         /* ACK now. The ISO-TP TX queue is normally drained by the divecan_rx
          * poll loop — which THIS handler is about to block for minutes in the
          * erase — so pump it here until the ACK is physically transmitted before
@@ -1445,7 +1445,7 @@ static bool writeFactoryFlashEraseDID(UDSContext_t *ctx,
 #endif
         Status_t erc = flash_mass_erase_external();   /* watchdog-fed via watchdog_kick() */
         if (0 != erc) {
-            /* The external-NOR wipe did not fully complete. Record it and still
+            /* The external-storage wipe did not fully complete. Record it and still
              * reboot to a defined state, but do NOT let the reboot MASK the
              * failure: previously the rc was discarded and the unit rebooted
              * looking "factory reset" while NVS/settings/boot-counter survived
@@ -1495,7 +1495,7 @@ static bool writeNvsEraseDID(UDSContext_t *ctx,
         UDS_SendResponse(ctx);
         flushWriteDidResponseTxQueue();
 #ifdef CONFIG_FLASH_LOG
-        /* The settings partition shares the SPI NOR with the log; pause the log
+        /* The settings partition shares the external device with the log; pause the log
          * writer so its sector-erase waits don't fight this erase for the bus. */
         flash_log_pause();
 #endif
@@ -1561,7 +1561,7 @@ static bool writeRestoreFactoryDID(UDSContext_t *ctx,
  * an unconfirmed candidate would defeat the "known-good fallback"
  * property of the factory image. Capture runs asynchronously on a
  * preemptible work queue so the UDS handler returns immediately and the
- * watchdog feeder can keep ticking while the SPI NOR erase runs.
+ * watchdog feeder can keep ticking while the external erase runs.
  */
 static bool writeFactoryCaptureDID(UDSContext_t *ctx,
                                    const uint8_t *request_data,

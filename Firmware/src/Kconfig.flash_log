@@ -8,7 +8,7 @@ config FLASH_LOG
 	select FCB_ALLOW_FIXED_ENDMARKER
 	help
 	  Persistent dive log captured to two parallel FCB instances on
-	  external SPI NOR. Telemetry FCB holds structured records
+	  external flash-compatible storage. Telemetry FCB holds structured records
 	  (consensus, cell raw, PID, solenoid, errors, dive/boot
 	  markers). Text FCB holds RTT capture of LOG_x messages plus
 	  mirrored markers. Retrievable in bulk over UDS. See
@@ -26,7 +26,7 @@ config FLASH_LOG_SECTOR_SIZE
 	help
 	  Size of each logical FCB sector. Production uses 256 KiB sectors
 	  so the two FCB descriptor arrays can address most of the 64 MiB
-	  external NOR within FCB's 255-sector limit. Native-simulator tests
+	  external 64 MiB range within FCB's 255-sector limit. Native-simulator tests
 	  override this together with the sector counts and matching fixed
 	  partitions.
 
