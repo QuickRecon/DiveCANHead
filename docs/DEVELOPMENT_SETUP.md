@@ -35,6 +35,11 @@ The current Zephyr checkout requires Python **3.12 or newer** and CMake **3.20
 or newer**. CI pins Python 3.12.10; use the
 [CI workflow](../.github/workflows/build.yml) when matching CI exactly.
 
+In a minimal container, check `id -u`: a result of `0` means you are already
+root. Such containers may not include `sudo`; run the two `apt-get` commands
+below without `sudo` inside the container. On a normal host, keep `sudo` as
+shown.
+
 ```bash
 sudo apt-get update
 sudo apt-get install --no-install-recommends \
