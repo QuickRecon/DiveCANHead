@@ -1,0 +1,29 @@
+config QUICKRECON_SD_FLASH
+    bool "Raw SD block device exposed as flash"
+    default y
+    depends on FLASH
+    depends on DISK_ACCESS
+    depends on DT_HAS_QUICKRECON_SD_FLASH_ENABLED
+    select FLASH_HAS_EXPLICIT_ERASE
+    select FLASH_PAGE_LAYOUT
+    help
+      Expose a fixed raw region of an SD disk through Zephyr's flash API.
+      This preserves the existing flash_map, MCUboot, NVS, FCB, and factory
+      image implementations on DiveCAN boards which use SD instead of NOR.
+      No filesystem is mounted or required.
+
+if QUICKRECON_SD_FLASH
+
+config QUICKRECON_SD_FLASH_INIT_PRIORITY
+    int "Raw SD flash adapter init priority"
+    default 91
+    range 91 99
+    help
+      Device initialization priority.  This must be later than the backing
+      SDMMC disk driver, whose default priority is 90.
+
+module = QUICKRECON_SD_FLASH
+module-str = quickrecon_sd_flash
+source "subsys/logging/Kconfig.template.log_config"
+
+endif

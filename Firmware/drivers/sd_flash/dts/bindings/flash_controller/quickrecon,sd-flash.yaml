@@ -1,0 +1,31 @@
+description: |
+  Raw SD block range exposed through Zephyr's flash API.
+
+  The adapter translates byte-addressed flash reads, aligned flash writes,
+  and explicit erase-to-0xff operations into 512-byte disk accesses.  It does
+  not mount or interpret a filesystem.
+
+compatible: "quickrecon,sd-flash"
+
+include: base.yaml
+
+properties:
+  disk-name:
+    type: string
+    required: true
+    description: Disk Access name exported by the backing SD driver.
+
+  size:
+    type: int
+    required: true
+    description: Size in bytes of the raw SD range exposed as flash.
+
+  erase-block-size:
+    type: int
+    required: true
+    description: Logical flash erase-page size in bytes.
+
+  write-block-size:
+    type: int
+    required: true
+    description: Minimum aligned flash write size in bytes.

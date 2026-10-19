@@ -1,0 +1,18 @@
+/ {
+    test_disk: ramdisk0 {
+        compatible = "zephyr,ram-disk";
+        disk-name = "SDTEST";
+        sector-size = <512>;
+        sector-count = <32>;
+        status = "okay";
+    };
+
+    test_flash: sd-flash {
+        compatible = "quickrecon,sd-flash";
+        disk-name = "SDTEST";
+        size = <16384>;
+        erase-block-size = <4096>;
+        write-block-size = <8>;
+        status = "okay";
+    };
+};
