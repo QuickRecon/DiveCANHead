@@ -1,5 +1,10 @@
 # UDS Protocol Implementation
 
+> **Historical reference — STM32/FreeRTOS.** This page describes the former
+> implementation; its source paths and behavior are not current Zephyr guidance.
+> See the [current firmware reference](../Firmware/UDS.md) and
+> [documentation index](README.md).
+
 This document describes the UDS (Unified Diagnostic Services - ISO 14229) implementation for the DiveCANHead.
 
 ## Overview

@@ -12,7 +12,6 @@ concurrency:
 env:
   HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/usr/local/sbin/divecan-hil-runner' }}
   HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '1' }}
-  HIL_HOST_TEST_RIG_DIR: ${{ vars.DIVECAN_HIL_TEST_RIG_DIR || '/home/aren/Nextcloud/Clients/Internal/CCR_Electronics/Test Rig' }}
 
 jobs:
   validate:

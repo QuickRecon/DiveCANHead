@@ -1,5 +1,10 @@
 # ISO-TP Transport Layer
 
+> **Historical reference — STM32/FreeRTOS.** This page describes the former
+> implementation; its source paths and behavior are not current Zephyr guidance.
+> See the [current firmware reference](../Firmware/UDS.md) and
+> [documentation index](README.md).
+
 This document describes the ISO-TP (ISO 15765-2) implementation for transporting UDS messages over CAN.
 
 ## Overview

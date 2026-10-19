@@ -1,38 +1,55 @@
-# DiveCANHead Documentation Index
+# DiveCAN Head documentation
 
-This directory contains detailed subsystem documentation for the DiveCANHead firmware project.
+The active application is the Zephyr firmware in `Firmware/`. Start with the
+[root README](../README.md) for workspace setup, boards, variants, and builds.
 
-## Quick Reference
+## Current guides
 
-| Document | Description |
-|----------|-------------|
-| [UDS_PROTOCOL.md](UDS_PROTOCOL.md) | UDS diagnostic services, session model, NRCs |
-| [ISOTP_TRANSPORT.md](ISOTP_TRANSPORT.md) | ISO-TP framing, state machine, TX queue |
-| [DATA_IDENTIFIERS.md](DATA_IDENTIFIERS.md) | Complete DID reference (state, cells, settings) |
-| [FREERTOS_PATTERNS.md](FREERTOS_PATTERNS.md) | Cooperative scheduling, queues, static allocation |
-| [OXYGEN_SENSORS.md](OXYGEN_SENSORS.md) | Sensor drivers, voting algorithm, calibration |
-| [CONFIGURATION_SYSTEM.md](CONFIGURATION_SYSTEM.md) | Configuration_t bitfield, persistence |
-| [TESTING_ARCHITECTURE.md](TESTING_ARCHITECTURE.md) | DiveCANpy, pytest fixtures, HWShim |
-| [HIL_GITHUB_ACTIONS.md](HIL_GITHUB_ACTIONS.md) | Self-hosted GitHub Actions gate for the out-of-tree HIL bench |
-| [DIVECAN_BT.md](DIVECAN_BT.md) | Browser JS client, SLIP, UDSClient |
-| [TELEMETRY_VIEWER.md](TELEMETRY_VIEWER.md) | Flash-log telemetry viewer + `telemetry_log.py` CLI |
-| [FLASHING_FIRMWARE.md](FLASHING_FIRMWARE.md) | SWD flashing via STM32CubeProgrammer |
+| Document | Scope |
+|---|---|
+| [Development setup](DEVELOPMENT_SETUP.md) | Public dependencies, Python environment, SDK installation, first build, and troubleshooting |
+| [Architecture](../Firmware/ARCHITECTURE.md) | Jr/MainPCB topology, storage, sensors, power, control, and threads |
+| [Flashing firmware](FLASHING_FIRMWARE.md) | MCUboot/application image selection and SWD workflow |
+| [Testing](TESTING_ARCHITECTURE.md) | Native tests, simulator integration, coverage, and physical HIL |
+| [HIL GitHub Actions](HIL_GITHUB_ACTIONS.md) | Out-of-tree physical bench and qualification workflow |
+| [Releasing](../Firmware/docs/RELEASING.md) | Numbered releases, qualification, and packages |
+| [UDS wire reference](../Firmware/UDS.md) | Current services, sessions, transport behavior, and OTA |
+| [Data identifiers](DATA_IDENTIFIERS.md) | Zephyr DID and routine catalogue |
+| [State machines](../Firmware/docs/STATE_MACHINES.md) | Current state-machine design |
+| [Flash log](../Firmware/docs/FLASH_LOG.md) | Persistent telemetry/text storage and retrieval |
+| [Telemetry viewer](TELEMETRY_VIEWER.md) | Browser viewer and Python log parser |
+| [Browser client](../DiveCAN_bt/README.md) | BLE/SLIP/ISO-TP/UDS API and examples |
+| [Bluetooth internals](DIVECAN_BT.md) | Browser protocol stack |
+| [Bench checklist](../Firmware/BENCHTEST.md) | Manual scenarios; not a record of completed qualification |
+| [Compromises](../Firmware/COMPROMISE.md) | Engineering constraints and mitigations |
 
-## External References
+## Current source map
 
-- [DiveCAN Protocol](https://github.com/QuickRecon/DiveCAN) - Base protocol documentation
-- [ISO 14229 (UDS)](https://www.iso.org/standard/72439.html) - Unified Diagnostic Services specification
-- [ISO 15765-2 (ISO-TP)](https://www.iso.org/standard/66574.html) - Transport protocol specification
+Paths below are relative to the repository root.
 
-## Source File Mapping
+| Subsystem | Source |
+|---|---|
+| Board wiring | `Firmware/boards/quickrecon/` |
+| Fitted topology and defaults | `Firmware/variants/` |
+| UDS and ISO-TP | `Firmware/src/divecan/uds/` |
+| Runtime settings | `Firmware/src/runtime_settings.c`, `Firmware/include/runtime_settings.h` |
+| Oxygen sensors | `Firmware/src/oxygen_cell_analog.c`, `oxygen_cell_diveo2.c`, `oxygen_cell_o2s.c`, `oxygen_cell_math.c` |
+| Tank pressure | `Firmware/src/tank_pressure.c`, `Firmware/src/tank_pressure_math.c` |
+| Native tests | `Firmware/tests/`, `Firmware/scripts/native_test.py` |
+| Simulator integration | `Firmware/tests/integration/harness/` |
+| Browser tools | `DiveCAN_bt/src/`, `DiveCAN_bt/examples/` |
 
-| Subsystem | Key Source Files |
-|-----------|------------------|
-| UDS | `STM32/Core/Src/DiveCAN/uds/uds.c`, `uds.h` |
-| ISO-TP | `STM32/Core/Src/DiveCAN/uds/isotp.c`, `isotp_tx_queue.c` |
-| DIDs | `uds_state_did.h`, `uds_settings.c`, `DiveCAN_bt/src/uds/constants.js` |
-| FreeRTOS | `STM32/Core/Inc/FreeRTOSConfig.h`, `main.c` |
-| Sensors | `Sensors/OxygenCell.c`, `AnalogOxygen.c`, `DiveO2.c`, `OxygenScientific.c` |
-| Config | `configuration.h`, `configuration.c`, `ConfigFormat.md` |
-| Testing | `DiveCANpy/*.py`, `HW Testing/Tests/*.py` |
-| BT Client | `DiveCAN_bt/src/**/*.js` |
+## Historical references
+
+These pages describe the former STM32/FreeRTOS implementation. Source paths,
+configuration layouts, scheduling, and protocol details may differ from Zephyr;
+use the current guides above for implementation work.
+
+- [FreeRTOS patterns](FREERTOS_PATTERNS.md)
+- [Legacy configuration system](CONFIGURATION_SYSTEM.md)
+- [Legacy oxygen sensor implementation](OXYGEN_SENSORS.md)
+- [Legacy UDS implementation](UDS_PROTOCOL.md)
+- [Legacy ISO-TP implementation](ISOTP_TRANSPORT.md)
+
+The current wire protocol reference is [Firmware/UDS.md](../Firmware/UDS.md),
+not the historical UDS/ISO-TP pages.

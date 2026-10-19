@@ -701,7 +701,7 @@ application `add_subdirectory`.
 MainPCB build command (substitute `divecan_jr/stm32l431xx` for Jr):
 ```bash
 ZEPHYR_TOOLCHAIN_VARIANT=zephyr \
-ZEPHYR_SDK_INSTALL_DIR=/home/aren/zephyr-sdks/zephyr-sdk-1.0.1 \
+ZEPHYR_SDK_INSTALL_DIR=/absolute/path/to/zephyr-sdk-1.0.1 \
 west build -d /tmp/divecan-main -b divecan_main/stm32l431xx . --sysbuild \
   -- -DBOARD_ROOT=. -DEXTRA_CONF_FILE=variants/Poseidon_Aren.conf \
      -DEXTRA_DTC_OVERLAY_FILE=variants/Poseidon_Aren.overlay

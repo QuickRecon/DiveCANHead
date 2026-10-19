@@ -1,5 +1,10 @@
 # Configuration System
 
+> **Historical reference — STM32/FreeRTOS.** This page describes the former
+> implementation; its source paths and behavior are not current Zephyr guidance.
+> See the [current firmware reference](../Firmware/ARCHITECTURE.md) and
+> [documentation index](README.md).
+
 This document describes the configuration storage and management system.
 
 ## Overview

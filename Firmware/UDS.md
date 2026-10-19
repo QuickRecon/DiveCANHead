@@ -1,6 +1,6 @@
 # UDS — Wire-Level Reference
 
-Comprehensive reference for the DiveCAN Jr Zephyr-port UDS (ISO 14229)
+Comprehensive reference for the DiveCAN Zephyr firmware UDS (ISO 14229)
 implementation. Source of truth for the wire format, supported services,
 data identifiers, negative response codes, and the safety-critical gating
 that protects flash and OTA operations.

@@ -8,15 +8,16 @@
  *   (no Cell 3)      → USART3 unused
  *
  * No analog cells, but the first ADS1115 (adc_ext1 @0x48) is repurposed for
- * the HP tank pressure transducers (CONFIG_O2_TRANSDUCER_CHANNEL=0 /
- * CONFIG_DIL_TRANSDUCER_CHANNEL=1 in the matching .conf):
+ * the HP tank pressure transducers (CONFIG_O2_TRANSDUCER_CHANNEL=1 /
+ * CONFIG_DIL_TRANSDUCER_CHANNEL=0 in the matching .conf):
  *
- *   O2 transducer  → io-channels index 0 → adc_ext1 channel@0 (AIN0-AIN1)
- *   Dil transducer → io-channels index 1 → adc_ext1 channel@1 (AIN2-AIN3)
+ *   O2 transducer  → io-channels index 1 → adc_ext1 channel@1 (AIN2-AIN3)
+ *   Dil transducer → io-channels index 0 → adc_ext1 channel@0 (AIN0-AIN1)
  *
- * The transducers swing 0.3–1.8 V, so the galvanic-cell PGA range of
- * ADC_GAIN_8 (±0.256 V) from the board DTS would clip: override both
- * channels to ADC_GAIN_1 (±2.048 V full scale).
+ * Override the analog-cell ADC_GAIN_8 (±0.256 V) with ADC_GAIN_1
+ * (±2.048 V). The matching config currently extrapolates to a 3 V
+ * calibration endpoint; that endpoint is outside this ADC range.
+ * Verify the fitted sender calibration separately from ADC gain.
  *
  * With only two digital cells USART3 is idle, and adc_ext2 (cell 3 + aux)
  * is unused. Disabling those nodes elides each driver's
@@ -38,11 +39,11 @@
     status = "okay";
 
     channel@0 {
-        zephyr,gain = "ADC_GAIN_1";	/* ±2.048 V — covers the 0.3–1.8 V O2 transducer */
+        zephyr,gain = "ADC_GAIN_1";	/* ±2.048 V — diluent input */
     };
 
     channel@1 {
-        zephyr,gain = "ADC_GAIN_1";	/* ±2.048 V — covers the 0.3–1.8 V dil transducer */
+        zephyr,gain = "ADC_GAIN_1";	/* ±2.048 V — O2 input */
     };
 };
 

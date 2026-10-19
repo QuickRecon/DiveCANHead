@@ -1,15 +1,19 @@
 # DiveCAN Jr Hardware-in-the-Loop Test Checklist
 
-Manual hardware bench tests required before merging changes to the
-OTA, power, or boot subsystems. Each entry is structured so it can be
-lifted into the `tests/integration/` pytest harness later —
-preconditions, actions, and pass criteria are expressed in concrete,
-scriptable terms.
+Manual bench scenarios originally written for the Jr port's phase gates.
+This is a checklist, not evidence that a test has passed. Several entries retain
+phase-era timings, LED expectations, and probe command sketches; reconcile
+those with the current image and hardware before using them as acceptance
+criteria. In particular, MCUboot LED indication is disabled in the current
+configuration, and MainPCB has no MCUboot text logging.
 
-The existing integration harness (Arduino Due cell-shim, Riden PSU
-control, CAN dongle) supplies most of the plumbing needed to automate
-each entry. Until that automation exists, these are run by hand
-during phase merges and the results recorded in the PR description.
+The current automated physical bench is the out-of-tree Test Rig described in
+[HIL GitHub Actions](../docs/HIL_GITHUB_ACTIONS.md). The in-tree
+`tests/integration/` harness runs simulator integration tests; it is not the
+Arduino/PSU physical bench. Use [flashing guidance](../docs/FLASHING_FIRMWARE.md)
+and [the architecture partition map](ARCHITECTURE.md#flash-partitions) instead
+of the older erase-command sketches below. MainPCB's SD backend needs its own
+hardware/power-loss validation; Jr NOR results do not establish that behavior.
 
 **Maintenance directive:** when adding or modifying a safety-critical
 behaviour, add or update the corresponding entry here in the same PR.

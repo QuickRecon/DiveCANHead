@@ -1,69 +1,176 @@
+# DiveCAN Head
+
+Open hardware and firmware for a DiveCAN-compatible closed-circuit rebreather
+PPO₂ monitor and controller. The firmware supports analog galvanic cells,
+DiveO2 and O2S digital cells, solenoid control, runtime configuration,
+diagnostics, and persistent telemetry.
+
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=bugs)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=QuickRecon_DiveCANHead&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=QuickRecon_DiveCANHead)
 
-# Current State
-Revision 2.4 has been produced and is undergoing wet testing, current development work is focused on enhansing the automated testing (currently focusing on adding testing of various power states), as well as validating solenoid driver performance.
+## Current development
 
-Constructive criticism, suggestions, and pull requests are always welcome.
+Active firmware lives in [`Firmware/`](Firmware/) and runs **Zephyr RTOS** on
+an STM32L431. It uses MCUboot for updates, Zephyr settings/NVS for persistent
+configuration, and flash-backed logs for telemetry and diagnostic text.
+The former `STM32/` FreeRTOS application and its build/test directories are no
+longer part of this checkout; some subsystem documents are retained as
+explicitly marked historical references.
 
-Documentation for building and flashing firmware can be found under /Documentation/
+Two board targets are defined:
 
-# Goals
-The goals of this project are pretty simple:
-- Have a reliable PPO2 monitor that can handle both digital and analog PPO2 cell inputs
-- Be extendable for future CCR technology developments
-- Work with existing computers/handsets, accomplished via DiveCAN compatibility.
+| Board | West target | External storage and power |
+|---|---|---|
+| DiveCAN Jr | `divecan_jr/stm32l431xx` | 64 MiB SPI NOR; Jr regulator topology |
+| DiveCAN MainPCB | `divecan_main/stm32l431xx` | First 64 MiB of a raw SDMMC card; dual-source power mux |
 
-# DiveCAN
-DiveCAN is Shearwaters proprietary digital rebreather communications bus, more details about the electrical and protocol layers are discussed here: https://github.com/QuickRecon/DiveCAN
+MainPCB's SD adapter supplies the same flash API and partition layout as Jr
+for MCUboot, factory backup, settings, and logs. It does not use a filesystem;
+the first 64 MiB of the card is firmware-owned and may be overwritten.
+See [architecture and board differences](Firmware/ARCHITECTURE.md).
 
-# The platform
-The platform is based on an STM32 processor, connected to a pair of dual differential input ADCs for analog sensing. Digital cells are handled via the 3 UART ports on the STM32.
-Power is done in a dual rail configuration, with a critical VCC rail running the main processor, CAN transceiver, and other necessary basic components. This is supplemented with a second VBUS rail used for running external peripherals like solid state sensors.
+The checked-in software CI builds the five production variants for **Jr**.
+MainPCB has a build target, but is not a second board in that CI matrix.
+A successful build or simulator test does not establish hardware qualification
+or handset compatibility. Numbered releases use a separate HIL qualification
+workflow; see [releasing](Firmware/docs/RELEASING.md).
 
-The board has a battery onboard which can provide full functionality, and can also be provided with power from the CAN bus (1.8-5.5v). The VCC rail will prioritize CAN power and revert to battery if that is unavailable, the VBUS rail can have its power source controlled via the firmware. The VBUS rail can also be fed onto the CAN bus, allowing the board to act as a CAN power source, supplementing the bus power of the shearwater (which tops out at 16 mA).
+## Is the development environment public?
 
-Fundamentally the hardware is an IO board, bridging generic cells, sensors, and other peripherals to the DiveCAN bus. To do this it provides the following:
-- 3 uart ports
-- 4 analog differential inputs (3 terminated for O2 cells, 1 unterminated differential input)
-- the solenoid output (12v/6v selectable, max 1.3A switching current (LMR62014 boost converter))
-- general DC out (3.3v, 227mA current limit)
-- the CAN bus itself
-- 2 DACs, configured for "cell like" outputs
-- 2 GPIOs
+**The firmware build uses public source and public development tools.** Zephyr,
+MCUboot, the STM32 HAL, and the compiler are downloaded separately rather than
+copied into this repository. Missing `.west-projects/`, `.west/`, an SDK, or a
+Python virtual environment in a fresh clone is expected.
 
-Currently there are sensor drivers for analog oxygen cells and digital oxygen cells. Future development.
+- **West** reads the checked-in `Firmware/west.yml` and downloads the pinned
+  Zephyr source and its modules, including MCUboot and the STM32 HAL.
+- **Zephyr SDK** provides the ARM compiler/linker used to build STM32 images.
+- **Python packages and host tools** run configuration, code generation, and tests.
 
-The board is currently emulating a DiveCAN SOLO board, specifically using data captured from a JJ head, and testing with a JJ Petrel 3. This will almost certainly work with any DiveCAN shearwater expecting the same general architecture (such as the Choptima handset, or NERD/DiveCAN HUD). It will also probably work (may require some small code changes around the IDs used) with rEvo and ISC shearwaters, but that hasn't been validated.
+No private module, paid IDE, GitHub Actions runner, SonarCloud token, or physical
+test rig is required to compile the checked-in production variants. The
+`Firmware/proprietary/` directory is an optional extension hook, not a missing
+part of the standard firmware. Physical HIL/release qualification uses a
+private, hardware-dependent Test Rig repository and bench. It is a core pillar
+of the safety case, although it is not required for local builds or native
+module tests. See [HIL and the safety case](docs/TESTING_ARCHITECTURE.md#hil-is-a-core-pillar-of-the-safety-case).
 
-The current form factor is driven by the ease of manufacturing and RnD on the design rather than being fully optimized for widespread implementation. For example the battery has been put on the PCB because that is the easiest place for it to be secured. Wires and connectors are places for assembly defects and failures so I like to avoid them where possible. Having the battery on the PCB means that if the PCB is secure then the battery is secure, and the PCB has mounting holes, which makes securing it easier.
+**New contributor? Follow [Development setup: fresh clone to first build](docs/DEVELOPMENT_SETUP.md).**
+It includes host packages, a Python environment, dependency downloads, SDK
+installation, a hardware-free test, and troubleshooting. You can compile and
+run native tests without owning a board.
 
-The long thin aspect ratio was driven by the ease of manufacturing of housings, the current form fits into a simple tube, with cables running out each end. One for CCR IO (cells, solenoid, etc) and DiveCAN out the other.
+## Repository map
 
-# Roadmap
-### Current software jobs
-These are required before the firmware can be considered ready for any kind of test diving:
-- Fix composition of errors with battery value (currently battery voltage stops updating on other errors)
-- Only sample battery voltage while solenoid firing if solenoid enabled
+| Path | Contents |
+|---|---|
+| [`Firmware/`](Firmware/) | Zephyr application, board definitions, drivers, variants, tests, and MCUboot configuration |
+| [`EDA/`](EDA/) | Electronic design sources and board exports |
+| [`CAD/`](CAD/) | Mechanical design assets |
+| [`DiveCAN_bt/`](DiveCAN_bt/) | Browser BLE/SLIP/ISO-TP/UDS client, tools, and JavaScript tests |
+| [`docs/`](docs/README.md) | Documentation index, current guides, and marked legacy references |
+| [`.github/workflows/`](.github/workflows/) | Software CI, HIL, release, and KiCad checks |
 
-### Additional testing needs
-- More automated testing of each module, regression testing and behavior verification.
-- Datalog captures from rEvos
-- Verification of compatibility with monitor bus devices, ISC.
+## Build firmware
 
-### Future Hardware Improvements (desired on next board version)
-- External watchdog
-- CAN IC with lower power
+After completing the [first-time setup](docs/DEVELOPMENT_SETUP.md), use the revision pinned by [`Firmware/west.yml`](Firmware/west.yml) and the SDK
+version in `.west-projects/zephyr/SDK_VERSION`. The current pin is Zephyr 4.4.1
+with SDK 1.0.1. Install Python, West, CMake, Ninja, a host C/C++ toolchain, and
+the device-tree compiler before configuring the workspace. The exact CI
+package and Python dependency setup is in
+[the build workflow](.github/workflows/build.yml).
 
-### Future Software Improvements
-- Battery reading and power switching 
-- Make DiveCAN multi-device safe so we can make multiple menu rows
-- Predive "app", show loop pressure and such
+From the repository root, initialise a new West workspace once:
 
-### Prospective future developments
-- Additional form-factors, shorter, more compact.
-- DAC output to analog cell port, allow use of analog backup monitor with digital cells
-- Break off battery to separate system, can be isolated physically for flood tolerance.
+```bash
+west init -l Firmware
+west update --narrow
+west zephyr-export
+west packages pip --install
+cat .west-projects/zephyr/SDK_VERSION
+```
+
+Skip `west init` if the checkout already has `.west/`. Select an installed SDK
+matching that version; do not reuse the old NCS toolchain path from historical
+notes. To build the Poseidon configuration for Jr:
+
+```bash
+cd Firmware
+export ZEPHYR_SDK_INSTALL_DIR=/absolute/path/to/zephyr-sdk-1.0.1
+export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+west build -d build -b divecan_jr/stm32l431xx . --sysbuild -p always -- \
+  -DBOARD_ROOT=. \
+  -DEXTRA_CONF_FILE=variants/Poseidon_Aren.conf \
+  -DEXTRA_DTC_OVERLAY_FILE=variants/Poseidon_Aren.overlay
+```
+
+Always pass the matching `.conf` **and** `.overlay`: the overlay disables unused
+peripherals and selects ADC ranges. Use a pristine build when changing board,
+variant, or toolchain. For MainPCB, use `-b divecan_main/stm32l431xx` and a
+separate directory such as `-d build-main`. A board target selects physical
+wiring; a variant selects the fitted cell/control topology. Building a pair
+does not prove that its configured outputs exist on the assembled hardware.
+
+The five production variants are `Poseidon_Aren`, `AP_Aren`, `AP_Paul`,
+`eCCR_classic`, and `Sidewinder_Gabriel`. `Poseidon_TransducerTest` is a bench
+variant with a deliberately scaled pressure-input window, not a production
+calibration.
+
+Sysbuild produces:
+
+- `build/merged_divecan_jr_stm32l431xx.hex`: MCUboot plus application for SWD;
+- `build/Firmware/zephyr/zephyr.signed.bin`: application image for UDS OTA;
+- `build/Firmware/zephyr/zephyr.elf`: application symbols for debugging.
+
+MainPCB uses `merged_divecan_main_stm32l431xx.hex` in its build directory.
+See [flashing firmware](docs/FLASHING_FIRMWARE.md) for image selection and the
+Jr-specific helper script.
+
+## Test and inspect
+
+Native tests use Zephyr `ztest` on `native_sim`. From `Firmware/`:
+
+```bash
+python3 scripts/native_test.py list
+ZEPHYR_TOOLCHAIN_VARIANT=host python3 scripts/native_test.py build sd_flash
+python3 scripts/native_test.py run sd_flash
+# Build and run the full native suite:
+ZEPHYR_TOOLCHAIN_VARIANT=host python3 scripts/native_test.py run-all
+```
+
+Builds live under `Firmware/build-native/`. The simulator integration harness
+and coverage pipeline are separate from the physical HIL bench. See
+[testing](docs/TESTING_ARCHITECTURE.md) and
+[the HIL workflow](docs/HIL_GITHUB_ACTIONS.md).
+
+Browser client tests run from `DiveCAN_bt/`:
+
+```bash
+npm ci
+npm run test:run
+```
+
+## Documentation
+
+Start with the [documentation index](docs/README.md). Frequently used guides:
+
+- [Firmware architecture](Firmware/ARCHITECTURE.md): board topology, storage,
+  threads, power, sensors, control, and build design.
+- [UDS wire reference](Firmware/UDS.md) and [DID catalogue](docs/DATA_IDENTIFIERS.md).
+- [Flash logs](Firmware/docs/FLASH_LOG.md) and
+  [telemetry viewer/CLI](docs/TELEMETRY_VIEWER.md).
+- [Browser client](DiveCAN_bt/README.md).
+- [Release process and download contents](Firmware/docs/RELEASING.md).
+- [Engineering compromises](Firmware/COMPROMISE.md) and
+  [bench-test checklist](Firmware/BENCHTEST.md).
+
+DiveCAN is Shearwater's proprietary rebreather communications bus. This project
+implements compatible messaging; protocol research is maintained in the
+[QuickRecon DiveCAN repository](https://github.com/QuickRecon/DiveCAN).
+Compatibility must be established for the particular handset and configuration.
+
+Contributions and issue reports are welcome. Include the board, variant,
+firmware revision, and relevant diagnostics when reporting behavior.

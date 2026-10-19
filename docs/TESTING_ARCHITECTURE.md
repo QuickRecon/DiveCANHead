@@ -1,315 +1,123 @@
-# Testing Architecture
+# Testing the Zephyr firmware
 
-This document describes the testing infrastructure including DiveCANpy, pytest fixtures, and hardware integration testing.
+Tests cover three distinct environments: native module tests, whole-application
+simulator integration, and the out-of-tree physical hardware bench. A simulator
+pass does not demonstrate electrical, timing, or power-loss behavior on a board.
 
-## Overview
+## HIL is a core pillar of the safety case
 
-The project uses two testing approaches:
-1. **Unit Tests** - CppUTest framework for isolated module testing
-2. **Hardware Tests** - pytest with real hardware for integration testing
+The physical hardware-in-the-loop suite is a core part of this project's safety
+case. It exercises a real controller with controlled sensor inputs and power
+conditions and observes physical outputs, communication, and recovery. Native
+and simulator tests complement this evidence; they cannot establish the same
+behavior on real electronics.
 
-## Source Files
+A substantial part of the test implementation resides in a **private,
+hardware-dependent Test Rig repository**, provided by a custom GitHub Actions
+runner labelled `divecan-hil`. The runner uses custom hardware to stimulate a
+real board with a battery of simulated sensor, power, and communication
+conditions and observes its responses. This is physical hardware-in-the-loop
+testing, distinct from running the application in a software simulator.
 
-- `STM32/Tests/` - Unit tests (CppUTest)
-- `HW Testing/Tests/` - Hardware integration tests (pytest)
-- `DiveCANpy/` - Python DiveCAN interface library
+The rig's source, fixture wiring, device access, and installation paths are
+runner-managed infrastructure. They are not dependencies of the public firmware
+build. Public contributors can build firmware and run in-tree tests; physical
+qualification runs through the HIL GitHub Actions workflow on the configured
+runner.
 
-## DiveCANpy Library
+The runner provides a trusted harness and test suite. Their separate source
+identities are recorded so results remain attributable to the exact test code
+used. Its hardware abstraction layer supplies controlled inputs, load switching,
+power sequencing, firmware programming, and observation of the DUT's outputs.
 
-Python library for communicating with DUT over CAN bus.
+The generated `test_manifest.json` binds tests to the exact firmware topology:
+cell types, power configuration, solenoid capabilities, control modes, and OTA
+images. The full rig suite includes destructive recovery and OTA swap testing;
+a shortened run with those omitted is not equivalent to full qualification.
+Applicable hardware failures must fail the tests; absent-hardware skips are an
+explicit reduced-test mode, not a full qualification pass.
 
-### Files
+When reviewing qualification evidence, retain the firmware revision and image
+hashes, board/variant, generated manifest, both harness repository revisions,
+results/logs, and any skips or shortened-run options. Numbered release packages
+include a manifest, `qualification.json`, and checksums; the release workflow
+requires all five variant jobs to pass before publishing. Those artifacts
+record what was tested; a green public software build alone does not demonstrate
+HIL success, and Jr results do not qualify MainPCB's different power/storage
+hardware.
 
-| File | Purpose |
-|------|---------|
-| `DiveCANpy/DiveCAN.py` | Core CAN message interface |
-| `DiveCANpy/bootloader.py` | STM32 bootloader operations |
-| `DiveCANpy/configuration.py` | Configuration management |
+See [HIL workflow and runner setup](HIL_GITHUB_ACTIONS.md) and
+[release qualification](../Firmware/docs/RELEASING.md). Runner installation and apparatus-specific operating instructions belong with
+the private rig; the public repository documents the workflow contract and
+qualification evidence.
 
-### DiveCAN Class
+## Native module tests
 
-```python
-class DiveCAN:
-    def __init__(self, device: str) -> None:
-        """Initialize CAN interface via SLCAN adapter"""
-        self._bus = can.interfaces.slcan.slcanBus(
-            channel=device, bitrate=125000, timeout=0.1, rtscts=True
-        )
-
-    # Message sending
-    def send_bootloader(self) -> None
-    def send_setpoint(self, src_id: int, setpoint: int)
-    def send_calibrate(self) -> None
-    def send_menu_req(self, target_id: int, src_id: int) -> None
-
-    # Message receiving
-    def listen_for_ppo2(self) -> can.Message
-    def listen_for_status(self) -> can.Message
-    def listen_for_cal(self) -> can.Message
-    def listen_for_millis(self) -> can.Message
-```
-
-### Usage Example
-
-```python
-from DiveCANpy import DiveCAN
-
-client = DiveCAN.DiveCAN('/dev/ttyCAN0')
-client.send_id(1)  # Send bus init
-msg = client.listen_for_ppo2()  # Wait for PPO2 response
-print(f"Cell 1 PPO2: {msg.data[0]}")
-client.stop()
-```
-
-## pytest Fixtures
-
-Defined in `HW Testing/Tests/conftest.py`:
-
-### Basic Fixtures
-
-```python
-@pytest.fixture()
-def power_divecan_client_fixture():
-    """DiveCAN interface with PSU control"""
-    power = psu.PSU()
-    divecan_client = make_divecan()
-    yield (divecan_client, power)
-    divecan_client.stop()
-
-@pytest.fixture()
-def power_shim_divecan_fixture():
-    """DiveCAN + HWShim + PSU"""
-    power = psu.PSU()
-    divecan_client = make_divecan()
-    yield (divecan_client, HWShim.HWShim(), power)
-    divecan_client.stop()
-```
-
-### Parameterized Fixtures
-
-```python
-@pytest.fixture(params=configuration.supported_configurations())
-def config_and_power_divecan_client(request):
-    """DiveCAN with configuration matrix"""
-    pwr = psu.PSU()
-    divecan_client = make_divecan()
-    shim_host = HWShim.HWShim()
-    configuration.configure_board(divecan_client, request.param)
-    yield (divecan_client, shim_host, request.param, pwr)
-    divecan_client.stop()
-
-@pytest.fixture(params=configuration.supported_configurations())
-def config_and_cal_and_power_divecan_client(request):
-    """DiveCAN with configuration and calibration"""
-    # ... configure and calibrate ...
-    utils.ensureCalibrated(divecan_client, shim_host)
-    yield (divecan_client, shim_host, request.param, pwr)
-```
-
-## Hardware Shim (HWShim)
-
-Arduino Due-based hardware simulator for injecting sensor values.
-
-### File: `HW Testing/Tests/HWShim.py`
-
-```python
-class HWShim:
-    def __init__(self) -> None:
-        self._serial_port = serial.Serial('/dev/ttyDUE0', 115200)
-
-    def set_digital_ppo2(self, cell_num: int, ppo2: float) -> None:
-        """Set digital cell PPO2 (DiveO2/O2S simulation)"""
-        msg = f"sdc,{cell_num},{ppo2*100},"
-        self._serial_port.write(msg.encode())
-        # Wait for acknowledgment...
-
-    def set_analog_millis(self, cell_num: int, millis: float) -> None:
-        """Set analog cell millivolts (DAC output)"""
-        msg = f"sac,{cell_num},{millis},"
-        self._serial_port.write(msg.encode())
-
-    def set_digital_mode(self, cell_num: int, mode: ShimDigitalCellType):
-        """Set digital cell protocol (DiveO2 vs O2S)"""
-        msg = f"scm,{cell_num},{int(mode)},"
-        self._serial_port.write(msg.encode())
-
-    def set_bus_on(self) -> None:
-        """Enable CAN bus power"""
-
-    def set_bus_off(self) -> None:
-        """Disable CAN bus power"""
-```
-
-### HWShim Commands
-
-| Command | Format | Description |
-|---------|--------|-------------|
-| sdc | `sdc,N,ppo2,` | Set digital cell N PPO2 (centibar) |
-| sac | `sac,N,mV,` | Set analog cell N millivolts |
-| scm | `scm,N,mode,` | Set cell N mode (0=DiveO2, 1=O2S) |
-| sdcen | `sdcen` | Enable DC bus |
-| sdcden | `sdcden` | Disable DC bus |
-
-## PSU Control
-
-`HW Testing/Tests/psu.py` controls the lab power supply:
-
-### Supported PSUs
-
-- **Riden RD6006** - Primary PSU over serial
-- **Nordic PPK2** - For power profiling
-
-```python
-class PSU:
-    def __init__(self):
-        # Initialize Riden PSU
-        pass
-
-    def set_voltage(self, voltage: float):
-        """Set output voltage"""
-
-    def set_current_limit(self, current: float):
-        """Set current limit"""
-
-    def enable_output(self):
-        """Enable PSU output"""
-
-    def disable_output(self):
-        """Disable PSU output"""
-```
-
-## Device Paths
-
-Standard device paths for test hardware:
-
-| Device | Path | Description |
-|--------|------|-------------|
-| CAN Adapter | `/dev/ttyCAN0` | USB-SLCAN adapter |
-| Arduino Due | `/dev/ttyDUE0` | HWShim controller |
-| Riden PSU | `/dev/ttyUSB0` | Lab power supply |
-
-These are typically set up via udev rules for consistent naming.
-
-## Test Organization
-
-### Test Files
-
-| File | Purpose |
-|------|---------|
-| `test_ping.py` | Basic connectivity tests |
-| `test_ppo2.py` | PPO2 reading accuracy |
-| `test_ppo2_control.py` | Solenoid control loop |
-| `test_calibration.py` | Calibration procedures |
-| `test_configuration.py` | Configuration persistence |
-| `test_pwr_management.py` | Power mode switching |
-| `test_menu.py` | DiveCAN menu system |
-| `test_bootloader.py` | Firmware update |
-
-### Running Tests
+`Firmware/tests/<module>/` contains Zephyr ztest applications. The wrapper
+selects the native board qualifier and keeps builds under `build-native/`.
+From `Firmware/`, using the selected Python/West environment:
 
 ```bash
-cd "HW Testing/Tests"
-
-# Run all tests
-pytest
-
-# Run specific test file
-pytest test_ppo2_control.py
-
-# Run with verbose output
-pytest -v
-
-# Run specific test
-pytest test_ppo2.py::test_cell_reading_accuracy
+python3 scripts/native_test.py list
+ZEPHYR_TOOLCHAIN_VARIANT=host python3 scripts/native_test.py build tank_pressure_math
+python3 scripts/native_test.py run tank_pressure_math
+ZEPHYR_TOOLCHAIN_VARIANT=host python3 scripts/native_test.py run-all
 ```
 
-## Test Patterns
+The wrapper inherits the caller's toolchain. Do not switch compilers inside an
+existing build cache; clean the affected test build when changing toolchains.
+`Firmware/tests/CMakeLists.txt` also exposes the discovered test cases to CTest
+and VSCode. Details are in [the firmware development guide](../Firmware/CLAUDE.md).
 
-### Basic Test
+## Simulator integration and coverage
 
-```python
-def test_ppo2_reading(power_shim_divecan_fixture):
-    divecan, shim, psu = power_shim_divecan_fixture
-
-    # Set known PPO2 on shim
-    shim.set_digital_ppo2(0, 0.21)
-
-    # Read from DUT
-    msg = divecan.listen_for_ppo2()
-
-    # Verify
-    assert msg.data[0] == 21  # 0.21 bar = 21 centibar
-```
-
-### Parameterized Test
-
-```python
-@pytest.mark.parametrize("config", configuration.supported_configurations())
-def test_config_persistence(power_divecan_client_fixture, config):
-    divecan, psu = power_divecan_client_fixture
-
-    # Apply configuration
-    configuration.configure_board(divecan, config)
-
-    # Power cycle
-    psu.disable_output()
-    time.sleep(1)
-    psu.enable_output()
-
-    # Verify configuration persisted
-    # ...
-```
-
-### Configuration Matrix
-
-```python
-# From configuration.py
-def supported_configurations():
-    """Return list of valid configuration combinations"""
-    return [
-        Config(cell1=ANALOG, cell2=ANALOG, cell3=ANALOG),
-        Config(cell1=DIVEO2, cell2=ANALOG, cell3=ANALOG),
-        Config(cell1=DIVEO2, cell2=DIVEO2, cell3=ANALOG),
-        # ...
-    ]
-```
-
-## Unit Tests (CppUTest)
-
-### Building Unit Tests
+`Firmware/tests/integration/integration.conf` defines the simulator topology;
+`Firmware/tests/integration/harness/` contains the Python integration harness.
+This is separate from the real-device Test Rig. The coverage helper builds
+instrumented native tests and integration firmware, runs both suites, and
+combines their reports. From `Firmware/`:
 
 ```bash
-# First time: build cpputest
-cd STM32/Tests/cpputest
-autoreconf -i
-./configure
-make
-
-# Build and run tests
-cd STM32/Tests
-make
+ZEPHYR_TOOLCHAIN_VARIANT=host python3 scripts/coverage.py all
 ```
 
-### Mock Structure
+This requires the harness's Python dependencies, `gcovr`, and its host CAN
+setup. Use the dependency/setup steps in
+[software CI](../.github/workflows/build.yml) as the reproducible reference.
+For individual stages, use `build-tests`, `build-integration`, `run-tests`,
+`run-pytest`, and `report` subcommands. Output goes to `build-coverage/` and
+`coverage-report/`.
 
-Mocks are in `STM32/Mocks/`:
-- HAL functions (GPIO, I2C, UART, etc.)
-- FreeRTOS functions (queues, tasks, etc.)
-- Peripheral drivers
+CI uses the pinned LLVM 22 host toolchain for coverage; local GCC host coverage
+is also supported. Keep the compiler and coverage reader consistent and clean
+coverage outputs before switching between GCC and LLVM. See
+[coverage environment details](../Firmware/CLAUDE.md#coverage) and
+[sanitizer notes](../Firmware/tests/integration/SANITIZERS.md).
 
-### Test Example
+## Production builds and physical HIL
 
-```cpp
-TEST(PPO2Control, SetpointTracking)
-{
-    // Setup
-    PPO2Control_Init(&config);
+The software CI matrix builds `Poseidon_Aren`, `AP_Aren`, `AP_Paul`,
+`eCCR_classic`, and `Sidewinder_Gabriel` for `divecan_jr/stm32l431xx`.
+MainPCB is not currently included in that matrix.
 
-    // Exercise
-    PPO2Control_SetSetpoint(1.0f);
-    PPO2Control_Update(0.8f);  // Below setpoint
+The physical HIL workflow uses an out-of-tree Test Rig and its nested test
+repository. It builds a selected variant, flashes the DUT, and qualifies the
+exact image against its generated manifest. See
+[HIL GitHub Actions](HIL_GITHUB_ACTIONS.md) for runner setup and execution and
+[releasing](../Firmware/docs/RELEASING.md) for the five-variant release gate.
+The [bench checklist](../Firmware/BENCHTEST.md) records manual scenarios, not
+completed test results.
 
-    // Verify
-    CHECK(PPO2Control_GetDutyCycle() > 0.0f);
-}
+## Browser tests
+
+From `DiveCAN_bt/`:
+
+```bash
+npm ci
+npm run test:run
+npm run test:coverage
 ```
+
+These Vitest tests validate the browser client separately from firmware/HIL.
+The former `STM32/Tests/` CppUTest and `HW Testing/Tests/` paths are historical
+and are not the current test entry points.

@@ -3,8 +3,8 @@
 Complete reference for all Data Identifiers (DIDs) used in the UDS
 implementation of the **Zephyr firmware** (`Firmware/`). For the service
 model (sessions, NRCs, transfer/routine control) see
-[UDS_PROTOCOL.md](UDS_PROTOCOL.md); for the transport layer see
-[ISOTP_TRANSPORT.md](ISOTP_TRANSPORT.md).
+[Firmware/UDS.md](../Firmware/UDS.md); for the transport layer see
+[the current wire reference](../Firmware/UDS.md).
 
 > **Scope note:** This document supersedes the original STM32/FreeRTOS DID
 > list. DIDs/ranges that did not exist in the legacy firmware (crash info,
@@ -65,7 +65,7 @@ model (sessions, NRCs, transfer/routine control) see
 ### PID Autotune Status (0xF213)
 
 Live snapshot of the on-device PID autotune routine (see
-[UDS_PROTOCOL.md](UDS_PROTOCOL.md) → *PID Autotune* and
+[Firmware/UDS.md](../Firmware/UDS.md) → *PID Autotune* and
 `Firmware/src/ppo2_autotune.c`). Readable on **all variants** — where there is
 no O2 solenoid it always reports `IDLE`. 38 bytes, **little-endian**:
 
@@ -456,7 +456,7 @@ the whole ring directly), so it resolves on the first request and never emits
 `entry_count = 0` ("unknown / streaming", mirroring `total_bytes = 0`), so
 drive progress off received bytes.
 
-See [ISOTP_TRANSPORT.md](ISOTP_TRANSPORT.md) and `uds_log_download.c` for the
+See [the current wire reference](../Firmware/UDS.md) and `uds_log_download.c` for the
 selector → worker → stream state machine.
 
 ## Multi-DID Read
