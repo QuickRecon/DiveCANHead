@@ -17,8 +17,8 @@ Active firmware lives in [`Firmware/`](Firmware/) and runs **Zephyr RTOS** on
 an STM32L431. It uses MCUboot for updates, Zephyr settings/NVS for persistent
 configuration, and flash-backed logs for telemetry and diagnostic text.
 The former `STM32/` FreeRTOS application and its build/test directories are no
-longer part of this checkout; some subsystem documents are retained as
-explicitly marked historical references.
+longer part of this checkout. Earlier implementations and their documentation
+remain available in Git history.
 
 Two board targets are defined:
 
@@ -71,7 +71,7 @@ run native tests without owning a board.
 | [`EDA/`](EDA/) | Electronic design sources and board exports |
 | [`CAD/`](CAD/) | Mechanical design assets |
 | [`DiveCAN_bt/`](DiveCAN_bt/) | Browser BLE/SLIP/ISO-TP/UDS client, tools, and JavaScript tests |
-| [`docs/`](docs/README.md) | Documentation index, current guides, and marked legacy references |
+| [`docs/`](docs/README.md) | Current documentation index and subsystem guides |
 | [`.github/workflows/`](.github/workflows/) | Software CI, HIL, release, and KiCad checks |
 
 ## Build firmware

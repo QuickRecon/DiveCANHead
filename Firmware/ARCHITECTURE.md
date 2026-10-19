@@ -585,7 +585,7 @@ solenoid on a 5 s PWM cycle. The integrator stores the **equilibrium duty** —
 the steady injection that offsets metabolic O2 consumption. Depth compensation
 (`duty /= pressure_mbar/1000` in the fire thread) maps that demand from a molar
 quantity to a fire time, so the integrator is **depth-invariant**: it converges
-to the same value at every depth (see `docs/OXYGEN_SENSORS.md`).
+to the same value at every depth.
 
 **Above-setpoint fire gate (one-directional-actuator invariant).** The O2 inject
 solenoid can only *add* O2, so there is never a legitimate reason to fire it
@@ -665,7 +665,7 @@ operator reviews and persists them via the settings-save DID (`0x9350 + N`).
 (`ppo2_autotune_start()` / `_request_abort()`, START/ABORT + magic `0xA7`) and
 status read DID `0xF213` (`ppo2_autotune_get_status()`, 74-byte snapshot: state,
 derived gains, elapsed, plant model, equilibrium duty/slope, pressure and dose). See
-`docs/DATA_IDENTIFIERS.md` and `docs/UDS_PROTOCOL.md`.
+[the DID catalogue](../docs/DATA_IDENTIFIERS.md) and [the UDS reference](UDS.md).
 
 **Pure-math split.** Identification and integrating-process gain synthesis live
 in OS-free `src/ppo2_autotune_math.c` and are host-tested under

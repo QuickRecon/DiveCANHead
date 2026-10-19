@@ -20,7 +20,7 @@ checked-in workflows are the build-environment authority.
 - Simulator integration: `Firmware/tests/integration/harness/`.
 - Physical HIL: out-of-tree Test Rig, documented in `docs/HIL_GITHUB_ACTIONS.md`.
 - Flashing: `docs/FLASHING_FIRMWARE.md`; `Firmware/flash.sh` is Jr-specific.
-- Documentation index: `docs/README.md`, which marks retained legacy pages.
+- Documentation index: `docs/README.md`.
 
 ## Development Notes
 
@@ -115,10 +115,9 @@ Detailed documentation for key subsystems is available in the `docs/` directory.
 
 Documentation should stay in sync with the implementation to reduce future exploration time.
 
-Use `docs/README.md` for the maintained documentation map. In particular,
-`docs/FREERTOS_PATTERNS.md`, `docs/CONFIGURATION_SYSTEM.md`,
-`docs/OXYGEN_SENSORS.md`, `docs/UDS_PROTOCOL.md`, and `docs/ISOTP_TRANSPORT.md`
-are historical FreeRTOS references, not the current implementation contract.
+Use `docs/README.md` for the maintained documentation map, `Firmware/UDS.md`
+for the wire protocol, and `Firmware/ARCHITECTURE.md` for the current Zephyr
+implementation. Removed FreeRTOS documentation remains available in Git history.
 
 ### External References
 

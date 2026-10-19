@@ -38,18 +38,3 @@ Paths below are relative to the repository root.
 | Native tests | `Firmware/tests/`, `Firmware/scripts/native_test.py` |
 | Simulator integration | `Firmware/tests/integration/harness/` |
 | Browser tools | `DiveCAN_bt/src/`, `DiveCAN_bt/examples/` |
-
-## Historical references
-
-These pages describe the former STM32/FreeRTOS implementation. Source paths,
-configuration layouts, scheduling, and protocol details may differ from Zephyr;
-use the current guides above for implementation work.
-
-- [FreeRTOS patterns](FREERTOS_PATTERNS.md)
-- [Legacy configuration system](CONFIGURATION_SYSTEM.md)
-- [Legacy oxygen sensor implementation](OXYGEN_SENSORS.md)
-- [Legacy UDS implementation](UDS_PROTOCOL.md)
-- [Legacy ISO-TP implementation](ISOTP_TRANSPORT.md)
-
-The current wire protocol reference is [Firmware/UDS.md](../Firmware/UDS.md),
-not the historical UDS/ISO-TP pages.

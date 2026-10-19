@@ -5,7 +5,7 @@
  * Mirrors uds_ota.c's role: a parallel handler for UDS 0x34 / 0x36 /
  * 0x37 that streams flash-log content over ISO-TP instead of writing
  * to flash. Activated via RoutineControl (0x31) sub-functions in the
- * 0xF1xx range — see docs/UDS_PROTOCOL.md.
+ * 0xF1xx range — see Firmware/UDS.md.
  */
 #ifndef UDS_LOG_DOWNLOAD_H
 #define UDS_LOG_DOWNLOAD_H

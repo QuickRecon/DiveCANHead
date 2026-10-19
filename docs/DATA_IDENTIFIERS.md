@@ -336,7 +336,7 @@ typedef enum {
 ## Settings System DIDs (0x9xxx)
 
 Settings are enumerated dynamically — counts and indices come from
-`UDS_GetSettingCount()`. See [CONFIGURATION_SYSTEM.md](CONFIGURATION_SYSTEM.md).
+`UDS_GetSettingCount()`. See [the current UDS reference](../Firmware/UDS.md).
 
 | DID | Size | Type | Description | R/W |
 |-----|------|------|-------------|-----|
