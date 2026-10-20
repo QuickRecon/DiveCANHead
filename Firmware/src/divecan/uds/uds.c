@@ -1305,9 +1305,25 @@ static uint8_t checkOtaWritePrecondition(const UDSContext_t *ctx,
     return nrc;
 }
 
-/** Claim the exclusive arena reservation used by short UDS flash commands. */
+/**
+ * Claim the exclusive arena reservation used by short UDS flash commands.
+ *
+ * These commands only need the error-histogram hold that an arena claim
+ * carries; they never touch the scratch. A finished-but-unactivated OTA
+ * download (AWAITING_ACTIVATE) already holds that claim, and every UDS handler
+ * runs on this one thread, so Activate's slot1 hash cannot run concurrently.
+ * Run under the OTA claim instead of refusing: the caller's
+ * maint_arena_release(MAINT_ARENA_OWNER_FLASH) is then an owner-checked no-op,
+ * so the OTA keeps its claim and a later Activate still works if the command
+ * does not reboot. A download still in DOWNLOADING (slot1 half-written) keeps
+ * the arena and is refused as before.
+ */
 static bool claimFlashMaintenance(UDSContext_t *ctx)
 {
+    if (UDS_OTA_IsAwaitingActivate()) {
+        LOG_INF("Flash maintenance under the staged OTA's arena claim");
+        return true;
+    }
     if (NULL == maint_arena_claim(MAINT_ARENA_OWNER_FLASH)) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_CONDITIONS_NOT_CORRECT);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID,

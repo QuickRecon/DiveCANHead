@@ -301,6 +301,7 @@ void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *request_data,
 }
 
 void UDS_OTA_Reset(void) {}
+bool UDS_OTA_IsAwaitingActivate(void) { return false; }
 
 /* ---- Fixture state captured from wrap functions ---- */
 

@@ -17,6 +17,7 @@
 #ifndef UDS_OTA_H
 #define UDS_OTA_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "uds.h"
@@ -41,5 +42,17 @@ void UDS_OTA_Handle(UDSContext_t *ctx, const uint8_t *request_data,
  * because the SID handlers manage transitions themselves.
  */
 void UDS_OTA_Reset(void);
+
+/**
+ * @brief Is a completed download waiting for Activate (0x37 done, no 0x31 yet)?
+ *
+ * In that state the OTA pipeline still holds the maintenance-arena claim it
+ * took at 0x34 (Activate reuses the arena as hash scratch), which also keeps
+ * error-histogram persistence paused. Short UDS flash commands use this to run
+ * under that existing hold instead of being refused for a busy arena.
+ *
+ * @return true only in OTA_STATE_AWAITING_ACTIVATE
+ */
+bool UDS_OTA_IsAwaitingActivate(void);
 
 #endif /* UDS_OTA_H */

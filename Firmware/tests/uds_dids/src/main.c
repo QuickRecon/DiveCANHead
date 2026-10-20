@@ -259,6 +259,11 @@ void UDS_OTA_Reset(void)
     ++stub.ota_reset_calls;
 }
 
+bool UDS_OTA_IsAwaitingActivate(void)
+{
+    return false;
+}
+
 /* ---- uds_log_download.c stand-ins ---- */
 
 bool UDS_LogDownload_Claims(uint8_t sid, const uint8_t *request_data)

@@ -1600,3 +1600,74 @@ ZTEST(uds_ota_routine_activate, test_happy_path_validates_upgrades_reboots)
     zassert_equal(ota_stub.sys_reboot_calls, 1,
               "sys_reboot fired");
 }
+
+/* ---- Short flash commands while a download awaits Activate ----
+ *
+ * After 0x37 the OTA SM keeps the maintenance-arena claim it took at 0x34
+ * (Activate reuses it as hash scratch). Force-revert and the other short
+ * flash commands must run under that claim, not be refused for a busy arena,
+ * and must leave it with the OTA so the staged image can still be activated. */
+
+ZTEST(uds_ota_routine_activate, test_force_revert_runs_while_awaiting_activate)
+{
+    uint8_t magic = 0x01U;
+    finish_transfer_phase();
+    zassert_true(UDS_OTA_IsAwaitingActivate(), "precondition: staged");
+    zassert_is_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY),
+            "precondition: OTA still holds the arena");
+
+    reboot_escape_armed = true;
+    if (0 == setjmp(reboot_escape)) {
+        send_write_did(UDS_DID_OTA_FORCE_REVERT, &magic, 1U);
+        zassert_unreachable("force revert did not reboot");
+    }
+    reboot_escape_armed = false;
+
+    zassert_equal(ota_stub.captured_response[0],
+              UDS_SID_WRITE_DATA_BY_ID + 0x40U, "force revert ACKed");
+    zassert_equal(ota_stub.boot_request_upgrade_calls, 1);
+    zassert_equal(ota_stub.boot_request_upgrade_arg, BOOT_UPGRADE_TEST);
+    zassert_equal(ota_stub.sys_reboot_calls, 1);
+}
+
+ZTEST(uds_ota_routine_activate, test_failed_force_revert_keeps_staged_ota_activatable)
+{
+    uint8_t magic = 0x01U;
+    finish_transfer_phase();
+    ota_stub.boot_request_upgrade_rc = -EIO;
+
+    send_write_did(UDS_DID_OTA_FORCE_REVERT, &magic, 1U);
+    zassert_equal(ota_stub.captured_response[2], UDS_NRC_GENERAL_PROG_FAIL);
+    zassert_true(UDS_OTA_IsAwaitingActivate(),
+             "a failed force revert must not abandon the staged download");
+    zassert_is_null(maint_arena_claim(MAINT_ARENA_OWNER_FACTORY),
+            "the OTA claim must survive the force revert's release");
+
+    /* Activate still works on the same claim. */
+    memset(&ota_stub, 0, sizeof(ota_stub));
+    (void)populate_valid_slot1_image();
+    ota_stub.flash_img_check_rc = 0;
+    reboot_escape_armed = true;
+    if (0 == setjmp(reboot_escape)) {
+        send_activate_request();
+        zassert_unreachable("activate did not reboot");
+    }
+    reboot_escape_armed = false;
+    zassert_equal(ota_stub.flash_img_check_calls, 1);
+    zassert_equal(ota_stub.boot_request_upgrade_calls, 1);
+    zassert_equal(ota_stub.sys_reboot_calls, 1);
+}
+
+ZTEST(uds_ota_routine_activate, test_force_revert_refused_mid_download)
+{
+    uint8_t magic = 0x01U;
+    start_download(64U);
+    zassert_false(UDS_OTA_IsAwaitingActivate());
+
+    send_write_did(UDS_DID_OTA_FORCE_REVERT, &magic, 1U);
+    zassert_equal(ota_stub.captured_response[2],
+              UDS_NRC_CONDITIONS_NOT_CORRECT,
+              "half-written slot1 must not be force-reverted into");
+    zassert_equal(ota_stub.boot_request_upgrade_calls, 0);
+    zassert_equal(ota_stub.sys_reboot_calls, 0);
+}

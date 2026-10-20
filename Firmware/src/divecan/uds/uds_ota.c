@@ -218,6 +218,12 @@ void UDS_OTA_Reset(void)
     smf_set_state(SMF_CTX(sm), &ota_states[OTA_STATE_IDLE]);
 }
 
+bool UDS_OTA_IsAwaitingActivate(void)
+{
+    const OtaSmCtx_t *sm = getOtaSm();
+    return sm->smf.current == &ota_states[OTA_STATE_AWAITING_ACTIVATE];
+}
+
 /* ---- State action implementations ---- */
 
 /**
