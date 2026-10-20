@@ -28,6 +28,7 @@ and includes this complete file in the downloadable package.
 - Fix repeated reboots (seen as unresponsive handset communication) caused by the new periodic power logging overflowing the battery monitor's stack
 - Fix the head going silent (no PPO2 broadcasts, no handset replies) for several seconds when a setting is saved shortly after boot
 - Record a failed battery current read in the persistent error counters instead of only a log message
+- Fix the O2 flush solenoid staying on through the diluent flush during the Check calibration mode (each flush burst is now switched off explicitly instead of relying on the shared solenoid deadman timer)
 - Fix force-revert, factory flash erase, NVS erase and log erase being refused while a downloaded OTA image is waiting to be activated
 
 ## 0.0.1 - 2026-07-29

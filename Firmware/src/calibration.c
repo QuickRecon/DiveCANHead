@@ -879,6 +879,13 @@ static CalResult_t cal_solenoid_flush(const CalRequest_t *req,
         (void)sol_o2_inject_fire(CAL_FLUSH_US);
 #endif
         (void)k_msleep(CAL_FLUSH_MS);
+        /* Explicit off: the burst's on-time only arms the shared deadman (see
+         * cal_check), so don't leave the valve to a racing timer. */
+#if defined(CONFIG_HAS_FLUSH_SOLENOID)
+        sol_o2_flush_off();
+#elif defined(CONFIG_HAS_O2_SOLENOID)
+        sol_o2_inject_off();
+#endif
     }
 
     return cal_total_absolute(req, resp);
@@ -908,16 +915,25 @@ static CalResult_t cal_check(const CalRequest_t *req, const CalResponse_t *resp)
     LOG_INF("Sensor CHECK: O2 flush %us then diluent flush %us",
             CHECK_FLUSH_SECONDS, CHECK_FLUSH_SECONDS);
 
+    /* Each burst is switched off explicitly. solenoid_fire() never times out a
+     * single channel: its on-time arms the ONE device-wide deadman, and each
+     * fire re-arms it. Relying on that expiry raced the next k_msleep()-paced
+     * fire, so the first diluent burst could re-arm the deadman before the
+     * last O2 burst timed out — the O2 flush then stayed on through the whole
+     * diluent leg (HIL: O2 flush driven 0.2-19.6 s, diluent 10.4-19.9 s). */
+
     /* O2 flush leg: drive the cells toward high PPO2. */
     for (uint8_t i = 0; i < CHECK_FLUSH_SECONDS; ++i) {
         (void)sol_o2_flush_fire(CAL_FLUSH_US);
         (void)k_msleep(CAL_FLUSH_MS);
+        sol_o2_flush_off();
     }
 
     /* Diluent flush leg: drive the cells toward low PPO2. */
     for (uint8_t i = 0; i < CHECK_FLUSH_SECONDS; ++i) {
         (void)sol_dil_flush_fire(CAL_FLUSH_US);
         (void)k_msleep(CAL_FLUSH_MS);
+        sol_dil_flush_off();
     }
 
     return CAL_RESULT_OK;   /* CHECK is a diagnostic; it never fails. */
