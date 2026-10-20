@@ -116,6 +116,7 @@ static int sd_flash_read_locked(const struct sd_flash_config *cfg,
     uint32_t sector = (uint32_t)offset / SD_FLASH_SECTOR_SIZE;
     size_t sector_offset = (size_t)offset % SD_FLASH_SECTOR_SIZE;
     size_t remaining = len;
+    uint8_t *cursor = destination;
 
     while ((0 == result) && (remaining > 0U)) {
         if ((0U == sector_offset) && (remaining >= SD_FLASH_SECTOR_SIZE)) {
@@ -123,10 +124,10 @@ static int sd_flash_read_locked(const struct sd_flash_config *cfg,
             uint32_t count = (uint32_t)MIN(full_sectors, (size_t)UINT32_MAX);
 
             result = sd_flash_disk_result(disk_access_read(
-                cfg->disk_name, destination, sector, count));
+                cfg->disk_name, cursor, sector, count));
             if (0 == result) {
                 size_t bytes = (size_t)count * SD_FLASH_SECTOR_SIZE;
-                destination += bytes;
+                cursor += bytes;
                 remaining -= bytes;
                 sector += count;
             }
@@ -136,8 +137,8 @@ static int sd_flash_read_locked(const struct sd_flash_config *cfg,
             if (0 == result) {
                 size_t bytes = MIN(remaining,
                                    SD_FLASH_SECTOR_SIZE - sector_offset);
-                memcpy(destination, &data->sector[sector_offset], bytes);
-                destination += bytes;
+                memcpy(cursor, &data->sector[sector_offset], bytes);
+                cursor += bytes;
                 remaining -= bytes;
                 sector_offset = 0U;
                 ++sector;
