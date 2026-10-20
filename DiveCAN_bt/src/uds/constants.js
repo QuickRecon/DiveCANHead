@@ -230,7 +230,7 @@ export const FL_TYPE_NAMES = {
 };
 
 /** POWER_SNAPSHOT validity/status bits (firmware FL_POWER_*). */
-export const FL_POWER_BATTERY_VALID = 1 << 0;
+export const FL_POWER_BATTERY_VALID = 1; // bit 0
 export const FL_POWER_VBUS_VALID = 1 << 1;
 export const FL_POWER_VCC_VALID = 1 << 2;
 export const FL_POWER_CAN_VALID = 1 << 3;
@@ -243,7 +243,7 @@ export const FL_POWER_LOW_BATTERY = 1 << 7;
 export const LOG_LEVEL_NAMES = { 1: 'ERROR', 2: 'WARN', 3: 'INFO', 4: 'DEBUG' };
 
 /** Entry-header flag bits (fl_entry_hdr_t.flags). */
-export const FL_ENTRY_FLAG_DROP_PRECEDED = 1 << 0;
+export const FL_ENTRY_FLAG_DROP_PRECEDED = 1; // bit 0
 
 /** SolenoidFireEvent_t.kind values (SOL_FIRE_EVT_* in firmware flash_log.h). */
 export const SOL_FIRE_EVT_INJECT_START = 0;

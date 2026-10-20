@@ -248,7 +248,8 @@ export function makeRecordCounter() {
 /* ---- Little-endian scalar readers over a Uint8Array ---- */
 
 function readI32LE(p, o) {
-  return (p[o] | (p[o + 1] << 8) | (p[o + 2] << 16) | (p[o + 3] << 24)) | 0;
+  // Bitwise OR already yields a signed int32 (bit 31 lands as the sign).
+  return p[o] | (p[o + 1] << 8) | (p[o + 2] << 16) | (p[o + 3] << 24);
 }
 
 function readU32LE(p, o) {

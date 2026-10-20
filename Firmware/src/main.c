@@ -71,7 +71,7 @@ static const uint32_t PREAMBLE_LINE_DRAIN_MS = 50U;
  * WKUP2/CAN_EN pulse can otherwise emit a normal PPO2 frame before the legacy
  * one-second validation sends the head back to SHUTDOWN.
  */
-static int startup_can_wake_guard(void)
+static Status_t startup_can_wake_guard(void)
 {
     uint32_t reset_cause = 0U;
 #ifdef CONFIG_INTEGRATION_TEST_SHIM

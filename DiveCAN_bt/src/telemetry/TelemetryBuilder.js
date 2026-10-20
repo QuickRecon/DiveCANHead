@@ -66,7 +66,8 @@ const F32_SCRATCH = new DataView(new ArrayBuffer(4));
 const READERS = {
   u8: (p, o) => p[o],
   u16: (p, o) => p[o] | (p[o + 1] << 8),
-  i32: (p, o) => (p[o] | (p[o + 1] << 8) | (p[o + 2] << 16) | (p[o + 3] << 24)) | 0,
+  // Bitwise OR already yields a signed int32 (bit 31 lands as the sign).
+  i32: (p, o) => p[o] | (p[o + 1] << 8) | (p[o + 2] << 16) | (p[o + 3] << 24),
   u32: (p, o) => ((p[o] | (p[o + 1] << 8) | (p[o + 2] << 16) | (p[o + 3] << 24)) >>> 0),
   f32: (p, o) => {
     F32_SCRATCH.setUint8(0, p[o]);
@@ -421,7 +422,7 @@ function buildSolenoidSpans(raw) {
     const family = k >> 1; // 0 = inject, 1 = flush
     if (isOpen) {
       t0.push(raw.t[i]);
-      t1.push(NaN);
+      t1.push(Number.NaN);
       kind.push(k);
       requestedS.push(raw.requestedOnUs[i] / US_PER_S);
       openIdx.set(family, t0.length - 1);
@@ -612,7 +613,7 @@ export function buildTelemetry(input, opts = {}) {
             valid = (bytes[off + decl.flagsOff] & f.validBit) !== 0;
           }
           if (f.validWhen === 'positive') valid = valid && raw > 0;
-          table.channels[f.key].data[i] = valid ? raw * f.scale : NaN;
+          table.channels[f.key].data[i] = valid ? raw * f.scale : Number.NaN;
         }
       }
     }

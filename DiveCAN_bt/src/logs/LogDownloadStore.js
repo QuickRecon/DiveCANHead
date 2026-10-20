@@ -23,8 +23,10 @@ function safeId(id) {
 
 function makeId() {
   const stamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
+  // randomUUID needs a secure context; getRandomValues does not.
   const random = globalThis.crypto?.randomUUID?.().slice(0, 8)
-    ?? Math.random().toString(16).slice(2, 10);
+    ?? Array.from(globalThis.crypto.getRandomValues(new Uint8Array(4)),
+      (b) => b.toString(16).padStart(2, '0')).join('');
   return `divecan-log-${stamp}-${random}`;
 }
 
