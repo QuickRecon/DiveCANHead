@@ -310,8 +310,9 @@ Each entry must include: what changed, why, what still provides coverage, and po
 - New Kconfig options go in `src/Kconfig` (app topology/features) or driver subdirs
 - When adding zbus channels, document them in ARCHITECTURE.md under the IPC section
 - The real hardware variants are `AP_Aren`, `AP_Paul`, `eCCR_classic`,
-  `Poseidon_Aren`, and `Sidewinder_Gabriel` (each a `.conf` + `.overlay`
-  pair in `variants/`).
+  `Poseidon_Aren`, `Sidewinder_Gabriel`, and `TECME` (each a `.conf` +
+  `.overlay` pair in `variants/`). `TECME` is CI-built only, not yet in the
+  release/HIL matrix.
   Verify at least `Poseidon_Aren` (most features) builds after changes; the
   native test topology lives in `tests/integration/integration.conf`.
 

@@ -14,6 +14,9 @@ and includes this complete file in the downloadable package.
 
 ## Unreleased
 
+### Added
+- TECME variant: TECME-style single-solenoid head with 3 DiveO2 digital cells, PID control, total absolute calibration and depth compensation, battery only (2S lithium)
+
 ## 0.0.2 - 2026-10-20
 
 ### Added

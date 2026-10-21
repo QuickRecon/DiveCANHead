@@ -36,6 +36,7 @@ jobs:
         AP_Paul
         eCCR_classic
         Sidewinder_Gabriel
+        TECME
     steps:
       # The repository contains two legacy gitlinks without matching
       # .gitmodules entries. actions/checkout traverses submodules while

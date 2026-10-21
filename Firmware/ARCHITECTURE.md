@@ -117,6 +117,7 @@ Kconfig `choice` blocks enforce mutual exclusion. `BUILD_ASSERT` in `runtime_set
 | `eCCR_classic.conf` | Classic single-solenoid eCCR — 3× analog, O2 inject on ch0 only, MK15 control, flush cal (via inject solenoid), depth comp; battery+CAN, 9V |
 | `Poseidon_Aren.conf` | 2× DiveO2 head — consensus duplicated into the unused third handset PPO2 slot; all 4 solenoid channels (dual O2 inject alternation, O2/dil flush), PID control, flush cal, depth comp, setpoint-change flush (`CONFIG_SOL_FLUSH_TIME=3000`); battery-only, 1S Li; HP O2/dil tank transducers on the spare adc_ext1 channels (0.3–1.8 V ↔ 0–300 bar, `ADC_GAIN_1` set in the overlay) |
 | `Sidewinder_Gabriel.conf` | 3× DiveO2 manual CCR. Intended solenoid and battery topology currently contradict the executable config; resolve before qualification. |
+| `TECME.conf` | TECME-style single-solenoid head — 3× DiveO2, O2 inject on ch0 only, PID control, total absolute cal, depth comp; battery-only, 2S Li. Copy of `AP_Aren` with PID control and total absolute cal. Not yet in a release or the HIL qualification matrix. |
 
 The native_sim integration tests use their own all-features topology in
 `tests/integration/integration.conf` (DiveO2/DiveO2/Analog cells — O2S is out
@@ -797,7 +798,7 @@ Firmware/
 ├── variants/
 │   └── <variant>.conf/.overlay     Hardware variants (AP_Aren, AP_Paul,
 │                                   eCCR_classic, Poseidon_Aren,
-│                                   Sidewinder_Gabriel)
+│                                   Sidewinder_Gabriel, TECME)
 ├── scripts/
 │   ├── lint_variant.sh             CI lint for duplicate Kconfig choices
 │   └── release.py                  Release validation, artifact staging, bundling

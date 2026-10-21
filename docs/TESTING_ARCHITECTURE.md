@@ -97,7 +97,7 @@ coverage outputs before switching between GCC and LLVM. See
 ## Production builds and physical HIL
 
 The software CI matrix builds `Poseidon_Aren`, `AP_Aren`, `AP_Paul`,
-`eCCR_classic`, and `Sidewinder_Gabriel` for `divecan_jr/stm32l431xx`.
+`eCCR_classic`, `Sidewinder_Gabriel`, and `TECME` for `divecan_jr/stm32l431xx`.
 MainPCB is not currently included in that matrix.
 
 The physical HIL workflow uses an out-of-tree Test Rig and its nested test
