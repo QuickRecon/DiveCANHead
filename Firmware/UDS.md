@@ -247,9 +247,9 @@ embedded slot versions are the same layout but truncated to 4 bytes
 
 | Offset | Bytes | Field                                                  |
 |--------|-------|--------------------------------------------------------|
-| 0      | 1     | `mcuboot_swap_type()` (0=NONE, 1=TEST, 2=PERM, 3=REVERT, 4=FAIL) |
+| 0      | 1     | `mcuboot_swap_type()`, raw Zephyr `BOOT_SWAP_TYPE_*` (1=NONE, 2=TEST, 3=PERM, 4=REVERT, 5=FAIL); 0 if the call failed |
 | 1      | 1     | `boot_is_img_confirmed()` (0 or 1)                     |
-| 2      | 1     | `boot_fetch_active_slot()` (0 = slot0; always 0 in normal operation) |
+| 2      | 1     | `boot_fetch_active_slot()`: flash-area ID of the running code partition (1 = `slot0_partition` on the Jr; constant in normal operation) |
 | 3      | 1     | Factory captured flag, bit 0 (other bits reserved)     |
 | 4–7    | 4     | Slot0 truncated sem_ver                                |
 | 8–11   | 4     | Slot1 truncated sem_ver (`0xFFFFFFFF` if no valid header) |
@@ -801,9 +801,9 @@ Response: 00 7F 2E 7F                  (SERVICE_NOT_IN_SESSION)
 ```
 Request:  00 22 F2 70
 Response: 00 62 F2 70
-          00              ; swap_type = NONE
+          01              ; swap_type = NONE (BOOT_SWAP_TYPE_NONE)
           01              ; confirmed = true
-          00              ; running slot = 0
+          01              ; running slot = slot0_partition (flash-area ID 1)
           01              ; factory captured (bit 0)
           01 02 04 03     ; slot0 v1.2.0x0304
           FF FF FF FF     ; slot1 — no valid image
