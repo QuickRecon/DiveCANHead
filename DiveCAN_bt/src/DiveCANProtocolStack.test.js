@@ -21,6 +21,14 @@ function flushAsync() {
 }
 
 describe('DiveCANProtocolStack layer wiring', () => {
+  it.each([0x02, 0x04])('sends BLE diagnostics to head 0x%s and keeps client 0xFF', async address => {
+    const stack = new DiveCANProtocolStack({ targetAddress: address });
+    stack.ble.write = vi.fn().mockResolvedValue(undefined);
+    await stack.transport.send([0x22, 0xF0, 0x00]);
+    expect([...stack.ble.write.mock.calls[0][0]])
+      .toEqual([0xFF, address, 4, 0, 0x22, 0xF0, 0, SLIP_END]);
+  });
+
   it('defaults to BT client source and controller target addressing', () => {
     const stack = new DiveCANProtocolStack();
     expect(stack.divecan.sourceAddress).toBe(BT_CLIENT_ADDRESS);
