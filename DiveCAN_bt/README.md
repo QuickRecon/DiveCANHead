@@ -64,6 +64,22 @@ http://localhost:8000/examples/test-ui.html
 2. Select your Petrel 3 from the browser's device picker
 3. Wait for connection to establish
 
+### Diagnostics page head address
+
+On `examples/diagnostics.html`, select **Head address** before connecting:
+**SOLO (0x04)** is the compatibility default; choose **OBOE (0x02)** when
+that is the head's configured DiveCAN address. The selection applies to both
+the Petrel BLE bridge and direct USB-CAN, including OTA reconnects. The active
+address appears in the connection details and message log.
+
+Disconnect before changing the selection. It is locked while connecting,
+connected, or recovering an OTA transfer so requests cannot switch heads
+mid-operation. It selects the diagnostic destination only; it does not change
+firmware settings or discover the address automatically. A fresh page load
+starts at SOLO. If the link connects but DID reads time out, verify the head's
+address before retrying. Confirm the connected head's identity before writes
+or firmware updates.
+
 ### 4. Test UDS operations
 
 - Switch diagnostic sessions

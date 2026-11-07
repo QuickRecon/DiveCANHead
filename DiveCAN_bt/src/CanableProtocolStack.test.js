@@ -2,6 +2,32 @@ import { describe, it, expect, vi } from 'vitest';
 import { CanableProtocolStack } from './CanableProtocolStack.js';
 
 describe('CanableProtocolStack split addressing', () => {
+  it.each([0x02, 0x04])('addresses head 0x%s without mixing dialog and log traffic', async address => {
+    const stack = new CanableProtocolStack({ targetAddress: address, handsetEmulation: false });
+    stack.canable.sendFrame = vi.fn().mockResolvedValue(undefined);
+    const dialog = vi.fn();
+    const log = vi.fn();
+    stack.transport.on('message', dialog);
+    stack.on('logMessage', log);
+
+    await stack.transport.send([0x22, 0xF0, 0x00]);
+    expect(stack.canable.sendFrame.mock.calls[0][0]).toBe(0x0D0A00FE | (address << 8));
+
+    // CANable emits each physical frame to both independent receive contexts.
+    const reply = { id: 0x0D0AFE00 | address, data: new Uint8Array([4, 0, 0x62, 0xF0, 0]) };
+    const push = { id: 0x0D0AFF00 | address, data: new Uint8Array([7, 0, 0x2E, 0xA1, 0, 0x55, 0x53, 0x42]) };
+    stack.canable.emit('frame', reply);
+    stack.canable.emit('frame', push);
+    expect(dialog).toHaveBeenCalledExactlyOnceWith(new Uint8Array([0x62, 0xF0, 0]));
+    expect(log).toHaveBeenCalledExactlyOnceWith('USB');
+
+    const otherHead = address === 0x02 ? 0x04 : 0x02;
+    stack.canable.emit('frame', { ...reply, id: 0x0D0AFE00 | otherHead });
+    stack.canable.emit('frame', { ...push, id: 0x0D0AFF00 | otherHead });
+    expect(dialog).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
   it('uses FE for dialogs and FF for pushed logs', () => {
     const stack = new CanableProtocolStack();
     expect(stack.transport.sourceAddress).toBe(0xFE);

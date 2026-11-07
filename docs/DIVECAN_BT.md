@@ -6,6 +6,17 @@ This document describes the browser-based JavaScript client for communicating wi
 
 The DiveCAN_bt client provides a protocol stack for communicating with the DiveCANHead through a Petrel 3 acting as a CAN-to-BLE bridge.
 
+The diagnostics page (`DiveCAN_bt/examples/diagnostics.html`) also supports
+direct USB-CAN. Before connecting on either transport, select the head's
+configured address: **SOLO (0x04)** (the default) or **OBOE (0x02)**. This changes
+the diagnostic destination, not the firmware configuration. The selected
+address is shown in connection details and logs, and is retained during OTA
+reconnects. Disconnect before selecting another head; the selector is locked
+during connection attempts, an active connection, and OTA recovery. Reloading
+the page restores the SOLO default. A successful Bluetooth or serial link
+alone does not prove the head address is correct; verify it if DID reads time
+out, and verify the head identity before writes or OTA.
+
 ## Source Files
 
 | File | Purpose |

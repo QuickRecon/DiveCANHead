@@ -902,6 +902,13 @@
   <div class="section">
     <h2>Connection</h2>
     <div class="button-group">
+      <label style="display:inline-flex;align-items:center;gap:6px;color:#ccc;font-size:13px;">
+        Head address
+        <select id="headTargetSelect" aria-describedby="headTargetHelp" style="background:#1a1a1a;border:1px solid #555;color:#e0e0e0;padding:8px;border-radius:4px;">
+          <option value="4" selected>SOLO (0x04)</option>
+          <option value="2">OBOE (0x02)</option>
+        </select>
+      </label>
       <button id="scanButton">Scan & Connect</button>
       <button id="usbConnectButton">Connect USB-CAN</button>
       <label style="display:inline-flex;align-items:center;gap:6px;color:#ccc;font-size:13px;">
@@ -916,6 +923,10 @@
       <button id="disconnectButton" disabled>Disconnect</button>
       <span class="status disconnected" id="connectionStatus">Disconnected</span>
       <span id="streamStatusDetail" style="color: #888; font-size: 13px;"></span>
+    </div>
+    <div id="headTargetHelp" style="margin-top:10px;color:#aaa;font-size:13px;">
+      Match the head's configured DiveCAN address before connecting over Bluetooth or USB-CAN.
+      Disconnect to change it. This selects the diagnostic destination; it does not change the head's configuration.
     </div>
     <label style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:#ccc;font-size:13px;">
       <input type="checkbox" id="fetchDidsOnConnect" checked>
@@ -1612,6 +1623,7 @@
 
     // State
     let stack = null;
+    let connecting = false;
     let deviceManager = null;
     let dataStore = new DataStore({ maxPoints: 1000, maxAge: 300 }); // 1000 points, 5 min max age
     let plotManager = null;
@@ -1652,6 +1664,7 @@
       scanButton: document.getElementById('scanButton'),
       usbConnectButton: document.getElementById('usbConnectButton'),
       usbBaudSelect: document.getElementById('usbBaudSelect'),
+      headTargetSelect: document.getElementById('headTargetSelect'),
       disconnectButton: document.getElementById('disconnectButton'),
       connectionStatus: document.getElementById('connectionStatus'),
       deviceInfo: document.getElementById('deviceInfo'),
@@ -1711,12 +1724,27 @@
     // Track current stream state for combined status display
     let currentStreamState = 'inactive';
 
+    const HEAD_TARGETS = new Map([[0x04, 'SOLO (0x04)'], [0x02, 'OBOE (0x02)']]);
+
+    const selectedHeadTarget = () => {
+      const address = Number(elements.headTargetSelect.value);
+      if (!HEAD_TARGETS.has(address)) throw new Error('Select a supported head address');
+      return address;
+    };
+
+    // Keep the destination fixed from chooser entry through connect/recovery.
+    const updateConnectionControls = (connected = Boolean(stack?.isConnected)) => {
+      const locked = connected || connecting || otaBusy;
+      elements.scanButton.disabled = locked;
+      elements.usbConnectButton.disabled = locked;
+      elements.usbBaudSelect.disabled = locked;
+      elements.headTargetSelect.disabled = locked;
+      elements.disconnectButton.disabled = !connected;
+    };
+
     // Update UI state
     const updateUIState = (connected) => {
-      elements.scanButton.disabled = connected;
-      elements.usbConnectButton.disabled = connected;
-      elements.usbBaudSelect.disabled = connected;
-      elements.disconnectButton.disabled = !connected;
+      updateConnectionControls(connected);
 
       if (connected) {
         elements.connectionStatus.textContent = 'Connected';
@@ -2503,7 +2531,7 @@
       } else {
         throw cause ?? new Error('This transport cannot reconnect');
       }
-      stack.setTargetAddress(0x04);
+      // Reuse the same stack and head address; never retarget during recovery.
     };
 
     // Staging shares the link with background DID polling; pause it for the
@@ -2511,6 +2539,7 @@
     // UDS silence to let the head's S3 session timeout expire.
     const fwEnterTransfer = async () => {
       otaBusy = true;
+      updateConnectionControls();
       applyFwPacing();
       updateStreamStatus('inactive', 'Waiting for diagnostics traffic to stop...');
       if (dataStore?.pausePolling) {
@@ -2523,6 +2552,7 @@
 
     const fwExitTransfer = () => {
       otaBusy = false;
+      updateConnectionControls();
       if (stack?.isConnected && dataStore?.udsClient) {
         if (dataStore.resumePolling) dataStore.resumePolling();
         else dataStore.startPolling();
@@ -3891,12 +3921,18 @@
 
     // Both physical links share the same diagnostics/OTA setup. USB-CAN uses
     // separate 0xFE dialog and 0xFF log ISO-TP contexts inside its stack.
-    const connectStack = async (newStack, label, connectArgument = undefined) => {
+    const connectStack = async (newStack, label, targetAddress, connectArgument = undefined) => {
       stack = newStack;
-      elements.deviceInfo.textContent = `Device: ${label}`;
+      // Apply before connect emits its event and starts any diagnostic reads.
+      // The stack retains this address across BLE/serial and OTA reconnects.
+      stack.setTargetAddress(targetAddress);
+      const deviceLabel = `Device: ${label} · Head: ${HEAD_TARGETS.get(targetAddress)}`;
+      elements.deviceInfo.textContent = deviceLabel;
 
       stack.on('connected', async () => {
           updateUIState(true);
+          elements.deviceInfo.textContent = deviceLabel;
+          addToLogMessages(`[WEB] Connected: ${deviceLabel}`);
 
           // Enable feature tabs
           elements.readSettingsButton.disabled = false;
@@ -3912,9 +3948,6 @@
 
           // Enable errors tab
           enableErrorsUI();
-
-          // Set target to SOLO (0x04)
-          stack.setTargetAddress(0x04);
 
           // Apply the user's transfer-rate preference to this connection.
           applyFwPacing();
@@ -3982,7 +4015,7 @@
       });
       stack.on('handsetEmulation', ({ active }) => {
         const mode = active ? 'supplying missing handset pings' : 'real handset detected';
-        elements.deviceInfo.textContent = `Device: ${label} · ${mode}`;
+        elements.deviceInfo.textContent = `${deviceLabel} · ${mode}`;
         addToLogMessages(`USB-CAN handset heartbeat: ${mode}`);
       });
       await stack.connect(connectArgument);
@@ -3991,34 +4024,47 @@
 
     // Scan and connect over the existing Bluetooth bridge.
     elements.scanButton.addEventListener('click', async () => {
+      if (connecting || stack?.isConnected || otaBusy) return;
+      connecting = true;
+      updateConnectionControls();
       try {
+        const targetAddress = selectedHeadTarget();
         deviceManager = new DeviceManager();
         const devices = await deviceManager.scan();
         if (devices.length === 0) return;
         const currentDevice = devices[0].device;
         lastBleDevice = currentDevice; // kept for unattended mid-OTA reconnects
-        await connectStack(deviceManager.createStack(currentDevice), devices[0].name, currentDevice);
+        await connectStack(deviceManager.createStack(currentDevice, { targetAddress }),
+          devices[0].name, targetAddress, currentDevice);
       } catch (error) {
         stack = null;
         updateUIState(false);
         console.error('Bluetooth connection failed:', error);
+      } finally {
+        connecting = false;
+        updateConnectionControls();
       }
     });
 
     // Connect directly to an slcan/Lawicel CANable via Chromium Web Serial.
     elements.usbConnectButton.addEventListener('click', async () => {
+      if (connecting || stack?.isConnected || otaBusy) return;
+      connecting = true;
+      updateConnectionControls();
       try {
+        const targetAddress = selectedHeadTarget();
         if (!navigator.serial) throw new Error('Web Serial is not available in this browser');
         const serialBaud = Number(elements.usbBaudSelect.value);
         const usbStack = new CanableProtocolStack({
           sourceAddress: 0xFE,
           logAddress: 0xFF,
-          targetAddress: 0x04,
+          targetAddress,
           canable: { baudRate: serialBaud, verifyConnection: true }
         });
         await connectStack(
           usbStack,
-          `CANable USB @ ${serialBaud.toLocaleString()} baud (dialog 0xFE, logs 0xFF)`
+          `CANable USB @ ${serialBaud.toLocaleString()} baud (dialog 0xFE, logs 0xFF)`,
+          targetAddress
         );
       } catch (error) {
         stack = null;
@@ -4032,6 +4078,9 @@
         addToLogMessages(`[WEB] USB-CAN connection failed at ${attemptedBaud.toLocaleString()} baud: ` +
           `${error.message}. ${fallback}`, true);
         console.error('USB-CAN connection failed:', error);
+      } finally {
+        connecting = false;
+        updateConnectionControls();
       }
     });
 
