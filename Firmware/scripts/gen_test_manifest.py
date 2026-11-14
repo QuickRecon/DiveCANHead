@@ -98,6 +98,10 @@ def settings_block(cfg) -> dict:
     wire_order = compute_menu_order(menu_cfg, count)
     return {
         "count": count,
+        "flat_did_offset": 0x1000,
+        "handset_properties_per_page": 4,
+        "handset_pages": [[labels[s] for s in wire_order[i:i + 4]]
+                          for i in range(0, count, 4)],
         "menu_order_config": menu_cfg,
         "storage_labels": labels,
         # wire index -> storage index, and the label at each wire index.

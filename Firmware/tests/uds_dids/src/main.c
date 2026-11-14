@@ -177,6 +177,15 @@ bool UDS_StateDID_HandleRead(uint16_t did, uint8_t *buf, uint16_t maxLen,
     return false;
 }
 
+/* Dispatcher tests use a scripted view; actual page routing is exercised by
+ * runtime_settings_logic against the real settings implementation. */
+uint8_t UDS_MenuGetSettingCount(void) { return UDS_GetSettingCount(); }
+const SettingDefinition_t *UDS_MenuGetSettingInfo(uint8_t i) { return UDS_GetSettingInfo(i); }
+uint64_t UDS_MenuGetSettingValue(uint8_t i) { return UDS_GetSettingValue(i); }
+bool UDS_MenuSetSettingValue(uint8_t i, uint64_t v) { return UDS_SetSettingValue(i, v); }
+bool UDS_MenuSaveSettingValue(uint8_t i, uint64_t v) { return UDS_SaveSettingValue(i, v); }
+const char *UDS_MenuGetSettingOptionLabel(uint8_t i, uint8_t o) { return UDS_GetSettingOptionLabel(i, o); }
+
 /* ---- uds_settings.c stand-ins ---- */
 
 uint8_t UDS_GetSettingCount(void)
@@ -1698,4 +1707,32 @@ ZTEST(uds_dids_bounds, test_setting_range_boundaries)
      * with each range test failing on its lower bound. */
     send_write_did(0x1234U, value, sizeof(value));
     expect_nrc(UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
+}
+
+
+ZTEST(uds_dids_core, test_flat_settings_aliases_echo_requested_did)
+{
+    uint16_t did = 0xA100U;
+    send_read_dids(&did, 1U);
+    zassert_equal(stub.captured_response[0], 0x62U);
+    zassert_equal(stub.captured_response[1], 0xA1U);
+    zassert_equal(stub.captured_response[2], 0U);
+    zassert_equal(stub.captured_response[3], stub.setting_count);
+
+    uint16_t reads[] = {0xA110U, 0xA130U, 0xA150U};
+    stub.option_label_ok = true;
+    for (size_t i = 0U; i < ARRAY_SIZE(reads); ++i) {
+        send_read_dids(&reads[i], 1U);
+        zassert_equal(stub.captured_response[0], 0x62U);
+        zassert_equal(stub.captured_response[1], (uint8_t)(reads[i] >> 8));
+        zassert_equal(stub.captured_response[2], (uint8_t)reads[i]);
+    }
+    uint8_t value[8] = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 1U};
+    stub.setting_save_ok = true;
+    stub.setting_set_ok = true;
+    send_write_did(0xA350U, value, sizeof(value));
+    expect_write_positive(0xA350U);
+    zassert_equal(stub.setting_value, 1U);
+    send_write_did(0xA130U, value, sizeof(value));
+    expect_write_positive(0xA130U);
 }

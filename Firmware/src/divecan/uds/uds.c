@@ -40,6 +40,8 @@
 
 LOG_MODULE_REGISTER(uds, LOG_LEVEL_INF);
 
+static const uint16_t UDS_FLAT_SETTINGS_OFFSET = 0x1000U;
+
 /* Setting info field sizes */
 static const uint16_t SETTING_INFO_BASE_LEN = 3U;   /* null + kind + editable */
 static const uint16_t SETTING_INFO_TEXT_EXTRA = 2U; /* max_value + option_count */
@@ -118,9 +120,9 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx, const uint8_t *reques
 static void HandleDiagnosticSessionControl(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
 static void dispatchOtaOrLogDownload(UDSContext_t *ctx, uint8_t sid, const uint8_t *request_data, uint16_t request_length);
 static void dispatchRoutineControl(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
-static bool readSettingInfoDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
-static bool readSettingValueDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
-static bool readSettingLabelDID(uint16_t did, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
+static bool readSettingInfoDID(uint16_t did, bool flat, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
+static bool readSettingValueDID(uint16_t did, bool flat, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
+static bool readSettingLabelDID(uint16_t did, bool flat, uint8_t *buf, uint16_t dataOffset, uint16_t maxAvailable, uint16_t *bytesWritten);
 static bool writeSetpointDID(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
 static bool writeCalibrationTriggerDID(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
 #ifdef CONFIG_HAS_O2_SOLENOID
@@ -128,8 +130,8 @@ static bool writeSolenoidOverrideDID(UDSContext_t *ctx, const uint8_t *request_d
 static bool writeAutotuneControlDID(UDSContext_t *ctx, const uint8_t *request_data, uint16_t request_length);
 static void buildWriteDidPositiveResponse(UDSContext_t *ctx, const uint8_t *request_data);
 #endif
-static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, const uint8_t *request_data, uint16_t request_length);
-static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, const uint8_t *request_data, uint16_t request_length);
+static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, bool flat, const uint8_t *request_data, uint16_t request_length);
+static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, bool flat, const uint8_t *request_data, uint16_t request_length);
 #ifdef CONFIG_HAS_DIVEO2_CELL
 static bool writeCellBroadcastDID(UDSContext_t *ctx, uint16_t did, const uint8_t *request_data, uint16_t request_length);
 #endif
@@ -572,6 +574,15 @@ static bool readSettingCountDID(uint8_t *buf, uint16_t dataOffset,
                 uint16_t maxAvailable, uint16_t *bytesWritten)
 {
     ARG_UNUSED(maxAvailable);
+    buf[dataOffset] = UDS_MenuGetSettingCount();
+    *bytesWritten = dataOffset + 1U;
+    return true;
+}
+
+static bool readFlatSettingCountDID(uint8_t *buf, uint16_t dataOffset,
+                uint16_t maxAvailable, uint16_t *bytesWritten)
+{
+    ARG_UNUSED(maxAvailable);
     buf[dataOffset] = UDS_GetSettingCount();
     *bytesWritten = dataOffset + 1U;
     return true;
@@ -579,17 +590,17 @@ static bool readSettingCountDID(uint8_t *buf, uint16_t dataOffset,
 
 /* Fixed set of exact-match read DIDs (no CONFIG_* gating), so an explicit
  * count is safe here (unlike writeDidTable below, which varies by variant). */
-#define UDS_READ_DID_TABLE_COUNT 5U
 
 static const struct {
     uint16_t did;
     UdsReadDidFn fn;
-} readDidTable[UDS_READ_DID_TABLE_COUNT] = {
+} readDidTable[] = {
     { UDS_DID_FIRMWARE_VERSION, readFirmwareVersionDID },
     { UDS_DID_HARDWARE_VERSION, readHardwareVersionDID },
     { UDS_DID_VARIANT_NAME,     readVariantNameDID },
     { UDS_DID_SERIAL_NUMBER,    readSerialNumberDID },
     { UDS_DID_SETTING_COUNT,    readSettingCountDID },
+    { 0xA100U, readFlatSettingCountDID },
 };
 
 /**
@@ -609,6 +620,11 @@ static const struct {
  */
 static bool settingDidBusy(uint16_t did, bool includeSaveRange)
 {
+    if (did >= (UDS_DID_SETTING_COUNT + UDS_FLAT_SETTINGS_OFFSET) &&
+        did < (UDS_DID_SETTING_SAVE_BASE + UDS_FLAT_SETTINGS_OFFSET + UDS_GetSettingCount())) {
+        did -= UDS_FLAT_SETTINGS_OFFSET;
+    }
+
     bool busy = false;
 
     if (!runtime_settings_is_loaded()) {
@@ -661,15 +677,24 @@ static bool ReadSingleDID(UDSContext_t *ctx, uint16_t did,
                 *bytesWritten = dataOffset + dataLen;
                 result = true;
             }
+        } else if ((did >= (UDS_DID_SETTING_INFO_BASE + UDS_FLAT_SETTINGS_OFFSET)) &&
+                   (did < (UDS_DID_SETTING_INFO_BASE + UDS_FLAT_SETTINGS_OFFSET + UDS_GetSettingCount()))) {
+            result = readSettingInfoDID(did, true, buf, dataOffset, maxAvailable, bytesWritten);
+        } else if ((did >= (UDS_DID_SETTING_VALUE_BASE + UDS_FLAT_SETTINGS_OFFSET)) &&
+                   (did < (UDS_DID_SETTING_VALUE_BASE + UDS_FLAT_SETTINGS_OFFSET + UDS_GetSettingCount()))) {
+            result = readSettingValueDID(did, true, buf, dataOffset, maxAvailable, bytesWritten);
+        } else if ((did >= (UDS_DID_SETTING_LABEL_BASE + UDS_FLAT_SETTINGS_OFFSET)) &&
+                   (did < (UDS_DID_SETTING_LABEL_END + UDS_FLAT_SETTINGS_OFFSET))) {
+            result = readSettingLabelDID(did, true, buf, dataOffset, maxAvailable, bytesWritten);
         } else if ((did >= UDS_DID_SETTING_INFO_BASE) &&
-               (did < (UDS_DID_SETTING_INFO_BASE + UDS_GetSettingCount()))) {
-            result = readSettingInfoDID(did, buf, dataOffset, maxAvailable, bytesWritten);
+               (did < (UDS_DID_SETTING_INFO_BASE + UDS_MenuGetSettingCount()))) {
+            result = readSettingInfoDID(did, false, buf, dataOffset, maxAvailable, bytesWritten);
         } else if ((did >= UDS_DID_SETTING_VALUE_BASE) &&
-               (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))) {
-            result = readSettingValueDID(did, buf, dataOffset, maxAvailable, bytesWritten);
+               (did < (UDS_DID_SETTING_VALUE_BASE + UDS_MenuGetSettingCount()))) {
+            result = readSettingValueDID(did, false, buf, dataOffset, maxAvailable, bytesWritten);
         } else if ((did >= UDS_DID_SETTING_LABEL_BASE) &&
                (did < UDS_DID_SETTING_LABEL_END)) {
-            result = readSettingLabelDID(did, buf, dataOffset, maxAvailable, bytesWritten);
+            result = readSettingLabelDID(did, false, buf, dataOffset, maxAvailable, bytesWritten);
         } else {
             /* DID not found */
         }
@@ -751,13 +776,17 @@ static void HandleReadDataByIdentifier(UDSContext_t *ctx,
  * @param bytesWritten Out: total bytes written from buf[0] (header + payload)
  * @return true on success, false if the setting index is invalid or buffer is too small
  */
-static bool readSettingInfoDID(uint16_t did, uint8_t *buf,
+static bool readSettingInfoDID(uint16_t did, bool flat, uint8_t *buf,
                    uint16_t dataOffset, uint16_t maxAvailable,
                    uint16_t *bytesWritten)
 {
+    if (flat) {
+        did -= UDS_FLAT_SETTINGS_OFFSET;
+    }
+
     bool result = false;
     uint8_t index = (uint8_t)(did - UDS_DID_SETTING_INFO_BASE);
-    const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
+    const SettingDefinition_t *setting = (flat ? UDS_GetSettingInfo(index) : UDS_MenuGetSettingInfo(index));
 
     if (NULL == setting) {
         OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, index);
@@ -813,13 +842,17 @@ static bool readSettingInfoDID(uint16_t did, uint8_t *buf,
  * @param bytesWritten Out: total bytes written from buf[0] (header + payload)
  * @return true on success, false if the setting index is invalid or buffer is too small
  */
-static bool readSettingValueDID(uint16_t did, uint8_t *buf,
+static bool readSettingValueDID(uint16_t did, bool flat, uint8_t *buf,
                 uint16_t dataOffset, uint16_t maxAvailable,
                 uint16_t *bytesWritten)
 {
+    if (flat) {
+        did -= UDS_FLAT_SETTINGS_OFFSET;
+    }
+
     bool result = false;
     uint8_t index = (uint8_t)(did - UDS_DID_SETTING_VALUE_BASE);
-    const SettingDefinition_t *setting = UDS_GetSettingInfo(index);
+    const SettingDefinition_t *setting = (flat ? UDS_GetSettingInfo(index) : UDS_MenuGetSettingInfo(index));
 
     if (NULL == setting) {
         OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, index);
@@ -827,7 +860,7 @@ static bool readSettingValueDID(uint16_t did, uint8_t *buf,
         OP_ERROR_DETAIL(OP_ERR_UDS_TOO_FULL, index);
     } else {
         uint64_t max_value = setting->max_value;
-        uint64_t currentValue = UDS_GetSettingValue(index);
+        uint64_t currentValue = (flat ? UDS_GetSettingValue(index) : UDS_MenuGetSettingValue(index));
 
         for (uint8_t i = 0; i < sizeof(uint64_t); ++i) {
             buf[dataOffset + i] = (uint8_t)(max_value >> (DIVECAN_SEVEN_BYTE_WIDTH - (i * DIVECAN_BYTE_WIDTH)));
@@ -854,10 +887,14 @@ static bool readSettingValueDID(uint16_t did, uint8_t *buf,
  * @param bytesWritten Out: total bytes written from buf[0] (header + payload)
  * @return true on success, false if the setting/option index is invalid
  */
-static bool readSettingLabelDID(uint16_t did, uint8_t *buf,
+static bool readSettingLabelDID(uint16_t did, bool flat, uint8_t *buf,
                 uint16_t dataOffset, uint16_t maxAvailable,
                 uint16_t *bytesWritten)
 {
+    if (flat) {
+        did -= UDS_FLAT_SETTINGS_OFFSET;
+    }
+
     bool result = false;
     /* Decode via the shared helper: setting index is the HIGH nibble, option
      * index the LOW nibble (the OEM handset's on-wire convention). These were
@@ -868,7 +905,7 @@ static bool readSettingLabelDID(uint16_t did, uint8_t *buf,
     uint8_t optionIndex = 0U;
     UDS_DecodeSettingLabelDID(did, &settingIndex, &optionIndex);
 
-    const char *label = UDS_GetSettingOptionLabel(settingIndex, optionIndex);
+    const char *label = (flat ? UDS_GetSettingOptionLabel(settingIndex, optionIndex) : UDS_MenuGetSettingOptionLabel(settingIndex, optionIndex));
     if (NULL == label) {
         OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, did);
     } else {
@@ -1132,10 +1169,14 @@ static bool writeAutotuneControlDID(UDSContext_t *ctx,
  * @param request_length Total byte count of request_data
  * @return true (always; error path sends NRC and still returns true)
  */
-static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did,
+static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, bool flat,
                 const uint8_t *request_data,
                 uint16_t request_length)
 {
+    if (flat) {
+        did -= UDS_FLAT_SETTINGS_OFFSET;
+    }
+
     uint8_t index = (uint8_t)(did - UDS_DID_SETTING_SAVE_BASE);
 
     /* Extract big-endian u64 value */
@@ -1145,7 +1186,7 @@ static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did,
         value = (value << DIVECAN_BYTE_WIDTH) | request_data[UDS_DATA_IDX + i];
     }
 
-    if (!UDS_SaveSettingValue(index, value)) {
+    if (!(flat ? UDS_SaveSettingValue(index, value) : UDS_MenuSaveSettingValue(index, value))) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
     } else {
@@ -1171,10 +1212,14 @@ static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did,
  * @param request_length Total byte count of request_data
  * @return true (always; error path sends NRC and still returns true)
  */
-static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
+static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, bool flat,
                      const uint8_t *request_data,
                      uint16_t request_length)
 {
+    if (flat) {
+        did -= UDS_FLAT_SETTINGS_OFFSET;
+    }
+
     if (request_length != SETTING_VALUE_WRITE_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
@@ -1186,7 +1231,7 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did,
             value = (value << DIVECAN_BYTE_WIDTH) | request_data[UDS_DATA_IDX + i];
         }
 
-        if (!UDS_SetSettingValue(index, value)) {
+        if (!(flat ? UDS_SetSettingValue(index, value) : UDS_MenuSetSettingValue(index, value))) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
         } else {
@@ -1838,12 +1883,18 @@ static void HandleWriteDataByIdentifier(UDSContext_t *ctx,
              * it. NRC 0x21: retry once the load lands. */
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_BUSY_REPEAT_REQUEST);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_BUSY_REPEAT_REQUEST);
+        } else if ((did >= (UDS_DID_SETTING_SAVE_BASE + UDS_FLAT_SETTINGS_OFFSET)) &&
+                   (did < (UDS_DID_SETTING_SAVE_BASE + UDS_FLAT_SETTINGS_OFFSET + UDS_GetSettingCount()))) {
+            (void)writeSettingSaveDID(ctx, did, true, request_data, request_length);
+        } else if ((did >= (UDS_DID_SETTING_VALUE_BASE + UDS_FLAT_SETTINGS_OFFSET)) &&
+                   (did < (UDS_DID_SETTING_VALUE_BASE + UDS_FLAT_SETTINGS_OFFSET + UDS_GetSettingCount()))) {
+            (void)writeSettingValueDID_handler(ctx, did, true, request_data, request_length);
         } else if ((did >= UDS_DID_SETTING_SAVE_BASE) &&
-               (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount()))) {
-            (void)writeSettingSaveDID(ctx, did, request_data, request_length);
+               (did < (UDS_DID_SETTING_SAVE_BASE + UDS_MenuGetSettingCount()))) {
+            (void)writeSettingSaveDID(ctx, did, false, request_data, request_length);
         } else if ((did >= UDS_DID_SETTING_VALUE_BASE) &&
-               (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount()))) {
-            (void)writeSettingValueDID_handler(ctx, did, request_data, request_length);
+               (did < (UDS_DID_SETTING_VALUE_BASE + UDS_MenuGetSettingCount()))) {
+            (void)writeSettingValueDID_handler(ctx, did, false, request_data, request_length);
         } else {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);

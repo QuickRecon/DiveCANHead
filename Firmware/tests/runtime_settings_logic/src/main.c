@@ -522,3 +522,54 @@ ZTEST(runtime_settings_logic, test_option_label_fixed_width_space_padded)
     zassert_equal(UDS_FormatOptionLabel("TooLongName", out, 9U), 9U, "returns width");
     zassert_mem_equal(out, "TooLongNa", 9U, "over-width label truncated to width");
 }
+
+
+ZTEST(runtime_settings_logic, test_handset_pages_cover_every_property)
+{
+    uint8_t visited = 0U;
+    const SettingDefinition_t *selector = UDS_MenuGetSettingInfo(0U);
+    zassert_str_equal(selector->label, "Page");
+    for (uint64_t page = 0U; page <= selector->max_value; ++page) {
+        zassert_true(UDS_MenuSaveSettingValue(0U, page));
+        zassert_equal(stub.save_calls, 0, "page selection must never write NVS");
+        zassert_equal(UDS_MenuGetSettingValue(0U), page);
+        zassert_not_null(UDS_MenuGetSettingOptionLabel(0U, (uint8_t)page));
+        zassert_true(UDS_MenuGetSettingCount() <= 5U);
+        for (uint8_t row = 1U; row < UDS_MenuGetSettingCount(); ++row) {
+            zassert_equal_ptr(UDS_MenuGetSettingInfo(row), UDS_GetSettingInfo(visited));
+            zassert_equal(UDS_MenuGetSettingValue(row), UDS_GetSettingValue(visited));
+            const SettingDefinition_t *info = UDS_GetSettingInfo(visited);
+            if (info->option_count > 0U) {
+                zassert_str_equal(UDS_MenuGetSettingOptionLabel(row, 0U),
+                                  UDS_GetSettingOptionLabel(visited, 0U));
+            }
+            if (info->editable) {
+                zassert_true(UDS_MenuSetSettingValue(row, UDS_GetSettingValue(visited)));
+                zassert_true(UDS_MenuSaveSettingValue(row, UDS_GetSettingValue(visited)));
+                stub.save_calls = 0;
+            } else {
+                zassert_false(UDS_MenuSetSettingValue(row, 0U));
+            }
+            ++visited;
+        }
+    }
+    zassert_equal(visited, UDS_GetSettingCount());
+    zassert_true(UDS_MenuSetSettingValue(0U, 0U));
+}
+
+ZTEST(runtime_settings_logic, test_handset_page_bounds_and_persistence_routing)
+{
+    zassert_true(UDS_MenuSetSettingValue(0U, 1U));
+    zassert_str_equal(UDS_MenuGetSettingInfo(1U)->label, "Kp x1M");
+    zassert_true(UDS_MenuSaveSettingValue(1U, 250000U));
+    zassert_equal(UDS_GetSettingValue(IDX_KP), 250000U);
+    zassert_true(stub_wrote_key("kp"));
+    zassert_equal(stub.save_calls, 1);
+    zassert_false(UDS_MenuSaveSettingValue(0U, UINT64_MAX));
+    zassert_equal(UDS_MenuGetSettingValue(0U), 1U);
+    zassert_false(UDS_MenuSetSettingValue(5U, 0U));
+    zassert_false(UDS_MenuSaveSettingValue(UINT8_MAX, 0U));
+    zassert_is_null(UDS_MenuGetSettingInfo(5U));
+    zassert_is_null(UDS_MenuGetSettingOptionLabel(0U, UINT8_MAX));
+    zassert_true(UDS_MenuSetSettingValue(0U, 0U));
+}

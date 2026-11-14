@@ -259,13 +259,9 @@ BUILD_ASSERT(SETTING_INDEX_CELL_BCST_BASE == 8U, "Cell-broadcast block must star
 BUILD_ASSERT(SETTING_INDEX_DIVECAN_IDENTITY == 11U, "CAN ID must be storage index 11");
 
 /* ---- Handset menu order (per-variant, CONFIG_MENU_ORDER_n) ----
- * The handset renders only the first ~5 settings it enumerates. The Kconfig
- * ints below name which settings (STORAGE index) fill those leading slots per
- * variant; every other setting is appended in natural order so it stays
- * reachable over UDS (web UI / rig). This REORDERS the wire list, it never
- * hides settings, so UDS_GetSettingCount() is unchanged. Fallbacks let this
- * file also build in unit-test harnesses that don't source src/Kconfig; they
- * mirror the historical order (slots 0..4 = storage 0..4). */
+ * These configured storage indices lead the complete flat order. The paged
+ * handset view below takes four consecutive properties from this order.
+ * Fallbacks reproduce the historical order in native test harnesses. */
 #ifndef CONFIG_MENU_ORDER_1
 #define CONFIG_MENU_ORDER_1 0
 #endif
@@ -652,5 +648,103 @@ const char *UDS_GetSettingOptionLabel(uint8_t settingIndex,
         }
     }
 
+    return result;
+}
+
+/* The OEM handset renders five rows. A selector plus four properties avoids
+ * relying on scrolling support, while retaining the variant's curated order.
+ * All access is serialized by divecan_rx, just like menuOrder above. */
+#define MENU_PROPERTIES_PER_PAGE 4U
+#define MENU_PAGE_COUNT ((SETTING_COUNT + MENU_PROPERTIES_PER_PAGE - 1U) / MENU_PROPERTIES_PER_PAGE)
+static uint8_t menuPage;
+static const char * const menuPageLabels[] = { "1", "2", "3" };
+BUILD_ASSERT(MENU_PAGE_COUNT == ARRAY_SIZE(menuPageLabels),
+             "update page labels when adding settings");
+static const SettingDefinition_t menuPageSetting = {
+    .label = "Page",
+    .kind = SETTING_KIND_TEXT,
+    .editable = true,
+    .max_value = MENU_PAGE_COUNT - 1U,
+    .options = menuPageLabels,
+    .option_count = MENU_PAGE_COUNT,
+};
+
+static uint8_t menu_flat_index(uint8_t index)
+{
+    uint8_t result = SETTING_COUNT;
+    if ((index > 0U) && (index < UDS_MenuGetSettingCount())) {
+        result = (uint8_t)((menuPage * MENU_PROPERTIES_PER_PAGE) + index - 1U);
+    }
+    return result;
+}
+
+uint8_t UDS_MenuGetSettingCount(void)
+{
+    uint8_t remaining = (uint8_t)(SETTING_COUNT - (menuPage * MENU_PROPERTIES_PER_PAGE));
+    return (uint8_t)(1U + MIN(remaining, MENU_PROPERTIES_PER_PAGE));
+}
+
+const SettingDefinition_t *UDS_MenuGetSettingInfo(uint8_t index)
+{
+    const SettingDefinition_t *result = NULL;
+    if (0U == index) {
+        result = &menuPageSetting;
+    } else if (index < UDS_MenuGetSettingCount()) {
+        result = UDS_GetSettingInfo(menu_flat_index(index));
+    }
+    return result;
+}
+
+uint64_t UDS_MenuGetSettingValue(uint8_t index)
+{
+    uint64_t result = 0U;
+    if (0U == index) {
+        result = menuPage;
+    } else if (index < UDS_MenuGetSettingCount()) {
+        result = UDS_GetSettingValue(menu_flat_index(index));
+    }
+    return result;
+}
+
+static bool menu_select_page(uint64_t value)
+{
+    bool result = false;
+    if (value < MENU_PAGE_COUNT) {
+        menuPage = (uint8_t)value;
+        result = true;
+    }
+    return result;
+}
+
+bool UDS_MenuSetSettingValue(uint8_t index, uint64_t value)
+{
+    bool result = false;
+    if (0U == index) {
+        result = menu_select_page(value);
+    } else if (index < UDS_MenuGetSettingCount()) {
+        result = UDS_SetSettingValue(menu_flat_index(index), value);
+    }
+    return result;
+}
+
+bool UDS_MenuSaveSettingValue(uint8_t index, uint64_t value)
+{
+    bool result = false;
+    if (0U == index) {
+        result = menu_select_page(value);
+    } else if (index < UDS_MenuGetSettingCount()) {
+        result = UDS_SaveSettingValue(menu_flat_index(index), value);
+    }
+    return result;
+}
+
+const char *UDS_MenuGetSettingOptionLabel(uint8_t index, uint8_t option)
+{
+    const char *result = NULL;
+    if ((0U == index) && (option < MENU_PAGE_COUNT)) {
+        result = menuPageLabels[option];
+    } else if ((index > 0U) && (index < UDS_MenuGetSettingCount())) {
+        result = UDS_GetSettingOptionLabel(menu_flat_index(index), option);
+    }
     return result;
 }

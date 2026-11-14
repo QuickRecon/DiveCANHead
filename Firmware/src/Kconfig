@@ -420,11 +420,9 @@ endmenu # DiveCAN PPO2 Broadcast
 
 menu "Handset Menu"
 
-# The handset renders only the first ~5 settings it enumerates over UDS. These
-# ints name, per variant, which settings (by STORAGE index into settings[] in
-# uds_settings.c) fill those leading slots and in what order. Settings not named
-# here are appended after them in natural order, so they stay reachable over UDS
-# (web UI / rig) — this REORDERS the wire list, it never hides settings.
+# Settings follow this curated order across handset pages (four properties plus
+# a Page selector per screen). Unlisted settings follow in natural order.
+# Flat diagnostic aliases expose the same complete order independent of page.
 #
 # The storage-index legend is the authoritative BUILD_ASSERT block in
 # uds_settings.c (kept in lockstep via those asserts):

@@ -823,3 +823,25 @@ Response: 00 62 F2 70
 - `tests/uds_ota/` — 0x34/0x36/0x37/0x31 pipeline coverage.
 - `src/divecan/isotp.c` — ISO-TP transport implementation (multi-frame
   reassembly, flow control, timeouts).
+
+
+### Handset settings pages
+
+The OEM bus device menu exposes five rows: an editable **Page** selector and
+four properties. Page values 0, 1, 2 display as 1, 2, 3. Properties follow the
+variant's configured `MENU_ORDER_*` order, then the remaining settings. All
+twelve existing properties are available, including the read-only firmware
+version. After selecting a page, exit and reopen the bus device menu to refresh the
+property rows. Confirmed on the OEM handset with AP_Paul on 2026-11-12; the
+handset caches row metadata until the menu is reopened. Page selection is RAM-only and resets to page 1 at boot;
+both volatile and persistent selector writes change pages without writing NVS.
+Property writes retain their existing validation and per-field persistence.
+
+The existing 0x9100 / 0x9110 / 0x9130 / 0x9150 / 0x9350 families now address
+this handset view. Automated clients should use the flat aliases, which add
+0x1000 to those DIDs: count 0xA100, info 0xA110+i, value 0xA130+i,
+option labels 0xA150+(i<<4)+j, save 0xA350+i. Flat indices retain the
+manifest's `settings.wire_order` and never depend on the handset page.
+Responses echo the requested alias DID. The generated manifest describes the
+flat DID offset and handset page contents. Older clients using 0x91xx as a
+flat array must migrate; older firmware has no 0xA1xx aliases.

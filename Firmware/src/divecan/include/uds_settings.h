@@ -155,4 +155,16 @@ uint16_t UDS_FormatOptionLabel(const char *label, uint8_t *out, uint16_t width);
 uint8_t UDS_ComputeMenuOrder(const int16_t *cfg, uint8_t cfgLen,
                  uint8_t *out, uint8_t settingCount);
 
+
+/* Five-row handset view: Page followed by four properties. Page is volatile;
+ * both value and save writes select it without touching NVS. Exit and reopen the menu
+ * after selecting a page: the OEM handset caches row metadata. Flat APIs above
+ * retain the configured order and are independent of the selected page. */
+uint8_t UDS_MenuGetSettingCount(void);
+const SettingDefinition_t *UDS_MenuGetSettingInfo(uint8_t index);
+uint64_t UDS_MenuGetSettingValue(uint8_t index);
+bool UDS_MenuSetSettingValue(uint8_t index, uint64_t value);
+bool UDS_MenuSaveSettingValue(uint8_t index, uint64_t value);
+const char *UDS_MenuGetSettingOptionLabel(uint8_t index, uint8_t option);
+
 #endif /* UDS_SETTINGS_H */
