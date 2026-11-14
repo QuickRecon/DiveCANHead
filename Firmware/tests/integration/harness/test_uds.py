@@ -11,7 +11,7 @@ exercised here.
 Covered:
 
 * ``RDBI(UDS_DID_SETTING_COUNT == 0x9100)`` — verifies the firmware
-  responds with the configured ``SETTING_COUNT`` (8 in the Zephyr port).
+  responds with the handset page row count.
 * ``RDBI(UDS_DID_SETPOINT == 0xF202)`` — float32 state DID with a known
   default value (chan_setpoint seed of 70 cb → 0.70 bar).
 * ``RDBI(UDS_DID_UPTIME_SEC == 0xF220)`` — increases between successive
@@ -33,6 +33,7 @@ re-derived from the new DID layout.
 from __future__ import annotations
 
 import struct
+import uds as uds_helpers
 import time
 
 import pytest
@@ -560,13 +561,13 @@ def test_wdbi_setting_value_roundtrip(dut) -> None:
 
     The firmware splits writes into a stage step (SETTING_VALUE_BASE +
     index, 8-byte BE value) and a separate save step
-    (SETTING_SAVE_BASE + index, 1-byte 'commit' flag).  Both are
+    (SETTING_SAVE_BASE + index, the value again as big-endian bytes). Both are
     exercised here.
     """
     can_bus, shim = dut
 
-    DID_SETTING_VALUE_BASE = 0x9130
-    DID_SETTING_SAVE_BASE = 0x9350  # 0x9170 is option-label range, not save
+    DID_SETTING_VALUE_BASE = uds_helpers.DID_SETTING_VALUE_BASE
+    DID_SETTING_SAVE_BASE = uds_helpers.DID_SETTING_SAVE_BASE
 
     setting_index = 1  # PPO2 Mode — editable, maxValue=2
     new_value = 2  # MK15

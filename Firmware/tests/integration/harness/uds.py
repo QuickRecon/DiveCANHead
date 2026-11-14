@@ -192,11 +192,15 @@ def expect_wdbi_positive(can_bus, expected_did: int) -> None:
 
 # ---------------------------------------------------------------------------
 # Setting writes (stage + save) — convenience wrappers for the settings
-# DID family at 0x9130 (stage) / 0x9350 (persist to NVS).
+# Page-independent aliases: 0xA130 (stage) / 0xA350 (persist to NVS).
+# The 0x91xx/0x93xx families address the handset page and use different indices.
 # ---------------------------------------------------------------------------
 
-DID_SETTING_VALUE_BASE: int = 0x9130
-DID_SETTING_SAVE_BASE: int = 0x9350
+DID_SETTING_COUNT: int = 0xA100
+DID_SETTING_INFO_BASE: int = 0xA110
+DID_SETTING_VALUE_BASE: int = 0xA130
+DID_SETTING_LABEL_BASE: int = 0xA150
+DID_SETTING_SAVE_BASE: int = 0xA350
 
 SETTING_INDEX_PPO2_MODE: int = 1
 SETTING_INDEX_CAL_MODE: int = 2
