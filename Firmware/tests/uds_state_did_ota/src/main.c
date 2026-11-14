@@ -280,6 +280,38 @@ bool UDS_SetSettingValue(uint8_t idx, uint64_t value)
     return false;
 }
 
+/* Reuse the scripted flat settings for the dispatcher's menu view. Actual
+ * paging is tested against uds_settings.c in runtime_settings_logic. */
+uint8_t UDS_MenuGetSettingCount(void)
+{
+    return UDS_GetSettingCount();
+}
+
+const SettingDefinition_t *UDS_MenuGetSettingInfo(uint8_t index)
+{
+    return UDS_GetSettingInfo(index);
+}
+
+uint64_t UDS_MenuGetSettingValue(uint8_t index)
+{
+    return UDS_GetSettingValue(index);
+}
+
+const char *UDS_MenuGetSettingOptionLabel(uint8_t index, uint8_t option)
+{
+    return UDS_GetSettingOptionLabel(index, option);
+}
+
+bool UDS_MenuSaveSettingValue(uint8_t index, uint64_t value)
+{
+    return UDS_SaveSettingValue(index, value);
+}
+
+bool UDS_MenuSetSettingValue(uint8_t index, uint64_t value)
+{
+    return UDS_SetSettingValue(index, value);
+}
+
 void UDS_DecodeSettingLabelDID(uint16_t did, uint8_t *settingIndex,
                    uint8_t *optionIndex)
 {
