@@ -620,19 +620,20 @@ static const struct {
  */
 static bool settingDidBusy(uint16_t did, bool includeSaveRange)
 {
-    if (did >= (UDS_DID_SETTING_COUNT + UDS_FLAT_SETTINGS_OFFSET) &&
-        did < (UDS_DID_SETTING_SAVE_BASE + UDS_FLAT_SETTINGS_OFFSET + UDS_GetSettingCount())) {
-        did -= UDS_FLAT_SETTINGS_OFFSET;
+    uint16_t settingDid = did;
+    if (settingDid >= (UDS_DID_SETTING_COUNT + UDS_FLAT_SETTINGS_OFFSET) &&
+        settingDid < (UDS_DID_SETTING_SAVE_BASE + UDS_FLAT_SETTINGS_OFFSET + UDS_GetSettingCount())) {
+        settingDid -= UDS_FLAT_SETTINGS_OFFSET;
     }
 
     bool busy = false;
 
     if (!runtime_settings_is_loaded()) {
-        busy = ((did >= UDS_DID_SETTING_VALUE_BASE) &&
-            (did < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())));
+        busy = ((settingDid >= UDS_DID_SETTING_VALUE_BASE) &&
+            (settingDid < (UDS_DID_SETTING_VALUE_BASE + UDS_GetSettingCount())));
         if (includeSaveRange && (!busy)) {
-            busy = ((did >= UDS_DID_SETTING_SAVE_BASE) &&
-                (did < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount())));
+            busy = ((settingDid >= UDS_DID_SETTING_SAVE_BASE) &&
+                (settingDid < (UDS_DID_SETTING_SAVE_BASE + UDS_GetSettingCount())));
         }
     }
     return busy;
@@ -780,12 +781,13 @@ static bool readSettingInfoDID(uint16_t did, bool flat, uint8_t *buf,
                    uint16_t dataOffset, uint16_t maxAvailable,
                    uint16_t *bytesWritten)
 {
+    uint16_t settingDid = did;
     if (flat) {
-        did -= UDS_FLAT_SETTINGS_OFFSET;
+        settingDid -= UDS_FLAT_SETTINGS_OFFSET;
     }
 
     bool result = false;
-    uint8_t index = (uint8_t)(did - UDS_DID_SETTING_INFO_BASE);
+    uint8_t index = (uint8_t)(settingDid - UDS_DID_SETTING_INFO_BASE);
     const SettingDefinition_t *setting = (flat ? UDS_GetSettingInfo(index) : UDS_MenuGetSettingInfo(index));
 
     if (NULL == setting) {
@@ -846,12 +848,13 @@ static bool readSettingValueDID(uint16_t did, bool flat, uint8_t *buf,
                 uint16_t dataOffset, uint16_t maxAvailable,
                 uint16_t *bytesWritten)
 {
+    uint16_t settingDid = did;
     if (flat) {
-        did -= UDS_FLAT_SETTINGS_OFFSET;
+        settingDid -= UDS_FLAT_SETTINGS_OFFSET;
     }
 
     bool result = false;
-    uint8_t index = (uint8_t)(did - UDS_DID_SETTING_VALUE_BASE);
+    uint8_t index = (uint8_t)(settingDid - UDS_DID_SETTING_VALUE_BASE);
     const SettingDefinition_t *setting = (flat ? UDS_GetSettingInfo(index) : UDS_MenuGetSettingInfo(index));
 
     if (NULL == setting) {
@@ -891,8 +894,9 @@ static bool readSettingLabelDID(uint16_t did, bool flat, uint8_t *buf,
                 uint16_t dataOffset, uint16_t maxAvailable,
                 uint16_t *bytesWritten)
 {
+    uint16_t settingDid = did;
     if (flat) {
-        did -= UDS_FLAT_SETTINGS_OFFSET;
+        settingDid -= UDS_FLAT_SETTINGS_OFFSET;
     }
 
     bool result = false;
@@ -903,11 +907,11 @@ static bool readSettingLabelDID(uint16_t did, bool flat, uint8_t *buf,
      * field and cross-contaminated the editable option lists. */
     uint8_t settingIndex = 0U;
     uint8_t optionIndex = 0U;
-    UDS_DecodeSettingLabelDID(did, &settingIndex, &optionIndex);
+    UDS_DecodeSettingLabelDID(settingDid, &settingIndex, &optionIndex);
 
     const char *label = (flat ? UDS_GetSettingOptionLabel(settingIndex, optionIndex) : UDS_MenuGetSettingOptionLabel(settingIndex, optionIndex));
     if (NULL == label) {
-        OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, did);
+        OP_ERROR_DETAIL(OP_ERR_UDS_INVALID, settingDid);
     } else {
         /* The handset renders the value from a FIXED-WIDTH, SPACE-padded option
          * label — the format the reference Shearwater head uses (see
@@ -1173,11 +1177,12 @@ static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, bool flat,
                 const uint8_t *request_data,
                 uint16_t request_length)
 {
+    uint16_t settingDid = did;
     if (flat) {
-        did -= UDS_FLAT_SETTINGS_OFFSET;
+        settingDid -= UDS_FLAT_SETTINGS_OFFSET;
     }
 
-    uint8_t index = (uint8_t)(did - UDS_DID_SETTING_SAVE_BASE);
+    uint8_t index = (uint8_t)(settingDid - UDS_DID_SETTING_SAVE_BASE);
 
     /* Extract big-endian u64 value */
     uint64_t value = 0;
@@ -1186,7 +1191,14 @@ static bool writeSettingSaveDID(UDSContext_t *ctx, uint16_t did, bool flat,
         value = (value << DIVECAN_BYTE_WIDTH) | request_data[UDS_DATA_IDX + i];
     }
 
-    if (!(flat ? UDS_SaveSettingValue(index, value) : UDS_MenuSaveSettingValue(index, value))) {
+    bool saved = false;
+    if (flat) {
+        saved = UDS_SaveSettingValue(index, value);
+    } else {
+        saved = UDS_MenuSaveSettingValue(index, value);
+    }
+
+    if (!saved) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
     } else {
@@ -1216,22 +1228,30 @@ static bool writeSettingValueDID_handler(UDSContext_t *ctx, uint16_t did, bool f
                      const uint8_t *request_data,
                      uint16_t request_length)
 {
+    uint16_t settingDid = did;
     if (flat) {
-        did -= UDS_FLAT_SETTINGS_OFFSET;
+        settingDid -= UDS_FLAT_SETTINGS_OFFSET;
     }
 
     if (request_length != SETTING_VALUE_WRITE_LEN) {
         OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_INCORRECT_MSG_LEN);
         UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_INCORRECT_MSG_LEN);
     } else {
-        uint8_t index = (uint8_t)(did - UDS_DID_SETTING_VALUE_BASE);
+        uint8_t index = (uint8_t)(settingDid - UDS_DID_SETTING_VALUE_BASE);
 
         uint64_t value = 0;
         for (uint8_t i = 0; i < sizeof(uint64_t); ++i) {
             value = (value << DIVECAN_BYTE_WIDTH) | request_data[UDS_DATA_IDX + i];
         }
 
-        if (!(flat ? UDS_SetSettingValue(index, value) : UDS_MenuSetSettingValue(index, value))) {
+        bool updated = false;
+        if (flat) {
+            updated = UDS_SetSettingValue(index, value);
+        } else {
+            updated = UDS_MenuSetSettingValue(index, value);
+        }
+
+        if (!updated) {
             OP_ERROR_DETAIL(OP_ERR_UDS_NRC, UDS_NRC_REQUEST_OUT_OF_RANGE);
             UDS_SendNegativeResponse(ctx, UDS_SID_WRITE_DATA_BY_ID, UDS_NRC_REQUEST_OUT_OF_RANGE);
         } else {
