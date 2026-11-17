@@ -2,14 +2,24 @@ name: Firmware Release (HIL qualified)
 
 on:
   workflow_dispatch:
+    inputs:
+      dut_hardware:
+        description: Physical PCB installed on the rig (controls EN voltage interlock)
+        required: true
+        default: legacy
+        type: choice
+        options:
+          - legacy
+          - jr-plus-v1.1
 
 # Share the existing bench lock with ordinary full-HIL runs. A release owns the
-# bench for its whole five-variant qualification and is never cancelled midway.
+# bench for its whole six-variant qualification and is never cancelled midway.
 concurrency:
   group: divecan-hil-bench
   cancel-in-progress: false
 
 env:
+  HIL_DUT_HARDWARE: ${{ inputs.dut_hardware || 'legacy' }}
   HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/usr/local/sbin/divecan-hil-runner' }}
   HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '1' }}
 
@@ -150,6 +160,7 @@ jobs:
           - AP_Paul
           - eCCR_classic
           - Sidewinder_Gabriel
+          - TECME
     env:
       HIL_VARIANT: ${{ matrix.variant }}
       HIL_BUILD_DIR: build-release-${{ github.run_id }}-${{ matrix.variant }}
@@ -192,6 +203,7 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
+              --dut-hardware "$HIL_DUT_HARDWARE" \
               --build-dir "$HIL_BUILD_DIR" \
               --preflight 2>&1 | tee "$preflight_log"
           else
@@ -201,6 +213,7 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
+              --dut-hardware "$HIL_DUT_HARDWARE" \
               --build-dir "$HIL_BUILD_DIR" \
               --preflight 2>&1 | tee "$preflight_log"
           fi
@@ -235,6 +248,7 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
+              --dut-hardware "$HIL_DUT_HARDWARE" \
               --build-dir "$HIL_BUILD_DIR" \
               --test-suite-commit "${{ steps.hil_identity.outputs.test_suite_commit }}" 2>&1 | tee "$outer_log"
           else
@@ -244,6 +258,7 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
+              --dut-hardware "$HIL_DUT_HARDWARE" \
               --build-dir "$HIL_BUILD_DIR" \
               --test-suite-commit "${{ steps.hil_identity.outputs.test_suite_commit }}" 2>&1 | tee "$outer_log"
           fi
@@ -273,6 +288,7 @@ jobs:
           python3 Firmware/scripts/release.py stage-variant \
             --version "$RELEASE_VERSION" \
             --variant "$HIL_VARIANT" \
+            --dut-hardware "$HIL_DUT_HARDWARE" \
             --commit "$RELEASE_COMMIT" \
             --build-dir "Firmware/$HIL_BUILD_DIR" \
             --output-root Firmware/release-staging \
@@ -393,6 +409,7 @@ jobs:
             "Firmware/release-output/DiveCANHead-AP_Paul-v${RELEASE_VERSION}.zip#AP_Paul firmware"
             "Firmware/release-output/DiveCANHead-eCCR_classic-v${RELEASE_VERSION}.zip#eCCR_classic firmware"
             "Firmware/release-output/DiveCANHead-Sidewinder_Gabriel-v${RELEASE_VERSION}.zip#Sidewinder_Gabriel firmware"
+            "Firmware/release-output/DiveCANHead-TECME-v${RELEASE_VERSION}.zip#TECME firmware"
             "Firmware/release-output/DiveCANHead-v${RELEASE_VERSION}-SHA256SUMS.txt#SHA-256 checksums"
             "Firmware/release-output/changelog.txt#Complete changelog"
           )
@@ -436,6 +453,7 @@ jobs:
             "Firmware/release-output/DiveCANHead-AP_Paul-v${RELEASE_VERSION}.zip#AP_Paul firmware" \
             "Firmware/release-output/DiveCANHead-eCCR_classic-v${RELEASE_VERSION}.zip#eCCR_classic firmware" \
             "Firmware/release-output/DiveCANHead-Sidewinder_Gabriel-v${RELEASE_VERSION}.zip#Sidewinder_Gabriel firmware" \
+            "Firmware/release-output/DiveCANHead-TECME-v${RELEASE_VERSION}.zip#TECME firmware" \
             "Firmware/release-output/DiveCANHead-v${RELEASE_VERSION}-SHA256SUMS.txt#SHA-256 checksums" \
             "Firmware/release-output/changelog.txt#Complete changelog" \
             --target "$RELEASE_COMMIT" \
@@ -449,6 +467,6 @@ jobs:
             echo "- Release: \`v${RELEASE_VERSION}\`"
             echo "- Commit: \`${RELEASE_COMMIT}\`"
             echo "- Complete package: \`DiveCANHead-v${RELEASE_VERSION}.zip\`"
-            echo "- Per-variant packages: 5"
-            echo "- Qualified variants: 5"
+            echo "- Per-variant packages: 6"
+            echo "- Qualified variants: 6"
           } >> "$GITHUB_STEP_SUMMARY"

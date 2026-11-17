@@ -14,8 +14,17 @@ and includes this complete file in the downloadable package.
 
 ## Unreleased
 
+## 0.0.3 - 2026-11-17
+
 ### Added
-- TECME variant: TECME-style single-solenoid head with 3 DiveO2 digital cells, PID control, total absolute calibration and depth compensation, battery only (2S lithium)
+- TECME production variant: three DiveO2 digital cells, one O2 solenoid, PID control, total absolute calibration, depth compensation and a 2S lithium battery; included in the six-variant release qualification and download packages.
+- Paged handset settings menu so every device property can be reached. Select a page, then exit and reopen the menu to refresh the handset's cached rows.
+
+### Changed
+- Allow 2 ms for the EN input to settle when sampling, supporting the JR+ v1.1 isolation circuit while retaining legacy Jr active-low hold and release behavior.
+
+### Fixed
+- Use the configured SOLO or OBOE head identity for UDS diagnostic addressing.
 
 ## 0.0.2 - 2026-10-20
 

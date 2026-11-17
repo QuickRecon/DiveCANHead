@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import tempfile
 import unittest
 import zipfile
@@ -19,6 +20,38 @@ class ReleaseScriptTests(unittest.TestCase):
     SOURCE_COMMIT = "a" * 40
     HARNESS_COMMIT = "b" * 40
     TEST_SUITE_COMMIT = "c" * 40
+
+    def test_six_variants_are_qualified_and_published_including_tecme(self):
+        expected = {
+            "Poseidon_Aren", "AP_Aren", "AP_Paul", "eCCR_classic",
+            "Sidewinder_Gabriel", "TECME",
+        }
+        self.assertEqual(set(release.PRODUCTION_VARIANTS), expected)
+        repository = SCRIPT.parents[2]
+        workflow = (repository / ".github/workflows/release.yml").read_text()
+        matrix = re.search(
+            r"      matrix:\n        variant:\n((?:          - \w+\n)+)",
+            workflow,
+        )
+        self.assertIsNotNone(matrix)
+        self.assertEqual(set(re.findall(r"- (\w+)", matrix.group(1))), expected)
+        dry_run = workflow.split("- name: Dry-run GitHub Release publish inputs", 1)[1]
+        dry_run, publish = dry_run.split("- name: Publish GitHub Release", 1)
+        for variant in expected:
+            asset = f"DiveCANHead-{variant}-v${{RELEASE_VERSION}}.zip"
+            with self.subTest(variant=variant):
+                self.assertIn(asset, dry_run)
+                self.assertIn(asset, publish)
+
+    def test_physical_hardware_selection_is_forwarded_safely(self):
+        repository = SCRIPT.parents[2]
+        for filename in ("release.yml", "hil-full.yml"):
+            with self.subTest(workflow=filename):
+                workflow = (repository / ".github/workflows" / filename).read_text()
+                self.assertIn("default: legacy", workflow)
+                self.assertIn("- jr-plus-v1.1", workflow)
+                expected_calls = 5 if filename == "release.yml" else 4
+                self.assertEqual(workflow.count('--dut-hardware "$HIL_DUT_HARDWARE"'), expected_calls)
 
     def _write_inputs(self, root: Path, version: str = "1.2.3"):
         major, minor, patch = version.split(".")
@@ -132,6 +165,7 @@ class ReleaseScriptTests(unittest.TestCase):
                     "run_url": "https://example.invalid/run",
                     "harness_commit": self.HARNESS_COMMIT,
                     "test_suite_commit": self.TEST_SUITE_COMMIT,
+                    "dut_hardware": "jr-plus-v1.1",
                 },
             )()
 
@@ -148,6 +182,7 @@ class ReleaseScriptTests(unittest.TestCase):
             self.assertEqual(
                 qualification["test_suite_commit"], self.TEST_SUITE_COMMIT
             )
+            self.assertEqual(qualification["dut_hardware"], "jr-plus-v1.1")
 
     def test_bundle_requires_every_production_variant(self):
         with tempfile.TemporaryDirectory() as temporary:

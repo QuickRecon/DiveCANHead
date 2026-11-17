@@ -311,8 +311,7 @@ Each entry must include: what changed, why, what still provides coverage, and po
 - When adding zbus channels, document them in ARCHITECTURE.md under the IPC section
 - The real hardware variants are `AP_Aren`, `AP_Paul`, `eCCR_classic`,
   `Poseidon_Aren`, `Sidewinder_Gabriel`, and `TECME` (each a `.conf` +
-  `.overlay` pair in `variants/`). `TECME` is CI-built only, not yet in the
-  release/HIL matrix.
+  `.overlay` pair in `variants/`). All six belong to the release/HIL matrix.
   Verify at least `Poseidon_Aren` (most features) builds after changes; the
   native test topology lives in `tests/integration/integration.conf`.
 

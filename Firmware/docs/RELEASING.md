@@ -21,7 +21,10 @@ variants pass.
 3. Leave a new `## Unreleased` section at the top.
 4. Merge those changes to `master` and wait for ordinary software CI to pass.
 5. In GitHub, select **Actions → Firmware Release (HIL qualified) → Run
-   workflow**, and choose `master`.
+   workflow**, and choose `master`. Select the actual physical board revision:
+   `jr-plus-v1.1` for the protected board currently on this rig, or `legacy` for
+   older hardware. This selection is independent of the firmware variant and
+   controls whether the ~12 V EN regression stimulus is permitted.
 
 The workflow refuses non-`master` dispatches, an existing version tag, a
 missing VERSION/changelog release section, an empty changelog section, or an
@@ -30,7 +33,7 @@ and validated against `Firmware/changelog.txt`.
 
 ## Release downloads
 
-The GitHub Release provides one complete package and five smaller,
+The GitHub Release provides one complete package and six smaller,
 variant-specific packages:
 
 - `DiveCANHead-v<version>.zip`: all production variants;
@@ -38,7 +41,8 @@ variant-specific packages:
 - `DiveCANHead-AP_Aren-v<version>.zip`;
 - `DiveCANHead-AP_Paul-v<version>.zip`;
 - `DiveCANHead-eCCR_classic-v<version>.zip`;
-- `DiveCANHead-Sidewinder_Gabriel-v<version>.zip`.
+- `DiveCANHead-Sidewinder_Gabriel-v<version>.zip`;
+- `DiveCANHead-TECME-v<version>.zip`.
 
 Each variant ZIP is self-contained and contains:
 
@@ -51,11 +55,11 @@ Each variant ZIP is self-contained and contains:
 `changelog.txt` is both the repository source for the GitHub Release
 description and a file in every downloadable ZIP. Each ZIP has an internal
 `SHA256SUMS`, and the release-level checksum file covers the complete ZIP plus
-all five per-variant ZIPs.
+all six per-variant ZIPs.
 
 ## Failure behavior
 
-The five HIL jobs are serialized because they share one physical bench. A
+The six HIL jobs are serialized because they share one physical bench. A
 failure in any variant prevents the publish job from running. Successful
 variant bundles and all HIL logs remain as workflow artifacts for diagnosis,
 but no tag or GitHub Release is created until the complete matrix passes.

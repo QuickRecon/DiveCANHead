@@ -18,7 +18,7 @@ native tests, software simulation, and physical qualification.
 - [HIL Full Qualification](../.github/workflows/hil-full.yml) runs for pull
   requests and manual dispatch. Manual dispatch selects the firmware variant.
 - [Firmware Release (HIL qualified)](../.github/workflows/release.yml) qualifies
-  all five production variants before publishing a numbered release.
+  all six production variants before publishing a numbered release.
 
 Both use the `divecan-hil-bench` concurrency group without cancelling an active
 run. This prevents ordinary qualification and release jobs from driving the
@@ -99,3 +99,11 @@ Make `Build, flash, and run full HIL` a required status check where physical
 qualification is required, and protect `.github/workflows/**` through CODEOWNERS
 or equivalent rules. Runner provisioning and hardware operating instructions
 remain alongside the private rig implementation.
+
+## Physical board selection
+
+Both manual HIL and release workflows require a physical `dut_hardware` choice.
+The safe default is `legacy`; select `jr-plus-v1.1` only with that protected PCB
+on the rig. The trusted launcher validates the choice and forwards it as
+`DIVECAN_RIG_DUT_HARDWARE` to pytest, enabling all v1.1 EN regression cases.
+Firmware variant selection never implies a board voltage tolerance.

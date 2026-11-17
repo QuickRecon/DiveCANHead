@@ -28,6 +28,7 @@ PRODUCTION_VARIANTS = (
     "AP_Paul",
     "eCCR_classic",
     "Sidewinder_Gabriel",
+    "TECME",
 )
 
 _VERSION_KEYS = (
@@ -261,6 +262,7 @@ def stage_variant(args: argparse.Namespace) -> None:
         "tag": f"v{args.version}",
         "commit": args.commit,
         "variant": args.variant,
+        "dut_hardware": getattr(args, "dut_hardware", "legacy"),
         "github_run_url": args.run_url,
         "harness_commit": args.harness_commit,
         "files": files,
@@ -507,6 +509,8 @@ def _build_parser() -> argparse.ArgumentParser:
     stage_parser.add_argument("--run-url", required=True)
     stage_parser.add_argument("--harness-commit", required=True)
     stage_parser.add_argument("--test-suite-commit")
+    stage_parser.add_argument("--dut-hardware", choices=("legacy", "jr-plus-v1.1"),
+                              default="legacy")
 
     bundle_parser = subparsers.add_parser("bundle")
     bundle_parser.add_argument("--version", required=True)

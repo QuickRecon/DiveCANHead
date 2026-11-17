@@ -32,7 +32,7 @@ for MCUboot, factory backup, settings, and logs. It does not use a filesystem;
 the first 64 MiB of the card is firmware-owned and may be overwritten.
 See [architecture and board differences](Firmware/ARCHITECTURE.md).
 
-The checked-in software CI builds the five production variants for **Jr**.
+The checked-in software CI builds the six production variants for **Jr**.
 MainPCB has a build target, but is not a second board in that CI matrix.
 A successful build or simulator test does not establish hardware qualification
 or handset compatibility. Numbered releases use a separate HIL qualification
@@ -114,10 +114,10 @@ separate directory such as `-d build-main`. A board target selects physical
 wiring; a variant selects the fitted cell/control topology. Building a pair
 does not prove that its configured outputs exist on the assembled hardware.
 
-The five production variants are `Poseidon_Aren`, `AP_Aren`, `AP_Paul`,
-`eCCR_classic`, and `Sidewinder_Gabriel`. `TECME` (3× DiveO2, single O2
-solenoid, PID, total absolute cal, 2S) is built by CI but not yet released or
-HIL-qualified. `Poseidon_TransducerTest` is a bench
+The six production variant targets are `Poseidon_Aren`, `AP_Aren`, `AP_Paul`,
+`eCCR_classic`, `Sidewinder_Gabriel`, and `TECME` (3× DiveO2, single O2
+solenoid, PID, total absolute cal, 2S). Release publishing requires the complete
+six-variant HIL matrix to pass. `Poseidon_TransducerTest` is a bench
 variant with a deliberately scaled pressure-input window, not a production
 calibration.
 

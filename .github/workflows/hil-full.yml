@@ -15,6 +15,15 @@ on:
           - AP_Paul
           - eCCR_classic
           - Sidewinder_Gabriel
+          - TECME
+      dut_hardware:
+        description: Physical PCB installed on the rig (controls EN voltage interlock)
+        required: true
+        default: legacy
+        type: choice
+        options:
+          - legacy
+          - jr-plus-v1.1
 
 permissions:
   contents: read
@@ -29,6 +38,7 @@ jobs:
     runs-on: [self-hosted, divecan-hil]
     timeout-minutes: 180
     env:
+      HIL_DUT_HARDWARE: ${{ inputs.dut_hardware || 'legacy' }}
       HIL_HOST_CONTAINER_RUNNER: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER || '/usr/local/sbin/divecan-hil-runner' }}
       HIL_HOST_CONTAINER_RUNNER_USE_SUDO: ${{ vars.DIVECAN_HIL_CONTAINER_RUNNER_USE_SUDO || '1' }}
       HIL_VARIANT: ${{ inputs.variant || 'Poseidon_Aren' }}
@@ -79,6 +89,7 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
+              --dut-hardware "$HIL_DUT_HARDWARE" \
               --build-dir "$HIL_BUILD_DIR" \
               --preflight 2>&1 | tee "$preflight_log"
           else
@@ -88,6 +99,7 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
+              --dut-hardware "$HIL_DUT_HARDWARE" \
               --build-dir "$HIL_BUILD_DIR" \
               --preflight 2>&1 | tee "$preflight_log"
           fi
@@ -116,6 +128,7 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
+              --dut-hardware "$HIL_DUT_HARDWARE" \
               --build-dir "$HIL_BUILD_DIR" \
               --test-suite-commit "${{ steps.hil_identity.outputs.test_suite_commit }}" 2>&1 | tee "$log"
           else
@@ -125,6 +138,7 @@ jobs:
               --run-id "$GITHUB_RUN_ID" \
               --run-attempt "$GITHUB_RUN_ATTEMPT" \
               --variant "$HIL_VARIANT" \
+              --dut-hardware "$HIL_DUT_HARDWARE" \
               --build-dir "$HIL_BUILD_DIR" \
               --test-suite-commit "${{ steps.hil_identity.outputs.test_suite_commit }}" 2>&1 | tee "$log"
           fi
