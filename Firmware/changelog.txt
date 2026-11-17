@@ -29,6 +29,7 @@ and includes this complete file in the downloadable package.
 
 ### Fixed
 - Use the configured SOLO or OBOE head identity for UDS diagnostic addressing.
+- Reserve log ingest capacity for boot and dive markers so ordinary telemetry and text backlogs cannot displace a boot marker and one dive START/END pair.
 
 ## 0.0.2 - 2026-10-20
 

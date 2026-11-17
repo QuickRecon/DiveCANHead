@@ -57,6 +57,8 @@ config FLASH_LOG_QUEUE_DEPTH
 	  64 KiB block erase (~150-400 ms on W25Q) at peak ingest of
 	  ~400 B/s. STM32L431 has 64 KiB SRAM total; depth × slot-size
 	  is the dominant RAM cost of this subsystem.
+	  Three slots are reserved for boot/dive markers so ordinary traffic
+	  cannot displace them while the writer is paused. Depth must exceed three.
 
 config FLASH_LOG_MAX_ENTRY_BYTES
 	int "Max bytes per log entry (slot size in RAM)"

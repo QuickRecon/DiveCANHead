@@ -75,16 +75,26 @@ LOG_MODULE_REGISTER(flash_log, LOG_LEVEL_NONE);
  * sized to absorb a single block-erase worst case (~400 ms) at the peak
  * producer rate of a few hundred bytes/sec. */
 typedef struct {
+    /* Put the widest field first to avoid internal alignment padding in
+     * every queued slot. This private RAM layout is not the flash format. */
+    uint64_t ts_us;
     uint8_t  dest;             /* FlashLogDest_t */
     uint8_t  type;             /* FlashLogType_t */
     uint16_t length;
-    uint64_t ts_us;
     uint8_t  payload[CONFIG_FLASH_LOG_MAX_ENTRY_BYTES -
              (sizeof(uint8_t) * 2) - sizeof(uint16_t) - sizeof(uint64_t)];
 } LogIngestSlot_t;
 
 K_MSGQ_DEFINE(fl_ingest_msgq, sizeof(LogIngestSlot_t),
               CONFIG_FLASH_LOG_QUEUE_DEPTH, 4);
+
+/* Keep space for a boot marker and one dive's START/END pair while a
+ * download pauses the writer. Ordinary producers must not consume it. */
+#define FL_MARKER_RESERVED_SLOTS 3U
+BUILD_ASSERT(CONFIG_FLASH_LOG_QUEUE_DEPTH > FL_MARKER_RESERVED_SLOTS,
+         "flash log queue needs marker reserves and ordinary capacity");
+static const atomic_val_t FL_ORDINARY_QUEUE_LIMIT =
+    (atomic_val_t)(CONFIG_FLASH_LOG_QUEUE_DEPTH - FL_MARKER_RESERVED_SLOTS);
 
 /* ---- Per-FCB instance state ----
  *
@@ -205,6 +215,37 @@ static bool fl_is_marker_type(uint8_t type)
            (FL_TYPE_DIVE_END == type);
 }
 
+static atomic_t *fl_ordinary_pending(void)
+{
+    static atomic_t pending = ATOMIC_INIT(0);
+    return &pending;
+}
+
+/* Count queued and in-flight ordinary puts atomically. Checking msgq free
+ * slots alone races concurrent thread/ISR producers. No kernel operation
+ * or external flash access is performed while an application lock is held. */
+static bool fl_claim_ingest_slot(uint8_t type)
+{
+    bool claimed = true;
+
+    if (!fl_is_marker_type(type)) {
+        atomic_val_t previous = atomic_inc(fl_ordinary_pending());
+
+        if (previous >= FL_ORDINARY_QUEUE_LIMIT) {
+            (void)atomic_dec(fl_ordinary_pending());
+            claimed = false;
+        }
+    }
+    return claimed;
+}
+
+static void fl_release_ingest_slot(uint8_t type)
+{
+    if (!fl_is_marker_type(type)) {
+        (void)atomic_dec(fl_ordinary_pending());
+    }
+}
+
 /* Bumped whenever an index-RELEVANT write lands (boot/dive marker, erase).
  * The reader's lazy sector index snapshots this at build time and rebuilds on
  * mismatch. Ordinary telemetry batches deliberately do NOT bump it: they never
@@ -266,7 +307,14 @@ static void fl_enqueue(FlashLogDest_t dest, uint8_t type,
             (void)memcpy(slot.payload, payload, copy_length);
         }
 
-        Status_t rc = k_msgq_put(&fl_ingest_msgq, &slot, K_NO_WAIT);
+        Status_t rc = -ENOMSG;
+
+        if (fl_claim_ingest_slot(type)) {
+            rc = k_msgq_put(&fl_ingest_msgq, &slot, K_NO_WAIT);
+            if (0 != rc) {
+                fl_release_ingest_slot(type);
+            }
+        }
 
         if (0 != rc) {
             atomic_t *ctr = fl_get_drop_counter(dest);
@@ -1072,6 +1120,7 @@ static void fl_writer_thread(void *arg1, void *arg2, void *arg3)
             Status_t rc = k_msgq_get(&fl_ingest_msgq, &slot, K_MSEC(wait));
 
             if (0 == rc) {
+                fl_release_ingest_slot(slot.type);
                 if (!fl_batch_append(&slot)) {
                     /* Buffer full before the window elapsed — flush now, then
                      * stage the entry that didn't fit. */

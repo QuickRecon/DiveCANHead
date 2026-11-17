@@ -188,6 +188,13 @@ flash.
 
 ### Drop policy
 
+Three ingest slots are reserved for a boot marker and a dive START/END pair.
+Ordinary producers atomically claim only the remaining capacity, including
+in-flight puts, so concurrent producers cannot consume those reserves.
+The production queue has eight slots: five ordinary slots plus three reserves.
+Markers still use the same FIFO and can be dropped if marker traffic itself
+exhausts the queue; the reserve protects against ordinary-record backlogs.
+
 All producers use `K_NO_WAIT`. On enqueue failure they atomically
 increment a per-FCB drop counter and store the dropped type. The
 writer thread emits a synthesised `DROP_MARKER` entry into the

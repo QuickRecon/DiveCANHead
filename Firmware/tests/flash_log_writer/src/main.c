@@ -647,6 +647,31 @@ ZTEST(flash_log_writer, test_dive_markers_mirror_and_bump_epoch)
                  "marker writes must bump the index epoch");
 }
 
+ZTEST(flash_log_writer, test_markers_survive_ordinary_ingest_backlog)
+{
+    static const char message[] = "ordinary backlog";
+    const uint16_t dive_number = 4242U;
+    const uint32_t timestamp = 1700000000U;
+
+    flash_log_pause();
+    (void)k_msleep(SETTLE_PAUSE_MS);
+    for (uint32_t i = 0U; i < (uint32_t)CONFIG_FLASH_LOG_QUEUE_DEPTH; ++i) {
+        flash_log_enqueue_text(2U, 9U, message, sizeof(message) - 1U);
+    }
+    flash_log_record_boot_marker(EXPECTED_BOOT_ID, STUB_RESET_CAUSE, NULL);
+    flash_log_enqueue_dive_marker(true, dive_number, timestamp);
+    flash_log_enqueue_dive_marker(false, dive_number, timestamp + 60U);
+    flash_log_resume();
+    (void)k_msleep(SETTLE_FLUSH_MS);
+
+    zassert_equal(count_type(FL_DEST_TELEMETRY, FL_TYPE_BOOT_MARKER), 1U);
+    zassert_equal(count_type(FL_DEST_TEXT, FL_TYPE_BOOT_MARKER), 1U);
+    zassert_equal(count_dive(FL_DEST_TELEMETRY, FL_TYPE_DIVE_START, dive_number), 1U);
+    zassert_equal(count_dive(FL_DEST_TELEMETRY, FL_TYPE_DIVE_END, dive_number), 1U);
+    zassert_equal(count_dive(FL_DEST_TEXT, FL_TYPE_DIVE_START, dive_number), 1U);
+    zassert_equal(count_dive(FL_DEST_TEXT, FL_TYPE_DIVE_END, dive_number), 1U);
+}
+
 /* ============================================================================
  * Telemetry enqueue producers + batch container
  * ============================================================================ */
@@ -948,13 +973,14 @@ ZTEST(flash_log_writer, test_drop_counters_stats_and_drop_markers)
         flash_log_enqueue_error(&event);
     }
 
-    /* Queue holds CONFIG_FLASH_LOG_QUEUE_DEPTH texts; the overflow was
-     * counted per destination. */
+    /* Ordinary entries leave room for critical markers. All refused
+     * records must still be counted per destination. */
     FlashLogStats_t stats = {0};
 
     zassert_equal(flash_log_stats(NULL), -EINVAL);
     zassert_ok(flash_log_stats(&stats));
-    zassert_equal(stats.text.drops_since_boot, 2U);
+    zassert_true(stats.text.drops_since_boot >= 2U);
+    uint32_t dropped_text = stats.text.drops_since_boot;
     zassert_equal(stats.telemetry.drops_since_boot, error_puts);
     zassert_equal(stats.telemetry.sectors_total, TEST_TELEMETRY_SECTORS);
     zassert_equal(stats.text.sectors_total, TEST_TEXT_SECTORS);
@@ -965,8 +991,10 @@ ZTEST(flash_log_writer, test_drop_counters_stats_and_drop_markers)
 
     /* The queued texts landed; each ring leads with a DROP_MARKER whose
      * payload snapshots the counter and last-dropped type. */
-    zassert_equal(count_type(FL_DEST_TEXT, FL_TYPE_LOG_TEXT),
-                  (uint32_t)CONFIG_FLASH_LOG_QUEUE_DEPTH);
+    uint32_t queued_text = count_type(FL_DEST_TEXT, FL_TYPE_LOG_TEXT);
+
+    zassert_true(queued_text > 0U);
+    zassert_equal(queued_text + dropped_text, text_puts);
 
     WalkQuery_t q_text = {0};
 
@@ -979,7 +1007,7 @@ ZTEST(flash_log_writer, test_drop_counters_stats_and_drop_markers)
     fl_payload_drop_marker_t drop = {0};
 
     (void)memcpy(&drop, q_text.last_payload, sizeof(drop));
-    zassert_equal(drop.count, 2U);
+    zassert_equal(drop.count, dropped_text);
     zassert_equal(drop.last_dropped_type, FL_TYPE_LOG_TEXT);
 
     WalkQuery_t q_telemetry = {0};
