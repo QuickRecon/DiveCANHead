@@ -78,6 +78,12 @@ struct power_data {
 /* ADC resolution in bits for the STM32L4 internal ADC */
 static const uint8_t ADC_RESOLUTION_BITS = 12U;
 
+/* Scope qualification of JR+ v1.1 measured up to 0.66 ms external EN
+ * settling with the rig released and a x10 probe attached. Allow 2 ms before
+ * sampling (about 3x measured margin). This also covers legacy direct EN;
+ * mechanical contact bounce is handled by the separate shutdown/wake guards. */
+static const uint32_t CAN_ENABLE_SETTLE_US = 2000U;
+
 /* Fixed-point scale for logging volts as integer whole.fraction pairs.
  * Avoids pulling libc float formatting (CONFIG_CBPRINTF_FP_SUPPORT) into
  * the image, which we don't have the flash budget for. */
@@ -444,6 +450,7 @@ bool power_is_can_active(const struct device *dev)
 
         /* CAN_EN is active-low: pin LOW means bus is active. A negative
          * errno here must not be mistaken for a non-zero (active) level. */
+        k_usleep(CAN_ENABLE_SETTLE_US);
         Status_t level = gpio_pin_get_dt(&cfg->can_en);
 
         if (level < 0) {
@@ -537,6 +544,8 @@ Status_t power_can_enable_assert(const struct device *dev)
         /* can_en is GPIO_ACTIVE_LOW, so logical ACTIVE drives physical LOW.
          * We never drive the shared line high: release changes it back to an
          * input, avoiding contention with the handset. */
+        /* Also sinks through v1.1's gate-at-VCC BSS138 level shifter.
+         * Release uses input mode; no path ever drives a physical high. */
         result = gpio_pin_configure_dt(&cfg->can_en, GPIO_OUTPUT_ACTIVE);
         if (0 != result) {
             OP_ERROR_DETAIL(OP_ERR_GPIO, (uint32_t)(-result));

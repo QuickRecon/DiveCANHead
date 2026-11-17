@@ -760,6 +760,22 @@ ZTEST(can_enable_ownership, test_assert_and_release)
                   "released CAN_EN must be high impedance with no pull");
 }
 
+/** @brief Repeated ownership transitions retain active-low legacy/v1.1 semantics. */
+ZTEST(can_enable_ownership, test_repeated_assert_release_and_sense)
+{
+    static const uint8_t CYCLES = 4U;
+    for (uint8_t cycle = 0U; cycle < CYCLES; ++cycle) {
+        zassert_ok(power_can_enable_assert(power_dev));
+        zassert_equal(gpio_emul_output_get(gpio_dev, PIN_CAN_EN), 0);
+        zassert_ok(power_can_enable_release(power_dev));
+        can_en_force(CAN_EN_PHYS_BUS_IDLE);
+        zassert_false(power_is_can_active(power_dev));
+        can_en_force(CAN_EN_PHYS_BUS_ACTIVE);
+        zassert_true(power_is_can_active(power_dev));
+        can_en_release();
+    }
+}
+
 /** @brief Instances without CAN_EN reject ownership operations. */
 ZTEST(can_enable_ownership, test_absent_pin_reports_enodev)
 {
