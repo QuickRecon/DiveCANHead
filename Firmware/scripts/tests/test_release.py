@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -20,6 +22,49 @@ class ReleaseScriptTests(unittest.TestCase):
     SOURCE_COMMIT = "a" * 40
     HARNESS_COMMIT = "b" * 40
     TEST_SUITE_COMMIT = "c" * 40
+
+    def _release_workflow_script(self, name):
+        workflow = (SCRIPT.parents[2] / ".github/workflows/release.yml").read_text()
+        step = workflow.split(f"      - name: {name}\n", 1)[1]
+        script = re.search(r"        run: \|\n((?:          .*\n)+)", step)
+        self.assertIsNotNone(script)
+        return "".join(line[10:] for line in script.group(1).splitlines(keepends=True))
+
+    def test_release_tag_is_local_and_cleaned_after_success_or_failure(self):
+        create = self._release_workflow_script("Create local release tag for build identity")
+        cleanup = self._release_workflow_script("Remove local release tag")
+        for fail_build in (False, True):
+            with self.subTest(fail_build=fail_build), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                checkout = root / "checkout"
+                remote = root / "remote.git"
+
+                def git(*args):
+                    return subprocess.run(
+                        ["git", "-C", str(checkout), *args], check=True,
+                        capture_output=True, text=True,
+                    ).stdout.strip()
+
+                subprocess.run(["git", "init", "--quiet", str(checkout)], check=True)
+                subprocess.run(["git", "init", "--bare", "--quiet", str(remote)], check=True)
+                git("config", "user.name", "Release test")
+                git("config", "user.email", "release-test@example.invalid")
+                git("commit", "--quiet", "--allow-empty", "-m", "source")
+                git("remote", "add", "origin", str(remote))
+                commit = git("rev-parse", "HEAD")
+                output = root / "github-output"
+                env = dict(os.environ, RELEASE_VERSION="1.2.3", RELEASE_COMMIT=commit,
+                           GITHUB_OUTPUT=str(output))
+                script = create + ("\nfalse\n" if fail_build else "")
+                result = subprocess.run(["bash", "-e", "-c", script], cwd=checkout, env=env)
+                self.assertEqual(result.returncode, int(fail_build))
+                self.assertEqual(git("describe", "--tags", "--always", "--dirty"), "v1.2.3")
+                self.assertEqual(git("rev-parse", "v1.2.3"), commit)
+                self.assertIn("created=true", output.read_text())
+                self.assertEqual(git("ls-remote", "--tags", "origin"), "")
+                subprocess.run(["bash", "-e", "-c", cleanup], cwd=checkout, env=env, check=True)
+                self.assertEqual(git("tag", "--list", "v1.2.3"), "")
+                self.assertEqual(git("ls-remote", "--tags", "origin"), "")
 
     def test_six_variants_are_qualified_and_published_including_tecme(self):
         expected = {

@@ -6,6 +6,13 @@ on the DiveCAN HIL runner, builds and fully qualifies every production variant,
 bundles the exact tested images, and publishes the GitHub Release only after all
 variants pass.
 
+Each HIL build checkout creates a local `v<version>` tag at the exact release
+commit before configuring the firmware. This makes `git describe` and firmware
+DID `0xF000` report the numbered release (for example, `v0.0.3`). The tag is
+removed locally after the job, including on failure. It is never pushed by the
+build jobs: the publish job creates the public tag only after all six variants
+pass. A failed qualification therefore leaves no public release tag to retract.
+
 ## Prepare a release
 
 1. Update `Firmware/VERSION` to the intended SemVer release. Numeric components

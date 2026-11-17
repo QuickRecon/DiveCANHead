@@ -165,6 +165,7 @@ jobs:
       HIL_VARIANT: ${{ matrix.variant }}
       HIL_BUILD_DIR: build-release-${{ github.run_id }}-${{ matrix.variant }}
       RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
       RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
     steps:
@@ -188,6 +189,14 @@ jobs:
           git checkout --force "$CI_EVENT_SHA"
           git clean -ffdx
           test "$(git rev-parse HEAD)" = "$CI_EVENT_SHA"
+
+      - name: Create local release tag for build identity
+        id: local_release_tag
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git tag "v${RELEASE_VERSION}" "$RELEASE_COMMIT"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+          test "$(git describe --tags --always --dirty)" = "v${RELEASE_VERSION}"
 
       - name: Validate trusted HIL launcher
         id: hil_identity
@@ -313,6 +322,11 @@ jobs:
           path: ${{ runner.temp }}/divecan-hil/
           if-no-files-found: warn
           retention-days: 90
+
+      - name: Remove local release tag
+        if: ${{ always() && steps.local_release_tag.outputs.created == 'true' }}
+        run: |
+          git update-ref -d "refs/tags/v${RELEASE_VERSION}" "$RELEASE_COMMIT"
 
   publish:
     name: Bundle and publish v${{ needs.validate.outputs.version }}
