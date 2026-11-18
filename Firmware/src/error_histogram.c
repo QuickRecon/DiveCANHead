@@ -25,6 +25,7 @@
 #include "errors.h"
 #include "common.h"
 #include "external_flash.h"
+#include "storage_work_queue.h"
 
 LOG_MODULE_REGISTER(err_hist, LOG_LEVEL_INF);
 
@@ -169,12 +170,9 @@ static void save_to_nvs(void)
 static void save_work_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
-    /* Skip the NVS write while the maintenance arena is owned: the settings
-     * -> NVS -> flash_area_write -> spi_nor chain runs here on the system
-     * workqueue and, contending with maintenance on the same SPI-NOR, can
-     * exhaust that workqueue stack (K_ERR_STACK_CHK_FAIL). The dirty flag is
-     * left set so the flush happens on a later tick after the arena is
-     * released. */
+    /* Keep the existing maintenance pause/flush exclusion. Periodic writes
+     * run on the shared preemptible storage worker, not the smaller cooperative
+     * system workqueue; ordinary NVS saves can exhaust the latter too. */
     (void)k_mutex_lock(&save_gate, K_FOREVER);
     if ((0 == atomic_get(&save_pause_depth)) && (0 != atomic_get(&dirty))) {
         save_to_nvs();
@@ -214,7 +212,8 @@ static void save_timer_expiry(struct k_timer *t)
      * op_error_publish takes a mutex and cannot be called from here. A
      * failed reschedule only delays one periodic save; the dirty flag
      * persists and the next tick retries. */
-    (void)k_work_schedule(&save_work, K_NO_WAIT);
+    (void)k_work_schedule_for_queue(storage_work_queue_get(),
+                                    &save_work, K_NO_WAIT);
 }
 
 static K_TIMER_DEFINE(save_timer, save_timer_expiry, NULL);
@@ -249,5 +248,6 @@ void error_histogram_init(void)
         LOG_WRN("NVS load failed: %d", rc);
     }
 
+    storage_work_queue_init();
     k_timer_start(&save_timer, HIST_SAVE_INTERVAL, HIST_SAVE_INTERVAL);
 }

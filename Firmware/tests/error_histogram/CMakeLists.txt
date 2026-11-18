@@ -20,6 +20,7 @@ project(test_error_histogram)
 target_sources(app PRIVATE
     src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/external_flash.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/storage_work_queue.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/errors.c
 )
 target_include_directories(app PRIVATE

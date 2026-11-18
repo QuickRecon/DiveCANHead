@@ -23,6 +23,7 @@ target_sources(app PRIVATE
     src/main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/factory_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/external_flash.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/storage_work_queue.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/maintenance_arena.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/heartbeat.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/errors.c

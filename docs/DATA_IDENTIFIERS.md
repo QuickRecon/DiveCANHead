@@ -56,6 +56,7 @@ model (sessions, NRCs, transfer/routine control) see
 | 0xF200 | 4 | float32 | Consensus (voted) PPO2 in bar | R |
 | 0xF202 | 4 | float32 | Current setpoint in bar (centibar/100) | R |
 | 0xF203 | 1 | uint8 | Cells-valid bitfield (bits 0–2 = cells in voting) | R |
+| 0xF205 | 28 | struct | Coherent voter inputs/result snapshot, schema 1; see Firmware/UDS.md | R |
 | 0xF210 | 4 | float32 | Solenoid duty cycle (0.0–1.0) | R |
 | 0xF211 | 4 | float32 | PID integral accumulator | R |
 | 0xF212 | 2 | uint16 | PID saturation event counter | R |

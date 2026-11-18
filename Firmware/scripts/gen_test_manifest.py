@@ -330,6 +330,7 @@ def build_manifest(
         # gate cleanly and so a future build that gates these flips them to false.
         "features": {
             "uds": True,
+            "consensus_snapshot": True,
             "ota": True,
             "menu": True,
             "poseidon_accessories": is_set(cfg, "CONFIG_POSEIDON_ACCESSORIES"),

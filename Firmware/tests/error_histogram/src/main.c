@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "error_histogram.h"
+#include "storage_work_queue.h"
 #include "errors.h"
 
 /* ---- Settings stubs ----
@@ -32,6 +33,7 @@ static struct {
     int     load_calls;
     int     save_rc;
     int     load_rc;
+    k_tid_t save_thread;
 } stub = {0};
 
 int __wrap_settings_save_one(const char *name, const void *value, size_t val_len)
@@ -47,6 +49,7 @@ int __wrap_settings_save_one(const char *name, const void *value, size_t val_len
         memcpy(stub.buf, value, val_len);
         stub.len = val_len;
         stub.save_calls++;
+        stub.save_thread = k_current_get();
     }
     return rc;
 }
@@ -76,6 +79,7 @@ static void publish_error(OpError_t code)
 static void reset_histogram(void *fixture)
 {
     ARG_UNUSED(fixture);
+    storage_work_queue_init();
     memset(&stub, 0, sizeof(stub));
     (void)atomic_set(&save_pause_depth, 0);
     (void)error_histogram_clear();
@@ -343,7 +347,19 @@ ZTEST(error_histogram, test_save_timer_expiry_schedules_work)
      * dirty the resulting run is a no-op, so no NVS write occurs. */
     (void)atomic_set(&dirty, 0);
     save_timer_expiry(&save_timer);
-    k_msleep(1);                        /* let the system workqueue drain it */
+    k_msleep(1);                        /* let the storage worker drain it */
 
     zassert_equal(stub.save_calls, 0, "clean timer tick performs no save");
+}
+
+ZTEST(error_histogram, test_periodic_save_uses_preemptible_storage_worker)
+{
+    publish_error(OP_ERR_TIMEOUT);
+    save_timer_expiry(&save_timer);
+    k_msleep(20);
+    zassert_equal(stub.save_calls, 1);
+    zassert_equal_ptr(stub.save_thread,
+                     k_work_queue_thread_get(storage_work_queue_get()));
+    zassert_not_equal(stub.save_thread, k_work_queue_thread_get(&k_sys_work_q));
+    zassert_equal(k_thread_priority_get(stub.save_thread), 9);
 }

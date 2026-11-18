@@ -27,6 +27,7 @@
 #include "errors.h"
 #include "maintenance_arena.h"
 #include "external_flash.h"
+#include "storage_work_queue.h"
 #include "common.h"
 #ifdef CONFIG_FLASH_LOG
 #include "flash_log.h"
@@ -465,68 +466,9 @@ static void force_capture_work_handler(struct k_work *work)
 static K_WORK_DEFINE(capture_work, capture_work_handler);
 static K_WORK_DEFINE(force_capture_work, force_capture_work_handler);
 
-/* ---- Dedicated preemptible workqueue ----
- *
- * Capture takes several seconds — most of that is a synchronous SPI NOR
- * erase. We can't run that on the system workqueue: its thread is
- * cooperative (negative priority), so the watchdog feeder thread (low
- * preemptible priority) can never preempt it, and the IWDG fires inside
- * the erase. heartbeat_set_long_op() alone isn't enough because the
- * feeder thread can't even run to consult the flag.
- *
- * A dedicated workqueue at a moderate preemptible priority lets the
- * feeder thread run normally while the long flash op blocks on SPI
- * driver busy-waits.
- */
-
-#define FACTORY_WORK_STACK_SIZE  2048
-/* Priority 9: a CLEAN, otherwise-empty slot strictly BELOW every zbus
- * MSG_SUBSCRIBER consumer (cal_thread=6, poseidon_accessories=7,
- * shutdown_thread=8) and ABOVE the background monitors (battery_monitor=10) and
- * watchdog feeder (14). This is load-bearing for correctness, not just the WDT:
- * capture/restore is a multi-second CPU-bound copy. If it runs at/above a
- * consumer's priority (the old bug: restore ran synchronously on the divecan_rx
- * UDS thread at prio 5), it STARVES the consumers while the prio-5 consensus
- * publisher keeps producing, so the 16-entry msg_subscriber net_buf pool fills and
- * the next publish hits `_ZBUS_ASSERT(buf != NULL)` -> KERNEL_PANIC -> reset,
- * before the restore ever stages the swap (HW-diagnosed 2026-07-17). Being below
- * the consumers lets them preempt and drain the pool; 9 (not 10) avoids sharing a
- * priority with battery_monitor so the copy isn't time-sliced against it. */
-#define FACTORY_WORK_PRIORITY    9
-
-K_THREAD_STACK_DEFINE(factory_work_stack, FACTORY_WORK_STACK_SIZE);
-
-static struct k_work_q *get_factory_work_q(void)
-{
-    static struct k_work_q factory_work_q;
-    return &factory_work_q;
-}
-
-static bool *get_work_q_started_flag(void)
-{
-    static bool started = false;
-    return &started;
-}
-
-static void ensure_work_q_started(void)
-{
-    bool *started = get_work_q_started_flag();
-    if (!*started) {
-        const struct k_work_queue_config cfg = {
-            .name = "factory_wq",
-            .no_yield = false,
-            .essential = false,
-            .work_timeout_ms = 0U,
-        };
-        k_work_queue_init(get_factory_work_q());
-        k_work_queue_start(get_factory_work_q(),
-                           factory_work_stack,
-                           K_THREAD_STACK_SIZEOF(factory_work_stack),
-                           FACTORY_WORK_PRIORITY,
-                           &cfg);
-        *started = true;
-    }
-}
+/* Capture/restore and periodic NVS persistence share the preemptible storage
+ * queue (priority 9, 2048-byte stack). They serialize without consuming another
+ * thread stack, while all zbus consumers can preempt long flash operations. */
 
 /* ---- Restore ---- */
 
@@ -863,9 +805,8 @@ Status_t factory_image_restore_to_slot1(void)
     return result;
 }
 
-/* Restore runs on the factory workqueue (prio 9, below the zbus consumers — see
- * FACTORY_WORK_PRIORITY) rather than synchronously on the prio-5 UDS handler
- * thread, so the consensus/PPO2 msg_subscriber consumers can preempt and drain
+/* Restore runs on the shared storage workqueue (prio 9, below zbus consumers)
+ * rather than synchronously on the prio-5 UDS handler thread, so the consensus/PPO2 msg_subscriber consumers can preempt and drain
  * their net_buf pool during the multi-second copy. Pause the flash-log writer for
  * the duration (its sector-erases would otherwise contend on the shared SPI NOR);
  * factory_image_restore_to_slot1() reboots on success, so resume/error only run on
@@ -891,8 +832,8 @@ static K_WORK_DEFINE(restore_work, restore_work_handler);
 void factory_image_restore_async(void)
 {
     if (NULL != get_state()->backend) {
-        ensure_work_q_started();
-        Status_t rc = k_work_submit_to_queue(get_factory_work_q(), &restore_work);
+        storage_work_queue_init();
+        Status_t rc = k_work_submit_to_queue(storage_work_queue_get(), &restore_work);
 
         if (rc < 0) {
             OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
@@ -958,8 +899,8 @@ void factory_image_maybe_capture_async(void)
 {
     if ((NULL != get_state()->backend) &&
         (!get_state()->backend->is_captured())) {
-        ensure_work_q_started();
-        Status_t rc = k_work_submit_to_queue(get_factory_work_q(), &capture_work);
+        storage_work_queue_init();
+        Status_t rc = k_work_submit_to_queue(storage_work_queue_get(), &capture_work);
 
         if (rc < 0) {
             OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));
@@ -970,8 +911,8 @@ void factory_image_maybe_capture_async(void)
 void factory_image_force_capture_async(void)
 {
     if (NULL != get_state()->backend) {
-        ensure_work_q_started();
-        Status_t rc = k_work_submit_to_queue(get_factory_work_q(), &force_capture_work);
+        storage_work_queue_init();
+        Status_t rc = k_work_submit_to_queue(storage_work_queue_get(), &force_capture_work);
 
         if (rc < 0) {
             OP_ERROR_DETAIL(OP_ERR_QUEUE, (uint32_t)(-rc));

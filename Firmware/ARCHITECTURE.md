@@ -171,6 +171,17 @@ measures 24–63 s, and holding the mutex throughout starved `divecan_rx` of
 ISO-TP flow control — observed as OTA 0x34 requests receiving no response at
 all.
 
+### Shared storage worker
+
+Factory capture/restore and the five-minute error-histogram NVS flush use one
+preemptible `storage_wq` at priority 9 with a 2048-byte stack. This reuses the
+former factory worker allocation; it does not add another thread stack. It runs
+below the zbus subscriber consumers (priorities 6–8) and above the battery
+monitor (10). Synchronous settings/NVS/SPI-NOR saves must not run on the smaller
+cooperative system workqueue. Histogram maintenance pause/resume and its save
+gate remain in force, including during OTA. The queue is initialized in thread
+context before the histogram timer can submit work from its ISR callback.
+
 ### Calibration coefficient boot-load (`cal` subtree)
 
 There is **no global `settings_load()`** in this firmware — each subsystem

@@ -18,6 +18,7 @@
 
 #include <zephyr/ztest.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/dfu/mcuboot.h>
 #include <zephyr/storage/flash_map.h>
@@ -1199,6 +1200,91 @@ ZTEST(uds_state_did_ota, test_control_state_scalars_and_cells_valid)
 
     read_did(UDS_DID_UPTIME_SEC);
     zassert_equal(fx.captured_response_len, 7U);
+}
+
+ZTEST(uds_state_did_ota, test_consensus_snapshot_uses_voter_inputs_not_live_cells)
+{
+    ConsensusMsg_t snapshot = {
+        .consensus_ppo2 = 65U,
+        .precision_consensus = 0.655f,
+        .ppo2_array = {65U, 66U, 255U},
+        .precision_ppo2_array = {0.65f, 0.66f, 3.0f},
+        .status_array = {CELL_OK, CELL_DEGRADED, CELL_FAIL},
+        .include_array = {true, true, false},
+        .confidence = 2U,
+    };
+    OxygenCellMsg_t live = {.precision_ppo2 = 1.9f};
+    uint8_t expected[UDS_CONSENSUS_SNAPSHOT_LEN] = {
+        1U, CONFIG_CELL_COUNT, 3U, 2U, 65U, 65U, 66U, 255U,
+        0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U,
+        0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U,
+        CELL_OK, CELL_DEGRADED, CELL_FAIL, 0U,
+    };
+    const float values[] = {0.655f, 0.65f, 0.66f, 3.0f};
+
+    /* Explicit IEEE-754 LE fixture bytes, independent of struct layout. */
+    for (size_t i = 0U; i < ARRAY_SIZE(values); i++) {
+        uint32_t bits = 0U;
+        (void)memcpy(&bits, &values[i], sizeof(bits));
+        sys_put_le32(bits, &expected[8U + (4U * i)]);
+    }
+    zassert_ok(zbus_chan_pub(&chan_consensus, &snapshot, K_MSEC(100)));
+    zassert_ok(zbus_chan_pub(&chan_cell_1, &live, K_MSEC(100)));
+    read_did(UDS_DID_CONSENSUS_SNAPSHOT);
+    zassert_equal(fx.captured_response_len, 3U + sizeof(expected));
+    zassert_mem_equal(&fx.captured_response[3], expected, sizeof(expected));
+}
+
+ZTEST(uds_state_did_ota, test_consensus_snapshot_rejects_short_buffers_without_writing)
+{
+    uint8_t buf[UDS_CONSENSUS_SNAPSHOT_LEN];
+
+    for (uint16_t capacity = 0U; capacity < sizeof(buf); capacity++) {
+        uint16_t len = 99U;
+        (void)memset(buf, 0xA5, sizeof(buf));
+        zassert_false(UDS_StateDID_HandleRead(UDS_DID_CONSENSUS_SNAPSHOT,
+                                             buf, capacity, &len));
+        zassert_equal(len, 0U);
+        for (size_t i = 0U; i < sizeof(buf); i++) {
+            zassert_equal(buf[i], 0xA5U);
+        }
+    }
+}
+
+K_THREAD_STACK_DEFINE(snapshot_lock_stack, 1024);
+static struct k_thread snapshot_lock_thread;
+static K_SEM_DEFINE(snapshot_locked, 0, 1);
+static K_SEM_DEFINE(snapshot_unlock, 0, 1);
+
+static void hold_consensus_channel(void *p1, void *p2, void *p3)
+{
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+    (void)zbus_chan_claim(&chan_consensus, K_FOREVER);
+    k_sem_give(&snapshot_locked);
+    (void)k_sem_take(&snapshot_unlock, K_FOREVER);
+    (void)zbus_chan_finish(&chan_consensus);
+}
+
+ZTEST(uds_state_did_ota, test_consensus_snapshot_read_timeout_never_reports_zero_data)
+{
+    uint8_t buf[UDS_CONSENSUS_SNAPSHOT_LEN];
+    uint16_t len = 99U;
+    (void)memset(buf, 0xA5, sizeof(buf));
+    k_tid_t tid = k_thread_create(&snapshot_lock_thread, snapshot_lock_stack,
+        K_THREAD_STACK_SIZEOF(snapshot_lock_stack), hold_consensus_channel,
+        NULL, NULL, NULL, 4, 0, K_NO_WAIT);
+    zassert_ok(k_sem_take(&snapshot_locked, K_SECONDS(1)));
+    bool handled = UDS_StateDID_HandleRead(UDS_DID_CONSENSUS_SNAPSHOT,
+                                           buf, sizeof(buf), &len);
+    k_sem_give(&snapshot_unlock);
+    zassert_ok(k_thread_join(tid, K_SECONDS(1)));
+    zassert_false(handled);
+    zassert_equal(len, 0U);
+    for (size_t i = 0U; i < sizeof(buf); i++) {
+        zassert_equal(buf[i], 0xA5U);
+    }
 }
 
 ZTEST(uds_state_did_ota, test_pid_snapshot_dids)

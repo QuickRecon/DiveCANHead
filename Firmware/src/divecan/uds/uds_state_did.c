@@ -1040,6 +1040,50 @@ static bool handleCrashHistoryDID(uint16_t did, uint8_t *buf, uint16_t maxLen,
 }
 
 /**
+ * @brief Encode one voter publication; never combine independently sampled DIDs.
+ *
+ * Reuse the dispatcher's message storage so this adds no persistent RAM or
+ * second consensus-sized stack allocation. Explicit fields keep the wire format
+ * independent of native struct padding and enum sizes.
+ */
+static void encodeConsensusSnapshot(uint8_t *buf, const ConsensusMsg_t *snapshot)
+{
+    buf[0] = 1U;
+    buf[1] = CONFIG_CELL_COUNT;
+    buf[2] = 0U;
+    buf[3] = snapshot->confidence;
+    buf[4] = snapshot->consensus_ppo2;
+    writeFloat32(&buf[8], (Numeric_t)snapshot->precision_consensus);
+    for (uint8_t i = 0U; i < CELL_MAX_COUNT; i++) {
+        if (snapshot->include_array[i]) {
+            buf[2] |= (uint8_t)BIT(i);
+        }
+        buf[5U + i] = snapshot->ppo2_array[i];
+        writeFloat32(&buf[12U + (4U * i)],
+                 (Numeric_t)snapshot->precision_ppo2_array[i]);
+        buf[24U + i] = (uint8_t)snapshot->status_array[i];
+    }
+    buf[27] = 0U;
+}
+
+static bool buildConsensusSnapshot(uint8_t *buf, uint16_t maxLen,
+                  uint16_t *len, ConsensusMsg_t *snapshot)
+{
+    bool result = false;
+
+    if (maxLen >= UDS_CONSENSUS_SNAPSHOT_LEN) {
+        Status_t rc = zbus_chan_read(&chan_consensus, snapshot,
+                         K_MSEC(STATE_DID_READ_TIMEOUT_MS));
+        if (0 == rc) {
+            encodeConsensusSnapshot(buf, snapshot);
+            *len = UDS_CONSENSUS_SNAPSHOT_LEN;
+            result = true;
+        }
+    }
+    return result;
+}
+
+/**
  * @brief Handle a read request for a PPO2 control state DID (0xF2xx)
  *
  * Reads live data from zbus channels and power management API, then serialises
@@ -1062,6 +1106,10 @@ static bool handleControlStateDID(uint16_t did, uint8_t *buf,
         (void)zbus_chan_read(&chan_consensus, &consensus, K_MSEC(STATE_DID_READ_TIMEOUT_MS));
         writeFloat32(buf, (Numeric_t)consensus.precision_consensus);
         *len = sizeof(Numeric_t);
+        break;
+
+    case UDS_DID_CONSENSUS_SNAPSHOT:
+        result = buildConsensusSnapshot(buf, maxLen, len, &consensus);
         break;
 
     case UDS_DID_SETPOINT:

@@ -176,6 +176,7 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0xF202 | 4     | float32  | R         | Current setpoint (bar)                                   |
 | 0xF203 | 1     | uint8    | R         | Cells valid bitfield (bit 0 = cell 1, etc.)              |
 | 0xF204 | 4     | uint32   | R         | Active generic alarm-reason bitmask                       |
+| 0xF205 | 28    | struct   | R         | Coherent voter snapshot (layout below)                  |
 | 0xF210 | 4     | float32  | R         | Solenoid duty cycle (0.0–1.0)                            |
 | 0xF211 | 4     | float32  | R         | PID integral accumulator                                 |
 | 0xF212 | 2     | uint16   | R         | PID saturation event counter                             |
@@ -226,6 +227,17 @@ See [OTA Pipeline](#ota-pipeline) for the full state machine.
 | 0x9150 + (index<<4) + option | var | string | R | Option label (null-terminated; setting index in HIGH nibble, option in LOW) |
 | 0x9350 + index | var | u64 BE  | W      | Setting save (persists to NVS)                           |
 | 0xA100 | var   | string   | Push      | Log message (Head → handset, unsolicited WDBI)           |
+
+DID `0xF205` reads **one** `chan_consensus` publication. It does not combine
+latest cell channels with an older consensus. Schema 1 is 28 bytes: schema (0),
+configured cell count (1), inclusion mask (2), confidence (3), consensus centibar
+(4), three cell centibar values (5–7), consensus float32 bar (8–11), three cell
+float32 bar values (12–23), three cell status bytes (24–26), reserved zero (27).
+All floats are little-endian. Failed/unused entries retain the voter snapshot's
+sentinels/status. A short response buffer or failed channel read is rejected;
+no zero-filled snapshot is reported. Older scalar DIDs keep their layouts.
+Separate scalar reads can straddle a voter publication or an ISO-TP delay and
+are not suitable for exact arithmetic comparisons.
 
 ### Sem_ver Layout (0xF272 / 0xF273 / 0xF274)
 

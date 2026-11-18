@@ -73,7 +73,7 @@ Status_t factory_image_restore_to_slot1(void);
  * The restore copies the factory backup into slot1, stages the swap, and reboots.
  * It MUST NOT run on the UDS handler thread (prio 5): that CPU-bound multi-second
  * copy would starve the lower-priority zbus msg_subscriber consumers and panic on
- * a net_buf pool exhaustion before staging. The workqueue runs it at prio 10,
+ * a net_buf pool exhaustion before staging. The shared storage workqueue runs it at prio 9,
  * below every consumer, so they drain normally. Callers send the UDS positive
  * response first (the reboot ends the dialog).
  */
