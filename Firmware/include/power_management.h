@@ -143,7 +143,7 @@ Status_t power_can_enable_release(const struct device *dev);
  *
  * RESET_LOW_POWER_WAKE is the reset produced when STM32 SHUTDOWN exits via
  * WKUP2_LOW on CAN_EN. A pending SHUTDOWN backup marker also requires the
- * check, including after the software-reset fallback. The marker is consumed
+ * check, including after an unexpected software reset. The marker is consumed
  * once on every STM32 boot. Unmarked ordinary resets bypass the check.
  *
  * @param reset_cause Zephyr hwinfo reset-cause bitmask

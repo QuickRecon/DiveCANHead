@@ -215,48 +215,27 @@ solenoid is detected and killed within one PID cycle.
   and risks visible chatter on the GPIO pin.
 
 
-## 9. Direct STM32 HAL SHUTDOWN-mode entry (bypasses Zephyr PM)
+## 9. STM32 HAL wake/pull configuration with Zephyr SHUTDOWN entry
 
-`src/power_management.c::power_shutdown()` calls
-`HAL_PWREx_EnterSHUTDOWNMode()` and the pull-up/pull-down configurators
-directly through the STM32 HAL, rather than going through Zephyr's
-power-management subsystem (`pm_state_force()` /
-`pm_device_action_run()`).
+`src/power_management.c::power_shutdown()` still configures the Jr-specific
+GPIO pull table and active-low PC13 wake pin through STM32 HAL. Those settings
+are derived from the current board DTS; legacy-board pull tables must not be
+copied blindly. `CONFIG_DIVECAN_HAL_PWR_EX` continues selecting the vendor PWR
+helpers required for this setup.
 
-**What changed**: shutdown entry uses `HAL_PWR_EnableWakeUpPin()` +
-`HAL_PWREx_EnterSHUTDOWNMode()` reached via `<stm32l4xx_hal_pwr_ex.h>`.
-Linker pulls in `stm32l4xx_hal_pwr.c` and `stm32l4xx_hal_pwr_ex.c`
-through `CONFIG_USE_STM32_HAL_PWR{,_EX}=y`, which a new
-`CONFIG_DIVECAN_HAL_PWR_EX` Kconfig selects (the upstream symbols have
-no prompt and only `stm32wbax` SoCs select them by default).
+The final entry now uses `sys_poweroff()` (`CONFIG_POWEROFF=y`). The pinned
+Zephyr STM32L4 implementation exposes SHUTDOWN through this API even though
+the regular PM state driver does not expose it. It disables standby debug
+retention and uses the upstream WFE/WFI entry sequence to handle pending IRQs.
+The former direct HAL WFI could return and trigger an unintended software
+reboot. A backup marker preserves pending shutdown across unexpected resets
+and is consumed once before startup decides whether EN validation is required.
 
-**Why**: Zephyr's STM32L4 PM driver
-(`zephyr/soc/st/stm32/stm32l4x/power.c`) only handles
-`PM_STATE_SUSPEND_TO_IDLE` (STOP0/1/2) and `PM_STATE_STANDBY`. SHUTDOWN
-mode — the deepest state, drawing < 1 µA on the L431 — is not exposed.
-The product needs SHUTDOWN-mode current draw to extend battery life
-when the dive computer disappears, so we bypass the PM layer rather
-than degrade to STANDBY.
-
-**What still provides coverage**: The HAL is vendor-supported and
-matches the legacy STM32 firmware's shutdown path
-(`STM32/Core/Src/Hardware/pwr_management.c::Shutdown()`) line-for-line
-in semantics. The pin-pull table is Jr-specific and re-derived from
-`divecan_jr.dts`, not blindly copied from the legacy Rev1 board. A
-fallback to `sys_reboot(SYS_REBOOT_COLD)` runs if the HAL entry returns
-unexpectedly, and on non-STM32 builds (`CONFIG_SOC_FAMILY_STM32=n`)
-the entire HAL block is `#if`-guarded out so native_sim test fixtures
-fall through to the reboot path.
-
-**Possible alternatives to investigate**:
-- Contribute SHUTDOWN-mode support to Zephyr's STM32L4 PM driver
-  upstream — would expose `PM_STATE_SOFT_OFF` for STM32L4. Zephyr's
-  generic `pm_state_force(PM_STATE_SOFT_OFF)` would then handle the
-  entry sequence and we could drop the direct HAL call.
-- Move the pin-pull table into a DT-driven structure so it's
-  per-board rather than per-`#if`-chain. Bench characterisation of the
-  Jr standby current would tell us whether the simplification is worth
-  the extra DT plumbing.
+Native tests retain the non-STM32 `sys_reboot()` fallback. Hardware regressions
+cover marked software reset under released EN, sustained-low wake, marker
+consumption, unmarked-reset compatibility, and the full EN voltage/bias matrix.
+A future DT-driven pull table could remove the remaining board-specific HAL
+configuration; it is not required for correct final power-off entry.
 
 ---
 

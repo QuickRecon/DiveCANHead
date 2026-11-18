@@ -21,6 +21,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/sys/poweroff.h>
 #include <zephyr/zbus/zbus.h>
 
 #if defined(CONFIG_SOC_FAMILY_STM32)
@@ -159,9 +160,9 @@ static void enqueue_power_snapshot(const struct device *dev,
 #endif
 
 #if defined(CONFIG_SOC_FAMILY_STM32)
-/* A backup-domain marker preserves SHUTDOWN intent across both a low-power
- * wake (reported as PIN|BROWNOUT on this rig) and the software-reset fallback
- * when HAL SHUTDOWN entry returns. Startup consumes it on every reset.
+/* A backup-domain marker preserves SHUTDOWN intent across a low-power wake
+ * (reported as PIN|BROWNOUT on this rig) or an unexpected reset before entry
+ * completes. Startup consumes it on every reset.
  */
 #define SHUTDOWN_WAKE_MARKER_REG LL_RTC_BKP_DR31
 #define SHUTDOWN_WAKE_MARKER     0x5152574bU /* "QRWK" */
@@ -529,8 +530,8 @@ bool power_reset_requires_can_enable_check(uint32_t reset_cause)
     bool shutdown_pending = false;
 
 #if defined(CONFIG_SOC_FAMILY_STM32)
-    /* Always consume once, including on a normal RESET_LOW_POWER_WAKE. A
-     * software fallback must not resurrect the head under released EN, and a
+    /* Always consume once, including on a normal RESET_LOW_POWER_WAKE. An
+     * interrupted shutdown must not resurrect the head under released EN, and a
      * completed wake must not leave a stale marker for an unrelated reset. */
     shutdown_pending = stm32_shutdown_wake_marker_consume();
 #endif
@@ -602,11 +603,11 @@ __maybe_unused static void suspend_uart_if_ready(const struct device *dev)
  * triggers a low-power wake reset and the firmware validates that wake before
  * continuing the normal boot sequence.
  *
- * Falls back to sys_reboot() if the HAL entry returns or on non-STM32
- * targets (so native_sim test fixtures don't fault).
+ * Uses Zephyr's STM32 power-off entry, which handles pending interrupts and
+ * disables standby debug retention. Non-STM32 native tests use sys_reboot().
  *
  * @param dev Power subsystem device handle.
- * @return Never returns; HAL SHUTDOWN entry or sys_reboot() take over.
+ * @return Never returns; SHUTDOWN entry or native sys_reboot() take over.
  */
 Status_t power_shutdown(const struct device *dev)
 {
@@ -705,14 +706,16 @@ Status_t power_shutdown(const struct device *dev)
     HAL_PWREx_DisableInternalWakeUpLine();
     stm32_shutdown_wake_marker_set();
 
-    /* Step 6: SHUTDOWN. Does not return on success — wakeup is a reset. */
-    HAL_PWREx_EnterSHUTDOWNMode();
-#endif /* CONFIG_SOC_FAMILY_STM32 */
+    /* Step 6: Zephyr's STM32L4 power-off path selects SHUTDOWN, disables
+     * DBG_STANDBY and uses its WFE/WFI entry sequence. A single HAL WFI can
+     * return on a pending interrupt and used to trigger an unwanted reboot. */
+    sys_poweroff();
+#else
 
-    /* Hard fallback — only reached if HAL entry returns (shouldn't on
-     * STM32) or on native_sim where the HAL is absent. */
-    LOG_ERR("SHUTDOWN entry returned, falling back to sys_reboot");
+    /* Native test targets have no STM32 power-off hardware. */
+    LOG_ERR("SHUTDOWN unavailable on this target, falling back to sys_reboot");
     sys_reboot(SYS_REBOOT_COLD);
+#endif /* CONFIG_SOC_FAMILY_STM32 */
 
     CODE_UNREACHABLE;
     return 0;

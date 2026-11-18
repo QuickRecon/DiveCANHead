@@ -494,17 +494,17 @@ config DIVECAN_OPTION_BYTES_CHECK
 	  per-field rationale.
 
 config DIVECAN_HAL_PWR_EX
-	bool "Pull in STM32 HAL PWR (+ Extended) driver for SHUTDOWN-mode entry"
+	bool "Enable STM32 wake/pull configuration and SHUTDOWN entry"
 	default y
 	depends on SOC_FAMILY_STM32
 	select USE_STM32_HAL_PWR
 	select USE_STM32_HAL_PWR_EX
 	select PM_DEVICE
+	select POWEROFF if HAS_POWEROFF
 	help
-	  power_shutdown() calls HAL_PWR_EnableWakeUpPin() +
-	  HAL_PWREx_EnterSHUTDOWNMode() (and the associated pull-up /
-	  pull-down configurators) directly because Zephyr's STM32 PM
-	  layer doesn't expose SHUTDOWN. This option pulls in both HAL TUs.
+	  power_shutdown() uses STM32 HAL for wake-pin and GPIO pull
+	  configuration, then Zephyr sys_poweroff() for robust SHUTDOWN
+	  entry. Pull in both HAL TUs and the supported power-off API.
 
 endmenu # Safety
 

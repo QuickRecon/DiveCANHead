@@ -30,7 +30,8 @@ and includes this complete file in the downloadable package.
 ### Fixed
 - Use the configured SOLO or OBOE head identity for UDS diagnostic addressing.
 - Reserve log ingest capacity for boot and dive markers so ordinary telemetry and text backlogs cannot displace a boot marker and one dive START/END pair.
-- Preserve pending shutdown across the software-reset fallback if STM32 SHUTDOWN entry returns; consume its backup marker on every boot so released EN cannot restart normal operation.
+- Use Zephyr's STM32 SHUTDOWN entry to handle pending interrupts and standby debug retention without falling back to an unintended reboot.
+- Consume the pending-shutdown backup marker on every boot so an unexpected reset while entering shutdown cannot restart normal operation under released EN.
 
 ## 0.0.2 - 2026-10-20
 
