@@ -159,10 +159,9 @@ static void enqueue_power_snapshot(const struct device *dev,
 #endif
 
 #if defined(CONFIG_SOC_FAMILY_STM32)
-/* STM32L4 reports a CAN_EN SHUTDOWN wake on this rig as PIN|BROWNOUT rather
- * than RESET_LOW_POWER_WAKE. A backup-domain marker set immediately before
- * SHUTDOWN lets startup distinguish that intentional wake from an ordinary
- * cold/reset boot with the same hwinfo signature.
+/* A backup-domain marker preserves SHUTDOWN intent across both a low-power
+ * wake (reported as PIN|BROWNOUT on this rig) and the software-reset fallback
+ * when HAL SHUTDOWN entry returns. Startup consumes it on every reset.
  */
 #define SHUTDOWN_WAKE_MARKER_REG LL_RTC_BKP_DR31
 #define SHUTDOWN_WAKE_MARKER     0x5152574bU /* "QRWK" */
@@ -520,19 +519,23 @@ static bool stm32_shutdown_wake_marker_consume(void)
 }
 #endif
 
+bool power_reset_needs_check(uint32_t reset_cause, bool shutdown_pending)
+{
+    return shutdown_pending || (0U != (reset_cause & RESET_LOW_POWER_WAKE));
+}
+
 bool power_reset_requires_can_enable_check(uint32_t reset_cause)
 {
-    bool requires_check = (0U != (reset_cause & RESET_LOW_POWER_WAKE));
+    bool shutdown_pending = false;
 
 #if defined(CONFIG_SOC_FAMILY_STM32)
-    if (!requires_check &&
-        ((RESET_PIN | RESET_BROWNOUT) ==
-         (reset_cause & (RESET_PIN | RESET_BROWNOUT)))) {
-        requires_check = stm32_shutdown_wake_marker_consume();
-    }
+    /* Always consume once, including on a normal RESET_LOW_POWER_WAKE. A
+     * software fallback must not resurrect the head under released EN, and a
+     * completed wake must not leave a stale marker for an unrelated reset. */
+    shutdown_pending = stm32_shutdown_wake_marker_consume();
 #endif
 
-    return requires_check;
+    return power_reset_needs_check(reset_cause, shutdown_pending);
 }
 
 Status_t power_can_enable_assert(const struct device *dev)

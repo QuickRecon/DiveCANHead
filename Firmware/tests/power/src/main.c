@@ -799,6 +799,28 @@ ZTEST(can_enable_ownership, test_only_low_power_wake_requires_startup_check)
     zassert_false(power_reset_requires_can_enable_check(RESET_PIN));
 }
 
+/** @brief The HAL software-reset fallback must retain pending SHUTDOWN intent. */
+ZTEST(can_enable_ownership, test_marked_software_reset_requires_check)
+{
+    zassert_true(power_reset_needs_check(RESET_PIN | RESET_SOFTWARE, true));
+    zassert_false(power_reset_needs_check(RESET_PIN | RESET_SOFTWARE, false));
+}
+
+/** @brief A marked shutdown is authoritative regardless of reset-flag encoding. */
+ZTEST(can_enable_ownership, test_marked_reset_causes_require_check)
+{
+    const uint32_t causes[] = {
+        0U, RESET_POR, RESET_BROWNOUT, RESET_PIN, RESET_WATCHDOG,
+        RESET_SOFTWARE, RESET_LOW_POWER_WAKE, RESET_PIN | RESET_BROWNOUT,
+        RESET_LOW_POWER_WAKE | RESET_PIN,
+    };
+
+    for (size_t i = 0; i < ARRAY_SIZE(causes); ++i) {
+        zassert_true(power_reset_needs_check(causes[i], true),
+                     "pending shutdown lost for cause 0x%x", causes[i]);
+    }
+}
+
 /* ============================================================================
  * Battery monitor thread (chan_battery_status publications)
  * ============================================================================ */

@@ -142,13 +142,22 @@ Status_t power_can_enable_release(const struct device *dev);
  * @brief Decide whether a reset cause requires validating CAN_EN at startup.
  *
  * RESET_LOW_POWER_WAKE is the reset produced when STM32 SHUTDOWN exits via
- * WKUP2_LOW on CAN_EN. Other reset causes intentionally bypass the anti-glitch
- * startup check.
+ * WKUP2_LOW on CAN_EN. A pending SHUTDOWN backup marker also requires the
+ * check, including after the software-reset fallback. The marker is consumed
+ * once on every STM32 boot. Unmarked ordinary resets bypass the check.
  *
  * @param reset_cause Zephyr hwinfo reset-cause bitmask
- * @return true only for a low-power wake reset
+ * @return true for low-power wake or pending SHUTDOWN intent
  */
 bool power_reset_requires_can_enable_check(uint32_t reset_cause);
+
+/**
+ * @brief Pure boot-validation policy shared with native regression tests.
+ * @param reset_cause Zephyr hwinfo reset-cause bitmask
+ * @param shutdown_pending A consumed backup marker records pending SHUTDOWN
+ * @return true when CAN_EN must be validated before normal boot
+ */
+bool power_reset_needs_check(uint32_t reset_cause, bool shutdown_pending);
 
 /**
  * @brief Enter low-power shutdown mode.
